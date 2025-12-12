@@ -7,7 +7,7 @@ import {
   ShoppingCart, Users, DollarSign, Archive, 
   Settings, BarChart3, Megaphone, Wallet, Zap, Search,
   ChevronLeft, ChevronRight, LogOut, HeartHandshake, ChevronDown, FileText,
-  FileInput, ArrowLeftRight, FileSpreadsheet, CalendarRange, Percent, Home // <--- Home Importado
+  FileInput, ArrowLeftRight, FileSpreadsheet, CalendarRange, Percent, Home, LifeBuoy // <--- Ícone Novo
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -34,7 +34,6 @@ interface SideNavProps {
 
 // --- CONFIGURAÇÃO DE ESTILOS POR GRUPO ---
 const groupStyles: Record<string, { active: string, hover: string, icon: string }> = {
-    // ESTILO NOVO PARA A HOME
     inicio: { 
         active: 'bg-slate-800 text-white shadow-md', 
         hover: 'hover:bg-slate-100 hover:text-slate-900',
@@ -73,7 +72,6 @@ const groupStyles: Record<string, { active: string, hover: string, icon: string 
 };
 
 const menuGroups: MenuGroup[] = [
-    // --- NOVO GRUPO: INÍCIO ---
     {
         id: 'inicio',
         items: [
@@ -114,6 +112,8 @@ const menuGroups: MenuGroup[] = [
         id: 'infos',
         items: [
             { label: 'Informações', icon: Search, route: '/dashboard/loja/[id]/consultas', allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico'] },
+            // ITEM ADICIONADO AQUI:
+            { label: 'Assistência Técnica', icon: LifeBuoy, route: '/dashboard/loja/[id]/assistencia', allowedRoles: ['admin', 'manager', 'store_operator', 'tecnico'] },
             { label: 'Pós-Venda / Sucesso', icon: HeartHandshake, route: '/dashboard/loja/[id]/pos-venda', allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico'] },
         ]
     },
@@ -198,7 +198,7 @@ const SideNav = ({ userRole, storeId, storeName }: SideNavProps) => {
                     >
                         <div className="flex items-center">
                             <item.icon className={`
-                                flex-shrink-0 transition-colors
+                                    flex-shrink-0 transition-colors
                                 ${isCollapsed ? 'h-6 w-6' : 'h-5 w-5 mr-3'}
                                 ${isExpanded || isActive ? style.icon : 'text-gray-400 group-hover:text-gray-600'}
                             `} />

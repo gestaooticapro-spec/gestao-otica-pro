@@ -1210,9 +1210,8 @@ export async function updateVendaEmployee(
     return { success: false, message: e.message }
   }
 }
-
 // ================================================================
-// 18. ACTION: RECEBER PARCELA (BAIXA NO CARNÊ) - CORRIGIDO FINAL
+// 18. ACTION: RECEBER PARCELA (COM LÓGICA DE JUROS HÍBRIDA)
 // ================================================================
 const ReceberParcelaSchema = z.object({
   parcela_id: z.coerce.number(),
@@ -1220,7 +1219,8 @@ const ReceberParcelaSchema = z.object({
   store_id: z.coerce.number(),
   employee_id: z.coerce.number(), 
   valor_original: z.coerce.number(),
-  valor_pago: z.coerce.number().min(0.01),
+  valor_pago_total: z.coerce.number().min(0.01), // Quanto dinheiro entrou
+  valor_juros: z.coerce.number().default(0),     // Quanto disso é juros
   forma_pagamento: z.string().min(1),
   data_pagamento: z.string(),
   estrategia: z.enum(['quitacao_total', 'criar_pendencia', 'somar_proxima']).default('quitacao_total'),
@@ -1235,8 +1235,11 @@ export async function receberParcela(prevState: any, formData: FormData) {
   const profile = await getProfileByAdmin(user.id)
   if (!profile) return { success: false, message: 'Perfil não encontrado.' }
 
-  const valorRaw = formData.get('valor_pago') as string
-  const valorPago = valorRaw ? parseFloat(valorRaw.replace(/\./g, '').replace(',', '.')) : 0
+  const valorRaw = formData.get('valor_pago_total') as string
+  const valorPagoTotal = valorRaw ? parseFloat(valorRaw.replace(/\./g, '').replace(',', '.')) : 0
+
+  const jurosRaw = formData.get('valor_juros') as string
+  const valorJuros = jurosRaw ? parseFloat(jurosRaw.replace(/\./g, '').replace(',', '.')) : 0
 
   const inputData = {
       parcela_id: formData.get('parcela_id'),
@@ -1244,7 +1247,8 @@ export async function receberParcela(prevState: any, formData: FormData) {
       store_id: formData.get('store_id'),
       employee_id: formData.get('employee_id'),
       valor_original: formData.get('valor_original'),
-      valor_pago: valorPago,
+      valor_pago_total: valorPagoTotal,
+      valor_juros: valorJuros,
       forma_pagamento: formData.get('forma_pagamento'),
       data_pagamento: formData.get('data_pagamento'),
       estrategia: formData.get('estrategia')
@@ -1253,10 +1257,17 @@ export async function receberParcela(prevState: any, formData: FormData) {
   const validated = ReceberParcelaSchema.safeParse(inputData)
   if (!validated.success) return { success: false, message: 'Dados inválidos.' }
 
-  const { parcela_id, venda_id, store_id, valor_original, valor_pago, forma_pagamento, estrategia, data_pagamento, employee_id } = validated.data
-  const diferenca = valor_original - valor_pago
+  const { parcela_id, venda_id, store_id, valor_original, valor_pago_total, valor_juros, forma_pagamento, estrategia, data_pagamento } = validated.data
+  
+  // O PULO DO GATO MATEMÁTICO:
+  // O quanto da dívida estamos matando? = (Dinheiro Total - Juros)
+  const principalAbatido = valor_pago_total - valor_juros
+  
+  // A diferença real na dívida
+  const diferencaDivida = valor_original - principalAbatido
 
   try {
+      // 1. Busca dados da parcela atual
       const { data: parcelaRaw } = await supabaseAdmin
           .from('financiamento_parcelas')
           .select('*')
@@ -1264,38 +1275,42 @@ export async function receberParcela(prevState: any, formData: FormData) {
           .single()
       
       if (!parcelaRaw) throw new Error('Parcela não encontrada.')
-
-      // CORREÇÃO: Cast para any para evitar erros de acesso às propriedades
       const parcelaAtual = parcelaRaw as any;
 
+      // 2. Registra o Pagamento (Valor CHEIO que entrou no caixa)
       await (supabaseAdmin.from('pagamentos') as any).insert({
           tenant_id: (profile as any).tenant_id,
           store_id: store_id,
           venda_id: venda_id,
           created_by_user_id: user.id,
-          valor_pago: valor_pago,
+          valor_pago: valor_pago_total, // Entra R$ 60,00 no caixa
           forma_pagamento: forma_pagamento,
           data_pagamento: data_pagamento,
           parcelas: 1, 
-          obs: `Ref. Parcela ${parcelaAtual.numero_parcela} (Carnê)`
+          obs: `Ref. Parcela ${parcelaAtual.numero_parcela} (Principal: ${principalAbatido.toFixed(2)} + Juros: ${valor_juros.toFixed(2)})`
       })
 
+      // 3. Baixa a parcela atual
+      // IMPORTANTE: Atualizamos o valor_parcela para o que foi efetivamente abatido (R$ 50,00) para fins de histórico
       await (supabaseAdmin.from('financiamento_parcelas') as any).update({
           status: 'Pago',
           data_pagamento: new Date().toISOString(),
-          valor_parcela: valor_pago 
+          valor_parcela: principalAbatido 
       }).eq('id', parcela_id)
 
-      if (diferenca > 0.01) {
+      // 4. Lógica de Diferença da Dívida
+      if (diferencaDivida > 0.01) {
+          // --- FALTOU DINHEIRO (Cenário do Exemplo: Faltam R$ 50) ---
+          
           if (estrategia === 'criar_pendencia') {
               await (supabaseAdmin.from('financiamento_parcelas') as any).insert({
                   tenant_id: (profile as any).tenant_id,
                   store_id: store_id,
                   financiamento_id: parcelaAtual.financiamento_id,
                   customer_id: parcelaAtual.customer_id,
-                  numero_parcela: parcelaAtual.numero_parcela, 
-                  data_vencimento: parcelaAtual.data_vencimento, 
-                  valor_parcela: diferenca,
+                  numero_parcela: parcelaAtual.numero_parcela, // Mantém número para indicar que é 'filha'
+                  data_vencimento: parcelaAtual.data_vencimento, // Vence hoje ou mantem original
+                  valor_parcela: diferencaDivida,
                   status: 'Pendente'
               })
           } else if (estrategia === 'somar_proxima') {
@@ -1312,9 +1327,10 @@ export async function receberParcela(prevState: any, formData: FormData) {
               if (proxParcela) {
                   const prox = proxParcela as any;
                   await (supabaseAdmin.from('financiamento_parcelas') as any)
-                      .update({ valor_parcela: prox.valor_parcela + diferenca })
+                      .update({ valor_parcela: prox.valor_parcela + diferencaDivida })
                       .eq('id', prox.id)
               } else {
+                  // Se não tem próxima, cria nova para 30 dias
                   const novaData = new Date(parcelaAtual.data_vencimento)
                   novaData.setDate(novaData.getDate() + 30)
                   await (supabaseAdmin.from('financiamento_parcelas') as any).insert({
@@ -1324,10 +1340,30 @@ export async function receberParcela(prevState: any, formData: FormData) {
                       customer_id: parcelaAtual.customer_id,
                       numero_parcela: parcelaAtual.numero_parcela + 1,
                       data_vencimento: novaData.toISOString(),
-                      valor_parcela: diferenca,
+                      valor_parcela: diferencaDivida,
                       status: 'Pendente'
                   })
               }
+          }
+      } else if (diferencaDivida < -0.01) {
+          // --- PAGOU A MAIS (AMORTIZAÇÃO) ---
+          const excedente = Math.abs(diferencaDivida)
+
+          const { data: proxParcela } = await supabaseAdmin
+                  .from('financiamento_parcelas')
+                  .select('*')
+                  .eq('financiamento_id', parcelaAtual.financiamento_id)
+                  .gt('numero_parcela', parcelaAtual.numero_parcela)
+                  .eq('status', 'Pendente')
+                  .order('numero_parcela', { ascending: true })
+                  .limit(1)
+                  .maybeSingle()
+            
+          if (proxParcela) {
+              const prox = proxParcela as any;
+              await (supabaseAdmin.from('financiamento_parcelas') as any)
+                  .update({ valor_parcela: prox.valor_parcela - excedente })
+                  .eq('id', prox.id)
           }
       }
 
@@ -1867,31 +1903,40 @@ export async function getCustomerPrescriptionHistory(
   }
 }
 
+// ... (imports)
+
 // ================================================================
-// 26. ACTION: BUSCAR PENDÊNCIAS (FINAL: BUSCA FLEXÍVEL)
+// 26. ACTION: BUSCAR PENDÊNCIAS (VERSÃO CORRIGIDA E LIMPA)
 // ================================================================
 export async function searchPendenciasCliente(storeId: number, termo: string) {
     const supabaseAdmin = createAdminClient()
-    
+    const cleanTerm = termo.trim()
+
+    console.log(`🔍 [DEBUG] Iniciando busca para: "${cleanTerm}" na Loja: ${storeId}`)
+
     try {
-        // 1. Busca Clientes (Nome OU CPF Parcial)
-        // MUDANÇA: Usamos .ilike no CPF para permitir busca parcial ou caso tenha formatação diferente
-        const { data: clientes } = await supabaseAdmin
+        // PASSO 1: Busca Clientes
+        const { data: clientes, error: errCli } = await supabaseAdmin
             .from('customers')
             .select('id, full_name, cpf')
             .eq('store_id', storeId)
-            .or(`full_name.ilike.%${termo}%,cpf.ilike.%${termo}%`)
-            .limit(10)
+            .or(`full_name.ilike.%${cleanTerm}%,cpf.ilike.%${cleanTerm}%`)
+            .limit(50)
+        
+        if (errCli) {
+            console.error("❌ [DEBUG] Erro ao buscar clientes:", errCli.message)
+            return []
+        }
+
+        console.log(`👤 [DEBUG] Clientes encontrados:`, clientes?.length || 0)
         
         if (!clientes || clientes.length === 0) return []
 
-       const ids = (clientes as any[]).map(c => c.id)
+        const idsClientes = clientes.map((c: any) => c.id)
 
-
-        // 2. Busca Parcelas Pendentes
-        // Mantemos a correção do venda_id que fizemos antes
-        const { data: parcelas } = await supabaseAdmin
-            .from('financiamento_parcelas')
+        // PASSO 2: Busca Parcelas
+        const { data: parcelas, error: errParc } = await (supabaseAdmin
+            .from('financiamento_parcelas') as any)
             .select(`
                 id, 
                 numero_parcela, 
@@ -1899,34 +1944,69 @@ export async function searchPendenciasCliente(storeId: number, termo: string) {
                 data_vencimento,
                 financiamento_id,
                 customer_id,
-                financiamento_loja ( venda_id )
+                status,
+                financiamento_loja ( 
+                    venda_id,
+                    vendas!financiamento_loja_venda_id_fkey (
+                        created_at,
+                        service_orders (
+                            dependente_id,
+                            dependentes ( full_name )
+                        )
+                    )
+                )
             `)
-            .in('customer_id', ids)
+            .in('customer_id', idsClientes)
             .eq('store_id', storeId)
-            .eq('status', 'Pendente')
             .order('data_vencimento', { ascending: true })
 
-        // 3. Agrupa por Cliente
-const resultado = clientes.map((cli: any) => {
-  const parcs = parcelas?.filter((p: any) => p.customer_id === cli.id) || []
+        if (errParc) {
+            console.error("❌ [DEBUG] Erro ao buscar parcelas:", errParc.message)
+            return []
+        }
 
-  if (parcs.length === 0) return null
+        const parcelasPendentes = parcelas?.filter((p: any) => p.status === 'Pendente') || []
+        console.log(`📦 [DEBUG] Parcelas pendentes encontradas:`, parcelasPendentes.length)
 
-  const parcsFormatadas = parcs.map((p: any) => ({
-    ...p,
-    venda_id: p.financiamento_loja?.venda_id
-  }))
+        // PASSO 3: Agrupamento
+        const resultado = clientes.map((cli: any) => {
+            const parcs = parcelasPendentes.filter((p: any) => p.customer_id === cli.id)
 
-  return {
-    cliente: cli,
-    parcelas: parcsFormatadas
-  }
-}).filter(Boolean)
+            if (parcs.length === 0) return null
 
+            const parcsFormatadas = parcs.map((p: any) => {
+                const venda = p.financiamento_loja?.vendas
+                const os = venda?.service_orders?.[0]
+                
+                const nomeDependente = os?.dependentes?.full_name
+                const nomeTitular = cli.full_name
+                
+                const beneficiario = (nomeDependente && nomeDependente !== nomeTitular) 
+                    ? nomeDependente 
+                    : null
+
+                return {
+                    id: p.id,
+                    numero_parcela: p.numero_parcela,
+                    valor_parcela: p.valor_parcela,
+                    data_vencimento: p.data_vencimento,
+                    venda_id: p.financiamento_loja?.venda_id,
+                    data_venda: venda?.created_at,
+                    beneficiario: beneficiario
+                }
+            })
+
+            return {
+                cliente: cli,
+                parcelas: parcsFormatadas
+            }
+        }).filter(Boolean)
+
+        console.log(`🚀 [DEBUG] Sucesso! Retornando ${resultado.length} grupos.`)
         return resultado
 
     } catch (e) {
-        console.error("Erro busca pendencias:", e)
+        console.error("🔥 [DEBUG] Exceção crítica:", e)
         return []
     }
 }
@@ -1948,4 +2028,55 @@ export async function markPaymentsAsPrinted(
     console.error("Erro ao marcar impressão:", e)
     return { success: false }
   }
+}
+
+// ... (mantenha o restante do arquivo como está)
+
+// ================================================================
+// 28. ACTION: BUSCAR ITENS COMPRADOS (PARA ASSISTÊNCIA)
+// ================================================================
+export type ItemComprado = {
+    venda_item_id: number
+    venda_id: number
+    data_venda: string
+    descricao: string
+    product_id: number | null
+    valor: number
+}
+
+export async function getItensCompradosPorCliente(storeId: number, customerId: number): Promise<ItemComprado[]> {
+    const supabaseAdmin = createAdminClient()
+    
+    try {
+        // Busca itens das últimas 20 vendas do cliente
+        // Cast 'as any' para garantir os joins
+        const { data, error } = await (supabaseAdmin.from('venda_itens') as any)
+            .select(`
+                id, 
+                descricao, 
+                product_id, 
+                valor_total_item,
+                vendas!inner ( id, created_at, status )
+            `)
+            .eq('store_id', storeId)
+            .eq('vendas.customer_id', customerId)
+            .neq('vendas.status', 'Cancelada') // Ignora canceladas
+            .order('id', { ascending: false })
+            .limit(50)
+
+        if (error) throw error
+        
+        return (data || []).map((i: any) => ({
+            venda_item_id: i.id,
+            venda_id: i.vendas.id,
+            data_venda: i.vendas.created_at,
+            descricao: i.descricao,
+            product_id: i.product_id,
+            valor: i.valor_total_item
+        }))
+
+    } catch (e) {
+        console.error("Erro ao buscar compras:", e)
+        return []
+    }
 }
