@@ -1,3 +1,5 @@
+// ARQUIVO: src/lib/database.types.ts
+
 export type Json =
   | string
   | number
@@ -44,14 +46,12 @@ export interface Database {
           is_active: boolean
           role: 'vendedor' | 'gerente' | 'tecnico'
           created_at: string
-
-          // NOVAS COLUNAS DE COMISSÃO
-          comm_rate_guaranteed: number | null    // % Venda Garantida (Pix/Cartão)
-          comm_rate_store_credit: number | null  // % Venda Risco (Carnê)
-          comm_rate_store_total: number | null   // % Sobre Total da Loja
-          comm_rate_received: number | null      // % Sobre Recebimento Caixa
-          comm_rate_profit: number | null        // % Sobre Lucro
-          comm_tiers_json: Json | null           // Metas (JSON)
+          comm_rate_guaranteed: number | null
+          comm_rate_store_credit: number | null
+          comm_rate_store_total: number | null
+          comm_rate_received: number | null
+          comm_rate_profit: number | null
+          comm_tiers_json: Json | null
         }
         Insert: {
           id?: number
@@ -61,8 +61,6 @@ export interface Database {
           is_active?: boolean
           role?: 'vendedor' | 'gerente' | 'tecnico'
           created_at?: string
-
-          // NOVAS COLUNAS (Opcionais no Insert)
           comm_rate_guaranteed?: number | null
           comm_rate_store_credit?: number | null
           comm_rate_store_total?: number | null
@@ -78,8 +76,6 @@ export interface Database {
           is_active?: boolean
           role?: 'vendedor' | 'gerente' | 'tecnico'
           created_at?: string
-
-          // NOVAS COLUNAS (Opcionais no Update)
           comm_rate_guaranteed?: number | null
           comm_rate_store_credit?: number | null
           comm_rate_store_total?: number | null
@@ -95,18 +91,58 @@ export interface Database {
           name: string
           tenant_id: string
           settings: Json | null
+          // Campos adicionais de perfil da loja
+          razao_social: string | null
+          cnpj: string | null
+          inscricao_estadual: string | null
+          whatsapp: string | null
+          phone: string | null
+          email: string | null
+          website: string | null
+          cep: string | null
+          street: string | null
+          number: string | null
+          neighborhood: string | null
+          city: string | null
+          state: string | null
         }
         Insert: {
           id?: number
           name: string
           tenant_id: string
           settings?: Json | null
+          razao_social?: string | null
+          cnpj?: string | null
+          inscricao_estadual?: string | null
+          whatsapp?: string | null
+          phone?: string | null
+          email?: string | null
+          website?: string | null
+          cep?: string | null
+          street?: string | null
+          number?: string | null
+          neighborhood?: string | null
+          city?: string | null
+          state?: string | null
         }
         Update: {
           id?: number
           name?: string
           tenant_id?: string
           settings?: Json | null
+          razao_social?: string | null
+          cnpj?: string | null
+          inscricao_estadual?: string | null
+          whatsapp?: string | null
+          phone?: string | null
+          email?: string | null
+          website?: string | null
+          cep?: string | null
+          street?: string | null
+          number?: string | null
+          neighborhood?: string | null
+          city?: string | null
+          state?: string | null
         }
       }
 
@@ -119,6 +155,7 @@ export interface Database {
           razao_social: string | null
           cnpj: string | null
           inscricao_estadual: string | null
+          telefone: string | null
           cidade: string | null
           uf: string | null
           created_at: string
@@ -131,6 +168,7 @@ export interface Database {
           razao_social?: string | null
           cnpj?: string | null
           inscricao_estadual?: string | null
+          telefone?: string | null
           cidade?: string | null
           uf?: string | null
           created_at?: string
@@ -138,29 +176,26 @@ export interface Database {
         Update: {
           id?: number
           nome_fantasia?: string
-          // ... demais campos opcionais
+          [key: string]: any
         }
       }
 
-      // --- CONTAS A PAGAR (DESPESAS) ---
+      // --- FINANCEIRO (CONTAS A PAGAR & RECEBER) ---
+
       accounts_payable: {
         Row: {
           id: number
           tenant_id: string | null
           store_id: number
-          
           description: string
           amount: number
           amount_paid: number
-          
           due_date: string
           payment_date: string | null
-          
           status: 'Pendente' | 'Pago' | 'Cancelado'
           category: string | null
           supplier_id: number | null
-          
-          created_by_user_id: string
+          created_by_user_id: string | null
           created_at: string
           updated_at: string
         }
@@ -168,37 +203,53 @@ export interface Database {
           id?: number
           tenant_id?: string | null
           store_id: number
-          
           description: string
           amount: number
           amount_paid?: number
-          
           due_date: string
           payment_date?: string | null
-          
           status?: 'Pendente' | 'Pago' | 'Cancelado'
           category?: string | null
           supplier_id?: number | null
-          
-          created_by_user_id?: string
+          created_by_user_id?: string | null
           created_at?: string
           updated_at?: string
         }
         Update: {
-          description?: string
-          amount?: number
-          amount_paid?: number
-          due_date?: string
-          payment_date?: string | null
-          status?: 'Pendente' | 'Pago' | 'Cancelado'
-          category?: string | null
-          supplier_id?: number | null
-          updated_at?: string
           [key: string]: any
         }
       }
 
-      // --- CONTROLE DE NOTAS FISCAIS ---
+      // --- NOVA TABELA: CONTAS A RECEBER ---
+      contas_a_receber: {
+        Row: {
+            id: number
+            tenant_id: string | null
+            store_id: number
+            pagamento_id: number
+            data_prevista: string
+            valor_bruto: number
+            valor_taxa: number | null
+            valor_liquido: number
+            status: string
+        }
+        Insert: {
+            id?: number
+            tenant_id?: string | null
+            store_id: number
+            pagamento_id: number
+            data_prevista: string
+            valor_bruto: number
+            valor_taxa?: number | null
+            valor_liquido: number
+            status?: string
+        }
+        Update: {
+            [key: string]: any
+        }
+      }
+
+      // --- IMPORTAÇÃO ---
       imported_invoices: {
         Row: {
           id: number
@@ -221,11 +272,11 @@ export interface Database {
           imported_at?: string
         }
         Update: {
-          // ...
+          [key: string]: any
         }
       }
 
-      // --- CLIENTES & DEPENDENTES ---
+      // --- CLIENTES & ASSISTÊNCIA ---
 
       customers: {
         Row: {
@@ -245,7 +296,6 @@ export interface Database {
           uf: string | null
           cep: string | null
           complemento: string | null
-          
           naturalidade: string | null
           estado_civil: string | null
           pai: string | null
@@ -255,7 +305,6 @@ export interface Database {
           conjuge_naturalidade: string | null
           conjuge_trabalho: string | null
           conjuge_fone: string | null
-          
           comercial_trabalho: string | null
           comercial_cargo: string | null
           comercial_endereco: string | null
@@ -267,7 +316,6 @@ export interface Database {
           ref_comercio_2: string | null
           ref_pessoal_1: string | null
           ref_pessoal_2: string | null
-          
           obs_debito: string | null
           notes: string | null
           faixa_etaria: string | null
@@ -281,13 +329,11 @@ export interface Database {
           cpf?: string | null
           is_spc?: boolean | null
           tenant_id?: string
-          // ... demais campos opcionais
           [key: string]: any 
         }
         Update: {
           id?: number
           full_name?: string
-          // ... demais campos opcionais
           [key: string]: any
         }
       }
@@ -313,14 +359,87 @@ export interface Database {
           tenant_id?: string
         }
         Update: {
-          id?: number
-          full_name?: string
-          // ...
+          [key: string]: any
+        }
+      }
+
+      // --- NOVAS TABELAS DE ASSISTÊNCIA ---
+      assistance_tickets: {
+        Row: {
+            id: number
+            tenant_id: string | null
+            store_id: number
+            tracking_token: string // UUID
+            customer_id: number
+            venda_original_id: number | null
+            product_id: number | null
+            product_descricao: string
+            contato_usado: string | null
+            modalidade: string
+            status: string
+            status_publico: string | null
+            descricao_defeito: string | null
+            fotos_urls: Json | null
+            dt_abertura: string | null
+            dt_solicitacao_peca: string | null
+            dt_chegada_peca: string | null
+            dt_troca_cliente: string | null
+            dt_envio_fornecedor: string | null
+            dt_conclusao: string | null
+            rastreio_entrada: string | null
+            rastreio_saida: string | null
+            created_by_user_id: string | null
+            created_at: string | null
+            updated_at: string | null
+        }
+        Insert: {
+            id?: number
+            tenant_id?: string | null
+            store_id: number
+            tracking_token?: string
+            customer_id: number
+            venda_original_id?: number | null
+            product_id?: number | null
+            product_descricao: string
+            contato_usado?: string | null
+            modalidade: string
+            status: string
+            status_publico?: string | null
+            descricao_defeito?: string | null
+            fotos_urls?: Json | null
+            created_by_user_id?: string | null
+            [key: string]: any
+        }
+        Update: {
+            [key: string]: any
+        }
+      }
+
+      assistance_timeline: {
+        Row: {
+            id: number
+            ticket_id: number
+            tenant_id: string | null
+            tipo: string
+            mensagem: string
+            usuario_id: string | null
+            created_at: string
+        }
+        Insert: {
+            id?: number
+            ticket_id: number
+            tenant_id?: string | null
+            tipo: string
+            mensagem: string
+            usuario_id?: string | null
+            created_at?: string
+        }
+        Update: {
+            [key: string]: any
         }
       }
 
       // --- CARTEIRA E COMISSÕES ---
-
       customer_wallets: {
         Row: {
           id: number
@@ -412,101 +531,80 @@ export interface Database {
         }
       }
 
-      // --- CATÁLOGO UNIFICADO ---
-
-products: {
-  Row: {
-    id: number
-    store_id: number
-    tenant_id: string | null
-    created_at: string
-    
-    nome: string
-    codigo_barras: string | null
-    referencia: string | null
-    
-    tipo_produto: 'Armacao' | 'Lente' | 'LenteContato' | 'Outro' | 'Servico' | 'Tratamento'
-    categoria: string | null
-    marca: string | null
-
-    preco_custo: number | null
-    preco_venda: number
-    margem_lucro: number | null
-
-    estoque_atual: number
-    estoque_minimo: number
-    gerencia_estoque: boolean
-
-    ncm: string | null
-    cest: string | null
-    cfop: string | null
-    unidade_medida: string | null
-    origem_mercadoria: number | null
-    supplier_id: number | null
-
-    detalhes: Json
-    tem_grade: boolean
-  },
-
-  Insert: {
-    id?: number
-    store_id: number
-    tenant_id?: string | null
-
-    nome: string
-    tipo_produto: 'Armacao' | 'Lente' | 'LenteContato' | 'Outro' | 'Servico' | 'Tratamento'
-    categoria?: string | null
-    marca?: string | null
-
-    codigo_barras?: string | null
-    referencia?: string | null
-
-    preco_custo?: number | null
-    preco_venda: number
-    margem_lucro?: number | null
-
-    estoque_atual?: number
-    estoque_minimo?: number
-    gerencia_estoque?: boolean
-
-    ncm?: string | null
-    cest?: string | null
-    cfop?: string | null
-    unidade_medida?: string | null
-    origem_mercadoria?: number | null
-    supplier_id?: number | null
-
-    detalhes?: Json
-    tem_grade?: boolean
-
-    created_at?: string
-  },
-
-  Update: {
-    id?: number
-    [key: string]: any
-  }
-}
+      // --- CATÁLOGO ---
+      products: {
+        Row: {
+          id: number
+          store_id: number
+          tenant_id: string | null
+          created_at: string
+          nome: string
+          codigo_barras: string | null
+          referencia: string | null
+          tipo_produto: 'Armacao' | 'Lente' | 'LenteContato' | 'Outro' | 'Servico' | 'Tratamento'
+          categoria: string | null
+          marca: string | null
+          preco_custo: number | null
+          preco_venda: number
+          margem_lucro: number | null
+          estoque_atual: number
+          estoque_minimo: number
+          gerencia_estoque: boolean
+          ncm: string | null
+          cest: string | null
+          cfop: string | null
+          unidade_medida: string | null
+          origem_mercadoria: number | null
+          supplier_id: number | null
+          detalhes: Json
+          tem_grade: boolean
+        }
+        Insert: {
+          id?: number
+          store_id: number
+          tenant_id?: string | null
+          nome: string
+          tipo_produto: 'Armacao' | 'Lente' | 'LenteContato' | 'Outro' | 'Servico' | 'Tratamento'
+          categoria?: string | null
+          marca?: string | null
+          codigo_barras?: string | null
+          referencia?: string | null
+          preco_custo?: number | null
+          preco_venda: number
+          margem_lucro?: number | null
+          estoque_atual?: number
+          estoque_minimo?: number
+          gerencia_estoque?: boolean
+          ncm?: string | null
+          cest?: string | null
+          cfop?: string | null
+          unidade_medida?: string | null
+          origem_mercadoria?: number | null
+          supplier_id?: number | null
+          detalhes?: Json
+          tem_grade?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          [key: string]: any
+        }
+      }
 
       product_variants: {
         Row: {
           id: number
           product_id: number
           store_id: number
-          
           nome_variante: string | null
           codigo_barras_especifico: string | null
-          
           esferico: number | null
           cilindrico: number | null
           eixo: number | null
           adicao: number | null
           curva_base: number | null
-          
           estoque_atual: number
           localizacao: string | null
-
-          // NOVOS CAMPOS PARA SOBRAS
           diametro: number | null
           olho: string | null
           is_sobra: boolean | null
@@ -518,12 +616,9 @@ products: {
           esferico?: number | null
           cilindrico?: number | null
           estoque_atual?: number
-          
-          // NOVOS CAMPOS PARA SOBRAS
           diametro?: number | null
           olho?: string | null
           is_sobra?: boolean | null
-          
           [key: string]: any
         }
         Update: {
@@ -538,17 +633,13 @@ products: {
           store_id: number
           tenant_id: string | null
           created_at: string
-          
           product_id: number | null
           variant_id: number | null
-          
           tipo: 'Entrada' | 'Saida' | 'Perda' | 'Ajuste' | 'Devolucao' | 'Brinde'
           quantidade: number
           motivo: string | null
           custo_unitario_momento: number | null
           registrado_por_id: string | null
-
-          // NOVOS CAMPOS DE RASTREIO
           related_venda_id: number | null
           related_os_id: number | null
         }
@@ -557,15 +648,12 @@ products: {
           store_id: number
           tipo: string
           quantidade: number
-          
-          // NOVOS CAMPOS
           related_venda_id?: number | null
           related_os_id?: number | null
-
           [key: string]: any
         }
         Update: {
-          // ...
+          [key: string]: any
         }
       }
 
@@ -590,7 +678,7 @@ products: {
           store_id: number
           customer_id: number
           employee_id: number | null
-          status: 'Em Aberto' | 'Fechada' | 'Cancelada'
+          status: 'Em Aberto' | 'Fechada' | 'Cancelada' | 'Devolvida'
           valor_total: number
           valor_desconto: number
           valor_final: number
@@ -603,7 +691,7 @@ products: {
           store_id: number
           customer_id: number
           employee_id?: number | null
-          status?: 'Em Aberto' | 'Fechada' | 'Cancelada'
+          status?: 'Em Aberto' | 'Fechada' | 'Cancelada' | 'Devolvida'
           valor_total?: number
           valor_desconto?: number
           valor_final?: number
@@ -615,7 +703,7 @@ products: {
           status?: string
           financiamento_id?: number | null
           valor_desconto?: number
-          // ...
+          [key: string]: any
         }
       }
 
@@ -625,17 +713,13 @@ products: {
           venda_id: number
           store_id: number
           tenant_id: string | null
-          
           product_id: number | null
           variant_id: number | null
-          
           item_tipo: string | null 
           descricao: string | null
-          
           quantidade: number
           valor_unitario: number
           valor_total_item: number
-          
           detalhes_avulsos: Json | null
         }
         Insert: {
@@ -652,7 +736,7 @@ products: {
           detalhes_avulsos?: Json | null
         }
         Update: {
-          // ...
+          [key: string]: any
         }
       }
 
@@ -681,7 +765,7 @@ products: {
           receipt_printed_at?: string
         }
         Update: {
-          // ...
+          [key: string]: any
         }
       }
 
@@ -711,7 +795,7 @@ products: {
           created_by_user_id?: string
         }
         Update: {
-          // ...
+          [key: string]: any
         }
       }
 
@@ -739,7 +823,7 @@ products: {
           customer_id?: number
         }
         Update: {
-          // ...
+          [key: string]: any
         }
       }
 
@@ -748,7 +832,6 @@ products: {
           id: number
           venda_id: number
           created_at: string
-          
           receita_longe_od_esferico: string | null
           receita_longe_od_cilindrico: string | null
           receita_longe_od_eixo: string | null
@@ -762,7 +845,6 @@ products: {
           receita_perto_oe_cilindrico: string | null
           receita_perto_oe_eixo: string | null
           receita_adicao: string | null
-          
           medida_dnp_od: string | null
           medida_dnp_oe: string | null
           medida_altura_od: string | null
@@ -772,7 +854,6 @@ products: {
           medida_diagonal: string | null
           medida_ponte: string | null
           medida_diametro: string | null
-
           lab_nome: string | null
           lab_pedido_por_id: number | null
           dt_pedido_em: string | null
@@ -782,9 +863,9 @@ products: {
           dt_prometido_para: string | null
           obs_os: string | null
           protocolo_fisico: string | null
-          
           dependente_id: number | null
           oftalmologista_id: number | null
+          // NOVA TABELA ASSISTÊNCIA PODE TER RELAÇÃO, MAS NÃO ALTEROU OS AQUI
         }
         Insert: {
           store_id: number
@@ -884,7 +965,7 @@ products: {
           data_fechamento?: string | null
           status?: 'Aberto' | 'Fechado'
           quebra_caixa?: number | null
-          // ...
+          [key: string]: any
         }
       }
 
@@ -916,8 +997,20 @@ products: {
           forma_pagamento?: string | null
         }
         Update: {
-          // ...
+          [key: string]: any
         }
+      }
+      
+      // ... FIM TABLES
+      post_sales: {
+          Row: { id: number; status: string }
+          Insert: { [key: string]: any }
+          Update: { [key: string]: any }
+      }
+      post_sales_interactions: {
+          Row: { id: number; tipo_contato: string; resumo: string; created_at: string }
+          Insert: { [key: string]: any }
+          Update: { [key: string]: any }
       }
     }
     Views: {

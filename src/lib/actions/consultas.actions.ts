@@ -362,3 +362,56 @@ export async function getAniversariantes(storeId: number): Promise<Aniversariant
         return []
     }
 }
+
+// ==============================================================================
+// 02. ACTION: BUSCA PARCELAS PENDENTES QUE VEM HOJE OU AMANHÃ
+// ==============================================================================
+
+// ... imports anteriores
+
+export type VencimentoProximo = {
+    id: number
+    customer_name: string
+    fone_movel: string | null
+    valor_parcela: number
+    data_vencimento: string
+    numero_parcela: number
+}
+
+export async function getVencimentosProximos(storeId: number): Promise<VencimentoProximo[]> {
+    const supabaseAdmin = createAdminClient()
+    const hoje = new Date()
+    const amanha = new Date(hoje)
+    amanha.setDate(hoje.getDate() + 1)
+
+    // Formata YYYY-MM-DD
+    const inicio = hoje.toISOString().split('T')[0]
+    const fim = amanha.toISOString().split('T')[0]
+
+    try {
+        const { data, error } = await (supabaseAdmin.from('financiamento_parcelas') as any)
+            .select(`
+                id, valor_parcela, data_vencimento, numero_parcela,
+                customers ( full_name, fone_movel )
+            `)
+            .eq('store_id', storeId)
+            .eq('status', 'Pendente')
+            .gte('data_vencimento', inicio)
+            .lte('data_vencimento', fim)
+            .order('data_vencimento', { ascending: true })
+
+        if (error) throw error
+
+        return (data || []).map((item: any) => ({
+            id: item.id,
+            customer_name: item.customers?.full_name || 'Desconhecido',
+            fone_movel: item.customers?.fone_movel,
+            valor_parcela: item.valor_parcela,
+            data_vencimento: item.data_vencimento,
+            numero_parcela: item.numero_parcela
+        }))
+    } catch (e) {
+        console.error("Erro ao buscar vencimentos:", e)
+        return []
+    }
+}

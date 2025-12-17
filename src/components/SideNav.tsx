@@ -1,29 +1,43 @@
+// ARQUIVO: src/components/SideNav.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { 
+  // Ícones
   ShoppingCart, Users, DollarSign, Archive, 
   Settings, BarChart3, Megaphone, Wallet, Zap, Search,
-  ChevronLeft, ChevronRight, LogOut, HeartHandshake, ChevronDown, FileText,
-  FileInput, ArrowLeftRight, FileSpreadsheet, CalendarRange, Percent, Home, LifeBuoy // <--- Ícone Novo
+  LogOut, HeartHandshake, FileText,
+  FileInput, ArrowLeftRight, FileSpreadsheet, CalendarRange, Percent, Home, LifeBuoy,
+  CheckCircle2, Tag, ChevronRight, ChevronLeft, PanelLeftClose, PanelLeftOpen, X, Globe
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
+// IMPORTS DOS MODAIS
+import ParcelaSearchModal from '@/components/modals/ParcelaSearchModal';
+import LabTrackingModal from '@/components/modals/LabTrackingModal';
+import EntregaModal from '@/components/modals/EntregaModal'; 
+
 type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor' | 'tecnico';
 
-interface MenuItem {
+// --- DEFINIÇÃO DE TIPOS ---
+interface SubItem {
     label: string;
     icon: React.ElementType;
-    route?: string; 
+    route: string;
     allowedRoles: Role[];
-    children?: MenuItem[]; 
+    action?: string; 
+    withSeparator?: boolean; // <--- NOVA PROPRIEDADE PARA A LINHA
 }
 
 interface MenuGroup {
     id: string;
-    items: MenuItem[];
+    label: string; 
+    icon: React.ElementType;
+    allowedRoles: Role[];
+    subItems?: SubItem[]; 
+    route?: string;       
 }
 
 interface SideNavProps {
@@ -32,129 +46,124 @@ interface SideNavProps {
     storeName: string;
 }
 
-// --- CONFIGURAÇÃO DE ESTILOS POR GRUPO ---
-const groupStyles: Record<string, { active: string, hover: string, icon: string }> = {
-    inicio: { 
-        active: 'bg-slate-800 text-white shadow-md', 
-        hover: 'hover:bg-slate-100 hover:text-slate-900',
-        icon: 'text-slate-500'
-    },
-    vendas: { 
-        active: 'bg-blue-50 text-blue-700 shadow-sm', 
-        hover: 'hover:bg-blue-50 hover:text-blue-700',
-        icon: 'text-blue-600'
-    },
-    cadastros: { 
-        active: 'bg-indigo-50 text-indigo-700 shadow-sm', 
-        hover: 'hover:bg-indigo-50 hover:text-indigo-700',
-        icon: 'text-indigo-600'
-    },
-    estoque: { 
-        active: 'bg-amber-50 text-amber-800 shadow-sm', 
-        hover: 'hover:bg-amber-50 hover:text-amber-800',
-        icon: 'text-amber-600'
-    },
-    infos: { 
-        active: 'bg-cyan-50 text-cyan-700 shadow-sm', 
-        hover: 'hover:bg-cyan-50 hover:text-cyan-700',
-        icon: 'text-cyan-600'
-    },
-    financeiro: { 
-        active: 'bg-emerald-50 text-emerald-700 shadow-sm', 
-        hover: 'hover:bg-emerald-50 hover:text-emerald-700',
-        icon: 'text-emerald-600'
-    },
-    gestao: { 
-        active: 'bg-slate-100 text-slate-800 shadow-sm', 
-        hover: 'hover:bg-slate-100 hover:text-slate-900',
-        icon: 'text-slate-600'
-    }
-};
-
-const menuGroups: MenuGroup[] = [
+// --- CONFIGURAÇÃO DA ESTRUTURA DO MENU ---
+const MENU_STRUCTURE: MenuGroup[] = [
     {
         id: 'inicio',
-        items: [
-            { label: 'Visão Geral', icon: Home, route: '/dashboard/loja/[id]', allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico'] },
-        ]
+        label: 'Início',
+        icon: Home,
+        route: '/dashboard/loja/[id]',
+        allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico']
     },
     {
-        id: 'vendas',
-        items: [
-            { label: 'Venda Express', icon: Zap, route: '/dashboard/loja/[id]/pdv-express', allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico'] },
-            { label: 'Atendimento', icon: ShoppingCart, route: '/dashboard/loja/[id]/atendimento', allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico'] },
-            { label: 'Fechamento', icon: DollarSign, route: '/dashboard/loja/[id]/vendas', allowedRoles: ['admin', 'manager', 'store_operator', 'tecnico'] },
-        ]
-    },
-    {
-        id: 'cadastros',
-        items: [
-            { label: 'Clientes', icon: Users, route: '/dashboard/loja/[id]/clientes', allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico'] },
-            { label: 'Catálogo Geral', icon: Archive, route: '/dashboard/loja/[id]/cadastros', allowedRoles: ['admin', 'manager', 'store_operator', 'tecnico'] },
-        ]
-    },
-    {
-        id: 'estoque',
-        items: [
+        id: 'atendimento',
+        label: 'Atendimento',
+        icon: ShoppingCart,
+        allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico'],
+        subItems: [
+            { label: 'Venda Rápida', icon: Zap, route: '/dashboard/loja/[id]/pdv-express', allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico'] },
+            { label: 'Venda Óculos', icon: FileText, route: '/dashboard/loja/[id]/atendimento', allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico'] }, 
+            
+            // Separador após Entrega
             { 
-                label: 'Importar', 
-                icon: FileInput, 
-                allowedRoles: ['admin', 'manager', 'store_operator', 'tecnico'],
-                children: [
-                    { label: 'Nota (XML)', icon: FileText, route: '/dashboard/loja/[id]/importacao', allowedRoles: ['admin', 'manager', 'store_operator', 'tecnico'] },
-                    { label: 'Lentes (CSV)', icon: FileSpreadsheet, route: '/dashboard/loja/[id]/cadastros/importar-lentes', allowedRoles: ['admin', 'manager', 'store_operator', 'tecnico'] },
-                ]
+                label: 'Entrega Óculos', 
+                icon: CheckCircle2, 
+                route: '#', 
+                action: 'openEntregaModal', 
+                allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico'],
+                withSeparator: true // <--- LINHA AQUI
+            }, 
+            
+            { 
+                label: 'Baixa Parcelas', 
+                icon: Wallet, 
+                route: '#', 
+                action: 'openParcelaModal', 
+                allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor'] 
             },
-            { label: 'Movimentações / Perdas', icon: ArrowLeftRight, route: '/dashboard/loja/[id]/estoque/movimentacoes', allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico'] },
+            
+            // Separador após Nova Assistência
+            { 
+                label: 'Nova Assistência', 
+                icon: LifeBuoy, 
+                route: '/dashboard/loja/[id]/assistencia', 
+                allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico'],
+                withSeparator: true // <--- LINHA AQUI
+            },
+            
+            { label: 'Clientes', icon: Users, route: '/dashboard/loja/[id]/clientes', allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico'] }, 
+            { label: 'Busca Universal', icon: Globe, route: '/dashboard/loja/[id]/busca', allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico'] }, 
         ]
     },
     {
-        id: 'infos',
-        items: [
-            { label: 'Informações', icon: Search, route: '/dashboard/loja/[id]/consultas', allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico'] },
-            // ITEM ADICIONADO AQUI:
-            { label: 'Assistência Técnica', icon: LifeBuoy, route: '/dashboard/loja/[id]/assistencia', allowedRoles: ['admin', 'manager', 'store_operator', 'tecnico'] },
-            { label: 'Pós-Venda / Sucesso', icon: HeartHandshake, route: '/dashboard/loja/[id]/pos-venda', allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico'] },
+        id: 'loja_vazia',
+        label: 'Loja Vazia',
+        icon: Archive,
+        allowedRoles: ['admin', 'manager', 'store_operator'],
+        subItems: [
+            // Separador após Livro Caixa
+            { label: 'Livro Caixa', icon: DollarSign, route: '/dashboard/loja/[id]/financeiro/caixa', allowedRoles: ['admin', 'manager', 'store_operator'], withSeparator: true },
+            
+            { label: 'Pós-Venda', icon: HeartHandshake, route: '/dashboard/loja/[id]/pos-venda', allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor'] },
+            
+            // Separador após Cobrança
+            { label: 'Cobrança', icon: Megaphone, route: '/dashboard/loja/[id]/cobranca', allowedRoles: ['admin', 'manager', 'store_operator'], withSeparator: true }, 
+            
+            { label: 'Gaveta (Prontos)', icon: Archive, route: '/dashboard/loja/[id]/gaveta', allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico'] },
+            
+            { 
+                label: 'Rastrear Lentes', 
+                icon: Search, 
+                route: '#', 
+                action: 'openLabModal', 
+                allowedRoles: ['admin', 'manager', 'store_operator', 'tecnico'] 
+            }, 
+
+            { label: 'Movimentações', icon: ArrowLeftRight, route: '/dashboard/loja/[id]/estoque/movimentacoes', allowedRoles: ['admin', 'manager', 'store_operator', 'tecnico'] },
+            
+            // Separador após Importar XML
+            { label: 'Importar XML', icon: FileInput, route: '/dashboard/loja/[id]/importacao', allowedRoles: ['admin', 'manager', 'store_operator', 'tecnico'], withSeparator: true },
+            
+            { label: 'Produtos & Preços', icon: Tag, route: '/dashboard/loja/[id]/cadastros', allowedRoles: ['admin', 'manager', 'store_operator', 'tecnico'] },
+            { label: 'Histórico Vendas', icon: FileSpreadsheet, route: '/dashboard/loja/[id]/vendas', allowedRoles: ['admin', 'manager', 'store_operator'] },
         ]
     },
     {
-        id: 'financeiro',
-        items: [
-            { label: 'Livro Caixa', icon: Wallet, route: '/dashboard/loja/[id]/financeiro/caixa', allowedRoles: ['admin', 'manager', 'store_operator'] },
-            { label: 'Cobrança', icon: Megaphone, route: '/dashboard/loja/[id]/cobranca', allowedRoles: ['admin', 'manager', 'store_operator'] },
+        id: 'gerencia',
+        label: 'Gerência',
+        icon: Settings,
+        allowedRoles: ['admin', 'manager'],
+        subItems: [
             { label: 'Contas a Pagar', icon: CalendarRange, route: '/dashboard/loja/[id]/financeiro/contas', allowedRoles: ['admin', 'manager'] },
-        ]
-    },
-    {
-        id: 'gestao',
-        items: [
             { label: 'Comissões', icon: Percent, route: '/dashboard/loja/[id]/financeiro/comissoes', allowedRoles: ['admin', 'manager'] },
-            { 
-                label: 'Relatórios', 
-                icon: BarChart3, 
-                allowedRoles: ['admin', 'manager'],
-                children: [
-                    { label: 'Vendas Detalhado', icon: FileText, route: '/dashboard/loja/[id]/reports/vendas', allowedRoles: ['admin', 'manager'] },
-                ]
-            },
-            { label: 'Configuração', icon: Settings, route: '/dashboard/loja/[id]/config', allowedRoles: ['admin', 'manager'] }, 
+            
+            // Separador após Relatórios
+            { label: 'Relat. Vendas', icon: BarChart3, route: '/dashboard/loja/[id]/reports/vendas', allowedRoles: ['admin', 'manager'], withSeparator: true },
+            
+            { label: 'Configuração', icon: Settings, route: '/dashboard/loja/[id]/config', allowedRoles: ['admin', 'manager'] },
         ]
     }
 ];
 
-const SideNav = ({ userRole, storeId, storeName }: SideNavProps) => {
+export default function SideNav({ userRole, storeId, storeName }: SideNavProps) {
     const router = useRouter();
     const pathname = usePathname();
     const supabase = createClient();
     
-    const startCollapsed = userRole === 'store_operator' || userRole === 'vendedor';
-    const [isCollapsed, setIsCollapsed] = useState(startCollapsed);
-    
-    const [expandedMenus, setExpandedMenus] = useState<string[]>([]);
-    
-    const hasAccess = (item: MenuItem) => {
-        return item.allowedRoles.includes(userRole);
-    };
+    // --- ESTADOS ---
+    const [isMainCollapsed, setIsMainCollapsed] = useState(true); 
+    const [activePanel, setActivePanel] = useState<string | null>(null); 
+    const [isSubCollapsed, setIsSubCollapsed] = useState(false); 
+
+    // Modais
+    const [isParcelaModalOpen, setIsParcelaModalOpen] = useState(false);
+    const [isLabModalOpen, setIsLabModalOpen] = useState(false);
+    const [isEntregaModalOpen, setIsEntregaModalOpen] = useState(false); 
+
+    useEffect(() => {
+        // Opcional: Fecha o painel ao navegar
+        // setActivePanel(null); 
+    }, [pathname]);
 
     const handleLogout = async () => {
         const { error } = await supabase.auth.signOut();
@@ -162,144 +171,176 @@ const SideNav = ({ userRole, storeId, storeName }: SideNavProps) => {
         router.push('/login');
     };
 
-    const toggleMenu = (label: string) => {
-        if (isCollapsed) setIsCollapsed(false); 
-        setExpandedMenus(prev => 
-            prev.includes(label) 
-                ? prev.filter(l => l !== label) 
-                : [...prev, label]
-        );
-    };
-
-    const renderMenuItem = (item: MenuItem, groupId: string, isChild = false) => {
-        const hasChildren = !!item.children;
-        const isExpanded = expandedMenus.includes(item.label);
-        
-        const finalRoute = item.route ? item.route.replace('[id]', storeId.toString()) : '#';
-        const isActive = item.route && pathname === finalRoute;
-
-        const style = groupStyles[groupId] || groupStyles.gestao; 
-
-        const itemClass = `
-            flex items-center rounded-xl transition-all duration-200 group font-medium text-sm w-full text-left
-            ${isCollapsed ? 'justify-center p-3 aspect-square' : 'px-3 py-2.5'}
-            ${isActive 
-                ? style.active 
-                : `text-gray-500 ${style.hover} hover:bg-opacity-50`}
-            ${isChild && !isCollapsed ? 'pl-9 text-xs' : ''} 
-        `;
-
-        if (hasChildren) {
-            return (
-                <div key={item.label}>
-                    <button 
-                        onClick={() => toggleMenu(item.label)}
-                        className={`${itemClass} justify-between`}
-                    >
-                        <div className="flex items-center">
-                            <item.icon className={`
-                                    flex-shrink-0 transition-colors
-                                ${isCollapsed ? 'h-6 w-6' : 'h-5 w-5 mr-3'}
-                                ${isExpanded || isActive ? style.icon : 'text-gray-400 group-hover:text-gray-600'}
-                            `} />
-                            {!isCollapsed && <span>{item.label}</span>}
-                        </div>
-                        {!isCollapsed && (
-                            isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />
-                        )}
-                    </button>
-                    
-                    {isExpanded && !isCollapsed && (
-                        <div className="mt-1 space-y-1 animate-in slide-in-from-top-1">
-                            {item.children?.map(child => renderMenuItem(child, groupId, true))}
-                        </div>
-                    )}
-                </div>
-            );
+    const handleMainClick = (group: MenuGroup) => {
+        if (group.route) {
+            setActivePanel(null);
+            router.push(group.route.replace('[id]', storeId.toString()));
+            return;
         }
 
+        if (activePanel === group.id) {
+            setActivePanel(null);
+        } else {
+            setActivePanel(group.id);
+            setIsSubCollapsed(false); 
+        }
+    };
+
+    const getActiveColor = (id: string) => {
+        if (id === 'atendimento') return 'bg-blue-600 text-white shadow-blue-200';
+        if (id === 'loja_vazia') return 'bg-amber-600 text-white shadow-amber-200';
+        if (id === 'gerencia') return 'bg-purple-600 text-white shadow-purple-200';
+        if (id === 'inicio') return 'bg-slate-800 text-white shadow-slate-300';
+        return 'bg-slate-100 text-slate-600';
+    };
+
+    const renderSubPanel = () => {
+        const group = MENU_STRUCTURE.find(g => g.id === activePanel);
+        if (!group || !group.subItems) return null;
+
         return (
-            <Link 
-                key={item.label}
-                href={finalRoute}
-                title={isCollapsed ? item.label : ''}
-                className={itemClass}
-            >
-                <item.icon className={`
-                    flex-shrink-0 transition-colors
-                    ${isCollapsed ? 'h-6 w-6' : 'h-5 w-5 mr-3'}
-                    ${isActive && groupId === 'inicio' ? 'text-white' : isActive ? style.icon : 'text-gray-400 group-hover:text-gray-600'}
-                    ${isChild ? 'h-4 w-4 opacity-70' : ''}
-                `} />
-                {!isCollapsed && <span>{item.label}</span>}
-            </Link>
+            <div className={`bg-slate-50 border-r border-gray-200 h-full flex flex-col transition-all duration-300 ease-in-out shadow-xl z-40 relative ${isSubCollapsed ? 'w-20' : 'w-64'}`}>
+                <div className="h-20 border-b border-gray-200 flex items-center justify-between px-4 bg-white shrink-0">
+                    {!isSubCollapsed && (
+                        <h3 className="font-black text-slate-700 uppercase tracking-widest text-xs truncate animate-in fade-in">
+                            {group.label}
+                        </h3>
+                    )}
+                    <div className="flex gap-1 ml-auto">
+                        <button onClick={() => setIsSubCollapsed(!isSubCollapsed)} className="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors">
+                            {isSubCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                        </button>
+                        {!isSubCollapsed && (
+                            <button onClick={() => setActivePanel(null)} className="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-500 transition-colors">
+                                <X className="h-4 w-4" />
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-3 space-y-1 custom-scrollbar">
+                    {group.subItems.filter(sub => sub.allowedRoles.includes(userRole)).map(sub => {
+                        let activeClass = 'bg-slate-200 text-slate-900 font-bold';
+                        let iconActiveColor = 'text-slate-700';
+
+                        if (group.id === 'atendimento') { activeClass = 'bg-blue-100 text-blue-800 font-bold'; iconActiveColor = 'text-blue-600'; }
+                        if (group.id === 'loja_vazia') { activeClass = 'bg-amber-100 text-amber-800 font-bold'; iconActiveColor = 'text-amber-600'; }
+                        if (group.id === 'gerencia') { activeClass = 'bg-purple-100 text-purple-800 font-bold'; iconActiveColor = 'text-purple-600'; }
+
+                        const baseClass = `flex items-center rounded-lg transition-all duration-200 group/item relative ${isSubCollapsed ? 'justify-center p-3 aspect-square' : 'gap-3 p-3 w-full text-left'}`;
+
+                        // LÓGICA DE AÇÃO
+                        const isAction = !!sub.action;
+                        const finalRoute = isAction ? '#' : sub.route.replace('[id]', storeId.toString());
+                        const isActive = !isAction && pathname === finalRoute;
+
+                        const content = (
+                            <>
+                                <sub.icon className={`flex-shrink-0 transition-transform duration-200 ${isSubCollapsed ? 'h-6 w-6' : 'h-4 w-4'} ${isActive ? iconActiveColor : 'opacity-70 group-hover/item:opacity-100 group-hover/item:scale-110 text-slate-500'}`} />
+                                {!isSubCollapsed && <span className="text-sm truncate">{sub.label}</span>}
+                                {!isSubCollapsed && isActive && <ChevronRight className="h-3 w-3 ml-auto opacity-50" />}
+                            </>
+                        );
+
+                        // Decide se renderiza Link ou Button
+                        const itemElement = isAction ? (
+                             <button
+                                onClick={() => {
+                                    if (sub.action === 'openParcelaModal') setIsParcelaModalOpen(true);
+                                    if (sub.action === 'openLabModal') setIsLabModalOpen(true); 
+                                    if (sub.action === 'openEntregaModal') setIsEntregaModalOpen(true); 
+                                }}
+                                className={`${baseClass} ${isActive ? activeClass : 'hover:bg-white hover:shadow-sm text-slate-600 hover:text-slate-900'}`}
+                                title={isSubCollapsed ? sub.label : ''}
+                            >
+                                {content}
+                            </button>
+                        ) : (
+                            <Link href={finalRoute} className={`${baseClass} ${isActive ? activeClass : 'hover:bg-white hover:shadow-sm text-slate-600 hover:text-slate-900'}`} title={isSubCollapsed ? sub.label : ''}>
+                                {content}
+                            </Link>
+                        );
+
+                        return (
+                            <div key={sub.label} className="block">
+                                {itemElement}
+                                {/* RENDERIZA A LINHA APENAS SE FOR SOLICITADO E O MENU ESTIVER ABERTO */}
+                                {sub.withSeparator && !isSubCollapsed && (
+                                    <div className="my-2 border-b border-gray-200 mx-2" />
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
         );
     };
 
     return (
-        <nav 
-            className={`flex flex-col h-full bg-white border-r border-gray-100 transition-all duration-300 ease-in-out shadow-sm z-50 relative ${
-              isCollapsed ? 'w-20' : 'w-64'
-            }`}
-        >
-            <div className="flex items-center justify-between p-5 h-20">
-                {!isCollapsed && (
-                    <Link 
-                        href={`/dashboard/loja/${storeId}`} 
-                        className="flex flex-col overflow-hidden animate-in fade-in duration-300 cursor-pointer hover:opacity-80 transition-opacity"
-                        title="Ir para o Início"
-                    >
-                        <h2 className="text-lg font-bold text-teal-600 tracking-tight whitespace-nowrap">
-                            Pro<span className="text-gray-400 font-light">Ótica</span>
-                        </h2>
-                        <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wider truncate mt-1">
-                            {storeName}
-                        </p>
-                    </Link>
-                )}
-                
-                <button 
-                    onClick={() => setIsCollapsed(!isCollapsed)}
-                    className={`p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors ${isCollapsed ? 'mx-auto' : ''}`}
-                >
-                    {isCollapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
-                </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto overflow-x-hidden py-4 space-y-6 custom-scrollbar">
-                {menuGroups.map((group) => {
-                    const visibleItems = group.items.filter(hasAccess);
-                    if (visibleItems.length === 0) return null;
-
-                    return (
-                        <div key={group.id} className="px-3">
-                            {!isCollapsed && group.id !== 'inicio' && (
-                                <p className="px-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
-                                    {group.id}
-                                </p>
-                            )}
-                            <div className="space-y-1">
-                                {visibleItems.map(item => renderMenuItem(item, group.id))}
-                            </div>
+        <div className="flex h-full relative z-50">
+            <nav className={`bg-white border-r border-gray-200 h-full flex flex-col py-4 z-50 shadow-md relative transition-all duration-300 ease-in-out ${isMainCollapsed ? 'w-20 items-center' : 'w-64 px-4'}`}>
+                <div className={`mb-8 flex items-center ${isMainCollapsed ? 'justify-center' : 'justify-between'}`}>
+                    <div className="h-10 w-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl flex items-center justify-center text-white font-black text-xs shadow-lg cursor-default select-none shrink-0">PRO</div>
+                    {!isMainCollapsed && (
+                        <div className="ml-3 overflow-hidden">
+                            <h2 className="text-sm font-bold text-slate-800 whitespace-nowrap">Gestão Ótica</h2>
+                            <p className="text-[10px] text-slate-400 font-medium uppercase truncate">{storeName}</p>
                         </div>
-                    );
-                })}
-            </div>
+                    )}
+                </div>
 
-            <div className="p-4 border-t border-gray-100">
-                <button
-                    onClick={handleLogout}
-                    className={`
-                       flex items-center rounded-xl text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors w-full
-                        ${isCollapsed ? 'justify-center p-3' : 'px-3 py-2.5'}
-                    `}
-                >
-                    <LogOut className={`${isCollapsed ? 'h-5 w-5' : 'h-5 w-5 mr-3'}`} />
-                    {!isCollapsed && <span className="font-medium text-sm">Sair</span>}
-                </button>
-            </div>
-        </nav>
+                <div className="flex-1 w-full space-y-3">
+                    {MENU_STRUCTURE.filter(grp => grp.allowedRoles.includes(userRole)).map(group => {
+                        const isActive = activePanel === group.id || (group.id === 'inicio' && pathname === `/dashboard/loja/${storeId}`);
+                        return (
+                            <button
+                                key={group.id}
+                                onClick={() => handleMainClick(group)}
+                                className={`flex items-center rounded-2xl transition-all duration-200 group relative ${isMainCollapsed ? 'justify-center w-14 h-14' : 'w-full px-4 py-3 gap-4'} ${isActive ? `${getActiveColor(group.id)} shadow-lg` : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'}`}
+                                title={isMainCollapsed ? group.label : ''}
+                            >
+                                <group.icon className={`transition-transform flex-shrink-0 ${isMainCollapsed ? 'h-6 w-6' : 'h-5 w-5'} ${isActive && isMainCollapsed ? 'scale-110' : 'group-hover:scale-110'}`} />
+                                {!isMainCollapsed && <span className={`text-sm font-bold uppercase tracking-wide ${isActive ? 'opacity-100' : 'text-slate-500 group-hover:text-slate-700'}`}>{group.label}</span>}
+                                {activePanel === group.id && group.id !== 'inicio' && isMainCollapsed && <div className="absolute -right-3 top-1/2 -translate-y-1/2 w-0 h-0 border-t-[6px] border-t-transparent border-l-[6px] border-l-white border-b-[6px] border-b-transparent drop-shadow-sm filter"></div>}
+                                {activePanel === group.id && group.id !== 'inicio' && !isMainCollapsed && <ChevronRight className="ml-auto h-4 w-4 opacity-50" />}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                <div className="mt-auto pt-4 border-t border-gray-100 w-full flex flex-col gap-2">
+                    <button onClick={() => setIsMainCollapsed(!isMainCollapsed)} className={`flex items-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all ${isMainCollapsed ? 'justify-center w-14 h-14' : 'w-full px-4 py-3 gap-3'}`} title={isMainCollapsed ? "Expandir Menu" : "Recolher Menu"}>
+                         {isMainCollapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+                         {!isMainCollapsed && <span className="font-bold text-xs uppercase">Recolher</span>}
+                    </button>
+                    <button onClick={handleLogout} className={`flex items-center rounded-xl text-red-300 hover:bg-red-50 hover:text-red-500 transition-all ${isMainCollapsed ? 'justify-center w-14 h-14' : 'w-full px-4 py-3 gap-3'}`} title="Sair">
+                        <LogOut className="h-5 w-5" />
+                        {!isMainCollapsed && <span className="font-bold text-sm">Sair</span>}
+                    </button>
+                </div>
+            </nav>
+
+            {activePanel && renderSubPanel()}
+
+            {/* MODAIS GLOBAIS */}
+            <ParcelaSearchModal 
+                isOpen={isParcelaModalOpen}
+                onClose={() => setIsParcelaModalOpen(false)}
+                storeId={storeId}
+            />
+            
+            <LabTrackingModal 
+                isOpen={isLabModalOpen} 
+                onClose={() => setIsLabModalOpen(false)} 
+                storeId={storeId} 
+            />
+
+            <EntregaModal 
+                isOpen={isEntregaModalOpen}
+                onClose={() => setIsEntregaModalOpen(false)}
+                storeId={storeId}
+            />
+
+        </div>
     );
-};
-
-export default SideNav;
+}

@@ -1,3 +1,7 @@
+//============================
+//📄 ARQUIVO: src/components/vendas/AddPagamentoForm.tsx
+//============================
+
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
@@ -38,7 +42,6 @@ function SubmitFinalButton({ employeeName }: { employeeName: string | null }) {
      <button
         type="submit"
         disabled={pending || !employeeName}
-        // MUDANÇA: Botão estilo "Glass" branco translúcido para contrastar com o verde
         className="flex items-center justify-center gap-2 w-full h-10 bg-white/20 hover:bg-white/30 text-white border border-white/40 rounded-xl shadow-sm backdrop-blur-sm transition-all font-bold uppercase tracking-wide text-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
         title={!employeeName ? "Autentique o vendedor" : `Registrar por: ${employeeName}`}
       >
@@ -73,6 +76,16 @@ export default function AddPagamentoForm({
   const [dataPagamento, setDataPagamento] = useState(getToday())
   const [obs, setObs] = useState<string>('')
 
+  // LÓGICA DE CONTROLE DO CAMPO PARCELAS
+  const isParcelable = formaPagamento === 'Cartão Crédito' || formaPagamento === 'Cheque-Pré'
+
+  // Resetar para 1x se mudar para método não parcelável
+  useEffect(() => {
+    if (!isParcelable) {
+        setParcelas(1)
+    }
+  }, [formaPagamento, isParcelable])
+
   useEffect(() => {
     if (saveState.success && saveState.timestamp && saveState.timestamp > lastProcessedTs.current) {
         lastProcessedTs.current = saveState.timestamp 
@@ -103,11 +116,9 @@ export default function AddPagamentoForm({
 
   const isBloqueado = disabled || isQuitado;
 
-  // Estilos Consistentes (Card Verde)
   const labelStyle = 'block text-[10px] font-bold text-emerald-100 mb-1 uppercase tracking-wider'
   const inputStyle = 'block w-full rounded-lg border-0 bg-white shadow-sm text-gray-800 h-10 text-sm px-3 focus:ring-2 focus:ring-emerald-300 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400 placeholder:text-gray-400 transition-all'
 
-  // Se for modal (usado no PDV Express), mantém estilo limpo. Se for na Venda Detalhada, usa o Card Colorido.
   const containerClass = isModal 
     ? "bg-white p-4 h-full flex flex-col" 
     : "relative bg-gradient-to-br from-emerald-600 to-teal-600 p-5 rounded-2xl shadow-lg shadow-emerald-200 border border-white/20 flex flex-col";
@@ -165,6 +176,7 @@ export default function AddPagamentoForm({
                 <option value="Dinheiro">Dinheiro</option>
                 <option value="Cartão Débito">Cartão Débito</option>
                 <option value="Cartão Crédito">Cartão Crédito</option>
+                <option value="Cheque-Pré">Cheque-Pré</option>
                 <option value="Transferência">Transferência</option>
                 <option value="Boleto">Boleto</option>
                 <option value="Crédito em Loja">Crédito em Loja</option>
@@ -179,11 +191,14 @@ export default function AddPagamentoForm({
                 name="parcelas"
                 value={parcelas} 
                 onChange={(e) => setParcelas(parseInt(e.target.value))} 
-                className={`${inputStyle} cursor-pointer`}
+                // AQUI: Campo inativo se não for cartão ou cheque
+                disabled={!isParcelable || isBloqueado}
+                className={`${inputStyle} cursor-pointer ${!isParcelable ? 'bg-gray-100 text-gray-400' : ''}`}
               >
                 {[...Array(12)].map((_, i) => <option key={i + 1} value={i + 1}>{i + 1}x</option>)}
               </select>
             </div>
+          
             <div>
               <label className={isModal ? 'text-xs font-bold text-gray-500' : labelStyle}>Data</label>
               <input 
@@ -207,7 +222,7 @@ export default function AddPagamentoForm({
                 className={inputStyle}
                 placeholder="Ex: Sinal óculos..."
             />
-           </div>
+          </div>
        </div>
 
        {saveState.message && !saveState.success && (
@@ -229,7 +244,6 @@ export default function AddPagamentoForm({
                 <button 
                     type="button" 
                     onClick={() => setIsModalOpen(true)}
-                    // Botão Principal de Ação (Branco/Vidro)
                     className="flex items-center justify-center gap-2 px-4 py-3 text-sm rounded-xl shadow-md w-full bg-white text-emerald-700 hover:bg-emerald-50 font-bold transition-all active:scale-95"
                    >
                     <DollarSign className="h-5 w-5" /> <span>AUTORIZAR E PAGAR</span>
@@ -238,7 +252,7 @@ export default function AddPagamentoForm({
                 <SubmitFinalButton employeeName={authedEmployee.full_name} />
             )}
         </div>
-      </form>
+     </form>
       
       {isModalOpen && <EmployeeAuthModal storeId={storeId} isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={handleAuthSuccess} title="Autorizar Pagamento" description="Confirme seu PIN." />}
     </div>

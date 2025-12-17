@@ -1,20 +1,29 @@
 // Caminho: src/app/dashboard/loja/[storeId]/vendas/page.tsx
-import { createClient } from '@/lib/supabase/server'
 import { getSalesList } from '@/lib/actions/vendas.actions'
 import Link from 'next/link'
-import { Plus, ShoppingCart, Calendar, User, ArrowRight, AlertCircle } from 'lucide-react'
+// CORREÇÃO: Adicionei RefreshCcw na lista de imports abaixo
+import { Plus, ShoppingCart, Calendar, User, ArrowRight, AlertCircle, CheckCircle2, XCircle, Clock, RefreshCcw } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import VendasFilter from '@/components/vendas/VendasFilter'
 
 export const dynamic = 'force-dynamic'
 
 export default async function VendasListPage({
   params,
+  searchParams
 }: {
   params: { storeId: string }
+  searchParams: { mode?: string, inicio?: string, fim?: string }
 }) {
   const storeId = parseInt(params.storeId)
 
-  const { data: vendas, success } = await getSalesList(storeId)
+  // Recupera filtros da URL
+  const mode = (searchParams.mode as 'pendencias' | 'historico') || 'pendencias'
+  const startDate = searchParams.inicio
+  const endDate = searchParams.fim
+
+  // Busca dados filtrados
+  const { data: vendas, success } = await getSalesList(storeId, { mode, startDate, endDate })
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('pt-BR', {
@@ -26,91 +35,108 @@ export default async function VendasListPage({
     })
   }
 
+  // Helper de Status Visual
+  const getStatusBadge = (status: string) => {
+      if (status === 'Fechada') return <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-black bg-green-100 text-green-700 border border-green-200 uppercase"><CheckCircle2 className="h-3 w-3"/> Fechada</span>
+      if (status === 'Cancelada') return <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-black bg-red-100 text-red-700 border border-red-200 uppercase"><XCircle className="h-3 w-3"/> Cancelada</span>
+      // Agora o ícone RefreshCcw vai funcionar
+      if (status === 'Devolvida') return <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-black bg-purple-100 text-purple-700 border border-purple-200 uppercase"><RefreshCcw className="h-3 w-3"/> Devolvida</span>
+      return <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-black bg-yellow-100 text-yellow-800 border border-yellow-200 uppercase"><Clock className="h-3 w-3"/> Em Aberto</span>
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto flex flex-col h-[calc(100vh-64px)]">
+      
       {/* Header */}
       <div className="flex justify-between items-center mb-6 flex-shrink-0">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2">
+          <h1 className="text-3xl font-black text-gray-800 flex items-center gap-2 tracking-tight">
             <ShoppingCart className="h-8 w-8 text-blue-600" />
-            Fechamento de Vendas
+            Central de Vendas
           </h1>
-          <p className="text-gray-500">Fila de vendas em aberto aguardando finalização.</p>
+          <p className="text-gray-500 text-sm font-medium mt-1">Gerencie fechamentos e histórico.</p>
         </div>
         <Link
           href={`/dashboard/loja/${storeId}/atendimento`}
-          className="bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-lg font-bold flex items-center gap-2 shadow-md transition-colors"
+          className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-green-200 transition-all hover:-translate-y-0.5 active:scale-95"
         >
           <Plus className="h-5 w-5" />
-          Novo Atendimento
+          NOVA VENDA
         </Link>
       </div>
 
-      {/* Tabela de Vendas Pendentes */}
-      <div className="bg-blue-50 rounded-xl shadow-sm border border-blue-200 overflow-hidden flex flex-col flex-1">
+      {/* Componente de Filtro */}
+      <VendasFilter />
+
+      {/* Tabela de Resultados */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col flex-1">
         
-        {/* Cabeçalho da Tabela */}
-        <div className="bg-blue-100 px-6 py-3 border-b border-blue-200 flex items-center justify-between flex-shrink-0">
-            <h2 className="text-blue-900 font-bold flex items-center gap-2">
-                <AlertCircle className="h-5 w-5" /> Pendências ({vendas?.length || 0})
+        <div className={`px-6 py-3 border-b border-slate-200 flex items-center justify-between flex-shrink-0 ${mode === 'pendencias' ? 'bg-yellow-50' : 'bg-slate-50'}`}>
+            <h2 className={`font-bold flex items-center gap-2 ${mode === 'pendencias' ? 'text-yellow-800' : 'text-slate-700'}`}>
+                {mode === 'pendencias' ? <AlertCircle className="h-5 w-5" /> : <Calendar className="h-5 w-5" />}
+                {mode === 'pendencias' ? 'Fila de Pendências' : 'Histórico do Período'} 
+                <span className="opacity-60 text-sm ml-1">({vendas?.length || 0})</span>
             </h2>
         </div>
 
-        <div className="overflow-y-auto flex-1 p-4">
+        <div className="overflow-y-auto flex-1 p-0">
           <table className="w-full text-left border-collapse">
-            <thead className="bg-white/50 sticky top-0 z-10 backdrop-blur-sm">
-              <tr className="text-blue-800 text-xs uppercase font-bold border-b border-blue-200">
-                <th className="p-3 rounded-tl-lg">ID / Data</th>
-                <th className="p-3">Cliente</th>
-                <th className="p-3 text-center">Status</th>
-                <th className="p-3 text-right">Total</th>
-                <th className="p-3 text-right">A Receber</th>
-                <th className="p-3 text-center rounded-tr-lg">Ação</th>
+            <thead className="bg-slate-50 sticky top-0 z-10">
+              <tr className="text-slate-500 text-xs uppercase font-bold border-b border-slate-200">
+                <th className="p-4 w-40">ID / Data</th>
+                <th className="p-4">Cliente</th>
+                <th className="p-4 text-center">Status</th>
+                <th className="p-4 text-right">Total</th>
+                <th className="p-4 text-right">Falta Pagar</th>
+                <th className="p-4 text-center w-24">Ação</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-blue-100">
+            <tbody className="divide-y divide-slate-100">
               {!success || !vendas || vendas.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-12 text-center text-gray-500">
-                    <p className="text-lg font-medium">Tudo limpo! 🎉</p>
-                    <p className="text-sm">Nenhuma venda pendente no momento.</p>
+                  <td colSpan={6} className="p-12 text-center text-gray-400">
+                    <p className="text-lg font-medium">Nenhum registro encontrado.</p>
+                    {mode === 'pendencias' ? (
+                        <p className="text-sm">Tudo limpo! Nenhuma venda em aberto.</p>
+                    ) : (
+                        <p className="text-sm">Tente ajustar as datas do filtro.</p>
+                    )}
                   </td>
                 </tr>
               ) : (
                 vendas.map((venda: any) => (
-                  <tr key={venda.id} className="hover:bg-white transition-colors group rounded-lg">
-                    <td className="p-3">
-                      <div className="font-bold text-gray-800">#{venda.id}</div>
-                      <div className="text-xs text-gray-500 flex items-center gap-1">
+                  <tr key={venda.id} className="hover:bg-slate-50 transition-colors group">
+                    <td className="p-4">
+                      <div className="font-bold text-slate-800">#{venda.id}</div>
+                      <div className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5">
                         <Calendar className="h-3 w-3" />
                         {formatDate(venda.created_at)}
                       </div>
                     </td>
-                    <td className="p-3">
-                      <div className="font-medium text-gray-900 flex items-center gap-2">
+                    <td className="p-4">
+                      <div className="font-bold text-slate-700 flex items-center gap-2">
                         <User className="h-4 w-4 text-blue-400" />
                         {venda.customers?.full_name || 'Consumidor Final'}
                       </div>
                     </td>
-                    <td className="p-3 text-center">
-                      <span className="px-2 py-1 rounded-full text-xs font-bold bg-yellow-100 text-yellow-800 border border-yellow-200">
-                        {venda.status}
-                      </span>
+                    <td className="p-4 text-center">
+                      {getStatusBadge(venda.status)}
                     </td>
-                    <td className="p-3 text-right font-medium text-gray-700">
+                    <td className="p-4 text-right font-bold text-slate-600">
                       {formatCurrency(venda.valor_final)}
                     </td>
-                    <td className="p-3 text-right">
-                      <span className={`font-bold ${venda.valor_restante > 0.01 ? 'text-red-600' : 'text-green-600'}`}>
+                    <td className="p-4 text-right">
+                      <span className={`font-black ${venda.valor_restante > 0.01 ? 'text-red-600' : 'text-emerald-600'}`}>
                         {formatCurrency(venda.valor_restante)}
                       </span>
                     </td>
-                    <td className="p-3 text-center">
+                    <td className="p-4 text-center">
                       <Link
                         href={`/dashboard/loja/${storeId}/vendas/${venda.id}`}
-                        className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-bold text-xs shadow-sm transition-all gap-1"
+                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition-all"
+                        title="Ver Detalhes"
                       >
-                        Abrir <ArrowRight className="h-3 w-3" />
+                        <ArrowRight className="h-4 w-4" />
                       </Link>
                     </td>
                   </tr>

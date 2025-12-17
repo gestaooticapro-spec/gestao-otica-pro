@@ -12,8 +12,8 @@ type ListaOSProps = {
   vendaId: number
   storeId: number
   serviceOrders: ServiceOrder[]
-  employeeId: string // Recebido da URL (useSearchParams)
-  employeeName: string // Recebido da URL (useSearchParams)
+  employeeId: string 
+  employeeName: string 
   disabled: boolean
 }
 
@@ -37,12 +37,15 @@ export default function ListaOS({
   employeeName,
   disabled,
 }: ListaOSProps) {
-  // A URL base para a Ficha Técnica (o módulo que já criamos)
+  // A URL base para a Ficha Técnica
   const linkBase = `/dashboard/loja/${storeId}/vendas/${vendaId}/os`
-  const queryParams = `?employee_id=${employeeId}&employee_name=${employeeName}`
   
-  // O link para CRIAR uma nova OS
-  const linkNovaOS = `${linkBase}?index=-1${queryParams}`
+  // Parâmetros comuns (contexto do funcionário)
+  // Nota: Removi o '?' do início para gerenciar melhor a concatenação abaixo
+  const commonParams = `employee_id=${employeeId}&employee_name=${employeeName}`
+  
+  // O link para CRIAR uma nova OS (Sem ID = Nova)
+  const linkNovaOS = `${linkBase}?${commonParams}`
 
   return (
     <div className="flex flex-col h-full">
@@ -67,7 +70,7 @@ export default function ListaOS({
             Nenhuma Ficha Técnica vinculada a esta venda.
           </p>
         ) : (
-          serviceOrders.map((os, index) => (
+          serviceOrders.map((os) => (
             <div
               key={os.id}
               className="flex justify-between items-center p-2 rounded bg-gray-50 border border-gray-200"
@@ -78,8 +81,10 @@ export default function ListaOS({
                   (Criada em: {formatDate(os.created_at)})
                 </span>
               </div>
+              
+              {/* CORREÇÃO AQUI: Passamos 'os_id' explicitamente na URL */}
               <Link
-                href={`${linkBase}?index=${index}${queryParams}`}
+                href={`${linkBase}?os_id=${os.id}&${commonParams}`}
                 className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
                 title="Ver e editar ficha técnica"
               >

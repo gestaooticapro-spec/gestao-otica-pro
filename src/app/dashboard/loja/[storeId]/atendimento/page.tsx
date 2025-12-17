@@ -1,3 +1,7 @@
+// ============================
+// 📄 ARQUIVO: src/app/dashboard/loja/[storeId]/atendimento/page.tsx
+// ============================
+
 'use client'
 
 import { useState, useTransition, useEffect } from 'react'
@@ -14,16 +18,16 @@ import {
   Loader2, Search, X, PlusCircle, UserCircle, 
   History, ChevronDown, ChevronUp, Eye, Wallet, 
   AlertTriangle, CheckCircle2, User, Briefcase,
-  ShoppingCart, UserPlus // <--- Novo ícone
+  ShoppingCart, UserPlus 
 } from 'lucide-react'
 import { Database } from '@/lib/database.types'
-import QuickCustomerModal from '@/components/modals/QuickCustomerModal' // <--- Import do Modal
+import QuickCustomerModal from '@/components/modals/QuickCustomerModal'
 
 type Employee = Database['public']['Tables']['employees']['Row']
-type Customer = Database['public']['Tables']['customers']['Row'] // <--- Tipo para o retorno do modal
+type Customer = Database['public']['Tables']['customers']['Row']
 
-// ... (Mantenha o componente HistoryCard EXATAMENTE IGUAL ao anterior) ...
-function HistoryCard({ data }: { data: CustomerSaleHistory }) {
+// ATUALIZAÇÃO 1: Adicionado prop customerObs na assinatura do componente
+function HistoryCard({ data, customerObs }: { data: CustomerSaleHistory, customerObs?: string | null }) {
     const [isOpen, setIsOpen] = useState(false)
     const isAtrasado = data.financeiro.status_geral === 'Atrasado'
     const isQuitado = data.financeiro.status_geral === 'Quitado'
@@ -135,6 +139,19 @@ function HistoryCard({ data }: { data: CustomerSaleHistory }) {
                             </div>
                         </div>
                     </div>
+
+                    {/* ATUALIZAÇÃO 2: Exibindo a observação do cadastro na parte inferior do card */}
+                    {customerObs && (
+                        <div className="mt-6 pt-4 border-t border-gray-100">
+                             <p className="text-[10px] font-bold text-red-600 uppercase mb-2 flex items-center gap-1 tracking-wider">
+                                <AlertTriangle className="h-3 w-3" /> Observações do Cadastro
+                             </p>
+                             <div className="bg-red-50 text-red-900 text-xs p-3 rounded-lg border border-red-100 font-medium">
+                                {customerObs}
+                             </div>
+                        </div>
+                    )}
+
                 </div>
             )}
         </div>
@@ -152,7 +169,7 @@ export default function AtendimentoPage() {
   const [isSearching, startSearchTransition] = useTransition()
   const [isCreating, startCreateTransition] = useTransition()
   const [searchError, setSearchError] = useState<string | null>(null)
-  const [isQuickModalOpen, setIsQuickModalOpen] = useState(false) // <--- Estado do Modal
+  const [isQuickModalOpen, setIsQuickModalOpen] = useState(false) 
   
   // Data States
   const [customers, setCustomers] = useState<CustomerSearchResult[]>([])
@@ -371,8 +388,9 @@ export default function AtendimentoPage() {
                     ) : (
                         <div className="space-y-4">
                             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Últimas Vendas</h3>
+                            {/* ATUALIZAÇÃO 3: Passando o obs_debito para o card */}
                             {history.map((item) => (
-                                <HistoryCard key={item.venda_id} data={item} />
+                                <HistoryCard key={item.venda_id} data={item} customerObs={selectedCustomer.obs_debito} />
                             ))}
                         </div>
                     )}

@@ -6,7 +6,7 @@ import { getProfileByAdmin, createAdminClient } from '@/lib/supabase/admin'
 
 // Importação das Actions de Dados
 import { getManagerKPIs, getAdminKPIs } from '@/lib/actions/dashboard.actions'
-import { getAlertasOperacionais, getAniversariantes } from '@/lib/actions/consultas.actions'
+import { getAlertasOperacionais, getAniversariantes, getVencimentosProximos } from '@/lib/actions/consultas.actions'
 
 // Importação dos Painéis Visuais
 import { ManagerDashboard, AdminDashboard } from '@/components/dashboard/DashboardViews'
@@ -20,14 +20,11 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return redirect('/login')
 
-  // CORREÇÃO: Cast 'as any' para garantir acesso às propriedades do perfil (role, etc)
   const profile = await getProfileByAdmin(user.id) as any
   if (!profile) return redirect('/login')
 
   // Busca nome da loja
   const supabaseAdmin = createAdminClient()
-  
-  // CORREÇÃO: Cast 'as any' na tabela stores
   const { data: store } = await (supabaseAdmin.from('stores') as any)
     .select('name')
     .eq('id', storeId)
@@ -63,16 +60,20 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
   }
 
   // 3. OPERADOR / VENDEDOR (Dashboard Operacional)
-  const [alertas, aniversariantes] = await Promise.all([
+  // Busca em paralelo para ser rápido
+  const [alertas, aniversariantes, vencimentos] = await Promise.all([
       getAlertasOperacionais(storeId),
-      getAniversariantes(storeId)
+      getAniversariantes(storeId),
+      getVencimentosProximos(storeId) // <--- Busca nova
   ])
 
   return (
       <ActionMenuDashboard 
           storeId={storeId} 
+          storeName={storeName} // <--- Passa o nome da loja
           alerts={alertas} 
           birthdays={aniversariantes} 
+          vencimentos={vencimentos} // <--- Passa os vencimentos
       />
   )
 }

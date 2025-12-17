@@ -27,6 +27,11 @@ type Employee = Database['public']['Tables']['employees']['Row']
 type ServiceOrderWithLinks = ServiceOrder & {
   links?: { venda_item_id: number; uso_na_os: string }[]
 }
+export type CreateFinanciamentoResult = {
+  success: boolean
+  message: string
+  errors?: Record<string, string[]>
+}
 
 export type OSPageData = {
   customer: Customer | null
@@ -127,7 +132,7 @@ export async function getOSPageData(
 }
 
 // ================================================================
-// 2. ACTION: SALVAR OS
+// 2. ACTION: SALVAR OS (CORRIGIDA E COMPLETA)
 // ================================================================
 const ServiceOrderSchema = z.object({
   id: z.coerce.number().optional(),
@@ -188,13 +193,16 @@ export async function saveServiceOrder(
   const { data: profile } = await supabaseAdmin.from('profiles').select('tenant_id, store_id').eq('id', user.id).single()
   if (!profile) return { success: false, message: 'Perfil não encontrado.', timestamp: Date.now() }
 
-  const { tenant_id, store_id } = profile
+  const { tenant_id } = profile // Nota: Não usamos profile.store_id aqui para evitar o bug
   const nullIfEmpty = (val: unknown) => (val === '' ? null : val)
   const parseDate = (val: unknown) => (val && val !== '') ? new Date(val as string).toISOString() : null
 
   const validated = ServiceOrderSchema.safeParse({
     id: nullIfEmpty(formData.get('id')),
-    store_id: store_id, 
+    
+    // ✅ CORREÇÃO 1: Pegamos o store_id do FORMULÁRIO (Contexto Real), não do Perfil
+    store_id: formData.get('store_id'), 
+
     venda_id: formData.get('venda_id'),
     customer_id: formData.get('customer_id'),
     dependente_id: nullIfEmpty(formData.get('dependente_id')),
@@ -247,41 +255,42 @@ export async function saveServiceOrder(
   }
 
   try {
-    // CORREÇÃO 1: Forçamos 'any' no payload para evitar erro de tipo no tenant_id
     const payload: any = { ...osData, tenant_id: (profile as any).tenant_id }
     let savedId: number
 
     if (id) {
       if (!payload.protocolo_fisico) payload.protocolo_fisico = id.toString();
-      
-      // CORREÇÃO 2: Forçamos 'as any' no supabaseAdmin para evitar erro de 'never' no update
       const { error } = await (supabaseAdmin.from('service_orders') as any).update(payload).eq('id', id).select().single()
       if (error) throw error
       savedId = id
     } else {
-      // CORREÇÃO 3: Forçamos 'as any' no supabaseAdmin para evitar erro de 'never' no insert
       const { data, error } = await (supabaseAdmin.from('service_orders') as any).insert(payload).select('id').single()
       if (error) throw error
       savedId = data.id
       if (!payload.protocolo_fisico) await (supabaseAdmin.from('service_orders') as any).update({ protocolo_fisico: savedId.toString() }).eq('id', savedId)
     }
 
+    // Limpa vínculos antigos
     await supabaseAdmin.from('venda_itens_os_links').delete().eq('service_order_id', savedId)
 
+    // Insere novos vínculos
     if (itemLinks.length > 0) {
       const linksToInsert = itemLinks.map((link) => ({
         tenant_id: tenant_id, 
-        store_id: store_id, 
+        store_id: osData.store_id, // ✅ CORREÇÃO 2: Usa o store_id validado (correto), não o do profile
         service_order_id: savedId, 
         venda_item_id: link.item_id, 
         uso_na_os: link.uso
       }))
-      // CORREÇÃO 4: Forçamos 'as any' no insert dos links
-      await supabaseAdmin.from('venda_itens_os_links').insert(linksToInsert as any)
+      
+      const { error: linkError } = await (supabaseAdmin.from('venda_itens_os_links') as any).insert(linksToInsert as any)
+      if (linkError) {
+          console.error("Erro ao salvar links:", linkError)
+      }
     }
 
-    revalidatePath(`/dashboard/loja/${store_id}/vendas/${osData.venda_id}/os`)
-    revalidatePath(`/dashboard/loja/${store_id}/vendas/${osData.venda_id}`) 
+    revalidatePath(`/dashboard/loja/${osData.store_id}/vendas/${osData.venda_id}/os`)
+    revalidatePath(`/dashboard/loja/${osData.store_id}/vendas/${osData.venda_id}`) 
     
     const { data: finalOS } = await supabaseAdmin
       .from('service_orders')
@@ -289,13 +298,11 @@ export async function saveServiceOrder(
       .eq('id', savedId)
       .single()
 
-    // CORREÇÃO 5: Forçamos 'as any' no retorno finalOS para o TS não reclamar do campo 'links'
     return { success: true, message: 'OS salva com sucesso!', data: finalOS as any, timestamp: Date.now() }
   } catch (error: any) {
     return { success: false, message: `Erro no banco: ${error.message}`, timestamp: Date.now() }
   }
 }
-
 
 // ================================================================
 // 3. ACTION: DELETAR OS
@@ -645,10 +652,10 @@ export async function deleteVendaItem(
 }
 
 // ================================================================
-// 9. ACTION: ADICIONAR PAGAMENTO (COMPLETA COM SCHEMA)
+// 9. ACTION: ADICIONAR PAGAMENTO (CORRIGIDA: ARREDONDAMENTO)
 // ================================================================
 
-// 1. DEFINIÇÃO DO SCHEMA (Obrigatório para validar os dados)
+// MANTENHA O SCHEMA AQUI FORA (Se já tiver no arquivo, não precisa duplicar, mas certifique-se que ele existe)
 const PagamentoSchema = z.object({
   venda_id: z.coerce.number(),
   customer_id: z.coerce.number(),
@@ -665,7 +672,7 @@ export type SavePagamentoResult = {
   message: string
   data?: Pagamento
   errors?: Record<string, string[]>
-  timestamp?: number // <--- ADICIONE APENAS ESTA LINHA
+  timestamp?: number 
 }
 
 export async function addPagamento(
@@ -712,12 +719,12 @@ export async function addPagamento(
   // --- LÓGICA DE CRÉDITO (Carteira do Cliente) ---
   if (pagamentoData.forma_pagamento === 'Crédito em Loja') {
       const fdWallet = new FormData()
-fdWallet.append('store_id', String(store_id))
-fdWallet.append('customer_id', String(pagamentoData.customer_id))
-fdWallet.append('amount', String(pagamentoData.valor_pago))
-fdWallet.append('description', `Pagamento na Venda #${venda_id}`)
-fdWallet.append('employee_id', String(pagamentoData.employee_id))
-fdWallet.append('related_venda_id', String(venda_id))
+      fdWallet.append('store_id', String(store_id))
+      fdWallet.append('customer_id', String(pagamentoData.customer_id))
+      fdWallet.append('amount', String(pagamentoData.valor_pago))
+      fdWallet.append('description', `Pagamento na Venda #${venda_id}`)
+      fdWallet.append('employee_id', String(pagamentoData.employee_id))
+      fdWallet.append('related_venda_id', String(venda_id))
 
       const resWallet = await useCredit(fdWallet)
       if (!resWallet.success) {
@@ -735,6 +742,7 @@ fdWallet.append('related_venda_id', String(venda_id))
   }
 
   try {
+    // 1. Inserir na tabela de pagamentos (Isso baixa o saldo da venda)
     const { data: newPagamento, error: pagError } = await (supabaseAdmin.from('pagamentos') as any)
       .insert(pagToInsert)
       .select()
@@ -743,6 +751,45 @@ fdWallet.append('related_venda_id', String(venda_id))
     if (pagError) throw pagError
     if (!newPagamento) throw new Error('Falha ao registrar pagamento.')
 
+    // 2. NOVO: Se for Cartão Crédito ou Cheque-Pré, lançar no Contas a Receber
+    const forma = pagamentoData.forma_pagamento;
+    if (forma === 'Cartão Crédito' || forma === 'Cheque-Pré') {
+        const qtdParcelas = pagamentoData.parcelas;
+        const valorTotal = pagamentoData.valor_pago;
+        
+        // --- CÁLCULO DE CENTAVOS (CORREÇÃO) ---
+        const valorParcelaBase = Math.floor((valorTotal / qtdParcelas) * 100) / 100;
+        const diferenca = parseFloat((valorTotal - (valorParcelaBase * qtdParcelas)).toFixed(2));
+        
+        const receivables = [];
+        const dataBase = new Date(pagamentoData.data_pagamento);
+
+        for (let i = 0; i < qtdParcelas; i++) {
+            const vencimento = new Date(dataBase);
+            vencimento.setDate(vencimento.getDate() + (i * 30));
+            
+            // Adiciona a diferença na primeira parcela para fechar a conta exata
+            let valorDestaParcela = valorParcelaBase;
+            if (i === 0) {
+                valorDestaParcela += diferenca;
+            }
+            
+            receivables.push({
+                tenant_id: tenant_id,
+                store_id: store_id,
+                description: `Venda #${venda_id} - ${forma} (${i + 1}/${qtdParcelas})`,
+                amount: parseFloat(valorDestaParcela.toFixed(2)),
+                due_date: vencimento.toISOString().split('T')[0],
+                status: 'Pendente',
+                type: forma,
+                origin_payment_id: newPagamento.id
+            });
+        }
+
+        await (supabaseAdmin.from('accounts_receivable') as any).insert(receivables);
+    }
+
+    // 3. Atualiza saldo da venda
     const { error: rpcError } = await (supabaseAdmin as any).rpc('update_venda_financeiro', {
       p_venda_id: venda_id,
     })
@@ -758,9 +805,8 @@ fdWallet.append('related_venda_id', String(venda_id))
   }
 }
 
-
 // ================================================================
-// 10. ACTION: DELETAR PAGAMENTO (CORRIGIDO: ADMIN CLIENT)
+// 10. ACTION: DELETAR PAGAMENTO (CORRIGIDA: LIMPA RECEBÍVEIS)
 // ================================================================
 export type DeletePagamentoResult = {
   success: boolean
@@ -772,10 +818,21 @@ export async function deletePagamento(
   vendaId: number,
   storeId: number
 ): Promise<DeletePagamentoResult> {
-  // CORREÇÃO: Usamos AdminClient para evitar Loop de RLS (Stack Depth Exceeded)
+  // CORREÇÃO: Usamos AdminClient para evitar Loop de RLS
   const supabaseAdmin = createAdminClient()
 
   try {
+    // 1. NOVO: Antes de apagar o pagamento, apaga os recebíveis (Cartão/Cheque) vinculados a ele
+    const { error: deleteReceivablesError } = await supabaseAdmin
+        .from('accounts_receivable')
+        .delete()
+        .eq('origin_payment_id', pagamentoId);
+
+    if (deleteReceivablesError) {
+        console.error("Erro ao limpar recebíveis:", deleteReceivablesError);
+    }
+
+    // 2. Apaga o pagamento principal
     const { error: deleteError } = await supabaseAdmin
       .from('pagamentos')
       .delete()
@@ -783,7 +840,7 @@ export async function deletePagamento(
 
     if (deleteError) throw deleteError
 
-    // Recalcula o saldo da venda (RPC)
+    // 3. Recalcula o saldo da venda (RPC)
     const { error: rpcError } = await (supabaseAdmin as any).rpc('update_venda_financeiro', {
       p_venda_id: vendaId,
     })
@@ -927,138 +984,179 @@ export async function updateVendaDesconto(
 }
 
 // ==============================================================================
-// 13. ACTION: CRIAR E ATUALIZAR FINANCIAMENTO (CORRIGIDO FINAL V2)
+// 13. ACTION: CRIAR FINANCIAMENTO DE LOJA (FINAL: SEGURA + ADMIN MODE)
 // ==============================================================================
-const FinanciamentoSchema = z.object({
-  venda_id: z.coerce.number(),
-  customer_id: z.coerce.number(),
-  employee_id: z.coerce.number(),
-  valor_total_financiado: z.coerce.number().min(0.01, "Valor total inválido"),
-  quantidade_parcelas: z.coerce.number().min(1),
-  data_inicio: z.string().min(1, "Data de início obrigatória"),
-  parcelas_json: z.string(),
-  obs: z.string().optional().nullable(),
-});
+export async function saveFinanciamentoLoja(...args: any[]) {
+  // 1. Normalização de dados (Suporta chamada via Form ou Objeto JS)
+  let data: any = args[1] || args[0]; 
+  if (data instanceof FormData) data = Object.fromEntries(data);
 
-export type CreateFinanciamentoResult = { success: boolean, message: string, data?: Financiamento, errors?: Record<string, string[]> }
+  const { venda_id, valor_total, qtd_parcelas, data_primeiro_vencimento, customer_id, employee_id, obs } = data || {};
 
-export async function saveFinanciamentoLoja(prevState: CreateFinanciamentoResult, formData: FormData): Promise<CreateFinanciamentoResult> {
-  const supabaseAdmin = createAdminClient()
-  const { data: { user } } = await createClient().auth.getUser()
-  if (!user) return { success: false, message: 'Usuário não autenticado.' }
-  const profile = await getProfileByAdmin(user.id)
-  if (!profile) return { success: false, message: 'Perfil não encontrado.' }
-
-  let parcelasRaw = [];
-  try { parcelasRaw = JSON.parse(formData.get('parcelas_json') as string); } catch (e) { return { success: false, message: 'JSON inválido.' } }
-  
-  const inputData = {
-    venda_id: formData.get('venda_id'), customer_id: formData.get('customer_id'), employee_id: formData.get('employee_id'),
-    valor_total_financiado: formData.get('valor_total'), quantidade_parcelas: parcelasRaw.length,
-    data_inicio: formData.get('data_inicio'), parcelas_json: formData.get('parcelas_json'), obs: formData.get('obs'),
+  if (!venda_id || !qtd_parcelas) {
+      return { success: false, message: 'Erro: Dados incompletos.' };
   }
-  
-  const validationResult = FinanciamentoSchema.safeParse(inputData)
-  if (!validationResult.success) return { success: false, message: `Erro validação` }
 
-  const safeData = validationResult.data;
-  const safeParcelas = parcelasRaw; 
+  // 2. Autenticação
+  const supabaseAuth = createClient();
+  const { data: { user } } = await supabaseAuth.auth.getUser();
+  if (!user) return { success: false, message: 'Sessão expirada.' };
 
-  try {
-    // 1. Verificar se já existe cabeçalho
-    const { data: existingHeader } = await supabaseAdmin.from('financiamento_loja').select('id, valor_total_financiado, quantidade_parcelas').eq('venda_id', safeData.venda_id).maybeSingle()
-    
-    let financiamentoId: number;
+  // 3. Verificação de Perfil e Segurança
+  const profile = await getProfileByAdmin(user.id) as any;
+  if (!profile) return { success: false, message: 'Perfil não encontrado.' };
 
-    if (existingHeader) {
-        // CORREÇÃO 1: Cast em existingHeader para garantir acesso ao ID
-        financiamentoId = (existingHeader as any).id
-        
-        const { data: pagos } = await supabaseAdmin.from('financiamento_parcelas').select('valor_parcela').eq('financiamento_id', financiamentoId).eq('status', 'Pago')
-        
-        // CORREÇÃO 2: Cast no parametro 'p' do reduce para evitar erro de tipo
-        const totalPago = pagos?.reduce((acc, p: any) => acc + p.valor_parcela, 0) || 0
-        
-        const novoTotal = totalPago + safeData.valor_total_financiado
-        const novaQtd = ((existingHeader as any).quantidade_parcelas || 0) + safeData.quantidade_parcelas
+  // 4. Inicia Modo Admin (Para evitar Loop RLS)
+  const supabaseAdmin = createAdminClient();
 
-        // CORREÇÃO 3: Forçar as any no update
-        const updatePayload: any = {
-            valor_total_financiado: novoTotal,
-            quantidade_parcelas: novaQtd, 
-            obs: safeData.obs
-        }
+  // 5. Busca dados da Venda para validar Loja
+  const { data: vendaReal, error: erroVenda } = await (supabaseAdmin
+    .from('vendas') as any)
+    .select('id, tenant_id, store_id, valor_final, valor_total')
+    .eq('id', venda_id)
+    .single();
 
-        await (supabaseAdmin.from('financiamento_loja') as any).update(updatePayload).eq('id', financiamentoId)
-        
-    } else {
-        // CORREÇÃO 4: Forçar as any no insert do cabeçalho
-        const insertPayload: any = {
-            tenant_id: (profile as any).tenant_id, 
-            store_id: (profile as any).store_id, 
-            venda_id: safeData.venda_id,
-            customer_id: safeData.customer_id, 
-            employee_id: safeData.employee_id,
-            valor_total_financiado: safeData.valor_total_financiado, 
-            quantidade_parcelas: safeData.quantidade_parcelas,
-            data_inicio: safeData.data_inicio, 
-            obs: safeData.obs, 
-            created_by_user_id: user.id
-        }
+  if (erroVenda || !vendaReal) return { success: false, message: 'Venda não encontrada.' };
 
-        const { data: newHeader, error } = await (supabaseAdmin.from('financiamento_loja') as any).insert(insertPayload).select().single()
-    
-        if (error) throw error
-        financiamentoId = newHeader.id
-    }
-
-    // 2. Inserir as novas parcelas
-    const parcelasInsert = safeParcelas.map((p: any) => ({
-        financiamento_id: financiamentoId,
-        numero_parcela: p.numero_parcela, 
-        data_vencimento: p.data_vencimento,
-        valor_parcela: p.valor_parcela,
-        tenant_id: (profile as any).tenant_id, 
-        store_id: (profile as any).store_id, 
-        customer_id: safeData.customer_id, 
-        status: 'Pendente'
-    }))
-    
-    if (existingHeader) {
-        const { count } = await supabaseAdmin.from('financiamento_parcelas').select('*', { count: 'exact', head: true }).eq('financiamento_id', financiamentoId)
-        const offset = count || 0
-        parcelasInsert.forEach((p: any) => p.numero_parcela += offset)
-    }
-
-    // CORREÇÃO 5: Forçar as any no insert das parcelas
-    const { error: itemError } = await (supabaseAdmin.from('financiamento_parcelas') as any).insert(parcelasInsert)
-    if (itemError) throw itemError
-
-await (supabaseAdmin as any).rpc('update_venda_financeiro', { p_venda_id: safeData.venda_id })
-    revalidatePath(`/dashboard/loja/${(profile as any).store_id}/vendas/${safeData.venda_id}`)
-    
-    return { success: true, message: 'Carnê atualizado!' }
-  } catch (error: any) {
-    return { success: false, message: `Erro: ${error.message}` }
+  // --- TRAVA DE SEGURANÇA ---
+  // Se não for Admin, só pode mexer se a loja do usuário for igual à da venda
+  if (profile.role !== 'admin' && profile.store_id !== vendaReal.store_id) {
+      return { success: false, message: 'Acesso Negado: Loja inválida.' };
   }
+
+  // 6. Verificar duplicidade
+  const { data: existente } = await (supabaseAdmin
+    .from('financiamento_loja') as any)
+    .select('id')
+    .eq('venda_id', venda_id)
+    .single();
+
+  if (existente) return { success: false, message: 'Já existe um carnê ativo.' };
+
+  // 7. Criar Capa
+  const { data: capa, error: erroCapa } = await (supabaseAdmin
+    .from('financiamento_loja') as any)
+    .insert({
+      tenant_id: vendaReal.tenant_id,
+      store_id: vendaReal.store_id,
+      venda_id: venda_id,
+      customer_id: customer_id,
+      employee_id: employee_id,
+      valor_total_financiado: valor_total,
+      quantidade_parcelas: Number(qtd_parcelas),
+      data_inicio: data_primeiro_vencimento,
+      obs: obs || '',
+      created_by_user_id: user.id
+    })
+    .select()
+    .single();
+
+  if (erroCapa) return { success: false, message: `Erro ao criar contrato: ${erroCapa.message}` };
+  
+  const capaCriada: any = capa;
+
+  // 8. Gerar Parcelas
+  const valorParcela = Number((Number(valor_total) / Number(qtd_parcelas)).toFixed(2));
+  const diferenca = Number((Number(valor_total) - (valorParcela * Number(qtd_parcelas))).toFixed(2));
+  
+  const parcelas = [];
+  const dataBase = new Date(data_primeiro_vencimento);
+
+  for (let i = 1; i <= Number(qtd_parcelas); i++) {
+    const valorReal = i === 1 ? valorParcela + diferenca : valorParcela;
+    const vencimento = new Date(dataBase);
+    if (i > 1) vencimento.setMonth(vencimento.getMonth() + (i - 1));
+
+    parcelas.push({
+      tenant_id: vendaReal.tenant_id,
+      store_id: vendaReal.store_id,
+      financiamento_id: capaCriada.id,
+      customer_id: customer_id,
+      numero_parcela: i,
+      data_vencimento: vencimento.toISOString().split('T')[0],
+      valor_parcela: valorReal,
+      valor_pago: 0,
+      status: 'Pendente'
+    });
+  }
+
+  const { error: erroParcelas } = await (supabaseAdmin.from('financiamento_parcelas') as any).insert(parcelas);
+
+  if (erroParcelas) {
+    await supabaseAdmin.from('financiamento_loja').delete().eq('id', capaCriada.id);
+    return { success: false, message: `Erro ao gerar parcelas: ${erroParcelas.message}` };
+  }
+
+  // 9. Atualizar Venda
+  const { data: pagamentosExistentes } = await (supabaseAdmin.from('pagamentos') as any)
+    .select('valor_pago')
+    .eq('venda_id', venda_id)
+    .neq('forma_pagamento', 'Carnê');
+
+  const totalJaPagoNoCaixa = pagamentosExistentes?.reduce((acc: number, p: any) => acc + Number(p.valor_pago), 0) || 0;
+  const valorTotalVenda = Number(vendaReal.valor_final || vendaReal.valor_total);
+  const totalCoberto = totalJaPagoNoCaixa + Number(valor_total);
+  
+  let novoValorRestante = valorTotalVenda - totalCoberto;
+  if (novoValorRestante < 0.05 && novoValorRestante > -0.05) novoValorRestante = 0;
+  const novoStatus = novoValorRestante <= 0 ? 'Fechada' : 'Em Aberto'; 
+
+  const { error: erroUpdate } = await (supabaseAdmin.from('vendas') as any)
+    .update({ 
+      financiamento_id: capaCriada.id,
+      valor_restante: novoValorRestante,
+      status: novoStatus
+    })
+    .eq('id', venda_id);
+
+  if (erroUpdate) return { success: false, message: `Erro ao atualizar venda: ${erroUpdate.message}` };
+
+  revalidatePath(`/vendas/${venda_id}`);
+  return { success: true, message: 'Carnê gerado com sucesso!' };
 }
 
 // ================================================================
-// 14. ACTION: LISTAR VENDAS PENDENTES
+// 14. ACTION: LISTAR VENDAS (COM FILTROS: PENDÊNCIAS OU PERÍODO)
 // ================================================================
-export async function getSalesList(storeId: number) {
+export type SalesFilterOptions = {
+    mode?: 'pendencias' | 'historico'
+    startDate?: string
+    endDate?: string
+}
+
+export async function getSalesList(storeId: number, options?: SalesFilterOptions) {
   const supabaseAdmin = createAdminClient()
   
+  const mode = options?.mode || 'pendencias'
+
   try {
-    const { data, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('vendas')
       .select(`
         *,
         customers ( full_name )
       `)
       .eq('store_id', storeId)
-      .eq('status', 'Em Aberto')
-      .order('created_at', { ascending: true })
+
+    if (mode === 'pendencias') {
+        // MODO PENDÊNCIAS: Traz tudo que está aberto, ignorando data (Prioridade Total)
+        query = query.eq('status', 'Em Aberto')
+                     .order('created_at', { ascending: true }) // Mais antigas primeiro (para resolver logo)
+    } else {
+        // MODO HISTÓRICO: Traz tudo (Aberto, Fechada, Cancelada) dentro do prazo
+        if (options?.startDate) {
+            const start = `${options.startDate}T00:00:00`
+            query = query.gte('created_at', start)
+        }
+        if (options?.endDate) {
+            const end = `${options.endDate}T23:59:59`
+            query = query.lte('created_at', end)
+        }
+        // No histórico, queremos ver as mais recentes primeiro
+        query = query.order('created_at', { ascending: false })
+    }
+
+    const { data, error } = await query
 
     if (error) throw error
 
@@ -1069,7 +1167,7 @@ export async function getSalesList(storeId: number) {
 }
 
 // ================================================================
-// 15. ACTION: BUSCA UNIFICADA DE PRODUTOS (CORRIGIDO FINAL)
+// 15. ACTION: BUSCA UNIFICADA DE PRODUTOS (ATUALIZADO)
 // ================================================================
 export type ProductSearchResult = {
   id: number
@@ -1086,44 +1184,59 @@ export type SearchProductResult = {
   data?: ProductSearchResult[]
 }
 
+// ATUALIZAÇÃO: Adicionado 'Todos' na assinatura para permitir busca global
 export async function searchProductCatalog(
   query: string,
   storeId: number,
-  type: 'Lente' | 'Armacao' | 'Tratamento' | 'Servico' | 'Outro'
+  type: 'Lente' | 'Armacao' | 'Tratamento' | 'Servico' | 'Outro' | 'Todos'
 ): Promise<SearchProductResult> {
   
   const supabaseAdmin = createAdminClient()
   let results: ProductSearchResult[] = []
   
   try {
-      let dbType = type
-      if (type === 'Armacao') dbType = 'Armacao'
-      if (type === 'Lente') dbType = 'Lente'
-      if (type === 'Tratamento') dbType = 'Tratamento'
-      if (type === 'Servico') dbType = 'Servico'
-      if (type === 'Outro') dbType = 'Outro'
-
-      const { data } = await supabaseAdmin
+      let q = supabaseAdmin
         .from('products')
         .select('*')
         .eq('store_id', storeId)
-        .eq('tipo_produto', dbType)
-        .or(`nome.ilike.%${query}%,codigo_barras.eq.${query},referencia.ilike.%${query}%`)
-        .limit(20)
+
+      // ATUALIZAÇÃO: Se for 'Todos', não filtra por tipo no banco
+      if (type !== 'Todos') {
+          let dbType = type
+          if (type === 'Armacao') dbType = 'Armacao'
+          if (type === 'Lente') dbType = 'Lente'
+          if (type === 'Tratamento') dbType = 'Tratamento'
+          if (type === 'Servico') dbType = 'Servico'
+          if (type === 'Outro') dbType = 'Outro'
+          
+          q = q.eq('tipo_produto', dbType)
+      }
+
+      // Aplica a busca por texto
+      q = q.or(`nome.ilike.%${query}%,codigo_barras.eq.${query},referencia.ilike.%${query}%`)
+      q = q.limit(20)
+
+      const { data } = await q
 
       if (data) {
-          // CORREÇÃO: Adicionado (p: any) para o TypeScript aceitar todas as colunas
           results = data.map((p: any) => {
               const d = p.detalhes || {}
               let detalhesStr = ''
               
-              if (type === 'Lente') detalhesStr = `${p.marca || ''} ${d.material || ''}`
-              if (type === 'Armacao') detalhesStr = `Ref: ${p.referencia || '-'} | Cor: ${d.cor || '-'}`
-              if (type === 'Tratamento') detalhesStr = d.descricao || ''
+              // ATUALIZAÇÃO: Mapeia o tipo do banco de volta para o tipo do Front
+              let tipoFront: ProductSearchResult['tipo'] = 'Outro'
+              if (p.tipo_produto === 'Lente') tipoFront = 'Lente'
+              else if (p.tipo_produto === 'Armacao') tipoFront = 'Armacao'
+              else if (p.tipo_produto === 'Tratamento') tipoFront = 'Tratamento'
+              else if (p.tipo_produto === 'Servico') tipoFront = 'Servico'
+              
+              if (tipoFront === 'Lente') detalhesStr = `${p.marca || ''} ${d.material || ''}`
+              if (tipoFront === 'Armacao') detalhesStr = `Ref: ${p.referencia || '-'} | Cor: ${d.cor || '-'}`
+              if (tipoFront === 'Tratamento') detalhesStr = d.descricao || ''
 
               return {
                   id: p.id,
-                  tipo: type, 
+                  tipo: tipoFront, 
                   descricao: p.nome,
                   detalhes: detalhesStr,
                   preco_venda: p.preco_venda,
@@ -1138,6 +1251,8 @@ export async function searchProductCatalog(
     return { success: false, message: error.message }
   }
 }
+
+// ... (Mantenha o restante do arquivo inalterado)
 
 // ================================================================
 // 16. ACTION: BUSCA EXPRESS (CORRIGIDO COM 'ANY')
@@ -1377,61 +1492,70 @@ export async function receberParcela(prevState: any, formData: FormData) {
   }
 }
 
-// ================================================================
-// 19. ACTION: EXCLUIR FINANCIAMENTO
-// ================================================================
+
+// ==============================================================================
+// 19. ACTION: EXCLUIR FINANCIAMENTO (FINAL: SEGURA + ADMIN MODE)
+// ==============================================================================
 export async function deleteFinanciamentoLoja(vendaId: number, storeId: number) {
-  const supabaseAdmin = createAdminClient()
+  const supabaseAuth = createClient();
+  const { data: { user } } = await supabaseAuth.auth.getUser();
+  if (!user) return { success: false, message: 'Sessão inválida.' };
+
+  const profile = await getProfileByAdmin(user.id) as any;
+  if (!profile) return { success: false, message: 'Perfil não encontrado.' };
+
+  // --- TRAVA DE SEGURANÇA ---
+  if (profile.role !== 'admin' && profile.store_id !== storeId) {
+       return { success: false, message: 'Acesso Negado: Loja inválida.' };
+  }
+
+  const supabaseAdmin = createAdminClient(); 
+
   try {
-    const { data: parcelasPagas } = await supabaseAdmin.from('financiamento_parcelas').select('id').eq('venda_id', vendaId).eq('status', 'Pago').limit(1)
+      const { data: financRaw, error: errFinanc } = await (supabaseAdmin
+        .from('financiamento_loja') as any)
+        .select('id')
+        .eq('venda_id', vendaId)
+        .maybeSingle();
 
-    if (parcelasPagas && parcelasPagas.length > 0) {
-        // SE TEM PAGAS: Apaga só as pendentes (Renegociação)
-        // CORREÇÃO 1: Forçar as any no delete
-        await (supabaseAdmin.from('financiamento_parcelas') as any).delete().eq('venda_id', vendaId).eq('status', 'Pendente')
-        
-        const { data: financ } = await supabaseAdmin.from('financiamento_loja').select('id').eq('venda_id', vendaId).single()
-        
-        if (financ) {
-             // CORREÇÃO 2: Garantir acesso ao ID do financiamento
-             const financId = (financ as any).id
+      if (errFinanc) return { success: false, message: 'Erro técnico ao buscar carnê.' };
+      const financ = financRaw as any;
 
-             const { data: pagos } = await supabaseAdmin.from('financiamento_parcelas').select('valor_parcela').eq('financiamento_id', financId).eq('status', 'Pago')
-             // Pequeno ajuste no reduce para garantir tipo
-             const novoTotalHeader = pagos?.reduce((acc, p: any) => acc + p.valor_parcela, 0) || 0
-             
-             // CORREÇÃO 3: Forçar as any no update
-             await (supabaseAdmin.from('financiamento_loja') as any).update({ valor_total_financiado: novoTotalHeader }).eq('id', financId)
-        }
+      // Recalcular dívida
+      const { data: vendaReal } = await (supabaseAdmin.from('vendas') as any)
+          .select('valor_final, valor_total')
+          .eq('id', vendaId).single();
 
-        // CORREÇÃO 4: Forçar as any no RPC
-        await (supabaseAdmin as any).rpc('update_venda_financeiro', { p_venda_id: vendaId })
-        
-        revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}`)
-        return { success: true, message: 'Parcelas pendentes removidas. Gere o novo acordo.' }
+      const { data: pagamentos } = await (supabaseAdmin.from('pagamentos') as any)
+          .select('valor_pago')
+          .eq('venda_id', vendaId).neq('forma_pagamento', 'Carnê');
+      
+      const totalPagoDinheiro = pagamentos?.reduce((acc: number, p: any) => acc + Number(p.valor_pago), 0) || 0;
+      const valorVenda = Number(vendaReal?.valor_final || vendaReal?.valor_total || 0);
+      const dividaRestaurada = valorVenda - totalPagoDinheiro;
 
-    } else {
-        // SE NÃO TEM PAGAS: Reset Total (Apaga tudo)
-        const { data: financ } = await supabaseAdmin.from('financiamento_loja').select('id').eq('venda_id', vendaId).single()
-        
-        if (financ) {
-            // CORREÇÃO 5: Garantir acesso ao ID
-            const financId = (financ as any).id
+      // Soltar Venda
+      const { error: erroUpdate } = await (supabaseAdmin.from('vendas') as any)
+        .update({ 
+          financiamento_id: null,
+          valor_restante: dividaRestaurada, 
+          status: 'Em Aberto' 
+        })
+        .eq('id', vendaId);
 
-            // CORREÇÃO 6: Forçar as any nos deletes
-            await (supabaseAdmin.from('financiamento_parcelas') as any).delete().eq('financiamento_id', financId)
-            await (supabaseAdmin.from('financiamento_loja') as any).delete().eq('id', financId)
-        }
-        
-        // CORREÇÃO 7: Forçar as any no RPC
-        await (supabaseAdmin as any).rpc('update_venda_financeiro', { p_venda_id: vendaId })
-        
-        revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}`)
-        return { success: true, message: 'Carnê cancelado (Reset Total).' }
-    }
+      if (erroUpdate) return { success: false, message: `Erro ao atualizar venda: ${erroUpdate.message}` };
+
+      // Limpar tabelas
+      if (financ?.id) {
+          await (supabaseAdmin.from('financiamento_parcelas') as any).delete().eq('financiamento_id', financ.id);
+          await (supabaseAdmin.from('financiamento_loja') as any).delete().eq('id', financ.id);
+      }
+
+      revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}`);
+      return { success: true, message: 'Carnê excluído. Saldo restaurado.' };
 
   } catch (e: any) {
-    return { success: false, message: e.message }
+      return { success: false, message: `Erro de sistema: ${e.message}` };
   }
 }
 
@@ -1452,6 +1576,7 @@ export async function updateVendaObs(
 // ================================================================
 export async function finalizarVendaExpress(formData: FormData) {
     const supabaseAdmin = createAdminClient()
+    
     const { data: { user } } = await createClient().auth.getUser()
     
     if (!user) return { success: false, message: 'Sem permissão.' }
@@ -2080,3 +2205,4 @@ export async function getItensCompradosPorCliente(storeId: number, customerId: n
         return []
     }
 }
+

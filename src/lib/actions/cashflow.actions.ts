@@ -346,3 +346,29 @@ export async function fecharCaixa(prevState: any, formData: FormData) {
         return { success: false, message: e.message }
     }
 }
+
+// ============================================================================
+// 5. CHECAGEM RÁPIDA DE STATUS (PARA O GUARD)
+// ============================================================================
+export async function verificarStatusCaixa(storeId: number): Promise<boolean> {
+    const supabaseAdmin = createAdminClient()
+    
+    const hojeInicio = new Date()
+    hojeInicio.setHours(0,0,0,0)
+
+    try {
+        // Verifica se existe algum registro com status 'Aberto' criado hoje
+        const { data } = await (supabaseAdmin.from('caixa_diario') as any)
+            .select('id')
+            .eq('store_id', storeId)
+            .eq('status', 'Aberto')
+            .gte('created_at', hojeInicio.toISOString())
+            .maybeSingle()
+
+        return !!data // Retorna true se achou, false se não achou
+    } catch (e) {
+        console.error("Erro ao verificar status do caixa:", e)
+        return false // Na dúvida, assume fechado para evitar erros, ou true para não bloquear. 
+                     // Aqui retornamos false para forçar a verificação visual se der erro.
+    }
+}

@@ -5,8 +5,9 @@ import { redirect, notFound } from 'next/navigation';
 import SideNav from '@/components/SideNav';
 import { getProfileByAdmin } from '@/lib/supabase/admin'; 
 import { createAdminClient } from '@/lib/supabase/admin'; 
+import CashGuard from '@/components/financeiro/CashGuard'; // <--- 1. Importação do Guardião
 
-type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor';
+type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor' | 'tecnico';
 
 export default async function StoreLayout({
   children,
@@ -23,7 +24,7 @@ export default async function StoreLayout({
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return redirect('/login');
 
-  // CORREÇÃO: Cast 'as any' para garantir flexibilidade nas propriedades do perfil
+  // Busca perfil usando admin client para garantir leitura correta
   const profile = await getProfileByAdmin(user.id) as any; 
 
   if (!profile || !profile.role) {
@@ -33,16 +34,15 @@ export default async function StoreLayout({
   const { store_id, role } = profile;
   const userRole = role as Role;
 
+  // Validação de Segurança: O usuário pertence a esta loja?
   const isAuthorized = userRole === 'admin' || store_id === storeIdParam;
 
   if (!isAuthorized) {
     return redirect('/dashboard/manager?error=access_denied');
   }
 
-  // --- NOVO: BUSCA O NOME DA LOJA ---
+  // Busca o nome da loja para exibir no Menu
   const supabaseAdmin = createAdminClient();
-  
-  // CORREÇÃO: Cast 'as any' na tabela stores
   const { data: storeData } = await (supabaseAdmin
     .from('stores') as any)
     .select('name')
@@ -50,21 +50,24 @@ export default async function StoreLayout({
     .single();
     
   const storeName = storeData?.name || 'Ótica';
-  // ----------------------------------
 
   return (
-    <div className="flex w-full"> 
+    <div className="flex w-full h-screen overflow-hidden"> 
+      
+      {/* 2. O GUARDIÃO DO CAIXA */}
+      {/* Ele roda em segundo plano verificando se o caixa está aberto.
+          Se estiver fechado, ele bloqueia a tela (com opção de pular). */}
+      <CashGuard storeId={storeIdParam} />
+
       <div className="flex-shrink-0 relative z-40">
-        <div className="sticky top-16 h-[calc(100vh-64px)]">
-            <SideNav 
-              userRole={userRole} 
-              storeId={storeIdParam} 
-              storeName={storeName} 
-            />
-        </div>
+          <SideNav 
+            userRole={userRole} 
+            storeId={storeIdParam} 
+            storeName={storeName} 
+          />
       </div>
 
-      <main className="flex-1 overflow-y-auto p-6 bg-gray-100 h-[calc(100vh-64px)]">
+      <main className="flex-1 overflow-hidden bg-gray-100 relative">
         {children}
       </main>
     </div>

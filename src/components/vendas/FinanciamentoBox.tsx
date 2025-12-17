@@ -1,7 +1,12 @@
+//============================
+//📄 ARQUIVO: src/components/vendas/FinanciamentoBox.tsx
+//============================
+
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
 import { useFormState } from 'react-dom'
+
 import {
   saveFinanciamentoLoja,
   receberParcela,
@@ -10,7 +15,7 @@ import {
 } from '@/lib/actions/vendas.actions'
 
 import { Database } from '@/lib/database.types'
-import { Calendar, ClipboardList, AlertTriangle, CheckCircle2, Wallet, DollarSign, X, RefreshCw, Trash2, Calculator } from 'lucide-react'
+import { Calendar, ClipboardList, AlertTriangle, CheckCircle2, Wallet, DollarSign, X, RefreshCw, Trash2, Calculator, Loader2 } from 'lucide-react'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import CollapsibleBox from './CollapsibleBox'
 
@@ -35,8 +40,16 @@ type FinanciamentoBoxProps = {
 // Helpers
 const formatCurrency = (value: number | null | undefined) => (value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const parseLocaleFloat = (str: string) => parseFloat(str.replace(/\./g, '').replace(',', '.') || '0')
-const getToday = () => new Date().toISOString().split('T')[0]
 const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString('pt-BR')
+const getToday = () => new Date().toISOString().split('T')[0]
+
+// Sugere data 30 dias no futuro (próximo mês)
+const getFirstDueMonth = () => {
+    const today = new Date();
+    const nextMonth = new Date(today);
+    nextMonth.setDate(today.getDate() + 30); 
+    return nextMonth.toISOString().split('T')[0];
+}
 
 const ParcelaInput = ({ valor, index, onChange }: { valor: number, index: number, onChange: (idx: number, val: string) => void }) => {
     const [localStr, setLocalStr] = useState(formatCurrency(valor))
@@ -55,9 +68,6 @@ const ParcelaInput = ({ valor, index, onChange }: { valor: number, index: number
     )
 }
 
-// ... (RecebimentoModal mantido igual, pois é um modal que abre por cima) ...
-// Vou omitir o código do Modal aqui para brevidade, mantenha a função RecebimentoModal como estava no arquivo anterior,
-// pois ela não faz parte do card colorido principal.
 function RecebimentoModal({ 
     parcela, 
     onClose, 
@@ -71,7 +81,7 @@ function RecebimentoModal({
 }) {
     const [valorPagoStr, setValorPagoStr] = useState(formatCurrency(parcela.valor_parcela))
     const [forma, setForma] = useState('Dinheiro')
-    const [dataPagto, setDataPagto] = useState(getToday())
+   const [dataPagto, setDataPagto] = useState(getFirstDueMonth())
     const [estrategia, setEstrategia] = useState<'criar_pendencia' | 'somar_proxima'>('criar_pendencia')
     const [isAuthOpen, setIsAuthOpen] = useState(false)
     const [dadosParaEnviar, setDadosParaEnviar] = useState<any>(null)
@@ -118,13 +128,13 @@ function RecebimentoModal({
                             <label className="block text-xs font-bold text-gray-500 mb-1">Valor a Receber</label>
                             <input type="text" value={valorPagoStr} onChange={e => setValorPagoStr(e.target.value)} className="w-full rounded-lg border-gray-300 focus:ring-amber-500 font-bold text-lg text-right"/>
                         </div>
-                         <div>
+                        <div>
                              <label className="block text-xs font-bold text-gray-500 mb-1">Forma</label>
                             <select value={forma} onChange={e => setForma(e.target.value)} className="w-full rounded-lg border-gray-300 focus:ring-amber-500 h-[46px]">
                                 <option>Dinheiro</option><option>PIX</option><option>Cartão Débito</option><option>Cartão Crédito</option>
                             </select>
                         </div>
-                   </div>
+                    </div>
                     {isParcial && (
                         <div className="bg-red-50 p-4 rounded-xl border border-red-100 animate-in slide-in-from-top-2">
                             <div className="flex items-center gap-2 text-red-700 font-bold text-sm mb-3">
@@ -169,10 +179,12 @@ export default function FinanciamentoBox({
   const [authedEmployee, setAuthedEmployee] = useState<Pick<Employee, 'id' | 'full_name'> | null>(null)
   const [selectedParcela, setSelectedParcela] = useState<FinanciamentoParcela | null>(null)
   const [isResetting, startResetTransition] = useState(false)
+  
+  const [isDeletedLocally, setIsDeletedLocally] = useState(false)
 
   const [valorFinanciadoStr, setValorFinanciadoStr] = useState('')
   const [qtdeParcelas, setQtdeParcelas] = useState(1)
-  const [vencimentoPrimeira, setVencimentoPrimeira] = useState(getToday())
+  const [vencimentoPrimeira, setVencimentoPrimeira] = useState(getFirstDueMonth())
   const [parcelasGrid, setParcelasGrid] = useState<ParcelaGridItem[]>([])
   const [obs, setObs] = useState('')
 
@@ -180,28 +192,33 @@ export default function FinanciamentoBox({
   const [saveState, dispatchSave] = useFormState(saveFinanciamentoLoja, initialState)
   const [recebimentoState, dispatchRecebimento] = useFormState(receberParcela, { success: false, message: '' })
 
-  const isFinanced = !!financiamento;
+  const isFinanced = !!financiamento && !isDeletedLocally;
   const existeDivergencia = isFinanced && valorRestante > 0.01;
   const temParcelaPaga = financiamento?.financiamento_parcelas.some(p => p.status === 'Pago')
 
   useEffect(() => {
-    if (!isFinanced) setValorFinanciadoStr(formatCurrency(valorRestante));
-    else setValorFinanciadoStr(formatCurrency(financiamento.valor_total_financiado));
-  }, [valorRestante, isFinanced, financiamento])
+    if (isDeletedLocally) return;
+
+    if (!isFinanced) {
+        if (valorRestante > 0.01) {
+            setValorFinanciadoStr(formatCurrency(valorRestante));
+        }
+    } else {
+        setValorFinanciadoStr(formatCurrency(financiamento?.valor_total_financiado));
+    }
+  }, [valorRestante, isFinanced, financiamento, isDeletedLocally])
 
   useEffect(() => {
-    if (saveState.success) { setParcelasGrid([]); setAuthedEmployee(null); onFinanceAdded(); }
-  }, [saveState, onFinanceAdded])
+    if (!financiamento && isDeletedLocally) {
+        setIsDeletedLocally(false);
+    }
+  }, [financiamento, isDeletedLocally])
 
   useEffect(() => {
       if (recebimentoState.success) { setSelectedParcela(null); onFinanceAdded(); } 
       else if (recebimentoState.message) { alert(recebimentoState.message); }
   }, [recebimentoState, onFinanceAdded])
   
-  useEffect(() => {
-    if (authedEmployee && formRef.current) { setTimeout(() => formRef.current?.requestSubmit(), 100); }
-  }, [authedEmployee])
-
   const handleCalcular = () => {
       const valorTotal = parseLocaleFloat(valorFinanciadoStr);
       if (valorTotal <= 0) return;
@@ -229,42 +246,72 @@ export default function FinanciamentoBox({
       setParcelasGrid(gridAtualizado);
   };
 
-  const handlePreSubmitCreate = (e: React.FormEvent) => {
-      e.preventDefault(); 
-      if (parcelasGrid.length === 0) { alert("Calcule as parcelas primeiro."); return; }
-      setIsConfigModalOpen(true); 
+  const handleResetCarne = async () => {
+    if (!confirm(temParcelaPaga ? "Isso apagará as parcelas pendentes para renegociar o saldo. Confirmar?" : "Isso cancelará o carnê inteiro. Confirmar?")) return;
+    
+    const valorParaRestaurar = financiamento?.valor_total_financiado || 0;
+    
+    startResetTransition(true); 
+    
+    try {
+        const res = await deleteFinanciamentoLoja(vendaId, storeId);
+        
+        // Verifica se deu sucesso OU se o erro é "já não existe mais" (que na prática é sucesso)
+        const msg = res?.message ? res.message.toLowerCase() : '';
+        const isSuccess = res?.success || msg.includes('not found') || msg.includes('excluído');
+
+        if (isSuccess) {
+            setIsDeletedLocally(true); 
+            resetFormularioCriacao(valorParaRestaurar); 
+            await onFinanceAdded(); 
+        } else {
+            alert(res?.message || 'Erro desconhecido');
+        }
+    } catch (error: any) {
+        console.error(error);
+        alert('Ocorreu um erro ao excluir. Tente recarregar a página.');
+    } finally {
+        startResetTransition(false);
+    }
   }
 
+  const resetFormularioCriacao = (valorSugerido?: number) => {
+    const valorInicial = valorSugerido !== undefined ? valorSugerido : valorRestante;
+    setValorFinanciadoStr(formatCurrency(valorInicial));
+    setQtdeParcelas(1);
+    setVencimentoPrimeira(getFirstDueMonth());
+    setParcelasGrid([]);
+    setObs('');
+    setAuthedEmployee(null);
+    setIsConfigModalOpen(false);
+  }
+      
+  const handleAuthSuccess = (employee: Pick<Employee, 'id' | 'full_name'>) => {
+    setAuthedEmployee(employee);
+    setIsConfigModalOpen(false);
+  }
+  
   const handleConfirmRecebimento = (dados: any) => {
       const formData = new FormData();
       Object.keys(dados).forEach(key => formData.append(key, dados[key]));
       formData.append('venda_id', vendaId.toString());
       formData.append('store_id', storeId.toString());
-      saveRecebimentoDireto(formData);
+      
+      // Chamada direta para evitar complexidade
+      receberParcela(null, formData).then(res => {
+          if (res.success) { setSelectedParcela(null); onFinanceAdded(); } 
+          else { alert(res.message); }
+      });
   }
 
-  const saveRecebimentoDireto = async (fd: FormData) => {
-      const res = await receberParcela(null, fd);
-      if (res.success) { setSelectedParcela(null); onFinanceAdded(); } else { alert(res.message); }
-  }
-
-  const handleResetCarne = async () => {
-      if (!confirm(temParcelaPaga ? "Isso apagará as parcelas pendentes para renegociar o saldo. Confirmar?" : "Isso cancelará o carnê inteiro. Confirmar?")) return;
-      startResetTransition(true); 
-      const res = await deleteFinanciamentoLoja(vendaId, storeId);
-      startResetTransition(false);
-      if (res.success) onFinanceAdded(); else alert(res.message);
-  }
-
-  // Estilos Consistentes para o MODO CRIAÇÃO (Card Laranja)
+  // Estilos
   const labelStyle = 'text-[10px] font-bold text-amber-100 uppercase block mb-1 tracking-wider';
   const inputStyle = 'w-full h-10 rounded-lg border-0 bg-white shadow-sm text-sm px-3 focus:ring-2 focus:ring-amber-300 font-bold text-gray-800';
 
-  // RENDERIZAÇÃO CONDICIONAL
   const renderContent = () => (
     <>
       {isFinanced ? (
-          /* MODO VISUALIZAÇÃO (MANTER CLEAN) */
+          /* MODO VISUALIZAÇÃO */
           <div className="space-y-4">
               <div className="flex justify-between items-end border-b border-amber-50 pb-2">
                   <div>
@@ -308,82 +355,112 @@ export default function FinanciamentoBox({
 
               {!existeDivergencia && (
                   <div className="pt-2 text-center">
-                      <button onClick={handleResetCarne} className="text-[10px] text-slate-400 hover:text-amber-600 font-bold inline-flex items-center gap-1 transition-colors uppercase tracking-wider">
-                          {temParcelaPaga ? <RefreshCw className="h-3 w-3" /> : <Trash2 className="h-3 w-3" />}
+                      <button onClick={handleResetCarne} disabled={isResetting} className="text-[10px] text-slate-400 hover:text-amber-600 font-bold inline-flex items-center gap-1 transition-colors uppercase tracking-wider">
+                          {isResetting ? <Loader2 className="h-3 w-3 animate-spin"/> : temParcelaPaga ? <RefreshCw className="h-3 w-3" /> : <Trash2 className="h-3 w-3" />}
                           {temParcelaPaga ? 'Refinanciar Saldo' : 'Cancelar Carnê'}
                       </button>
                   </div>
               )}
           </div>
       ) : (
-          /* MODO CRIAÇÃO - APLICANDO O ESTILO CARD LARANJA AQUI */
+          /* MODO CRIAÇÃO */
           <div className="relative bg-gradient-to-br from-amber-500 to-orange-600 p-5 rounded-2xl shadow-lg shadow-orange-200 border border-white/20">
-               
-               {/* Header do Card */}
                <div className="flex items-center gap-2 mb-4 border-b border-white/20 pb-3">
-                   <div className="p-1.5 bg-white/20 rounded-lg text-white">
+                    <div className="p-1.5 bg-white/20 rounded-lg text-white">
                         <Calculator className="h-5 w-5" />
                    </div>
                    <h3 className="text-sm font-bold text-white">Gerar Parcelas</h3>
                </div>
 
-               {isQuitado && (
+               {isQuitado && !isDeletedLocally && (
                    <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 flex flex-col items-center justify-center rounded-2xl text-center p-4">
                        <div className="bg-green-50 border border-green-200 p-2 rounded-full mb-2"><CheckCircle2 className="h-5 w-5 text-green-600" /></div>
                        <p className="text-green-800 font-bold text-xs">Venda Quitada. Sem saldo para financiar.</p>
                    </div>
                )}
 
-              <form ref={formRef} action={dispatchSave} className="space-y-4">
-                   <input type="hidden" name="venda_id" value={vendaId} />
-                   <input type="hidden" name="customer_id" value={customerId} />
-                   <input type="hidden" name="employee_id" value={authedEmployee?.id ?? employeeId} />
-                   <input type="hidden" name="valor_total" value={parseLocaleFloat(valorFinanciadoStr)} />
-                   <input type="hidden" name="parcelas_json" value={JSON.stringify(parcelasGrid)} />
-                   <input type="hidden" name="data_inicio" value={vencimentoPrimeira} />
+          {/* CRIAÇÃO MANUAL (SEM FORMULÁRIO HTML) */}
+          {(() => {
+              const handleCriarCarneManual = async () => {
+                  if (parcelasGrid.length === 0) {
+                      alert("Por favor, clique em CALCULAR antes de gerar o carnê.");
+                      return;
+                  }
+                  
+                  if (!confirm(`Confirma a criação do carnê em ${qtdeParcelas}x?`)) return;
 
-                   <div className="grid grid-cols-2 gap-3">
-                      <div>
-                          <label className={labelStyle}>Valor</label>
-                          <input type="text" value={valorFinanciadoStr} onChange={e => { setValorFinanciadoStr(e.target.value); setParcelasGrid([]); }} className={`${inputStyle} text-right`} />
-                      </div>
-                      <div>
-                          <label className={labelStyle}>Vezes</label>
-                          <select value={qtdeParcelas} onChange={e => { setQtdeParcelas(parseInt(e.target.value)); setParcelasGrid([]); }} className={`${inputStyle} cursor-pointer`}>
-                              {[...Array(12)].map((_, i) => <option key={i} value={i+1}>{i+1}x</option>)}
-                          </select>
-                      </div>
-                   </div>
+                  const payload = {
+                      venda_id: vendaId,
+                      customer_id: customerId,
+                      employee_id: authedEmployee?.id ?? employeeId,
+                      valor_total: parseLocaleFloat(valorFinanciadoStr),
+                      qtd_parcelas: qtdeParcelas,
+                      data_primeiro_vencimento: vencimentoPrimeira,
+                      obs: obs
+                  };
 
-                   <div className="flex gap-2 items-end">
-                       <div className="flex-1">
-                          <label className={labelStyle}>1º Vencimento</label>
-                          <input type="date" value={vencimentoPrimeira} onChange={e => setVencimentoPrimeira(e.target.value)} className={inputStyle} />
+                  const resultado = await saveFinanciamentoLoja(null, payload);
+
+                  if (resultado.success) {
+                      setParcelasGrid([]);
+                      setIsDeletedLocally(false); // Garante que a UI atualize
+                      await onFinanceAdded(); 
+                  } else {
+                      alert(resultado.message || "Erro desconhecido ao criar carnê.");
+                  }
+              };
+
+              return (
+                  <div className="space-y-4">
+                       <div className="grid grid-cols-2 gap-3">
+                          <div>
+                              <label className={labelStyle}>Valor</label>
+                              <input type="text" value={valorFinanciadoStr} onChange={e => { setValorFinanciadoStr(e.target.value); setParcelasGrid([]); }} className={`${inputStyle} text-right`} />
+                          </div>
+                          <div>
+                              <label className={labelStyle}>Vezes</label>
+                              <select value={qtdeParcelas} onChange={e => { setQtdeParcelas(parseInt(e.target.value)); setParcelasGrid([]); }} className={`${inputStyle} cursor-pointer`}>
+                                  {[...Array(12)].map((_, i) => <option key={i} value={i+1}>{i+1}x</option>)}
+                              </select>
+                          </div>
                        </div>
-                       <button type="button" onClick={handleCalcular} className="h-10 px-4 bg-white/20 hover:bg-white/30 border border-white/40 text-white rounded-lg text-xs font-bold transition-all">CALCULAR</button>
-                   </div>
 
-                   {parcelasGrid.length > 0 && (
-                       <div className="bg-white/90 backdrop-blur-sm rounded-lg p-2 space-y-1 border border-white/50 max-h-40 overflow-y-auto custom-scrollbar shadow-inner">
-                           {parcelasGrid.map((p, i) => (
-                               <div key={i} className="flex justify-between text-xs text-slate-700 border-b border-gray-200 last:border-0 pb-1 items-center font-medium">
-                                   <span>{p.numero_parcela}ª - {formatDate(p.data_vencimento)}</span>
-                                   <ParcelaInput valor={p.valor_parcela} index={i} onChange={handleParcelaChange} />
-                               </div>
-                           ))}
+                       <div className="flex gap-2 items-end">
+                           <div className="flex-1">
+                              <label className={labelStyle}>1º Vencimento</label>
+                              <input type="date" value={vencimentoPrimeira} onChange={e => setVencimentoPrimeira(e.target.value)} className={inputStyle} />
+                           </div>
+                           <button type="button" onClick={handleCalcular} className="h-10 px-4 bg-white/20 hover:bg-white/30 border border-white/40 text-white rounded-lg text-xs font-bold transition-all">CALCULAR</button>
                        </div>
-                   )}
 
-                   <div>
-                      <label className={labelStyle}>Observação</label>
-                      <input name='obs' type="text" value={obs} onChange={(e) => setObs(e.target.value)} className={inputStyle} placeholder="Ex: Aprovado por..." />
-                   </div>
+                       {parcelasGrid.length > 0 && (
+                           <div className="bg-white/90 backdrop-blur-sm rounded-lg p-2 space-y-1 border border-white/50 max-h-40 overflow-y-auto custom-scrollbar shadow-inner">
+                               {parcelasGrid.map((p, i) => (
+                                   <div key={i} className="flex justify-between text-xs text-slate-700 border-b border-gray-200 last:border-0 pb-1 items-center font-medium">
+                                       <span>{p.numero_parcela}ª - {formatDate(p.data_vencimento)}</span>
+                                       <ParcelaInput valor={p.valor_parcela} index={i} onChange={handleParcelaChange} />
+                                   </div>
+                               ))}
+                           </div>
+                       )}
 
-                   <button type="button" onClick={handlePreSubmitCreate} disabled={parcelasGrid.length === 0} className="w-full h-10 bg-white text-amber-700 hover:bg-amber-50 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
-                       <ClipboardList className="h-4 w-4"/> GERAR CARNÊ
-                   </button>
-              </form>
-          </div>
+                       <div>
+                          <label className={labelStyle}>Observação</label>
+                          <input type="text" value={obs} onChange={(e) => setObs(e.target.value)} className={inputStyle} placeholder="Ex: Aprovado por..." />
+                       </div>
+
+                       <button 
+                            type="button" 
+                            onClick={handleCriarCarneManual}
+                            disabled={parcelasGrid.length === 0} 
+                            className="w-full h-10 bg-white text-amber-700 hover:bg-amber-50 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                       >
+                           <ClipboardList className="h-4 w-4"/> GERAR CARNÊ
+                       </button>
+                  </div>
+              )
+          })()}
+        </div>
       )}
     </>
   );
@@ -392,7 +469,7 @@ export default function FinanciamentoBox({
       return (
         <div className="h-full overflow-y-auto custom-scrollbar pr-1 pt-2">
             {renderContent()}
-            {isConfigModalOpen && <EmployeeAuthModal storeId={storeId} isOpen={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} onSuccess={(emp) => { setAuthedEmployee(emp); setIsConfigModalOpen(false); }} title="Autorizar Emissão" description="PIN do responsável." />}
+            {isConfigModalOpen && <EmployeeAuthModal storeId={storeId} isOpen={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} onSuccess={handleAuthSuccess} title="Autorizar Emissão" description="PIN do responsável." />}
             {selectedParcela && <RecebimentoModal parcela={selectedParcela} storeId={storeId} onClose={() => setSelectedParcela(null)} onConfirm={handleConfirmRecebimento} />}
         </div>
       );
@@ -400,20 +477,19 @@ export default function FinanciamentoBox({
 
   return (
     <>
-        {/* Se for visualização, usa o Collapsible normal, se for criação usa o novo card */}
         {isFinanced ? (
             <CollapsibleBox
                 title="Carnê da Loja"
                 icon={<Wallet className="h-5 w-5 text-amber-700" />}
                 color="amber"
-                defaultOpen={false}
+                defaultOpen={true}
                 badge="EMITIDO"
             >
                 {renderContent()}
             </CollapsibleBox>
         ) : renderContent()}
 
-        {isConfigModalOpen && <EmployeeAuthModal storeId={storeId} isOpen={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} onSuccess={(emp) => { setAuthedEmployee(emp); setIsConfigModalOpen(false); }} title="Autorizar Emissão" description="PIN do responsável." />}
+        {isConfigModalOpen && <EmployeeAuthModal storeId={storeId} isOpen={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} onSuccess={handleAuthSuccess} title="Autorizar Emissão" description="PIN do responsável." />}
         {selectedParcela && <RecebimentoModal parcela={selectedParcela} storeId={storeId} onClose={() => setSelectedParcela(null)} onConfirm={handleConfirmRecebimento} />}
     </>
   )
