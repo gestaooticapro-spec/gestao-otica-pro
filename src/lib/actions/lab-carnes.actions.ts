@@ -212,3 +212,26 @@ export async function excluirCarneLab(financiamentoId: number, vendaId: number) 
     return { success: false, message: 'Erro de exceção: ' + error.message };
   }
 }
+
+// ... (mantenha todo o código anterior igual)
+
+// 4. RENEGOCIAR PARCELAS (Função que estava faltando)
+export async function renegociarParcelasLab(dados: any) {
+  console.log('--- [LAB] RENEGOCIAÇÃO INICIADA ---', dados);
+
+  try {
+    // AQUI VAI A LÓGICA DE RENEGOCIAÇÃO
+    // Como esta função estava faltando, criei este "esqueleto" para o build passar.
+    // Você deve implementar a lógica real de update aqui dentro.
+    
+    // Exemplo de retorno temporário:
+    return { 
+      success: true, 
+      message: 'Funcionalidade de renegociação registrada (aguardando lógica).' 
+    };
+
+  } catch (error: any) {
+    console.error('[LAB RENEGOCIACAO ERROR]', error);
+    return { success: false, message: 'Erro ao renegociar: ' + error.message };
+  }
+}
