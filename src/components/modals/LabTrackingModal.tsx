@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useTransition } from 'react'
+import { createPortal } from 'react-dom' // <--- IMPORTAÇÃO NOVA
 import { Search, X, Loader2, Save, Truck, User, Microscope } from 'lucide-react'
 import { searchOSForLab, updateLabTracking, getEmployees, LabOSResult, EmployeeSimple } from '@/lib/actions/lab.actions'
 
@@ -11,6 +12,9 @@ interface Props {
 }
 
 export default function LabTrackingModal({ isOpen, onClose, storeId }: Props) {
+    // --- ESTADO PARA O PORTAL ---
+    const [mounted, setMounted] = useState(false)
+
     const [step, setStep] = useState<'search' | 'edit'>('search')
     const [query, setQuery] = useState('')
     const [results, setResults] = useState<LabOSResult[]>([])
@@ -18,14 +22,17 @@ export default function LabTrackingModal({ isOpen, onClose, storeId }: Props) {
     const [employees, setEmployees] = useState<EmployeeSimple[]>([]) // Lista de Funcionários
     const [isPending, startTransition] = useTransition()
 
+    // Efeito para garantir que rodamos no cliente (Portal requirement)
+    useEffect(() => {
+        setMounted(true)
+    }, [])
+
     // Carrega funcionários ao abrir o modal
     useEffect(() => {
         if (isOpen) {
             getEmployees(storeId).then(setEmployees)
         }
     }, [isOpen, storeId])
-
-    if (!isOpen) return null
 
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -62,8 +69,12 @@ export default function LabTrackingModal({ isOpen, onClose, storeId }: Props) {
         return new Date(isoString).toISOString().slice(0, 16)
     }
 
-    return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+    // Se não estiver montado ou fechado, não renderiza nada
+    if (!mounted || !isOpen) return null
+
+    // --- PORTAL APLICADO ---
+    return createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
             <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
                 
                 {/* HEADER */}
@@ -243,6 +254,7 @@ export default function LabTrackingModal({ isOpen, onClose, storeId }: Props) {
                     </form>
                 )}
             </div>
-        </div>
+        </div>,
+        document.body
     )
 }

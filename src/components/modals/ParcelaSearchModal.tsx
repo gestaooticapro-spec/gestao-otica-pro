@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom' // <--- IMPORTAÇÃO NOVA
 import { X, Search, Calendar, Loader2, Wallet, ArrowLeft, User, ShoppingBag, CheckCircle2, AlertTriangle, ArrowDownCircle } from 'lucide-react'
 import { searchPendenciasCliente, receberParcela } from '@/lib/actions/vendas.actions'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
@@ -46,6 +47,9 @@ function ParcelaCard({ p, onClick }: { p: any, onClick: () => void }) {
 }
 
 export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpen: boolean, onClose: () => void, storeId: number }) {
+    // --- ESTADO PARA O PORTAL ---
+    const [mounted, setMounted] = useState(false)
+
     const [step, setStep] = useState<'search' | 'details' | 'pay'>('search')
     const [query, setQuery] = useState('')
     const [results, setResults] = useState<any[]>([])
@@ -64,6 +68,11 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
     const [isAuthOpen, setIsAuthOpen] = useState(false)
     const [isProcessing, startProcess] = useTransition()
     const searchInputRef = useRef<HTMLInputElement>(null)
+
+    // Efeito para garantir que rodamos no cliente (Portal requirement)
+    useEffect(() => {
+        setMounted(true)
+    }, [])
 
     useEffect(() => {
         if (isOpen) {
@@ -153,11 +162,13 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
         })
     }
 
-    if (!isOpen) return null
+    // Se não estiver montado ou fechado, não renderiza nada
+    if (!mounted || !isOpen) return null
 
-    return (
+    // --- AQUI ACONTECE A MÁGICA: PORTAL ---
+    return createPortal(
         <>
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in">
             <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
                 
                 {/* Header */}
@@ -355,6 +366,7 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
                 description="Insira seu PIN para confirmar." 
             />
         )}
-        </>
+        </>,
+        document.body
     )
 }

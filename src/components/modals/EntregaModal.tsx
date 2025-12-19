@@ -1,7 +1,7 @@
-// ARQUIVO: src/components/modals/EntregaModal.tsx
 'use client'
 
 import { useState, useEffect, useTransition } from 'react'
+import { createPortal } from 'react-dom' // <--- IMPORTAÇÃO NOVA
 import { useRouter } from 'next/navigation'
 import { Search, X, Loader2, Save, Truck, User, AlertCircle } from 'lucide-react'
 import { searchOSForLab, updateLabTracking, getEmployees, LabOSResult, EmployeeSimple } from '@/lib/actions/lab.actions'
@@ -14,6 +14,10 @@ interface Props {
 
 export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
     const router = useRouter()
+    
+    // --- ESTADO PARA O PORTAL ---
+    const [mounted, setMounted] = useState(false)
+
     const [step, setStep] = useState<'search' | 'edit'>('search')
     const [query, setQuery] = useState('')
     const [results, setResults] = useState<LabOSResult[]>([])
@@ -23,6 +27,11 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
     const [selectedOS, setSelectedOS] = useState<LabOSResult | null>(null)
     const [employees, setEmployees] = useState<EmployeeSimple[]>([])
     const [isPending, startTransition] = useTransition()
+
+    // Efeito para garantir que rodamos no cliente (Portal requirement)
+    useEffect(() => {
+        setMounted(true)
+    }, [])
 
     // Reseta tudo quando o modal abre/fecha
     useEffect(() => {
@@ -35,8 +44,6 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
             setSelectedOS(null)
         }
     }, [isOpen, storeId])
-
-    if (!isOpen) return null
 
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault() // Impede reload da página
@@ -85,8 +92,12 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
         return new Date(isoString).toISOString().slice(0, 16)
     }
 
-    return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+    // Se não estiver montado ou fechado, não renderiza nada
+    if (!mounted || !isOpen) return null
+
+    // --- PORTAL APLICADO ---
+    return createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
             <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
                 
                 <div className="bg-emerald-700 p-4 flex justify-between items-center text-white shrink-0">
@@ -152,9 +163,9 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
                                     </div>
                                     
                                     <div className="mt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                                        {os.status === 'Em Aberto' 
-                                            ? 'Ir para pagamento →' 
-                                            : 'Realizar entrega →'}
+                                            {os.status === 'Em Aberto' 
+                                                ? 'Ir para pagamento →' 
+                                                : 'Realizar entrega →'}
                                     </div>
                                 </button>
                             ))}
@@ -235,6 +246,7 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
                     </form>
                 )}
             </div>
-        </div>
+        </div>,
+        document.body
     )
 }

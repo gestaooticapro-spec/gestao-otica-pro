@@ -279,7 +279,11 @@ export default function SideNav({ userRole, storeId, storeName }: SideNavProps) 
     };
 
     return (
-        <div className="flex h-full relative z-10">
+        // --- ALTERAÇÃO ESTRATÉGICA AQUI ---
+        // Troquei 'h-full' por 'h-[calc(100vh-64px)]'
+        // Isso força o menu a ter o tamanho exato da tela menos o cabeçalho (64px),
+        // garantindo que os botões (Sair/Recolher) fiquem no rodapé mesmo sem mexer no Layout.
+        <div className="flex h-[calc(100vh-64px)] relative z-10">
             <nav className={`bg-white border-r border-gray-200 h-full flex flex-col py-4 z-20 shadow-md relative transition-all duration-300 ease-in-out ${isMainCollapsed ? 'w-20 items-center' : 'w-64 px-4'}`}>
                 <div className={`mb-8 flex items-center ${isMainCollapsed ? 'justify-center' : 'justify-between'}`}>
                     <div className="h-10 w-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl flex items-center justify-center text-white font-black text-xs shadow-lg cursor-default select-none shrink-0">PRO</div>
