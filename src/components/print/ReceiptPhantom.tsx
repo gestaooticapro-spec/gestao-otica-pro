@@ -13,23 +13,21 @@ interface ReceiptData {
     isReprint?: boolean
 }
 
+// --- AJUSTE FINO (Edite aqui se precisar mover tudo) ---
+const AJUSTE_VERTICAL = 0 
+const AJUSTE_HORIZONTAL = 0 
+
 const formatMoney = (val: number) => val.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
 
 export function ReceiptPhantom({ data }: { data: ReceiptData }) {
     const { pagamentos, cliente, itens, isReprint } = data
-
-    // 1. Soma Total
     const valorTotalRecibo = pagamentos.reduce((acc, p) => acc + p.valor_pago, 0)
 
-    // 2. Checkboxes (VOLTAMOS O TOP PARA O ORIGINAL)
+    // Checkboxes
     const formas = pagamentos.map(p => p.forma_pagamento.toLowerCase())
     const checkPositions: Record<string, number> = {
-        'prestacao': 65,
-        'vista': 72,
-        'cheque': 79,
-        'dinheiro': 86,
-        'cartao': 93,
-        'pix': 100
+        'prestacao': 65, 'vista': 72, 'cheque': 79,
+        'dinheiro': 86, 'cartao': 93, 'pix': 100
     }
 
     const checksToMark: number[] = []
@@ -39,60 +37,78 @@ export function ReceiptPhantom({ data }: { data: ReceiptData }) {
     if (formas.some(f => f.includes('dinheiro'))) checksToMark.push(checkPositions['dinheiro'])
     if (formas.some(f => f.includes('cart'))) checksToMark.push(checkPositions['cartao'])
     if (formas.some(f => f.includes('pix'))) checksToMark.push(checkPositions['pix'])
-    
     if (checksToMark.length === 0) checksToMark.push(checkPositions['vista'])
 
-    // 3. Resumo e Data
     const resumoItens = itens.map(i => `${i.quantidade}x ${i.descricao}`).join(', ').substring(0, 80)
     const dataRef = new Date(pagamentos[0].created_at) 
     const obsTexto = `Ref. Pagamento(s) ${pagamentos.map(p => p.id).join(', ')} - ${resumoItens}`
 
+    // Função auxiliar de estilo
+    const getStyle = (topMm: number, leftMm: number, extraStyles: any = {}) => {
+        return {
+            position: 'absolute' as const,
+            top: `${topMm + AJUSTE_VERTICAL}mm`,
+            left: `${leftMm + AJUSTE_HORIZONTAL}mm`,
+            ...extraStyles
+        }
+    }
+
+    // Estilo Container Principal (Garante tamanho A4)
+    const containerStyle = {
+        position: 'relative' as const,
+        width: '297mm',
+        height: '210mm',
+        minWidth: '1100px', // Fallback em pixels para email
+        minHeight: '790px', // Fallback em pixels para email
+        color: 'black',
+        fontFamily: 'Arial, sans-serif',
+        fontSize: '14px',
+        fontWeight: 'bold',
+        overflow: 'hidden',
+        backgroundColor: 'white' // Garante fundo branco
+    }
+
     return (
-        <div className="relative w-[297mm] h-[210mm] bg-white text-black font-sans text-sm font-bold overflow-hidden">
+        <div style={containerStyle}>
             
-            {/* Marca d'água de Reimpressão */}
+            {/* Reimpressão */}
             {isReprint && (
-                <div className="absolute top-[10mm] right-[40mm] text-gray-400/40 text-2xl border-4 border-gray-400/40 p-2 rounded-lg uppercase -rotate-12 font-black z-0 pointer-events-none tracking-widest">
+                <div style={getStyle(10, 0, { 
+                    right: '40mm', left: 'auto',
+                    fontSize: '24px', color: '#ccc', border: '4px solid #ccc', 
+                    padding: '10px', transform: 'rotate(-12deg)'
+                })}>
                     REIMPRESSÃO
                 </div>
             )}
 
-            {/* 1. NOME (Top: 48mm | Left: 35+50 = 85mm) */}
-            <div className="absolute top-[48mm] left-[85mm] w-[120mm] truncate uppercase text-lg">
+            {/* 1. NOME */}
+            <div style={getStyle(48, 135, { fontSize: '18px', textTransform: 'uppercase' })}>
                 {cliente?.full_name}
             </div>
 
-            {/* 2. VALOR TOTAL (Top: 60mm | Left: 80+50 = 130mm) */}
-            <div className="absolute top-[60mm] left-[130mm] w-[40mm] text-right text-lg">
+            {/* 2. VALOR TOTAL */}
+            <div style={getStyle(60, 130, { width: '40mm', textAlign: 'right', fontSize: '18px' })}>
                 {formatMoney(valorTotalRecibo)}
             </div>
 
-            {/* 3. TOTAL REPETIDO (Top: 90mm | Left: 80+50 = 130mm) */}
-            <div className="absolute top-[90mm] left-[130mm] w-[40mm] text-right text-xl">
+            {/* 3. TOTAL REPETIDO */}
+            <div style={getStyle(90, 130, { width: '40mm', textAlign: 'right', fontSize: '20px' })}>
                 {formatMoney(valorTotalRecibo)}
             </div>
 
-            {/* 4. CHECKBOXES (Left: 142+50 = 192mm) */}
+            {/* 4. CHECKBOXES */}
             {checksToMark.map((topPos, idx) => (
-                <div 
-                    key={idx}
-                    className="absolute left-[192mm] text-lg font-black" 
-                    style={{ top: `${topPos}mm` }}
-                >
-                    X
-                </div>
+                <div key={idx} style={getStyle(topPos, 192, { fontSize: '18px', fontWeight: '900' })}>X</div>
             ))}
 
-            {/* 5. DATA (Top: 60mm | Left: +50mm em cada) */}
-            {/* Dia: 175 -> 225mm */}
-            <div className="absolute top-[60mm] left-[225mm]">{dataRef.getDate().toString().padStart(2, '0')}</div>
-            {/* Mês: 185 -> 235mm */}
-            <div className="absolute top-[60mm] left-[235mm]">{(dataRef.getMonth() + 1).toString().padStart(2, '0')}</div>
-            {/* Ano: 195 -> 245mm */}
-            <div className="absolute top-[60mm] left-[245mm]">{dataRef.getFullYear().toString().slice(-2)}</div>
+            {/* 5. DATA */}
+            <div style={getStyle(60, 225)}>{dataRef.getDate().toString().padStart(2, '0')}</div>
+            <div style={getStyle(60, 235)}>{(dataRef.getMonth() + 1).toString().padStart(2, '0')}</div>
+            <div style={getStyle(60, 245)}>{dataRef.getFullYear().toString().slice(-2)}</div>
 
-            {/* 6. OBS (Top: 68mm | Left: 160+50 = 210mm) */}
-            <div className="absolute top-[68mm] left-[210mm] w-[55mm] h-[20mm] text-[10px] leading-tight whitespace-normal break-words text-gray-800">
+            {/* 6. OBS */}
+            <div style={getStyle(68, 210, { width: '55mm', fontSize: '10px', lineHeight: '1.2' })}>
                 {obsTexto}
             </div>
 

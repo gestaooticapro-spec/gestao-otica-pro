@@ -321,6 +321,7 @@ export interface Database {
           faixa_etaria: string | null
           is_spc: boolean | null
           created_at: string
+          ranking: string
         }
         Insert: {
           id?: number
@@ -330,11 +331,13 @@ export interface Database {
           is_spc?: boolean | null
           tenant_id?: string
           [key: string]: any 
+          ranking?: string
         }
         Update: {
           id?: number
           full_name?: string
           [key: string]: any
+          ranking?: string
         }
       }
       

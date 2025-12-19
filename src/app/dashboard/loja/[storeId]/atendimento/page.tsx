@@ -18,7 +18,7 @@ import {
   Loader2, Search, X, PlusCircle, UserCircle, 
   History, ChevronDown, ChevronUp, Eye, Wallet, 
   AlertTriangle, CheckCircle2, User, Briefcase,
-  ShoppingCart, UserPlus 
+  ShoppingCart, UserPlus, Ban
 } from 'lucide-react'
 import { Database } from '@/lib/database.types'
 import QuickCustomerModal from '@/components/modals/QuickCustomerModal'
@@ -59,7 +59,7 @@ function HistoryCard({ data, customerObs }: { data: CustomerSaleHistory, custome
                              <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wide">{data.financeiro.forma_pagamento_resumo || 'Em Aberto'}</span>
                              {data.financeiro.tem_carne && (
                                 <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded mt-0.5 ${isQuitado ? 'text-green-600 bg-green-50' : isAtrasado ? 'text-red-600 bg-red-50' : 'text-amber-600 bg-amber-50'}`}>
-                                    {data.financeiro.status_geral}
+                                {data.financeiro.status_geral}
                                 </span>
                              )}
                         </div>
@@ -146,7 +146,7 @@ function HistoryCard({ data, customerObs }: { data: CustomerSaleHistory, custome
                              <p className="text-[10px] font-bold text-red-600 uppercase mb-2 flex items-center gap-1 tracking-wider">
                                 <AlertTriangle className="h-3 w-3" /> Observações do Cadastro
                              </p>
-                             <div className="bg-red-50 text-red-900 text-xs p-3 rounded-lg border border-red-100 font-medium">
+                            <div className="bg-red-50 text-red-900 text-xs p-3 rounded-lg border border-red-100 font-medium">
                                 {customerObs}
                              </div>
                         </div>
@@ -235,7 +235,8 @@ export default function AtendimentoPage() {
           full_name: newCustomer.full_name,
           cpf: newCustomer.cpf,
           fone_movel: newCustomer.fone_movel,
-          obs_debito: newCustomer.obs_debito
+          obs_debito: newCustomer.obs_debito,
+          tem_pendencia: false // Novo cliente não deve nada
       }
       handleSelectCustomer(simpleCustomer)
   }
@@ -246,6 +247,11 @@ export default function AtendimentoPage() {
         alert("Selecione o vendedor para continuar.")
         return
     }
+    // TRAVA DE SEGURANÇA OPCIONAL (Descomente se quiser IMPEDIR a venda)
+    // if (selectedCustomer.tem_pendencia) {
+    //    if(!confirm("Este cliente tem dívidas atrasadas. Deseja prosseguir mesmo assim?")) return;
+    // }
+
     startCreateTransition(async () => {
       const result = await createNewVenda(selectedCustomer.id, parseInt(selectedEmployeeId))
       if (result.success && result.data) {
@@ -303,7 +309,11 @@ export default function AtendimentoPage() {
                                     className="w-full text-left px-4 py-3 hover:bg-blue-50 border-b border-gray-50 last:border-0 flex justify-between items-center group transition-colors"
                                 >
                                     <div>
-                                        <p className="font-bold text-gray-800 text-sm group-hover:text-blue-700">{cust.full_name}</p>
+                                        <div className="flex items-center gap-2">
+                                           <p className="font-bold text-gray-800 text-sm group-hover:text-blue-700">{cust.full_name}</p>
+                                           {/* Ícone pequeno na lista de busca também */}
+                                           {cust.tem_pendencia && <span className="text-[10px] bg-red-100 text-red-600 px-1.5 rounded font-bold">DEVEDOR</span>}
+                                        </div>
                                         <p className="text-xs text-gray-500">CPF: {cust.cpf || 'N/A'}</p>
                                     </div>
                                     <PlusCircle className="h-5 w-5 text-gray-300 group-hover:text-blue-500" />
@@ -360,6 +370,8 @@ export default function AtendimentoPage() {
         <div className="flex-1 overflow-y-auto p-6">
             {selectedCustomer ? (
                 <div className="max-w-5xl mx-auto space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+                    
+                    {/* ===== CABEÇALHO DO CLIENTE ===== */}
                     <div className="flex justify-between items-end border-b border-gray-300 pb-2">
                         <div>
                             <h2 className="text-3xl font-black text-gray-800">{selectedCustomer.full_name}</h2>
@@ -372,6 +384,23 @@ export default function AtendimentoPage() {
                             </span>
                         )}
                     </div>
+                    
+                    {/* ===== NOVO: ALERTA DE DÍVIDA (AQUI) ===== */}
+                    {selectedCustomer.tem_pendencia && (
+                        <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg shadow-sm flex items-start gap-3 animate-pulse">
+                            <div className="p-2 bg-red-100 rounded-full text-red-600">
+                                <Ban className="h-6 w-6" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-red-700">Atenção: Cliente Inadimplente</h3>
+                                <p className="text-sm text-red-600 mt-1">
+                                    Este cliente possui parcelas vencidas no sistema. Verifique a situação financeira antes de prosseguir com uma nova venda a prazo.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                    {/* ========================================= */}
+
                     {loadingHistory ? (
                         <div className="flex flex-col items-center justify-center h-40 space-y-2 text-gray-400">
                             <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
@@ -388,7 +417,6 @@ export default function AtendimentoPage() {
                     ) : (
                         <div className="space-y-4">
                             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Últimas Vendas</h3>
-                            {/* ATUALIZAÇÃO 3: Passando o obs_debito para o card */}
                             {history.map((item) => (
                                 <HistoryCard key={item.venda_id} data={item} customerObs={selectedCustomer.obs_debito} />
                             ))}

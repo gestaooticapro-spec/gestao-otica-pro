@@ -96,7 +96,7 @@ function RecebimentoModal({
         setDadosParaEnviar({
             parcela_id: parcela.id,
             valor_original: valorOriginal,
-            valor_pago: valorPago,
+            valor_pago_total: valorPago,
             forma_pagamento: forma,
             data_pagamento: dataPagto,
             estrategia: isParcial ? estrategia : 'quitacao_total'
@@ -152,7 +152,7 @@ function RecebimentoModal({
                             </div>
                         </div>
                     )}
-                    <button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl shadow-md transition-transform active:scale-95">CONFIRMAR RECEBIMENTO</button>
+                    <button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl shadow-md transition-transform active:scale-95">XXX TESTE XXX</button>
                 </form>
                 {isAuthOpen && (<EmployeeAuthModal storeId={storeId} isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} onSuccess={handleAuthSuccess} title="Autorizar Baixa" description="Insira seu PIN." />)}
             </div>
@@ -291,16 +291,26 @@ export default function FinanciamentoBox({
     setIsConfigModalOpen(false);
   }
   
-  const handleConfirmRecebimento = (dados: any) => {
+  // Substitua a função handleConfirmRecebimento por esta versão com LOGS:
+
+const handleConfirmRecebimento = (dados: any) => {
       const formData = new FormData();
+      
+      // Adiciona os dados do formulário (agora com o nome correto 'valor_pago_total')
       Object.keys(dados).forEach(key => formData.append(key, dados[key]));
+      
+      // Adiciona apenas os IDs de contexto necessários
       formData.append('venda_id', vendaId.toString());
       formData.append('store_id', storeId.toString());
       
-      // Chamada direta para evitar complexidade
+      // Chamada ao Server Action
       receberParcela(null, formData).then(res => {
-          if (res.success) { setSelectedParcela(null); onFinanceAdded(); } 
-          else { alert(res.message); }
+          if (res.success) { 
+              setSelectedParcela(null); 
+              onFinanceAdded(); 
+          } else { 
+              alert(res.message); 
+          }
       });
   }
 

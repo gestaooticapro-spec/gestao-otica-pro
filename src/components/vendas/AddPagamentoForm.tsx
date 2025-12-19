@@ -37,16 +37,16 @@ const getToday = (): string => new Date().toISOString().split('T')[0]
 
 function SubmitFinalButton({ employeeName }: { employeeName: string | null }) {
     const { pending } = useFormStatus()
-   
+    
     return (
-     <button
+      <button
         type="submit"
         disabled={pending || !employeeName}
         className="flex items-center justify-center gap-2 w-full h-10 bg-white/20 hover:bg-white/30 text-white border border-white/40 rounded-xl shadow-sm backdrop-blur-sm transition-all font-bold uppercase tracking-wide text-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
         title={!employeeName ? "Autentique o vendedor" : `Registrar por: ${employeeName}`}
       >
-         {pending ? <Loader2 className="h-5 w-5 animate-spin" /> 
-         : <><CheckCircle2 className="h-5 w-5" /><span>CONFIRMAR</span></>}
+          {pending ? <Loader2 className="h-5 w-5 animate-spin" /> 
+          : <><CheckCircle2 className="h-5 w-5" /><span>CONFIRMAR</span></>}
       </button>
     )
 }
@@ -151,6 +151,12 @@ export default function AddPagamentoForm({
           <input type="hidden" name="venda_id" value={vendaId} />
           <input type="hidden" name="customer_id" value={customerId} />
           <input type="hidden" name="employee_id" value={authedEmployee?.id ?? ''} />
+          
+          {/* --- CORREÇÃO DE SEGURANÇA --- */}
+          {/* Se o pagamento não for parcelável (ex: PIX), o select abaixo fica disabled e não envia dados. */}
+          {/* Este input hidden garante que 'parcelas' seja enviado como 1 nesses casos, evitando erro de validação. */}
+          {!isParcelable && <input type="hidden" name="parcelas" value={parcelas} />}
+          {/* ----------------------------- */}
           
           <div className="grid grid-cols-2 gap-3">
             <div>

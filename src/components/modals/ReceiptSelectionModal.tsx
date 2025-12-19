@@ -1,9 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Printer, Calendar, DollarSign, CheckSquare, Square, AlertTriangle, Loader2 } from 'lucide-react'
+import { X, Printer, CheckSquare, Square, Loader2, Mail } from 'lucide-react'
 import { Database } from '@/lib/database.types'
 import { markPaymentsAsPrinted } from '@/lib/actions/vendas.actions'
+// Agora que você renomeou, o import vai funcionar:
+import { sendReceiptToHP } from '@/lib/actions/print-remote'
 
 type Pagamento = Database['public']['Tables']['pagamentos']['Row']
 
@@ -11,7 +13,7 @@ interface Props {
     isOpen: boolean
     onClose: () => void
     pagamentos: Pagamento[]
-    onReload: () => Promise<void> // <--- NOVO: Função para recarregar dados
+    onReload: () => Promise<void>
 }
 
 const formatMoney = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -20,6 +22,7 @@ const formatDate = (d: string) => new Date(d).toLocaleDateString('pt-BR')
 export default function ReceiptSelectionModal({ isOpen, onClose, pagamentos, onReload }: Props) {
     const [selectedIds, setSelectedIds] = useState<number[]>([])
     const [isProcessing, setIsProcessing] = useState(false)
+    const [statusMessage, setStatusMessage] = useState<string | null>(null)
 
     if (!isOpen) return null
 
@@ -35,35 +38,76 @@ export default function ReceiptSelectionModal({ isOpen, onClose, pagamentos, onR
         .filter(p => selectedIds.includes(p.id))
         .reduce((acc, p) => acc + p.valor_pago, 0)
 
-    const handlePrint = async () => {
-        if (selectedIds.length === 0) return
-
-        // Verifica Reimpressão (Olha para o dado atual da tela)
+    // Verifica se é reimpressão
+    const checkReprint = () => {
         const itensJaImpressos = pagamentos.filter(p => selectedIds.includes(p.id) && p.receipt_printed_at)
         let isReimpressao = false
-
         if (itensJaImpressos.length > 0) {
             const confirm = window.confirm(`Atenção: ${itensJaImpressos.length} pagamento(s) já possuem recibo.\n\nDeseja gerar uma 2ª VIA (Reimpressão)?`)
-            if (!confirm) return
+            if (!confirm) return null // Cancelou
             isReimpressao = true
         }
+        return isReimpressao
+    }
+
+    // --- OPÇÃO 1: IMPRIMIR NA TELA (VISUALIZAR) ---
+    const handlePrintScreen = async () => {
+        if (selectedIds.length === 0) return
+        const isReimpressao = checkReprint()
+        if (isReimpressao === null) return // Usuário cancelou
 
         setIsProcessing(true)
+        setStatusMessage('Gerando visualização...')
 
-        // 1. Marca como impresso no banco
+        // 1. Marca como impresso
         await markPaymentsAsPrinted(selectedIds)
-
-        // 2. Recarrega os dados da tela (Para que na próxima vez já apareça como impresso)
         await onReload()
 
         setIsProcessing(false)
+        setStatusMessage(null)
 
-        // 3. Gera a URL e abre a impressão
+        // 2. Abre a tela
         const idsParam = selectedIds.join('-')
         const url = `/print/recibo/${idsParam}?reprint=${isReimpressao ? 'true' : 'false'}`
-        
         window.open(url, '_blank')
+        
         onClose()
+    }
+
+    // --- OPÇÃO 2: ENVIAR PARA IMPRESSORA HP (EMAIL) ---
+    const handlePrintHP = async () => {
+        if (selectedIds.length === 0) return
+        const isReimpressao = checkReprint()
+        if (isReimpressao === null) return
+
+        setIsProcessing(true)
+        setStatusMessage('Enviando para Impressora HP...')
+
+        try {
+            // 1. Envia o email (Server Action)
+            const resultado = await sendReceiptToHP(selectedIds, isReimpressao)
+
+            if (!resultado.success) {
+                alert('Erro ao enviar: ' + resultado.error)
+                setIsProcessing(false)
+                setStatusMessage(null)
+                return
+            }
+
+            // 2. Se deu certo, marca como impresso
+            await markPaymentsAsPrinted(selectedIds)
+            await onReload()
+            
+            alert('✅ Enviado com sucesso para a impressora HP!')
+            onClose()
+
+        } catch (err) {
+            console.error(err)
+            alert('Erro inesperado ao conectar com a impressora.')
+        } finally {
+            setIsProcessing(false)
+            setStatusMessage(null)
+        }
     }
 
     return (
@@ -71,13 +115,13 @@ export default function ReceiptSelectionModal({ isOpen, onClose, pagamentos, onR
             <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
                 <div className="bg-slate-800 px-6 py-4 flex justify-between items-center text-white shrink-0">
                     <h3 className="font-bold flex items-center gap-2">
-                        <Printer className="h-5 w-5" /> Gerar Recibo Unificado
+                        <Printer className="h-5 w-5" /> Gerar Recibo
                     </h3>
                     <button onClick={onClose} disabled={isProcessing}><X className="h-5 w-5"/></button>
                 </div>
                 
                 <div className="p-6 overflow-y-auto bg-slate-50">
-                    <p className="text-sm text-slate-500 mb-4 font-medium">Selecione os pagamentos para somar no recibo:</p>
+                    <p className="text-sm text-slate-500 mb-4 font-medium">Selecione os pagamentos:</p>
                     
                     <div className="space-y-2">
                         {pagamentos.length === 0 ? (
@@ -114,7 +158,7 @@ export default function ReceiptSelectionModal({ isOpen, onClose, pagamentos, onR
                                         </div>
                                         
                                         {isPrinted && (
-                                            <div className="flex items-center gap-1 text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100" title="Já impresso">
+                                            <div className="flex items-center gap-1 text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100">
                                                 <Printer className="h-3 w-3" /> 2ª VIA
                                             </div>
                                         )}
@@ -125,20 +169,41 @@ export default function ReceiptSelectionModal({ isOpen, onClose, pagamentos, onR
                     </div>
                 </div>
 
-                {/* Rodapé com Total e Ação */}
-                <div className="p-4 bg-white border-t border-slate-200 shrink-0">
-                    <div className="flex justify-between items-center mb-3">
-                        <span className="text-xs font-bold text-slate-400 uppercase">Total do Recibo</span>
+                {/* Rodapé com Total e Botões */}
+                <div className="p-4 bg-white border-t border-slate-200 shrink-0 space-y-3">
+                    <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-slate-400 uppercase">Total Selecionado</span>
                         <span className="text-2xl font-black text-slate-800">{formatMoney(totalSelecionado)}</span>
                     </div>
-                    <button 
-                        onClick={handlePrint}
-                        disabled={selectedIds.length === 0 || isProcessing}
-                        className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-xl font-bold shadow-md transition-all flex justify-center items-center gap-2"
-                    >
-                        {isProcessing ? <Loader2 className="h-5 w-5 animate-spin"/> : <Printer className="h-5 w-5" />}
-                        {isProcessing ? 'PROCESSANDO...' : `IMPRIMIR (${selectedIds.length})`}
-                    </button>
+
+                    {statusMessage && (
+                        <div className="text-center text-xs font-bold text-blue-600 animate-pulse bg-blue-50 p-2 rounded">
+                            {statusMessage}
+                        </div>
+                    )}
+
+                    <div className="flex gap-3">
+                        {/* Botão HP */}
+                        <button 
+                            onClick={handlePrintHP}
+                            disabled={selectedIds.length === 0 || isProcessing}
+                            className="flex-1 py-3 bg-slate-800 hover:bg-slate-900 disabled:bg-slate-300 text-white rounded-xl font-bold shadow-md transition-all flex justify-center items-center gap-2"
+                            title="Enviar por e-mail para impressora HP"
+                        >
+                            {isProcessing ? <Loader2 className="h-5 w-5 animate-spin"/> : <Mail className="h-5 w-5" />}
+                            <span className="text-sm">ENVIAR HP</span>
+                        </button>
+
+                        {/* Botão Tela */}
+                        <button 
+                            onClick={handlePrintScreen}
+                            disabled={selectedIds.length === 0 || isProcessing}
+                            className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-xl font-bold shadow-md transition-all flex justify-center items-center gap-2"
+                        >
+                            {isProcessing ? <Loader2 className="h-5 w-5 animate-spin"/> : <Printer className="h-5 w-5" />}
+                            <span className="text-sm">VISUALIZAR</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

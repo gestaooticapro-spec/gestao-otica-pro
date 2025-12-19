@@ -3,8 +3,8 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect, notFound } from 'next/navigation';
 import SideNav from '@/components/SideNav';
-import { getProfileByAdmin } from '@/lib/supabase/admin'; 
-import { createAdminClient } from '@/lib/supabase/admin'; 
+import { getProfileByAdmin } from '@/lib/supabase/admin';
+import { createAdminClient } from '@/lib/supabase/admin';
 import CashGuard from '@/components/financeiro/CashGuard'; // <--- 1. Importação do Guardião
 
 type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor' | 'tecnico';
@@ -25,12 +25,12 @@ export default async function StoreLayout({
   if (!user) return redirect('/login');
 
   // Busca perfil usando admin client para garantir leitura correta
-  const profile = await getProfileByAdmin(user.id) as any; 
+  const profile = await getProfileByAdmin(user.id) as any;
 
   if (!profile || !profile.role) {
-      return redirect('/login?error=profile_incomplete');
+    return redirect('/login?error=profile_incomplete');
   }
-  
+
   const { store_id, role } = profile;
   const userRole = role as Role;
 
@@ -48,26 +48,26 @@ export default async function StoreLayout({
     .select('name')
     .eq('id', storeIdParam)
     .single();
-    
+
   const storeName = storeData?.name || 'Ótica';
 
   return (
-    <div className="flex w-full h-screen overflow-hidden"> 
-      
+    <div className="flex w-full h-screen max-h-screen overflow-hidden bg-gray-100">
+
       {/* 2. O GUARDIÃO DO CAIXA */}
       {/* Ele roda em segundo plano verificando se o caixa está aberto.
           Se estiver fechado, ele bloqueia a tela (com opção de pular). */}
       <CashGuard storeId={storeIdParam} />
 
-      <div className="flex-shrink-0 relative z-40">
-          <SideNav 
-            userRole={userRole} 
-            storeId={storeIdParam} 
-            storeName={storeName} 
-          />
+      <div className="flex-shrink-0 h-full">
+        <SideNav
+          userRole={userRole}
+          storeId={storeIdParam}
+          storeName={storeName}
+        />
       </div>
 
-      <main className="flex-1 overflow-hidden bg-gray-100 relative">
+      <main className="flex-1 overflow-hidden bg-gray-100">
         {children}
       </main>
     </div>

@@ -7,7 +7,7 @@ import {
   Loader2, Save, Trash2, Search, X,
   ArrowLeftToLine, ArrowRightToLine, ChevronLeft, ChevronRight, 
   User, ClipboardList, ScrollText, Users2, UserPlus, Calendar, Pencil, 
-  AlertTriangle, CheckCircle2, Briefcase
+  AlertTriangle, CheckCircle2, Briefcase, Trophy, Gem, Medal
 } from 'lucide-react';
 import { Database } from '@/lib/database.types';
 import { saveCustomerDetails, deleteCustomer } from '@/lib/actions/customer.actions';
@@ -49,6 +49,30 @@ const labelStyle = "block text-[9px] font-bold text-slate-700 uppercase mb-0.5 t
 const inputStyle = "block w-full rounded-md border border-slate-300 bg-white shadow-sm text-slate-900 h-8 text-xs px-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-bold placeholder:font-normal placeholder:text-slate-400 disabled:bg-slate-100 disabled:text-slate-500 transition-all";
 // Card branco
 const cardStyle = "bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-3";
+
+// Função auxiliar para desenhar o selo
+const getRankingBadge = (ranking: string | null) => {
+    if (!ranking) return null;
+    const r = ranking.toLowerCase();
+    
+    if (r === 'diamante') return (
+        <span className="inline-flex items-center gap-1 text-[9px] bg-cyan-50 text-cyan-700 px-1.5 py-0.5 rounded border border-cyan-100 font-bold ml-2">
+            <Gem className="h-3 w-3" /> Diamante
+        </span>
+    );
+    if (r === 'ouro') return (
+        <span className="inline-flex items-center gap-1 text-[9px] bg-yellow-50 text-yellow-700 px-1.5 py-0.5 rounded border border-yellow-100 font-bold ml-2">
+            <Trophy className="h-3 w-3" /> Ouro
+        </span>
+    );
+    if (r === 'prata') return (
+        <span className="inline-flex items-center gap-1 text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200 font-bold ml-2">
+            <Medal className="h-3 w-3" /> Prata
+        </span>
+    );
+    // Bronze não precisa de selo para não poluir
+    return null; 
+};
 
 export default function StoreClientPage() {
   const params = useParams();
@@ -366,6 +390,7 @@ export default function StoreClientPage() {
                                 <p className={`font-bold text-xs truncate ${currentIndex === idx ? 'text-blue-700' : 'text-slate-700'}`}>
                                     {c.full_name}
                                 </p>
+                                {getRankingBadge(c.ranking)}
                                 <p className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
                                     {c.cpf ? `CPF: ${c.cpf}` : 'Sem CPF'} 
                                     {c.obs_debito && <AlertTriangle className="h-3 w-3 text-red-500 ml-1" />}

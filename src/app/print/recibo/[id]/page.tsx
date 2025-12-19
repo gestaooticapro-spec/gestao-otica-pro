@@ -15,7 +15,6 @@ export default async function PrintReciboPage({ params, searchParams }: { params
     const supabase = createAdminClient()
 
     // 1. Busca OS Pagamentos
-    // CORREÇÃO: Cast 'as any' para garantir o select
     const { data: pagamentos } = await (supabase
         .from('pagamentos') as any)
         .select('*')
@@ -23,11 +22,9 @@ export default async function PrintReciboPage({ params, searchParams }: { params
 
     if (!pagamentos || pagamentos.length === 0) return <div className="p-10">Pagamentos não encontrados.</div>
 
-    // Como pagamentos é 'any' no retorno do supabase acima (se não tipado estritamente), garantimos acesso seguro
     const vendaId = pagamentos[0].venda_id
 
     // 2. Busca a Venda e Cliente
-    // CORREÇÃO: Cast 'as any' para permitir os joins (customers, venda_itens)
     const { data: vendaRaw } = await (supabase
         .from('vendas') as any)
         .select('*, customers(*), venda_itens(*)')
@@ -36,7 +33,6 @@ export default async function PrintReciboPage({ params, searchParams }: { params
 
     if (!vendaRaw) return <div className="p-10">Venda original não encontrada.</div>
 
-    // CORREÇÃO: Tratamos vendaRaw como any para acessar .customers e .venda_itens sem erro
     const venda = vendaRaw as any
 
     const receiptData = {
@@ -48,12 +44,19 @@ export default async function PrintReciboPage({ params, searchParams }: { params
     }
 
     return (
-        <div className="w-full h-screen flex items-start justify-center pt-4 print:pt-0">
+        // REMOVI O padding-top (pt-4) para garantir alinhamento tela/impressão
+        <div className="w-full h-screen flex items-start justify-center m-0 p-0">
             <style>{`
-                @page { size: A4 landscape; margin: 0; }
-                body { margin: 0; }
+                @page { 
+                    size: A4 landscape; 
+                    margin: 0mm; /* FORÇA MARGEM ZERO NA IMPRESSORA */
+                }
+                body { 
+                    margin: 0px; 
+                    padding: 0px;
+                }
             `}</style>
-            {/* O 'as any' aqui garante que o componente aceite o objeto montado manualmente */}
+            
             <ReceiptPhantom data={receiptData as any} />
         </div>
     )
