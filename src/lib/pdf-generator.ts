@@ -30,20 +30,19 @@ const VALOR_NUMERICO_Y = 66
 const VALOR_EXTENSO_X = 185
 const VALOR_EXTENSO_Y = 90
 
-// Observações (Onde vão os itens)
-const OBS_X = 144 // Ajustei para 144 (mesmo alinhamento do Nome) para caber mais texto
+// Observações (Onde vão os itens da venda)
+const OBS_X = 144 
 const OBS_Y = 72
-const LARGURA_MAXIMA_OBS = 100 // Largura para quebrar linha se o texto for longo
+const LARGURA_MAXIMA_OBS = 100 
 
 // 2. O Checkbox "Fixo" (O que já existia e não podia mexer)
 const CHECK_FIXO_X = 208
 const CHECK_FIXO_Y = 71
-// (Se esse check for condicional, me avise. Por enquanto vou deixar fixo ou vinculado a algo)
 
 // 3. Formas de Pagamento (4 Checks: Cheque, Dinheiro, Cartão, PIX)
 const PAGAMENTO_COLUNA_X = 208 
 
-// Alturas baseadas no seu feedback (PIX antigo caiu no Cheque -> Cheque é ~81)
+// Alturas (PIX antigo caiu no Cheque -> Cheque é ~81)
 const Y_CHEQUE = 81      
 const Y_DINHEIRO = 86    
 const Y_CARTAO = 91      
@@ -61,7 +60,7 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
   data.pagamentos.forEach((pagamento, index) => {
     if (index > 0) doc.addPage()
 
-    // Fonte aumentada e mais legível
+    // Fonte aumentada e mais legível (Arial/Helvetica Bold)
     doc.setFont('helvetica', 'bold') 
     doc.setFontSize(12) 
 
@@ -77,19 +76,18 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
     const valorFormatado = pagamento.valor_pago.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
     doc.text(valorFormatado, VALOR_NUMERICO_X, VALOR_NUMERICO_Y)
 
-    // 4. EXTENSO (Opcional, repetindo valor limpo)
+    // 4. EXTENSO (Repetindo valor limpo)
     doc.setFontSize(11)
     doc.text(`${valorFormatado}`, VALOR_EXTENSO_X, VALOR_EXTENSO_Y)
     doc.setFontSize(12)
 
     // 5. OBSERVAÇÕES (LISTA DE ITENS DA VENDA)
-    // Monta texto: "1x Armação Rayban, 2x Lente Multifocal..."
     let textoItens = ''
     if (data.itens && data.itens.length > 0) {
         const lista = data.itens.map(item => {
-            // Tenta pegar nome do produto ou tipo
-            const nome = item.produto_id ? `Prod #${item.produto_id}` : (item.tipo || 'Item')
-            // Se tiver descrição na tabela (depende do seu banco), usaria item.descricao
+            // CORREÇÃO AQUI: Usando os nomes corretos do banco (product_id, item_tipo, descricao)
+            // Prioridade: Descrição > Tipo > ID
+            const nome = item.descricao || (item.item_tipo || `Prod #${item.product_id}`)
             return `${item.quantidade || 1}x ${nome}`
         })
         textoItens = lista.join(', ')
@@ -97,16 +95,15 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
         textoItens = `Ref. Venda #${pagamento.venda_id}`
     }
     
-    // Adiciona "Venda #123" no final se couber
+    // Adiciona ID da venda
     textoItens += ` (Venda #${pagamento.venda_id})`
 
-    // Imprime com quebra de linha automática se for muito grande
-    doc.setFontSize(10) // Diminui um pouco pra caber a lista
+    // Imprime com quebra de linha automática
+    doc.setFontSize(10)
     doc.text(textoItens, OBS_X, OBS_Y, { maxWidth: LARGURA_MAXIMA_OBS })
     doc.setFontSize(12)
 
-    // 6. CHECKBOX FIXO (O "que já existia")
-    // Vou desenhar um X nele sempre. Se ele só deve aparecer em algum caso, me avise.
+    // 6. CHECKBOX FIXO
     doc.text('X', CHECK_FIXO_X, CHECK_FIXO_Y)
 
     // 7. FORMA DE PAGAMENTO
