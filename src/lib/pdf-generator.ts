@@ -21,6 +21,7 @@ interface ReceiptData {
 const NOME_X = 144
 const NOME_Y = 56
 
+// DATA (Referência base, os dias/mês/ano são calculados relativos a este X)
 const DATA_X = 246
 const DATA_Y = 65
 
@@ -30,19 +31,20 @@ const VALOR_NUMERICO_Y = 66
 const VALOR_EXTENSO_X = 185
 const VALOR_EXTENSO_Y = 90
 
-// Observações (Onde vão os itens da venda)
-const OBS_X = 144 
-const OBS_Y = 72
-const LARGURA_MAXIMA_OBS = 100 
+// Observações
+const OBS_X = 239
+const OBS_Y = 73
+const OBS_LARGURA_MAXIMA = 45 
 
-// 2. O Checkbox "Fixo" (O que já existia e não podia mexer)
+// 2. Segurança (Reimpressão)
+const REIMPRESSAO_X = 144
+const REIMPRESSAO_Y = 50 
+
+// 3. Checkboxes
 const CHECK_FIXO_X = 208
 const CHECK_FIXO_Y = 71
 
-// 3. Formas de Pagamento (4 Checks: Cheque, Dinheiro, Cartão, PIX)
 const PAGAMENTO_COLUNA_X = 208 
-
-// Alturas (PIX antigo caiu no Cheque -> Cheque é ~81)
 const Y_CHEQUE = 81      
 const Y_DINHEIRO = 86    
 const Y_CARTAO = 91      
@@ -60,47 +62,50 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
   data.pagamentos.forEach((pagamento, index) => {
     if (index > 0) doc.addPage()
 
-    // Fonte aumentada e mais legível (Arial/Helvetica Bold)
-    doc.setFont('helvetica', 'bold') 
+    // Fonte Courier, Negrito, Tamanho 12
+    doc.setFont('courier', 'bold') 
     doc.setFontSize(12) 
+
+    // --- LÓGICA DE REIMPRESSÃO (Corrigido para receipt_printed_at) ---
+    if (pagamento.receipt_printed_at) {
+        doc.text('*** REIMPRESSÃO (2ª VIA) ***', REIMPRESSAO_X, REIMPRESSAO_Y)
+    }
 
     // 1. NOME
     const nomeCliente = data.cliente?.full_name || 'Consumidor Final'
     doc.text(nomeCliente.toUpperCase(), NOME_X, NOME_Y)
 
-    // 2. DATA
-    const dataFormatada = new Date(pagamento.created_at).toLocaleDateString('pt-BR')
-    doc.text(dataFormatada, DATA_X, DATA_Y)
+    // 2. DATA (DESMEMBRADA)
+    const dateObj = new Date(pagamento.created_at)
+    const dia = String(dateObj.getDate()).padStart(2, '0') // Ex: "20"
+    const mes = String(dateObj.getMonth() + 1).padStart(2, '0') // Ex: "12"
+    const ano = String(dateObj.getFullYear()) // Ex: "2025"
 
-    // 3. VALOR (Sem os **)
+    // Cálculos de posição baseados no seu pedido:
+    const diaX = DATA_X + 4
+    const mesX = diaX + 10
+    const anoX = mesX + 8
+
+    doc.text(dia, diaX, DATA_Y)
+    doc.text(mes, mesX, DATA_Y)
+    doc.text(ano, anoX, DATA_Y)
+
+    // 3. VALOR
     const valorFormatado = pagamento.valor_pago.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
     doc.text(valorFormatado, VALOR_NUMERICO_X, VALOR_NUMERICO_Y)
 
-    // 4. EXTENSO (Repetindo valor limpo)
-    doc.setFontSize(11)
+    // 4. EXTENSO
+    doc.setFontSize(11) 
     doc.text(`${valorFormatado}`, VALOR_EXTENSO_X, VALOR_EXTENSO_Y)
-    doc.setFontSize(12)
+    doc.setFontSize(12) 
 
-    // 5. OBSERVAÇÕES (LISTA DE ITENS DA VENDA)
-    let textoItens = ''
-    if (data.itens && data.itens.length > 0) {
-        const lista = data.itens.map(item => {
-            // CORREÇÃO AQUI: Usando os nomes corretos do banco (product_id, item_tipo, descricao)
-            // Prioridade: Descrição > Tipo > ID
-            const nome = item.descricao || (item.item_tipo || `Prod #${item.product_id}`)
-            return `${item.quantidade || 1}x ${nome}`
-        })
-        textoItens = lista.join(', ')
-    } else {
-        textoItens = `Ref. Venda #${pagamento.venda_id}`
-    }
-    
-    // Adiciona ID da venda
-    textoItens += ` (Venda #${pagamento.venda_id})`
-
-    // Imprime com quebra de linha automática
-    doc.setFontSize(10)
-    doc.text(textoItens, OBS_X, OBS_Y, { maxWidth: LARGURA_MAXIMA_OBS })
+    // 5. OBSERVAÇÕES
+    const textoObs = `Ref. Pgto Venda #${pagamento.venda_id}`
+    doc.setFontSize(10) 
+    doc.text(textoObs, OBS_X, OBS_Y, { 
+        maxWidth: OBS_LARGURA_MAXIMA, 
+        align: 'left'
+    })
     doc.setFontSize(12)
 
     // 6. CHECKBOX FIXO
