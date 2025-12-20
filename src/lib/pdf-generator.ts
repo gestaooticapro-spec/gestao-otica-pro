@@ -1,4 +1,4 @@
-import { jsPDF } from 'jspdf'
+import jsPDF from 'jspdf'
 import { Database } from '@/lib/database.types'
 
 type Pagamento = Database['public']['Tables']['pagamentos']['Row']
@@ -7,131 +7,111 @@ type Cliente = Database['public']['Tables']['customers']['Row']
 type Item = Database['public']['Tables']['venda_itens']['Row']
 
 interface ReceiptData {
-    pagamentos: Pagamento[]
-    venda: Venda
-    cliente: Cliente | null
-    itens: Item[]
-    isReprint?: boolean
+  pagamentos: Pagamento[]
+  venda: Venda
+  cliente: Cliente | null
+  itens: Item[]
 }
 
-// ============================================================================
-// 🎛️ COORDENADAS CALIBRADAS (Valores em Milímetros - mm)
-// Atualizado via Calibrador Visual
-// ============================================================================
+// ==========================================
+// 🎯 CONFIGURAÇÃO DAS COORDENADAS (Milímetros)
+// ==========================================
 
-// 1. NOME DO CLIENTE
-const NOME_X = 154
+// 1. Campos de Texto
+const NOME_X = 144
 const NOME_Y = 56
 
-// 2. VALORES (Total e Repetição)
-const VALOR_1_X = 172
-const VALOR_1_Y = 67
+const DATA_X = 246
+const DATA_Y = 65
 
-const VALOR_2_X = 172
-const VALOR_2_Y = 92
+const VALOR_NUMERICO_X = 185
+const VALOR_NUMERICO_Y = 66
 
-// 3. DATA
-// DATA_X define onde começa o dia. Mês e Ano são calculados automaticamente (+10mm e +20mm)
-const DATA_X = 245 
-const DATA_Y = 66
+const VALOR_EXTENSO_X = 185
+const VALOR_EXTENSO_Y = 90
 
-// 4. OBSERVAÇÃO (Lista de itens)
 const OBS_X = 239
 const OBS_Y = 72
-const LARGURA_COLUNA_OBS = 50 // Largura do texto antes de quebrar linha
 
-// 5. CHECKBOXES ("X")
-const CHECK_X = 212
-// CHECK_START_Y define a altura da PRIMEIRA opção (Prestação/Crédito)
-// As outras opções serão desenhadas 7mm abaixo sequencialmente
-const CHECK_START_Y = 71 
+// 2. Formas de Pagamento (Checkbox 'X')
+// A coluna é a mesma para todos (seu CHECK_X)
+const CHECKBOX_COLUNA_X = 208 
 
-// ============================================================================
+// As alturas (Y). Ajuste esses números se o X cair na linha errada.
+// Ordem descrita: Cheque (Topo) -> Dinheiro -> Cartão -> PIX (Baixo)
+const Y_CHEQUE = 66      // Um pouco acima do 71
+const Y_DINHEIRO = 71    // Seu CHECK_Y original
+const Y_CARTAO = 76      // 5mm abaixo
+const Y_PIX = 81         // 10mm abaixo
+
+// ==========================================
 
 export async function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
-    const doc = new jsPDF({
-        orientation: 'landscape',
-        unit: 'mm',
-        format: 'a4'
-    })
+  // Cria o PDF no formato paisagem (landscape) para caber no formulário
+  // A4 Landscape tem aprox 297mm de largura
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'a4' 
+  })
 
-    const { pagamentos, cliente, itens, isReprint } = data
-    const valorTotalRecibo = pagamentos.reduce((acc, p) => acc + p.valor_pago, 0)
-    const valorFormatado = valorTotalRecibo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+  // Loop por cada pagamento selecionado (gera uma página por recibo)
+  data.pagamentos.forEach((pagamento, index) => {
+    if (index > 0) doc.addPage() // Adiciona nova página se tiver mais de um recibo
 
-    doc.setFont('helvetica', 'bold') // Fonte Negrito global
+    // Configuração de Fonte (Padrão maquina de escrever ou simples)
+    doc.setFont('courier', 'bold') // Courier ajuda a alinhar números
+    doc.setFontSize(11) // Tamanho da letra (aumente ou diminua se precisar)
 
-    // --- 1. NOME ---
-    doc.setFontSize(16)
-    doc.text((cliente?.full_name || '').toUpperCase(), NOME_X, NOME_Y)
+    // 1. NOME DO CLIENTE
+    const nomeCliente = data.cliente?.full_name || 'Consumidor Final'
+    doc.text(nomeCliente.toUpperCase(), NOME_X, NOME_Y)
 
-    // --- 2. VALOR TOTAL (1ª Posição) ---
-    doc.setFontSize(16)
-    // align: 'right' faz o texto terminar no X, crescendo para a esquerda
-    doc.text(valorFormatado, VALOR_1_X, VALOR_1_Y, { align: 'right' })
+    // 2. DATA
+    const dataFormatada = new Date(pagamento.created_at).toLocaleDateString('pt-BR')
+    doc.text(dataFormatada, DATA_X, DATA_Y)
 
-    // --- 3. VALOR TOTAL (2ª Posição) ---
-    doc.setFontSize(18)
-    doc.text(valorFormatado, VALOR_2_X, VALOR_2_Y, { align: 'right' })
+    // 3. VALOR (R$ 100,00)
+    const valorFormatado = pagamento.valor_pago.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+    doc.text(valorFormatado, VALOR_NUMERICO_X, VALOR_NUMERICO_Y)
 
-    // --- 4. DATA (Dia / Mês / Ano) ---
-    const dataRef = new Date(pagamentos[0].created_at)
-    const dia = dataRef.getDate().toString().padStart(2, '0')
-    const mes = (dataRef.getMonth() + 1).toString().padStart(2, '0')
-    const ano = dataRef.getFullYear().toString().slice(-2) // Apenas 2 dígitos (ex: 24)
-
-    doc.setFontSize(14)
-    // Usa DATA_X como base e soma offsets para os próximos campos
-    doc.text(dia, DATA_X, DATA_Y)
-    doc.text(mes, DATA_X + 10, DATA_Y) 
-    doc.text(ano, DATA_X + 20, DATA_Y)
-
-    // --- 5. OBSERVAÇÃO (Itens) ---
-    const resumoItens = itens.map(i => `${i.quantidade}x ${i.descricao}`).join(', ').substring(0, 150)
-    const obsTexto = `Ref. Pagamento(s) ${pagamentos.map(p => p.id).join(', ')} - ${resumoItens}`
-    
+    // 4. VALOR POR EXTENSO (Opcional, repetindo o valor ou texto personalizado)
+    // Se quiser converter numero pra extenso real, precisaria de uma lib extra.
+    // Por enquanto, vamos repetir o valor formatado ou deixar em branco se preferir.
     doc.setFontSize(10)
-    const linhasObs = doc.splitTextToSize(obsTexto, LARGURA_COLUNA_OBS) 
-    doc.text(linhasObs, OBS_X, OBS_Y)
+    doc.text(`*** ${valorFormatado} ***`, VALOR_EXTENSO_X, VALOR_EXTENSO_Y)
+    doc.setFontSize(11)
 
-    // --- 6. CHECKBOXES (X) ---
-    const formas = pagamentos.map(p => p.forma_pagamento.toLowerCase())
+    // 5. OBSERVAÇÕES (Usamos para colocar o ID da venda ou obs do pagamento)
+    const obsTexto = `Ref. Venda #${pagamento.venda_id}`
+    doc.text(obsTexto, OBS_X, OBS_Y)
+
+    // 6. MARCAÇÃO DO X NA FORMA DE PAGAMENTO
+    // Normalizamos o texto para garantir que "Dinheiro" ou "dinheiro" funcionem
+    const forma = pagamento.forma_pagamento.toLowerCase().trim()
     
-    // Calcula posições verticais baseadas no CHECK_START_Y (71)
-    // Incremento de 7mm entre cada opção
-    const checkPositions: Record<string, number> = {
-        'prestacao': CHECK_START_Y,          // 71
-        'vista':     CHECK_START_Y + 7,      // 78
-        'cheque':    CHECK_START_Y + 14,     // 85
-        'dinheiro':  CHECK_START_Y + 21,     // 92
-        'cartao':    CHECK_START_Y + 28,     // 99
-        'pix':       CHECK_START_Y + 35      // 106
+    let yParaMarcar = 0
+
+    if (forma.includes('cheque')) {
+        yParaMarcar = Y_CHEQUE
+    } else if (forma.includes('dinheiro')) {
+        yParaMarcar = Y_DINHEIRO
+    } else if (forma.includes('crédito') || forma.includes('debito') || forma.includes('cartão') || forma.includes('cartao')) {
+        yParaMarcar = Y_CARTAO
+    } else if (forma.includes('pix')) {
+        yParaMarcar = Y_PIX
+    } else {
+        // Se for "Outros" ou crediário, marcamos no Dinheiro ou deixamos sem marcar?
+        // Vou deixar sem marcar para não errar.
     }
 
-    const checksToMark: number[] = []
-    
-    // Lógica para identificar qual marcar
-    if (formas.some(f => f.includes('crédito') || f.includes('carnê'))) checksToMark.push(checkPositions['prestacao'])
-    if (formas.some(f => f.includes('vista'))) checksToMark.push(checkPositions['vista'])
-    if (formas.some(f => f.includes('cheque'))) checksToMark.push(checkPositions['cheque'])
-    if (formas.some(f => f.includes('dinheiro'))) checksToMark.push(checkPositions['dinheiro'])
-    if (formas.some(f => f.includes('cart'))) checksToMark.push(checkPositions['cartao'])
-    if (formas.some(f => f.includes('pix'))) checksToMark.push(checkPositions['pix'])
-    
-    // Fallback: Se não achou nenhum, marca "Vista"
-    if (checksToMark.length === 0) checksToMark.push(checkPositions['vista'])
-
-    doc.setFontSize(16)
-    checksToMark.forEach(yPos => {
-        doc.text('X', CHECK_X, yPos) 
-    })
-
-    // --- 7. MARCA D'ÁGUA (REIMPRESSÃO) ---
-    if (isReprint) {
-        doc.setTextColor(220, 220, 220)
-        doc.setFontSize(30)
-        doc.text('REIMPRESSÃO', 250, 20, { angle: -15, align: 'center' })
+    // Se encontrou uma posição, desenha o X
+    if (yParaMarcar > 0) {
+        doc.text('X', CHECKBOX_COLUNA_X, yParaMarcar)
     }
 
-    return Buffer.from(doc.output('arraybuffer'))
+  })
+
+  // Retorna o arquivo gerado
+  return Buffer.from(doc.output('arraybuffer'))
 }
