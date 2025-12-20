@@ -15,39 +15,37 @@ interface ReceiptData {
 }
 
 // ============================================================================
-// 🎛️ PAINEL DE CONTROLE DE POSIÇÃO (Tudo em Milímetros - mm)
+// 🎛️ COORDENADAS CALIBRADAS (Valores em Milímetros - mm)
+// Atualizado via Calibrador Visual
 // ============================================================================
 
 // 1. NOME DO CLIENTE
-// Subi 5mm (era 48) e ajustei o X para evitar cortes
-const NOME_X = 135 
-const NOME_Y = 43  
+const NOME_X = 154
+const NOME_Y = 56
 
 // 2. VALORES (Total e Repetição)
-// Subi 5mm (era 60 e 90)
-// Nota: Como é alinhado à direita, o X define onde o texto TERMINA
-const VALOR_1_X = 170
-const VALOR_1_Y = 55 
+const VALOR_1_X = 172
+const VALOR_1_Y = 67
 
-const VALOR_2_X = 170
-const VALOR_2_Y = 85
+const VALOR_2_X = 172
+const VALOR_2_Y = 92
 
-// 3. DATA (Dia / Mês / Ano)
-// Avancei 10mm para direita (era 225, 235, 245)
-const DATA_Y = 60
-const DIA_X  = 235
-const MES_X  = 245
-const ANO_X  = 255
+// 3. DATA
+// DATA_X define onde começa o dia. Mês e Ano são calculados automaticamente (+10mm e +20mm)
+const DATA_X = 245 
+const DATA_Y = 66
 
 // 4. OBSERVAÇÃO (Lista de itens)
-// Avancei 10mm para direita (era 210)
-const OBS_X = 220
-const OBS_Y = 68
-const LARGURA_COLUNA_OBS = 55 // Largura máxima do texto antes de quebrar linha
+const OBS_X = 239
+const OBS_Y = 72
+const LARGURA_COLUNA_OBS = 50 // Largura do texto antes de quebrar linha
 
 // 5. CHECKBOXES ("X")
-// Mantive o X original (192), mude aqui se precisar
-const CHECK_X = 192
+const CHECK_X = 212
+// CHECK_START_Y define a altura da PRIMEIRA opção (Prestação/Crédito)
+// As outras opções serão desenhadas 7mm abaixo sequencialmente
+const CHECK_START_Y = 71 
+
 // ============================================================================
 
 export async function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
@@ -61,31 +59,32 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
     const valorTotalRecibo = pagamentos.reduce((acc, p) => acc + p.valor_pago, 0)
     const valorFormatado = valorTotalRecibo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
 
-    doc.setFont('helvetica', 'bold') // Fonte Negrito
+    doc.setFont('helvetica', 'bold') // Fonte Negrito global
 
     // --- 1. NOME ---
     doc.setFontSize(16)
-    // Se o nome estava cortando o início ("Rut"), tente aumentar o NOME_X acima
     doc.text((cliente?.full_name || '').toUpperCase(), NOME_X, NOME_Y)
 
     // --- 2. VALOR TOTAL (1ª Posição) ---
     doc.setFontSize(16)
+    // align: 'right' faz o texto terminar no X, crescendo para a esquerda
     doc.text(valorFormatado, VALOR_1_X, VALOR_1_Y, { align: 'right' })
 
     // --- 3. VALOR TOTAL (2ª Posição) ---
     doc.setFontSize(18)
     doc.text(valorFormatado, VALOR_2_X, VALOR_2_Y, { align: 'right' })
 
-    // --- 4. DATA ---
+    // --- 4. DATA (Dia / Mês / Ano) ---
     const dataRef = new Date(pagamentos[0].created_at)
     const dia = dataRef.getDate().toString().padStart(2, '0')
     const mes = (dataRef.getMonth() + 1).toString().padStart(2, '0')
-    const ano = dataRef.getFullYear().toString().slice(-2)
+    const ano = dataRef.getFullYear().toString().slice(-2) // Apenas 2 dígitos (ex: 24)
 
     doc.setFontSize(14)
-    doc.text(dia, DIA_X, DATA_Y)
-    doc.text(mes, MES_X, DATA_Y)
-    doc.text(ano, ANO_X, DATA_Y)
+    // Usa DATA_X como base e soma offsets para os próximos campos
+    doc.text(dia, DATA_X, DATA_Y)
+    doc.text(mes, DATA_X + 10, DATA_Y) 
+    doc.text(ano, DATA_X + 20, DATA_Y)
 
     // --- 5. OBSERVAÇÃO (Itens) ---
     const resumoItens = itens.map(i => `${i.quantidade}x ${i.descricao}`).join(', ').substring(0, 150)
@@ -97,12 +96,21 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
 
     // --- 6. CHECKBOXES (X) ---
     const formas = pagamentos.map(p => p.forma_pagamento.toLowerCase())
+    
+    // Calcula posições verticais baseadas no CHECK_START_Y (71)
+    // Incremento de 7mm entre cada opção
     const checkPositions: Record<string, number> = {
-        'prestacao': 65, 'vista': 72, 'cheque': 79,
-        'dinheiro': 86, 'cartao': 93, 'pix': 100
+        'prestacao': CHECK_START_Y,          // 71
+        'vista':     CHECK_START_Y + 7,      // 78
+        'cheque':    CHECK_START_Y + 14,     // 85
+        'dinheiro':  CHECK_START_Y + 21,     // 92
+        'cartao':    CHECK_START_Y + 28,     // 99
+        'pix':       CHECK_START_Y + 35      // 106
     }
 
     const checksToMark: number[] = []
+    
+    // Lógica para identificar qual marcar
     if (formas.some(f => f.includes('crédito') || f.includes('carnê'))) checksToMark.push(checkPositions['prestacao'])
     if (formas.some(f => f.includes('vista'))) checksToMark.push(checkPositions['vista'])
     if (formas.some(f => f.includes('cheque'))) checksToMark.push(checkPositions['cheque'])
@@ -110,12 +118,11 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
     if (formas.some(f => f.includes('cart'))) checksToMark.push(checkPositions['cartao'])
     if (formas.some(f => f.includes('pix'))) checksToMark.push(checkPositions['pix'])
     
-    // Se não achou nenhum, marca "Vista" como padrão de segurança
+    // Fallback: Se não achou nenhum, marca "Vista"
     if (checksToMark.length === 0) checksToMark.push(checkPositions['vista'])
 
     doc.setFontSize(16)
     checksToMark.forEach(yPos => {
-        // Aplica o ajuste vertical global também nos X, se necessário
         doc.text('X', CHECK_X, yPos) 
     })
 

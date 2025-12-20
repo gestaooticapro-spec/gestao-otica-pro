@@ -1,78 +1,57 @@
 'use server'
 
-import nodemailer from 'nodemailer'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { generateReceiptPDF } from '@/lib/pdf-generator'
+import { createAdminClient } from '@/lib/supabase/admin' 
 
-// --- CONFIGURAÇÃO DE EMAIL (Mantém igual) ---
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: Number(process.env.EMAIL_PORT),
-  secure: false, 
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  tls: { rejectUnauthorized: false }
-})
+// --- FUNÇÃO "TUDO OU NADA" (Tipagem Any) ---
+export async function getReceiptPDFBase64(paymentIds: number[]) {
+    try {
+        const supabase = createAdminClient()
 
-// --- FUNÇÃO AJUDANTE (Para não repetir código de busca) ---
-async function fetchReceiptData(ids: number[], isReprint: boolean) {
-  const supabase = createAdminClient()
-  
-  const { data: pagamentos } = await (supabase.from('pagamentos') as any).select('*').in('id', ids)
-  if (!pagamentos || pagamentos.length === 0) throw new Error('Pagamentos não encontrados')
-  
-  const vendaId = pagamentos[0].venda_id
-  const { data: vendaRaw } = await (supabase.from('vendas') as any).select('*, customers(*), venda_itens(*)').eq('id', vendaId).single()
-  if (!vendaRaw) throw new Error('Venda não encontrada')
+        // 1. Query Poderosa (Traz tudo de uma vez)
+        // O "as any" aqui silencia o erro de que o select é muito complexo
+        const { data: rawData, error: erroPag } = await supabase
+            .from('pagamentos')
+            .select('*, vendas!inner(*, customers(*), venda_itens(*))')
+            .in('id', paymentIds) as any
 
-  return {
-    pagamentos, venda: vendaRaw, cliente: vendaRaw.customers, itens: vendaRaw.venda_itens || [], isReprint
-  }
+        if (erroPag) throw new Error(`Erro SQL: ${erroPag.message}`)
+        
+        // Forçamos o TypeScript a tratar isso como uma lista genérica
+        const pagamentos = rawData as any[]
+
+        if (!pagamentos || pagamentos.length === 0) throw new Error("Pagamentos não encontrados.")
+
+        // 2. Extraindo os dados (agora sem linhas vermelhas, pois é 'any')
+        // Como usamos !inner na venda, ela com certeza existe no primeiro pagamento
+        const venda = pagamentos[0].vendas
+        
+        // O cliente pode vir null se a venda foi sem cadastro, mas o 'any' deixa passar
+        const cliente = venda.customers 
+        
+        const itens = venda.venda_itens || []
+
+        // 3. Gerando PDF
+        const pdfBuffer = await generateReceiptPDF({
+            pagamentos: pagamentos, // Passamos os pagamentos originais
+            venda: venda,
+            cliente: cliente,
+            itens: itens
+        })
+
+        // 4. Retorno
+        return { 
+            success: true, 
+            pdfBase64: pdfBuffer.toString('base64') 
+        }
+
+    } catch (e: any) {
+        console.error("❌ Erro ao gerar PDF:", e)
+        return { success: false, error: e.message || "Erro desconhecido" }
+    }
 }
 
-// 1. ENVIO POR EMAIL (O que você já usa)
-export async function sendReceiptToHP(ids: number[], isReprint: boolean = false) {
-  const logPrefix = `[PDF-HP-${Date.now()}]`
-  console.log(`${logPrefix} 🚀 Iniciando envio...`)
-
-  try {
-    const receiptData = await fetchReceiptData(ids, isReprint)
-    const pdfBuffer = await generateReceiptPDF(receiptData)
-
-    await transporter.sendMail({
-      from: `"Sistema Ótica" <${process.env.EMAIL_USER}>`,
-      to: 'oticaprisma@hpeprint.com',
-      subject: `Recibo ${receiptData.venda.id}`,
-      text: '', html: '', 
-      attachments: [{
-          filename: `recibo-${receiptData.venda.id}.pdf`,
-          content: pdfBuffer,
-          contentType: 'application/pdf',
-          contentDisposition: 'attachment'
-      }]
-    })
-
-    return { success: true }
-  } catch (error: any) {
-    console.error(`${logPrefix} 💥 ERRO:`, error)
-    return { success: false, error: error.message }
-  }
-}
-
-// 2. NOVA FUNÇÃO: GERAR PDF PARA VISUALIZAR (PREVIEW)
-export async function getReceiptPDFBase64(ids: number[], isReprint: boolean = false) {
-  try {
-    const receiptData = await fetchReceiptData(ids, isReprint)
-    const pdfBuffer = await generateReceiptPDF(receiptData)
-    
-    // Converte o arquivo (Buffer) para texto (Base64) para viajar até o navegador
-    const base64 = pdfBuffer.toString('base64')
-    
-    return { success: true, base64 }
-  } catch (error: any) {
-    console.error('Erro ao gerar preview:', error)
-    return { success: false, error: error.message }
-  }
+// --- MANTIDA COMO BACKUP ---
+export async function sendReceiptToHP(paymentIds: number[]) {
+  return { success: false, error: "Função desativada." }
 }

@@ -1,11 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Printer, CheckSquare, Square, Loader2, Mail } from 'lucide-react'
+import { X, Printer, CheckSquare, Square, Loader2, Eye, FileText } from 'lucide-react'
 import { Database } from '@/lib/database.types'
 import { markPaymentsAsPrinted } from '@/lib/actions/vendas.actions'
-// Agora que você renomeou, o import vai funcionar:
-import { sendReceiptToHP } from '@/lib/actions/print-remote'
+import { getReceiptPDFBase64 } from '@/lib/actions/print-remote'
 
 type Pagamento = Database['public']['Tables']['pagamentos']['Row']
 
@@ -17,193 +16,200 @@ interface Props {
 }
 
 const formatMoney = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-const formatDate = (d: string) => new Date(d).toLocaleDateString('pt-BR')
 
 export default function ReceiptSelectionModal({ isOpen, onClose, pagamentos, onReload }: Props) {
     const [selectedIds, setSelectedIds] = useState<number[]>([])
-    const [isProcessing, setIsProcessing] = useState(false)
-    const [statusMessage, setStatusMessage] = useState<string | null>(null)
+    const [isProcessing, setIsProcessing] = useState<string | null>(null) // 'view' | 'print' | null
 
     if (!isOpen) return null
 
-    // Toggle de seleção
-    const toggleSelect = (id: number) => {
+    const toggleSelection = (id: number) => {
         setSelectedIds(prev => 
-            prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+            prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
         )
     }
 
-    // Cálculos
-    const totalSelecionado = pagamentos
-        .filter(p => selectedIds.includes(p.id))
-        .reduce((acc, p) => acc + p.valor_pago, 0)
-
-    // Verifica se é reimpressão
-    const checkReprint = () => {
-        const itensJaImpressos = pagamentos.filter(p => selectedIds.includes(p.id) && p.receipt_printed_at)
-        let isReimpressao = false
-        if (itensJaImpressos.length > 0) {
-            const confirm = window.confirm(`Atenção: ${itensJaImpressos.length} pagamento(s) já possuem recibo.\n\nDeseja gerar uma 2ª VIA (Reimpressão)?`)
-            if (!confirm) return null // Cancelou
-            isReimpressao = true
+    const toggleAll = () => {
+        if (selectedIds.length === pagamentos.length) {
+            setSelectedIds([])
+        } else {
+            setSelectedIds(pagamentos.map(p => p.id))
         }
-        return isReimpressao
     }
 
-    // --- OPÇÃO 1: IMPRIMIR NA TELA (VISUALIZAR) ---
-    const handlePrintScreen = async () => {
-        if (selectedIds.length === 0) return
-        const isReimpressao = checkReprint()
-        if (isReimpressao === null) return // Usuário cancelou
-
-        setIsProcessing(true)
-        setStatusMessage('Gerando visualização...')
-
-        // 1. Marca como impresso
-        await markPaymentsAsPrinted(selectedIds)
-        await onReload()
-
-        setIsProcessing(false)
-        setStatusMessage(null)
-
-        // 2. Abre a tela
-        const idsParam = selectedIds.join('-')
-        const url = `/print/recibo/${idsParam}?reprint=${isReimpressao ? 'true' : 'false'}`
-        window.open(url, '_blank')
+    // --- FUNÇÃO CENTRAL QUE GERA O BLOB ---
+    const generateBlob = async () => {
+        const result = await getReceiptPDFBase64(selectedIds)
+        if (!result.success || !result.pdfBase64) {
+            throw new Error(result.error || 'Erro ao gerar PDF')
+        }
         
-        onClose()
+        const byteCharacters = atob(result.pdfBase64)
+        const byteNumbers = new Array(byteCharacters.length)
+        for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i)
+        }
+        const byteArray = new Uint8Array(byteNumbers)
+        return new Blob([byteArray], { type: 'application/pdf' })
     }
 
-    // --- OPÇÃO 2: ENVIAR PARA IMPRESSORA HP (EMAIL) ---
-    const handlePrintHP = async () => {
+    // OPÇÃO 1: VISUALIZAR (Abre Nova Aba)
+    const handlePreview = async () => {
         if (selectedIds.length === 0) return
-        const isReimpressao = checkReprint()
-        if (isReimpressao === null) return
-
-        setIsProcessing(true)
-        setStatusMessage('Enviando para Impressora HP...')
-
+        setIsProcessing('view')
         try {
-            // 1. Envia o email (Server Action)
-            const resultado = await sendReceiptToHP(selectedIds, isReimpressao)
+            const blob = await generateBlob()
+            const fileURL = URL.createObjectURL(blob)
+            window.open(fileURL, '_blank')
+            // Não marcamos como impresso aqui, pois é só visualização
+        } catch (error: any) {
+            alert(error.message)
+        } finally {
+            setIsProcessing(null)
+        }
+    }
 
-            if (!resultado.success) {
-                alert('Erro ao enviar: ' + resultado.error)
-                setIsProcessing(false)
-                setStatusMessage(null)
-                return
+    // OPÇÃO 2: IMPRIMIR (Iframe Oculto)
+    const handleDirectPrint = async () => {
+        if (selectedIds.length === 0) return
+        setIsProcessing('print')
+        try {
+            const blob = await generateBlob()
+            const fileURL = URL.createObjectURL(blob)
+
+            // Iframe Invisível
+            const iframe = document.createElement('iframe')
+            iframe.style.position = 'fixed'
+            iframe.style.right = '0'
+            iframe.style.bottom = '0'
+            iframe.style.width = '0'
+            iframe.style.height = '0'
+            iframe.style.border = '0'
+            iframe.src = fileURL
+            
+            document.body.appendChild(iframe)
+
+            iframe.onload = () => {
+                setTimeout(() => {
+                    try {
+                        iframe.contentWindow?.focus()
+                        iframe.contentWindow?.print()
+                    } catch (e) {
+                        window.open(fileURL, '_blank') // Fallback se falhar
+                    } finally {
+                        // Limpa memória após 1 minuto
+                        setTimeout(() => {
+                            document.body.removeChild(iframe)
+                            URL.revokeObjectURL(fileURL)
+                        }, 60000)
+                    }
+                }, 500)
             }
 
-            // 2. Se deu certo, marca como impresso
+            // Marca como impresso no banco
             await markPaymentsAsPrinted(selectedIds)
             await onReload()
-            
-            alert('✅ Enviado com sucesso para a impressora HP!')
-            onClose()
 
-        } catch (err) {
-            console.error(err)
-            alert('Erro inesperado ao conectar com a impressora.')
+        } catch (error: any) {
+            alert(error.message)
         } finally {
-            setIsProcessing(false)
-            setStatusMessage(null)
+            setIsProcessing(null)
         }
     }
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-            <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
-                <div className="bg-slate-800 px-6 py-4 flex justify-between items-center text-white shrink-0">
-                    <h3 className="font-bold flex items-center gap-2">
-                        <Printer className="h-5 w-5" /> Gerar Recibo
-                    </h3>
-                    <button onClick={onClose} disabled={isProcessing}><X className="h-5 w-5"/></button>
-                </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
                 
-                <div className="p-6 overflow-y-auto bg-slate-50">
-                    <p className="text-sm text-slate-500 mb-4 font-medium">Selecione os pagamentos:</p>
-                    
+                <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                        <Printer className="h-5 w-5 text-indigo-600" />
+                        Gerar Recibos
+                    </h3>
+                    <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
+                        <X className="h-5 w-5 text-gray-500" />
+                    </button>
+                </div>
+
+                <div className="p-4 overflow-y-auto flex-1">
+                    <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100">
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Selecione os pagamentos</span>
+                        <button 
+                            onClick={toggleAll}
+                            className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+                        >
+                            {selectedIds.length === pagamentos.length ? <CheckSquare className="h-3 w-3"/> : <Square className="h-3 w-3"/>}
+                            {selectedIds.length === pagamentos.length ? 'Desmarcar Todos' : 'Marcar Todos'}
+                        </button>
+                    </div>
+
                     <div className="space-y-2">
-                        {pagamentos.length === 0 ? (
-                            <p className="text-center text-slate-400 italic">Nenhum pagamento registrado.</p>
-                        ) : (
-                            pagamentos.map(pg => {
-                                const isSelected = selectedIds.includes(pg.id)
-                                const isPrinted = !!pg.receipt_printed_at
-                                
-                                return (
-                                    <div 
-                                        key={pg.id}
-                                        onClick={() => !isProcessing && toggleSelect(pg.id)}
-                                        className={`w-full flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all
-                                            ${isSelected 
-                                                ? 'bg-blue-50 border-blue-500 shadow-sm' 
-                                                : 'bg-white border-slate-200 hover:border-blue-300'}
-                                            ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}
-                                        `}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className={`text-slate-400 ${isSelected ? 'text-blue-600' : ''}`}>
-                                                {isSelected ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5" />}
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-2 text-slate-800 font-bold">
-                                                    {formatMoney(pg.valor_pago)}
-                                                </div>
-                                                <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5 uppercase font-bold">
-                                                    <span className="bg-slate-200 px-1.5 py-0.5 rounded">{pg.forma_pagamento}</span>
-                                                    <span>{formatDate(pg.created_at)}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        
-                                        {isPrinted && (
-                                            <div className="flex items-center gap-1 text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100">
-                                                <Printer className="h-3 w-3" /> 2ª VIA
-                                            </div>
-                                        )}
+                        {pagamentos.map(pag => {
+                            const isSelected = selectedIds.includes(pag.id)
+                            return (
+                                <div 
+                                    key={pag.id}
+                                    onClick={() => toggleSelection(pag.id)}
+                                    className={`
+                                        p-3 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between group
+                                        ${isSelected 
+                                            ? 'border-indigo-500 bg-indigo-50/50' 
+                                            : 'border-gray-100 hover:border-gray-200 bg-white'
+                                        }
+                                    `}
+                                >
+                                    <div className="flex flex-col">
+                                        <span className={`text-sm font-bold ${isSelected ? 'text-indigo-900' : 'text-gray-700'}`}>
+                                            {formatMoney(pag.valor_pago)}
+                                        </span>
+                                        <span className="text-xs text-gray-500 capitalize">
+                                            {pag.forma_pagamento} • {new Date(pag.created_at).toLocaleDateString('pt-BR')}
+                                        </span>
                                     </div>
-                                )
-                            })
-                        )}
+                                    
+                                    <div className={`
+                                        h-6 w-6 rounded-md flex items-center justify-center transition-colors
+                                        ${isSelected ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-300 group-hover:bg-gray-200'}
+                                    `}>
+                                        <CheckSquare className="h-4 w-4" />
+                                    </div>
+                                </div>
+                            )
+                        })}
                     </div>
                 </div>
 
-                {/* Rodapé com Total e Botões */}
-                <div className="p-4 bg-white border-t border-slate-200 shrink-0 space-y-3">
-                    <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-slate-400 uppercase">Total Selecionado</span>
-                        <span className="text-2xl font-black text-slate-800">{formatMoney(totalSelecionado)}</span>
-                    </div>
+                {/* RODAPÉ COM DOIS BOTÕES */}
+                <div className="p-4 bg-gray-50 border-t border-gray-100 flex gap-3">
+                    
+                    {/* BOTÃO 1: VISUALIZAR */}
+                    <button 
+                        onClick={handlePreview}
+                        disabled={selectedIds.length === 0 || isProcessing !== null}
+                        className="flex-1 py-3 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl font-bold shadow-sm flex items-center justify-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
+                    >
+                        {isProcessing === 'view' ? (
+                            <Loader2 className="h-5 w-5 animate-spin" />
+                        ) : (
+                            <Eye className="h-5 w-5" />
+                        )}
+                        Visualizar
+                    </button>
 
-                    {statusMessage && (
-                        <div className="text-center text-xs font-bold text-blue-600 animate-pulse bg-blue-50 p-2 rounded">
-                            {statusMessage}
-                        </div>
-                    )}
+                    {/* BOTÃO 2: IMPRIMIR DIRETO */}
+                    <button 
+                        onClick={handleDirectPrint}
+                        disabled={selectedIds.length === 0 || isProcessing !== null}
+                        className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
+                    >
+                        {isProcessing === 'print' ? (
+                            <Loader2 className="h-5 w-5 animate-spin" />
+                        ) : (
+                            <Printer className="h-5 w-5" />
+                        )}
+                        Imprimir
+                    </button>
 
-                    <div className="flex gap-3">
-                        {/* Botão HP */}
-                        <button 
-                            onClick={handlePrintHP}
-                            disabled={selectedIds.length === 0 || isProcessing}
-                            className="flex-1 py-3 bg-slate-800 hover:bg-slate-900 disabled:bg-slate-300 text-white rounded-xl font-bold shadow-md transition-all flex justify-center items-center gap-2"
-                            title="Enviar por e-mail para impressora HP"
-                        >
-                            {isProcessing ? <Loader2 className="h-5 w-5 animate-spin"/> : <Mail className="h-5 w-5" />}
-                            <span className="text-sm">ENVIAR HP</span>
-                        </button>
-
-                        {/* Botão Tela */}
-                        <button 
-                            onClick={handlePrintScreen}
-                            disabled={selectedIds.length === 0 || isProcessing}
-                            className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-xl font-bold shadow-md transition-all flex justify-center items-center gap-2"
-                        >
-                            {isProcessing ? <Loader2 className="h-5 w-5 animate-spin"/> : <Printer className="h-5 w-5" />}
-                            <span className="text-sm">VISUALIZAR</span>
-                        </button>
-                    </div>
                 </div>
             </div>
         </div>
