@@ -28,11 +28,16 @@ export default function PrintOSPage({ params }: { params: { id: string } }) {
 
         setData(res.data)
         
-        // Dispara a impressão quando os dados estiverem prontos
+// Dispara a impressão quando os dados estiverem prontos
         setTimeout(() => {
+          // Fecha a janela automaticamente após imprimir ou cancelar
+          window.onafterprint = () => {
+            window.close()
+          }
+          
           window.print()
         }, 800)
-
+        
       } catch (err: any) {
         setError(err.message)
       } finally {

@@ -10,28 +10,28 @@ export const PRINT_CONFIG = {
   ],
 
   cliente_nome: [
-    { x: 17, y: 44 },
-    { x: 17, y: 110 }
+    { x: 17, y: 45 },
+    { x: 17, y: 111 }
   ],
 
   cliente_fone: [
-    { x: 67, y: 104 } // Só existe na inferior
+    { x: 67, y: 105 } // Só existe na inferior
   ],
 
   // === CAMPOS FINANCEIROS (Formatação R$) ===
   
   total_venda: [
     { x: 29, y: 55 }, // Total à Vista (Sup)
-    { x: 29, y: 120 }, // Total à Vista (Inf)
+    { x: 29, y: 121 }, // Total à Vista (Inf)
     { x: 75, y: 55 }, // Total a Prazo (Sup)
-    { x: 75, y: 120 }  // Total a Prazo (Inf)
+    { x: 75, y: 121 }  // Total a Prazo (Inf)
   ],
 
   valor_sinal: [ 
     { x: 21, y: 60 }, // Sinal (Sup)
-    { x: 21, y: 125 }, // Sinal (Inf)
+    { x: 21, y: 126 }, // Sinal (Inf)
     { x: 70, y: 60 }, // Entrada (Sup) - É o mesmo valor
-    { x: 70, y: 125 }  // Entrada (Inf)
+    { x: 70, y: 126 }  // Entrada (Inf)
   ],
 
   valor_restante: [
@@ -52,16 +52,16 @@ export const PRINT_CONFIG = {
   // === CAMPOS DE DATA (Desmembrados) ===
   
   data_emissao: {
-    dia: [{ x: 18, y: 38 }, { x: 18, y: 104 }],
-    mes: [{ x: 30, y: 38 }, { x: 30, y: 104 }],
-    ano: [{ x: 42, y: 38 }, { x: 42, y: 104 }]
+    dia: [{ x: 18, y: 39 }, { x: 18, y: 105 }],
+    mes: [{ x: 30, y: 39 }, { x: 30, y: 105 }],
+    ano: [{ x: 42, y: 39 }, { x: 42, y: 105 }]
   },
 
   data_entrega: {
     dia:  [{ x: 37, y: 74 }, { x: 37, y: 139 }],
-    mes:  [{ x: 48, y: 74 }, { x: 48, y: 139 }],
-    hora: [{ x: 63, y: 74 }, { x: 63, y: 139 }],
-    min:  [{ x: 72, y: 74 }, { x: 72, y: 139 }]
+    mes:  [{ x: 50, y: 74 }, { x: 50, y: 139 }],
+    hora: [{ x: 66, y: 74 }, { x: 66, y: 139 }],
+    min:  [{ x: 77, y: 74 }, { x: 77, y: 139 }]
   },
 
   // === DADOS TÉCNICOS (Somente Via Inferior) ===
@@ -75,16 +75,16 @@ export const PRINT_CONFIG = {
   oe_eixo: [{ x: 92, y: 152 }],
   oe_dnp:  [{ x: 83, y: 146 }],
 
-  adicao:   [{ x: 17, y: 158 }],
-  altura:   [{ x: 40, y: 158 }],
-  diametro: [{ x: 67, y: 158 }],
+  adicao:   [{ x: 17, y: 159 }],
+  altura:   [{ x: 40, y: 159 }],
+  diametro: [{ x: 65, y: 159 }],
   
   // === PRODUTOS ===
-  desc_lente:    [{ x: 27, y: 163 }],
-  valor_lente:   [{ x: 85, y: 164 }],
+  desc_lente:    [{ x: 27, y: 165 }],
+  valor_lente:   [{ x: 85, y: 165 }],
   
-  desc_armacao:  [{ x: 22, y: 169 }],
-  valor_armacao: [{ x: 85, y: 169 }],
+  desc_armacao:  [{ x: 22, y: 171 }],
+  valor_armacao: [{ x: 85, y: 171 }],
 
   laboratorio:   [{ x: 37, y: 179 }]
 }
