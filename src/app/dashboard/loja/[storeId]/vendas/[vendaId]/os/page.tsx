@@ -26,6 +26,7 @@ import { checkLensStock, reserveLens, type LensStockMatch } from '@/lib/actions/
 import { Database } from '@/lib/database.types'
 import AddDependenteModal from '@/components/modals/AddDependenteModal'
 import PrescriptionHistoryModal from '@/components/modals/PrescriptionHistoryModal'
+import { PrintProtocoloButton } from '@/components/vendas/PrintProtocoloButton'
 
 type ServiceOrderWithLinks = any
 type Dependente = Database['public']['Tables']['dependentes']['Row']
@@ -741,9 +742,13 @@ Obs.: ${obsOs}
                     </div>
                 </div>
 
-                {/* FOOTER FIXO (Barra Branca) */}
+{/* FOOTER FIXO (Barra Branca) */}
                 <div className="shrink-0 bg-white border-t border-gray-300 px-4 py-3 flex justify-end gap-2 z-20 shadow-[0_-5px_15px_rgba(0,0,0,0.05)]">
                     <button type="button" onClick={() => router.back()} className={`${baseButtonStyle} bg-gray-500 text-white hover:bg-gray-600`}>VOLTAR</button>
+                    
+                    {/* Botão de Impressão */}
+                    <PrintProtocoloButton osId={currentOrder?.id} disabled={!currentOrder} />
+
                     {currentOrder && (
                         <button type="button" onClick={handleDelete} disabled={isDeleting} className={`${baseButtonStyle} bg-red-100 text-red-700 hover:bg-red-200 border border-red-200`}>
                             {isDeleting ? <Loader2 className="animate-spin h-3 w-3" /> : <Trash2 className="h-3 w-3" />} EXCLUIR
@@ -753,7 +758,7 @@ Obs.: ${obsOs}
                         {isSaving ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="h-4 w-4" />} SALVAR OS
                     </button>
                 </div>
-
+                
                 {/* Hidden Inputs */}
                 {currentOrder && <input type="hidden" name="id" value={currentOrder.id} />}
                 <input type="hidden" name="store_id" value={storeId} />

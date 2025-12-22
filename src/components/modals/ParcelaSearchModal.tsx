@@ -1,16 +1,16 @@
 'use client'
 
 import { useState, useTransition, useRef, useEffect } from 'react'
-import { createPortal } from 'react-dom' // <--- IMPORTAÇÃO NOVA
-import { X, Search, Calendar, Loader2, Wallet, ArrowLeft, User, ShoppingBag, CheckCircle2, AlertTriangle, ArrowDownCircle } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { X, Search, Calendar, Loader2, Wallet, ArrowLeft, ShoppingBag, CheckCircle2, AlertTriangle, ArrowDownCircle } from 'lucide-react'
 import { searchPendenciasCliente, receberParcela } from '@/lib/actions/vendas.actions'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
+import { PrintParcelaButton } from '@/components/financeiro/PrintParcelaButton'
 
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const formatDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
 const getToday = () => new Date().toISOString().split('T')[0]
 
-// Helper Robusto de Limpeza (Remove R$, espaços, pontos)
 const parseMoney = (val: string) => {
     if (!val) return 0
     const clean = val.replace(/[^\d,]/g, '')
@@ -47,21 +47,19 @@ function ParcelaCard({ p, onClick }: { p: any, onClick: () => void }) {
 }
 
 export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpen: boolean, onClose: () => void, storeId: number }) {
-    // --- ESTADO PARA O PORTAL ---
     const [mounted, setMounted] = useState(false)
 
-    const [step, setStep] = useState<'search' | 'details' | 'pay'>('search')
+    const [step, setStep] = useState<'search' | 'details' | 'pay' | 'success'>('search')
     const [query, setQuery] = useState('')
     const [results, setResults] = useState<any[]>([])
     const [isSearching, startSearch] = useTransition()
     
-    // Dados Selecionados
     const [selectedClientData, setSelectedClientData] = useState<any>(null)
     const [selectedParcela, setSelectedParcela] = useState<any>(null)
+    const [paidParcelaId, setPaidParcelaId] = useState<number | null>(null)
     
-    // Form Pagamento
-    const [valorTotalPagoStr, setValorTotalPagoStr] = useState('') // O que entra no caixa
-    const [valorJurosStr, setValorJurosStr] = useState('0,00')     // A parte que é juros
+    const [valorTotalPagoStr, setValorTotalPagoStr] = useState('') 
+    const [valorJurosStr, setValorJurosStr] = useState('0,00') 
     const [forma, setForma] = useState('PIX')
     const [estrategia, setEstrategia] = useState('criar_pendencia')
     
@@ -69,7 +67,6 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
     const [isProcessing, startProcess] = useTransition()
     const searchInputRef = useRef<HTMLInputElement>(null)
 
-    // Efeito para garantir que rodamos no cliente (Portal requirement)
     useEffect(() => {
         setMounted(true)
     }, [])
@@ -79,6 +76,7 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
             setStep('search')
             setQuery('')
             setResults([])
+            setPaidParcelaId(null) 
             setTimeout(() => searchInputRef.current?.focus(), 100)
         }
     }, [isOpen])
@@ -87,8 +85,12 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
         e.preventDefault()
         if (query.length < 3) return
         startSearch(async () => {
-            const res = await searchPendenciasCliente(storeId, query)
-            setResults(res as any[])
+            try {
+                const res = await searchPendenciasCliente(storeId, query)
+                setResults(res as any[])
+            } catch (error) {
+                console.error("[DEBUG] Erro na busca:", error)
+            }
         })
     }
 
@@ -98,9 +100,9 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
     }
 
     const handleSelectParcela = (parcela: any) => {
+        console.log("[DEBUG] Parcela selecionada:", parcela)
         setSelectedParcela(parcela)
         
-        // Valor Sugerido = Valor Original
         const valLimpo = formatCurrency(parcela.valor_parcela).replace(/[^\d,]/g, '')
         setValorTotalPagoStr(valLimpo)
         setValorJurosStr('0,00') 
@@ -121,16 +123,36 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
         new Date(a.data_venda).getTime() - new Date(b.data_venda).getTime()
     )
 
-    const handlePreConfirm = () => setIsAuthOpen(true)
+    // --- PONTO CRÍTICO 1: O Clique Inicial ---
+    const handlePreConfirm = () => {
+        console.log("[DEBUG] 1. Clicou em CONFIRMAR RECEBIMENTO")
+        console.log("[DEBUG] Estado atual:", { isProcessing, isAuthOpen, storeId })
+        
+        if (isProcessing) {
+            console.log("[DEBUG] Abortando: Já está processando")
+            return
+        }
 
+        console.log("[DEBUG] Abrindo Modal de Autenticação...")
+        setIsAuthOpen(true)
+    }
+
+    // --- PONTO CRÍTICO 2: Retorno da Senha ---
     const handleAuthSuccess = (employee: { id: number }) => {
+        console.log("[DEBUG] 2. Autenticação SUCESSO. Funcionario ID:", employee.id)
+        
         setIsAuthOpen(false)
-        if (!selectedParcela) return
+        if (!selectedParcela) {
+            console.error("[DEBUG] ERRO: Nenhuma parcela selecionada no state!")
+            return
+        }
 
         const valorOriginal = selectedParcela.valor_parcela
         const valorTotalPago = parseMoney(valorTotalPagoStr)
         const valorJuros = parseMoney(valorJurosStr)
         
+        console.log("[DEBUG] Valores parseados:", { valorOriginal, valorTotalPago, valorJuros, forma })
+
         const formData = new FormData()
         formData.append('parcela_id', selectedParcela.id.toString())
         formData.append('venda_id', selectedParcela.venda_id.toString())
@@ -138,50 +160,59 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
         formData.append('employee_id', employee.id.toString())
         
         formData.append('valor_original', valorOriginal.toString())
-        formData.append('valor_pago_total', valorTotalPago.toString()) // Dinheiro recebido
-        formData.append('valor_juros', valorJuros.toString())          // Juros declarados
+        formData.append('valor_pago_total', valorTotalPago.toString()) 
+        formData.append('valor_juros', valorJuros.toString()) 
         
         formData.append('forma_pagamento', forma)
         formData.append('data_pagamento', getToday())
         
-        // Recalcula a diferença aqui para enviar a estratégia certa
         const principalAbatido = valorTotalPago - valorJuros
         const diferenca = valorOriginal - principalAbatido
         const isParcial = diferenca > 0.01
 
         formData.append('estrategia', isParcial ? estrategia : 'quitacao_total')
 
+        console.log("[DEBUG] 3. Iniciando Server Action com FormData...")
+        
         startProcess(async () => {
-            const res = await receberParcela(null, formData)
-            if (res.success) {
-                alert("Pagamento Recebido!")
-                onClose()
-            } else {
-                alert(res.message)
+            try {
+                const res = await receberParcela(null, formData)
+                console.log("[DEBUG] 4. Resposta do Server Action:", res)
+
+                if (res.success) {
+                    console.log("[DEBUG] Sucesso! Mudando step para 'success'")
+                    setPaidParcelaId(selectedParcela.id)
+                    setStep('success')
+                } else {
+                    console.error("[DEBUG] Erro retornado pelo servidor:", res.message)
+                    alert(`Erro: ${res.message}`)
+                }
+            } catch (err) {
+                console.error("[DEBUG] CRITICAL ERROR na chamada da Server Action:", err)
+                alert("Erro crítico ao processar pagamento. Verifique o console.")
             }
         })
     }
 
-    // Se não estiver montado ou fechado, não renderiza nada
     if (!mounted || !isOpen) return null
 
-    // --- AQUI ACONTECE A MÁGICA: PORTAL ---
     return createPortal(
         <>
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in">
+        {/* AJUSTEI O Z-INDEX PARA 50 PARA GARANTIR QUE NÃO CUBRA O MODAL DE SENHA */}
+        <div className="fixed inset-0 z-[50] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in">
             <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
                 
                 {/* Header */}
                 <div className="bg-emerald-600 px-6 py-4 flex justify-between items-center text-white shrink-0">
                     <div className="flex items-center gap-3">
-                        {step !== 'search' && (
+                        {step !== 'search' && step !== 'success' && (
                             <button onClick={() => setStep(step === 'pay' ? 'details' : 'search')} className="p-1 hover:bg-white/20 rounded-full transition-colors">
                                 <ArrowLeft className="h-5 w-5" />
                             </button>
                         )}
                         <h3 className="font-bold flex items-center gap-2 text-lg">
                             <Wallet className="h-5 w-5" /> 
-                            {step === 'search' ? 'Recebimento' : step === 'details' ? 'Selecione a Parcela' : 'Confirmar Pagamento'}
+                            {step === 'search' ? 'Recebimento' : step === 'details' ? 'Selecione a Parcela' : step === 'pay' ? 'Confirmar Pagamento' : 'Concluído'}
                         </h3>
                     </div>
                     <button onClick={onClose} className="hover:bg-white/20 p-1.5 rounded-full transition-colors"><X className="h-5 w-5"/></button>
@@ -249,7 +280,6 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
                         </div>
                     )}
 
-                    {/* ETAPA 3: PAGAMENTO (LÓGICA HÍBRIDA) */}
                     {step === 'pay' && selectedParcela && (
                         <div className="p-6 space-y-6 animate-in slide-in-from-right-4">
                             <div className="text-center pb-4 border-b border-slate-200">
@@ -284,7 +314,6 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
                                 </div>
                             </div>
 
-                            {/* Campo de Juros CONDICIONAL */}
                             {new Date(selectedParcela.data_vencimento) < new Date(getToday()) && (
                                 <div className="bg-red-50 p-4 rounded-xl border border-red-200">
                                     <label className="block text-xs font-bold text-red-800 mb-1 uppercase flex items-center gap-2">
@@ -303,7 +332,6 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
                                 </div>
                             )}
 
-                            {/* Lógica de Decisão (Falta ou Sobra) */}
                             {(() => {
                                 const vOrig = selectedParcela.valor_parcela
                                 const vTotal = parseMoney(valorTotalPagoStr)
@@ -346,12 +374,37 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
                                 return null
                             })()}
                             
-                            <button onClick={handlePreConfirm} disabled={isProcessing} className="w-full py-4 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95">
+                            <button 
+                                onClick={handlePreConfirm} 
+                                disabled={isProcessing} 
+                                className="w-full py-4 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95"
+                            >
                                 {isProcessing ? <Loader2 className="h-6 w-6 animate-spin"/> : <CheckCircle2 className="h-6 w-6" />}
-                                CONFIRMAR RECEBIMENTO
+                                TESTE CLIQUE
                             </button>
                         </div>
                     )}
+
+                    {step === 'success' && (
+                         <div className="p-10 flex flex-col items-center justify-center text-center animate-in zoom-in-50">
+                            <div className="w-24 h-24 bg-emerald-100 rounded-full flex items-center justify-center mb-6 text-emerald-600">
+                                <CheckCircle2 className="h-12 w-12" />
+                            </div>
+                            <h2 className="text-2xl font-black text-slate-800 mb-2">Pagamento Confirmado!</h2>
+                            <p className="text-slate-500 mb-8 max-w-xs mx-auto">O recebimento foi registrado no sistema.</p>
+
+                            <div className="w-full max-w-sm space-y-3">
+                                {paidParcelaId && (
+                                    <PrintParcelaButton parcelaId={paidParcelaId} variant="full" />
+                                )}
+
+                                <button onClick={onClose} className="w-full py-3 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition-colors">
+                                    Fechar Janela
+                                </button>
+                            </div>
+                         </div>
+                    )}
+
                 </div>
             </div>
         </div>
@@ -360,7 +413,10 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
             <EmployeeAuthModal 
                 storeId={storeId} 
                 isOpen={isAuthOpen} 
-                onClose={() => setIsAuthOpen(false)} 
+                onClose={() => {
+                    console.log("[DEBUG] Modal de Auth fechado pelo usuário");
+                    setIsAuthOpen(false);
+                }} 
                 onSuccess={handleAuthSuccess} 
                 title="Autorizar Pagamento" 
                 description="Insira seu PIN para confirmar." 

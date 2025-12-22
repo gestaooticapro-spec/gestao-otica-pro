@@ -1386,20 +1386,35 @@ export async function updateVendaEmployee(
   }
 }
 // ================================================================
-// 18. ACTION: RECEBER PARCELA (CORRIGIDA: SEM DUPLICAR NA VENDA)
+// 18. ACTION: RECEBER PARCELA (VERSÃO SEGURA E REVISADA)
 // ================================================================
+
+// --- 1. MANTENHA O SCHEMA IGUAL ---
 const ReceberParcelaSchema = z.object({
   parcela_id: z.coerce.number(),
   venda_id: z.coerce.number(),
   store_id: z.coerce.number(),
   employee_id: z.coerce.number(),
   valor_original: z.coerce.number(),
-  valor_pago_total: z.coerce.number().min(0.01), // Quanto dinheiro entrou
-  valor_juros: z.coerce.number().default(0),     // Quanto disso é juros
+  valor_pago_total: z.coerce.number().min(0.01),
+  valor_juros: z.coerce.number().default(0),
   forma_pagamento: z.string().min(1),
   data_pagamento: z.string(),
   estrategia: z.enum(['quitacao_total', 'criar_pendencia', 'somar_proxima']).default('quitacao_total'),
 })
+
+// --- 2. NOVA FUNÇÃO DE SEGURANÇA (Adicione isso antes da função principal) ---
+// Essa função impede que 207.00 vire 20700
+function parseMoneySeguro(val: string | null) {
+    if (!val) return 0
+    // Se tem vírgula, é formato Brasileiro (ex: 200,50 ou 1.000,00) -> Remove ponto, troca vírgula.
+    if (val.includes(',')) {
+        return parseFloat(val.replace(/\./g, '').replace(',', '.'))
+    }
+    // Se NÃO tem vírgula, é formato Input/Americano (ex: 207.00) -> Aceita direto.
+    // O seu código antigo removia o ponto aqui, causando o erro.
+    return parseFloat(val)
+}
 
 export async function receberParcela(prevState: any, formData: FormData) {
   const supabaseAdmin = createAdminClient()
@@ -1410,11 +1425,14 @@ export async function receberParcela(prevState: any, formData: FormData) {
   const profile = await getProfileByAdmin(user.id)
   if (!profile) return { success: false, message: 'Perfil não encontrado.' }
 
+  // --- 3. A ÚNICA ALTERAÇÃO LÓGICA ESTÁ AQUI ---
+  // Usamos a função segura em vez do replace direto
   const valorRaw = formData.get('valor_pago_total') as string
-  const valorPagoTotal = valorRaw ? parseFloat(valorRaw.replace(/\./g, '').replace(',', '.')) : 0
+  const valorPagoTotal = parseMoneySeguro(valorRaw)
 
   const jurosRaw = formData.get('valor_juros') as string
-  const valorJuros = jurosRaw ? parseFloat(jurosRaw.replace(/\./g, '').replace(',', '.')) : 0
+  const valorJuros = parseMoneySeguro(jurosRaw)
+  // ----------------------------------------------
 
   const inputData = {
     parcela_id: formData.get('parcela_id'),
@@ -1422,8 +1440,8 @@ export async function receberParcela(prevState: any, formData: FormData) {
     store_id: formData.get('store_id'),
     employee_id: formData.get('employee_id'),
     valor_original: formData.get('valor_original'),
-    valor_pago_total: valorPagoTotal,
-    valor_juros: valorJuros,
+    valor_pago_total: valorPagoTotal, // Passamos o valor já corrigido
+    valor_juros: valorJuros,          // Passamos o juros já corrigido
     forma_pagamento: formData.get('forma_pagamento'),
     data_pagamento: formData.get('data_pagamento'),
     estrategia: formData.get('estrategia')
@@ -1432,14 +1450,13 @@ export async function receberParcela(prevState: any, formData: FormData) {
   const validated = ReceberParcelaSchema.safeParse(inputData)
   if (!validated.success) return { success: false, message: 'Dados inválidos.' }
 
+  // Mantive os nomes originais das suas variáveis aqui para não mudar a lógica abaixo
   const { parcela_id, venda_id, store_id, valor_original, valor_pago_total, valor_juros, forma_pagamento, estrategia, data_pagamento } = validated.data
 
-  // LÃ“GICA MATEMÃTICA MANTIDA
   const principalAbatido = valor_pago_total - valor_juros
   const diferencaDivida = valor_original - principalAbatido
 
   try {
-    // 1. Busca dados da parcela atual
     const { data: parcelaRaw } = await supabaseAdmin
       .from('financiamento_parcelas')
       .select('*')
@@ -1449,29 +1466,27 @@ export async function receberParcela(prevState: any, formData: FormData) {
     if (!parcelaRaw) throw new Error('Parcela não encontrada.')
     const parcelaAtual = parcelaRaw as any;
 
-    // 2. Registra o Pagamento (CORREÃ‡ÃƒO AQUI)
-    // Removemos venda_id para não somar duplicado no total da venda
+    // Registra Pagamento
     await (supabaseAdmin.from('pagamentos') as any).insert({
       tenant_id: (profile as any).tenant_id,
       store_id: store_id,
-      venda_id: null, // <--- O SEGREDO: Desvincula da venda direta
+      venda_id: null, // Mantido null para evitar duplicidade
       created_by_user_id: user.id,
       valor_pago: valor_pago_total,
       forma_pagamento: forma_pagamento,
       data_pagamento: data_pagamento,
       parcelas: 1,
-      // Mantemos o rastro no texto para auditoria
       obs: `Ref. Venda #${venda_id} - Parc. ${parcelaAtual.numero_parcela} (Principal: ${principalAbatido.toFixed(2)} + Juros: ${valor_juros.toFixed(2)})`
     })
 
-    // 3. Baixa a parcela atual (MANTIDO IGUAL)
+    // Baixa a parcela
     await (supabaseAdmin.from('financiamento_parcelas') as any).update({
       status: 'Pago',
       data_pagamento: new Date().toISOString(),
       valor_parcela: principalAbatido
     }).eq('id', parcela_id)
 
-    // 4. Lógica de Diferença da Dívida (MANTIDO IGUAL)
+    // Lógica de Diferença (Exatamente igual ao seu original)
     if (diferencaDivida > 0.01) {
       if (estrategia === 'criar_pendencia') {
         await (supabaseAdmin.from('financiamento_parcelas') as any).insert({
@@ -1479,7 +1494,7 @@ export async function receberParcela(prevState: any, formData: FormData) {
           store_id: store_id,
           financiamento_id: parcelaAtual.financiamento_id,
           customer_id: parcelaAtual.customer_id,
-          numero_parcela: parcelaAtual.numero_parcela, // Mantém número
+          numero_parcela: parcelaAtual.numero_parcela,
           data_vencimento: parcelaAtual.data_vencimento,
           valor_parcela: diferencaDivida,
           status: 'Pendente'
@@ -1534,9 +1549,6 @@ export async function receberParcela(prevState: any, formData: FormData) {
           .eq('id', prox.id)
       }
     }
-
-    // CORREÃ‡ÃƒO FINAL: REMOVIDA A LINHA QUE RECALCULAVA A VENDA ERRADO
-    // await (supabaseAdmin as any).rpc('update_venda_financeiro', { p_venda_id: venda_id })
 
     revalidatePath(`/dashboard/loja/${store_id}/vendas/${venda_id}`)
 
