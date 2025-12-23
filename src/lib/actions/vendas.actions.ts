@@ -525,7 +525,8 @@ export async function getVendaPageData(
       employee_id ? supabaseAdmin.from('employees').select('*').eq('id', employee_id).single() : Promise.resolve({ data: null }),
       supabaseAdmin.from('venda_itens').select('*').eq('venda_id', vendaId).order('id'),
       supabaseAdmin.from('service_orders').select('*').eq('venda_id', vendaId),
-      supabaseAdmin.from('pagamentos').select('*').eq('venda_id', vendaId).order('data_pagamento'),
+      // CORREÇÃO: Cast 'as any' para buscar relacionamento com employees
+      (supabaseAdmin.from('pagamentos') as any).select('*, employee:employees(full_name)').eq('venda_id', vendaId).order('data_pagamento'),
       supabaseAdmin.from('financiamento_loja').select('*, financiamento_parcelas(*)').eq('venda_id', vendaId).maybeSingle(),
 
       // Consultas unificadas
@@ -540,7 +541,7 @@ export async function getVendaPageData(
       employee: employeeRes.data,
       vendaItens: itensRes.data || [],
       serviceOrders: osRes.data || [],
-      pagamentos: pagamentosRes.data || [],
+      pagamentos: pagamentosRes.data as any || [], // Cast as any para aceitar o campo employee extra
       financiamento: financiamentoRes.data as any,
       lentes: lentesRes.data || [],
       armacoes: armacoesRes.data || [],
@@ -1173,8 +1174,26 @@ export async function saveFinanciamentoLoja(...args: any[]) {
   if (erroUpdate) return { success: false, message: `Erro ao atualizar venda: ${erroUpdate.message}` };
 
   revalidatePath(`/vendas/${venda_id}`);
-  return { success: true, message: 'Carnê gerado com sucesso!' };
+  return { success: true, message: 'Carnê gerado com sucesso!', data: { id: capaCriada.id } };
 }
+
+export async function getFinanciamentoById(id: number) {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from('financiamento_loja')
+    .select(`
+      *,
+      financiamento_parcelas (*),
+      customers (*),
+      store:stores (*, pix_key, pix_city)
+    `)
+    .eq('id', id)
+    .single();
+
+  if (error) return null;
+  return data;
+}
+
 
 // ================================================================
 // 14. ACTION: LISTAR VENDAS (COM FILTROS: PENDÃŠNCIAS OU PERÃODO)

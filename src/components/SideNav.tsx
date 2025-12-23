@@ -44,6 +44,7 @@ interface SideNavProps {
     userRole: Role;
     storeId: number;
     storeName: string;
+    logoUrl?: string | null;
 }
 
 // --- CONFIGURAÇÃO DA ESTRUTURA DO MENU ---
@@ -147,7 +148,7 @@ const MENU_STRUCTURE: MenuGroup[] = [
     }
 ];
 
-export default function SideNav({ userRole, storeId, storeName }: SideNavProps) {
+export default function SideNav({ userRole, storeId, storeName, logoUrl }: SideNavProps) {
     const router = useRouter();
     const pathname = usePathname();
     const supabase = createClient();
@@ -286,7 +287,18 @@ export default function SideNav({ userRole, storeId, storeName }: SideNavProps) 
         <div className="flex h-[calc(100vh-64px)] relative z-10">
             <nav className={`bg-white border-r border-gray-200 h-full flex flex-col py-4 z-20 shadow-md relative transition-all duration-300 ease-in-out ${isMainCollapsed ? 'w-20 items-center' : 'w-64 px-4'}`}>
                 <div className={`mb-8 flex items-center ${isMainCollapsed ? 'justify-center' : 'justify-between'}`}>
-                    <div className="h-10 w-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl flex items-center justify-center text-white font-black text-xs shadow-lg cursor-default select-none shrink-0">PRO</div>
+                    {logoUrl ? (
+                        <div className={`relative ${isMainCollapsed ? 'w-10 h-10' : 'w-12 h-12'} shrink-0`}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                                src={logoUrl}
+                                alt={storeName}
+                                className="w-full h-full object-contain rounded-md"
+                            />
+                        </div>
+                    ) : (
+                        <div className="h-10 w-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl flex items-center justify-center text-white font-black text-xs shadow-lg cursor-default select-none shrink-0">PRO</div>
+                    )}
                     {!isMainCollapsed && (
                         <div className="ml-3 overflow-hidden">
                             <h2 className="text-sm font-bold text-slate-800 whitespace-nowrap">Gestão Ótica</h2>

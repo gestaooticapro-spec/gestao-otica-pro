@@ -7,7 +7,7 @@ import { ReceiptPhantom } from '@/components/print/ReceiptPhantom'
 export default async function PrintReciboPage({ params, searchParams }: { params: { id: string }, searchParams: { reprint?: string } }) {
     const idsString = params.id
     const ids = idsString.split('-').map(id => parseInt(id)).filter(n => !isNaN(n))
-    
+
     if (ids.length === 0) return notFound()
 
     const isReprint = searchParams.reprint === 'true'
@@ -56,8 +56,15 @@ export default async function PrintReciboPage({ params, searchParams }: { params
                     padding: 0px;
                 }
             `}</style>
-            
+
             <ReceiptPhantom data={receiptData as any} />
+            <PrintTrigger />
         </div>
+    )
+}
+
+function PrintTrigger() {
+    return (
+        <script dangerouslySetInnerHTML={{ __html: 'window.print(); window.onafterprint = function() { window.close(); };' }} />
     )
 }

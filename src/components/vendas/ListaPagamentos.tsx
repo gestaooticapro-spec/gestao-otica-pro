@@ -9,7 +9,9 @@ import { deletePagamento } from '@/lib/actions/vendas.actions'
 import { Database } from '@/lib/database.types'
 import { Loader2, Trash2 } from 'lucide-react'
 
-type Pagamento = Database['public']['Tables']['pagamentos']['Row']
+type Pagamento = Database['public']['Tables']['pagamentos']['Row'] & {
+  employee?: { full_name: string } | null
+}
 
 type ListaPagamentosProps = {
   pagamentos: Pagamento[]
@@ -91,11 +93,12 @@ export default function ListaPagamentos({
 
       {/* Cabeçalho Verde Esmeralda */}
       <div className="hidden md:flex bg-emerald-50 p-1.5 rounded-t-md font-bold text-emerald-800 text-[10px] uppercase tracking-wider border-b border-emerald-100">
-        <div className="w-3/12 pl-1">Data</div>
+        <div className="w-2/12 pl-1">Data</div>
         <div className="w-3/12">Forma</div>
-        <div className="w-3/12 text-right">Valor</div>
+        <div className="w-3/12">Responsável</div>
+        <div className="w-2/12 text-right">Valor</div>
         <div className="w-1/12 text-center">Parc.</div>
-        <div className="w-2/12 text-center"></div> {/* Coluna Ações vazia */}
+        <div className="w-1/12 text-right pr-2"></div> {/* Coluna Ações */}
       </div>
 
       <div className="flex-1 overflow-y-auto space-y-1 bg-white p-0 rounded-b-md shadow-inner border border-emerald-50 max-h-60">
@@ -109,21 +112,24 @@ export default function ListaPagamentos({
               key={pag.id}
               className="flex flex-col md:flex-row md:items-center p-1.5 rounded bg-white border-b border-emerald-50 last:border-0 hover:bg-emerald-50/50 transition-colors group"
             >
-              <div className="w-full md:w-3/12 font-medium text-gray-700 text-xs pl-1">
+              <div className="w-full md:w-2/12 font-medium text-gray-700 text-xs pl-1">
                 {formatDate(pag.data_pagamento)}
               </div>
               <div className="w-full md:w-3/12 text-[10px] text-gray-600 font-semibold uppercase">
                 {pag.forma_pagamento}
               </div>
-              <div className="w-full md:w-3/12 md:text-right font-bold text-emerald-700 text-xs">
+              <div className="w-full md:w-3/12 text-[10px] text-gray-500 uppercase truncate" title={pag.employee?.full_name || 'N/A'}>
+                {pag.employee?.full_name?.split(' ')[0] || '-'}
+              </div>
+              <div className="w-full md:w-2/12 md:text-right font-bold text-emerald-700 text-xs">
                 {formatCurrency(pag.valor_pago)}
               </div>
               <div className="w-full md:w-1/12 md:text-center text-[10px] text-gray-500">
                 {pag.parcelas}x
               </div>
 
-              {/* Coluna de Ações (Apenas Deletar agora) */}
-              <div className="w-full md:w-2/12 flex justify-end md:justify-center gap-1">
+              {/* Coluna de Ações (Alinhada à direita) */}
+              <div className="w-full md:w-1/12 flex justify-end pr-1">
                 <DeleteButton
                   pagamento={pag}
                   vendaId={vendaId}

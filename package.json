@@ -14,11 +14,13 @@
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.81.1",
     "@tanstack/react-table": "^8.21.3",
+    "crc": "^4.3.2",
     "fast-xml-parser": "^5.3.2",
     "jspdf": "^3.0.4",
     "lucide-react": "^0.554.0",
     "next": "^14.2.0",
     "nodemailer": "^7.0.11",
+    "qrcode.react": "^4.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "zod": "^4.1.12"

@@ -1,4 +1,3 @@
-// ARQUIVO: src/lib/actions/store.actions.ts
 'use server'
 
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
@@ -13,18 +12,22 @@ const StoreProfileSchema = z.object({
     razao_social: z.string().optional().nullable(),
     cnpj: z.string().optional().nullable(),
     inscricao_estadual: z.string().optional().nullable(),
-    
+
     whatsapp: z.string().optional().nullable(),
     phone: z.string().optional().nullable(),
     email: z.string().email().optional().or(z.literal('')).nullable(),
     website: z.string().optional().nullable(),
-    
+
     cep: z.string().optional().nullable(),
     street: z.string().optional().nullable(),
     number: z.string().optional().nullable(),
     neighborhood: z.string().optional().nullable(),
     city: z.string().optional().nullable(),
     state: z.string().length(2).optional().or(z.literal('')).nullable(),
+
+    // Pix
+    pix_key: z.string().optional().nullable(),
+    pix_city: z.string().optional().nullable(),
 })
 
 export type StoreActionResult = {
@@ -49,10 +52,10 @@ export async function getStoreProfile(storeId: number) {
 export async function updateStoreProfile(prevState: any, formData: FormData): Promise<StoreActionResult> {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    
+
     if (!user) return { success: false, message: 'Sem permissão.' }
     const profile = await getProfileByAdmin(user.id) as any
-    
+
     // Segurança: Apenas Admin ou Gerente da própria loja
     const storeId = parseInt(formData.get('id') as string)
     if (profile.role !== 'admin' && profile.store_id !== storeId) {
@@ -75,10 +78,12 @@ export async function updateStoreProfile(prevState: any, formData: FormData): Pr
         neighborhood: formData.get('neighborhood'),
         city: formData.get('city'),
         state: formData.get('state'),
+        pix_key: formData.get('pix_key'),
+        pix_city: formData.get('pix_city'),
     }
 
     const validated = StoreProfileSchema.safeParse(rawData)
-    
+
     if (!validated.success) {
         return { success: false, message: 'Dados inválidos. Verifique os campos.' }
     }

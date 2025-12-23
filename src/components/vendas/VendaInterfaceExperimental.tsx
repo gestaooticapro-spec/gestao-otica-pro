@@ -155,7 +155,7 @@ export default function VendaInterfaceExperimental({
     const closeModal = () => setActiveModal('none')
 
     return (
-        <div className="flex flex-col h-[calc(100vh-64px)] bg-gray-100 overflow-hidden font-sans">
+        <div className="flex flex-col h-[calc(100vh-64px)] bg-gradient-to-br from-slate-200 to-slate-300 overflow-hidden font-sans">
 
             {/* 1. CABEÇALHO SUPERIOR */}
             <div className="bg-white border-b border-gray-200 px-4 py-1.5 flex items-center shrink-0 shadow-sm z-30 h-10">
@@ -165,7 +165,7 @@ export default function VendaInterfaceExperimental({
                     </button>
                     <div className="h-5 w-px bg-gray-300 mx-1"></div>
                     <h1 className="text-xs font-bold text-gray-800 whitespace-nowrap uppercase tracking-wide flex items-center gap-2">
-                        Venda #{venda.id} <span className="text-gray-400">|</span> Coluna Única
+                        Venda #{venda.id}
                         <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-black border ${venda.status === 'Fechada' ? 'bg-green-50 text-green-700 border-green-200' :
                             venda.status === 'Cancelada' ? 'bg-red-50 text-red-700 border-red-200' :
                                 'bg-amber-50 text-amber-700 border-amber-200'

@@ -15,7 +15,7 @@ import {
 } from '@/lib/actions/vendas.actions'
 
 import { Database } from '@/lib/database.types'
-import { Calendar, ClipboardList, AlertTriangle, CheckCircle2, Wallet, DollarSign, X, RefreshCw, Trash2, Calculator, Loader2 } from 'lucide-react'
+import { Calendar, ClipboardList, AlertTriangle, CheckCircle2, Wallet, DollarSign, X, RefreshCw, Trash2, Calculator, Loader2, Printer } from 'lucide-react'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import CollapsibleBox from './CollapsibleBox'
 
@@ -96,7 +96,7 @@ function RecebimentoModal({
         setDadosParaEnviar({
             parcela_id: parcela.id,
             valor_original: valorOriginal,
-            valor_pago_total: valorPago,
+            valor_pago: valorPago,
             forma_pagamento: forma,
             data_pagamento: dataPagto,
             estrategia: isParcial ? estrategia : 'quitacao_total'
@@ -189,7 +189,7 @@ export default function FinanciamentoBox({
     const [obs, setObs] = useState('')
 
     const initialState: CreateFinanciamentoResult = { success: false, message: '' }
-    const [saveState, dispatchSave] = useFormState(saveFinanciamentoLoja, initialState)
+    // NOTA: saveState removido pois usaremos chamada manual
     const [recebimentoState, dispatchRecebimento] = useFormState(receberParcela, { success: false, message: '' })
 
     const isFinanced = !!financiamento && !isDeletedLocally;
@@ -291,247 +291,298 @@ export default function FinanciamentoBox({
         setIsConfigModalOpen(false);
     }
 
-    // Substitua a função handleConfirmRecebimento por esta versão com LOGS:
-
     const handleConfirmRecebimento = (dados: any) => {
         const formData = new FormData();
-
-        // Adiciona os dados do formulário (agora com o nome correto 'valor_pago_total')
         Object.keys(dados).forEach(key => formData.append(key, dados[key]));
-
-        // Adiciona dados fixos
         formData.append('venda_id', vendaId.toString());
         formData.append('store_id', storeId.toString());
 
-        dispatchRecebimento(formData);
+        // Chamada direta para evitar complexidade
+        receberParcela(null, formData).then(res => {
+            if (res.success) { setSelectedParcela(null); onFinanceAdded(); }
+            else { alert(res.message); }
+        });
     }
 
-    const labelStyle = 'block text-[9px] font-bold text-amber-100 mb-0.5 uppercase tracking-wider'
-    // MODIFICADO: Aumentado contraste para border-gray-400
-    const inputStyle = 'block w-full rounded-md border border-gray-400 bg-white shadow-sm text-gray-800 h-8 text-xs px-2 focus:ring-1 focus:ring-amber-300 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400 placeholder:text-gray-400 transition-all'
+    // Estilos
+    const labelStyle = 'block text-[9px] font-bold text-amber-100 mb-0.5 uppercase tracking-wider';
+    const inputStyle = 'block w-full rounded-md border border-gray-400 bg-white shadow-sm text-gray-800 h-8 text-xs px-2 focus:ring-1 focus:ring-amber-300 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400 placeholder:text-gray-400 transition-all';
 
-    // Se já existe financiamento, mostra a lista
-    if (isFinanced) {
-        return (
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-                <div className="bg-amber-50 px-4 py-3 border-b border-amber-100 flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                        <div className="p-1.5 bg-amber-100 rounded-md text-amber-700">
-                            <ClipboardList className="h-4 w-4" />
-                        </div>
-                        <div>
-                            <h3 className="text-sm font-bold text-amber-900">Carnê Ativo</h3>
-                            <p className="text-[10px] text-amber-600 font-medium">
-                                Total: R$ {formatCurrency(financiamento?.valor_total_financiado)}
-                            </p>
-                        </div>
-                    </div>
-                    {!disabled && !isQuitado && (
-                        <button
-                            onClick={handleResetCarne}
-                            disabled={isResetting}
-                            className="text-[10px] font-bold text-red-600 hover:bg-red-50 px-2 py-1 rounded border border-transparent hover:border-red-100 transition-all flex items-center gap-1"
-                        >
-                            {isResetting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
-                            {temParcelaPaga ? "RENEGOCIAR" : "CANCELAR"}
-                        </button>
-                    )}
-                </div>
-
-                {existeDivergencia && (
-                    <div className="bg-orange-50 p-2 text-[10px] text-orange-800 border-b border-orange-100 flex items-center gap-2 justify-center font-bold">
-                        <AlertTriangle className="h-3 w-3" />
-                        Há R$ {formatCurrency(valorRestante)} não financiados.
-                        <button onClick={handleResetCarne} className="underline hover:text-orange-900">Renegociar?</button>
-                    </div>
-                )}
-
-                <div className="divide-y divide-gray-100">
-                    {financiamento?.financiamento_parcelas.sort((a, b) => a.numero_parcela - b.numero_parcela).map((parcela) => (
-                        <div key={parcela.id} className={`flex items-center justify-between p-3 hover:bg-gray-50 transition-colors ${parcela.status === 'Pago' ? 'bg-green-50/50' : ''}`}>
-                            <div className="flex items-center gap-3">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border ${parcela.status === 'Pago' ? 'bg-green-100 text-green-700 border-green-200' :
-                                    new Date(parcela.data_vencimento) < new Date() ? 'bg-red-100 text-red-700 border-red-200' :
-                                        'bg-gray-100 text-gray-600 border-gray-200'
-                                    }`}>
-                                    {parcela.numero_parcela}
-                                </div>
-                                <div>
-                                    <p className="text-xs font-bold text-gray-800">R$ {formatCurrency(parcela.valor_parcela)}</p>
-                                    <p className="text-[10px] text-gray-500 flex items-center gap-1">
-                                        <Calendar className="h-3 w-3" /> {formatDate(parcela.data_vencimento)}
-                                    </p>
-                                </div>
+    const renderContent = () => (
+        <>
+            {isFinanced ? (
+                /* MODO VISUALIZAÇÃO */
+                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+                    <div className="bg-amber-50 px-4 py-3 border-b border-amber-100 flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                            <div className="p-1.5 bg-amber-100 rounded-md text-amber-700">
+                                <ClipboardList className="h-4 w-4" />
                             </div>
-
                             <div>
-                                {parcela.status === 'Pago' ? (
-                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-100 text-green-700 text-[10px] font-bold border border-green-200">
-                                        <CheckCircle2 className="h-3 w-3" /> PAGO
-                                    </span>
-                                ) : (
-                                    <button
-                                        onClick={() => setSelectedParcela(parcela)}
-                                        disabled={disabled || isQuitado}
-                                        className="px-3 py-1.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded hover:bg-amber-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        RECEBER
-                                    </button>
-                                )}
+                                <h3 className="text-sm font-bold text-amber-900">Carnê Ativo</h3>
+                                <p className="text-[10px] text-amber-600 font-medium">
+                                    Total: R$ {formatCurrency(financiamento?.valor_total_financiado)}
+                                </p>
                             </div>
                         </div>
-                    ))}
-                </div>
-
-                {selectedParcela && (
-                    <RecebimentoModal
-                        parcela={selectedParcela}
-                        onClose={() => setSelectedParcela(null)}
-                        onConfirm={handleConfirmRecebimento}
-                        storeId={storeId}
-                    />
-                )}
-            </div>
-        )
-    }
-
-    // MODO CRIAÇÃO (Formulário)
-    return (
-        <div className={isModal ? "bg-white p-3 h-full flex flex-col" : "relative bg-gradient-to-br from-amber-500 to-orange-600 p-3 rounded-xl shadow-md shadow-amber-200 border border-white/20"}>
-
-            {!isModal && (
-                <div className="flex items-center gap-1.5 mb-2 border-b border-white/20 pb-2">
-                    <div className="p-1 bg-white/20 rounded-md text-white">
-                        <Calculator className="h-4 w-4" />
-                    </div>
-                    <h3 className="text-xs font-bold text-white">
-                        Gerar Carnê
-                    </h3>
-                </div>
-            )}
-
-            <form action={dispatchSave} className="space-y-2">
-                <input type="hidden" name="venda_id" value={vendaId} />
-                <input type="hidden" name="customer_id" value={customerId} />
-                <input type="hidden" name="store_id" value={storeId} />
-                <input type="hidden" name="employee_id" value={authedEmployee?.id || employeeId} />
-                <input type="hidden" name="parcelas_json" value={JSON.stringify(parcelasGrid)} />
-
-                <div className="grid grid-cols-2 gap-2">
-                    <div>
-                        <label className={isModal ? 'text-[10px] font-bold text-gray-500 mb-0.5' : labelStyle}>Valor Total (R$)</label>
-                        <input
-                            type="text"
-                            value={valorFinanciadoStr}
-                            onChange={(e) => setValorFinanciadoStr(e.target.value)}
-                            className={`${inputStyle} font-bold text-amber-700 text-right`}
-                        />
-                    </div>
-                    <div>
-                        <label className={isModal ? 'text-[10px] font-bold text-gray-500 mb-0.5' : labelStyle}>1º Vencimento</label>
-                        <input
-                            type="date"
-                            value={vencimentoPrimeira}
-                            onChange={(e) => setVencimentoPrimeira(e.target.value)}
-                            className={`${inputStyle} text-[10px]`}
-                        />
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 items-end">
-                    <div>
-                        <label className={isModal ? 'text-[10px] font-bold text-gray-500 mb-0.5' : labelStyle}>Qtd. Parcelas</label>
-                        <select
-                            value={qtdeParcelas}
-                            onChange={(e) => setQtdeParcelas(parseInt(e.target.value))}
-                            className={`${inputStyle} font-bold cursor-pointer`}
-                        >
-                            {[...Array(24)].map((_, i) => <option key={i + 1} value={i + 1}>{i + 1}x</option>)}
-                        </select>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={handleCalcular}
-                        className="h-8 bg-amber-700 hover:bg-amber-800 text-white text-[10px] font-bold uppercase rounded shadow-sm transition-colors flex items-center justify-center gap-1"
-                    >
-                        <RefreshCw className="h-3 w-3" /> Calcular
-                    </button>
-                </div>
-
-                {/* GRID DE PARCELAS */}
-                {parcelasGrid.length > 0 && (
-                    <div className="bg-white/90 rounded-lg p-2 max-h-[180px] overflow-y-auto custom-scrollbar border border-amber-100 shadow-inner mt-2">
-                        <table className="w-full text-[10px]">
-                            <thead>
-                                <tr className="text-amber-800 border-b border-amber-100">
-                                    <th className="text-left py-1 px-1">#</th>
-                                    <th className="text-left py-1 px-1">Vencimento</th>
-                                    <th className="text-right py-1 px-1">Valor</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {parcelasGrid.map((p, idx) => (
-                                    <tr key={idx} className="hover:bg-amber-50">
-                                        <td className="py-1 px-1 font-bold text-gray-600">{p.numero_parcela}x</td>
-                                        <td className="py-1 px-1 text-gray-500">{formatDate(p.data_vencimento)}</td>
-                                        <td className="py-1 px-1">
-                                            <ParcelaInput valor={p.valor_parcela} index={idx} onChange={handleParcelaChange} />
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-
-                <div>
-                    <label className={isModal ? 'text-[10px] font-bold text-gray-500 mb-0.5' : labelStyle}>Observação</label>
-                    <input
-                        name="obs"
-                        type="text"
-                        value={obs}
-                        onChange={(e) => setObs(e.target.value)}
-                        className={inputStyle}
-                        placeholder="Opcional..."
-                    />
-                </div>
-
-                <div className="pt-2">
-                    {!authedEmployee ? (
-                        <button
-                            type="button"
-                            onClick={() => setIsConfigModalOpen(true)}
-                            className="w-full h-9 bg-white text-amber-700 hover:bg-amber-50 font-bold text-xs rounded-lg shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5"
-                        >
-                            <CheckCircle2 className="h-4 w-4" /> GERAR CARNÊ
-                        </button>
-                    ) : (
-                        <div className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
-                            <div className="flex-1 bg-white/20 text-white text-[10px] font-bold px-2 py-1.5 rounded flex items-center justify-between border border-white/30">
-                                <span>{authedEmployee.full_name}</span>
-                                <button type="button" onClick={() => setAuthedEmployee(null)}><X className="h-3 w-3" /></button>
+                        {!disabled && !isQuitado && (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => window.open(`/print/promissoria/${financiamento.id}`, '_blank')}
+                                    className="text-[10px] font-bold text-blue-600 hover:bg-blue-50 px-2 py-1 rounded border border-transparent hover:border-blue-100 transition-all flex items-center gap-1"
+                                    title="Imprimir Compromisso de Pagamento"
+                                >
+                                    <Printer className="h-3 w-3" /> IMPRIMIR DUPLICATA
+                                </button>
+                                <button
+                                    onClick={() => window.open(`/print/carne/${financiamento.id}`, '_blank')}
+                                    className="text-[10px] font-bold text-amber-600 hover:bg-amber-50 px-2 py-1 rounded border border-transparent hover:border-amber-100 transition-all flex items-center gap-1"
+                                    title="Imprimir Carnê de Pagamento"
+                                >
+                                    <Printer className="h-3 w-3" /> IMPRIMIR CARNÊ
+                                </button>
+                                <button
+                                    onClick={handleResetCarne}
+                                    disabled={isResetting}
+                                    className="text-[10px] font-bold text-red-600 hover:bg-red-50 px-2 py-1 rounded border border-transparent hover:border-red-100 transition-all flex items-center gap-1"
+                                >
+                                    {isResetting ? <Loader2 className="h-3 w-3 animate-spin" /> : temParcelaPaga ? <RefreshCw className="h-3 w-3" /> : <Trash2 className="h-3 w-3" />}
+                                    {temParcelaPaga ? 'RENEGOCIAR' : 'CANCELAR'}
+                                </button>
                             </div>
-                            <button
-                                type="submit"
-                                className="h-9 px-4 bg-green-500 hover:bg-green-600 text-white font-bold text-xs rounded-lg shadow-md transition-all active:scale-95 flex items-center gap-1"
-                            >
-                                CONFIRMAR
-                            </button>
+                        )}
+                    </div>
+
+                    {existeDivergencia && (
+                        <div className="bg-orange-50 p-2 text-[10px] text-orange-800 border-b border-orange-100 flex items-center gap-2 justify-center font-bold">
+                            <AlertTriangle className="h-3 w-3" />
+                            Há R$ {formatCurrency(valorRestante)} não financiados.
+                            <button onClick={handleResetCarne} className="underline hover:text-orange-900">Renegociar?</button>
                         </div>
                     )}
-                </div>
-            </form>
 
-            {isConfigModalOpen && (
-                <EmployeeAuthModal
-                    storeId={storeId}
-                    isOpen={isConfigModalOpen}
-                    onClose={() => setIsConfigModalOpen(false)}
-                    onSuccess={handleAuthSuccess}
-                    title="Autorizar Carnê"
-                    description="Confirme seu PIN para gerar o carnê."
-                />
+                    <div className="divide-y divide-gray-100">
+                        {financiamento?.financiamento_parcelas.sort((a, b) => a.numero_parcela - b.numero_parcela).map((p) => {
+                            const isPago = p.status === 'Pago';
+                            const isAtrasado = !isPago && new Date(p.data_vencimento) < new Date(new Date().setHours(0, 0, 0, 0));
+                            return (
+                                <div key={p.id} className={`flex items-center justify-between p-3 hover:bg-gray-50 transition-colors ${isPago ? 'bg-green-50/50' : ''}`}>
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border ${isPago ? 'bg-green-100 text-green-700 border-green-200' :
+                                            isAtrasado ? 'bg-red-100 text-red-700 border-red-200' :
+                                                'bg-gray-100 text-gray-600 border-gray-200'
+                                            }`}>
+                                            {p.numero_parcela}
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-bold text-gray-800">R$ {formatCurrency(p.valor_parcela)}</p>
+                                            <p className="text-[10px] text-gray-500 flex items-center gap-1">
+                                                <Calendar className="h-3 w-3" /> {formatDate(p.data_vencimento)}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        {isPago ? (
+                                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-100 text-green-700 text-[10px] font-bold border border-green-200">
+                                                <CheckCircle2 className="h-3 w-3" /> PAGO
+                                            </span>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); setSelectedParcela(p); }}
+                                                disabled={disabled || isQuitado}
+                                                className="px-3 py-1.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded hover:bg-amber-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                RECEBER
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            )
+                        })}
+                    </div>
+                </div>
+            ) : (
+                /* MODO CRIAÇÃO */
+                <div className={isModal ? "bg-white p-3 h-full flex flex-col" : "relative bg-gradient-to-br from-amber-500 to-orange-600 p-3 rounded-xl shadow-md shadow-amber-200 border border-white/20"}>
+                    {!isModal && (
+                        <div className="flex items-center gap-1.5 mb-2 border-b border-white/20 pb-2">
+                            <div className="p-1 bg-white/20 rounded-md text-white">
+                                <Calculator className="h-4 w-4" />
+                            </div>
+                            <h3 className="text-xs font-bold text-white">Gerar Carnê</h3>
+                        </div>
+                    )}
+
+                    {isQuitado && !isDeletedLocally && (
+                        <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 flex flex-col items-center justify-center rounded-2xl text-center p-4">
+                            <div className="bg-green-50 border border-green-200 p-2 rounded-full mb-2"><CheckCircle2 className="h-5 w-5 text-green-600" /></div>
+                            <p className="text-green-800 font-bold text-xs">Venda Quitada. Sem saldo para financiar.</p>
+                        </div>
+                    )}
+
+                    {/* CRIAÇÃO MANUAL (SEM FORMULÁRIO HTML) */}
+                    {(() => {
+                        const handleCriarCarneManual = async (empIdOverride?: number) => {
+                            if (parcelasGrid.length === 0) {
+                                alert("Por favor, clique em CALCULAR antes de gerar o carnê.");
+                                return;
+                            }
+
+                            // REMOVIDO: Confirmação manual (Fluxo direto)
+                            // if (!confirm(`Confirma a criação do carnê em ${qtdeParcelas}x?`)) return;
+
+                            const payload = {
+                                venda_id: vendaId,
+                                customer_id: customerId,
+                                employee_id: empIdOverride ?? authedEmployee?.id ?? employeeId,
+                                valor_total: parseLocaleFloat(valorFinanciadoStr),
+                                qtd_parcelas: qtdeParcelas,
+                                data_primeiro_vencimento: vencimentoPrimeira,
+                                obs: obs
+                            };
+
+                            const resultado = await saveFinanciamentoLoja(null, payload);
+
+                            if (resultado.success) {
+                                setParcelasGrid([]);
+                                setIsDeletedLocally(false); // Garante que a UI atualize
+                                await onFinanceAdded();
+
+                                // AUTO-PRINT: Abre a impressão automaticamente
+                                if (resultado.data?.id) {
+                                    window.open(`/print/promissoria/${resultado.data.id}`, '_blank');
+                                }
+                            } else {
+                                alert(resultado.message || "Erro desconhecido ao criar carnê.");
+                            }
+                        };
+
+                        // AUTO-TRIGGER: Assim que autenticar, já chama a criação
+                        const handleAuthSuccessAuto = (employee: Pick<Employee, 'id' | 'full_name'>) => {
+                            setAuthedEmployee(employee);
+                            setIsConfigModalOpen(false);
+                            handleCriarCarneManual(employee.id);
+                        }
+
+                        return (
+                            <div className="space-y-2">
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label className={isModal ? 'text-[10px] font-bold text-gray-500 mb-0.5' : labelStyle}>Valor Total (R$)</label>
+                                        <input type="text" value={valorFinanciadoStr} onChange={e => { setValorFinanciadoStr(e.target.value); setParcelasGrid([]); }} className={`${inputStyle} font-bold text-amber-700 text-right`} />
+                                    </div>
+                                    <div>
+                                        <label className={isModal ? 'text-[10px] font-bold text-gray-500 mb-0.5' : labelStyle}>1º Vencimento</label>
+                                        <input type="date" value={vencimentoPrimeira} onChange={e => setVencimentoPrimeira(e.target.value)} className={`${inputStyle} text-[10px]`} />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 items-end">
+                                    <div>
+                                        <label className={isModal ? 'text-[10px] font-bold text-gray-500 mb-0.5' : labelStyle}>Qtd. Parcelas</label>
+                                        <select value={qtdeParcelas} onChange={e => { setQtdeParcelas(parseInt(e.target.value)); setParcelasGrid([]); }} className={`${inputStyle} font-bold cursor-pointer`}>
+                                            {[...Array(24)].map((_, i) => <option key={i} value={i + 1}>{i + 1}x</option>)}
+                                        </select>
+                                    </div>
+                                    <button type="button" onClick={handleCalcular} className="h-8 bg-amber-700 hover:bg-amber-800 text-white text-[10px] font-bold uppercase rounded shadow-sm transition-colors flex items-center justify-center gap-1">
+                                        <RefreshCw className="h-3 w-3" /> Calcular
+                                    </button>
+                                </div>
+
+                                {parcelasGrid.length > 0 && (
+                                    <div className="bg-white/90 rounded-lg p-2 max-h-[180px] overflow-y-auto custom-scrollbar border border-amber-100 shadow-inner mt-2">
+                                        <table className="w-full text-[10px]">
+                                            <thead>
+                                                <tr className="text-amber-800 border-b border-amber-100">
+                                                    <th className="text-left py-1 px-1">#</th>
+                                                    <th className="text-left py-1 px-1">Vencimento</th>
+                                                    <th className="text-right py-1 px-1">Valor</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {parcelasGrid.map((p, i) => (
+                                                    <tr key={i} className="hover:bg-amber-50">
+                                                        <td className="py-1 px-1 font-bold text-gray-600">{p.numero_parcela}x</td>
+                                                        <td className="py-1 px-1 text-gray-500">{formatDate(p.data_vencimento)}</td>
+                                                        <td className="py-1 px-1">
+                                                            <ParcelaInput valor={p.valor_parcela} index={i} onChange={handleParcelaChange} />
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+
+                                <div>
+                                    <label className={isModal ? 'text-[10px] font-bold text-gray-500 mb-0.5' : labelStyle}>Observação</label>
+                                    <input type="text" value={obs} onChange={(e) => setObs(e.target.value)} className={inputStyle} placeholder="Opcional..." />
+                                </div>
+
+                                <div className="pt-2">
+                                    {/* MODAL DE AUTH AGORA CHAMA O AUTO-TRIGGER */}
+                                    {isConfigModalOpen && <EmployeeAuthModal storeId={storeId} isOpen={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} onSuccess={handleAuthSuccessAuto} title="Autorizar Emissão" description="PIN do responsável." />}
+
+                                    {!authedEmployee ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsConfigModalOpen(true)}
+                                            disabled={parcelasGrid.length === 0}
+                                            className="w-full h-9 bg-white text-amber-700 hover:bg-amber-50 font-bold text-xs rounded-lg shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            <CheckCircle2 className="h-4 w-4" /> GERAR CARNÊ
+                                        </button>
+                                    ) : (
+                                        <div className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
+                                            <div className="flex-1 bg-white/20 text-white text-[10px] font-bold px-2 py-1.5 rounded flex items-center justify-between border border-white/30">
+                                                <span>{authedEmployee.full_name}</span>
+                                                <button type="button" onClick={() => setAuthedEmployee(null)}><X className="h-3 w-3" /></button>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleCriarCarneManual()}
+                                                className="h-9 px-4 bg-green-500 hover:bg-green-600 text-white font-bold text-xs rounded-lg shadow-md transition-all active:scale-95 flex items-center gap-1"
+                                            >
+                                                CONFIRMAR
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )
+                    })()}
+                </div>
             )}
-        </div>
+        </>
+    );
+
+    if (isModal) {
+        return (
+            <div className="h-full overflow-y-auto custom-scrollbar pr-1 pt-2">
+                {renderContent()}
+
+                {selectedParcela && <RecebimentoModal parcela={selectedParcela} storeId={storeId} onClose={() => setSelectedParcela(null)} onConfirm={handleConfirmRecebimento} />}
+            </div>
+        );
+    }
+
+    return (
+        <>
+            {isFinanced ? (
+                <CollapsibleBox
+                    title="Carnê da Loja"
+                    icon={<Wallet className="h-5 w-5 text-amber-700" />}
+                    color="amber"
+                    defaultOpen={true}
+                    badge="EMITIDO"
+                >
+                    {renderContent()}
+                </CollapsibleBox>
+            ) : renderContent()}
+
+
+            {selectedParcela && <RecebimentoModal parcela={selectedParcela} storeId={storeId} onClose={() => setSelectedParcela(null)} onConfirm={handleConfirmRecebimento} />}
+        </>
     )
 }

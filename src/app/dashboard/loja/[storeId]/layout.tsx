@@ -42,11 +42,13 @@ export default async function StoreLayout({
   const supabaseAdmin = createAdminClient();
   const { data: storeData } = await (supabaseAdmin
     .from('stores') as any)
-    .select('name')
+    .select('name, settings')
     .eq('id', storeIdParam)
     .single();
 
   const storeName = storeData?.name || 'Ótica';
+  const settings = storeData?.settings as any;
+  const logoUrl = settings?.logo ? `/logos/${settings.logo}` : null;
 
   return (
     // CORREÇÃO 1: Mudamos de 'h-screen' para 'h-full'.
@@ -60,6 +62,7 @@ export default async function StoreLayout({
           userRole={userRole}
           storeId={storeIdParam}
           storeName={storeName}
+          logoUrl={logoUrl}
         />
       </div>
 

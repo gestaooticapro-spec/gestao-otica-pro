@@ -11,7 +11,7 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const supabase = createClient();
-  
+
   // 1. Apenas faz a checagem de autenticação no nível mais alto.
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
@@ -24,7 +24,7 @@ export default async function DashboardLayout({
   return (
     <>
       <Header />
-      
+
       {/* Container Principal: Header é compensado por pt-16 */}
       <div className="flex flex-1 pt-16">
         {/* O CHILDREN (a rota filha) será responsável por renderizar a SideNav (se for uma rota de loja) */}
