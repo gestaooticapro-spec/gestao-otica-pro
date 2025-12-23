@@ -317,7 +317,7 @@ export default function SideNav({ userRole, storeId, storeName }: SideNavProps) 
                 <div className="mt-auto pt-4 border-t border-gray-100 w-full flex flex-col gap-2">
                     {/* === BOTÃO DA IA (SUPORTE) === */}
                     <button
-                        onClick={() => router.push('/dashboard/ajuda', { scroll: false })}
+                        onClick={() => router.push(`/dashboard/ajuda?storeId=${storeId}`, { scroll: false })}
                         className={`flex items-center rounded-xl text-blue-600 bg-blue-50 hover:bg-blue-100 hover:text-blue-700 transition-all ${isMainCollapsed ? 'justify-center w-14 h-14' : 'w-full px-4 py-3 gap-3'}`}
                         title="Ajuda Inteligente"
                     >

@@ -1,4 +1,3 @@
-// Caminho: src/lib/actions/customer.actions.ts
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
@@ -21,7 +20,7 @@ function validaCPF(cpf: string | null | undefined): boolean {
     resto
   for (let i = 1; i <= 9; i++)
     soma += parseInt(cpfLimpo.substring(i - 1, i)) * (11 - i)
-  
+
   resto = (soma * 10) % 11
   if (resto === 10 || resto === 11) resto = 0
   if (resto !== parseInt(cpfLimpo.substring(9, 10))) return false
@@ -39,7 +38,6 @@ function validaCPF(cpf: string | null | undefined): boolean {
 // --- Esquema de Validação ---
 const CustomerSchema = z.object({
   id: z.coerce.number().optional(),
-  // CORREÇÃO ANTERIOR MANTIDA: Removido required_error
   store_id: z.coerce.number(),
   full_name: z.string().min(3, { message: 'Nome completo é obrigatório.' }),
   rg: z.string().optional().nullable(),
@@ -69,7 +67,7 @@ const CustomerSchema = z.object({
   comercial_cargo: z.string().optional().nullable(),
   comercial_endereco: z.string().optional().nullable(),
   comercial_fone: z.string().optional().nullable(),
-  comercial_renda: z.coerce.number().optional().nullable(), 
+  comercial_renda: z.coerce.number().optional().nullable(),
   obs_comercial: z.string().optional().nullable(),
   ref_comercio_1: z.string().optional().nullable(),
   ref_comercio_2: z.string().optional().nullable(),
@@ -95,26 +93,26 @@ export async function saveCustomerDetails(
 ): Promise<CustomerActionResult> {
   const supabase = createClient()
   const customerId = formData.get('id')
-  
+
   // 1. Obter Usuário Logado
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, message: 'Usuário não autenticado.' }
-  
-  // 2. Obter Perfil (CORREÇÃO AQUI: Cast 'as any' para garantir acesso ao tenant_id)
+
+  // 2. Obter Perfil
   const profile = await getProfileByAdmin(user.id) as any
 
   if (!profile?.tenant_id || !profile?.store_id) {
     return { success: false, message: 'Perfil do usuário incompleto (sem loja/tenant).' }
   }
-  
+
   const { tenant_id, store_id } = profile
 
   // 3. Pré-processar CPF
   const emptyToNull = (value: FormDataEntryValue | null) => value === '' ? null : value
   const cpfFromForm = emptyToNull(formData.get('cpf')) as string | null
   const unmaskedCpf = cpfFromForm ? cpfFromForm.replace(/\D/g, '') : null
-  const cpfToSave = unmaskedCpf 
-  
+  const cpfToSave = unmaskedCpf
+
   // 4. Validar Campos
   const validatedFields = CustomerSchema.safeParse({
     id: customerId,
@@ -166,42 +164,40 @@ export async function saveCustomerDetails(
   }
 
   const { id: _, store_id: __, ...customerData } = validatedFields.data
-  
-  // CORREÇÃO MANTIDA: any aqui para aceitar campos novos
+
   const dataToSave: any = {
-      ...customerData,
-      store_id: store_id,
-      tenant_id: tenant_id, 
+    ...customerData,
+    store_id: store_id,
+    tenant_id: tenant_id,
   }
 
   const supabaseAdmin = createAdminClient();
 
   // --- TRAVA DE SEGURANÇA ---
   let queryDuplicidade = (supabaseAdmin
-      .from('customers') as any)
-      .select('id')
-      .eq('store_id', store_id)
-      .ilike('full_name', dataToSave.full_name)
-      
+    .from('customers') as any)
+    .select('id')
+    .eq('store_id', store_id)
+    .ilike('full_name', dataToSave.full_name)
+
   if (customerId) {
-      queryDuplicidade = queryDuplicidade.neq('id', customerId)
+    queryDuplicidade = queryDuplicidade.neq('id', customerId)
   }
 
   const { data: duplicados } = await queryDuplicidade.limit(1)
 
   if (duplicados && duplicados.length > 0) {
-      return { 
-          success: false, 
-          message: `Atenção: Já existe um cliente cadastrado com o nome "${dataToSave.full_name}".` 
-      }
+    return {
+      success: false,
+      message: `Atenção: Já existe um cliente cadastrado com o nome "${dataToSave.full_name}".`
+    }
   }
 
   try {
     let error;
     let savedData: Customer | null = null;
-    
+
     if (customerId) {
-      // CORREÇÃO MANTIDA: Cast 'as any'
       const { data, error: updateError } = await (supabaseAdmin.from('customers') as any)
         .update(dataToSave)
         .eq('id', customerId)
@@ -210,7 +206,6 @@ export async function saveCustomerDetails(
       error = updateError;
       savedData = data;
     } else {
-      // CORREÇÃO MANTIDA: Cast 'as any'
       const { data, error: insertError } = await (supabaseAdmin.from('customers') as any)
         .insert(dataToSave)
         .select()
@@ -240,23 +235,23 @@ export async function saveCustomerDetails(
 //================================================================
 
 export async function deleteCustomer(
-    customerId: number,
-    storeId: number,
+  customerId: number,
+  storeId: number,
 ): Promise<CustomerActionResult> {
-    const supabaseAdmin = createAdminClient();
+  const supabaseAdmin = createAdminClient();
 
-    try {
-        const { error: deleteError } = await (supabaseAdmin.from('customers') as any)
-            .delete()
-            .eq('id', customerId)
+  try {
+    const { error: deleteError } = await (supabaseAdmin.from('customers') as any)
+      .delete()
+      .eq('id', customerId)
 
-        if (deleteError) throw new Error(deleteError.message)
+    if (deleteError) throw new Error(deleteError.message)
 
-        revalidatePath(`/dashboard/loja/${storeId}/clientes`)
-        return { success: true, message: 'Cliente deletado com sucesso.' }
-    } catch (error: any) {
-        return { success: false, message: `Erro ao deletar: ${error.message}` }
-    }
+    revalidatePath(`/dashboard/loja/${storeId}/clientes`)
+    return { success: true, message: 'Cliente deletado com sucesso.' }
+  } catch (error: any) {
+    return { success: false, message: `Erro ao deletar: ${error.message}` }
+  }
 }
 
 // ================================================================
@@ -269,55 +264,121 @@ const QuickCustomerSchema = z.object({
 })
 
 export async function createQuickCustomer(formData: FormData): Promise<CustomerActionResult> {
-    const supabaseAdmin = createAdminClient()
-    const { data: { user } } = await createClient().auth.getUser()
-    
-    if (!user) return { success: false, message: 'Sem permissão.' }
-    
-    // CORREÇÃO AQUI: Cast 'as any' no profile também
-    const profile = await getProfileByAdmin(user.id) as any
+  const supabaseAdmin = createAdminClient()
+  const { data: { user } } = await createClient().auth.getUser()
 
-    const rawData = {
-        store_id: formData.get('store_id'),
-        full_name: formData.get('full_name'),
-        fone_movel: formData.get('fone_movel')
+  if (!user) return { success: false, message: 'Sem permissão.' }
+
+  const profile = await getProfileByAdmin(user.id) as any
+
+  const rawData = {
+    store_id: formData.get('store_id'),
+    full_name: formData.get('full_name'),
+    fone_movel: formData.get('fone_movel')
+  }
+
+  const validated = QuickCustomerSchema.safeParse(rawData)
+
+  if (!validated.success) {
+    return { success: false, message: 'Dados inválidos.', errors: validated.error.flatten().fieldErrors }
+  }
+
+  const { store_id, full_name, fone_movel } = validated.data
+
+  try {
+    const { data: existe } = await (supabaseAdmin.from('customers') as any)
+      .select('id')
+      .eq('store_id', store_id)
+      .ilike('full_name', full_name.trim())
+      .maybeSingle()
+
+    if (existe) {
+      return { success: false, message: 'Já existe um cliente com este nome exato.' }
     }
 
-    const validated = QuickCustomerSchema.safeParse(rawData)
-    
-    if (!validated.success) {
-        return { success: false, message: 'Dados inválidos.', errors: validated.error.flatten().fieldErrors }
+    const { data: newCustomer, error } = await (supabaseAdmin.from('customers') as any).insert({
+      tenant_id: profile?.tenant_id,
+      store_id,
+      full_name: full_name.trim(),
+      fone_movel: fone_movel.replace(/\D/g, ''),
+      created_at: new Date().toISOString()
+    }).select().single()
+
+    if (error) throw error
+
+    revalidatePath(`/dashboard/loja/${store_id}/clientes`)
+    return { success: true, message: 'Cliente cadastrado!', data: newCustomer }
+
+  } catch (e: any) {
+    return { success: false, message: e.message }
+  }
+}
+
+// ================================================================
+// 4. ACTION: BUSCAR PERFIL DO CLIENTE (PARA IA)
+// ================================================================
+export async function getCustomerProfile(storeId: number, query: string) {
+  const supabaseAdmin = createAdminClient()
+
+  // 1. Buscar Cliente (Nome ou CPF)
+  let clienteQuery = (supabaseAdmin.from('customers') as any)
+    .select('*')
+    .eq('store_id', storeId)
+
+  // Se for CPF (apenas números)
+  if (/^\d+$/.test(query)) {
+    clienteQuery = clienteQuery.ilike('cpf', `%${query}%`)
+  } else {
+    clienteQuery = clienteQuery.ilike('full_name', `%${query}%`)
+  }
+
+  const { data: clientes } = await clienteQuery.limit(3) // Traz até 3 para desambiguação
+
+  if (!clientes || clientes.length === 0) {
+    return null
+  }
+
+  // Se achou mais de um, retorna lista simplificada para a IA perguntar "Qual deles?"
+  if (clientes.length > 1) {
+    return {
+      multiplos: true,
+      candidatos: clientes.map((c: any) => ({ id: c.id, nome: c.full_name, cpf: c.cpf }))
     }
+  }
 
-    const { store_id, full_name, fone_movel } = validated.data
+  const cliente = clientes[0]
 
-    try {
-        // CORREÇÃO MANTIDA: Cast 'as any'
-        const { data: existe } = await (supabaseAdmin.from('customers') as any)
-            .select('id')
-            .eq('store_id', store_id)
-            .ilike('full_name', full_name.trim())
-            .maybeSingle()
-        
-        if (existe) {
-            return { success: false, message: 'Já existe um cliente com este nome exato.' }
-        }
+  // 2. Buscar Histórico de Vendas (Últimas 5)
+  const { data: vendas } = await (supabaseAdmin.from('vendas') as any)
+    .select('id, created_at, valor_final, status, products_summary')
+    .eq('customer_id', cliente.id)
+    .order('created_at', { ascending: false })
+    .limit(5)
 
-        // CORREÇÃO MANTIDA: Cast 'as any' no insert
-        const { data: newCustomer, error } = await (supabaseAdmin.from('customers') as any).insert({
-            tenant_id: profile?.tenant_id,
-            store_id,
-            full_name: full_name.trim(),
-            fone_movel: fone_movel.replace(/\D/g, ''),
-            created_at: new Date().toISOString()
-        }).select().single()
+  // 3. Calcular Total Gasto (LTV simplificado)
+  const { data: todasVendas } = await (supabaseAdmin.from('vendas') as any)
+    .select('valor_final')
+    .eq('customer_id', cliente.id)
+    .eq('status', 'Fechada')
 
-        if (error) throw error
+  const totalGasto = todasVendas?.reduce((acc: number, v: any) => acc + (v.valor_final || 0), 0) || 0
 
-        revalidatePath(`/dashboard/loja/${store_id}/clientes`)
-        return { success: true, message: 'Cliente cadastrado!', data: newCustomer }
-
-    } catch (e: any) {
-        return { success: false, message: e.message }
+  return {
+    multiplos: false,
+    perfil: {
+      id: cliente.id,
+      nome: cliente.full_name,
+      cpf: cliente.cpf,
+      telefone: cliente.fone_movel || cliente.phone,
+      endereco: `${cliente.rua || ''}, ${cliente.numero || ''} - ${cliente.bairro || ''}`,
+      total_gasto: totalGasto,
+      ultima_compra: vendas?.[0]?.created_at || null,
+      historico_recente: vendas?.map((v: any) => ({
+        data: v.created_at,
+        valor: v.valor_final,
+        status: v.status,
+        resumo: v.products_summary
+      }))
     }
+  }
 }

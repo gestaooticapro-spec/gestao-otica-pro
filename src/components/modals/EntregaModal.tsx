@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useTransition } from 'react'
-import { createPortal } from 'react-dom' // <--- IMPORTAÇÃO NOVA
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { Search, X, Loader2, Save, Truck, User, AlertCircle } from 'lucide-react'
 import { searchOSForLab, updateLabTracking, getEmployees, LabOSResult, EmployeeSimple } from '@/lib/actions/lab.actions'
@@ -14,7 +14,7 @@ interface Props {
 
 export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
     const router = useRouter()
-    
+
     // --- ESTADO PARA O PORTAL ---
     const [mounted, setMounted] = useState(false)
 
@@ -22,8 +22,8 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
     const [query, setQuery] = useState('')
     const [results, setResults] = useState<LabOSResult[]>([])
     // Estado para controlar se a busca já foi feita (para exibir "Nenhum resultado" só na hora certa)
-    const [hasSearched, setHasSearched] = useState(false) 
-    
+    const [hasSearched, setHasSearched] = useState(false)
+
     const [selectedOS, setSelectedOS] = useState<LabOSResult | null>(null)
     const [employees, setEmployees] = useState<EmployeeSimple[]>([])
     const [isPending, startTransition] = useTransition()
@@ -48,7 +48,7 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault() // Impede reload da página
         if (!query.trim()) return
-        
+
         // Limpa resultados anteriores antes de buscar
         setResults([])
         setHasSearched(false)
@@ -99,15 +99,16 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
     return createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
             <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-                
-                <div className="bg-emerald-700 p-4 flex justify-between items-center text-white shrink-0">
+
+                {/* HEADER LARANJA (AMBER) */}
+                <div className="bg-amber-600 p-4 flex justify-between items-center text-white shrink-0">
                     <div className="flex items-center gap-2">
-                        <Truck className="h-5 w-5 text-emerald-300" />
+                        <Truck className="h-5 w-5 text-amber-200" />
                         <h2 className="font-bold text-lg">
                             {step === 'search' ? 'Entrega de Óculos' : `Entregar OS #${selectedOS?.id}`}
                         </h2>
                     </div>
-                    <button onClick={onClose} className="text-emerald-200 hover:text-white transition-colors">
+                    <button onClick={onClose} className="text-amber-100 hover:text-white transition-colors">
                         <X className="h-6 w-6" />
                     </button>
                 </div>
@@ -115,37 +116,36 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
                 {step === 'search' && (
                     <div className="p-6 flex-1 overflow-y-auto">
                         <form onSubmit={handleSearch} className="flex gap-2 mb-6">
-                            <input 
+                            <input
                                 autoFocus
-                                type="text" 
-                                placeholder="Nº OS, Nome Cliente ou Dependente..." 
-                                className="flex-1 border-2 border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-700 focus:border-emerald-500 focus:outline-none"
+                                type="text"
+                                placeholder="Nº OS, Nome Cliente ou Dependente..."
+                                className="flex-1 border-2 border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-700 focus:border-amber-500 focus:outline-none"
                                 value={query}
                                 onChange={e => setQuery(e.target.value)}
                             />
                             {/* type="submit" garante que o Enter funcione e chame handleSearch */}
-                            <button type="submit" disabled={isPending} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 rounded-xl font-bold transition-colors flex items-center gap-2">
-                                {isPending ? <Loader2 className="h-5 w-5 animate-spin"/> : <Search className="h-5 w-5"/>}
+                            <button type="submit" disabled={isPending} className="bg-amber-600 hover:bg-amber-700 text-white px-6 rounded-xl font-bold transition-colors flex items-center gap-2">
+                                {isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
                                 Buscar
                             </button>
                         </form>
 
                         <div className="space-y-2">
                             {results.map(os => (
-                                <button 
+                                <button
                                     key={os.id}
                                     onClick={() => handleSelect(os)}
-                                    className="w-full text-left p-4 rounded-xl border border-slate-100 hover:border-emerald-200 hover:bg-emerald-50 transition-all group relative overflow-hidden"
+                                    className="w-full text-left p-4 rounded-xl border border-slate-100 hover:border-amber-200 hover:bg-amber-50 transition-all group relative overflow-hidden"
                                 >
                                     {os.status === 'Em Aberto' && (
                                         <div className="absolute right-0 top-0 bottom-0 w-1.5 bg-yellow-400" />
                                     )}
 
                                     <div className="flex justify-between items-center mb-1">
-                                        <span className="font-black text-slate-700 text-lg group-hover:text-emerald-800">OS #{os.id}</span>
-                                        <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded flex items-center gap-1 ${
-                                            os.status === 'Fechada' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-                                        }`}>
+                                        <span className="font-black text-slate-700 text-lg group-hover:text-amber-800">OS #{os.id}</span>
+                                        <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded flex items-center gap-1 ${os.status === 'Fechada' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                                            }`}>
                                             {os.status === 'Em Aberto' && <AlertCircle className="h-3 w-3" />}
                                             {os.status}
                                         </span>
@@ -156,20 +156,20 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
                                             <span className="font-bold">{os.customer_name}</span>
                                         </div>
                                         {os.dependente_name && (
-                                            <div className="flex items-center gap-2 pl-6 text-xs text-emerald-600 font-medium">
+                                            <div className="flex items-center gap-2 pl-6 text-xs text-amber-600 font-medium">
                                                 <span>↳ Dep: {os.dependente_name}</span>
                                             </div>
                                         )}
                                     </div>
-                                    
+
                                     <div className="mt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                                            {os.status === 'Em Aberto' 
-                                                ? 'Ir para pagamento →' 
-                                                : 'Realizar entrega →'}
+                                        {os.status === 'Em Aberto'
+                                            ? 'Ir para pagamento →'
+                                            : 'Realizar entrega →'}
                                     </div>
                                 </button>
                             ))}
-                            
+
                             {/* Só exibe mensagem se JÁ buscou e não achou nada */}
                             {hasSearched && results.length === 0 && !isPending && (
                                 <p className="text-center text-slate-400 py-8 font-medium">
@@ -183,9 +183,9 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
                 {step === 'edit' && selectedOS && (
                     <form action={handleSave} className="flex flex-col h-full">
                         <div className="p-6 bg-slate-50 flex-1 overflow-y-auto">
-                            
-                            <div className="bg-emerald-600 rounded-xl p-5 shadow-lg text-white">
-                                <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest mb-4 opacity-90 border-b border-emerald-400/50 pb-2">
+
+                            <div className="bg-amber-600 rounded-xl p-5 shadow-lg text-white">
+                                <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest mb-4 opacity-90 border-b border-amber-400/50 pb-2">
                                     <Truck className="h-4 w-4" /> Confirmar Entrega
                                 </h3>
 
@@ -221,14 +221,14 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
                                     </div>
 
                                     <div className="space-y-1 scale-105 origin-left">
-                                        <label className="text-[10px] font-bold uppercase text-white bg-emerald-800 px-2 py-0.5 rounded-full inline-block mb-1 shadow-sm">
+                                        <label className="text-[10px] font-bold uppercase text-white bg-amber-800 px-2 py-0.5 rounded-full inline-block mb-1 shadow-sm">
                                             Entregue Cliente (Hoje)
                                         </label>
-                                        <input 
-                                            type="datetime-local" 
+                                        <input
+                                            type="datetime-local"
                                             name="dt_entregue_em"
                                             defaultValue={formatForInput(selectedOS.dt_entregue_em) || formatForInput(new Date().toISOString())}
-                                            className="w-full rounded-lg px-3 py-2 text-sm font-black text-slate-800 shadow-lg ring-4 ring-emerald-400/30 focus:ring-emerald-300 outline-none" 
+                                            className="w-full rounded-lg px-3 py-2 text-sm font-black text-slate-800 shadow-lg ring-4 ring-amber-400/30 focus:ring-amber-300 outline-none"
                                             autoFocus
                                         />
                                     </div>
@@ -238,8 +238,8 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
 
                         <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 shrink-0">
                             <button type="button" onClick={() => setStep('search')} className="px-4 py-2 text-slate-500 font-bold hover:bg-slate-200 rounded-lg transition-colors">Voltar</button>
-                            <button disabled={isPending} className="px-6 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg shadow-lg flex items-center gap-2 transition-colors">
-                                {isPending ? <Loader2 className="h-4 w-4 animate-spin"/> : <Save className="h-4 w-4" />}
+                            <button disabled={isPending} className="px-6 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg shadow-lg flex items-center gap-2 transition-colors">
+                                {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                                 Confirmar Entrega
                             </button>
                         </div>

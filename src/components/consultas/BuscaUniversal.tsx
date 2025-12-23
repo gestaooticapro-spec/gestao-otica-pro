@@ -19,7 +19,7 @@ export default function BuscaUniversal({ storeId }: { storeId: number }) {
         setTermo(valor)
 
         const isNum = /^\d+$/.test(valor)
-        
+
         if ((isNum && valor.length < 1) || (!isNum && valor.length < 2)) {
             setResultados(null)
             return
@@ -33,33 +33,30 @@ export default function BuscaUniversal({ storeId }: { storeId: number }) {
 
     return (
         <div className="w-full space-y-6 pb-10">
-            
-            {/* 1. CARD DE BUSCA (HERO SECTION) */}
-            <div className="bg-gradient-to-r from-cyan-600 to-blue-700 p-8 rounded-3xl shadow-xl shadow-cyan-100 border border-white/20 relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-6 opacity-10">
-                    <Search className="h-32 w-32 text-white" />
-                </div>
-                
+
+            {/* 1. CARD DE BUSCA (HERO SECTION) - COMPACTADO */}
+            <div className="bg-gradient-to-r from-cyan-600 to-blue-700 p-6 rounded-3xl shadow-xl shadow-cyan-100 border border-white/20 relative overflow-hidden">
+
                 <div className="relative z-10 max-w-3xl mx-auto text-center">
-                    <h2 className="text-2xl font-black text-white mb-6 tracking-tight drop-shadow-sm">
+                    <h2 className="text-xl font-black text-white mb-4 tracking-tight drop-shadow-sm">
                         O que você precisa encontrar?
                     </h2>
-            
+
                     <div className="relative group">
                         <div className="absolute -inset-1 bg-gradient-to-r from-cyan-300 to-blue-300 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-200"></div>
                         <div className="relative">
-                            <input 
-                                type="text" 
+                            <input
+                                type="text"
                                 value={termo}
                                 onChange={handleSearch}
                                 placeholder="Digite nome, CPF, código de barras ou número da OS..."
-                                className="w-full h-16 pl-14 pr-16 rounded-2xl border-0 bg-white shadow-2xl text-xl font-bold text-slate-800 placeholder-slate-400 focus:ring-4 focus:ring-cyan-400/50 transition-all"
+                                className="w-full h-12 pl-12 pr-14 rounded-xl border-0 bg-white shadow-2xl text-lg font-bold text-slate-800 placeholder-slate-400 focus:ring-4 focus:ring-cyan-400/50 transition-all"
                                 autoFocus
                             />
-                            <div className="absolute left-5 top-5 text-slate-400">
+                            <div className="absolute left-4 top-3 text-slate-400">
                                 <Search className="h-6 w-6" />
                             </div>
-                            <div className="absolute right-5 top-5">
+                            <div className="absolute right-4 top-3">
                                 {isSearching ? (
                                     <Loader2 className="h-6 w-6 animate-spin text-cyan-500" />
                                 ) : (
@@ -74,7 +71,7 @@ export default function BuscaUniversal({ storeId }: { storeId: number }) {
             {/* 2. RESULTADOS */}
             {resultados && (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    
+
                     {/* A. PRODUTOS (ROXO) */}
                     <div className="flex flex-col gap-3">
                         <h3 className="text-xs font-black text-purple-600 uppercase tracking-widest pl-1 flex items-center gap-2">
@@ -88,7 +85,7 @@ export default function BuscaUniversal({ storeId }: { storeId: number }) {
                                     <div key={`${p.tipo}-${p.id}`} className="group bg-white p-3 rounded-xl shadow-sm border border-slate-100 hover:border-purple-300 hover:shadow-md transition-all cursor-default">
                                         <div className="flex justify-between items-start mb-1">
                                             <span className="text-[9px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded uppercase">{p.tipo}</span>
-                                            <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1"><Barcode className="h-3 w-3"/> {p.codigo || '-'}</span>
+                                            <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1"><Barcode className="h-3 w-3" /> {p.codigo || '-'}</span>
                                         </div>
                                         <p className="font-bold text-slate-700 text-sm line-clamp-1 leading-tight" title={p.nome}>{p.nome}</p>
                                         <div className="mt-2 flex justify-between items-end">
@@ -136,7 +133,7 @@ export default function BuscaUniversal({ storeId }: { storeId: number }) {
                         ) : (
                             <div className="space-y-2">
                                 {resultados.vendas.map(v => (
-                                    <Link key={v.id} href={`/dashboard/loja/${storeId}/vendas/${v.id}`}>
+                                    <Link key={v.id} href={`/dashboard/loja/${storeId}/vendas/${v.id}/experimental`}>
                                         <div className="group bg-white p-3 rounded-xl shadow-sm border border-slate-100 hover:border-emerald-400 hover:shadow-md transition-all cursor-pointer">
                                             <div className="flex justify-between items-center mb-1">
                                                 <span className="font-black text-slate-800 text-sm">#{v.id}</span>
@@ -175,7 +172,7 @@ export default function BuscaUniversal({ storeId }: { storeId: number }) {
                                             <p className="text-xs text-slate-500 truncate mb-1">{o.cliente}</p>
                                             <div className="flex justify-end items-center mt-2">
                                                 <span className="text-[10px] font-bold text-orange-600 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                                                    ABRIR FICHA <ArrowRight className="h-3 w-3"/>
+                                                    ABRIR FICHA <ArrowRight className="h-3 w-3" />
                                                 </span>
                                             </div>
                                         </div>

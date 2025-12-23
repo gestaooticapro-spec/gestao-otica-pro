@@ -1,4 +1,4 @@
-// ARQUIVO: src/app/dashboard/loja/[storeId]/vendas/[vendaId]/os/page.tsx
+// ARQUIVO: src/app/dashboard/loja/[storeId]/vendas/[vendaId]/os/ServiceOrderForm.tsx
 'use client'
 
 import {
@@ -8,28 +8,24 @@ import {
     useTransition,
     useRef,
 } from 'react'
-import { useFormState, useFormStatus } from 'react-dom'
-import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useFormStatus } from 'react-dom'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
     Loader2, Save, Trash2, ChevronLeft, ChevronRight,
     Eye, Glasses, User, Ruler, Truck, Plus, History, FileDown, CalendarClock,
     MessageCircle, Sparkles
 } from 'lucide-react'
 import {
-    saveServiceOrder,
     deleteServiceOrder,
     type OSPageData,
     type SaveSOResult,
-    type PrescriptionHistoryItem,
-    getOSPageData,
-    getVendaPageData
+    type PrescriptionHistoryItem
 } from '@/lib/actions/vendas.actions'
 import { checkLensStock, reserveLens, type LensStockMatch } from '@/lib/actions/stock.actions'
 import { Database } from '@/lib/database.types'
 import AddDependenteModal from '@/components/modals/AddDependenteModal'
 import PrescriptionHistoryModal from '@/components/modals/PrescriptionHistoryModal'
 import { PrintProtocoloButton } from '@/components/vendas/PrintProtocoloButton'
-import { createClient } from '@/lib/supabase/client'
 
 type ServiceOrderWithLinks = any
 type Dependente = Database['public']['Tables']['dependentes']['Row']
@@ -112,26 +108,9 @@ const StockBadge = ({
     const total = matches.exact.length + matches.similar.length
     if (total === 0) return null
 
-    // Check for Gold/Silver
-    const hasGold = matches.exact.some(m => m.match_type === 'gold')
-    const hasSilver = matches.exact.some(m => m.match_type === 'silver')
-
-    let colorClass = "bg-amber-100 border-amber-200 text-amber-900"
-    let iconColor = "text-amber-600"
-    let text = "Estoque Similar"
-    let badge = null
-
-    if (hasGold) {
-        colorClass = "bg-green-100 border-green-200 text-green-900"
-        iconColor = "text-green-600"
-        text = "Estoque Perfeito!"
-        badge = <span className="text-[9px] bg-white px-1 rounded font-bold border border-green-300">OURO</span>
-    } else if (hasSilver) {
-        colorClass = "bg-blue-100 border-blue-200 text-blue-900"
-        iconColor = "text-blue-600"
-        text = "Estoque Compatível"
-        badge = <span className="text-[9px] bg-white px-1 rounded font-bold border border-blue-300">PRATA</span>
-    }
+    const hasExact = matches.exact.length > 0
+    const colorClass = hasExact ? "bg-green-100 border-green-200 text-green-900" : "bg-amber-100 border-amber-200 text-amber-900"
+    const iconColor = hasExact ? "text-green-600" : "text-amber-600"
 
     return (
         <div
@@ -140,10 +119,10 @@ const StockBadge = ({
         >
             <div className="flex items-center gap-1 text-[10px] font-bold">
                 <Sparkles className={`h-3 w-3 ${iconColor} fill-current animate-pulse`} />
-                {text} ({label})
+                {hasExact ? 'Estoque Disponível!' : 'Estoque Similar Encontrado'} ({label})
             </div>
             <div className="flex gap-1 items-center">
-                {badge}
+                {hasExact && <span className="text-[9px] bg-white px-1 rounded font-bold border border-green-300">EXATO</span>}
                 <span className="text-[9px] underline opacity-80">Ver {total} opções</span>
             </div>
         </div>
@@ -166,10 +145,6 @@ function StockReservationModal({
 }) {
     if (!isOpen) return null
 
-    const gold = matches.exact.filter(m => m.match_type === 'gold')
-    const silver = matches.exact.filter(m => m.match_type === 'silver')
-    const bronze = matches.similar // All similar are bronze by definition
-
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
@@ -181,24 +156,25 @@ function StockReservationModal({
                 </div>
 
                 <div className="p-4 max-h-[60vh] overflow-y-auto space-y-4">
-
-                    {/* GOLD */}
-                    {gold.length > 0 && (
+                    {matches.exact.length > 0 && (
                         <div>
                             <h4 className="text-xs font-bold text-green-700 uppercase mb-2 flex items-center gap-1">
-                                <Sparkles className="h-3 w-3" /> Match Perfeito (Ouro)
+                                <Sparkles className="h-3 w-3" /> Exatamente o que você precisa
                             </h4>
                             <div className="space-y-2">
-                                {gold.map(m => (
-                                    <div key={m.variant_id} className="border border-green-200 bg-green-50 rounded-lg p-2 flex justify-between items-center ring-1 ring-green-300">
+                                {matches.exact.map(m => (
+                                    <div key={m.variant_id} className="border border-green-200 bg-green-50 rounded-lg p-2 flex justify-between items-center">
                                         <div>
                                             <p className="font-bold text-xs text-gray-800">{m.product_name}</p>
-                                            <p className="text-[10px] text-gray-500">{m.variant_name} • {m.is_sobra ? 'SOBRA' : 'NOVO'}</p>
+                                            <p className="text-[10px] text-gray-500">{m.variant_name} • {m.is_sobra ? 'SOBRA/RECUP.' : 'NOVO'}</p>
                                             <p className="text-[10px] font-mono text-gray-600">
-                                                Sph {m.esferico > 0 ? '+' : ''}{m.esferico.toFixed(2)} Cyl {m.cilindrico > 0 ? '+' : ''}{m.cilindrico.toFixed(2)} {m.adicao ? `Add ${m.adicao.toFixed(2)}` : ''}
+                                                Sph {m.esferico > 0 ? '+' : ''}{m.esferico.toFixed(2)} Cyl {m.cilindrico > 0 ? '+' : ''}{m.cilindrico.toFixed(2)}
                                             </p>
                                         </div>
-                                        <button onClick={() => onReserve(m.variant_id, m.product_id)} className="bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-sm transition-colors">
+                                        <button
+                                            onClick={() => onReserve(m.variant_id, m.product_id)}
+                                            className="bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-sm transition-colors"
+                                        >
                                             RESERVAR
                                         </button>
                                     </div>
@@ -207,48 +183,25 @@ function StockReservationModal({
                         </div>
                     )}
 
-                    {/* SILVER */}
-                    {silver.length > 0 && (
-                        <div>
-                            <h4 className="text-xs font-bold text-blue-700 uppercase mb-2 flex items-center gap-1">
-                                <Sparkles className="h-3 w-3" /> Mesmo Grau, Outro Produto (Prata)
-                            </h4>
-                            <div className="space-y-2">
-                                {silver.map(m => (
-                                    <div key={m.variant_id} className="border border-blue-200 bg-blue-50 rounded-lg p-2 flex justify-between items-center">
-                                        <div>
-                                            <p className="font-bold text-xs text-gray-800">{m.product_name}</p>
-                                            <p className="text-[10px] text-gray-500">{m.variant_name} • {m.is_sobra ? 'SOBRA' : 'NOVO'}</p>
-                                            <p className="text-[10px] font-mono text-gray-600">
-                                                Sph {m.esferico > 0 ? '+' : ''}{m.esferico.toFixed(2)} Cyl {m.cilindrico > 0 ? '+' : ''}{m.cilindrico.toFixed(2)} {m.adicao ? `Add ${m.adicao.toFixed(2)}` : ''}
-                                            </p>
-                                        </div>
-                                        <button onClick={() => onReserve(m.variant_id, m.product_id)} className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-sm transition-colors">
-                                            RESERVAR
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* BRONZE */}
-                    {bronze.length > 0 && (
+                    {matches.similar.length > 0 && (
                         <div>
                             <h4 className="text-xs font-bold text-amber-700 uppercase mb-2 flex items-center gap-1">
-                                <History className="h-3 w-3" /> Grau Aproximado (Bronze)
+                                <History className="h-3 w-3" /> Similares / Aproximados
                             </h4>
                             <div className="space-y-2">
-                                {bronze.map(m => (
+                                {matches.similar.map(m => (
                                     <div key={m.variant_id} className="border border-amber-200 bg-amber-50 rounded-lg p-2 flex justify-between items-center">
                                         <div>
                                             <p className="font-bold text-xs text-gray-800">{m.product_name}</p>
                                             <p className="text-[10px] text-gray-500">{m.variant_name} • {m.is_sobra ? 'SOBRA' : 'NOVO'}</p>
                                             <p className="text-[10px] font-mono text-gray-600">
-                                                Sph {m.esferico > 0 ? '+' : ''}{m.esferico.toFixed(2)} Cyl {m.cilindrico > 0 ? '+' : ''}{m.cilindrico.toFixed(2)} {m.adicao ? `Add ${m.adicao.toFixed(2)}` : ''}
+                                                Sph {m.esferico > 0 ? '+' : ''}{m.esferico.toFixed(2)} Cyl {m.cilindrico > 0 ? '+' : ''}{m.cilindrico.toFixed(2)}
                                             </p>
                                         </div>
-                                        <button onClick={() => onReserve(m.variant_id, m.product_id)} className="bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-sm transition-colors">
+                                        <button
+                                            onClick={() => onReserve(m.variant_id, m.product_id)}
+                                            className="bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-sm transition-colors"
+                                        >
                                             RESERVAR
                                         </button>
                                     </div>
@@ -257,13 +210,17 @@ function StockReservationModal({
                         </div>
                     )}
                 </div>
+
+                <div className="bg-gray-50 px-4 py-2 text-center text-[10px] text-gray-500 border-t border-gray-100">
+                    A reserva bloqueia o item no estoque imediatamente.
+                </div>
             </div>
         </div>
     )
 }
 
 // TIPO DO FORMULÁRIO
-type FormProps = Omit<OSPageData, 'oftalmologistas'> & {
+export type ServiceOrderFormProps = Omit<OSPageData, 'oftalmologistas'> & {
     storeId: number
     vendaId: number
     oftalmosList: OSPageData['oftalmologistas']
@@ -274,10 +231,10 @@ type FormProps = Omit<OSPageData, 'oftalmologistas'> & {
     venda: any
 }
 
-function ServiceOrderFormContent({
+export default function ServiceOrderFormContent({
     storeId, vendaId, customer, vendaItens, dependentes: initialDependentes, oftalmosList, employees, existingOrders, authedEmployeeName, onListChange, saveState, dispatch,
     venda
-}: FormProps) {
+}: ServiceOrderFormProps) {
 
     const router = useRouter()
     const searchParams = useSearchParams()
@@ -338,22 +295,14 @@ function ServiceOrderFormContent({
             if (longeOdEsf && longeOdCil) {
                 const esf = parseFloat(longeOdEsf.replace(',', '.').replace('+', ''))
                 const cil = parseFloat(longeOdCil.replace(',', '.').replace('+', ''))
-
-                // Busca Produto ID
-                const item = vendaItens.find(i => i.id.toString() === lenteOdItemId)
-                const pid = item ? item.product_id : null
-
-                // Busca Adição
-                const add = adicao ? parseFloat(adicao.replace(',', '.').replace('+', '')) : null
-
                 if (!isNaN(esf) && !isNaN(cil)) {
-                    const matches = await checkLensStock(storeId, esf, cil, pid, isNaN(add!) ? null : add)
+                    const matches = await checkLensStock(storeId, esf, cil, null, null)
                     setOdMatches(matches)
                 }
             } else setOdMatches({ exact: [], similar: [] })
         }, 800)
         return () => clearTimeout(timer)
-    }, [longeOdEsf, longeOdCil, storeId, lenteOdItemId, adicao, vendaItens])
+    }, [longeOdEsf, longeOdCil, storeId])
 
     // Monitora OE para sobras e estoque
     useEffect(() => {
@@ -361,22 +310,14 @@ function ServiceOrderFormContent({
             if (longeOeEsf && longeOeCil) {
                 const esf = parseFloat(longeOeEsf.replace(',', '.').replace('+', ''))
                 const cil = parseFloat(longeOeCil.replace(',', '.').replace('+', ''))
-
-                // Busca Produto ID
-                const item = vendaItens.find(i => i.id.toString() === lenteOeItemId)
-                const pid = item ? item.product_id : null
-
-                // Busca Adição
-                const add = adicao ? parseFloat(adicao.replace(',', '.').replace('+', '')) : null
-
                 if (!isNaN(esf) && !isNaN(cil)) {
-                    const matches = await checkLensStock(storeId, esf, cil, pid, isNaN(add!) ? null : add)
+                    const matches = await checkLensStock(storeId, esf, cil, null, null)
                     setOeMatches(matches)
                 }
             } else setOeMatches({ exact: [], similar: [] })
         }, 800)
         return () => clearTimeout(timer)
-    }, [longeOeEsf, longeOeCil, storeId, lenteOeItemId, adicao, vendaItens])
+    }, [longeOeEsf, longeOeCil, storeId])
 
     const handleReserve = async (variantId: number, productId: number) => {
         if (!currentOrder?.id) {
@@ -396,9 +337,10 @@ function ServiceOrderFormContent({
         }
     }
 
+    // LÓGICA INTELIGENTE DE FILTRAGEM DE LENTES
     const itensLente = vendaItens.filter(i => i.item_tipo === 'Lente')
 
-    // LÓGICA INTELIGENTE DE FILTRAGEM DE LENTES
+    // Função auxiliar para verificar disponibilidade
     const isLenteDisponivel = (item: any, olho: 'OD' | 'OE') => {
         // Se for Par, está sempre disponível (pode usar no OD e OE)
         if (item.unidade === 'Par') return true;
@@ -875,93 +817,5 @@ Obs.: ${obsOs}
                 onReserve={handleReserve}
             />
         </>
-    )
-}
-
-export default function ServiceOrderPage() {
-    const params = useParams()
-    const storeId = parseInt(params.storeId as string)
-    const vendaId = parseInt(params.vendaId as string)
-    const [data, setData] = useState<OSPageData | null>(null)
-    const [loading, setLoading] = useState(true)
-    const [errorMsg, setErrorMsg] = useState('')
-    const [saveState, dispatch] = useFormState(saveServiceOrder, { success: false, message: '' })
-    const [existingOrders, setExistingOrders] = useState<any[]>([])
-    const [authedEmployeeName, setAuthedEmployeeName] = useState('')
-
-    useEffect(() => {
-        async function load() {
-            try {
-                if (isNaN(storeId) || isNaN(vendaId)) {
-                    throw new Error(`IDs inválidos: Store=${params.storeId}, Venda=${params.vendaId}`)
-                }
-
-                // 1. Busca dados da venda (como Admin via Server Action) para pegar o customer_id com segurança
-                // Isso evita o erro de RLS (Stack Depth Limit) que ocorre na busca direta pelo cliente
-                const vendaRes = await getVendaPageData(vendaId, storeId)
-                if (!vendaRes.success || !vendaRes.data || !vendaRes.data.venda) {
-                    throw new Error(vendaRes.message || "Venda não encontrada.")
-                }
-
-                const venda = vendaRes.data.venda
-                const customerId = venda.customer_id
-
-                // Define nome do funcionário se disponível (opcional, cosmético)
-                if (vendaRes.data.employee) {
-                    setAuthedEmployeeName(vendaRes.data.employee.full_name)
-                }
-
-                // 2. Busca dados da OS usando o customer_id recuperado
-                const res = await getOSPageData(vendaId, storeId, customerId)
-                if (!res.success || !res.data) {
-                    throw new Error(res.message || "Erro desconhecido ao carregar dados da OS.")
-                }
-
-                setData(res.data)
-                setExistingOrders(res.data.existingOrders)
-
-            } catch (e: any) {
-                console.error(e)
-                setErrorMsg(e.message || "Erro inesperado.")
-            } finally {
-                setLoading(false)
-            }
-        }
-        load()
-    }, [storeId, vendaId, params.storeId, params.vendaId])
-
-    if (loading) return <div className="p-10 flex justify-center"><Loader2 className="animate-spin h-8 w-8 text-blue-600" /></div>
-
-    if (errorMsg) return (
-        <div className="p-10 text-center">
-            <div className="text-red-600 font-bold mb-2">Erro ao carregar dados:</div>
-            <div className="text-gray-700 bg-gray-100 p-2 rounded inline-block mb-4">{errorMsg}</div>
-            <button
-                onClick={() => window.location.reload()}
-                className="block mx-auto bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
-            >
-                Tentar Novamente
-            </button>
-        </div>
-    )
-
-    if (!data) return null
-
-    return (
-        <ServiceOrderFormContent
-            storeId={storeId}
-            vendaId={vendaId}
-            customer={data.customer}
-            vendaItens={data.vendaItens}
-            dependentes={data.dependentes}
-            oftalmosList={data.oftalmologistas}
-            employees={data.employees}
-            existingOrders={existingOrders}
-            authedEmployeeName={authedEmployeeName}
-            onListChange={setExistingOrders}
-            saveState={saveState}
-            dispatch={dispatch}
-            venda={data.venda}
-        />
     )
 }

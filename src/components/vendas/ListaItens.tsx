@@ -5,11 +5,10 @@ import { useTransition } from 'react'
 import {
   deleteVendaItem,
   type DeleteVendaItemResult,
+  type VendaItem,
 } from '@/lib/actions/vendas.actions'
 import { Database } from '@/lib/database.types'
-import { Loader2, Trash2, XCircle } from 'lucide-react'
-
-type VendaItem = Database['public']['Tables']['venda_itens']['Row']
+import { Loader2, Trash2 } from 'lucide-react'
 
 // Props
 type ListaItensProps = {
@@ -68,13 +67,13 @@ function DeleteButton({
       type="button"
       onClick={handleDelete}
       disabled={isDeleting || disabled}
-      className="p-1 text-gray-500 rounded-md hover:text-red-600 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+      className="p-1 text-red-500 rounded hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       title="Remover Item"
     >
       {isDeleting ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
       ) : (
-        <XCircle className="h-4 w-4" />
+        <Trash2 className="h-3.5 w-3.5" />
       )}
     </button>
   )
@@ -90,60 +89,59 @@ export default function ListaItens({
 }: ListaItensProps) {
   return (
     <div className="flex flex-col h-full">
-      <h3 className="text-lg font-semibold text-gray-800 mb-2">
-        Itens da Venda
-      </h3>
-      
+      {/* Título removido pois já existe no container pai */}
+
       {/* Cabeçalho da Lista */}
-      <div className="hidden md:flex bg-gray-300 p-2 rounded-t-md font-semibold text-gray-700 text-sm">
-        <div className="w-1/2">Descrição</div>
+      <div className="hidden md:flex bg-gray-100 p-1.5 rounded-t-md font-bold text-gray-600 text-[10px] uppercase tracking-wider border-b border-gray-200">
+        <div className="w-1/2 pl-1">Descrição</div>
         <div className="w-1/6 text-center">Qtd.</div>
-        <div className="w-1/6 text-right">Vl. Unit.</div>
-        <div className="w-1/6 text-right">Vl. Total</div>
-        <div className="w-8"></div> {/* Coluna do X */}
+        <div className="w-1/6 text-right">Unit.</div>
+        <div className="w-1/6 text-right pr-2">Total</div>
+        <div className="w-6"></div> {/* Coluna do X */}
       </div>
 
       {/* Lista de Itens */}
-      <div className="flex-1 overflow-y-auto space-y-2 bg-white p-2 rounded-b-md shadow-inner">
+      <div className="flex-1 overflow-y-auto space-y-1 bg-white p-0 rounded-b-md">
         {itens.length === 0 ? (
-          <p className="text-sm text-gray-500 text-center py-4">
-            Nenhum item adicionado ao carrinho.
-          </p>
+          <div className="flex flex-col items-center justify-center py-8 text-gray-400 bg-gray-50/50 rounded-b-md border border-dashed border-gray-200 m-1">
+            <p className="text-xs font-medium">Carrinho vazio</p>
+            <p className="text-[10px]">Adicione itens ao lado</p>
+          </div>
         ) : (
           itens.map((item) => (
             <div
               key={item.id}
-              className="flex flex-col md:flex-row md:items-center p-2 rounded bg-gray-50 border border-gray-200"
+              className="flex flex-col md:flex-row md:items-center p-1.5 rounded hover:bg-blue-50/50 border-b border-gray-50 last:border-0 transition-colors group"
             >
               {/* Descrição */}
-              <div className="w-full md:w-1/2 font-medium text-gray-800">
-                <span className="md:hidden text-xs text-gray-500">Item: </span>
+              <div className="w-full md:w-1/2 font-medium text-gray-800 text-xs pl-1">
+                <span className="md:hidden text-[10px] text-gray-500 uppercase font-bold mr-1">Item:</span>
                 {item.descricao}
-                <span className="text-xs text-gray-500 italic ml-1">
-                  ({item.item_tipo})
+                <span className="text-[9px] text-gray-400 italic ml-1 bg-gray-100 px-1 rounded border">
+                  {item.item_tipo}
                 </span>
               </div>
-              
+
               {/* Qtd */}
-              <div className="w-full md:w-1/6 md:text-center">
-                <span className="md:hidden text-xs text-gray-500">Qtd: </span>
-                {item.quantidade}
+              <div className="w-full md:w-1/6 md:text-center text-xs">
+                <span className="md:hidden text-[10px] text-gray-500 uppercase font-bold mr-1">Qtd:</span>
+                <span className="font-bold">{item.quantidade}</span> <span className="text-[9px] text-gray-400 uppercase">{item.unidade || 'Un.'}</span>
               </div>
-              
+
               {/* Vl. Unitário */}
-              <div className="w-full md:w-1/6 md:text-right">
-                <span className="md:hidden text-xs text-gray-500">Vl. Unit: </span>
+              <div className="w-full md:w-1/6 md:text-right text-xs text-gray-600">
+                <span className="md:hidden text-[10px] text-gray-500 uppercase font-bold mr-1">Unit:</span>
                 {formatCurrency(item.valor_unitario)}
               </div>
-              
+
               {/* Vl. Total */}
-              <div className="w-full md:w-1/6 md:text-right font-bold text-blue-700">
-                <span className="md:hidden text-xs text-gray-500">Vl. Total: </span>
+              <div className="w-full md:w-1/6 md:text-right font-bold text-blue-700 text-xs pr-2">
+                <span className="md:hidden text-[10px] text-gray-500 uppercase font-bold mr-1">Total:</span>
                 {formatCurrency(item.valor_total_item)}
               </div>
-              
+
               {/* Botão Deletar */}
-              <div className="w-full md:w-8 flex justify-end md:justify-center mt-1 md:mt-0">
+              <div className="w-full md:w-6 flex justify-end md:justify-center mt-1 md:mt-0">
                 <DeleteButton
                   item={item}
                   vendaId={vendaId}

@@ -1,4 +1,3 @@
-// Caminho: src/components/vendas/ListaOS.tsx
 'use client'
 
 import Link from 'next/link'
@@ -12,9 +11,10 @@ type ListaOSProps = {
   vendaId: number
   storeId: number
   serviceOrders: ServiceOrder[]
-  employeeId: string 
-  employeeName: string 
+  employeeId: string
+  employeeName: string
   disabled: boolean
+  hideHeader?: boolean
 }
 
 // --- Funções Helper ---
@@ -36,32 +36,35 @@ export default function ListaOS({
   employeeId,
   employeeName,
   disabled,
+  hideHeader = false,
 }: ListaOSProps) {
   // A URL base para a Ficha Técnica
   const linkBase = `/dashboard/loja/${storeId}/vendas/${vendaId}/os`
-  
+
   // Parâmetros comuns (contexto do funcionário)
   // Nota: Removi o '?' do início para gerenciar melhor a concatenação abaixo
   const commonParams = `employee_id=${employeeId}&employee_name=${employeeName}`
-  
+
   // O link para CRIAR uma nova OS (Sem ID = Nova)
   const linkNovaOS = `${linkBase}?${commonParams}`
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex justify-between items-center mb-2">
-        <h3 className="text-lg font-semibold text-gray-800">
-          Fichas Técnicas (OS)
-        </h3>
-        <Link
-          href={linkNovaOS}
-          className="flex items-center gap-1 px-3 py-1 text-sm rounded-md shadow-sm bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
-          title="Iniciar nova Ordem de Serviço"
-        >
-          <PlusCircle className="h-4 w-4" />
-          Nova OS
-        </Link>
-      </div>
+      {!hideHeader && (
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="text-lg font-semibold text-gray-800">
+            Fichas Técnicas (OS)
+          </h3>
+          <Link
+            href={linkNovaOS}
+            className="flex items-center gap-1 px-3 py-1 text-sm rounded-md shadow-sm bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+            title="Iniciar nova Ordem de Serviço"
+          >
+            <PlusCircle className="h-4 w-4" />
+            Nova OS
+          </Link>
+        </div>
+      )}
 
       {/* Lista de OSs */}
       <div className="flex-1 overflow-y-auto space-y-2 bg-white p-2 rounded-lg shadow-inner">
@@ -81,7 +84,7 @@ export default function ListaOS({
                   (Criada em: {formatDate(os.created_at)})
                 </span>
               </div>
-              
+
               {/* CORREÇÃO AQUI: Passamos 'os_id' explicitamente na URL */}
               <Link
                 href={`${linkBase}?os_id=${os.id}&${commonParams}`}

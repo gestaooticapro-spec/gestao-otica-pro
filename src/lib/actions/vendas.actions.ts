@@ -17,7 +17,7 @@ import { confirmReservations, cancelReservations } from './stock.actions'
 type Customer = Database['public']['Tables']['customers']['Row']
 type Dependente = Database['public']['Tables']['dependentes']['Row']
 type Venda = Database['public']['Tables']['vendas']['Row']
-type VendaItem = Database['public']['Tables']['venda_itens']['Row']
+export type VendaItem = Database['public']['Tables']['venda_itens']['Row'] & { unidade?: string | null }
 type ServiceOrder = Database['public']['Tables']['service_orders']['Row']
 type Oftalmologista = Database['public']['Tables']['oftalmologistas']['Row']
 type Product = Database['public']['Tables']['products']['Row']
@@ -566,6 +566,7 @@ const VendaItemSchema = z.object({
   tratamento_id: z.coerce.number().optional().nullable(),
   quantidade: z.coerce.number().min(1),
   valor_unitario: z.coerce.number(),
+  unidade: z.string().optional().default('Unidade'),
 })
 
 export type SaveVendaItemResult = {
@@ -598,6 +599,7 @@ export async function addVendaItem(
     tratamento_id: nullIfEmpty(formData.get('tratamento_id')),
     quantidade: formData.get('quantidade'),
     valor_unitario: formData.get('valor_unitario'),
+    unidade: formData.get('unidade'),
   })
 
   if (!validatedFields.success) {
@@ -624,6 +626,7 @@ export async function addVendaItem(
     quantidade: data.quantidade,
     valor_unitario: data.valor_unitario,
     valor_total_item: valor_total_item,
+    unidade: data.unidade,
     tenant_id: (profile as any).tenant_id, // Forçamos aqui
     store_id: (profile as any).store_id,   // CORREÃ‡ÃƒO: Forçamos aqui também
   }
@@ -1406,14 +1409,14 @@ const ReceberParcelaSchema = z.object({
 // --- 2. NOVA FUNÇÃO DE SEGURANÇA (Adicione isso antes da função principal) ---
 // Essa função impede que 207.00 vire 20700
 function parseMoneySeguro(val: string | null) {
-    if (!val) return 0
-    // Se tem vírgula, é formato Brasileiro (ex: 200,50 ou 1.000,00) -> Remove ponto, troca vírgula.
-    if (val.includes(',')) {
-        return parseFloat(val.replace(/\./g, '').replace(',', '.'))
-    }
-    // Se NÃO tem vírgula, é formato Input/Americano (ex: 207.00) -> Aceita direto.
-    // O seu código antigo removia o ponto aqui, causando o erro.
-    return parseFloat(val)
+  if (!val) return 0
+  // Se tem vírgula, é formato Brasileiro (ex: 200,50 ou 1.000,00) -> Remove ponto, troca vírgula.
+  if (val.includes(',')) {
+    return parseFloat(val.replace(/\./g, '').replace(',', '.'))
+  }
+  // Se NÃO tem vírgula, é formato Input/Americano (ex: 207.00) -> Aceita direto.
+  // O seu código antigo removia o ponto aqui, causando o erro.
+  return parseFloat(val)
 }
 
 export async function receberParcela(prevState: any, formData: FormData) {

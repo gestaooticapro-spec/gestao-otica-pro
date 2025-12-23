@@ -319,28 +319,28 @@ export type LensStockMatch = {
     variant_name: string
     esferico: number
     cilindrico: number
+    adicao?: number | null
     estoque: number
     is_sobra: boolean
     preco_venda: number
+    match_type: 'gold' | 'silver' | 'bronze'
 }
 
 export async function checkLensStock(
     storeId: number,
     esferico: number,
-    cilindrico: number
+    cilindrico: number,
+    targetProductId: number | null,
+    adicao: number | null
 ): Promise<{ exact: LensStockMatch[], similar: LensStockMatch[] }> {
     const supabase = createAdminClient()
 
     // Busca variantes com grau exato ou próximo (+/- 0.25)
-    // Nota: Como SQL não tem "fuzzy" nativo fácil sem extensions, vamos buscar exato e depois filtrar no código se precisar,
-    // ou fazer range query. Para performance, range query é melhor.
-
     const range = 0.25
 
-    const { data, error } = await (supabase
-        .from('product_variants') as any)
+    let query = (supabase.from('product_variants') as any)
         .select(`
-            id, product_id, nome_variante, esferico, cilindrico, estoque_atual, is_sobra,
+            id, product_id, nome_variante, esferico, cilindrico, adicao, estoque_atual, is_sobra,
             products ( nome, preco_venda )
         `)
         .eq('store_id', storeId)
@@ -352,6 +352,13 @@ export async function checkLensStock(
         .gte('cilindrico', cilindrico - range)
         .lte('cilindrico', cilindrico + range)
 
+    // Filtro por Adição (se fornecida)
+    if (adicao !== null && adicao !== undefined) {
+        query = query.eq('adicao', adicao)
+    }
+
+    const { data, error } = await query
+
     if (error) {
         console.error('Erro ao buscar lentes:', error)
         return { exact: [], similar: [] }
@@ -361,6 +368,20 @@ export async function checkLensStock(
     const similar: LensStockMatch[] = []
 
     data.forEach((item: any) => {
+        let type: 'gold' | 'silver' | 'bronze' = 'bronze'
+        const isDegreeExact = item.esferico === esferico && item.cilindrico === cilindrico
+        const isProductExact = targetProductId ? item.product_id === targetProductId : false
+
+        if (isDegreeExact) {
+            if (isProductExact) {
+                type = 'gold'
+            } else {
+                type = 'silver'
+            }
+        } else {
+            type = 'bronze'
+        }
+
         const match: LensStockMatch = {
             product_id: item.product_id,
             variant_id: item.id,
@@ -368,17 +389,22 @@ export async function checkLensStock(
             variant_name: item.nome_variante,
             esferico: item.esferico,
             cilindrico: item.cilindrico,
+            adicao: item.adicao,
             estoque: item.estoque_atual,
             is_sobra: !!item.is_sobra,
-            preco_venda: item.products?.preco_venda || 0
+            preco_venda: item.products?.preco_venda || 0,
+            match_type: type
         }
 
-        if (item.esferico === esferico && item.cilindrico === cilindrico) {
+        if (type === 'gold' || type === 'silver') {
             exact.push(match)
         } else {
             similar.push(match)
         }
     })
+
+    // Ordenar exatos: Gold primeiro
+    exact.sort((a, b) => (a.match_type === 'gold' ? -1 : 1))
 
     return { exact, similar }
 }
@@ -480,12 +506,10 @@ export async function cancelReservations(vendaId: number) {
             })
             // Atualiza variant localmente também se precisar, mas o RPC deve bastar ou update direto
             await (supabase.from('product_variants') as any)
-                .update({ estoque_atual: res.quantidade }) // ISSO ESTÁ ERRADO! Deveria ser incremento.
-            // Vamos usar a lógica correta: ler e somar, ou confiar no RPC se ele atualiza variants.
-            // O RPC increment_stock atualiza products.precisa atualizar variants tb.
+                .update({ estoque_atual: res.quantidade })
         } else {
             await (supabase.from('products') as any)
-                .update({ estoque_atual: res.quantidade }) // ERRADO TB
+                .update({ estoque_atual: res.quantidade })
         }
 
         // CORREÇÃO: Vamos fazer o update correto de estoque
@@ -505,11 +529,35 @@ export async function cancelReservations(vendaId: number) {
                 .eq('id', res.product_id)
         }
 
-        // 4. Marca a reserva original como 'Cancelada' (opcional, ou deleta, ou deixa como Reserva mas já estornada)
-        // Para evitar confusão, vamos mudar o tipo para 'Devolucao' ou manter Reserva e assumir que o estorno resolve.
-        // Melhor: Mudar para 'Devolucao' para indicar que não é mais uma reserva ativa.
+        // 4. Marca a reserva original como 'Cancelada'
         await (supabase.from('stock_movements') as any)
             .update({ tipo: 'Devolucao' })
             .eq('id', res.id)
     }
+}
+
+// ================================================================
+// 7. ACTION: GET LOW STOCK PRODUCTS (AI TOOL)
+// ================================================================
+export async function getLowStockProducts(storeId: number, limit: number = 10) {
+    const supabaseAdmin = createAdminClient()
+
+    // Busca produtos com estoque baixo (menor que 5, por exemplo)
+    // Cast 'as any' para select
+    const { data: products } = await (supabaseAdmin
+        .from('products') as any)
+        .select('nome, estoque_atual, estoque_minimo, codigo_barras')
+        .eq('store_id', storeId)
+        .lt('estoque_atual', 5) // Hardcoded threshold for now, or use estoque_minimo if reliable
+        .order('estoque_atual', { ascending: true })
+        .limit(limit)
+
+    if (!products) return []
+
+    return products.map((p: any) => ({
+        produto: p.nome,
+        estoque: p.estoque_atual,
+        minimo: p.estoque_minimo || 5, // Default visual
+        codigo: p.codigo_barras
+    }))
 }

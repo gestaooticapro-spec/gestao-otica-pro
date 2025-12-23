@@ -1,15 +1,32 @@
 'use client'
-import { useState } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Send, Bot, User } from 'lucide-react';
 
-export default function AjudaPage() {
+function ChatContent() {
+  const searchParams = useSearchParams();
+  const storeId = searchParams.get('storeId');
+
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<{role: 'user' | 'ai', text: string}[]>([]);
+  const [messages, setMessages] = useState<{ role: 'user' | 'ai', text: string }[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Ref para o final da lista de mensagens
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Função para rolar para o final
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  // Rola sempre que mensagens ou loading mudarem
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, loading]);
 
   const handleSend = async () => {
     if (!input.trim()) return;
-    
+
     const userMsg = input;
     setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
     setInput('');
@@ -19,9 +36,12 @@ export default function AjudaPage() {
       const res = await fetch('/api/chat-tutorial', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMsg }),
+        body: JSON.stringify({
+          message: userMsg,
+          storeId: storeId ? Number(storeId) : null
+        }),
       });
-      
+
       const data = await res.json();
       setMessages(prev => [...prev, { role: 'ai', text: data.reply }]);
     } catch (error) {
@@ -38,34 +58,43 @@ export default function AjudaPage() {
           <Bot className="text-blue-600" />
           Suporte Inteligente (IA)
         </h1>
-        <p className="text-sm text-gray-500">Pergunte como usar o sistema. Eu li o código fonte!</p>
+        <p className="text-sm text-gray-500">
+          {storeId
+            ? "Consultor de Negócios conectado à sua loja."
+            : "Pergunte como usar o sistema. (Modo Tutorial)"}
+        </p>
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
+      <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2 p-2 border rounded-xl bg-gray-50/50">
+        {messages.length === 0 && (
+          <div className="text-center text-gray-400 mt-10">
+            <p>Olá! Como posso ajudar hoje?</p>
+          </div>
+        )}
         {messages.map((m, i) => (
           <div key={i} className={`flex gap-3 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
             <div className={`p-2 rounded-full h-fit ${m.role === 'user' ? 'bg-blue-100' : 'bg-gray-100'}`}>
               {m.role === 'user' ? <User size={20} /> : <Bot size={20} />}
             </div>
-            <div className={`p-3 rounded-2xl max-w-[80%] text-sm whitespace-pre-wrap ${
-              m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-800 border'
-            }`}>
+            <div className={`p-3 rounded-2xl max-w-[80%] text-sm whitespace-pre-wrap ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white text-gray-800 border shadow-sm'
+              }`}>
               {m.text}
             </div>
           </div>
         ))}
-        {loading && <div className="text-center text-xs text-gray-400 animate-pulse">Lendo o código...</div>}
+        {loading && <div className="text-center text-xs text-gray-400 animate-pulse">Analisando...</div>}
+        <div ref={messagesEndRef} />
       </div>
 
       <div className="flex gap-2">
-        <input 
+        <input
           className="flex-1 border rounded-xl px-4 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="Ex: Como lanço uma venda rápida?"
+          placeholder={storeId ? "Ex: Como foram as vendas hoje?" : "Ex: Como lanço uma venda?"}
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSend()}
         />
-        <button 
+        <button
           onClick={handleSend}
           disabled={loading}
           className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 disabled:opacity-50"
@@ -75,4 +104,12 @@ export default function AjudaPage() {
       </div>
     </div>
   );
+}
+
+export default function AjudaPage() {
+  return (
+    <Suspense fallback={<div>Carregando chat...</div>}>
+      <ChatContent />
+    </Suspense>
+  )
 }
