@@ -535,6 +535,11 @@ export async function getVendaPageData(
       supabaseAdmin.from('products').select('*').eq('store_id', storeId).eq('tipo_produto', 'Tratamento'),
     ])
 
+    console.log('[DEBUG] VendaID:', vendaId)
+    console.log('[DEBUG] FinanciamentoRes:', financiamentoRes.data ? 'ENCONTRADO' : 'NULO')
+    if (financiamentoRes.error) console.error('[DEBUG] Erro Financiamento:', financiamentoRes.error)
+    if (pagamentosRes.error) console.error('[DEBUG] Erro Pagamentos:', pagamentosRes.error)
+
     const data: VendaPageData = {
       venda,
       customer: customerRes.data,
