@@ -458,16 +458,8 @@ function FormProdutosGerais({ data, onChange, disabled, sugestoes, storeId }: an
 function FormArmacoes({ data, onChange, disabled, storeId }: any) {
   const isEditing = !!data.id;
 
-  const namePreview = isEditing
-    ? (data.nome_completo || '')
-    : `${data.marca || ''} ${data.modelo || ''} ${data.referencia || ''}`.trim();
-
   return (
     <div className="grid grid-cols-12 gap-3 gap-y-4">
-      <div className="col-span-12">
-        <label className={labelStyle}>{isEditing ? 'Nome Atual (Sistema)' : 'Nome (Prévia Automática)'}</label>
-        <input type="text" value={namePreview} className={`${inputStyle} bg-slate-100 text-slate-500`} disabled readOnly />
-      </div>
       <div className="col-span-12 bg-blue-50 p-3 rounded border border-blue-100 flex items-center gap-4">
         <div className="flex-1">
           <label className={`${labelStyle} text-blue-800`}>Código de Barras (EAN)</label>
@@ -532,17 +524,8 @@ function FormArmacoes({ data, onChange, disabled, storeId }: any) {
 function FormLentes({ data, onChange, disabled, onOpenGrid }: any) {
   const isEditing = !!data.id;
 
-  const namePreview = isEditing
-    ? (data.nome_completo || '')
-    : `${data.marca || ''} ${data.material || ''} ${data.tipo || ''} ${data.indice_refracao || ''}`.trim();
-
   return (
     <div className="grid grid-cols-2 gap-3 gap-y-4">
-      <div className="col-span-2">
-        <label className={labelStyle}>{isEditing ? 'Nome Atual (Sistema)' : 'Nome (Prévia Automática)'}</label>
-        <input type="text" value={namePreview} className={`${inputStyle} bg-slate-100 text-slate-500`} disabled readOnly />
-      </div>
-
       <div className="col-span-2">
         <label className={labelStyle}>Nome da Lente *</label>
         <input type="text" required value={data.nome_lente || ''} onChange={e => onChange('nome_lente', e.target.value)} className={inputStyle} disabled={disabled} />
@@ -646,7 +629,6 @@ function FormOftalmos({ data, onChange, disabled }: any) {
   );
 }
 
-// --- NOVO FORMULÁRIO: FORNECEDORES ---
 function FormFornecedores({ data, onChange, disabled }: any) {
   return (
     <div className="grid grid-cols-12 gap-3 gap-y-4">

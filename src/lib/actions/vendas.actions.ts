@@ -1297,8 +1297,15 @@ export async function searchProductCatalog(
       q = q.eq('tipo_produto', dbType)
     }
 
-    // Aplica a busca por texto
-    q = q.or(`nome.ilike.%${query}%,codigo_barras.eq.${query},referencia.ilike.%${query}%`)
+    // Aplica a busca por texto (Multi-termo + Marca)
+    const terms = query.split(/\s+/).filter(t => t.length > 0);
+
+    terms.forEach(term => {
+      // Para cada termo digitado, ele deve aparecer em pelo menos UM dos campos
+      // Adicionamos 'marca' na busca
+      q = q.or(`nome.ilike.%${term}%,codigo_barras.ilike.%${term}%,referencia.ilike.%${term}%,marca.ilike.%${term}%`)
+    });
+
     q = q.limit(20)
 
     const { data } = await q

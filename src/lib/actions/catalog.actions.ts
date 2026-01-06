@@ -496,7 +496,8 @@ export async function fetchCatalogItems(
     if (category === 'lentes') {
       rawData = {
         ...rawData, marca: p.marca, material: d.material, tipo_desenho: d.tipo_desenho, indice_refracao: d.indice_refracao,
-        nome_completo: p.nome
+        nome_completo: p.nome,
+        nome_lente: p.nome
       }
       return { id: p.id, title: p.nome, subtitle: d.material || p.marca, price: p.preco_venda, stock: p.estoque_atual, raw: rawData }
     }
