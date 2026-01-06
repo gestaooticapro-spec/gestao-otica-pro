@@ -40,7 +40,7 @@ const tools = [
             },
             category: {
               type: SchemaType.STRING,
-              description: "Categoria do produto (lentes, armacoes, produtos_gerais). Se não souber, use 'produtos_gerais'.",
+              description: "Categoria do produto (lentes, solar, receituario, produtos_gerais). Se não souber, use 'produtos_gerais'.",
             },
           },
           required: ["query"],

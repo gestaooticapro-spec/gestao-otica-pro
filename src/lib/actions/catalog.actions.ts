@@ -225,8 +225,8 @@ export async function saveArmacao(prevState: CatalogActionResult, formData: Form
       marca: data.marca,
       referencia: data.referencia,
       codigo_barras: finalBarcode,
-      tipo_produto: 'Armacao',
-      categoria: 'Armação',
+      tipo_produto: (formData.get('tipo_produto') as string) || 'Receituario', // Default fallback
+      categoria: (formData.get('tipo_produto') === 'Solar') ? 'Óculos de Sol' : 'Armação',
       preco_custo: data.preco_custo,
       preco_venda: data.preco_venda,
       estoque_atual: data.quantidade_estoque,
@@ -402,15 +402,13 @@ export async function saveSupplier(prevState: CatalogActionResult, formData: For
 }
 
 // ============================================================================
-// ACTION DE DELETAR
-// ============================================================================
 export async function deleteCatalogItem(
   id: number,
   storeId: number,
-  categoryContext: 'lentes' | 'armacoes' | 'tratamentos' | 'oftalmologistas' | 'produtos_gerais' | 'fornecedores'
+  categoryContext: 'lentes' | 'solar' | 'receituario' | 'tratamentos' | 'oftalmologistas' | 'produtos_gerais' | 'fornecedores'
 ): Promise<CatalogActionResult> {
   try {
-    const supabaseAdmin = createAdminClient()
+    const { supabaseAdmin } = await getContext()
 
     if (categoryContext === 'oftalmologistas') {
       await (supabaseAdmin.from('oftalmologistas') as any).delete().eq('id', id)
@@ -425,16 +423,12 @@ export async function deleteCatalogItem(
   } catch (e: any) { return { success: false, message: e.message } }
 }
 
-// ============================================================================
-// ACTION DE BUSCA
-// ============================================================================
 export async function fetchCatalogItems(
   storeId: number,
-  category: 'lentes' | 'armacoes' | 'tratamentos' | 'oftalmologistas' | 'produtos_gerais' | 'fornecedores',
+  category: 'lentes' | 'solar' | 'receituario' | 'tratamentos' | 'oftalmologistas' | 'produtos_gerais' | 'fornecedores',
   query: string = ''
 ): Promise<CatalogItemResult[]> {
-
-  const supabaseAdmin = createAdminClient()
+  const { supabaseAdmin } = await getContext()
 
   if (category === 'oftalmologistas') {
     let q = (supabaseAdmin.from('oftalmologistas') as any).select('*').eq('store_id', storeId).limit(50)
@@ -460,7 +454,8 @@ export async function fetchCatalogItems(
 
   let tipoFiltro = ''
   if (category === 'lentes') tipoFiltro = 'Lente'
-  else if (category === 'armacoes') tipoFiltro = 'Armacao'
+  else if (category === 'solar') tipoFiltro = 'Solar'
+  else if (category === 'receituario') tipoFiltro = 'Receituario'
   else if (category === 'tratamentos') tipoFiltro = 'Tratamento'
   else if (category === 'produtos_gerais') tipoFiltro = 'Outro'
 
@@ -483,30 +478,32 @@ export async function fetchCatalogItems(
 
     let rawData: any = { id: p.id, preco_venda: p.preco_venda, preco_custo: p.preco_custo }
 
-    if (category === 'lentes') {
-      rawData = { ...rawData, nome_lente: p.nome, marca: p.marca, tipo: d.tipo_desenho, material: d.material, indice_refracao: d.indice }
-      return { id: p.id, title: p.nome, subtitle: `${p.marca || ''} ${d.material || ''}`, price: p.preco_venda, raw: rawData }
-    }
-
-    if (category === 'armacoes') {
-      rawData = {
-        ...rawData, marca: p.marca, referencia: p.referencia, codigo_barras: p.codigo_barras, quantidade_estoque: p.estoque_atual,
-        modelo: d.modelo, cor: d.cor, tamanho_aro: d.aro, tamanho_ponte: d.ponte, tamanho_haste: d.haste
-      }
-      return { id: p.id, title: p.nome, subtitle: p.codigo_barras ? `Cód: ${p.codigo_barras}` : `Ref: ${p.referencia}`, price: p.preco_venda, stock: p.estoque_atual, raw: rawData }
-    }
-
-    if (category === 'produtos_gerais') {
-      rawData = { ...rawData, descricao: p.nome, categoria: p.categoria, marca: p.marca, estoque_atual: p.estoque_atual, estoque_minimo: p.estoque_minimo, codigo_barras: p.codigo_barras }
-      return { id: p.id, title: p.nome, subtitle: `Cat: ${p.categoria}`, price: p.preco_venda, stock: p.estoque_atual, raw: rawData }
-    }
 
     if (category === 'tratamentos') {
       rawData = { ...rawData, nome_tratamento: p.nome, descricao: d.descricao, preco_venda_adicional: p.preco_venda, preco_custo_adicional: p.preco_custo }
       return { id: p.id, title: p.nome, subtitle: d.descricao, price: p.preco_venda, raw: rawData }
     }
 
-    return { id: p.id, title: p.nome, raw: p }
+    if (category === 'solar' || category === 'receituario') {
+      rawData = {
+        ...rawData, marca: p.marca, referencia: p.referencia, codigo_barras: p.codigo_barras, quantidade_estoque: p.estoque_atual,
+        modelo: d.modelo, cor: d.cor, tamanho_aro: d.aro, tamanho_ponte: d.ponte, tamanho_haste: d.haste,
+        nome_completo: p.nome
+      }
+      return { id: p.id, title: p.nome, subtitle: p.codigo_barras ? `Cód: ${p.codigo_barras}` : `Ref: ${p.referencia}`, price: p.preco_venda, stock: p.estoque_atual, raw: rawData }
+    }
+
+    if (category === 'lentes') {
+      rawData = {
+        ...rawData, marca: p.marca, material: d.material, tipo_desenho: d.tipo_desenho, indice_refracao: d.indice_refracao,
+        nome_completo: p.nome
+      }
+      return { id: p.id, title: p.nome, subtitle: d.material || p.marca, price: p.preco_venda, stock: p.estoque_atual, raw: rawData }
+    }
+
+    // Fallback para Produtos Gerais / Outros
+    rawData = { ...rawData, nome_completo: p.nome, ...p }
+    return { id: p.id, title: p.nome, raw: rawData }
   })
 }
 

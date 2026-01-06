@@ -63,7 +63,7 @@ export default function CarnePhantom({ financiamento }: CarnePhantomProps) {
                 `}
             </style>
 
-            <div className="w-[170mm] bg-white mx-auto font-sans">
+            <div className="w-[160mm] bg-white font-sans">
                 {parcelas.map((p, index) => {
                     const isPageBreak = (index + 1) % 5 === 0 && index !== parcelas.length - 1;
 

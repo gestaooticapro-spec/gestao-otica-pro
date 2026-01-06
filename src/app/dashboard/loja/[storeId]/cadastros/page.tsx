@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import {
   Search, Plus, Save, Trash2, Loader2, UploadCloud,
   Glasses, Eye, Sparkles, Stethoscope, ShoppingBag, ScanBarcode,
-  ArrowRightLeft, Lock, Truck, ChevronRight, Grid3X3
+  ArrowRightLeft, Lock, Truck, ChevronRight, Grid3X3, Sun
 } from 'lucide-react';
 import {
   fetchCatalogItems,
@@ -23,14 +23,14 @@ const labelStyle = "block text-[9px] font-bold text-slate-700 uppercase mb-0.5 t
 const inputStyle = "block w-full rounded-md border border-slate-300 bg-white shadow-sm text-slate-900 h-8 text-xs px-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-bold placeholder:font-normal placeholder:text-slate-400 disabled:bg-slate-100 disabled:text-slate-500 transition-all";
 const cardStyle = "bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-3";
 
-type CategoryType = 'armacoes' | 'lentes' | 'tratamentos' | 'oftalmologistas' | 'fornecedores' | 'produtos_gerais';
+type CategoryType = 'solar' | 'receituario' | 'lentes' | 'tratamentos' | 'oftalmologistas' | 'fornecedores' | 'produtos_gerais';
 
 export default function CatalogPage() {
   const params = useParams();
   const storeId = parseInt(params.storeId as string, 10);
 
   // --- Estados ---
-  const [activeTab, setActiveTab] = useState<CategoryType>('armacoes'); // Padrão solicitado
+  const [activeTab, setActiveTab] = useState<CategoryType>('solar'); // Padrão solicitado
   const [items, setItems] = useState<CatalogItemResult[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null); // null = Novo
   const [search, setSearch] = useState('');
@@ -105,7 +105,14 @@ export default function CatalogPage() {
 
       switch (activeTab) {
         case 'lentes': result = await saveLente({ success: false, message: '' }, formPayload); break;
-        case 'armacoes': result = await saveArmacao({ success: false, message: '' }, formPayload); break;
+        case 'solar':
+          formPayload.append('tipo_produto', 'Solar');
+          result = await saveArmacao({ success: false, message: '' }, formPayload);
+          break;
+        case 'receituario':
+          formPayload.append('tipo_produto', 'Receituario');
+          result = await saveArmacao({ success: false, message: '' }, formPayload);
+          break;
         case 'tratamentos': result = await saveTratamento({ success: false, message: '' }, formPayload); break;
         case 'oftalmologistas': result = await saveOftalmo({ success: false, message: '' }, formPayload); break;
         case 'produtos_gerais': result = await saveProdutoGeral({ success: false, message: '' }, formPayload); break;
@@ -240,8 +247,12 @@ export default function CatalogPage() {
         {/* Abas */}
         <div className="bg-white border-b border-slate-200 px-4 pt-3 flex gap-4 shadow-sm flex-shrink-0 overflow-x-auto">
           <TabButton
-            label="Armações" icon={Eye}
-            active={activeTab === 'armacoes'} onClick={() => handleTabChange('armacoes')}
+            label="Solar" icon={Sun}
+            active={activeTab === 'solar'} onClick={() => handleTabChange('solar')}
+          />
+          <TabButton
+            label="Receituário" icon={Eye}
+            active={activeTab === 'receituario'} onClick={() => handleTabChange('receituario')}
           />
           <TabButton
             label="Lentes" icon={Glasses}
@@ -277,7 +288,7 @@ export default function CatalogPage() {
                   onOpenGrid={() => setShowGridModal(true)} // Passando a prop
                 />
               )}
-              {activeTab === 'armacoes' && (
+              {(activeTab === 'solar' || activeTab === 'receituario') && (
                 <FormArmacoes data={formData} onChange={handleInputChange} disabled={isSaving} storeId={storeId} />
               )}
               {activeTab === 'produtos_gerais' && (
@@ -358,8 +369,8 @@ function TabButton({ label, icon: Icon, active, onClick }: any) {
       type="button"
       onClick={onClick}
       className={`flex items-center gap-2 pb-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap ${active
-          ? 'text-blue-600 border-blue-600'
-          : 'text-slate-400 border-transparent hover:text-slate-600'
+        ? 'text-blue-600 border-blue-600'
+        : 'text-slate-400 border-transparent hover:text-slate-600'
         }`}
     >
       <Icon className={`h-4 w-4 ${active ? 'text-blue-600' : 'text-slate-400'}`} /> {label}
@@ -446,8 +457,17 @@ function FormProdutosGerais({ data, onChange, disabled, sugestoes, storeId }: an
 
 function FormArmacoes({ data, onChange, disabled, storeId }: any) {
   const isEditing = !!data.id;
+
+  const namePreview = isEditing
+    ? (data.nome_completo || '')
+    : `${data.marca || ''} ${data.modelo || ''} ${data.referencia || ''}`.trim();
+
   return (
     <div className="grid grid-cols-12 gap-3 gap-y-4">
+      <div className="col-span-12">
+        <label className={labelStyle}>{isEditing ? 'Nome Atual (Sistema)' : 'Nome (Prévia Automática)'}</label>
+        <input type="text" value={namePreview} className={`${inputStyle} bg-slate-100 text-slate-500`} disabled readOnly />
+      </div>
       <div className="col-span-12 bg-blue-50 p-3 rounded border border-blue-100 flex items-center gap-4">
         <div className="flex-1">
           <label className={`${labelStyle} text-blue-800`}>Código de Barras (EAN)</label>
@@ -511,8 +531,18 @@ function FormArmacoes({ data, onChange, disabled, storeId }: any) {
 
 function FormLentes({ data, onChange, disabled, onOpenGrid }: any) {
   const isEditing = !!data.id;
+
+  const namePreview = isEditing
+    ? (data.nome_completo || '')
+    : `${data.marca || ''} ${data.material || ''} ${data.tipo || ''} ${data.indice_refracao || ''}`.trim();
+
   return (
     <div className="grid grid-cols-2 gap-3 gap-y-4">
+      <div className="col-span-2">
+        <label className={labelStyle}>{isEditing ? 'Nome Atual (Sistema)' : 'Nome (Prévia Automática)'}</label>
+        <input type="text" value={namePreview} className={`${inputStyle} bg-slate-100 text-slate-500`} disabled readOnly />
+      </div>
+
       <div className="col-span-2">
         <label className={labelStyle}>Nome da Lente *</label>
         <input type="text" required value={data.nome_lente || ''} onChange={e => onChange('nome_lente', e.target.value)} className={inputStyle} disabled={disabled} />
