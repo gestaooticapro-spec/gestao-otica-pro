@@ -64,7 +64,7 @@ export default function AddItemForm({
   const formRef = useRef<HTMLFormElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  const [itemTipo, setItemTipo] = useState<'Lente' | 'Armacao' | 'Tratamento' | 'Servico' | 'Outro'>('Lente')
+  const [itemTipo, setItemTipo] = useState<'Lente' | 'Armacao' | 'Tratamento' | 'Servico' | 'Outro' | 'Solar'>('Lente')
   const [descricao, setDescricao] = useState('')
   const [quantidade, setQuantidade] = useState(1)
   const [unidade, setUnidade] = useState('Unidade') // NOVO: Estado para unidade
@@ -144,6 +144,7 @@ export default function AddItemForm({
     // 2. Define o ID correto
     if (item.tipo === 'Lente') setSelectedIds({ ...selectedIds, lente_id: item.id })
     else if (item.tipo === 'Armacao') setSelectedIds({ ...selectedIds, armacao_id: item.id })
+    else if (item.tipo === 'Solar') setSelectedIds({ ...selectedIds, armacao_id: item.id }) // Solar usa ID de armação
     else if (item.tipo === 'Tratamento') setSelectedIds({ ...selectedIds, tratamento_id: item.id })
     else setSelectedIds({ lente_id: null, armacao_id: null, tratamento_id: null })
 
@@ -271,6 +272,7 @@ export default function AddItemForm({
                 <option value="Armacao">Armação</option>
                 <option value="Tratamento">Trat.</option>
                 <option value="Servico">Serv.</option>
+                <option value="Solar">Solar</option>
                 <option value="Outro">Outro</option>
               </select>
             </div>

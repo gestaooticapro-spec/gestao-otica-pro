@@ -404,7 +404,8 @@ export async function searchCustomersByName(
     .select('id, full_name, cpf, fone_movel, obs_debito')
     .eq('store_id', storeId)
     .or(`full_name.ilike.%${termo}%,cpf.ilike.%${termo}%`)
-    .limit(20)
+    .order('full_name')
+    .limit(50)
 
   if (error) {
     return { success: false, message: error.message }
@@ -565,7 +566,7 @@ export async function getVendaPageData(
 // ================================================================
 const VendaItemSchema = z.object({
   venda_id: z.coerce.number(),
-  item_tipo: z.enum(['Lente', 'Armacao', 'Tratamento', 'Servico', 'Outro']),
+  item_tipo: z.enum(['Lente', 'Armacao', 'Tratamento', 'Servico', 'Outro', 'Solar']),
   descricao: z.string().min(1, { message: 'Descrição é obrigatória.' }),
   lente_id: z.coerce.number().optional().nullable(),
   armacao_id: z.coerce.number().optional().nullable(),
@@ -1256,7 +1257,7 @@ export async function getSalesList(storeId: number, options?: SalesFilterOptions
 // ================================================================
 export type ProductSearchResult = {
   id: number
-  tipo: 'Lente' | 'Armacao' | 'Tratamento' | 'Servico' | 'Outro'
+  tipo: 'Lente' | 'Armacao' | 'Tratamento' | 'Servico' | 'Outro' | 'Solar'
   descricao: string
   detalhes: string
   preco_venda: number
@@ -1273,7 +1274,7 @@ export type SearchProductResult = {
 export async function searchProductCatalog(
   query: string,
   storeId: number,
-  type: 'Lente' | 'Armacao' | 'Tratamento' | 'Servico' | 'Outro' | 'Todos'
+  type: 'Lente' | 'Armacao' | 'Tratamento' | 'Servico' | 'Outro' | 'Solar' | 'Todos'
 ): Promise<SearchProductResult> {
 
   const supabaseAdmin = createAdminClient()
@@ -1293,6 +1294,7 @@ export async function searchProductCatalog(
       if (type === 'Tratamento') dbType = 'Tratamento'
       if (type === 'Servico') dbType = 'Servico'
       if (type === 'Outro') dbType = 'Outro'
+      if (type === 'Solar') dbType = 'Solar'
 
       q = q.eq('tipo_produto', dbType)
     }
@@ -1315,15 +1317,18 @@ export async function searchProductCatalog(
         const d = p.detalhes || {}
         let detalhesStr = ''
 
-        // ATUALIZAÃ‡ÃƒO: Mapeia o tipo do banco de volta para o tipo do Front
+        // ATUALIZAÇÃO: Mapeia o tipo do banco de volta para o tipo do Front
         let tipoFront: ProductSearchResult['tipo'] = 'Outro'
         if (p.tipo_produto === 'Lente') tipoFront = 'Lente'
         else if (p.tipo_produto === 'Armacao') tipoFront = 'Armacao'
+        else if (p.tipo_produto === 'Receituario') tipoFront = 'Armacao' // Legacy support
+        else if (p.tipo_produto === 'Solar') tipoFront = 'Solar'
         else if (p.tipo_produto === 'Tratamento') tipoFront = 'Tratamento'
         else if (p.tipo_produto === 'Servico') tipoFront = 'Servico'
 
         if (tipoFront === 'Lente') detalhesStr = `${p.marca || ''} ${d.material || ''}`
         if (tipoFront === 'Armacao') detalhesStr = `Ref: ${p.referencia || '-'} | Cor: ${d.cor || '-'}`
+        if (tipoFront === 'Solar') detalhesStr = `Solar | Ref: ${p.referencia || '-'} | Cor: ${d.cor || '-'}`
         if (tipoFront === 'Tratamento') detalhesStr = d.descricao || ''
 
         return {

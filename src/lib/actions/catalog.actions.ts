@@ -225,7 +225,7 @@ export async function saveArmacao(prevState: CatalogActionResult, formData: Form
       marca: data.marca,
       referencia: data.referencia,
       codigo_barras: finalBarcode,
-      tipo_produto: (formData.get('tipo_produto') as string) || 'Receituario', // Default fallback
+      tipo_produto: (formData.get('tipo_produto') === 'Receituario' ? 'Armacao' : (formData.get('tipo_produto') as string)) || 'Armacao', // Force Armacao
       categoria: (formData.get('tipo_produto') === 'Solar') ? 'Óculos de Sol' : 'Armação',
       preco_custo: data.preco_custo,
       preco_venda: data.preco_venda,
@@ -455,7 +455,7 @@ export async function fetchCatalogItems(
   let tipoFiltro = ''
   if (category === 'lentes') tipoFiltro = 'Lente'
   else if (category === 'solar') tipoFiltro = 'Solar'
-  else if (category === 'receituario') tipoFiltro = 'Receituario'
+  else if (category === 'receituario') tipoFiltro = 'Armacao'
   else if (category === 'tratamentos') tipoFiltro = 'Tratamento'
   else if (category === 'produtos_gerais') tipoFiltro = 'Outro'
 

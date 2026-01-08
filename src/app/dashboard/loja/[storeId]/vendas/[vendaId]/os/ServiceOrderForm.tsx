@@ -361,7 +361,7 @@ export default function ServiceOrderFormContent({
     const lentesDisponiveisOD = itensLente.filter(i => isLenteDisponivel(i, 'OD'));
     const lentesDisponiveisOE = itensLente.filter(i => isLenteDisponivel(i, 'OE'));
 
-    const itensArmacao = vendaItens.filter(i => i.item_tipo === 'Armacao')
+    const itensArmacao = vendaItens.filter(i => i.item_tipo === 'Armacao' || i.item_tipo === 'Solar')
 
     // Cast 'as any' no currentOrder
     const currentOrder = (currentIndex >= 0 && currentIndex < existingOrders.length ? existingOrders[currentIndex] : undefined) as any
@@ -791,13 +791,15 @@ Obs.: ${obsOs}
             </form>
 
             {/* --- MODAIS EXTERNOS --- */}
-            <AddDependenteModal
-                isOpen={isDepModalOpen}
-                onClose={() => setIsDepModalOpen(false)}
-                onSuccess={handleDependenteAdded}
-                storeId={storeId}
-                customerId={customer.id}
-            />
+            {isDepModalOpen && (
+                <AddDependenteModal
+                    isOpen={isDepModalOpen}
+                    onClose={() => setIsDepModalOpen(false)}
+                    onSuccess={handleDependenteAdded}
+                    storeId={storeId}
+                    customerId={customer.id}
+                />
+            )}
 
             <PrescriptionHistoryModal
                 isOpen={isHistoryModalOpen}
