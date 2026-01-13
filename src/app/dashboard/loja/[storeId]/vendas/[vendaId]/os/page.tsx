@@ -286,6 +286,11 @@ function ServiceOrderFormContent({
     const { pending: isSaving } = useFormStatus()
     const [isDeleting, startDeleteTransition] = useTransition()
 
+    // WhatsApp Logic State
+    const formRef = useRef<HTMLFormElement>(null)
+    const [pendingWhatsApp, setPendingWhatsApp] = useState(false)
+    const isSilentSave = useRef(false)
+
     const [currentIndex, setCurrentIndex] = useState(() => {
         if (targetOsId && existingOrders.length > 0) {
             const foundIndex = existingOrders.findIndex((o: any) => o.id === parseInt(targetOsId))
@@ -350,83 +355,40 @@ function ServiceOrderFormContent({
                     const matches = await checkLensStock(storeId, esf, cil, pid, isNaN(add!) ? null : add)
                     setOdMatches(matches)
                 }
-            } else setOdMatches({ exact: [], similar: [] })
-        }, 800)
+
+            }
+        }, 500)
         return () => clearTimeout(timer)
-    }, [longeOdEsf, longeOdCil, storeId, lenteOdItemId, adicao, vendaItens])
+    }, [longeOdEsf, longeOdCil, adicao, lenteOdItemId, storeId, vendaItens])
 
-    // Monitora OE para sobras e estoque
-    useEffect(() => {
-        const timer = setTimeout(async () => {
-            if (longeOeEsf && longeOeCil) {
-                const esf = parseFloat(longeOeEsf.replace(',', '.').replace('+', ''))
-                const cil = parseFloat(longeOeCil.replace(',', '.').replace('+', ''))
-
-                // Busca Produto ID
-                const item = vendaItens.find(i => i.id.toString() === lenteOeItemId)
-                const pid = item ? item.product_id : null
-
-                // Busca Adição
-                const add = adicao ? parseFloat(adicao.replace(',', '.').replace('+', '')) : null
-
-                if (!isNaN(esf) && !isNaN(cil)) {
-                    const matches = await checkLensStock(storeId, esf, cil, pid, isNaN(add!) ? null : add)
-                    setOeMatches(matches)
-                }
-            } else setOeMatches({ exact: [], similar: [] })
-        }, 800)
-        return () => clearTimeout(timer)
-    }, [longeOeEsf, longeOeCil, storeId, lenteOeItemId, adicao, vendaItens])
-
-    const handleReserve = async (variantId: number, productId: number) => {
-        if (!currentOrder?.id) {
-            alert("Salve a OS primeiro antes de reservar itens.")
-            return
-        }
-
-        const empId = venda.employee_id || 0 // Fallback
-
-        const res = await reserveLens(storeId, variantId, productId, currentOrder.id, empId)
-        if (res.success) {
-            alert("Lente reservada com sucesso! O estoque foi atualizado.")
-            setStockModalOpen(null)
-            // Opcional: Recarregar dados ou atualizar UI
-        } else {
-            alert(`Erro ao reservar: ${res.message}`)
-        }
-    }
-
-    const itensLente = vendaItens.filter(i => i.item_tipo === 'Lente')
-
-    // LÓGICA INTELIGENTE DE FILTRAGEM DE LENTES
+    // Helper para disponibilidade
     const isLenteDisponivel = (item: any, olho: 'OD' | 'OE') => {
-        // Se for Par, está sempre disponível (pode usar no OD e OE)
         if (item.unidade === 'Par') return true;
-
-        // Se for Unidade, precisamos ver se já foi usada no OUTRO olho
         const outroOlhoId = olho === 'OD' ? lenteOeItemId : lenteOdItemId;
-
-        // Se o outro olho não tem nada selecionado, ou tem OUTRA lente selecionada, esta está livre
         if (!outroOlhoId || outroOlhoId !== item.id.toString()) return true;
-
-        // Se o outro olho está usando ESTA MESMA lente (pelo ID), precisamos ver a quantidade comprada
-        // Se comprou 2 unidades, pode usar. Se comprou 1, já era.
         if (item.quantidade >= 2) return true;
-
         return false;
     }
 
+    const itensLente = vendaItens.filter(i => i.item_tipo === 'Lente' || i.item_tipo === 'Lente de Contato')
     const lentesDisponiveisOD = itensLente.filter(i => isLenteDisponivel(i, 'OD'));
     const lentesDisponiveisOE = itensLente.filter(i => isLenteDisponivel(i, 'OE'));
 
-    const itensArmacao = vendaItens.filter(i => i.item_tipo === 'Armacao')
+    const itensArmacao = vendaItens.filter(i => i.item_tipo === 'Armacao' || i.item_tipo === 'Solar')
 
     // Cast 'as any' no currentOrder
     const currentOrder = (currentIndex >= 0 && currentIndex < existingOrders.length ? existingOrders[currentIndex] : undefined) as any
 
+    // CORREÇÃO: activeId garante que usamos o ID recém-salvo mesmo se o currentIndex ainda não atualizou
+    const activeId = currentOrder?.id || (saveState?.success && saveState?.data?.id ? saveState.data.id : undefined)
+
     useEffect(() => {
         if (saveState.success && saveState.data && saveState.timestamp !== lastSuccessRef.current) {
-            alert(saveState.message)
+            // Se não for save silencioso, mostra alert
+            if (!isSilentSave.current) {
+                alert(saveState.message)
+            }
+
             const savedOS = saveState.data as ServiceOrderWithLinks
             let newList = [...existingOrders]
             const idx = newList.findIndex(o => o.id === savedOS.id)
@@ -435,8 +397,15 @@ function ServiceOrderFormContent({
             onListChange(newList)
             setCurrentIndex(newList.findIndex(o => o.id === savedOS.id))
             lastSuccessRef.current = saveState.timestamp;
+
+            // Se tinha WhatsApp pendente, envia agora
+            if (pendingWhatsApp) {
+                sendWhatsAppPedido(savedOS.id)
+                setPendingWhatsApp(false)
+                isSilentSave.current = false
+            }
         }
-    }, [saveState, onListChange, existingOrders])
+    }, [saveState, onListChange, existingOrders, pendingWhatsApp])
 
     const resetForm = useCallback(() => {
         setDependenteId(''); setOftalmologistaId(''); setLenteOdItemId(''); setLenteOeItemId(''); setArmacaoItemId('')
@@ -479,10 +448,10 @@ function ServiceOrderFormContent({
     }
 
     const handleDelete = () => {
-        if (!currentOrder) return; if (!confirm('Excluir OS?')) return;
+        if (!activeId) return; if (!confirm('Excluir OS?')) return;
         startDeleteTransition(async () => {
-            const res = await deleteServiceOrder(currentOrder.id, storeId, vendaId)
-            if (res.success) { onListChange(existingOrders.filter((o: any) => o.id !== currentOrder.id)); setCurrentIndex(-1) }
+            const res = await deleteServiceOrder(activeId, storeId, vendaId)
+            if (res.success) { onListChange(existingOrders.filter((o: any) => o.id !== activeId)); setCurrentIndex(-1) }
             else { alert(res.message) }
         })
     }
@@ -501,7 +470,16 @@ function ServiceOrderFormContent({
         }
     }
 
-    const sendWhatsAppPedido = () => {
+    const sendWhatsAppPedido = (overrideId?: number) => {
+        // Silent Save Trigger
+        const finalId = overrideId || activeId
+        if (!finalId) {
+            isSilentSave.current = true
+            setPendingWhatsApp(true)
+            formRef.current?.requestSubmit()
+            return
+        }
+
         const lenteOdDesc = vendaItens.find(i => i.id === parseInt(lenteOdItemId))?.descricao || 'Não informado';
         const lenteOeDesc = vendaItens.find(i => i.id === parseInt(lenteOeItemId))?.descricao || 'Não informado';
         const medico = oftalmosList.find(o => o.id === parseInt(oftalmologistaId));
@@ -509,10 +487,31 @@ function ServiceOrderFormContent({
         const clienteNome = customer?.full_name || 'Cliente';
         const prometidoPara = dtPrometido ? formatDate(dtPrometido) : 'A combinar';
 
+        // Helper para adicionar linha apenas se tiver valor
+        const addIf = (label: string, value: any) => value ? `${label}: ${value}` : null;
+
+        const hasComplexMeasures = medH || medV || medDiag || medPonte || diametro
+        const hasBasicMeasures = dnpOd || dnpOe || altOd || altOe
+
+        let medidasBlock = ''
+        if (hasComplexMeasures) {
+            medidasBlock = `
+--Medidas--
+${[
+                    addIf('Hor', medH),
+                    addIf('Vert', medV),
+                    addIf('Diag', medDiag),
+                    addIf('Ponte', medPonte),
+                    addIf('DP', (dnpOd || dnpOe) ? `${dnpOd}/${dnpOe}` : null),
+                    addIf('Diam', diametro),
+                    addIf('Alt', (altOd || altOe) ? `${altOd}/${altOe}` : null)
+                ].filter(Boolean).join('\n')}`
+        }
+
         const msg = `
 *Pedido de Lentes*
 
-Protocolo/OS #${protocolo || 'Nova'}
+Protocolo/OS #${protocolo || finalId}
 Prometido para: ${prometidoPara}
 
 --Receita--
@@ -520,33 +519,40 @@ Lente OD: ${lenteOdDesc}
 Lente OE: ${lenteOeDesc}
 OD: ${longeOdEsf} ${longeOdCil} ${longeOdEixo}
 OE: ${longeOeEsf} ${longeOeCil} ${longeOeEixo}
-AD: ${adicao}
-
---Medidas--
-Hor: ${medH}
-Vert: ${medV}
-Diag: ${medDiag}
-Ponte: ${medPonte}
-DP: ${dnpOd}/${dnpOe}
-Diam: ${diametro}
-Alt: ${altOd}/${altOe}
+${addIf('AD', adicao) || ''}
+${medidasBlock}
 
 --Dados Pessoais--
 Cliente: ${clienteNome}
 Médico: ${medicoTexto}
 
-Obs.: ${obsOs}
+${addIf('Obs.', obsOs) || ''}
 `.trim();
-
         const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
         window.open(url, '_blank');
+    }
+
+    const handleReserve = async (variantId: number, productId: number) => {
+        if (!activeId) { alert('Salve a OS antes de reservar lentes.'); return; }
+
+        // Usa o primeiro funcionário como padrão se não houver um selecionado
+        const employeeId = employees[0]?.id
+        if (!employeeId) { alert('Nenhum funcionário disponível para registrar a reserva.'); return; }
+
+        const res = await reserveLens(storeId, variantId, productId, activeId, employeeId)
+        if (res.success) {
+            alert('Lente reservada com sucesso!')
+            setStockModalOpen(null)
+        } else {
+            alert(res.message)
+        }
     }
 
     if (!customer) return <div className="p-4">Carregando dados do cliente...</div>
 
     return (
         <>
-            <form action={dispatch} className="flex-1 flex flex-col h-[calc(100vh-64px)]">
+            <form ref={formRef} action={dispatch} className="flex-1 flex flex-col h-[calc(100vh-64px)]">
 
                 {/* ÁREA DE SCROLL (HEADER + CONTEÚDO) */}
                 <div className="flex-1 overflow-y-auto overflow-x-hidden p-2">
@@ -573,7 +579,7 @@ Obs.: ${obsOs}
                         <div className="flex items-center gap-2 ml-2 min-w-fit">
                             <Eye className="h-4 w-4 text-blue-600" />
                             <h2 className="text-sm font-bold text-gray-800 hidden sm:block">
-                                {currentOrder ? `Ficha #${currentOrder.id}` : 'Nova Ficha'}
+                                {activeId ? `Ficha #${activeId}` : 'Nova Ficha'}
                             </h2>
                             <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-0.5 rounded-full font-bold border border-gray-300 whitespace-nowrap">
                                 {currentIndex === -1 ? 'NOVA' : `${currentIndex + 1}/${existingOrders.length}`}
@@ -699,7 +705,7 @@ Obs.: ${obsOs}
                                         </div>
                                         <button
                                             type="button"
-                                            onClick={sendWhatsAppPedido}
+                                            onClick={() => sendWhatsAppPedido()}
                                             className="h-7 px-2 bg-green-500 hover:bg-green-600 text-white rounded shadow-md flex items-center gap-1 transition-all hover:scale-105"
                                             title="Enviar Pedido via WhatsApp"
                                         >
@@ -827,9 +833,9 @@ Obs.: ${obsOs}
                     <button type="button" onClick={() => router.back()} className={`${baseButtonStyle} bg-gray-500 text-white hover:bg-gray-600`}>VOLTAR</button>
 
                     {/* Botão de Impressão */}
-                    <PrintProtocoloButton osId={currentOrder?.id} disabled={!currentOrder} />
+                    <PrintProtocoloButton osId={activeId} disabled={!activeId} />
 
-                    {currentOrder && (
+                    {activeId && (
                         <button type="button" onClick={handleDelete} disabled={isDeleting} className={`${baseButtonStyle} bg-red-100 text-red-700 hover:bg-red-200 border border-red-200`}>
                             {isDeleting ? <Loader2 className="animate-spin h-3 w-3" /> : <Trash2 className="h-3 w-3" />} EXCLUIR
                         </button>
@@ -878,6 +884,8 @@ Obs.: ${obsOs}
     )
 }
 
+
+
 export default function ServiceOrderPage() {
     const params = useParams()
     const storeId = parseInt(params.storeId as string)
@@ -896,8 +904,6 @@ export default function ServiceOrderPage() {
                     throw new Error(`IDs inválidos: Store=${params.storeId}, Venda=${params.vendaId}`)
                 }
 
-                // 1. Busca dados da venda (como Admin via Server Action) para pegar o customer_id com segurança
-                // Isso evita o erro de RLS (Stack Depth Limit) que ocorre na busca direta pelo cliente
                 const vendaRes = await getVendaPageData(vendaId, storeId)
                 if (!vendaRes.success || !vendaRes.data || !vendaRes.data.venda) {
                     throw new Error(vendaRes.message || "Venda não encontrada.")
@@ -906,12 +912,10 @@ export default function ServiceOrderPage() {
                 const venda = vendaRes.data.venda
                 const customerId = venda.customer_id
 
-                // Define nome do funcionário se disponível (opcional, cosmético)
                 if (vendaRes.data.employee) {
                     setAuthedEmployeeName(vendaRes.data.employee.full_name)
                 }
 
-                // 2. Busca dados da OS usando o customer_id recuperado
                 const res = await getOSPageData(vendaId, storeId, customerId)
                 if (!res.success || !res.data) {
                     throw new Error(res.message || "Erro desconhecido ao carregar dados da OS.")

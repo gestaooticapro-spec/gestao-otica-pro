@@ -107,7 +107,7 @@ export default function AddItemFormExperimental({
         }
 
         const currentId = itemTipo === 'Lente' ? selectedIds.lente_id
-            : itemTipo === 'Armacao' ? selectedIds.armacao_id
+            : (itemTipo === 'Armacao' || itemTipo === 'Solar') ? selectedIds.armacao_id
                 : itemTipo === 'Tratamento' ? selectedIds.tratamento_id : null;
 
         if (currentId) return;
@@ -226,6 +226,7 @@ export default function AddItemFormExperimental({
                                             <div className="flex flex-col">
                                                 <div className="flex items-center gap-1.5">
                                                     <span className="font-bold text-gray-800 group-hover:text-blue-700 text-sm">{item.descricao}</span>
+                                                    {item.marca && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200 font-bold uppercase">{item.marca}</span>}
                                                     <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded border uppercase font-bold">{item.tipo}</span>
                                                 </div>
                                                 {item.detalhes && <span className="text-[11px] text-gray-400 mt-0.5">{item.detalhes}</span>}

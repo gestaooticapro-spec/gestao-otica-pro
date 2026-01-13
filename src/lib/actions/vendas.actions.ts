@@ -1259,6 +1259,7 @@ export type ProductSearchResult = {
   id: number
   tipo: 'Lente' | 'Armacao' | 'Tratamento' | 'Servico' | 'Outro' | 'Solar'
   descricao: string
+  marca?: string
   detalhes: string
   preco_venda: number
   estoque?: number
@@ -1335,6 +1336,7 @@ export async function searchProductCatalog(
           id: p.id,
           tipo: tipoFront,
           descricao: p.nome,
+          marca: p.marca,
           detalhes: detalhesStr,
           preco_venda: p.preco_venda,
           estoque: p.estoque_atual
