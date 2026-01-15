@@ -132,7 +132,9 @@ export default function AddItemFormExperimental({
     }
 
     const handleSuggestionClick = (item: ProductSearchResult) => {
-        setDescricao(item.descricao)
+        // Inclui a marca antes do modelo na descrição
+        const descricaoCompleta = item.marca ? `${item.marca} ${item.descricao}` : item.descricao
+        setDescricao(descricaoCompleta)
         setValorUnitario(formatCurrency(item.preco_venda))
 
         setItemTipo(item.tipo)

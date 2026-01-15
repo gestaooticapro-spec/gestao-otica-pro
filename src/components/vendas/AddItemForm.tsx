@@ -67,7 +67,7 @@ export default function AddItemForm({
   const [itemTipo, setItemTipo] = useState<'Lente' | 'Armacao' | 'Tratamento' | 'Servico' | 'Outro' | 'Solar'>('Lente')
   const [descricao, setDescricao] = useState('')
   const [quantidade, setQuantidade] = useState(1)
-  const [unidade, setUnidade] = useState('Unidade') // NOVO: Estado para unidade
+  const [unidade, setUnidade] = useState('Unidade')
   const [valorUnitario, setValorUnitario] = useState('0,00')
 
   const [selectedIds, setSelectedIds] = useState({
@@ -98,7 +98,7 @@ export default function AddItemForm({
     lastStateRef.current = saveState;
   }, [saveState, onItemAdded])
 
-  // LÓGICA DE BUSCA GLOBAL (Ignora o tipo selecionado inicialmente) [cite: 1132]
+  // LÓGICA DE BUSCA GLOBAL
   useEffect(() => {
     if (descricao.trim().length < 2) {
       setSuggestions([])
@@ -106,7 +106,6 @@ export default function AddItemForm({
       return
     }
 
-    // Se já temos um ID selecionado (clicou na sugestão), não busca de novo
     const currentId = itemTipo === 'Lente' ? selectedIds.lente_id
       : itemTipo === 'Armacao' ? selectedIds.armacao_id
         : itemTipo === 'Tratamento' ? selectedIds.tratamento_id : null;
@@ -115,7 +114,6 @@ export default function AddItemForm({
 
     setIsSearching(true)
     const timer = setTimeout(() => {
-      // ATUALIZAÇÃO: Passa 'Todos' para buscar em tudo
       searchProductCatalog(descricao, storeId, 'Todos').then(result => {
         if (result.success && result.data) {
           setSuggestions(result.data)
@@ -133,22 +131,20 @@ export default function AddItemForm({
     setSelectedIds({ lente_id: null, armacao_id: null, tratamento_id: null })
   }
 
-  // ATUALIZAÇÃO: Troca o tipo automaticamente ao clicar [cite: 1133]
+  // ATUALIZAÇÃO: Inclui a marca antes do modelo na descrição
   const handleSuggestionClick = (item: ProductSearchResult) => {
-    setDescricao(item.descricao)
+    const descricaoCompleta = item.marca ? `${item.marca} ${item.descricao}` : item.descricao
+    setDescricao(descricaoCompleta)
     setValorUnitario(formatCurrency(item.preco_venda))
 
-    // 1. Define o Tipo com base no retorno do backend
     setItemTipo(item.tipo)
 
-    // 2. Define o ID correto
     if (item.tipo === 'Lente') setSelectedIds({ ...selectedIds, lente_id: item.id })
     else if (item.tipo === 'Armacao') setSelectedIds({ ...selectedIds, armacao_id: item.id })
-    else if (item.tipo === 'Solar') setSelectedIds({ ...selectedIds, armacao_id: item.id }) // Solar usa ID de armação
+    else if (item.tipo === 'Solar') setSelectedIds({ ...selectedIds, armacao_id: item.id })
     else if (item.tipo === 'Tratamento') setSelectedIds({ ...selectedIds, tratamento_id: item.id })
     else setSelectedIds({ lente_id: null, armacao_id: null, tratamento_id: null })
 
-    // 3. Lógica Inteligente de Unidade
     if (item.tipo === 'Lente') {
       setUnidade('Par')
     } else {
@@ -177,12 +173,10 @@ export default function AddItemForm({
 
   const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setItemTipo(e.target.value as any);
-    // Se o usuário trocar o tipo manualmente, limpamos o ID para evitar inconsistência
     setSelectedIds({ lente_id: null, armacao_id: null, tratamento_id: null });
   }
 
   const labelStyle = 'block text-[9px] font-bold text-blue-100 mb-0.5 uppercase tracking-wider'
-  // MODIFICADO: Aumentado contraste para border-gray-400
   const inputStyle = 'block w-full rounded-md border border-gray-400 bg-white shadow-sm text-gray-800 h-8 text-xs px-2 focus:ring-1 focus:ring-blue-300 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400 placeholder:text-gray-400 transition-all'
 
   return (
@@ -207,9 +201,7 @@ export default function AddItemForm({
 
         <div className="grid grid-cols-12 gap-2 items-end">
 
-          {/* ATUALIZAÇÃO VISUAL: Inverti a ordem das colunas no grid [cite: 1136] */}
-
-          {/* 1. Descrição / Busca (Agora é o primeiro, col-span maior) */}
+          {/* 1. Descrição / Busca */}
           <div className="col-span-6 md:col-span-6 relative" ref={dropdownRef}>
             <label className={labelStyle}>Descrição / Busca</label>
             <div className="relative">
@@ -243,6 +235,7 @@ export default function AddItemForm({
                       <div className="flex flex-col">
                         <div className="flex items-center gap-1.5">
                           <span className="font-bold text-gray-800 group-hover:text-blue-700">{item.descricao}</span>
+                          {item.marca && <span className="text-[8px] bg-blue-100 text-blue-700 px-1 py-0.5 rounded border border-blue-200 uppercase font-bold">{item.marca}</span>}
                           <span className="text-[8px] bg-gray-100 text-gray-500 px-1 py-0.5 rounded border uppercase">{item.tipo}</span>
                         </div>
                         {item.detalhes && <span className="text-[10px] text-gray-400 mt-0.5">{item.detalhes}</span>}
@@ -257,7 +250,7 @@ export default function AddItemForm({
             )}
           </div>
 
-          {/* 2. Tipo (Agora é o segundo, col-span menor) */}
+          {/* 2. Tipo */}
           <div className="col-span-2 md:col-span-2">
             <label className={labelStyle}>Tipo</label>
             <div className="relative">
