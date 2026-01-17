@@ -7,17 +7,34 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: 'Ótica Pro',
     description: 'Sistema de Gestão para Óticas',
     start_url: '/',
-    display: 'standalone', // <--- ISSO REMOVE A BARRA DE ENDEREÇO
-    background_color: '#f3f4f6', // Cor do bg-gray-100
-    theme_color: '#2563eb',      // Cor do blue-600 (Header)
-    orientation: 'portrait',     // Opcional: força modo retrato se quiser
+    display: 'standalone',
+    background_color: '#f3f4f6',
+    theme_color: '#2563eb',
+    orientation: 'portrait',
     icons: [
       {
         src: '/favicon.ico',
         sizes: 'any',
         type: 'image/x-icon',
       },
-      // Idealmente depois você adiciona ícones PNG (192x192 e 512x512) aqui
+      {
+        src: '/web-app-manifest-192x192.png',
+        sizes: '192x192',
+        type: 'image/png',
+        purpose: 'maskable',
+      },
+      {
+        src: '/web-app-manifest-512x512.png',
+        sizes: '512x512',
+        type: 'image/png',
+        purpose: 'maskable',
+      },
+      {
+        src: '/apple-touch-icon.png',
+        sizes: '180x180',
+        type: 'image/png',
+        purpose: 'any',
+      },
     ],
   }
 }

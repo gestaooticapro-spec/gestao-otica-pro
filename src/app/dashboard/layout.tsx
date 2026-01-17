@@ -2,8 +2,10 @@
 import React from 'react';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-// CORREÇÃO: Ajuste do caminho para minúsculo para coincidir com o nome real do arquivo e evitar erro no Linux/Vercel
 import Header from '@/components/header';
+import { getProfileByAdmin } from '@/lib/supabase/admin';
+
+type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor' | 'tecnico';
 
 export default async function DashboardLayout({
   children,
@@ -12,22 +14,32 @@ export default async function DashboardLayout({
 }) {
   const supabase = createClient();
 
-  // 1. Apenas faz a checagem de autenticação no nível mais alto.
+  // 1. Checagem de autenticação
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     return redirect('/login');
   }
 
-  // Se o usuário está logado, apenas renderiza o Header e passa o controle
-  // para o layout aninhado (children).
+  // 2. Buscar o profile para verificar o role
+  const profile = await getProfileByAdmin(user.id) as any;
+  const userRole = profile?.role as Role | undefined;
 
+  // 3. Para store_operator, renderiza sem header (fullscreen)
+  if (userRole === 'store_operator') {
+    return (
+      <div className="min-h-screen">
+        {children}
+      </div>
+    );
+  }
+
+  // 4. Para outros roles, renderiza com header normal
   return (
     <>
       <Header />
 
       {/* Container Principal: Header é compensado por pt-16 */}
       <div className="flex flex-1 pt-16">
-        {/* O CHILDREN (a rota filha) será responsável por renderizar a SideNav (se for uma rota de loja) */}
         {children}
       </div>
     </>

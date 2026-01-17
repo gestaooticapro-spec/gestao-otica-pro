@@ -10,23 +10,23 @@ export default async function PosVendaPage({ params }: { params: { storeId: stri
   return (
     // 1. FUNDO GRADIENTE "SOFT UI"
     <div className="flex flex-col h-[calc(100vh-64px)] bg-gradient-to-br from-slate-100 via-blue-50 to-slate-100 overflow-hidden">
-      
+
       {/* Header Flutuante/Transparente */}
       <div className="px-8 py-5 flex-shrink-0 backdrop-blur-sm bg-white/50 border-b border-white/20">
         <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3 drop-shadow-sm">
-            <div className="p-2.5 bg-white rounded-xl shadow-md text-pink-500">
-                <HeartHandshake className="h-7 w-7" />
-            </div>
-            Sucesso do Cliente
+          <div className="p-2.5 bg-white rounded-xl shadow-md text-pink-500">
+            <HeartHandshake className="h-7 w-7" />
+          </div>
+          Pós-Vendas
         </h1>
         <p className="text-sm font-medium text-slate-500 mt-1 ml-14">
-            Gestão de adaptação e satisfação.
+          Acompanhe a satisfação dos clientes.
         </p>
       </div>
 
       {/* Área de Trabalho */}
       <div className="flex-1 overflow-hidden p-6">
-         <PostSalesInterface initialQueue={fila} storeId={storeId} />
+        <PostSalesInterface initialQueue={fila} storeId={storeId} />
       </div>
     </div>
   )

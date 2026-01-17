@@ -6,6 +6,8 @@ import SideNav from '@/components/SideNav';
 import { getProfileByAdmin } from '@/lib/supabase/admin';
 import { createAdminClient } from '@/lib/supabase/admin';
 import CashGuard from '@/components/financeiro/CashGuard';
+import { ModalsProvider } from '@/lib/contexts/ModalsContext';
+import { OperatorLayout } from '@/components/operator-menu';
 
 type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor' | 'tecnico';
 
@@ -50,27 +52,44 @@ export default async function StoreLayout({
   const settings = storeData?.settings as any;
   const logoUrl = settings?.logo ? `/logos/${settings.logo}` : null;
 
-  return (
-    // CORREÇÃO 1: Mudamos de 'h-screen' para 'h-full'.
-    // Isso faz ele respeitar o 'pt-16' do layout pai e não empurra o conteúdo para cima.
-    <div className="flex w-full h-full overflow-hidden bg-gray-100">
+  // --- LAYOUT CONDICIONAL POR ROLE ---
 
-      <CashGuard storeId={storeIdParam} />
-
-      <div className="flex-shrink-0 h-full">
-        <SideNav
-          userRole={userRole}
+  // Se for store_operator, usa o layout de menu por botões
+  if (userRole === 'store_operator') {
+    return (
+      <ModalsProvider storeId={storeIdParam}>
+        <OperatorLayout
           storeId={storeIdParam}
           storeName={storeName}
           logoUrl={logoUrl}
-        />
-      </div>
+        >
+          <CashGuard storeId={storeIdParam} />
+          {children}
+        </OperatorLayout>
+      </ModalsProvider>
+    );
+  }
 
-      {/* CORREÇÃO 2: Mudamos 'overflow-hidden' para 'overflow-y-auto'. 
-          Isso garante que a barra de rolagem fique aqui, no conteúdo, e não na janela inteira. */}
-      <main className="flex-1 overflow-y-auto bg-gray-100 relative">
-        {children}
-      </main>
-    </div>
+  // Layout tradicional com sidebar para outros roles
+  return (
+    <ModalsProvider storeId={storeIdParam}>
+      <div className="flex w-full h-full overflow-hidden bg-gray-100">
+
+        <CashGuard storeId={storeIdParam} />
+
+        <div className="flex-shrink-0 h-full">
+          <SideNav
+            userRole={userRole}
+            storeId={storeIdParam}
+            storeName={storeName}
+            logoUrl={logoUrl}
+          />
+        </div>
+
+        <main className="flex-1 overflow-y-auto bg-gray-100 relative">
+          {children}
+        </main>
+      </div>
+    </ModalsProvider>
   );
 }

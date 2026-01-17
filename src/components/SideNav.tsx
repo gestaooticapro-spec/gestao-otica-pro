@@ -8,16 +8,12 @@ import {
     // Ícones
     ShoppingCart, Users, DollarSign, Archive,
     Settings, BarChart3, Megaphone, Wallet, Zap, Search,
-    LogOut, HeartHandshake, FileText, Bot, // <--- BOT ADICIONADO AQUI
+    LogOut, HeartHandshake, FileText, Bot,
     FileInput, ArrowLeftRight, FileSpreadsheet, CalendarRange, Percent, Home, LifeBuoy,
     CheckCircle2, Tag, ChevronRight, ChevronLeft, PanelLeftClose, PanelLeftOpen, X, Globe
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-
-// IMPORTS DOS MODAIS
-import ParcelaSearchModal from '@/components/modals/ParcelaSearchModal';
-import LabTrackingModal from '@/components/modals/LabTrackingModal';
-import EntregaModal from '@/components/modals/EntregaModal';
+import { useModals } from '@/lib/contexts/ModalsContext';
 
 type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor' | 'tecnico';
 
@@ -81,6 +77,15 @@ const MENU_STRUCTURE: MenuGroup[] = [
                 route: '#',
                 action: 'openParcelaModal',
                 allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor']
+            },
+
+            {
+                label: 'Consulta Cliente',
+                icon: Search,
+                route: '#',
+                action: 'openCustomerHistoryModal',
+                allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor'],
+                withSeparator: true
             },
 
             // Separador após Nova Assistência
@@ -158,10 +163,8 @@ export default function SideNav({ userRole, storeId, storeName, logoUrl }: SideN
     const [activePanel, setActivePanel] = useState<string | null>(null);
     const [isSubCollapsed, setIsSubCollapsed] = useState(false);
 
-    // Modais
-    const [isParcelaModalOpen, setIsParcelaModalOpen] = useState(false);
-    const [isLabModalOpen, setIsLabModalOpen] = useState(false);
-    const [isEntregaModalOpen, setIsEntregaModalOpen] = useState(false);
+    // Modais (agora via contexto global)
+    const { openParcelaModal, openLabModal, openEntregaModal, openCustomerHistoryModal } = useModals();
 
     useEffect(() => {
         // Opcional: Fecha o painel ao navegar
@@ -249,9 +252,10 @@ export default function SideNav({ userRole, storeId, storeName, logoUrl }: SideN
                         const itemElement = isAction ? (
                             <button
                                 onClick={() => {
-                                    if (sub.action === 'openParcelaModal') setIsParcelaModalOpen(true);
-                                    if (sub.action === 'openLabModal') setIsLabModalOpen(true);
-                                    if (sub.action === 'openEntregaModal') setIsEntregaModalOpen(true);
+                                    if (sub.action === 'openParcelaModal') openParcelaModal();
+                                    if (sub.action === 'openLabModal') openLabModal();
+                                    if (sub.action === 'openEntregaModal') openEntregaModal();
+                                    if (sub.action === 'openCustomerHistoryModal') openCustomerHistoryModal();
                                 }}
                                 className={`${baseClass} ${isActive ? activeClass : 'hover:bg-white hover:shadow-sm text-slate-600 hover:text-slate-900'}`}
                                 title={isSubCollapsed ? sub.label : ''}
@@ -355,24 +359,7 @@ export default function SideNav({ userRole, storeId, storeName, logoUrl }: SideN
 
             {activePanel && renderSubPanel()}
 
-            {/* MODAIS GLOBAIS */}
-            <ParcelaSearchModal
-                isOpen={isParcelaModalOpen}
-                onClose={() => setIsParcelaModalOpen(false)}
-                storeId={storeId}
-            />
-
-            <LabTrackingModal
-                isOpen={isLabModalOpen}
-                onClose={() => setIsLabModalOpen(false)}
-                storeId={storeId}
-            />
-
-            <EntregaModal
-                isOpen={isEntregaModalOpen}
-                onClose={() => setIsEntregaModalOpen(false)}
-                storeId={storeId}
-            />
+            {/* MODAIS agora são renderizados pelo ModalsProvider no layout */}
 
         </div>
     );

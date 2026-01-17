@@ -448,7 +448,10 @@ export default function ServiceOrderFormContent({
         const lenteOeDesc = vendaItens.find(i => i.id === parseInt(lenteOeItemId))?.descricao || 'Não informado';
         const medico = oftalmosList.find(o => o.id === parseInt(oftalmologistaId));
         const medicoTexto = medico ? `${medico.nome_completo} ${medico.crm ? 'CRM ' + medico.crm : ''}` : 'Não informado';
-        const clienteNome = customer?.full_name || 'Cliente';
+        // Usa o nome do paciente (dependente se selecionado, senão o titular)
+        const pacienteNome = dependenteId
+            ? localDependentes.find(d => d.id === parseInt(dependenteId))?.full_name || customer?.full_name
+            : customer?.full_name || 'Paciente';
         const prometidoPara = dtPrometido ? formatDate(dtPrometido) : 'A combinar';
 
         const msg = `
@@ -474,7 +477,7 @@ Diam: ${diametro}
 Alt: ${altOd}/${altOe}
 
 --Dados Pessoais--
-Cliente: ${clienteNome}
+Cliente: ${pacienteNome}
 Médico: ${medicoTexto}
 
 Obs.: ${obsOs}
