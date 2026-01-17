@@ -160,24 +160,15 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
             {/* GRADE 2: RETAGUARDA (Menores) */}
             <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-6 mb-3 px-1">Loja Vazia & Gestão</h2>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {bottomRow.map((item, idx) => {
-                const content = (
-                  <div className={`
-                    flex flex-col items-center justify-center text-center p-4 rounded-xl shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-pointer
-                    ${item.color}
-                  `}>
-                    <item.icon className="h-6 w-6 mb-2 opacity-80" />
-                    <span className="text-xs font-bold leading-tight">{item.title}</span>
-                    {item.desc && <span className="text-[10px] text-slate-400 mt-0.5">{item.desc}</span>}
-                  </div>
-                )
-
-                return item.action ? (
-                  <div key={idx} onClick={item.action}>{content}</div>
-                ) : (
-                  <Link key={idx} href={item.href!}>{content}</Link>
-                )
-              })}
+              {bottomRow.map((item, idx) => (
+                <Link key={idx} href={item.href} className={`
+                  flex flex-col items-center justify-center text-center p-4 rounded-xl shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-pointer
+                  ${item.color}
+                `}>
+                  <item.icon className="h-6 w-6 mb-2 opacity-80" />
+                  <span className="text-xs font-bold leading-tight">{item.title}</span>
+                </Link>
+              ))}
             </div>
           </div>
 
