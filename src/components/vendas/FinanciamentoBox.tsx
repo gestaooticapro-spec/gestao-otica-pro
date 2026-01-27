@@ -423,14 +423,29 @@ export default function FinanciamentoBox({
 
                     {/* CRIAÇÃO MANUAL (SEM FORMULÁRIO HTML) */}
                     {(() => {
+                        // Cálculo da soma das parcelas editadas
+                        const somaParcelasEditadas = parcelasGrid.reduce((acc, p) => acc + p.valor_parcela, 0);
+                        const valorTotalEsperado = parseLocaleFloat(valorFinanciadoStr);
+                        const diferencaSoma = Math.abs(somaParcelasEditadas - valorTotalEsperado);
+                        const somaValida = diferencaSoma < 0.02; // Tolerância de 2 centavos
+
                         const handleCriarCarneManual = async (empIdOverride?: number) => {
                             if (parcelasGrid.length === 0) {
                                 alert("Por favor, clique em CALCULAR antes de gerar o carnê.");
                                 return;
                             }
 
-                            // REMOVIDO: Confirmação manual (Fluxo direto)
-                            // if (!confirm(`Confirma a criação do carnê em ${qtdeParcelas}x?`)) return;
+                            if (!somaValida) {
+                                alert("A soma das parcelas não corresponde ao valor total. Ajuste os valores.");
+                                return;
+                            }
+
+                            // Prepara parcelas customizadas para enviar ao backend
+                            const parcelasCustomizadas = parcelasGrid.map(p => ({
+                                numero_parcela: p.numero_parcela,
+                                data_vencimento: p.data_vencimento,
+                                valor_parcela: p.valor_parcela
+                            }));
 
                             const payload = {
                                 venda_id: vendaId,
@@ -439,7 +454,8 @@ export default function FinanciamentoBox({
                                 valor_total: parseLocaleFloat(valorFinanciadoStr),
                                 qtd_parcelas: qtdeParcelas,
                                 data_primeiro_vencimento: vencimentoPrimeira,
-                                obs: obs
+                                obs: obs,
+                                parcelas_customizadas: parcelasCustomizadas
                             };
 
                             const resultado = await saveFinanciamentoLoja(null, payload);
@@ -511,6 +527,24 @@ export default function FinanciamentoBox({
                                                     </tr>
                                                 ))}
                                             </tbody>
+                                            {/* Linha de totais com validação visual */}
+                                            <tfoot>
+                                                <tr className={`border-t-2 font-bold ${somaValida ? 'border-green-400 bg-green-50' : 'border-red-400 bg-red-50'}`}>
+                                                    <td colSpan={2} className={`py-1.5 px-1 text-right ${somaValida ? 'text-green-700' : 'text-red-700'}`}>
+                                                        {somaValida ? '✓ Total:' : '✗ Soma inválida:'}
+                                                    </td>
+                                                    <td className={`py-1.5 px-1 text-right ${somaValida ? 'text-green-700' : 'text-red-700'}`}>
+                                                        R$ {formatCurrency(somaParcelasEditadas)}
+                                                    </td>
+                                                </tr>
+                                                {!somaValida && (
+                                                    <tr className="bg-red-50">
+                                                        <td colSpan={3} className="py-1 px-1 text-center text-red-600 text-[9px]">
+                                                            Esperado: R$ {formatCurrency(valorTotalEsperado)} | Diferença: R$ {formatCurrency(diferencaSoma)}
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </tfoot>
                                         </table>
                                     </div>
                                 )}
@@ -528,8 +562,8 @@ export default function FinanciamentoBox({
                                         <button
                                             type="button"
                                             onClick={() => setIsConfigModalOpen(true)}
-                                            disabled={parcelasGrid.length === 0}
-                                            className="w-full h-9 bg-white text-amber-700 hover:bg-amber-50 font-bold text-xs rounded-lg shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            disabled={parcelasGrid.length === 0 || !somaValida}
+                                            className={`w-full h-9 font-bold text-xs rounded-lg shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed ${somaValida ? 'bg-white text-amber-700 hover:bg-amber-50' : 'bg-gray-300 text-gray-500'}`}
                                         >
                                             <CheckCircle2 className="h-4 w-4" /> GERAR CARNÊ
                                         </button>

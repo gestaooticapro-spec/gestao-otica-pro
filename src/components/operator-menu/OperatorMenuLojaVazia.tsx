@@ -160,7 +160,7 @@ export default function OperatorMenuLojaVazia({
 
                             {/* Histórico - ocupando 2 colunas */}
                             <button
-                                onClick={() => onNavigate(`/dashboard/loja/${storeId}/vendas`)}
+                                onClick={() => onNavigate(`/dashboard/loja/${storeId}/vendas?mode=historico`)}
                                 className="group col-span-2 bg-gradient-to-br from-stone-500 to-stone-600 rounded-xl flex items-center justify-center gap-2 p-3 shadow-[0_8px_30px_-8px_rgba(120,113,108,0.5)] hover:shadow-[0_12px_40px_-8px_rgba(120,113,108,0.6)] hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 cursor-pointer"
                             >
                                 <FileSpreadsheet className="w-5 h-5 text-white/90 group-hover:scale-110 transition-transform" strokeWidth={1.5} />
@@ -189,7 +189,7 @@ export default function OperatorMenuLojaVazia({
                                     </div>
                                 </div>
                                 <button
-                                    onClick={() => onNavigate(`/dashboard/loja/${storeId}/vendas?status=aberto`)}
+                                    onClick={() => onNavigate(`/dashboard/loja/${storeId}/vendas?mode=pendencias`)}
                                     className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1 transition-colors"
                                 >
                                     LISTAR <ChevronRight className="w-3 h-3" />
@@ -287,13 +287,13 @@ export default function OperatorMenuLojaVazia({
                 </div>
             </div>
 
-            {/* Botão Voltar */}
+            {/* Botão Voltar - MAIS DESTACADO */}
             <button
                 onClick={onBack}
-                className="fixed bottom-4 left-6 flex items-center gap-2 text-slate-400 hover:text-amber-600 transition-colors duration-200 text-sm font-medium z-10 bg-white/80 backdrop-blur px-3 py-2 rounded-lg shadow-sm"
+                className="fixed bottom-6 left-6 flex items-center gap-2 bg-white hover:bg-amber-50 text-amber-600 hover:text-amber-700 border border-amber-200 hover:border-amber-300 transition-all duration-200 text-sm font-bold z-10 px-5 py-3 rounded-xl shadow-lg hover:shadow-xl hover:-translate-y-0.5"
             >
-                <ArrowLeft className="w-4 h-4" />
-                Voltar
+                <ArrowLeft className="w-5 h-5" />
+                Voltar ao Menu
             </button>
         </div>
     );

@@ -1124,28 +1124,49 @@ export async function saveFinanciamentoLoja(...args: any[]) {
   const capaCriada: any = capa;
 
   // 8. Gerar Parcelas
-  const valorParcela = Number((Number(valor_total) / Number(qtd_parcelas)).toFixed(2));
-  const diferenca = Number((Number(valor_total) - (valorParcela * Number(qtd_parcelas))).toFixed(2));
+  // NOVO: Se parcelas_customizadas foi enviado, usa os valores editados pelo usuário
+  const parcelasCustomizadas = data.parcelas_customizadas; // Array com { numero_parcela, data_vencimento, valor_parcela }
 
   const parcelas = [];
-  const dataBase = new Date(data_primeiro_vencimento);
 
-  for (let i = 1; i <= Number(qtd_parcelas); i++) {
-    const valorReal = i === 1 ? valorParcela + diferenca : valorParcela;
-    const vencimento = new Date(dataBase);
-    if (i > 1) vencimento.setMonth(vencimento.getMonth() + (i - 1));
+  if (parcelasCustomizadas && Array.isArray(parcelasCustomizadas) && parcelasCustomizadas.length > 0) {
+    // Usa as parcelas customizadas (editadas manualmente pelo usuário)
+    for (const pc of parcelasCustomizadas) {
+      parcelas.push({
+        tenant_id: vendaReal.tenant_id,
+        store_id: vendaReal.store_id,
+        financiamento_id: capaCriada.id,
+        customer_id: customer_id,
+        numero_parcela: pc.numero_parcela,
+        data_vencimento: pc.data_vencimento,
+        valor_parcela: Number(pc.valor_parcela),
+        valor_pago: 0,
+        status: 'Pendente'
+      });
+    }
+  } else {
+    // Fallback: Calcula automaticamente (comportamento antigo)
+    const valorParcela = Number((Number(valor_total) / Number(qtd_parcelas)).toFixed(2));
+    const diferenca = Number((Number(valor_total) - (valorParcela * Number(qtd_parcelas))).toFixed(2));
+    const dataBase = new Date(data_primeiro_vencimento);
 
-    parcelas.push({
-      tenant_id: vendaReal.tenant_id,
-      store_id: vendaReal.store_id,
-      financiamento_id: capaCriada.id,
-      customer_id: customer_id,
-      numero_parcela: i,
-      data_vencimento: vencimento.toISOString().split('T')[0],
-      valor_parcela: valorReal,
-      valor_pago: 0,
-      status: 'Pendente'
-    });
+    for (let i = 1; i <= Number(qtd_parcelas); i++) {
+      const valorReal = i === 1 ? valorParcela + diferenca : valorParcela;
+      const vencimento = new Date(dataBase);
+      if (i > 1) vencimento.setMonth(vencimento.getMonth() + (i - 1));
+
+      parcelas.push({
+        tenant_id: vendaReal.tenant_id,
+        store_id: vendaReal.store_id,
+        financiamento_id: capaCriada.id,
+        customer_id: customer_id,
+        numero_parcela: i,
+        data_vencimento: vencimento.toISOString().split('T')[0],
+        valor_parcela: valorReal,
+        valor_pago: 0,
+        status: 'Pendente'
+      });
+    }
   }
 
   const { error: erroParcelas } = await (supabaseAdmin.from('financiamento_parcelas') as any).insert(parcelas);
@@ -1309,7 +1330,7 @@ export async function searchProductCatalog(
       q = q.or(`nome.ilike.%${term}%,codigo_barras.ilike.%${term}%,referencia.ilike.%${term}%,marca.ilike.%${term}%`)
     });
 
-    q = q.limit(20)
+    q = q.order('nome').limit(50)
 
     const { data } = await q
 

@@ -9,6 +9,7 @@ interface OperatorMenuHomeProps {
     logoUrl: string | null;
     onNavigate: (menu: 'atendimento' | 'loja-vazia') => void;
     onLogout: () => void;
+    onBackToDashboard?: () => void; // NOVO: Voltar ao dashboard completo
 }
 
 export default function OperatorMenuHome({

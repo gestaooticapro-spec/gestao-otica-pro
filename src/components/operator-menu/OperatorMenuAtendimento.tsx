@@ -40,7 +40,10 @@ export default function OperatorMenuAtendimento({
 
                     {/* Coluna Vendas */}
                     <div className="flex-1 flex flex-col items-center">
-                        <h2 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-4">Vendas</h2>
+                        <h2 className="text-lg font-black text-blue-600 uppercase tracking-widest mb-4 flex flex-col items-center">
+                            Vendas
+                            <span className="block w-12 h-1 bg-blue-400 rounded-full mt-1"></span>
+                        </h2>
                         <div className="flex flex-col gap-3 w-full max-w-xs">
                             {/* Receituário */}
                             <button
@@ -80,7 +83,10 @@ export default function OperatorMenuAtendimento({
 
                     {/* Coluna Retorno */}
                     <div className="flex-1 flex flex-col items-center">
-                        <h2 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-4">Retorno</h2>
+                        <h2 className="text-lg font-black text-emerald-600 uppercase tracking-widest mb-4 flex flex-col items-center">
+                            Retorno
+                            <span className="block w-12 h-1 bg-emerald-400 rounded-full mt-1"></span>
+                        </h2>
                         <div className="flex flex-col gap-3 w-full max-w-xs">
                             {/* Entrega Óculos */}
                             <button
@@ -128,7 +134,10 @@ export default function OperatorMenuAtendimento({
 
                 {/* Seção Apoio */}
                 <div className="flex flex-col items-center w-full max-w-2xl">
-                    <h2 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-4">Apoio</h2>
+                    <h2 className="text-lg font-black text-slate-600 uppercase tracking-widest mb-4 flex flex-col items-center">
+                        Apoio
+                        <span className="block w-12 h-1 bg-slate-400 rounded-full mt-1"></span>
+                    </h2>
                     <div className="flex flex-col sm:flex-row gap-3 w-full justify-center">
                         {/* Clientes */}
                         <button
@@ -169,13 +178,13 @@ export default function OperatorMenuAtendimento({
                 </div>
             </div>
 
-            {/* Botão Voltar (canto inferior esquerdo) */}
+            {/* Botão Voltar - MAIS DESTACADO */}
             <button
                 onClick={onBack}
-                className="absolute bottom-4 left-6 flex items-center gap-2 text-slate-400 hover:text-blue-600 transition-colors duration-200 text-sm font-medium z-10"
+                className="absolute bottom-6 left-6 flex items-center gap-2 bg-white hover:bg-blue-50 text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-300 transition-all duration-200 text-sm font-bold z-10 px-5 py-3 rounded-xl shadow-lg hover:shadow-xl hover:-translate-y-0.5"
             >
-                <ArrowLeft className="w-4 h-4" />
-                Voltar
+                <ArrowLeft className="w-5 h-5" />
+                Voltar ao Menu
             </button>
         </div>
     );

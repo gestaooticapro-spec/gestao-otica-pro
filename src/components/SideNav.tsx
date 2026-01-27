@@ -133,7 +133,7 @@ const MENU_STRUCTURE: MenuGroup[] = [
             { label: 'Importar XML', icon: FileInput, route: '/dashboard/loja/[id]/importacao', allowedRoles: ['admin', 'manager', 'store_operator', 'tecnico'], withSeparator: true },
 
             { label: 'Produtos & Preços', icon: Tag, route: '/dashboard/loja/[id]/cadastros', allowedRoles: ['admin', 'manager', 'store_operator', 'tecnico'] },
-            { label: 'Histórico Vendas', icon: FileSpreadsheet, route: '/dashboard/loja/[id]/vendas', allowedRoles: ['admin', 'manager', 'store_operator'] },
+            { label: 'Histórico Vendas', icon: FileSpreadsheet, route: '/dashboard/loja/[id]/vendas?mode=historico', allowedRoles: ['admin', 'manager', 'store_operator'] },
         ]
     },
     {

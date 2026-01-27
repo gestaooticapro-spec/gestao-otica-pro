@@ -220,18 +220,6 @@ export async function saveArmacao(prevState: CatalogActionResult, formData: Form
 
     const payload = {
       tenant_id: profile.tenant_id,
-      store_id: profile.store_id,
-      nome: `${data.marca} ${data.modelo || ''} ${data.referencia || ''}`.trim(),
-      marca: data.marca,
-      referencia: data.referencia,
-      codigo_barras: finalBarcode,
-      tipo_produto: (formData.get('tipo_produto') === 'Receituario' ? 'Armacao' : (formData.get('tipo_produto') as string)) || 'Armacao', // Force Armacao
-      categoria: (formData.get('tipo_produto') === 'Solar') ? 'Óculos de Sol' : 'Armação',
-      preco_custo: data.preco_custo,
-      preco_venda: data.preco_venda,
-      estoque_atual: data.quantidade_estoque,
-      gerencia_estoque: true,
-      detalhes: detalhes
     }
 
     if (id) {
@@ -467,7 +455,7 @@ export async function fetchCatalogItems(
     .limit(50)
 
   if (query) {
-    q = q.or(`nome.ilike.%${query}%,codigo_barras.eq.${query},referencia.ilike.%${query}%`)
+    q = q.or(`nome.ilike.%${query}%,codigo_barras.eq.${query},referencia.ilike.%${query}%,marca.ilike.%${query}%`)
   }
 
   const { data } = await q.order('created_at', { ascending: false })
@@ -490,7 +478,7 @@ export async function fetchCatalogItems(
         modelo: d.modelo, cor: d.cor, tamanho_aro: d.aro, tamanho_ponte: d.ponte, tamanho_haste: d.haste,
         nome_completo: p.nome
       }
-      return { id: p.id, title: p.nome, subtitle: p.codigo_barras ? `Cód: ${p.codigo_barras}` : `Ref: ${p.referencia}`, price: p.preco_venda, stock: p.estoque_atual, raw: rawData }
+      return { id: p.id, title: p.nome, subtitle: p.marca ? `${p.marca}` : (p.codigo_barras || p.referencia || '-'), price: p.preco_venda, stock: p.estoque_atual, raw: rawData }
     }
 
     if (category === 'lentes') {

@@ -456,10 +456,10 @@ function ServiceOrderFormContent({
         })
     }
 
-    const handleDependenteAdded = (newDep: Dependente) => {
+    const handleDependenteAdded = useCallback((newDep: Dependente) => {
         setLocalDependentes(prev => [...prev, newDep])
         setDependenteId(newDep.id.toString())
-    }
+    }, [])
 
     const handleImportPrescription = (data: PrescriptionHistoryItem) => {
         if (confirm("Deseja preencher os campos com os dados desta receita antiga?")) {
@@ -858,13 +858,15 @@ ${addIf('Obs.', obsOs) || ''}
             </form>
 
             {/* --- MODAIS EXTERNOS --- */}
-            <AddDependenteModal
-                isOpen={isDepModalOpen}
-                onClose={() => setIsDepModalOpen(false)}
-                onSuccess={handleDependenteAdded}
-                storeId={storeId}
-                customerId={customer.id}
-            />
+            {isDepModalOpen && (
+                <AddDependenteModal
+                    isOpen={isDepModalOpen}
+                    onClose={() => setIsDepModalOpen(false)}
+                    onSuccess={handleDependenteAdded}
+                    storeId={storeId}
+                    customerId={customer.id}
+                />
+            )}
 
             <PrescriptionHistoryModal
                 isOpen={isHistoryModalOpen}
