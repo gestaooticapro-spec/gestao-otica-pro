@@ -149,6 +149,7 @@ const MENU_STRUCTURE: MenuGroup[] = [
             { label: 'Relat. Vendas', icon: BarChart3, route: '/dashboard/loja/[id]/reports/vendas', allowedRoles: ['admin', 'manager'], withSeparator: true },
 
             { label: 'Configuração', icon: Settings, route: '/dashboard/loja/[id]/config', allowedRoles: ['admin', 'manager'] },
+            { label: 'Fiscal (NFC-e)', icon: FileText, route: '/dashboard/loja/[id]/fiscal', allowedRoles: ['admin', 'manager'] },
         ]
     }
 ];

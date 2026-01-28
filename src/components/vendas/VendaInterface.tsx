@@ -72,8 +72,8 @@ export default function VendaInterface({
                     <h1 className="text-xs font-bold text-gray-800 whitespace-nowrap uppercase tracking-wide flex items-center gap-2">
                         Venda #{venda.id}
                         <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-black border ${venda.status === 'Fechada' ? 'bg-green-50 text-green-700 border-green-200' :
-                                venda.status === 'Cancelada' ? 'bg-red-50 text-red-700 border-red-200' :
-                                    'bg-amber-50 text-amber-700 border-amber-200'
+                            venda.status === 'Cancelada' ? 'bg-red-50 text-red-700 border-red-200' :
+                                'bg-amber-50 text-amber-700 border-amber-200'
                             }`}>
                             {venda.status}
                         </span>
@@ -218,9 +218,9 @@ export default function VendaInterface({
                     <VendaActions
                         venda={venda}
                         vendaItens={vendaItens}
+                        customer={customer}
                         onStatusChange={onDataReload}
                         isVendaFechada={isVendaFechadaOuCancelada}
-                        // NOVO: Passamos a função de abrir o modal
                         onPrint={() => setIsPrintModalOpen(true)}
                     />
                 </div>
@@ -231,7 +231,7 @@ export default function VendaInterface({
                 isOpen={isPrintModalOpen}
                 onClose={() => setIsPrintModalOpen(false)}
                 pagamentos={pagamentos}
-                onReload={onDataReload} // <--- ESSA LINHA FAZ A MÁGICA
+                onReload={onDataReload}
             />
 
         </div>

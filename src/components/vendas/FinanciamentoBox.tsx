@@ -40,7 +40,15 @@ type FinanciamentoBoxProps = {
 // Helpers
 const formatCurrency = (value: number | null | undefined) => (value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const parseLocaleFloat = (str: string) => parseFloat(str.replace(/\./g, '').replace(',', '.') || '0')
-const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString('pt-BR')
+const formatDate = (dateStr: string) => {
+    if (!dateStr) return ''
+    // Fix timezone: se a data está no formato YYYY-MM-DD, faz split direto para evitar interpretação UTC
+    if (dateStr.length === 10 && dateStr.includes('-')) {
+        const [year, month, day] = dateStr.split('-')
+        return `${day}/${month}/${year}`
+    }
+    return new Date(dateStr).toLocaleDateString('pt-BR')
+}
 const getToday = () => new Date().toISOString().split('T')[0]
 
 // Sugere data 30 dias no futuro (próximo mês)
@@ -346,8 +354,8 @@ export default function FinanciamentoBox({
                                     disabled={isResetting}
                                     className="text-[10px] font-bold text-red-600 hover:bg-red-50 px-2 py-1 rounded border border-transparent hover:border-red-100 transition-all flex items-center gap-1"
                                 >
-                                    {isResetting ? <Loader2 className="h-3 w-3 animate-spin" /> : temParcelaPaga ? <RefreshCw className="h-3 w-3" /> : <Trash2 className="h-3 w-3" />}
-                                    {temParcelaPaga ? 'RENEGOCIAR' : 'CANCELAR'}
+                                    {isResetting ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                                    RENEGOCIAR
                                 </button>
                             </div>
                         )}

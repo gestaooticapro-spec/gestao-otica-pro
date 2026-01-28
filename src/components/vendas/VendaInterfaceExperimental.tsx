@@ -237,7 +237,7 @@ export default function VendaInterfaceExperimental({
                                     employeeId={employeeIdFinanceiro}
                                     valorRestante={venda.valor_restante ?? 0}
                                     onFinanceAdded={onDataReload}
-                                    disabled={isVendaFechadaOuCancelada}
+                                    disabled={venda.status === 'Cancelada'}
                                     isQuitado={isQuitado}
                                 />
                             ) : (

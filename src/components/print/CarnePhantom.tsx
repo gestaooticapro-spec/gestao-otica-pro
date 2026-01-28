@@ -23,7 +23,15 @@ export default function CarnePhantom({ financiamento }: CarnePhantomProps) {
     const parcelas = financiamento.financiamento_parcelas.sort((a, b) => a.numero_parcela - b.numero_parcela)
 
     const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-    const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString('pt-BR')
+    const formatDate = (dateStr: string) => {
+        if (!dateStr) return ''
+        // Fix: Evita erro de fuso horário (UTC-3) ao fazer split direto da string YYYY-MM-DD
+        if (dateStr.length === 10 && dateStr.includes('-')) {
+            const [year, month, day] = dateStr.split('-')
+            return `${day}/${month}/${year}`
+        }
+        return new Date(dateStr).toLocaleDateString('pt-BR')
+    }
 
     const formatAddress = (
         street?: string | null,

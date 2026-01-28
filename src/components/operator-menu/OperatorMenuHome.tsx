@@ -19,7 +19,7 @@ export default function OperatorMenuHome({
     onLogout
 }: OperatorMenuHomeProps) {
     return (
-        <div className="min-h-screen relative flex flex-col items-center justify-center p-8 overflow-hidden">
+        <div className="min-h-screen relative flex flex-col items-center justify-center p-8 overflow-hidden bg-slate-50">
             {/* Fundo gradiente suave */}
             <div className="absolute inset-0 bg-gradient-to-br from-amber-50 via-slate-50 to-blue-50" />
 
@@ -32,13 +32,13 @@ export default function OperatorMenuHome({
             <div className="relative z-10 flex flex-col items-center w-full">
                 {/* Logo da Loja */}
                 <div className="mb-12 text-center">
-                    <div className="w-28 h-28 mx-auto relative mb-4">
+                    <div className="w-28 h-28 mx-auto relative mb-6">
                         {logoUrl ? (
                             <Image
                                 src={logoUrl}
                                 alt={storeName}
                                 fill
-                                className="object-contain rounded-2xl shadow-xl"
+                                className="object-contain rounded-2xl shadow-xl bg-white p-2"
                             />
                         ) : (
                             <div className="w-full h-full bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl flex items-center justify-center text-white font-black text-2xl shadow-xl">
@@ -46,13 +46,17 @@ export default function OperatorMenuHome({
                             </div>
                         )}
                     </div>
-                    <h1 className="text-slate-500 text-sm font-medium uppercase tracking-widest">
-                        {storeName}
+
+                    {/* Nome da Loja - Estilo Melhorado */}
+                    <h1 className="text-3xl font-black tracking-tight text-center">
+                        <span className="bg-clip-text text-transparent bg-gradient-to-r from-slate-700 via-blue-800 to-slate-700">
+                            {storeName}
+                        </span>
                     </h1>
                 </div>
 
                 {/* Botões Principais */}
-                <div className="flex flex-col sm:flex-row gap-8 sm:gap-10 justify-center">
+                <div className="flex flex-col sm:flex-row gap-8 sm:gap-10 justify-center mb-16">
                     {/* Botão Atendimento */}
                     <button
                         onClick={() => onNavigate('atendimento')}
@@ -74,6 +78,13 @@ export default function OperatorMenuHome({
                             Loja Vazia
                         </span>
                     </button>
+                </div>
+
+                {/* Footer - Powered By NeoManager (Discreto) */}
+                <div className="text-center opacity-60 hover:opacity-100 transition-opacity duration-300">
+                    <p className="text-[10px] text-slate-400 font-medium uppercase tracking-widest">
+                        Powered by <span className="font-bold text-blue-600">NeoManager</span>
+                    </p>
                 </div>
             </div>
 

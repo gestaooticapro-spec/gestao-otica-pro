@@ -4,6 +4,7 @@ import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { syncStoreFiscalData } from './fiscal.actions'
 
 // Schema de Validação
 const StoreProfileSchema = z.object({
@@ -28,6 +29,12 @@ const StoreProfileSchema = z.object({
     // Pix
     pix_key: z.string().optional().nullable(),
     pix_city: z.string().optional().nullable(),
+
+    // Fiscal (NFC-e)
+    csc_homologacao: z.string().optional().nullable(),
+    csc_id_homologacao: z.string().optional().nullable(),
+    csc_producao: z.string().optional().nullable(),
+    csc_id_producao: z.string().optional().nullable(),
 })
 
 export type StoreActionResult = {
@@ -38,7 +45,6 @@ export type StoreActionResult = {
 export async function getStoreProfile(storeId: number) {
     const supabaseAdmin = createAdminClient()
     try {
-        // CORREÇÃO: Cast 'as any' para ler colunas novas
         const { data } = await (supabaseAdmin.from('stores') as any)
             .select('*')
             .eq('id', storeId)
@@ -68,7 +74,7 @@ export async function updateStoreProfile(prevState: any, formData: FormData): Pr
         razao_social: formData.get('razao_social'),
         cnpj: formData.get('cnpj'),
         inscricao_estadual: formData.get('inscricao_estadual'),
-        whatsapp: formData.get('whatsapp'), // <--- CAMPO NOVO
+        whatsapp: formData.get('whatsapp'),
         phone: formData.get('phone'),
         email: formData.get('email'),
         website: formData.get('website'),
@@ -80,6 +86,11 @@ export async function updateStoreProfile(prevState: any, formData: FormData): Pr
         state: formData.get('state'),
         pix_key: formData.get('pix_key'),
         pix_city: formData.get('pix_city'),
+        // Fiscal
+        csc_homologacao: formData.get('csc_homologacao'),
+        csc_id_homologacao: formData.get('csc_id_homologacao'),
+        csc_producao: formData.get('csc_producao'),
+        csc_id_producao: formData.get('csc_id_producao'),
     }
 
     const validated = StoreProfileSchema.safeParse(rawData)
@@ -92,7 +103,33 @@ export async function updateStoreProfile(prevState: any, formData: FormData): Pr
     const supabaseAdmin = createAdminClient()
 
     try {
-        // CORREÇÃO: Cast 'as any' para update nas colunas novas
+        // 1. Verificar se há certificado para upload
+        const certFile = formData.get('certificate_file') as File | null;
+        const certPassword = formData.get('certificate_password') as string | null;
+
+        // Sincroniza com a Nuvem Fiscal (Dados da Empresa + Certificado se houver)
+        // Isso garante que alterações de endereço/nome sejam refletidas lá
+        if (updateData.cnpj) {
+            console.log("Sincronizando dados fiscais...");
+            const syncResult = await syncStoreFiscalData(
+                { ...updateData, cnpj: updateData.cnpj },
+                (certFile && certFile.size > 0) ? certFile : null,
+                certPassword || null
+            );
+
+            if (syncResult.success) {
+                // Se houve upload de certificado, salva os metadados
+                if (syncResult.thumbprint) {
+                    (updateData as any).certificate_thumbprint = syncResult.thumbprint;
+                    (updateData as any).certificate_valid_until = syncResult.valid_until;
+                }
+            } else {
+                console.error("Erro na sincronização fiscal:", syncResult.results);
+                // Não bloqueia o salvamento local, mas idealmente avisaria o usuário
+            }
+        }
+
+        // 2. Salvar no Banco
         await (supabaseAdmin.from('stores') as any)
             .update(updateData)
             .eq('id', id)

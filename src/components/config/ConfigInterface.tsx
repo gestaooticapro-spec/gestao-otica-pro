@@ -127,6 +127,90 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                 </div>
             </div>
 
+            {/* NOVA SEÇÃO: CONFIGURAÇÃO FISCAL (NFC-e) */}
+            <div className={cardStyle}>
+                <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2 border-b border-slate-100 pb-2">
+                    <ShieldCheck className="h-4 w-4 text-orange-500" /> Configuração Fiscal (NFC-e)
+                </h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* CSC - Código de Segurança do Contribuinte */}
+                    <div className="space-y-4">
+                        <h4 className="text-xs font-bold text-slate-500 uppercase border-b border-slate-200 pb-1">CSC (Token)</h4>
+
+                        <div className="bg-orange-50 p-3 rounded-lg border border-orange-100 space-y-3">
+                            <p className="text-[10px] font-bold text-orange-800 uppercase mb-1">Homologação (Testes)</p>
+                            <div className="grid grid-cols-3 gap-2">
+                                <div className="col-span-1">
+                                    <label className={labelStyle}>ID Token</label>
+                                    <input name="csc_id_homologacao" defaultValue={data.csc_id_homologacao} className={inputStyle} placeholder="Ex: 000001" />
+                                </div>
+                                <div className="col-span-2">
+                                    <label className={labelStyle}>CSC (Código)</label>
+                                    <input name="csc_homologacao" defaultValue={data.csc_homologacao} className={inputStyle} placeholder="Ex: ABC123..." />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
+                            <p className="text-[10px] font-bold text-slate-600 uppercase mb-1">Produção (Valendo)</p>
+                            <div className="grid grid-cols-3 gap-2">
+                                <div className="col-span-1">
+                                    <label className={labelStyle}>ID Token</label>
+                                    <input name="csc_id_producao" defaultValue={data.csc_id_producao} className={inputStyle} placeholder="Ex: 000001" />
+                                </div>
+                                <div className="col-span-2">
+                                    <label className={labelStyle}>CSC (Código)</label>
+                                    <input name="csc_producao" defaultValue={data.csc_producao} className={inputStyle} placeholder="Ex: XYZ789..." />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Certificado Digital */}
+                    <div className="space-y-4">
+                        <h4 className="text-xs font-bold text-slate-500 uppercase border-b border-slate-200 pb-1">Certificado Digital A1</h4>
+
+                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                            <div className="flex items-start gap-3 mb-4">
+                                <div className="bg-white p-2 rounded-full shadow-sm">
+                                    <ShieldCheck className="h-6 w-6 text-blue-600" />
+                                </div>
+                                <div>
+                                    <p className="text-xs font-bold text-blue-900">Certificado Atual</p>
+                                    {data.certificate_thumbprint ? (
+                                        <div className="mt-1">
+                                            <p className="text-[10px] text-green-600 font-bold flex items-center gap-1">
+                                                <CheckCircle2 className="h-3 w-3" /> Configurado
+                                            </p>
+                                            <p className="text-[10px] text-slate-500">
+                                                Válido até: {data.certificate_valid_until ? new Date(data.certificate_valid_until).toLocaleDateString() : 'N/A'}
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <p className="text-[10px] text-red-500 font-bold mt-1">Não configurado</p>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-3 pt-3 border-t border-blue-200">
+                                <div>
+                                    <label className={labelStyle}>Arquivo .PFX ou .P12</label>
+                                    <input type="file" name="certificate_file" accept=".pfx,.p12" className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200 transition-all" />
+                                </div>
+                                <div>
+                                    <label className={labelStyle}>Senha do Certificado</label>
+                                    <input name="certificate_password" type="password" className={inputStyle} placeholder="Senha do arquivo" />
+                                </div>
+                                <p className="text-[9px] text-blue-600/70 leading-tight">
+                                    O certificado será enviado diretamente para a Nuvem Fiscal e não será salvo em nosso banco de dados por segurança.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             {/* NOVA SEÇÃO: PIX */}
             <div className={cardStyle}>
                 <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2 border-b border-slate-100 pb-2">
