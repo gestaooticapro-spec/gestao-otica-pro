@@ -76,17 +76,22 @@ export async function getPendingSales(storeId: number) {
         return [];
     }
 
-    return data.map(v => ({
-        id: v.id,
-        created_at: v.created_at,
-        total: v.valor_final,
-        status: v.status,
-        client_id: v.customer_id,
-        clients: {
-            nome: v.customers?.full_name,
-            cpf_cnpj: v.customers?.cpf
-        }
-    }));
+    return data.map(v => {
+        const rawCustomer = v.customers as any;
+        const customer = Array.isArray(rawCustomer) ? rawCustomer[0] : rawCustomer;
+
+        return {
+            id: v.id,
+            created_at: v.created_at,
+            total: v.valor_final,
+            status: v.status,
+            client_id: v.customer_id,
+            clients: {
+                nome: customer?.full_name,
+                cpf_cnpj: customer?.cpf
+            }
+        };
+    });
 }
 
 export async function getSaleData(saleId: number) {

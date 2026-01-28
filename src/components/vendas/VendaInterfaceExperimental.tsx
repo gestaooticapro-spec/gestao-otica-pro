@@ -286,6 +286,7 @@ export default function VendaInterfaceExperimental({
                     <VendaActions
                         venda={venda}
                         vendaItens={vendaItens}
+                        customer={customer}
                         onStatusChange={onDataReload}
                         isVendaFechada={isVendaFechadaOuCancelada}
                         onPrint={() => setIsPrintModalOpen(true)}
