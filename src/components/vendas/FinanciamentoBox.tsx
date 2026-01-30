@@ -17,17 +17,20 @@ import {
 import { Database } from '@/lib/database.types'
 import { Calendar, ClipboardList, AlertTriangle, CheckCircle2, Wallet, DollarSign, X, RefreshCw, Trash2, Calculator, Loader2, Printer } from 'lucide-react'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
+import UpdateCpfModal from '@/components/modals/UpdateCpfModal'
 import CollapsibleBox from './CollapsibleBox'
 
 type Financiamento = Database['public']['Tables']['financiamento_loja']['Row']
 type FinanciamentoParcela = Database['public']['Tables']['financiamento_parcelas']['Row']
 type Employee = Database['public']['Tables']['employees']['Row']
+type Customer = Database['public']['Tables']['customers']['Row']
 type ParcelaGridItem = Pick<FinanciamentoParcela, 'numero_parcela' | 'data_vencimento' | 'valor_parcela'>
 
 type FinanciamentoBoxProps = {
     financiamento: (Financiamento & { financiamento_parcelas: FinanciamentoParcela[] }) | null
     vendaId: number
     customerId: number
+    customer: Customer | null
     storeId: number
     employeeId: number
     valorRestante: number
@@ -172,6 +175,7 @@ export default function FinanciamentoBox({
     financiamento,
     vendaId,
     customerId,
+    customer,
     storeId,
     employeeId,
     valorRestante,
@@ -184,6 +188,7 @@ export default function FinanciamentoBox({
     const formRef = useRef<HTMLFormElement>(null)
 
     const [isConfigModalOpen, setIsConfigModalOpen] = useState(false)
+    const [isCpfModalOpen, setIsCpfModalOpen] = useState(false)
     const [authedEmployee, setAuthedEmployee] = useState<Pick<Employee, 'id' | 'full_name'> | null>(null)
     const [selectedParcela, setSelectedParcela] = useState<FinanciamentoParcela | null>(null)
     const [isResetting, startResetTransition] = useState(false)
@@ -569,7 +574,13 @@ export default function FinanciamentoBox({
                                     {!authedEmployee ? (
                                         <button
                                             type="button"
-                                            onClick={() => setIsConfigModalOpen(true)}
+                                            onClick={() => {
+                                                if (!customer?.cpf || !customer?.fone_movel) {
+                                                    setIsCpfModalOpen(true)
+                                                    return
+                                                }
+                                                setIsConfigModalOpen(true)
+                                            }}
                                             disabled={parcelasGrid.length === 0 || !somaValida}
                                             className={`w-full h-9 font-bold text-xs rounded-lg shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed ${somaValida ? 'bg-white text-amber-700 hover:bg-amber-50' : 'bg-gray-300 text-gray-500'}`}
                                         >
@@ -605,6 +616,18 @@ export default function FinanciamentoBox({
                 {renderContent()}
 
                 {selectedParcela && <RecebimentoModal parcela={selectedParcela} storeId={storeId} onClose={() => setSelectedParcela(null)} onConfirm={handleConfirmRecebimento} />}
+
+                {isCpfModalOpen && customer && (
+                    <UpdateCpfModal
+                        isOpen={isCpfModalOpen}
+                        onClose={() => setIsCpfModalOpen(false)}
+                        onSuccess={() => { setIsCpfModalOpen(false); onFinanceAdded(); }}
+                        customerId={customer.id}
+                        customerName={customer.full_name}
+                        currentCpf={customer.cpf || ''}
+                        currentPhone={customer.fone_movel || customer.phone || ''}
+                    />
+                )}
             </div>
         );
     }
@@ -625,6 +648,18 @@ export default function FinanciamentoBox({
 
 
             {selectedParcela && <RecebimentoModal parcela={selectedParcela} storeId={storeId} onClose={() => setSelectedParcela(null)} onConfirm={handleConfirmRecebimento} />}
+
+            {isCpfModalOpen && customer && (
+                <UpdateCpfModal
+                    isOpen={isCpfModalOpen}
+                    onClose={() => setIsCpfModalOpen(false)}
+                    onSuccess={() => { setIsCpfModalOpen(false); onFinanceAdded(); }}
+                    customerId={customer.id}
+                    customerName={customer.full_name}
+                    currentCpf={customer.cpf || ''}
+                    currentPhone={customer.fone_movel || customer.phone || ''}
+                />
+            )}
         </>
     )
 }

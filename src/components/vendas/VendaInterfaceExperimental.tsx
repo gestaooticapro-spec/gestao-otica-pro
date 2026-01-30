@@ -233,6 +233,7 @@ export default function VendaInterfaceExperimental({
                                     financiamento={financiamento}
                                     vendaId={venda.id}
                                     customerId={venda.customer_id}
+                                    customer={customer}
                                     storeId={venda.store_id}
                                     employeeId={employeeIdFinanceiro}
                                     valorRestante={venda.valor_restante ?? 0}
@@ -341,6 +342,7 @@ export default function VendaInterfaceExperimental({
                     financiamento={financiamento}
                     vendaId={venda.id}
                     customerId={venda.customer_id}
+                    customer={customer}
                     storeId={venda.store_id}
                     employeeId={employeeIdFinanceiro}
                     valorRestante={venda.valor_restante ?? 0}

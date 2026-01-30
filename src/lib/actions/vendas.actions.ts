@@ -788,12 +788,17 @@ export async function addPagamento(
   }
   // -----------------------------------------------
 
+  // --- CORREÇÃO DA DATA: Forçamos o created_at a seguir a data escolhida ---
+  // Adicionamos T12:00:00Z para garantir que caia no dia correto em qualquer fuso (Brasil é UTC-3)
+  const dataIso = new Date(`${pagamentoData.data_pagamento}T12:00:00Z`).toISOString();
+
   const pagToInsert = {
     ...pagamentoData,
     venda_id,
     tenant_id,
     store_id,
     created_by_user_id: user.id,
+    created_at: dataIso, // Sobrescreve o default now() do banco
   }
 
   try {
@@ -1521,7 +1526,7 @@ export async function receberParcela(prevState: any, formData: FormData) {
   try {
     const { data: parcelaRaw } = await supabaseAdmin
       .from('financiamento_parcelas')
-      .select('*')
+      .select('*, customers(full_name)')
       .eq('id', parcela_id)
       .single()
 
@@ -1537,8 +1542,9 @@ export async function receberParcela(prevState: any, formData: FormData) {
       valor_pago: valor_pago_total,
       forma_pagamento: forma_pagamento,
       data_pagamento: data_pagamento,
+      created_at: new Date(`${data_pagamento}T12:00:00Z`).toISOString(), // Força a data correta no relatório
       parcelas: 1,
-      obs: `Ref. Venda #${venda_id} - Parc. ${parcelaAtual.numero_parcela} (Principal: ${principalAbatido.toFixed(2)} + Juros: ${valor_juros.toFixed(2)})`
+      obs: `Ref. Venda #${venda_id} - Parc. ${parcelaAtual.numero_parcela} (Principal: ${principalAbatido.toFixed(2)} + Juros: ${valor_juros.toFixed(2)}) - Cliente: ${parcelaAtual.customers?.full_name}`
     })
 
     // Baixa a parcela

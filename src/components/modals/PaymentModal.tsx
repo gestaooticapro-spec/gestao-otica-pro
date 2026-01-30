@@ -4,11 +4,11 @@ import { useState, useTransition } from 'react'
 import { X, CheckCircle, Printer, Plus, CreditCard, FileText, Loader2, Search } from 'lucide-react'
 import FinanciamentoBox from '@/components/vendas/FinanciamentoBox'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal' // <--- 1. Importação do Modal de Auth
-import { 
-    finalizarVendaExpress, 
+import {
+    finalizarVendaExpress,
     criarVendaParcialCarnê,
-    searchCustomersByName, 
-    type CustomerSearchResult 
+    searchCustomersByName,
+    type CustomerSearchResult
 } from '@/lib/actions/vendas.actions'
 import { type CartItem } from '@/components/vendas/PdvExpressInterface'
 import { Database } from '@/lib/database.types'
@@ -38,17 +38,17 @@ export default function PaymentModal({
     valorTotal,
     cartItems
 }: PaymentModalProps) {
-    
+
     const [activeTab, setActiveTab] = useState<'pagamento' | 'carne'>('pagamento')
     const [isCompleted, setIsCompleted] = useState(false)
     const [vendaIdGerada, setVendaIdGerada] = useState<number | null>(null)
-    
+
     // Estados do Pagamento
     const [valorPago, setValorPago] = useState(formatCurrency(valorTotal))
     const [formaPagamento, setFormaPagamento] = useState('PIX')
     const [parcelas, setParcelas] = useState(1)
     const [cpfNota, setCpfNota] = useState('')
-    
+
     const [isProcessing, startProcess] = useTransition()
     const [isAuthOpen, setIsAuthOpen] = useState(false) // <--- 2. Estado do Modal de Auth
 
@@ -56,7 +56,7 @@ export default function PaymentModal({
     const [customerQuery, setCustomerQuery] = useState('')
     const [customersFound, setCustomersFound] = useState<CustomerSearchResult[]>([])
     const [selectedCustomer, setSelectedCustomer] = useState<CustomerSearchResult | null>(null)
-    const [vendaParcialId, setVendaParcialId] = useState<number | null>(null) 
+    const [vendaParcialId, setVendaParcialId] = useState<number | null>(null)
 
     // 3. Validação antes de abrir a senha
     const handlePrePayment = () => {
@@ -80,12 +80,12 @@ export default function PaymentModal({
 
         const formData = new FormData()
         formData.append('store_id', storeId.toString())
-        
+
         // AQUI ESTÁ A LIGAÇÃO: Usamos o ID de quem digitou a senha [cite: 1502]
         formData.append('employee_id', authedEmployee.id.toString())
-        
+
         formData.append('itens', JSON.stringify(cartItems))
-        
+
         const pgtoData = {
             valor: valorNumerico,
             forma: formaPagamento,
@@ -93,7 +93,7 @@ export default function PaymentModal({
             data: getToday()
         }
         formData.append('pagamento', JSON.stringify(pgtoData))
-        if(cpfNota) formData.append('cpf_nota', cpfNota)
+        if (cpfNota) formData.append('cpf_nota', cpfNota)
 
         startProcess(async () => {
             const res = await finalizarVendaExpress(formData)
@@ -120,7 +120,7 @@ export default function PaymentModal({
             formData.append('employee_id', employeeId.toString())
             formData.append('customer_id', cust.id.toString())
             formData.append('itens', JSON.stringify(cartItems))
-            
+
             const res = await criarVendaParcialCarnê(formData)
             if (res.success) {
                 setVendaParcialId(res.vendaId!)
@@ -141,7 +141,7 @@ export default function PaymentModal({
         <>
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                 <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] relative">
-                    
+
                     {!isCompleted && (
                         <button onClick={onClose} className="absolute top-4 right-4 p-2 hover:bg-gray-100 rounded-full z-20">
                             <X className="h-5 w-5 text-gray-400" />
@@ -159,13 +159,13 @@ export default function PaymentModal({
                                     <p className="text-slate-500 font-medium">Venda #{vendaIdGerada} registrada com sucesso.</p>
                                 </div>
                                 <div className="flex gap-4 mt-8 w-full max-w-md">
-                                    <button 
-    // AQUI ESTÁ A MUDANÇA: Usa o ID da venda gerada
-    onClick={() => window.open(`/print/recibo/${vendaIdGerada}`, '_blank')} 
-    className="flex-1 py-4 rounded-xl border-2 border-slate-200 text-slate-600 font-bold hover:border-blue-500 hover:text-blue-600 transition-all flex flex-col items-center gap-2"
->
-    <Printer className="h-6 w-6" /> Imprimir Recibo
-</button>
+                                    <button
+                                        // AQUI ESTÁ A MUDANÇA: Usa o ID da venda gerada
+                                        onClick={() => window.open(`/print/recibo/${vendaIdGerada}`, '_blank')}
+                                        className="flex-1 py-4 rounded-xl border-2 border-slate-200 text-slate-600 font-bold hover:border-blue-500 hover:text-blue-600 transition-all flex flex-col items-center gap-2"
+                                    >
+                                        <Printer className="h-6 w-6" /> Imprimir Recibo
+                                    </button>
                                     <button onClick={onReset} className="flex-1 py-4 rounded-xl bg-green-600 text-white font-bold hover:bg-green-700 shadow-lg transition-all flex flex-col items-center gap-2">
                                         <Plus className="h-6 w-6" /> Nova Venda
                                     </button>
@@ -173,7 +173,7 @@ export default function PaymentModal({
                             </div>
                         ) : (
                             <div className="flex flex-col h-full gap-6">
-                                
+
                                 <div className="flex flex-col items-center justify-center space-y-1 pt-2">
                                     <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Total a Pagar</p>
                                     <p className="text-5xl font-black text-slate-800 tracking-tight">R$ {formatCurrency(valorTotal)}</p>
@@ -211,7 +211,7 @@ export default function PaymentModal({
                                                     <div>
                                                         <label className={labelStyle}>Parcelas</label>
                                                         <select value={parcelas} onChange={e => setParcelas(parseInt(e.target.value))} className={`${inputStyle} cursor-pointer text-emerald-900`}>
-                                                            {[...Array(12)].map((_, i) => <option key={i+1} value={i+1}>{i+1}x</option>)}
+                                                            {[...Array(12)].map((_, i) => <option key={i + 1} value={i + 1}>{i + 1}x</option>)}
                                                         </select>
                                                     </div>
                                                     <div>
@@ -221,18 +221,18 @@ export default function PaymentModal({
                                                         </div>
                                                     </div>
                                                 </div>
-                                                
+
                                                 <div>
                                                     <label className={labelStyle}>Observação</label>
                                                     <input type="text" value={cpfNota} onChange={(e) => setCpfNota(e.target.value)} placeholder="Ex: CPF na nota..." className={`${inputStyle} text-emerald-900`} />
                                                 </div>
 
-                                                <button 
+                                                <button
                                                     onClick={handlePrePayment} // <--- 5. Mudança aqui: Chama a pré-validação
-                                                    disabled={isProcessing} 
+                                                    disabled={isProcessing}
                                                     className="w-full mt-4 bg-white text-emerald-700 hover:bg-emerald-50 font-bold py-3.5 rounded-xl shadow-md flex justify-center gap-2 transition-all active:scale-95"
                                                 >
-                                                    {isProcessing ? <Loader2 className="animate-spin"/> : 'AUTORIZAR E PAGAR'}
+                                                    {isProcessing ? <Loader2 className="animate-spin" /> : 'AUTORIZAR E PAGAR'}
                                                 </button>
                                             </div>
                                         </div>
@@ -244,9 +244,9 @@ export default function PaymentModal({
                                                     <p className="font-bold text-white/90 text-sm">Identifique o cliente para emitir o carnê</p>
                                                     <div className="flex gap-2">
                                                         <input type="text" value={customerQuery} onChange={e => setCustomerQuery(e.target.value)} placeholder="Digite nome..." className="flex-1 rounded-lg border-0 h-10 px-3 text-gray-800 font-bold" />
-                                                        <button onClick={handleSearchCustomer} className="bg-white/20 hover:bg-white/30 text-white px-4 rounded-lg font-bold"><Search className="h-5 w-5"/></button>
+                                                        <button onClick={handleSearchCustomer} className="bg-white/20 hover:bg-white/30 text-white px-4 rounded-lg font-bold"><Search className="h-5 w-5" /></button>
                                                     </div>
-                                                    
+
                                                     {customersFound.length > 0 && (
                                                         <div className="bg-white rounded-xl overflow-hidden text-left max-h-40 overflow-y-auto custom-scrollbar">
                                                             {customersFound.map(c => (
@@ -257,13 +257,14 @@ export default function PaymentModal({
                                                             ))}
                                                         </div>
                                                     )}
-                                                    {isProcessing && <Loader2 className="animate-spin mx-auto text-white"/>}
+                                                    {isProcessing && <Loader2 className="animate-spin mx-auto text-white" />}
                                                 </div>
                                             ) : (
-                                                <FinanciamentoBox 
+                                                <FinanciamentoBox
                                                     financiamento={null}
                                                     vendaId={vendaParcialId}
                                                     customerId={selectedCustomer!.id}
+                                                    customer={null}
                                                     storeId={storeId}
                                                     employeeId={employeeId}
                                                     valorRestante={valorTotal}
@@ -283,13 +284,13 @@ export default function PaymentModal({
 
             {/* 6. MODAL DE AUTH (PIN) */}
             {isAuthOpen && (
-                <EmployeeAuthModal 
-                    storeId={storeId} 
-                    isOpen={isAuthOpen} 
-                    onClose={() => setIsAuthOpen(false)} 
-                    onSuccess={handleAuthSuccess} 
-                    title="Autorizar Pagamento" 
-                    description="Insira seu PIN para confirmar o recebimento." 
+                <EmployeeAuthModal
+                    storeId={storeId}
+                    isOpen={isAuthOpen}
+                    onClose={() => setIsAuthOpen(false)}
+                    onSuccess={handleAuthSuccess}
+                    title="Autorizar Pagamento"
+                    description="Insira seu PIN para confirmar o recebimento."
                 />
             )}
         </>

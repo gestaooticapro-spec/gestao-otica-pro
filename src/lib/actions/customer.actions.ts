@@ -237,6 +237,7 @@ export async function saveCustomerDetails(
 export async function deleteCustomer(
   customerId: number,
   storeId: number,
+  pathname: string,
 ): Promise<CustomerActionResult> {
   const supabaseAdmin = createAdminClient();
 
@@ -247,7 +248,7 @@ export async function deleteCustomer(
 
     if (deleteError) throw new Error(deleteError.message)
 
-    revalidatePath(`/dashboard/loja/${storeId}/clientes`)
+    revalidatePath(pathname || `/dashboard/loja/${storeId}/clientes`)
     return { success: true, message: 'Cliente deletado com sucesso.' }
   } catch (error: any) {
     return { success: false, message: `Erro ao deletar: ${error.message}` }
@@ -380,5 +381,50 @@ export async function getCustomerProfile(storeId: number, query: string) {
         resumo: v.products_summary
       }))
     }
+  }
+}
+
+// ================================================================
+// 5. ACTION: ATUALIZAR DADOS CRÍTICOS (CPF/FONE)
+// ================================================================
+export async function updateCustomerCriticalData(
+  customerId: number,
+  cpf: string,
+  fone: string,
+  pathname: string
+): Promise<{ success: boolean; message: string }> {
+  const supabaseAdmin = createAdminClient()
+
+  // 1. Validar CPF
+  if (!validaCPF(cpf)) {
+    return { success: false, message: 'CPF Inválido.' }
+  }
+
+  const cpfLimpo = cpf.replace(/\D/g, '')
+  const foneLimpo = fone.replace(/\D/g, '') // Remove máscara do telefone
+
+  try {
+    // 2. Verificar duplicidade de CPF (exceto o próprio usuário)
+    const { data: existe } = await (supabaseAdmin.from('customers') as any)
+      .select('id')
+      .eq('cpf', cpfLimpo)
+      .neq('id', customerId)
+      .maybeSingle()
+
+    if (existe) {
+      return { success: false, message: 'Este CPF já está em uso por outro cliente.' }
+    }
+
+    // 3. Atualizar
+    const { error } = await (supabaseAdmin.from('customers') as any)
+      .update({ cpf: cpfLimpo, fone_movel: foneLimpo })
+      .eq('id', customerId)
+
+    if (error) throw error
+
+    revalidatePath(pathname)
+    return { success: true, message: 'Dados atualizados com sucesso!' }
+  } catch (error: any) {
+    return { success: false, message: `Erro ao atualizar: ${error.message}` }
   }
 }

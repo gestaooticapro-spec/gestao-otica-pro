@@ -160,7 +160,7 @@ export default function VendaInterface({
 
                         {activeTab === 'carne' && (
                             <div className="space-y-3">
-                                <FinanciamentoBox financiamento={financiamento} vendaId={venda.id} customerId={venda.customer_id} storeId={venda.store_id} employeeId={employeeIdFinanceiro} valorRestante={venda.valor_restante ?? 0} onFinanceAdded={onDataReload} disabled={isVendaFechadaOuCancelada} isQuitado={isQuitado} />
+                                <FinanciamentoBox financiamento={financiamento} vendaId={venda.id} customerId={venda.customer_id} customer={customer} storeId={venda.store_id} employeeId={employeeIdFinanceiro} valorRestante={venda.valor_restante ?? 0} onFinanceAdded={onDataReload} disabled={isVendaFechadaOuCancelada} isQuitado={isQuitado} />
                             </div>
                         )}
                     </div>
