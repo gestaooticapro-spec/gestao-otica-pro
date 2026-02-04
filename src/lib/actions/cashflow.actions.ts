@@ -92,10 +92,41 @@ export async function abrirCaixa(prevState: any, formData: FormData) {
     }
     // ------------------------------------
 
-    // Verifica se já existe caixa aberto hoje
+    // =========================================================================
+    // PASSO 1: FECHAMENTO AUTOMÁTICO DE CAIXAS ANTERIORES NÃO FECHADOS
+    // =========================================================================
     const hoje = new Date()
-    const dataInicioHoje = new Date(hoje.setHours(0, 0, 0, 0)).toISOString()
+    const dataInicioHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 0, 0, 0, 0).toISOString()
 
+    // Busca caixas de DIAS ANTERIORES que ficaram abertos (esqueceram de fechar)
+    const { data: caixasAnterioresAbertos } = await (supabaseAdmin
+        .from('caixa_diario') as any)
+        .select('id, saldo_inicial, data_abertura')
+        .eq('store_id', profile.store_id)
+        .eq('status', 'Aberto')
+        .lt('created_at', dataInicioHoje) // Menor que hoje = dias anteriores
+
+    // Fecha automaticamente cada caixa antigo
+    if (caixasAnterioresAbertos && caixasAnterioresAbertos.length > 0) {
+        for (const caixaAntigo of caixasAnterioresAbertos) {
+            await (supabaseAdmin
+                .from('caixa_diario') as any)
+                .update({
+                    status: 'Fechado',
+                    data_fechamento: new Date().toISOString(),
+                    fechado_por_id: user.id,
+                    saldo_final: caixaAntigo.saldo_inicial, // Usa saldo inicial como final (não houve conferência)
+                    quebra_caixa: 0, // Assume sem diferença
+                    observacao: 'Fechado automaticamente pelo sistema (não foi fechado no dia anterior)'
+                })
+                .eq('id', caixaAntigo.id)
+        }
+        console.log(`[CAIXA] Fechados ${caixasAnterioresAbertos.length} caixa(s) de dias anteriores automaticamente.`)
+    }
+
+    // =========================================================================
+    // PASSO 2: VERIFICA SE JÁ EXISTE CAIXA ABERTO HOJE
+    // =========================================================================
     const { data: existe } = await (supabaseAdmin
         .from('caixa_diario') as any)
         .select('id')
