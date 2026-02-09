@@ -172,6 +172,21 @@ const MovimentoSchema = z.object({
     forma_pagamento: z.string().default('Dinheiro')
 })
 
+const AtualizarCaixaSchema = z.object({
+    caixa_id: z.coerce.number(),
+    saldo_inicial: z.coerce.number().min(0),
+})
+
+const AtualizarMovimentoSchema = z.object({
+    movimento_id: z.coerce.number(),
+    caixa_id: z.coerce.number(),
+    tipo: z.enum(['Entrada', 'Saida']),
+    valor: z.coerce.number().min(0.01),
+    descricao: z.string().min(3),
+    categoria: z.string().optional().nullable(),
+    forma_pagamento: z.string().optional().nullable(),
+})
+
 export async function adicionarMovimento(prevState: any, formData: FormData) {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -223,6 +238,107 @@ export async function adicionarMovimento(prevState: any, formData: FormData) {
     } catch (e: any) {
         return { success: false, message: e.message }
     }
+}
+
+// ============================================================================
+// 2.1 ATUALIZAR SALDO INICIAL (CAIXA ABERTO)
+// ============================================================================
+export async function atualizarSaldoInicial(prevState: any, formData: FormData) {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { success: false, message: 'Erro de permissão.' }
+
+    const profile = await getProfileByAdmin(user.id) as any
+    const val = AtualizarCaixaSchema.safeParse({
+        caixa_id: formData.get('caixa_id'),
+        saldo_inicial: formData.get('saldo_inicial'),
+    })
+    if (!val.success) return { success: false, message: 'Valor inválido.' }
+
+    const supabaseAdmin = createAdminClient()
+    const { data: caixa } = await (supabaseAdmin
+        .from('caixa_diario') as any)
+        .select('id, status, store_id')
+        .eq('id', val.data.caixa_id)
+        .single()
+
+    if (!caixa || caixa.store_id !== profile.store_id) {
+        return { success: false, message: 'Caixa não encontrado.' }
+    }
+    if (caixa.status !== 'Aberto') {
+        return { success: false, message: 'Caixa já está fechado.' }
+    }
+
+    const { error } = await (supabaseAdmin
+        .from('caixa_diario') as any)
+        .update({ saldo_inicial: val.data.saldo_inicial })
+        .eq('id', val.data.caixa_id)
+
+    if (error) return { success: false, message: error.message }
+
+    revalidatePath(`/dashboard/loja/${profile?.store_id}/financeiro/caixa`)
+    return { success: true, message: 'Saldo inicial atualizado.' }
+}
+
+// ============================================================================
+// 2.2 ATUALIZAR MOVIMENTO MANUAL
+// ============================================================================
+export async function atualizarMovimento(prevState: any, formData: FormData) {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { success: false, message: 'Erro de permissão.' }
+
+    const profile = await getProfileByAdmin(user.id) as any
+    const val = AtualizarMovimentoSchema.safeParse({
+        movimento_id: formData.get('movimento_id'),
+        caixa_id: formData.get('caixa_id'),
+        tipo: formData.get('tipo'),
+        valor: formData.get('valor'),
+        descricao: formData.get('descricao'),
+        categoria: formData.get('categoria'),
+        forma_pagamento: formData.get('forma_pagamento'),
+    })
+    if (!val.success) return { success: false, message: 'Dados inválidos.' }
+
+    const supabaseAdmin = createAdminClient()
+    const { data: caixa } = await (supabaseAdmin
+        .from('caixa_diario') as any)
+        .select('id, status, store_id')
+        .eq('id', val.data.caixa_id)
+        .single()
+
+    if (!caixa || caixa.store_id !== profile.store_id) {
+        return { success: false, message: 'Caixa não encontrado.' }
+    }
+    if (caixa.status !== 'Aberto') {
+        return { success: false, message: 'Caixa já está fechado.' }
+    }
+
+    const { data: mov } = await (supabaseAdmin
+        .from('caixa_movimentacoes') as any)
+        .select('id, store_id, caixa_id')
+        .eq('id', val.data.movimento_id)
+        .single()
+
+    if (!mov || mov.store_id !== profile.store_id || mov.caixa_id !== val.data.caixa_id) {
+        return { success: false, message: 'Movimento não encontrado.' }
+    }
+
+    const { error } = await (supabaseAdmin
+        .from('caixa_movimentacoes') as any)
+        .update({
+            tipo: val.data.tipo,
+            valor: val.data.valor,
+            descricao: val.data.descricao,
+            categoria: val.data.categoria || null,
+            forma_pagamento: val.data.forma_pagamento || 'Dinheiro'
+        })
+        .eq('id', val.data.movimento_id)
+
+    if (error) return { success: false, message: error.message }
+
+    revalidatePath(`/dashboard/loja/${profile?.store_id}/financeiro/caixa`)
+    return { success: true, message: 'Movimento atualizado.' }
 }
 
 // ============================================================================

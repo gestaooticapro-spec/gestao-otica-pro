@@ -53,23 +53,35 @@ export async function getDadosProtocolo(osId: number) {
     const os = osRaw as any
 
     // ------------------------------------------------------------------
-    // PASSO 2: Busca o Cliente
+    // PASSO 2: Busca o Cliente e/ou Dependente (prioridade para dependente)
     // ------------------------------------------------------------------
     let clienteNome = ''
     let clienteFone = ''
-    
+
     if (os.customer_id) {
       const { data: clienteRaw } = await supabase
         .from('customers')
         .select('full_name, fone_movel, phone')
         .eq('id', os.customer_id)
         .single()
-      
+
       if (clienteRaw) {
         const c = clienteRaw as any
         clienteNome = c.full_name
         // Prioriza celular, se não tiver pega o fixo
         clienteFone = c.fone_movel || c.phone || ''
+      }
+    }
+
+    if (os.dependente_id) {
+      const { data: depRaw } = await (supabase
+        .from('dependentes')
+        .select('full_name')
+        .eq('id', os.dependente_id)
+        .single() as any)
+
+      if (depRaw?.full_name) {
+        clienteNome = depRaw.full_name
       }
     }
 
@@ -145,6 +157,7 @@ export async function getDadosProtocolo(osId: number) {
 
     // ------------------------------------------------------------------
     // PASSO 6: Busca Produtos (Lente e Armação) via Links
+    // Usa o valor negociado na venda (venda_itens) em vez do cadastro
     // ------------------------------------------------------------------
     let descLente = ''
     let valorLente = 0
@@ -154,53 +167,54 @@ export async function getDadosProtocolo(osId: number) {
     // 6.1 Busca os Links da OS
     const { data: linksRaw } = await supabase
       .from('venda_itens_os_links')
-      .select('venda_item_id')
+      .select('venda_item_id, uso_na_os')
       .eq('service_order_id', osId)
 
     if (linksRaw && linksRaw.length > 0) {
       const itemIds = linksRaw.map((l: any) => l.venda_item_id)
+      const lensIds = new Set<number>()
+      const armacaoIds = new Set<number>()
 
-      // 6.2 Busca os Itens da Venda
+      linksRaw.forEach((l: any) => {
+        if (l.uso_na_os === 'lente_od' || l.uso_na_os === 'lente_oe') {
+          lensIds.add(l.venda_item_id)
+        }
+        if (l.uso_na_os === 'armacao') {
+          armacaoIds.add(l.venda_item_id)
+        }
+      })
+
+      // 6.2 Busca os Itens da Venda (negociados)
       const { data: itensRaw } = await supabase
         .from('venda_itens')
-        .select('id, product_id')
+        .select('id, descricao, quantidade, valor_unitario, valor_total_item')
         .in('id', itemIds)
 
       if (itensRaw && itensRaw.length > 0) {
-        const productIds = itensRaw.map((i: any) => i.product_id)
+        const itens = itensRaw as any[]
 
-        // 6.3 Busca os Produtos (Cadastro Completo)
-        const { data: prodsRaw } = await supabase
-          .from('products')
-          .select('id, nome, tipo_produto, categoria, preco_venda')
-          .in('id', productIds)
+        const calcValorItem = (item: any) => {
+          const total = parseFloat(item.valor_total_item || '0')
+          if (!isNaN(total) && total > 0) return total
+          const unit = parseFloat(item.valor_unitario || '0')
+          const qtd = parseFloat(item.quantidade || '0')
+          return unit * (qtd || 1)
+        }
 
-        if (prodsRaw) {
-          const produtos = prodsRaw as any[]
+        const lensItems = itens.filter(i => lensIds.has(i.id))
+        if (lensItems.length > 0) {
+          descLente = lensItems.map(i => i.descricao).filter(Boolean).join(' + ')
+          const uniqueLens = new Map<number, any>()
+          lensItems.forEach(i => uniqueLens.set(i.id, i))
+          valorLente = Array.from(uniqueLens.values()).reduce((acc, i) => acc + calcValorItem(i), 0)
+        }
 
-          // Lógica de Identificação (mesma do SQL)
-          const produtoLente = produtos.find(p => {
-             const nome = (p.nome || '').toUpperCase()
-             const tipo = (p.tipo_produto || '').toUpperCase()
-             const cat = (p.categoria || '').toUpperCase()
-             return tipo === 'LENTE' || cat.includes('LENTE') || nome.includes('LENTE')
-          })
-
-          const produtoArmacao = produtos.find(p => {
-             const nome = (p.nome || '').toUpperCase()
-             const tipo = (p.tipo_produto || '').toUpperCase()
-             const cat = (p.categoria || '').toUpperCase()
-             return tipo.includes('ARMA') || cat.includes('ARMA') || nome.includes('ARMA')
-          })
-
-          if (produtoLente) {
-            descLente = produtoLente.nome
-            valorLente = parseFloat(produtoLente.preco_venda || '0')
-          }
-          if (produtoArmacao) {
-            descArmacao = produtoArmacao.nome
-            valorArmacao = parseFloat(produtoArmacao.preco_venda || '0')
-          }
+        const armacaoItems = itens.filter(i => armacaoIds.has(i.id))
+        if (armacaoItems.length > 0) {
+          descArmacao = armacaoItems.map(i => i.descricao).filter(Boolean).join(' + ')
+          const uniqueArmacao = new Map<number, any>()
+          armacaoItems.forEach(i => uniqueArmacao.set(i.id, i))
+          valorArmacao = Array.from(uniqueArmacao.values()).reduce((acc, i) => acc + calcValorItem(i), 0)
         }
       }
     }

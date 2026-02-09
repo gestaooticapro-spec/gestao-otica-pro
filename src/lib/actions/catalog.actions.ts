@@ -11,6 +11,7 @@ export type CatalogActionResult = {
   message: string
   errors?: Record<string, string[]>
   generatedCode?: string
+  data?: any
 }
 
 export type LensGridItem = Database['public']['Tables']['product_variants']['Row']
@@ -339,11 +340,26 @@ export async function saveOftalmo(prevState: CatalogActionResult, formData: Form
     const { id, ...data } = validated.data
 
     // Cast as any aqui também por garantia
-    if (id) await (supabaseAdmin.from('oftalmologistas') as any).update(data).eq('id', id)
-    else await (supabaseAdmin.from('oftalmologistas') as any).insert({ ...data, tenant_id: profile.tenant_id })
+    if (id) {
+      const { data: saved, error } = await (supabaseAdmin.from('oftalmologistas') as any)
+        .update(data)
+        .eq('id', id)
+        .select('*')
+        .single()
+      if (error) throw error
+
+      revalidatePath(`/dashboard/loja/${profile.store_id}/cadastros`)
+      return { success: true, message: 'Oftalmologista salvo!', data: saved }
+    }
+
+    const { data: created, error: insertError } = await (supabaseAdmin.from('oftalmologistas') as any)
+      .insert({ ...data, tenant_id: profile.tenant_id })
+      .select('*')
+      .single()
+    if (insertError) throw insertError
 
     revalidatePath(`/dashboard/loja/${profile.store_id}/cadastros`)
-    return { success: true, message: 'Oftalmologista salvo!' }
+    return { success: true, message: 'Oftalmologista salvo!', data: created }
   } catch (e: any) { return { success: false, message: e.message } }
 }
 

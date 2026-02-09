@@ -27,6 +27,7 @@ import {
 import { checkLensStock, reserveLens, type LensStockMatch } from '@/lib/actions/stock.actions'
 import { Database } from '@/lib/database.types'
 import AddDependenteModal from '@/components/modals/AddDependenteModal'
+import AddOftalmoModal from '@/components/modals/AddOftalmoModal'
 import PrescriptionHistoryModal from '@/components/modals/PrescriptionHistoryModal'
 import { PrintProtocoloButton } from '@/components/vendas/PrintProtocoloButton'
 import { createClient } from '@/lib/supabase/client'
@@ -301,9 +302,15 @@ function ServiceOrderFormContent({
 
     const [isDepModalOpen, setIsDepModalOpen] = useState(false)
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
+    const [isOftalmoModalOpen, setIsOftalmoModalOpen] = useState(false)
     const [localDependentes, setLocalDependentes] = useState<Dependente[]>(initialDependentes)
+    const [localOftalmos, setLocalOftalmos] = useState(oftalmosList)
 
     const lastSuccessRef = useRef<number | undefined>(0);
+
+    useEffect(() => {
+        setLocalOftalmos(oftalmosList)
+    }, [oftalmosList])
 
     // --- STATES DO FORM ---
     const [protocolo, setProtocolo] = useState('')
@@ -459,6 +466,11 @@ function ServiceOrderFormContent({
     const handleDependenteAdded = useCallback((newDep: Dependente) => {
         setLocalDependentes(prev => [...prev, newDep])
         setDependenteId(newDep.id.toString())
+    }, [])
+
+    const handleOftalmoAdded = useCallback((newDoc: any) => {
+        setLocalOftalmos(prev => [...prev, newDoc])
+        setOftalmologistaId(newDoc.id.toString())
     }, [])
 
     const handleImportPrescription = (data: PrescriptionHistoryItem) => {
@@ -643,10 +655,20 @@ ${addIf('Obs.', obsOs) || ''}
 
                                     <div>
                                         <label className={labelStyle}>Médico</label>
-                                        <select name="oftalmologista_id" value={oftalmologistaId} onChange={e => setOftalmologistaId(e.target.value)} className={inputStyle}>
-                                            <option value="">Selecione...</option>
-                                            {oftalmosList.map(oft => <option key={oft.id} value={oft.id}>{oft.nome_completo}</option>)}
-                                        </select>
+                                        <div className="flex gap-1">
+                                            <select name="oftalmologista_id" value={oftalmologistaId} onChange={e => setOftalmologistaId(e.target.value)} className={inputStyle}>
+                                                <option value="">Selecione...</option>
+                                                {localOftalmos.map(oft => <option key={oft.id} value={oft.id}>{oft.nome_completo}</option>)}
+                                            </select>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsOftalmoModalOpen(true)}
+                                                className="bg-white/20 hover:bg-white/30 text-white p-1 rounded shadow-sm border border-white/20 h-7 w-7 flex items-center justify-center"
+                                                title="Novo Médico"
+                                            >
+                                                <Plus className="h-4 w-4" />
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div className="pt-2 border-t border-white/20 mt-1 space-y-2">
@@ -865,6 +887,14 @@ ${addIf('Obs.', obsOs) || ''}
                     onSuccess={handleDependenteAdded}
                     storeId={storeId}
                     customerId={customer.id}
+                />
+            )}
+
+            {isOftalmoModalOpen && (
+                <AddOftalmoModal
+                    isOpen={isOftalmoModalOpen}
+                    onClose={() => setIsOftalmoModalOpen(false)}
+                    onSuccess={handleOftalmoAdded}
                 />
             )}
 

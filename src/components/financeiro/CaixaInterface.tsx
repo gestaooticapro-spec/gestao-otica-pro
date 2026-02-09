@@ -6,11 +6,13 @@ import {
     ResumoCaixa,
     abrirCaixa,
     adicionarMovimento,
+    atualizarSaldoInicial,
+    atualizarMovimento,
     fecharCaixa
 } from '@/lib/actions/cashflow.actions'
 import {
     Wallet, ArrowUpCircle, ArrowDownCircle, Lock, Unlock,
-    Save, Loader2, DollarSign, AlertTriangle, TrendingUp, TrendingDown, Package, Printer
+    Save, Loader2, DollarSign, AlertTriangle, TrendingUp, TrendingDown, Package, Printer, Pencil
 } from 'lucide-react'
 import RelatorioDateModal from '@/components/modals/RelatorioDateModal'
 
@@ -27,6 +29,9 @@ export default function CaixaInterface({ initialData, storeId }: { initialData: 
     const [isReportModalOpen, setIsReportModalOpen] = useState(false)
     const [reportType, setReportType] = useState<'pix' | 'cartoes'>('pix')
     const formRef = useRef<HTMLFormElement>(null)
+    const [isSaldoModalOpen, setIsSaldoModalOpen] = useState(false)
+    const [isMovModalOpen, setIsMovModalOpen] = useState(false)
+    const [editingMov, setEditingMov] = useState<any>(null)
 
     // --- AÇÕES ---
     const handleAbrir = async (formData: FormData) => {
@@ -63,6 +68,38 @@ export default function CaixaInterface({ initialData, storeId }: { initialData: 
             const res = await fecharCaixa(null, formData)
             if (res.success) router.refresh()
             else alert(res.message)
+        })
+    }
+
+    const handleAtualizarSaldo = async (formData: FormData) => {
+        if (!initialData?.caixa) return
+        formData.append('caixa_id', initialData.caixa.id.toString())
+
+        startTransition(async () => {
+            const res = await atualizarSaldoInicial(null, formData)
+            if (res.success) {
+                setIsSaldoModalOpen(false)
+                router.refresh()
+            } else {
+                alert(res.message)
+            }
+        })
+    }
+
+    const handleAtualizarMov = async (formData: FormData) => {
+        if (!initialData?.caixa || !editingMov) return
+        formData.append('caixa_id', initialData.caixa.id.toString())
+        formData.append('movimento_id', String(editingMov.raw_id))
+
+        startTransition(async () => {
+            const res = await atualizarMovimento(null, formData)
+            if (res.success) {
+                setIsMovModalOpen(false)
+                setEditingMov(null)
+                router.refresh()
+            } else {
+                alert(res.message)
+            }
         })
     }
 
@@ -126,7 +163,17 @@ export default function CaixaInterface({ initialData, storeId }: { initialData: 
                     <div>
                         <p className="text-[9px] font-bold uppercase tracking-wider opacity-70">Saldo Gaveta</p>
                         <p className="text-xl font-black">{formatCurrency(totais.saldo_esperado_dinheiro)}</p>
-                        <p className="text-[9px] opacity-50">Fundo: {formatCurrency(initialData.caixa.saldo_inicial)}</p>
+                        <div className="flex items-center gap-2">
+                            <p className="text-[9px] opacity-50">Fundo: {formatCurrency(initialData.caixa.saldo_inicial)}</p>
+                            <button
+                                type="button"
+                                onClick={() => setIsSaldoModalOpen(true)}
+                                className="text-[9px] bg-white/20 hover:bg-white/30 px-2 py-0.5 rounded font-bold uppercase"
+                                title="Editar fundo de caixa"
+                            >
+                                Editar
+                            </button>
+                        </div>
                     </div>
                     <div className="p-2 bg-white/20 rounded-lg"><Wallet className="h-5 w-5" /></div>
                 </div>
@@ -270,6 +317,10 @@ export default function CaixaInterface({ initialData, storeId }: { initialData: 
                             <TabelaMovimentos
                                 movimentos={movimentacoes_detalhadas.filter((m: any) => m.origem === 'Caixa')}
                                 emptyMessage="Nenhuma movimentação em dinheiro."
+                                onEdit={(mov: any) => {
+                                    setEditingMov(mov)
+                                    setIsMovModalOpen(true)
+                                }}
                             />
                         </div>
                     </div>
@@ -310,6 +361,10 @@ export default function CaixaInterface({ initialData, storeId }: { initialData: 
                                     return m.origem === 'Banco' && !formaNormalizada.includes('dinheiro');
                                 })}
                                 emptyMessage="Nenhum recebimento digital hoje."
+                                onEdit={(mov: any) => {
+                                    setEditingMov(mov)
+                                    setIsMovModalOpen(true)
+                                }}
                             />
                         </div>
                     </div>
@@ -327,12 +382,97 @@ export default function CaixaInterface({ initialData, storeId }: { initialData: 
                     window.open(`/print/relatorios/${reportType}/${storeId}?mes=${mes}&ano=${ano}&t=${Date.now()}`, '_blank')
                 }}
             />
+
+            {isSaldoModalOpen && initialData?.caixa && (
+                <SimpleModal
+                    title="Editar Fundo de Caixa"
+                    onClose={() => setIsSaldoModalOpen(false)}
+                >
+                    <form action={handleAtualizarSaldo} className="space-y-3">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-600 mb-1">Novo Saldo Inicial (R$)</label>
+                            <input
+                                name="saldo_inicial"
+                                type="number"
+                                step="0.01"
+                                defaultValue={initialData.caixa.saldo_inicial}
+                                className="w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold"
+                                required
+                            />
+                        </div>
+                        <button
+                            disabled={isPending}
+                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-10 rounded-lg font-bold"
+                        >
+                            {isPending ? <Loader2 className="animate-spin h-4 w-4 inline mr-2" /> : null}
+                            Salvar
+                        </button>
+                    </form>
+                </SimpleModal>
+            )}
+
+            {isMovModalOpen && editingMov && (
+                <SimpleModal
+                    title="Editar Lançamento"
+                    onClose={() => {
+                        setIsMovModalOpen(false)
+                        setEditingMov(null)
+                    }}
+                >
+                    <form action={handleAtualizarMov} className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-600 mb-1">Tipo</label>
+                                <select name="tipo" defaultValue={editingMov.tipo} className="w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold">
+                                    <option value="Saida">Saída</option>
+                                    <option value="Entrada">Entrada</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-600 mb-1">Valor (R$)</label>
+                                <input
+                                    name="valor"
+                                    type="number"
+                                    step="0.01"
+                                    defaultValue={editingMov.valor}
+                                    className="w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-right"
+                                    required
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-600 mb-1">Categoria</label>
+                            <input
+                                name="categoria"
+                                defaultValue={editingMov.categoria || ''}
+                                className="w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-600 mb-1">Descrição</label>
+                            <input
+                                name="descricao"
+                                defaultValue={editingMov.descricao}
+                                className="w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold"
+                                required
+                            />
+                        </div>
+                        <button
+                            disabled={isPending}
+                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-10 rounded-lg font-bold"
+                        >
+                            {isPending ? <Loader2 className="animate-spin h-4 w-4 inline mr-2" /> : null}
+                            Salvar
+                        </button>
+                    </form>
+                </SimpleModal>
+            )}
         </div>
     )
 }
 
 // --- SUB-COMPONENTE DE TABELA (REUTILIZÁVEL) ---
-function TabelaMovimentos({ movimentos, emptyMessage }: { movimentos: any[], emptyMessage: string }) {
+function TabelaMovimentos({ movimentos, emptyMessage, onEdit }: { movimentos: any[], emptyMessage: string, onEdit?: (mov: any) => void }) {
     if (movimentos.length === 0) {
         return (
             <div className="h-full flex flex-col items-center justify-center text-slate-300">
@@ -350,11 +490,14 @@ function TabelaMovimentos({ movimentos, emptyMessage }: { movimentos: any[], emp
                     <th className="px-4 py-2 bg-white">Tipo</th>
                     <th className="px-4 py-2 bg-white">Descrição</th>
                     <th className="px-4 py-2 text-right bg-white">Valor</th>
+                    <th className="px-2 py-2 text-right bg-white">Ações</th>
                 </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
                 {movimentos.map((mov) => {
                     const isEntrada = mov.tipo === 'Entrada' || mov.tipo === 'Venda' || mov.tipo === 'Recebimento' || mov.tipo === 'Suprimento';
+                    const isManual = typeof mov.id === 'string' && mov.id.startsWith('mov-')
+                    const rawId = isManual ? Number(mov.id.replace('mov-', '')) : null
                     return (
                         <tr key={mov.id} className="hover:bg-slate-50/80 transition-colors">
                             <td className="px-4 py-2 text-slate-400 w-20 font-mono text-[10px]">{formatTime(mov.horario)}</td>
@@ -373,10 +516,40 @@ function TabelaMovimentos({ movimentos, emptyMessage }: { movimentos: any[], emp
                             <td className={`px-4 py-2 font-black text-right w-36 text-xs ${isEntrada ? 'text-emerald-600' : 'text-red-600'}`}>
                                 {isEntrada ? '+' : '-'} {formatCurrency(mov.valor)}
                             </td>
+                            <td className="px-2 py-2 text-right w-16">
+                                {isManual && onEdit && rawId ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => onEdit({ ...mov, raw_id: rawId })}
+                                        className="text-[10px] bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded font-bold"
+                                        title="Editar lançamento"
+                                    >
+                                        <Pencil className="h-3 w-3 inline" />
+                                    </button>
+                                ) : (
+                                    <span className="text-[9px] text-slate-300">-</span>
+                                )}
+                            </td>
                         </tr>
                     )
                 })}
             </tbody>
         </table>
+    )
+}
+
+function SimpleModal({ title, onClose, children }: { title: string, onClose: () => void, children: React.ReactNode }) {
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+            <div className="w-full max-w-md bg-white rounded-xl shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-slate-800">{title}</h3>
+                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600">X</button>
+                </div>
+                <div className="p-4">
+                    {children}
+                </div>
+            </div>
+        </div>
     )
 }
