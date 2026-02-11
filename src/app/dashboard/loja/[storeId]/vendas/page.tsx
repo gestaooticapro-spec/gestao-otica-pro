@@ -84,7 +84,8 @@ export default async function VendasListPage({
           <table className="w-full text-left border-collapse">
             <thead className="bg-slate-50 sticky top-0 z-10">
               <tr className="text-slate-500 text-[10px] uppercase font-bold border-b border-slate-200">
-                <th className="p-2 w-32">ID / Data</th>
+                <th className="p-2 w-32">ID / Criada Em</th>
+                <th className="p-2 w-32">Fechada Em</th>
                 <th className="p-2">Cliente</th>
                 <th className="p-2 text-center">Status</th>
                 <th className="p-2 text-right">Total</th>
@@ -95,7 +96,7 @@ export default async function VendasListPage({
             <tbody className="divide-y divide-slate-100">
               {!success || !vendas || vendas.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-gray-400">
+                  <td colSpan={7} className="p-8 text-center text-gray-400">
                     <p className="text-base font-medium">Nenhum registro encontrado.</p>
                     {mode === 'pendencias' ? (
                       <p className="text-xs">Tudo limpo! Nenhuma venda em aberto.</p>
@@ -113,6 +114,16 @@ export default async function VendasListPage({
                         <Calendar className="h-2.5 w-2.5" />
                         {formatDate(venda.created_at)}
                       </div>
+                    </td>
+                    <td className="p-2">
+                      {venda.data_fechamento ? (
+                        <div className="text-[10px] text-emerald-700 font-bold flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded w-fit">
+                          <Clock className="h-3 w-3" />
+                          {formatDate(venda.data_fechamento)}
+                        </div>
+                      ) : (
+                        <span className="text-slate-300 text-[10px] font-mono">--/--/--</span>
+                      )}
                     </td>
                     <td className="p-2">
                       <div className="font-bold text-sm text-slate-700 flex items-center gap-1.5">

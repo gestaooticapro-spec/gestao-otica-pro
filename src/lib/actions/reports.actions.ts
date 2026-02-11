@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 export type VendaRelatorioItem = {
   id: number
   data: string
+  data_fechamento?: string
   cliente: string
   vendedor: string
   itens_resumo: string
@@ -29,7 +30,7 @@ export async function getRelatorioVendas(storeId: number, dataInicio: string, da
     const { data: vendas, error } = await supabase
       .from('vendas')
       .select(`
-        id, created_at, status, valor_total, valor_desconto, valor_final, valor_restante, financiamento_id,
+        id, created_at, data_fechamento, status, valor_total, valor_desconto, valor_final, valor_restante, financiamento_id,
         customers ( full_name ),
         employees ( full_name ),
         venda_itens ( descricao )
@@ -46,10 +47,11 @@ export async function getRelatorioVendas(storeId: number, dataInicio: string, da
     const relatorio: VendaRelatorioItem[] = vendas.map((v: any) => {
       const pago = (v.valor_final || 0) - (v.valor_restante || 0)
       const itensDesc = v.venda_itens?.map((i: any) => i.descricao).join(', ') || ''
-      
+
       return {
         id: v.id,
         data: v.created_at,
+        data_fechamento: v.data_fechamento,
         cliente: v.customers?.full_name || 'Consumidor Final',
         vendedor: v.employees?.full_name || '-',
         itens_resumo: itensDesc.length > 50 ? itensDesc.substring(0, 50) + '...' : itensDesc,

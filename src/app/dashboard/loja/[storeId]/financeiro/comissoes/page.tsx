@@ -3,15 +3,19 @@ import { getRelatorioComissoes } from '@/lib/actions/commission.actions'
 import ComissoesInterface from '@/components/financeiro/ComissoesInterface'
 import { Percent } from 'lucide-react'
 
-export default async function ComissoesPage({ 
-    params, 
-    searchParams 
-}: { 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
+export default async function ComissoesPage({
+    params,
+    searchParams
+}: {
     params: { storeId: string },
     searchParams: { inicio?: string, fim?: string }
 }) {
     const storeId = parseInt(params.storeId, 10)
-    
+
+
     // Datas padrão: Mês Atual
     const hoje = new Date()
     const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().split('T')[0]
@@ -25,7 +29,7 @@ export default async function ComissoesPage({
 
     return (
         <div className="flex flex-col h-[calc(100vh-64px)] bg-gray-100 overflow-hidden">
-            
+
             {/* Header */}
             <div className="bg-white border-b border-gray-300 px-6 py-4 shadow-sm flex-shrink-0">
                 <div className="flex items-center gap-3">
@@ -41,10 +45,10 @@ export default async function ComissoesPage({
 
             {/* Conteúdo */}
             <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-                <ComissoesInterface 
-                    data={data || []} 
-                    storeId={storeId} 
-                    periodo={{ inicio: dataInicio, fim: dataFim }} 
+                <ComissoesInterface
+                    data={data || []}
+                    storeId={storeId}
+                    periodo={{ inicio: dataInicio, fim: dataFim }}
                 />
             </div>
         </div>

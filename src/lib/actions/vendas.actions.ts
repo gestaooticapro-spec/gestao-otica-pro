@@ -856,8 +856,12 @@ export async function addPagamento(
 
     if (rpcError) throw new Error(`Erro ao recalcular total: ${rpcError.message}`)
 
+    // 4. Recalcula comissão (caso tenha % por recebimento ou % garantida mudada pelo pagamento)
+    await calcularERegistrarComissao(venda_id)
+
     revalidatePath(`/dashboard/loja/${store_id}/vendas`)
     revalidatePath(`/dashboard/loja/${store_id}/vendas/${venda_id}`)
+    revalidatePath(`/dashboard/loja/${store_id}/financeiro/comissoes`)
 
     return { success: true, message: 'Pagamento registrado!', data: newPagamento as any, timestamp: Date.now() }
   } catch (error: any) {
@@ -942,12 +946,20 @@ export async function updateVendaStatus(
       // REABERTURA:
       // 1. Remove o vínculo com financiamento (se houver, para permitir recriar)
       updatePayload.financiamento_id = null;
+      // 2. Limpa data de fechamento
+      updatePayload.data_fechamento = null;
 
       // 2. IMPORTANTE: Estorna a comissão gerada anteriormente para evitar duplicidade
       await cancelarComissao(vendaId)
 
       // 3. Cancela reservas de estoque
       await cancelReservations(vendaId)
+    }
+
+    // --- GATILHO DE FECHAMENTO ---
+    if (newStatus === 'Fechada') {
+      // Define a data de fechamento AGORA
+      updatePayload.data_fechamento = new Date().toISOString();
     }
 
     const { data, error } = await (supabaseAdmin.from('vendas') as any)
@@ -965,7 +977,6 @@ export async function updateVendaStatus(
     }
     // --------------------------------
 
-    // --- GATILHO DE FECHAMENTO ---
     if (newStatus === 'Fechada') {
       // Calcula comissão nova
       await calcularERegistrarComissao(vendaId)
@@ -982,6 +993,7 @@ export async function updateVendaStatus(
 
     revalidatePath(`/dashboard/loja/${storeId}/vendas`)
     revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}`)
+    revalidatePath(`/dashboard/loja/${storeId}/financeiro/comissoes`) // Cache Buster
 
     return {
       success: true,
@@ -1772,6 +1784,7 @@ export async function finalizarVendaExpress(formData: FormData) {
     employee_id: employeeId,
     created_by_user_id: user.id,
     status: 'Fechada',
+    data_fechamento: new Date().toISOString(),
     valor_total: totalVenda,
     valor_final: totalVenda,
     valor_restante: 0
@@ -1811,6 +1824,7 @@ export async function finalizarVendaExpress(formData: FormData) {
   await calcularERegistrarComissao(novaVenda.id)
 
   revalidatePath(`/dashboard/loja/${storeId}/vendas`)
+  revalidatePath(`/dashboard/loja/${storeId}/financeiro/comissoes`)
   return { success: true, message: 'Venda finalizada!', vendaId: novaVenda.id }
 }
 

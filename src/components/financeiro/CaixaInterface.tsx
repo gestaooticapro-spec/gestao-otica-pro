@@ -12,9 +12,10 @@ import {
 } from '@/lib/actions/cashflow.actions'
 import {
     Wallet, ArrowUpCircle, ArrowDownCircle, Lock, Unlock,
-    Save, Loader2, DollarSign, AlertTriangle, TrendingUp, TrendingDown, Package, Printer, Pencil
+    Save, Loader2, DollarSign, AlertTriangle, TrendingUp, TrendingDown, Package, Printer, Pencil, HelpCircle, History
 } from 'lucide-react'
 import RelatorioDateModal from '@/components/modals/RelatorioDateModal'
+import HistoricoCaixaModal from './HistoricoCaixaModal'
 
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const formatTime = (dateStr: string) => new Date(dateStr).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
@@ -23,15 +24,17 @@ const formatTime = (dateStr: string) => new Date(dateStr).toLocaleTimeString('pt
 const labelStyle = "block text-[10px] font-bold text-emerald-100 uppercase mb-1 tracking-wider"
 const inputStyle = "block w-full rounded-lg border-0 bg-white shadow-sm text-slate-900 h-10 text-sm px-3 focus:ring-2 focus:ring-emerald-300 focus:outline-none font-bold placeholder:font-normal placeholder:text-slate-400 disabled:bg-slate-100 disabled:text-slate-500 transition-all"
 
-export default function CaixaInterface({ initialData, storeId }: { initialData: ResumoCaixa | null, storeId: number }) {
+export default function CaixaInterface({ initialData, storeId, ultimoFechamento }: { initialData: ResumoCaixa | null, storeId: number, ultimoFechamento?: { saldo_final: number, data_fechamento: string } | null }) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
     const [isReportModalOpen, setIsReportModalOpen] = useState(false)
+    const [isHistoricoModalOpen, setIsHistoricoModalOpen] = useState(false)
     const [reportType, setReportType] = useState<'pix' | 'cartoes'>('pix')
     const formRef = useRef<HTMLFormElement>(null)
     const [isSaldoModalOpen, setIsSaldoModalOpen] = useState(false)
     const [isMovModalOpen, setIsMovModalOpen] = useState(false)
     const [editingMov, setEditingMov] = useState<any>(null)
+    const [saldoInicialInput, setSaldoInicialInput] = useState('')
 
     // --- AÇÕES ---
     const handleAbrir = async (formData: FormData) => {
@@ -106,43 +109,63 @@ export default function CaixaInterface({ initialData, storeId }: { initialData: 
     // --- RENDERIZAÇÃO CONDICIONAL ---
 
     // 1. MODO CAIXA FECHADO (Tela de Abertura Estilizada)
-    if (!initialData || !initialData.caixa) {
+    if (!initialData) {
         return (
-            <div className="flex flex-col items-center justify-center h-[calc(100vh-150px)] animate-in zoom-in duration-300">
-                <div className="bg-gradient-to-br from-emerald-600 to-teal-700 p-8 rounded-3xl shadow-2xl shadow-emerald-200 w-full max-w-md text-center relative overflow-hidden border border-white/20">
-                    {/* Efeito de fundo */}
-                    <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white/10 rounded-full blur-xl"></div>
-
-                    <div className="bg-white/20 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 backdrop-blur-sm shadow-inner border border-white/10">
-                        <Lock className="h-10 w-10 text-white" />
+            <div className="flex items-center justify-center h-full">
+                <div className="bg-emerald-600 p-8 rounded-2xl shadow-2xl max-w-md w-full text-white border border-emerald-500">
+                    <div className="text-center mb-6">
+                        <div className="inline-flex items-center justify-center p-4 bg-emerald-700 rounded-full mb-4 shadow-inner">
+                            <Lock className="h-8 w-8 text-emerald-200" />
+                        </div>
+                        <h2 className="text-2xl font-black uppercase tracking-tight">Caixa Fechado</h2>
+                        <p className="text-emerald-200 text-sm mt-1 font-medium">Inicie o dia informando o fundo de troco.</p>
                     </div>
 
-                    <h2 className="text-3xl font-black text-white mb-2">Caixa Fechado</h2>
-                    <p className="text-emerald-100 mb-8 font-medium">Informe o fundo de troco para iniciar.</p>
-
-                    <form action={handleAbrir} className="space-y-6">
+                    <form action={handleAbrir} className="space-y-4">
                         <input type="hidden" name="store_id" value={storeId} />
                         <div>
-                            <label className="block text-xs font-bold text-emerald-200 uppercase mb-2">Saldo Inicial (Dinheiro)</label>
+                            <label className={labelStyle}>Saldo Inicial (Fundo de Caixa)</label>
                             <div className="relative">
-                                <span className="absolute left-4 top-3 text-emerald-700 font-bold">R$</span>
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold z-10">R$</span>
                                 <input
                                     type="number"
-                                    step="0.01"
                                     name="saldo_inicial"
-                                    placeholder="0,00"
-                                    className="w-full h-12 text-2xl font-black text-center rounded-xl border-0 shadow-lg text-emerald-800 bg-white focus:ring-4 focus:ring-emerald-400/50"
-                                    autoFocus
+                                    step="0.01"
                                     required
+                                    className={`${inputStyle} pl-10 text-lg`}
+                                    placeholder="0,00"
+                                    value={saldoInicialInput}
+                                    onChange={(e) => setSaldoInicialInput(e.target.value)}
                                 />
                             </div>
                         </div>
+
+                        {/* SUGESTÃO DE SALDO ANTERIOR */}
+                        {ultimoFechamento && (
+                            <div className="bg-emerald-700/50 p-3 rounded-lg border border-emerald-500/50 flex flex-col gap-2">
+                                <div className="flex items-center gap-2 text-[10px] text-emerald-200 uppercase font-bold tracking-wider">
+                                    <Wallet className="h-3 w-3" />
+                                    Último Fechamento ({new Date(ultimoFechamento.data_fechamento).toLocaleDateString()}):
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-lg font-black">{formatCurrency(ultimoFechamento.saldo_final)}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSaldoInicialInput(String(ultimoFechamento.saldo_final))}
+                                        className="text-[10px] bg-emerald-500 hover:bg-emerald-400 text-white px-3 py-1.5 rounded font-bold uppercase transition-colors shadow-sm"
+                                    >
+                                        Usar Saldo
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         <button
                             disabled={isPending}
-                            className="w-full bg-emerald-900 hover:bg-emerald-950 text-white h-12 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg transition-transform active:scale-95"
+                            className="w-full h-12 bg-white text-emerald-700 font-black uppercase rounded-lg hover:bg-emerald-50 transition-colors shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
                         >
-                            {isPending ? <Loader2 className="animate-spin" /> : <Unlock className="h-5 w-5" />}
-                            ABRIR OPERAÇÃO
+                            {isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Unlock className="h-5 w-5" />}
+                            Abrir Caixa
                         </button>
                     </form>
                 </div>
@@ -157,57 +180,128 @@ export default function CaixaInterface({ initialData, storeId }: { initialData: 
         <div className="flex flex-col h-full space-y-4">
 
             {/* --- TOPO: INDICADORES (KPIs) REFORMULADOS --- */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 shrink-0">
+            {/* --- TOOLBAR --- */}
+            <div className="flex justify-end shrink-0">
+                <button
+                    onClick={() => setIsHistoricoModalOpen(true)}
+                    className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-3 py-1.5 rounded-lg flex items-center gap-2 text-xs font-bold shadow-sm transition-all"
+                    title="Ver histórico de fechamentos e quebras"
+                >
+                    <History className="h-4 w-4 text-emerald-600" />
+                    Histórico de Fechamentos
+                </button>
+            </div>
+
+            {/* --- TOPO: INDICADORES (KPIs) REFORMULADOS --- */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 shrink-0">
+
+                {/* Card 0: FATURAMENTO MENSAL (NOVO) */}
+                <div className="bg-gradient-to-br from-indigo-600 to-blue-700 text-white p-3 rounded-xl shadow-md flex items-center justify-between border border-white/10 group relative">
+                    <div className="absolute inset-0 overflow-hidden rounded-xl">
+                        <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <TrendingUp className="h-12 w-12" />
+                        </div>
+                    </div>
+                    <div className="relative z-10 w-full">
+                        <div className="flex items-center gap-1 mb-1">
+                            <p className="text-[9px] font-bold uppercase tracking-wider opacity-90">Vendas (Mês)</p>
+                            <HelpTooltip text="Total acumulado de vendas neste mês (1º dia até hoje) comparado com o mesmo período do mês anterior." />
+                        </div>
+                        <p className="text-xl font-black">
+                            {formatCurrency(initialData.comparativo?.faturamento_mensal_atual || 0)}
+                        </p>
+
+                        {initialData.comparativo && (
+                            <div className="flex items-center gap-1 mt-1">
+                                {(() => {
+                                    const atual = initialData.comparativo.faturamento_mensal_atual || 0
+                                    const anterior = initialData.comparativo.faturamento_mensal_anterior || 0
+                                    const diff = atual - anterior
+                                    const pct = anterior > 0 ? (diff / anterior) * 100 : 0
+                                    const isPositive = diff >= 0
+
+                                    return (
+                                        <div className={`px-1.5 py-0.5 rounded text-[9px] font-bold flex items-center gap-1 ${isPositive ? 'bg-emerald-400/20 text-emerald-100' : 'bg-red-400/20 text-red-100'}`}>
+                                            {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                                            {Math.abs(pct).toFixed(1)}% vs. Mês Anterior
+                                        </div>
+                                    )
+                                })()}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
                 {/* Card 1: Saldo Gaveta (Dinheiro Físico) */}
-                <div className="bg-emerald-600 text-white p-3 rounded-xl shadow-md flex items-center justify-between border border-white/10">
-                    <div>
-                        <p className="text-[9px] font-bold uppercase tracking-wider opacity-70">Saldo Gaveta</p>
+                <div className="bg-emerald-600 text-white p-3 rounded-xl shadow-md flex items-center justify-between border border-white/10 relative">
+                    <div className="absolute inset-0 overflow-hidden rounded-xl">
+                        <div className="p-2 bg-white/20 rounded-lg absolute right-3 top-3"><Wallet className="h-5 w-5" /></div>
+                    </div>
+                    <div className="relative z-10 w-full">
+                        <div className="flex items-center gap-1 mb-1">
+                            <p className="text-[9px] font-bold uppercase tracking-wider opacity-70">Saldo Gaveta</p>
+                            <HelpTooltip text="Dinheiro físico que deve estar na gaveta AGORA. (Saldo Inicial + Entradas Dinheiro - Saídas Dinheiro)" />
+                        </div>
                         <p className="text-xl font-black">{formatCurrency(totais.saldo_esperado_dinheiro)}</p>
-                        <div className="flex items-center gap-2">
-                            <p className="text-[9px] opacity-50">Fundo: {formatCurrency(initialData.caixa.saldo_inicial)}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                            <p className="text-[9px] opacity-70">Fundo: {formatCurrency(initialData.caixa?.saldo_inicial || 0)}</p>
                             <button
                                 type="button"
                                 onClick={() => setIsSaldoModalOpen(true)}
-                                className="text-[9px] bg-white/20 hover:bg-white/30 px-2 py-0.5 rounded font-bold uppercase"
+                                className="text-[9px] bg-white/20 hover:bg-white/30 px-2 py-0.5 rounded font-bold uppercase transition-colors"
                                 title="Editar fundo de caixa"
                             >
                                 Editar
                             </button>
                         </div>
                     </div>
-                    <div className="p-2 bg-white/20 rounded-lg"><Wallet className="h-5 w-5" /></div>
                 </div>
 
-                {/* Card 2: Total Recebido em Caixa (Dinheiro de Vendas + Suprimentos - Sangrias) */}
-                <div className="bg-white p-3 rounded-xl border border-emerald-200 shadow-sm flex items-center justify-between">
-                    <div>
-                        <p className="text-[9px] font-bold text-emerald-700 uppercase tracking-wider">Mov. Caixa (Hoje)</p>
+                {/* Card 2: Total Recebido em Caixa */}
+                <div className="bg-white p-3 rounded-xl border border-emerald-200 shadow-sm flex items-center justify-between relative">
+                    <div className="absolute inset-0 overflow-hidden rounded-xl pointer-events-none">
+                        <div className="absolute right-3 top-3 p-2 bg-emerald-50 text-emerald-600 rounded-lg"><Package className="h-5 w-5" /></div>
+                    </div>
+                    <div className="relative z-10 w-full pr-12">
+                        <div className="flex items-center gap-1 mb-1">
+                            <p className="text-[9px] font-bold text-emerald-700 uppercase tracking-wider">Mov. Caixa (Hoje)</p>
+                            <HelpTooltip text="Total de dinheiro que entrou hoje (Vendas em Dinheiro + Suprimentos - Sangrias/Retiradas)." dark />
+                        </div>
                         <p className="text-xl font-black text-emerald-700">{formatCurrency(vendas.total_dinheiro + totais.entradas_manuais - totais.saidas_manuais)}</p>
                     </div>
-                    <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><Package className="h-5 w-5" /></div>
                 </div>
 
-                {/* Card 3: Total Recebido em Banco (Pix + Cartões) */}
-                <div className="bg-white p-3 rounded-xl border border-blue-200 shadow-sm flex items-center justify-between">
-                    <div>
-                        <p className="text-[9px] font-bold text-blue-700 uppercase tracking-wider">Mov. Banco (Hoje)</p>
+                {/* Card 3: Total Recebido em Banco */}
+                <div className="bg-white p-3 rounded-xl border border-blue-200 shadow-sm flex items-center justify-between relative">
+                    <div className="absolute inset-0 overflow-hidden rounded-xl pointer-events-none">
+                        <div className="absolute right-3 top-3 p-2 bg-blue-50 text-blue-600 rounded-lg"><TrendingUp className="h-5 w-5" /></div>
+                    </div>
+                    <div className="relative z-10 w-full pr-12">
+                        <div className="flex items-center gap-1 mb-1">
+                            <p className="text-[9px] font-bold text-blue-700 uppercase tracking-wider">Mov. Banco (Hoje)</p>
+                            <HelpTooltip text="Total de recebimentos digitais HOJE (Pix + Cartões). Não entra na gaveta." dark />
+                        </div>
                         <p className="text-xl font-black text-blue-700">{formatCurrency(vendas.total_pix + vendas.total_cartao)}</p>
-                        <div className="flex gap-1 mt-0.5">
+                        <div className="flex gap-1 mt-1">
                             <span className="text-[8px] bg-blue-50 px-1 py-0.5 rounded text-blue-500 font-bold">Pix: {formatCurrency(vendas.total_pix)}</span>
                             <span className="text-[8px] bg-blue-50 px-1 py-0.5 rounded text-blue-500 font-bold">Cartão: {formatCurrency(vendas.total_cartao)}</span>
                         </div>
                     </div>
-                    <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><TrendingUp className="h-5 w-5" /></div>
                 </div>
 
-                {/* Card 4: Saídas (Sangrias/Retiradas) */}
-                <div className="bg-white p-3 rounded-xl border border-red-200 shadow-sm flex items-center justify-between">
-                    <div>
-                        <p className="text-[9px] font-bold text-red-600 uppercase tracking-wider">Sangrias</p>
+                {/* Card 4: Saídas */}
+                <div className="bg-white p-3 rounded-xl border border-red-200 shadow-sm flex items-center justify-between relative">
+                    <div className="absolute inset-0 overflow-hidden rounded-xl pointer-events-none">
+                        <div className="absolute right-3 top-3 p-2 bg-red-50 text-red-600 rounded-lg"><TrendingDown className="h-5 w-5" /></div>
+                    </div>
+                    <div className="relative z-10 w-full pr-12">
+                        <div className="flex items-center gap-1 mb-1">
+                            <p className="text-[9px] font-bold text-red-600 uppercase tracking-wider">Sangrias</p>
+                            <HelpTooltip text="Total de retiradas de dinheiro da gaveta hoje (pagamentos, vales, depósitos)." dark />
+                        </div>
                         <p className="text-xl font-black text-red-600">{formatCurrency(totais.saidas_manuais)}</p>
                         <p className="text-[9px] text-slate-400">{movimentacoes.filter(m => m.tipo === 'Saida').length} lançamentos</p>
                     </div>
-                    <div className="p-2 bg-red-50 text-red-600 rounded-lg"><TrendingDown className="h-5 w-5" /></div>
                 </div>
             </div>
 
@@ -383,6 +477,13 @@ export default function CaixaInterface({ initialData, storeId }: { initialData: 
                 }}
             />
 
+            {isHistoricoModalOpen && (
+                <HistoricoCaixaModal
+                    storeId={storeId}
+                    onClose={() => setIsHistoricoModalOpen(false)}
+                />
+            )}
+
             {isSaldoModalOpen && initialData?.caixa && (
                 <SimpleModal
                     title="Editar Fundo de Caixa"
@@ -549,6 +650,18 @@ function SimpleModal({ title, onClose, children }: { title: string, onClose: () 
                 <div className="p-4">
                     {children}
                 </div>
+            </div>
+        </div>
+    )
+}
+
+function HelpTooltip({ text, dark }: { text: string, dark?: boolean }) {
+    return (
+        <div className="group relative inline-block ml-1 align-middle z-20">
+            <HelpCircle className={`h-3 w-3 cursor-help opacity-40 hover:opacity-100 transition-opacity ${dark ? 'text-slate-400' : 'text-current'}`} />
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-800 text-white text-[10px] leading-tight rounded shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all pointer-events-none transform translate-y-2 group-hover:translate-y-0 text-center font-normal">
+                {text}
+                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
             </div>
         </div>
     )

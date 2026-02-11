@@ -59,6 +59,15 @@ export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioIt
       size: 100,
     }),
 
+    columnHelper.accessor('data_fechamento', {
+      header: 'Fechamento',
+      cell: info => {
+        const val = info.getValue()
+        return val ? <span className="text-emerald-700 font-medium">{formatDate(val)}</span> : <span className="text-gray-300">-</span>
+      },
+      size: 100,
+    }),
+
     columnHelper.accessor('cliente', {
       header: 'Cliente',
       cell: info => <span className="truncate block" title={info.getValue()}>{info.getValue()}</span>,

@@ -29,6 +29,10 @@ export type ResumoCaixa = {
         saldo_esperado_dinheiro: number
         saldo_geral_acumulado: number
     }
+    comparativo?: {
+        faturamento_mensal_atual: number
+        faturamento_mensal_anterior: number
+    }
 }
 
 // HELPER: Padronização de Texto (Primeira Maiúscula)
@@ -192,6 +196,191 @@ export async function getRelatorioFinanceiroMensal(storeId: number, mes: number,
         customer_name: p.vendas?.customers?.full_name || (p.obs?.includes('Cliente:') ? p.obs.split('Cliente:')[1].trim() : 'Consumidro')
     })).sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
     return { success: true, data: res }
+}
+
+export async function getUltimoFechamento(storeId: number) {
+    const sb = createAdminClient()
+    const { data } = await (sb.from('caixa_diario') as any)
+        .select('saldo_final, data_fechamento')
+        .eq('store_id', storeId)
+        .eq('status', 'Fechado')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+    return data
+}
+
+export async function getHistoricoCaixa(storeId: number) {
+    const sb = createAdminClient()
+
+    // 1. Buscas os últimos 30 caixas fechados
+    const { data } = await (sb.from('caixa_diario') as any)
+        .select('id, data_abertura, data_fechamento, saldo_inicial, saldo_final, quebra_caixa')
+        .eq('store_id', storeId)
+        .eq('status', 'Fechado')
+        .order('created_at', { ascending: false })
+        .limit(30)
+
+    const caixas = data || []
+    if (caixas.length === 0) return []
+
+    const caixaIds = caixas.map((c: any) => c.id)
+
+    // 2. Busca movimentos manuais (para calcular Saídas)
+    const { data: movs } = await (sb.from('caixa_movimentacoes') as any)
+        .select('caixa_id, tipo, valor')
+        .in('caixa_id', caixaIds)
+        .eq('tipo', 'Saida') // Só preciso das saídas para reverter a conta
+
+    const movimentos = movs || []
+
+    // 3. Processa
+    const historico = caixas.map((cx: any) => {
+        const saidasManuais = movimentos
+            .filter((m: any) => m.caixa_id === cx.id)
+            .reduce((acc: number, curr: any) => acc + Number(curr.valor), 0)
+
+        const saldoFinal = Number(cx.saldo_final)
+        const saldoInicial = Number(cx.saldo_inicial)
+        const quebra = Number(cx.quebra_caixa) || 0
+
+        // Saldo Final = Saldo Inicial + Entradas (Vendas + Suprimentos) - Saídas + Quebra
+        // Entradas = Saldo Final - Saldo Inicial + Saídas - Quebra
+        const entradasTotais = saldoFinal - saldoInicial + saidasManuais - quebra
+
+        return {
+            id: cx.id,
+            data: cx.data_fechamento, // Usar fechamento como referência do dia
+            saldo_inicial: saldoInicial,
+            entradas: entradasTotais,
+            saidas: saidasManuais,
+            saldo_esperado: saldoFinal - quebra,
+            saldo_final: saldoFinal,
+            quebra: quebra
+        }
+    })
+
+    return historico
+}
+export async function getExtratoDiario(storeId: number) {
+    const sb = createAdminClient()
+    const startDate = new Date()
+    startDate.setDate(startDate.getDate() - 30)
+    startDate.setHours(0, 0, 0, 0)
+    const startDateStr = startDate.toISOString()
+
+    // --- 0. CALCULAR SALDO ANTERIOR (Tudo antes de startDate) ---
+    // A. Vendas Anteriores
+    const { data: vendasAnteriores } = await sb
+        .from('pagamentos')
+        .select('valor_pago')
+        .eq('store_id', storeId)
+        .lt('created_at', startDateStr)
+        .ilike('forma_pagamento', '%dinheiro%')
+
+    const totalVendasAnt = vendasAnteriores?.reduce((acc: number, curr: any) => acc + Number(curr.valor_pago), 0) || 0
+
+    // B. Movimentos Anteriores (Entradas e Saídas)
+    // Para simplificar, vamos pegar TODAS as movimentações anteriores dessa loja
+    // Precisamos dos IDs dos caixas anteriores. Mas caixa_movimentacoes não tem store_id direto.
+    // Vamos pegar via caixa_diario.
+    const { data: caixasAnt } = await sb
+        .from('caixa_diario')
+        .select('id')
+        .eq('store_id', storeId)
+        .lt('created_at', startDateStr)
+
+    let totalEntradasAnt = 0
+    let totalSaidasAnt = 0
+
+    if (caixasAnt && caixasAnt.length > 0) {
+        const idsAnt = caixasAnt.map((c: any) => c.id)
+        // Batching requests se for muito grande? Para 30 dias é ok, mas "desde o início" pode ser grande.
+        // Vamos assumir que o volume não quebra o limite de URL do Postgrest por enquanto.
+        // Se crescer, precisaríamos de uma RPC 'sum_movements_by_store'.
+        // Mas vamos seguir com query. Limitando a 1000 IDs por vez se precisar, mas aqui vai direto.
+        const { data: movsAnt } = await (sb.from('caixa_movimentacoes') as any)
+            .select('tipo, valor')
+            .in('caixa_id', idsAnt)
+
+        movsAnt?.forEach((m: any) => {
+            if (m.tipo === 'Entrada') totalEntradasAnt += Number(m.valor)
+            if (m.tipo === 'Saida') totalSaidasAnt += Number(m.valor)
+        })
+    }
+
+    const saldoAnterior = totalVendasAnt + totalEntradasAnt - totalSaidasAnt
+
+    // --- 1. DADOS DO PERÍODO (Últimos 30 dias) ---
+    const { data: vendas } = await sb
+        .from('pagamentos')
+        .select('valor_pago, created_at, forma_pagamento')
+        .eq('store_id', storeId)
+        .gte('created_at', startDateStr)
+        .ilike('forma_pagamento', '%dinheiro%')
+
+    const { data: caixas } = await sb
+        .from('caixa_diario')
+        .select('id')
+        .eq('store_id', storeId)
+        .gte('created_at', startDateStr)
+
+    let movimentos: any[] = []
+    if (caixas && caixas.length > 0) {
+        const ids = caixas.map((c: any) => c.id)
+        const { data: movs } = await (sb.from('caixa_movimentacoes') as any)
+            .select('caixa_id, tipo, valor, created_at')
+            .in('caixa_id', ids)
+        movimentos = movs || []
+    }
+
+    // --- 2. AGRUPAMENTO ---
+    const dadosPorDia: Record<string, { vendas: number, entradas: number, saidas: number }> = {}
+
+    const getDataKey = (isoStr: string) => {
+        const d = new Date(isoStr)
+        d.setHours(d.getHours() - 3)
+        return d.toISOString().split('T')[0]
+    }
+
+    vendas?.forEach((v: any) => {
+        const key = getDataKey(v.created_at)
+        if (!dadosPorDia[key]) dadosPorDia[key] = { vendas: 0, entradas: 0, saidas: 0 }
+        dadosPorDia[key].vendas += Number(v.valor_pago)
+    })
+
+    movimentos.forEach((m: any) => {
+        const key = getDataKey(m.created_at)
+        if (!dadosPorDia[key]) dadosPorDia[key] = { vendas: 0, entradas: 0, saidas: 0 }
+        if (m.tipo === 'Entrada') dadosPorDia[key].entradas += Number(m.valor)
+        if (m.tipo === 'Saida') dadosPorDia[key].saidas += Number(m.valor)
+    })
+
+    // --- 3. CÁLCULO DO SALDO ACUMULADO ---
+    // Ordenar CRESCENTE para calcular o acumulado
+    const listaOrdenada = Object.entries(dadosPorDia)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+
+    let saldoAtual = saldoAnterior
+    const resultado = listaOrdenada.map(([data, vals]) => {
+        const saldoDia = vals.vendas + vals.entradas - vals.saidas
+        saldoAtual += saldoDia
+        return {
+            data,
+            vendas: vals.vendas,
+            entradas: vals.entradas,
+            saidas: vals.saidas,
+            saldo_dia: saldoDia,
+            saldo_acumulado: saldoAtual
+        }
+    })
+
+    // Retorna DECRESCENTE (mais recente primeiro) + Saldo Anterior (opcional, pode ser útil)
+    return {
+        saldo_anterior: saldoAnterior,
+        extrato: resultado.reverse()
+    }
 }
 
 // ============================================================================
@@ -405,8 +594,49 @@ export async function getResumoCaixa(storeId: number): Promise<ResumoCaixa | nul
     const saldoGaveta = Number(caixa.saldo_inicial) + vendas.total_dinheiro + manuais.entradas - manuais.saidas
     const saldoGeral = saldoGaveta + vendas.total_pix + vendas.total_cartao + vendas.total_outros
 
+    // --- COMPARATIVO MENSAL ---
+    const startOfMonth = new Date(hojeInicio.getFullYear(), hojeInicio.getMonth(), 1).toISOString()
+    const now = new Date().toISOString()
+
+    // Mês Anterior (Mesmo intervalo de dias)
+    const startOfLastMonth = new Date(hojeInicio.getFullYear(), hojeInicio.getMonth() - 1, 1).toISOString()
+    // Data final do mês anterior compatível (ex: se hoje é dia 10, pega até dia 10 do mês passado)
+    const endOfLastMonthRef = new Date(hojeInicio.getFullYear(), hojeInicio.getMonth() - 1, hojeInicio.getDate(), 23, 59, 59).toISOString()
+
+    // Query Mês Atual
+    const { data: vendasMesAtual } = await supabaseAdmin
+        .from('pagamentos')
+        .select('valor_pago')
+        .eq('store_id', storeId)
+        .gte('created_at', startOfMonth)
+        .lte('created_at', now)
+
+    // Query Mês Anterior
+    const { data: vendasMesAnterior } = await supabaseAdmin
+        .from('pagamentos')
+        .select('valor_pago')
+        .eq('store_id', storeId)
+        .gte('created_at', startOfLastMonth)
+        .lte('created_at', endOfLastMonthRef)
+
+    const totalMesAtual = (vendasMesAtual as any[])?.reduce((acc, curr) => acc + Number(curr.valor_pago), 0) || 0
+    const totalMesAnterior = (vendasMesAnterior as any[])?.reduce((acc, curr) => acc + Number(curr.valor_pago), 0) || 0
+
     return {
-        caixa, movimentacoes: listaMov, movimentacoes_detalhadas: historicoUnificado, categoriasUsadas: categoriasUnicas.sort(),
-        vendas, totais: { entradas_manuais: manuais.entradas, saidas_manuais: manuais.saidas, saldo_esperado_dinheiro: saldoGaveta, saldo_geral_acumulado: saldoGeral }
+        caixa,
+        movimentacoes: listaMov,
+        movimentacoes_detalhadas: historicoUnificado,
+        categoriasUsadas: categoriasUnicas.sort(),
+        vendas,
+        totais: {
+            entradas_manuais: manuais.entradas,
+            saidas_manuais: manuais.saidas,
+            saldo_esperado_dinheiro: saldoGaveta,
+            saldo_geral_acumulado: saldoGeral
+        },
+        comparativo: {
+            faturamento_mensal_atual: totalMesAtual,
+            faturamento_mensal_anterior: totalMesAnterior
+        }
     }
 }

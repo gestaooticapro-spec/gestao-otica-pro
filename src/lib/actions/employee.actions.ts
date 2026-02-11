@@ -35,27 +35,27 @@ async function getManagerContext() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Usuário não autenticado.')
-  
+
   const profile = await getProfileByAdmin(user.id)
-  
+
   // Apenas Managers ou Admins podem gerenciar equipe
   // Cast 'as any' para garantir acesso às propriedades
   const p = profile as any;
   if (!p || (p.role !== 'manager' && p.role !== 'admin')) {
-      throw new Error('Permissão negada. Apenas gerentes podem acessar esta área.')
+    throw new Error('Permissão negada. Apenas gerentes podem acessar esta área.')
   }
-  
+
   return { profile: p, supabaseAdmin: createAdminClient() }
 }
 
 // 1. SALVAR (CRIAR / EDITAR)
 export async function saveEmployee(
-  prevState: EmployeeActionResult, 
+  prevState: EmployeeActionResult,
   formData: FormData
 ): Promise<EmployeeActionResult> {
   try {
     const { profile, supabaseAdmin } = await getManagerContext()
-    
+
     const rawFormData = {
       id: formData.get('id') ? parseInt(formData.get('id') as string) : undefined,
       store_id: profile.store_id,
@@ -73,52 +73,53 @@ export async function saveEmployee(
     const validated = EmployeeSchema.safeParse(rawFormData)
 
     if (!validated.success) {
-      return { 
-        success: false, 
-        message: 'Dados inválidos.', 
-        errors: validated.error.flatten().fieldErrors 
+      return {
+        success: false,
+        message: 'Dados inválidos.',
+        errors: validated.error.flatten().fieldErrors
       }
     }
 
     const { id, ...data } = validated.data
-    
+
     // --- VERIFICAÇÃO DE PIN DUPLICADO ---
     // Cast 'as any' na chamada do banco
     const { data: existingRaw } = await (supabaseAdmin.from('employees') as any)
-        .select('id, full_name')
-        .eq('store_id', profile.store_id)
-        .eq('pin', data.pin)
-        .maybeSingle()
+      .select('id, full_name')
+      .eq('store_id', profile.store_id)
+      .eq('pin', data.pin)
+      .maybeSingle()
 
     const existingEmployee = existingRaw as any;
 
     // Se achou alguém E (estamos criando novo OU editando e o ID é diferente do encontrado)
     if (existingEmployee && (!id || existingEmployee.id !== id)) {
-        return { 
-            success: false, 
-            message: `Erro: O PIN ${data.pin} já pertence a ${existingEmployee.full_name}.` 
-        }
+      return {
+        success: false,
+        message: `Erro: O PIN ${data.pin} já pertence a ${existingEmployee.full_name}.`
+      }
     }
     // -------------------------------------
 
     const payload = { ...data, tenant_id: profile.tenant_id }
 
-if (id) {
+    if (id) {
       // ATUALIZAÇÃO: O payload já contém os novos campos graças ao spread '...data'
       const { error } = await (supabaseAdmin.from('employees') as any)
         .update(payload) // Payload completo com comissões
         .eq('id', id)
         .eq('store_id', profile.store_id)
-      
+
       if (error) throw error
     } else {
       const { error } = await (supabaseAdmin.from('employees') as any)
         .insert(payload)
-      
+
       if (error) throw error
     }
 
     revalidatePath(`/dashboard/loja/${profile.store_id}/config`)
+    revalidatePath(`/dashboard/loja/${profile.store_id}/financeiro/comissoes`)
     return { success: true, message: 'Funcionário salvo com sucesso!' }
 
   } catch (error: any) {
@@ -130,7 +131,7 @@ if (id) {
 // 2. LISTAR FUNCIONÁRIOS (ATUALIZADO COM COLUNAS EXPLÍCITAS)
 export async function getEmployees(storeId: number): Promise<Employee[]> {
   const supabaseAdmin = createAdminClient()
-  
+
   // Cast 'as any' na chamada
   const { data, error } = await (supabaseAdmin.from('employees') as any)
     .select(`
@@ -160,24 +161,24 @@ export async function getEmployees(storeId: number): Promise<Employee[]> {
 
 // 3. ALTERAR STATUS (SOFT DELETE)
 export async function toggleEmployeeStatus(
-    employeeId: number, 
-    currentStatus: boolean,
-    storeId: number
+  employeeId: number,
+  currentStatus: boolean,
+  storeId: number
 ): Promise<EmployeeActionResult> {
-    try {
-        const supabaseAdmin = createAdminClient()
-        
-        // Cast 'as any' na chamada
-        const { error } = await (supabaseAdmin.from('employees') as any)
-            .update({ is_active: !currentStatus })
-            .eq('id', employeeId)
-            .eq('store_id', storeId)
+  try {
+    const supabaseAdmin = createAdminClient()
 
-        if (error) throw error
+    // Cast 'as any' na chamada
+    const { error } = await (supabaseAdmin.from('employees') as any)
+      .update({ is_active: !currentStatus })
+      .eq('id', employeeId)
+      .eq('store_id', storeId)
 
-        revalidatePath(`/dashboard/loja/${storeId}/config`)
-        return { success: true, message: `Funcionário ${!currentStatus ? 'ativado' : 'inativado'}.` }
-    } catch (error: any) {
-        return { success: false, message: error.message }
-    }
+    if (error) throw error
+
+    revalidatePath(`/dashboard/loja/${storeId}/config`)
+    return { success: true, message: `Funcionário ${!currentStatus ? 'ativado' : 'inativado'}.` }
+  } catch (error: any) {
+    return { success: false, message: error.message }
+  }
 }
