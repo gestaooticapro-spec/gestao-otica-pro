@@ -1533,11 +1533,12 @@ export async function receberParcela(prevState: any, formData: FormData) {
     if (!parcelaRaw) throw new Error('Parcela não encontrada.')
     const parcelaAtual = parcelaRaw as any;
 
-    // Registra Pagamento
-    await (supabaseAdmin.from('pagamentos') as any).insert({
+    // Registra Pagamento e Checa Erro
+    const { error: errorPagto } = await (supabaseAdmin.from('pagamentos') as any).insert({
       tenant_id: (profile as any).tenant_id,
       store_id: store_id,
-      venda_id: null, // Mantido null para evitar duplicidade
+      venda_id: venda_id, // Usa o venda_id real (coluna NOT NULL)
+      customer_id: parcelaAtual.customer_id, // Fix: Inclusão do ID do Cliente
       created_by_user_id: user.id,
       valor_pago: valor_pago_total,
       forma_pagamento: forma_pagamento,
@@ -1546,6 +1547,8 @@ export async function receberParcela(prevState: any, formData: FormData) {
       parcelas: 1,
       obs: `Ref. Venda #${venda_id} - Parc. ${parcelaAtual.numero_parcela} (Principal: ${principalAbatido.toFixed(2)} + Juros: ${valor_juros.toFixed(2)}) - Cliente: ${parcelaAtual.customers?.full_name}`
     })
+
+    if (errorPagto) throw new Error(`Erro ao registrar pagamento: ${errorPagto.message}`)
 
     // Baixa a parcela
     await (supabaseAdmin.from('financiamento_parcelas') as any).update({

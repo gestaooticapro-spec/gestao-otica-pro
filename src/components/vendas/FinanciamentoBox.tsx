@@ -92,7 +92,7 @@ function RecebimentoModal({
 }) {
     const [valorPagoStr, setValorPagoStr] = useState(formatCurrency(parcela.valor_parcela))
     const [forma, setForma] = useState('Dinheiro')
-    const [dataPagto, setDataPagto] = useState(getFirstDueMonth())
+    const [dataPagto, setDataPagto] = useState(getToday())
     const [estrategia, setEstrategia] = useState<'criar_pendencia' | 'somar_proxima'>('criar_pendencia')
     const [isAuthOpen, setIsAuthOpen] = useState(false)
     const [dadosParaEnviar, setDadosParaEnviar] = useState<any>(null)
@@ -107,7 +107,7 @@ function RecebimentoModal({
         setDadosParaEnviar({
             parcela_id: parcela.id,
             valor_original: valorOriginal,
-            valor_pago: valorPago,
+            valor_pago_total: valorPago,
             forma_pagamento: forma,
             data_pagamento: dataPagto,
             estrategia: isParcial ? estrategia : 'quitacao_total'
