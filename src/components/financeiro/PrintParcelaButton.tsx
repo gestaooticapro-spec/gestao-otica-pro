@@ -9,11 +9,11 @@ import { getDadosReciboParcela } from '@/lib/actions/parcela-print.actions'
 const COORDS = {
   NOME: { x: 144, y: 56 },
   VALOR_NUM: { x: 185, y: 66 },
-  VALOR_REPETIDO: { x: 185, y: 90 }, 
-  DATA_PAGTO: { x: 246, y: 65 },     
+  VALOR_REPETIDO: { x: 185, y: 90 },
+  DATA_PAGTO: { x: 246, y: 65 },
   NUM_PARCELA: { x: 223, y: 45 },
   VENCIMENTO: { x: 267, y: 45 },
-  CHECK_PRESTACAO: { x: 210, y: 62 }, 
+  CHECK_PRESTACAO: { x: 210, y: 62 },
   REIMPRESSAO: { x: 144, y: 50 }
 }
 
@@ -28,9 +28,9 @@ export function PrintParcelaButton({ parcelaId, variant = 'icon' }: PrintParcela
   const handlePrint = async () => {
     try {
       setLoading(true)
-      
+
       const { success, data, error } = await getDadosReciboParcela(parcelaId)
-      
+
       if (!success || !data) {
         alert('Erro ao buscar dados: ' + error)
         return
@@ -58,14 +58,14 @@ export function PrintParcelaButton({ parcelaId, variant = 'icon' }: PrintParcela
       // Criamos essa função para não precisar repetir o código 2 vezes
       const desenharPagina = () => {
         if (data.is_reimpressao) {
-          doc.text('*** 2ª VIA ***', COORDS.REIMPRESSAO.x, COORDS.REIMPRESSAO.y)
+          doc.text('*** REIMPRESSÃO ***', COORDS.REIMPRESSAO.x, COORDS.REIMPRESSAO.y)
         }
 
         doc.text(String(data.num_parcela), COORDS.NUM_PARCELA.x, COORDS.NUM_PARCELA.y)
         doc.text(vencimentoTexto, COORDS.VENCIMENTO.x, COORDS.VENCIMENTO.y)
         doc.text((data.nome_cliente || '').substring(0, 45).toUpperCase(), COORDS.NOME.x, COORDS.NOME.y)
         doc.text('X', COORDS.CHECK_PRESTACAO.x, COORDS.CHECK_PRESTACAO.y)
-        
+
         // Valores sem R$
         doc.text(valorFormatado, COORDS.VALOR_NUM.x, COORDS.VALOR_NUM.y)
         doc.text(valorFormatado, COORDS.VALOR_REPETIDO.x, COORDS.VALOR_REPETIDO.y)
@@ -76,10 +76,10 @@ export function PrintParcelaButton({ parcelaId, variant = 'icon' }: PrintParcela
       }
 
       // --- GERAÇÃO DAS 2 VIAS ---
-      
+
       // 1. Desenha a primeira via
       desenharPagina()
-      
+
       // 2. Adiciona nova página e desenha a segunda via
       doc.addPage()
       desenharPagina()
@@ -111,14 +111,14 @@ export function PrintParcelaButton({ parcelaId, variant = 'icon' }: PrintParcela
 
   if (variant === 'full') {
     return (
-        <button
-            onClick={handlePrint}
-            disabled={loading}
-            className="w-full py-4 bg-slate-800 text-white font-bold rounded-xl shadow-lg hover:bg-slate-700 transition-all flex items-center justify-center gap-3"
-        >
-            {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Printer className="h-6 w-6" />}
-            IMPRIMIR RECIBO
-        </button>
+      <button
+        onClick={handlePrint}
+        disabled={loading}
+        className="w-full py-4 bg-slate-800 text-white font-bold rounded-xl shadow-lg hover:bg-slate-700 transition-all flex items-center justify-center gap-3"
+      >
+        {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Printer className="h-6 w-6" />}
+        IMPRIMIR RECIBO
+      </button>
     )
   }
 

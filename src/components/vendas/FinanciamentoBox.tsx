@@ -54,11 +54,16 @@ const formatDate = (dateStr: string) => {
 }
 const getToday = () => new Date().toISOString().split('T')[0]
 
-// Sugere data 30 dias no futuro (próximo mês)
+// Sugere data: mesmo dia do próximo mês
 const getFirstDueMonth = () => {
     const today = new Date();
     const nextMonth = new Date(today);
-    nextMonth.setDate(today.getDate() + 30);
+    nextMonth.setMonth(today.getMonth() + 1);
+
+    if (nextMonth.getMonth() !== (today.getMonth() + 1) % 12) {
+        nextMonth.setDate(0);
+    }
+
     return nextMonth.toISOString().split('T')[0];
 }
 
@@ -503,7 +508,7 @@ export default function FinanciamentoBox({
                                     </div>
                                     <div>
                                         <label className={isModal ? 'text-[10px] font-bold text-gray-500 mb-0.5' : labelStyle}>1º Vencimento</label>
-                                        <input type="date" value={vencimentoPrimeira} onChange={e => setVencimentoPrimeira(e.target.value)} className={`${inputStyle} text-[10px]`} />
+                                        <input type="date" value={vencimentoPrimeira} onChange={e => { setVencimentoPrimeira(e.target.value); setParcelasGrid([]); }} className={`${inputStyle} text-[10px]`} />
                                     </div>
                                 </div>
 

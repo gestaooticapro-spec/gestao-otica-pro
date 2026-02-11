@@ -88,8 +88,6 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
     // Lógica de Reimpressão ou 2ª Via
     if (isReimpressao) {
       doc.text('*** REIMPRESSÃO ***', REIMPRESSAO_X, REIMPRESSAO_Y)
-    } else if (isSegundaVia) {
-      doc.text('*** 2ª VIA ***', REIMPRESSAO_X, REIMPRESSAO_Y)
     }
 
     // 1. NOME
