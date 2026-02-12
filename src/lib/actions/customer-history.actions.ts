@@ -14,6 +14,15 @@ export interface CustomerSearchResult {
     fone: string | null
 }
 
+export interface ParcelaDetail {
+    numeroParcela: number
+    dataVencimento: string
+    valor: number
+    dataPagamento: string | null
+    valorPago: number
+    status: string
+}
+
 export interface FinancialSummary {
     totais: {
         parcelasPagas: number
@@ -38,6 +47,7 @@ export interface FinancialSummary {
         parcelasPagas: number
         parcelasPendentes: number
         valorParcela: number
+        parcelas: ParcelaDetail[]
     }[]
 }
 
@@ -109,26 +119,9 @@ export async function getCustomerFinancialSummary(
 ): Promise<FinancialSummary> {
     const supabaseAdmin = createAdminClient()
 
-    // Busca todos os financiamentos do cliente com as parcelas
     const { data: financiamentos, error } = await (supabaseAdmin
         .from('financiamento_loja') as any)
-        .select(`
-            id,
-            venda_id,
-            created_at,
-            valor_entrada,
-            valor_financiado,
-            num_parcelas,
-            valor_parcela,
-            financiamento_parcelas (
-                id,
-                numero_parcela,
-                valor_parcela,
-                data_vencimento,
-                status
-            )
-        `)
-        .eq('store_id', storeId)
+        .select(`*, financiamento_parcelas (*)`)
         .eq('customer_id', customerId)
         .order('created_at', { ascending: false })
 
@@ -148,7 +141,6 @@ export async function getCustomerFinancialSummary(
         }
     }
 
-    // Calcula totais
     let parcelasPagas = 0
     let parcelasPendentes = 0
     let valorPago = 0
@@ -157,7 +149,8 @@ export async function getCustomerFinancialSummary(
     let proximoVencimento: FinancialSummary['proximoVencimento'] = null
 
     const financiamentosFormatados = (financiamentos || []).map((f: any) => {
-        const parcelas = f.financiamento_parcelas || []
+        const parcelas = (f.financiamento_parcelas || [])
+            .sort((a: any, b: any) => a.numero_parcela - b.numero_parcela)
         const pagas = parcelas.filter((p: any) => p.status === 'Pago')
         const pendentes = parcelas.filter((p: any) => p.status !== 'Pago')
 
@@ -165,9 +158,8 @@ export async function getCustomerFinancialSummary(
         parcelasPendentes += pendentes.length
         valorPago += pagas.reduce((sum: number, p: any) => sum + (p.valor_parcela || 0), 0)
         valorRestante += pendentes.reduce((sum: number, p: any) => sum + (p.valor_parcela || 0), 0)
-        valorTotalFinanciado += f.valor_financiado || 0
+        valorTotalFinanciado += f.valor_total_financiado || 0
 
-        // Encontra o próximo vencimento (pendentes ordenadas por data)
         const proximaPendente = pendentes
             .filter((p: any) => p.data_vencimento)
             .sort((a: any, b: any) => new Date(a.data_vencimento).getTime() - new Date(b.data_vencimento).getTime())[0]
@@ -180,16 +172,31 @@ export async function getCustomerFinancialSummary(
             }
         }
 
+        const valorParcelaMedia = parcelas.length > 0
+            ? parcelas[0].valor_parcela
+            : (f.valor_total_financiado / (f.quantidade_parcelas || 1))
+
+        // Mapeia parcelas individuais para exibição
+        const parcelasDetail: ParcelaDetail[] = parcelas.map((p: any) => ({
+            numeroParcela: p.numero_parcela,
+            dataVencimento: p.data_vencimento,
+            valor: p.valor_parcela || 0,
+            dataPagamento: p.data_pagamento || null,
+            valorPago: p.valor_pago || 0,
+            status: p.status || 'Pendente'
+        }))
+
         return {
             id: f.id,
             vendaId: f.venda_id,
             dataVenda: f.created_at,
-            entrada: f.valor_entrada || 0,
-            valorFinanciado: f.valor_financiado || 0,
-            totalParcelas: f.num_parcelas || 0,
+            entrada: 0,
+            valorFinanciado: f.valor_total_financiado || 0,
+            totalParcelas: f.quantidade_parcelas || 0,
             parcelasPagas: pagas.length,
             parcelasPendentes: pendentes.length,
-            valorParcela: f.valor_parcela || 0
+            valorParcela: valorParcelaMedia,
+            parcelas: parcelasDetail
         }
     })
 

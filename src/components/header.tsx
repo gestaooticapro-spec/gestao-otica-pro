@@ -68,7 +68,7 @@ export default function Header() {
   }
 
   return (
-    <header className="fixed top-0 left-0 w-full z-30 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-b border-white/10 font-sans shadow-lg shadow-black/20">
+    <header className="fixed top-0 left-0 w-full z-30 bg-slate-950/95 backdrop-blur-md border-b border-white/10 font-sans shadow-lg shadow-black/40">
       <div className="mx-auto flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8 relative">
 
         {/* Esquerda: Marca do Sistema */}

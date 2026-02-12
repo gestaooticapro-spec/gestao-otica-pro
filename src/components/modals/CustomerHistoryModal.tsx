@@ -9,7 +9,8 @@ import {
     getCustomerPrescriptionSummary,
     type CustomerSearchResult,
     type FinancialSummary,
-    type PrescriptionSummary
+    type PrescriptionSummary,
+    type ParcelaDetail
 } from '@/lib/actions/customer-history.actions'
 
 // =============================================
@@ -122,22 +123,32 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
     const getFinancialWhatsAppMessage = (): string => {
         if (!financialData || !selectedCustomer) return ''
 
-        const { totais, proximoVencimento } = financialData
+        const { totais, financiamentos } = financialData
 
         if (totais.totalParcelas === 0) {
             return `Olá! Não encontramos parcelas ativas em seu nome.`
         }
 
-        let msg = `Olá! Você já pagou ${totais.parcelasPagas} de ${totais.totalParcelas} parcelas (${formatCurrency(totais.valorPago)}).`
+        let msg = `Olá ${selectedCustomer.nome.split(' ')[0]}!\n`
+        msg += `Resumo: ${totais.parcelasPagas}/${totais.totalParcelas} parcelas pagas (${formatCurrency(totais.valorPago)}).`
 
         if (totais.parcelasPendentes > 0) {
-            const valorMedioParcela = totais.valorRestante / totais.parcelasPendentes
-            msg += ` Restam ${totais.parcelasPendentes} parcelas de ${formatCurrency(valorMedioParcela)}.`
+            msg += ` Restam ${totais.parcelasPendentes} (${formatCurrency(totais.valorRestante)}).`
         }
 
-        if (proximoVencimento?.data) {
-            msg += ` Próximo venc.: ${formatDate(proximoVencimento.data)}.`
-        }
+        // Detalhe por carnê
+        financiamentos.forEach((f) => {
+            msg += `\n\n📋 *Carnê Venda #${f.vendaId}* (${formatDate(f.dataVenda)})`
+            msg += `\nNº | Venc. | Valor | Pgto | Pago`
+            f.parcelas.forEach((p) => {
+                const venc = formatDate(p.dataVencimento)
+                const valor = formatCurrency(p.valor)
+                const dtPgto = p.dataPagamento ? formatDate(p.dataPagamento) : '-'
+                const vlrPago = p.status === 'Pago' ? formatCurrency(p.valorPago || p.valor) : '-'
+                const emoji = p.status === 'Pago' ? '✅' : '⏳'
+                msg += `\n${emoji} ${p.numeroParcela} | ${venc} | ${valor} | ${dtPgto} | ${vlrPago}`
+            })
+        })
 
         return msg
     }
@@ -338,7 +349,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                                                             <p className="text-2xl font-black text-green-600">
                                                                 {financialData.totais.parcelasPagas}
                                                             </p>
-                                                            <p className="text-xs text-gray-500">Parcelas Pagas</p>
+                                                            <p className="text-xs text-gray-500">Pagas</p>
                                                         </div>
                                                         <div>
                                                             <p className="text-2xl font-black text-amber-600">
@@ -356,13 +367,13 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
 
                                                     <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 gap-4 text-sm">
                                                         <div className="flex justify-between">
-                                                            <span className="text-gray-500">Valor Pago:</span>
+                                                            <span className="text-gray-500">Pago:</span>
                                                             <span className="font-bold text-green-600">
                                                                 {formatCurrency(financialData.totais.valorPago)}
                                                             </span>
                                                         </div>
                                                         <div className="flex justify-between">
-                                                            <span className="text-gray-500">Valor Restante:</span>
+                                                            <span className="text-gray-500">Restante:</span>
                                                             <span className="font-bold text-amber-600">
                                                                 {formatCurrency(financialData.totais.valorRestante)}
                                                             </span>
@@ -372,42 +383,93 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
 
                                                 {/* Próximo Vencimento */}
                                                 {financialData.proximoVencimento && (
-                                                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-4 flex items-center gap-4">
-                                                        <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center">
-                                                            <Calendar className="h-6 w-6 text-blue-600" />
+                                                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-3 flex items-center gap-4">
+                                                        <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                                                            <Calendar className="h-5 w-5 text-blue-600" />
                                                         </div>
                                                         <div>
                                                             <p className="text-xs font-bold text-blue-600 uppercase">Próximo Vencimento</p>
-                                                            <p className="text-lg font-black text-gray-800">
+                                                            <p className="text-base font-black text-gray-800">
                                                                 {formatDate(financialData.proximoVencimento.data!)}
-                                                            </p>
-                                                            <p className="text-xs text-gray-500">
-                                                                Parcela {financialData.proximoVencimento.numeroParcela} •{' '}
-                                                                {formatCurrency(financialData.proximoVencimento.valor)}
+                                                                <span className="text-sm font-normal text-gray-500 ml-2">
+                                                                    Parcela {financialData.proximoVencimento.numeroParcela} • {formatCurrency(financialData.proximoVencimento.valor)}
+                                                                </span>
                                                             </p>
                                                         </div>
                                                     </div>
                                                 )}
 
-                                                {/* Lista de Financiamentos */}
-                                                {financialData.financiamentos.length > 1 && (
-                                                    <div className="space-y-2">
-                                                        <h4 className="text-xs font-bold text-gray-400 uppercase">Detalhamento por Compra</h4>
-                                                        {financialData.financiamentos.map((f) => (
-                                                            <div key={f.id} className="bg-white rounded-lg border border-gray-200 p-3 flex items-center gap-3">
-                                                                <CreditCard className="h-5 w-5 text-gray-400" />
-                                                                <div className="flex-1 min-w-0">
-                                                                    <p className="text-sm font-semibold text-gray-700">
-                                                                        Venda #{f.vendaId} - {formatDate(f.dataVenda)}
-                                                                    </p>
-                                                                    <p className="text-xs text-gray-500">
-                                                                        {f.parcelasPagas}/{f.totalParcelas} pagas • Parcela: {formatCurrency(f.valorParcela)}
-                                                                    </p>
-                                                                </div>
-                                                            </div>
-                                                        ))}
+                                                {/* Tabela de Parcelas por Financiamento */}
+                                                {financialData.financiamentos.map((f) => (
+                                                    <div key={f.id} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                                                        {/* Header do Carnê */}
+                                                        <div className="bg-gray-50 border-b border-gray-200 px-4 py-2 flex items-center gap-2">
+                                                            <CreditCard className="h-4 w-4 text-gray-400" />
+                                                            <span className="text-xs font-bold text-gray-600">
+                                                                Carnê Venda #{f.vendaId}
+                                                            </span>
+                                                            <span className="text-xs text-gray-400">•</span>
+                                                            <span className="text-xs text-gray-500">{formatDate(f.dataVenda)}</span>
+                                                            <span className="text-xs text-gray-400 ml-auto">
+                                                                {f.parcelasPagas}/{f.totalParcelas} pagas
+                                                            </span>
+                                                        </div>
+
+                                                        {/* Tabela */}
+                                                        <div className="overflow-x-auto">
+                                                            <table className="w-full text-xs">
+                                                                <thead>
+                                                                    <tr className="border-b border-gray-100 text-gray-400 uppercase">
+                                                                        <th className="px-3 py-2 text-left font-bold">Nº</th>
+                                                                        <th className="px-3 py-2 text-left font-bold">Dt Venc</th>
+                                                                        <th className="px-3 py-2 text-right font-bold">Valor</th>
+                                                                        <th className="px-3 py-2 text-left font-bold">Dt Pgto</th>
+                                                                        <th className="px-3 py-2 text-right font-bold">Vlr Pago</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {f.parcelas.map((p) => {
+                                                                        const isPago = p.status === 'Pago'
+                                                                        const isAtrasado = !isPago && new Date(p.dataVencimento) < new Date()
+                                                                        return (
+                                                                            <tr
+                                                                                key={p.numeroParcela}
+                                                                                className={`border-b border-gray-50 ${isPago ? 'bg-green-50/50' : isAtrasado ? 'bg-red-50/50' : ''
+                                                                                    }`}
+                                                                            >
+                                                                                <td className="px-3 py-1.5 font-medium text-gray-600">
+                                                                                    {p.numeroParcela}
+                                                                                </td>
+                                                                                <td className="px-3 py-1.5 text-gray-600">
+                                                                                    {formatDate(p.dataVencimento)}
+                                                                                </td>
+                                                                                <td className="px-3 py-1.5 text-right font-medium text-gray-700">
+                                                                                    {formatCurrency(p.valor)}
+                                                                                </td>
+                                                                                <td className="px-3 py-1.5 text-gray-500">
+                                                                                    {p.dataPagamento ? formatDate(p.dataPagamento) : (
+                                                                                        <span className={isAtrasado ? 'text-red-500 font-semibold' : 'text-gray-300'}>
+                                                                                            {isAtrasado ? 'Atrasado' : '-'}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </td>
+                                                                                <td className="px-3 py-1.5 text-right">
+                                                                                    {isPago ? (
+                                                                                        <span className="font-medium text-green-600">
+                                                                                            {formatCurrency(p.valorPago || p.valor)}
+                                                                                        </span>
+                                                                                    ) : (
+                                                                                        <span className="text-gray-300">-</span>
+                                                                                    )}
+                                                                                </td>
+                                                                            </tr>
+                                                                        )
+                                                                    })}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
                                                     </div>
-                                                )}
+                                                ))}
                                             </>
                                         ) : (
                                             <div className="text-center py-10 text-gray-400">

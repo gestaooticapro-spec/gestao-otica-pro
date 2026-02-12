@@ -64,7 +64,7 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
         if (os.status === 'Em Aberto') {
             onClose()
             if (os.venda_id) {
-                router.push(`/dashboard/loja/${storeId}/vendas/${os.venda_id}`)
+                router.push(`/dashboard/loja/${storeId}/vendas/${os.venda_id}/experimental`)
             } else {
                 router.push(`/dashboard/loja/${storeId}/vendas`)
             }
@@ -119,7 +119,7 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
                             <input
                                 autoFocus
                                 type="text"
-                                placeholder="Nº OS, Nome Cliente ou Dependente..."
+                                placeholder="Nº OS, Protocolo, Nome Cliente ou Dependente..."
                                 className="flex-1 border-2 border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-700 focus:border-amber-500 focus:outline-none"
                                 value={query}
                                 onChange={e => setQuery(e.target.value)}
@@ -143,7 +143,10 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
                                     )}
 
                                     <div className="flex justify-between items-center mb-1">
-                                        <span className="font-black text-slate-700 text-lg group-hover:text-amber-800">OS #{os.id}</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-black text-slate-700 text-lg group-hover:text-amber-800">OS #{os.id}</span>
+                                            {os.protocolo_fisico && <span className="text-[9px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded font-mono font-bold">P: {os.protocolo_fisico}</span>}
+                                        </div>
                                         <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded flex items-center gap-1 ${os.status === 'Fechada' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
                                             }`}>
                                             {os.status === 'Em Aberto' && <AlertCircle className="h-3 w-3" />}

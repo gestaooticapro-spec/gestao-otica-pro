@@ -10,6 +10,7 @@ export type LabOSResult = {
     created_at: string
     customer_name: string
     dependente_name?: string | null
+    protocolo_fisico?: string | null
     status: string
     // Campos de Rastreio
     dt_pedido_em: string | null
@@ -34,7 +35,7 @@ export async function getEmployees(storeId: number): Promise<EmployeeSimple[]> {
         .eq('store_id', storeId)
         .eq('is_active', true)
         .order('full_name') as any
-    
+
     return data?.map((e: any) => ({
         id: e.id,
         name: e.full_name
@@ -45,24 +46,43 @@ export async function getEmployees(storeId: number): Promise<EmployeeSimple[]> {
 export async function searchOSForLab(storeId: number, query: string): Promise<LabOSResult[]> {
     const supabase = createAdminClient()
     const cleanQuery = query.trim()
-    
+
     let results: any[] = []
 
-    // ESTRATÉGIA A: BUSCA EXATA PELO ID DA OS
+    // ESTRATÉGIA A: BUSCA EXATA PELO ID DA OS OU PROTOCOLO (NUMÉRICO)
     if (!isNaN(Number(cleanQuery))) {
         const { data: byId } = await supabase
             .from('service_orders')
             .select(`
-                id, venda_id, created_at, 
+                id, venda_id, created_at, protocolo_fisico,
                 dt_pedido_em, dt_lente_chegou, dt_montado_em, dt_entregue_em, lab_nome, lab_pedido_por_id,
                 customers ( full_name ),
                 dependentes ( full_name ),
                 vendas ( status )
             `)
             .eq('store_id', storeId)
-            .eq('id', cleanQuery) as any
-        
+            .or(`id.eq.${cleanQuery},protocolo_fisico.eq.${cleanQuery}`) as any
+
         if (byId) results = [...results, ...byId]
+    }
+
+    // ESTRATÉGIA A2: BUSCA POR PROTOCOLO (TEXTO - ilike)
+    {
+        const { data: byProtocolo } = await supabase
+            .from('service_orders')
+            .select(`
+                id, venda_id, created_at, protocolo_fisico,
+                dt_pedido_em, dt_lente_chegou, dt_montado_em, dt_entregue_em, lab_nome, lab_pedido_por_id,
+                customers ( full_name ),
+                dependentes ( full_name ),
+                vendas ( status )
+            `)
+            .eq('store_id', storeId)
+            .ilike('protocolo_fisico', `%${cleanQuery}%`)
+            .order('created_at', { ascending: false })
+            .limit(5) as any
+
+        if (byProtocolo) results = [...results, ...byProtocolo]
     }
 
     // ESTRATÉGIA B: BUSCA POR NOME DO CLIENTE
@@ -114,6 +134,7 @@ export async function searchOSForLab(storeId: number, query: string): Promise<La
         created_at: os.created_at,
         customer_name: os.customers?.full_name || 'Consumidor',
         dependente_name: os.dependentes?.full_name || null,
+        protocolo_fisico: os.protocolo_fisico || null,
         status: os.vendas?.status || 'Indefinido',
         dt_pedido_em: os.dt_pedido_em,
         dt_lente_chegou: os.dt_lente_chegou,
@@ -127,7 +148,7 @@ export async function searchOSForLab(storeId: number, query: string): Promise<La
 // 2. SALVAR ATUALIZAÇÃO DO LABORATÓRIO
 export async function updateLabTracking(osId: number, storeId: number, formData: FormData) {
     const supabase = createAdminClient()
-    
+
     const updates = {
         dt_pedido_em: formData.get('dt_pedido_em')?.toString() || null,
         lab_nome: formData.get('lab_nome')?.toString() || null,
