@@ -13,67 +13,67 @@ import { ManagerDashboard, AdminDashboard } from '@/components/dashboard/Dashboa
 import ActionMenuDashboard from '@/components/dashboard/ActionMenuDashboard'
 
 export default async function StoreHomePage({ params }: { params: { storeId: string } }) {
-  const storeId = parseInt(params.storeId, 10)
-  if (isNaN(storeId)) return notFound()
+    const storeId = parseInt(params.storeId, 10)
+    if (isNaN(storeId)) return notFound()
 
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return redirect('/login')
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return redirect('/login')
 
-  const profile = await getProfileByAdmin(user.id) as any
-  if (!profile) return redirect('/login')
+    const profile = await getProfileByAdmin(user.id) as any
+    if (!profile) return redirect('/login')
 
-  // Busca nome da loja
-  const supabaseAdmin = createAdminClient()
-  const { data: store } = await (supabaseAdmin.from('stores') as any)
-    .select('name')
-    .eq('id', storeId)
-    .single()
-    
-  const storeName = store?.name || `Loja ${storeId}`
+    // Busca nome da loja
+    const supabaseAdmin = createAdminClient()
+    const { data: store } = await (supabaseAdmin.from('stores') as any)
+        .select('name')
+        .eq('id', storeId)
+        .single()
 
-  // 1. ADMIN (Dono da Rede)
-  if (profile.role === 'admin') {
-      const kpis = await getAdminKPIs()
-      return (
-          <div className="p-6 max-w-7xl mx-auto">
-              <h1 className="text-2xl font-bold text-slate-800 mb-6">Visão Geral da Rede (Admin)</h1>
-              <AdminDashboard data={kpis} />
-          </div>
-      )
-  }
+    const storeName = store?.name || `Loja ${storeId}`
 
-  // 2. MANAGER (Gerente)
-  if (profile.role === 'manager') {
-      const kpis = await getManagerKPIs(storeId)
-      return (
-          <div className="p-6 max-w-7xl mx-auto">
-              <div className="flex justify-between items-center mb-6">
-                  <h1 className="text-2xl font-bold text-slate-800">Painel Gerencial</h1>
-                  <span className="text-sm font-medium text-slate-500 bg-white border border-slate-200 px-3 py-1 rounded-full shadow-sm">
-                      {storeName}
-                  </span>
-              </div>
-              <ManagerDashboard data={kpis} />
-          </div>
-      )
-  }
+    // 1. ADMIN (Dono da Rede)
+    if (profile.role === 'admin') {
+        const kpis = await getAdminKPIs()
+        return (
+            <div className="p-6 max-w-7xl mx-auto">
+                <h1 className="text-2xl font-black text-white mb-6 drop-shadow-md">Visão Geral da Rede (Admin)</h1>
+                <AdminDashboard data={kpis} />
+            </div>
+        )
+    }
 
-  // 3. OPERADOR / VENDEDOR (Dashboard Operacional)
-  // Busca em paralelo para ser rápido
-  const [alertas, aniversariantes, vencimentos] = await Promise.all([
-      getAlertasOperacionais(storeId),
-      getAniversariantes(storeId),
-      getVencimentosProximos(storeId) // <--- Busca nova
-  ])
+    // 2. MANAGER (Gerente)
+    if (profile.role === 'manager') {
+        const kpis = await getManagerKPIs(storeId)
+        return (
+            <div className="p-6 max-w-7xl mx-auto">
+                <div className="flex justify-between items-center mb-6">
+                    <h1 className="text-2xl font-black text-white drop-shadow-md">Painel Gerencial</h1>
+                    <span className="text-sm font-bold text-white/80 bg-white/10 border border-white/10 px-4 py-1.5 rounded-full shadow-lg backdrop-blur-md">
+                        {storeName}
+                    </span>
+                </div>
+                <ManagerDashboard data={kpis} />
+            </div>
+        )
+    }
 
-  return (
-      <ActionMenuDashboard 
-          storeId={storeId} 
-          storeName={storeName} // <--- Passa o nome da loja
-          alerts={alertas} 
-          birthdays={aniversariantes} 
-          vencimentos={vencimentos} // <--- Passa os vencimentos
-      />
-  )
+    // 3. OPERADOR / VENDEDOR (Dashboard Operacional)
+    // Busca em paralelo para ser rápido
+    const [alertas, aniversariantes, vencimentos] = await Promise.all([
+        getAlertasOperacionais(storeId),
+        getAniversariantes(storeId),
+        getVencimentosProximos(storeId) // <--- Busca nova
+    ])
+
+    return (
+        <ActionMenuDashboard
+            storeId={storeId}
+            storeName={storeName} // <--- Passa o nome da loja
+            alerts={alertas}
+            birthdays={aniversariantes}
+            vencimentos={vencimentos} // <--- Passa os vencimentos
+        />
+    )
 }

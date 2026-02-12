@@ -103,11 +103,7 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
   return (
     <div className="h-full overflow-hidden relative font-sans">
 
-      {/* BACKGROUND IGUAL AO LOGIN */}
-      <div className="absolute inset-0 z-0">
-        <div className="absolute inset-0 bg-[url('/login.jpg')] bg-cover bg-center" />
-        <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-[2px]" />
-      </div>
+
 
       <div className="relative z-10 h-full overflow-y-auto custom-scrollbar">
         <div className="max-w-7xl mx-auto w-full p-4 lg:p-8 space-y-8">
@@ -118,10 +114,10 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
               <h2 className="text-3xl font-black text-white tracking-tight drop-shadow-md">
                 {storeName}
               </h2>
-              <p className="text-slate-400 text-sm font-medium uppercase tracking-widest flex items-center gap-2">
+              <div className="text-slate-400 text-sm font-medium uppercase tracking-widest flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)] animate-pulse" />
                 Operação de Loja
-              </p>
+              </div>
             </div>
           </div>
 

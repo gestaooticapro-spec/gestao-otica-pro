@@ -14,7 +14,8 @@ export async function getGavetaItems(storeId: number) {
           id,
           full_name,
           fone_movel, 
-          mobile_phone 
+          fone_movel, 
+          phone 
         ),
         vendas (
           id,

@@ -8,6 +8,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import CashGuard from '@/components/financeiro/CashGuard';
 import { ModalsProvider } from '@/lib/contexts/ModalsContext';
 import { OperatorLayout } from '@/components/operator-menu';
+import DashboardLayoutWrapper from '@/components/dashboard/DashboardLayoutWrapper';
 
 type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor' | 'tecnico';
 
@@ -70,25 +71,33 @@ export default async function StoreLayout({
     );
   }
 
+
+
   // Layout tradicional com sidebar para outros roles
   return (
     <ModalsProvider storeId={storeIdParam}>
-      <div className="flex w-full h-full overflow-hidden bg-gray-100">
+      <div className="flex w-full h-full overflow-hidden"> {/* REMOVED bg-gray-100 */}
 
-        <CashGuard storeId={storeIdParam} />
+        {/* WRAPPER ENVOLVE SIDEBAR E MAIN PARA O BACKGROUND */}
+        <DashboardLayoutWrapper>
 
-        <div className="flex-shrink-0 h-full">
-          <SideNav
-            userRole={userRole}
-            storeId={storeIdParam}
-            storeName={storeName}
-            logoUrl={logoUrl}
-          />
-        </div>
+          <CashGuard storeId={storeIdParam} />
 
-        <main className="flex-1 overflow-y-auto bg-gray-100 relative">
-          {children}
-        </main>
+          <div className="flex-shrink-0 h-full relative z-20"> {/* z-20 para SideNav ficar acima do bg */}
+            <SideNav
+              userRole={userRole}
+              storeId={storeIdParam}
+              storeName={storeName}
+              logoUrl={logoUrl}
+            />
+          </div>
+
+          <main className="flex-1 overflow-y-auto relative z-10 w-full"> {/* REMOVED bg-gray-100 */}
+            {children}
+          </main>
+
+        </DashboardLayoutWrapper>
+
       </div>
     </ModalsProvider>
   );

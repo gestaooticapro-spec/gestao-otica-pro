@@ -62,6 +62,8 @@ interface RadarData {
 const formatDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 const formatMoney = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
+
 export default function OperatorMenuLojaVazia({
     storeId,
     storeName = 'Ótica',
@@ -69,6 +71,7 @@ export default function OperatorMenuLojaVazia({
     onNavigate
 }: OperatorMenuLojaVaziaProps) {
     const { openLabModal } = useModals();
+    const { preference } = useBackgroundPreference();
 
     const [radar, setRadar] = useState<RadarData>({
         vendasEmAberto: 0,
@@ -180,9 +183,14 @@ export default function OperatorMenuLojaVazia({
     const [openLaboratorio, setOpenLaboratorio] = useState(false);
 
     return (
-        <div className="min-h-screen relative flex flex-col items-center p-6 overflow-hidden bg-slate-950 font-sans">
+        <div className="min-h-screen relative flex flex-col items-center p-6 overflow-hidden bg-slate-950 font-sans transition-colors duration-500">
+            {/* Toggle de Fundo */}
+            <div className="absolute top-6 right-6 z-50">
+                <BackgroundToggle />
+            </div>
+
             {/* Background Image */}
-            <div className="absolute inset-0 z-0">
+            <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
                 <div className="absolute inset-0 bg-[url('/lojavazia.png')] bg-cover bg-center" />
                 <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
             </div>
@@ -331,8 +339,8 @@ export default function OperatorMenuLojaVazia({
 
                         {/* Alerta de Vendas */}
                         {radar.vendasEmAberto > 0 && (
-                            <div
-                                onClick={() => onNavigate(`/dashboard/loja/${storeId}/vendas?mode=pendencias`)}
+                            <Link
+                                href={`/dashboard/loja/${storeId}/vendas?mode=pendencias`}
                                 className="group bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/40 hover:border-amber-500/60 rounded-2xl p-5 flex items-center justify-between cursor-pointer shadow-lg backdrop-blur-md animate-in slide-in-from-right-5 duration-700 transition-all hover:scale-[1.02]"
                             >
                                 <div className="flex items-center gap-4">
@@ -347,7 +355,7 @@ export default function OperatorMenuLojaVazia({
                                 <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-amber-500 group-hover:text-white transition-all">
                                     <ChevronRight className="w-5 h-5 text-amber-200 group-hover:text-white" />
                                 </div>
-                            </div>
+                            </Link>
 
                         )}
 

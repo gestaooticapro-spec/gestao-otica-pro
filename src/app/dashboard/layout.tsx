@@ -35,13 +35,13 @@ export default async function DashboardLayout({
 
   // 4. Para outros roles, renderiza com header normal
   return (
-    <>
+    <div className="min-h-screen bg-slate-950">
       <Header />
 
       {/* Container Principal: Header é compensado por pt-16 */}
       <div className="flex flex-1 pt-16">
         {children}
       </div>
-    </>
+    </div>
   );
 }

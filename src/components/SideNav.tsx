@@ -206,19 +206,16 @@ export default function SideNav({ userRole, storeId, storeName, logoUrl }: SideN
         if (!group || !group.subItems) return null;
 
         return (
-            <div className={`bg-slate-50 border-r border-gray-200 h-full flex flex-col transition-all duration-300 ease-in-out shadow-xl z-20 relative ${isSubCollapsed ? 'w-20' : 'w-64'}`}>
-                <div className="h-20 border-b border-gray-200 flex items-center justify-between px-4 bg-white shrink-0">
+            <div className={`bg-black/60 backdrop-blur-xl border-r border-white/5 h-full flex flex-col transition-all duration-300 ease-in-out shadow-2xl z-20 relative ${isSubCollapsed ? 'w-20' : 'w-64'}`}>
+                <div className="h-20 border-b border-white/5 flex items-center justify-between px-4 bg-transparent shrink-0">
                     {!isSubCollapsed && (
-                        <h3 className="font-black text-slate-700 uppercase tracking-widest text-xs truncate animate-in fade-in">
+                        <h3 className="font-black text-slate-300 uppercase tracking-widest text-xs truncate animate-in fade-in drop-shadow-sm">
                             {group.label}
                         </h3>
                     )}
                     <div className="flex gap-1 ml-auto">
-                        <button onClick={() => setIsSubCollapsed(!isSubCollapsed)} className="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors">
-                            {isSubCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-                        </button>
                         {!isSubCollapsed && (
-                            <button onClick={() => setActivePanel(null)} className="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-500 transition-colors">
+                            <button onClick={() => setActivePanel(null)} className="p-1.5 hover:bg-red-500/20 rounded-lg text-slate-500 hover:text-red-400 transition-colors">
                                 <X className="h-4 w-4" />
                             </button>
                         )}
@@ -227,14 +224,14 @@ export default function SideNav({ userRole, storeId, storeName, logoUrl }: SideN
 
                 <div className="flex-1 overflow-y-auto p-3 space-y-1 custom-scrollbar">
                     {group.subItems.filter(sub => sub.allowedRoles.includes(userRole)).map(sub => {
-                        let activeClass = 'bg-slate-200 text-slate-900 font-bold';
-                        let iconActiveColor = 'text-slate-700';
+                        let activeClass = 'bg-white/10 text-white font-bold border border-white/10 shadow-lg';
+                        let iconActiveColor = 'text-white drop-shadow-[0_0_5px_rgba(255,255,255,0.8)]';
 
-                        if (group.id === 'atendimento') { activeClass = 'bg-blue-100 text-blue-800 font-bold'; iconActiveColor = 'text-blue-600'; }
-                        if (group.id === 'loja_vazia') { activeClass = 'bg-amber-100 text-amber-800 font-bold'; iconActiveColor = 'text-amber-600'; }
-                        if (group.id === 'gerencia') { activeClass = 'bg-purple-100 text-purple-800 font-bold'; iconActiveColor = 'text-purple-600'; }
+                        if (group.id === 'atendimento') { activeClass = 'bg-blue-500/20 text-blue-200 font-bold border border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.1)]'; iconActiveColor = 'text-blue-300'; }
+                        if (group.id === 'loja_vazia') { activeClass = 'bg-amber-500/20 text-amber-200 font-bold border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.1)]'; iconActiveColor = 'text-amber-300'; }
+                        if (group.id === 'gerencia') { activeClass = 'bg-purple-500/20 text-purple-200 font-bold border border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.1)]'; iconActiveColor = 'text-purple-300'; }
 
-                        const baseClass = `flex items-center rounded-lg transition-all duration-200 group/item relative ${isSubCollapsed ? 'justify-center p-3 aspect-square' : 'gap-3 p-3 w-full text-left'}`;
+                        const baseClass = `flex items-center rounded-lg transition-all duration-200 group/item relative border border-transparent ${isSubCollapsed ? 'justify-center p-3 aspect-square' : 'gap-3 p-3 w-full text-left'}`;
 
                         // LÓGICA DE AÇÃO
                         const isAction = !!sub.action;
@@ -243,7 +240,7 @@ export default function SideNav({ userRole, storeId, storeName, logoUrl }: SideN
 
                         const content = (
                             <>
-                                <sub.icon className={`flex-shrink-0 transition-transform duration-200 ${isSubCollapsed ? 'h-6 w-6' : 'h-4 w-4'} ${isActive ? iconActiveColor : 'opacity-70 group-hover/item:opacity-100 group-hover/item:scale-110 text-slate-500'}`} />
+                                <sub.icon className={`flex-shrink-0 transition-transform duration-200 ${isSubCollapsed ? 'h-6 w-6' : 'h-4 w-4'} ${isActive ? iconActiveColor : 'opacity-60 group-hover/item:opacity-100 group-hover/item:scale-110 text-slate-400 group-hover/item:text-white'}`} />
                                 {!isSubCollapsed && <span className="text-sm truncate">{sub.label}</span>}
                                 {!isSubCollapsed && isActive && <ChevronRight className="h-3 w-3 ml-auto opacity-50" />}
                             </>
@@ -258,13 +255,13 @@ export default function SideNav({ userRole, storeId, storeName, logoUrl }: SideN
                                     if (sub.action === 'openEntregaModal') openEntregaModal();
                                     if (sub.action === 'openCustomerHistoryModal') openCustomerHistoryModal();
                                 }}
-                                className={`${baseClass} ${isActive ? activeClass : 'hover:bg-white hover:shadow-sm text-slate-600 hover:text-slate-900'}`}
+                                className={`${baseClass} ${isActive ? activeClass : 'hover:bg-white/5 hover:border-white/10 hover:shadow-md text-slate-400 hover:text-white'}`}
                                 title={isSubCollapsed ? sub.label : ''}
                             >
                                 {content}
                             </button>
                         ) : (
-                            <Link href={finalRoute} className={`${baseClass} ${isActive ? activeClass : 'hover:bg-white hover:shadow-sm text-slate-600 hover:text-slate-900'}`} title={isSubCollapsed ? sub.label : ''}>
+                            <Link href={finalRoute} className={`${baseClass} ${isActive ? activeClass : 'hover:bg-white/5 hover:border-white/10 hover:shadow-md text-slate-400 hover:text-white'}`} title={isSubCollapsed ? sub.label : ''}>
                                 {content}
                             </Link>
                         );
@@ -274,11 +271,19 @@ export default function SideNav({ userRole, storeId, storeName, logoUrl }: SideN
                                 {itemElement}
                                 {/* RENDERIZA A LINHA APENAS SE FOR SOLICITADO E O MENU ESTIVER ABERTO */}
                                 {sub.withSeparator && !isSubCollapsed && (
-                                    <div className="my-2 border-b border-gray-200 mx-2" />
+                                    <div className="my-2 border-b border-white/5 mx-2" />
                                 )}
                             </div>
                         );
                     })}
+                </div>
+
+                {/* Footer do Sub-Painel (Botão de Recolher) */}
+                <div className="mt-auto pt-4 pb-4 px-2 border-t border-white/10 w-full flex flex-col gap-2 bg-black/20">
+                    <button onClick={() => setIsSubCollapsed(!isSubCollapsed)} className={`flex items-center rounded-xl text-slate-400 hover:bg-white/5 hover:text-white border border-transparent hover:border-white/10 transition-all ${isSubCollapsed ? 'justify-center w-full py-3' : 'w-full px-4 py-3 gap-3'}`} title={isSubCollapsed ? "Expandir" : "Recolher"}>
+                        {isSubCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+                        {!isSubCollapsed && <span className="font-bold text-xs uppercase tracking-wider">Recolher</span>}
+                    </button>
                 </div>
             </div>
         );
@@ -289,71 +294,80 @@ export default function SideNav({ userRole, storeId, storeName, logoUrl }: SideN
         // Troquei 'h-full' por 'h-[calc(100vh-64px)]'
         // Isso força o menu a ter o tamanho exato da tela menos o cabeçalho (64px),
         // garantindo que os botões (Sair/Recolher) fiquem no rodapé mesmo sem mexer no Layout.
-        <div className="flex h-[calc(100vh-64px)] relative z-10">
-            <nav className={`bg-white border-r border-gray-200 h-full flex flex-col py-4 z-20 shadow-md relative transition-all duration-300 ease-in-out ${isMainCollapsed ? 'w-20 items-center' : 'w-64 px-4'}`}>
+        <div className="flex h-[calc(100vh-64px)] relative z-10 font-sans">
+            <nav className={`bg-black/40 backdrop-blur-xl border-r border-white/5 h-full flex flex-col py-4 z-20 shadow-2xl relative transition-all duration-300 ease-in-out ${isMainCollapsed ? 'w-20 items-center' : 'w-64 px-4'}`}>
                 <div className={`mb-8 flex items-center ${isMainCollapsed ? 'justify-center' : 'justify-between'}`}>
                     {logoUrl ? (
-                        <div className={`relative ${isMainCollapsed ? 'w-10 h-10' : 'w-12 h-12'} shrink-0`}>
+                        <div className={`relative ${isMainCollapsed ? 'w-10 h-10' : 'w-12 h-12'} shrink-0 ring-1 ring-white/10 rounded-xl overflow-hidden shadow-lg bg-black/20`}>
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                                 src={logoUrl}
                                 alt={storeName}
-                                className="w-full h-full object-contain rounded-md"
+                                className="w-full h-full object-contain p-1"
                             />
                         </div>
                     ) : (
-                        <div className="h-10 w-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl flex items-center justify-center text-white font-black text-xs shadow-lg cursor-default select-none shrink-0">PRO</div>
+                        <div className="h-10 w-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl flex items-center justify-center text-white font-black text-xs shadow-custom cursor-default select-none shrink-0 border border-white/10">PRO</div>
                     )}
                     {!isMainCollapsed && (
                         <div className="ml-3 overflow-hidden">
-                            <h2 className="text-sm font-bold text-slate-800 whitespace-nowrap">Gestão Ótica</h2>
-                            <p className="text-[10px] text-slate-400 font-medium uppercase truncate">{storeName}</p>
+                            <h2 className="text-sm font-bold text-white whitespace-nowrap drop-shadow-md">Gestão Ótica</h2>
+                            <p className="text-[10px] text-slate-400 font-medium uppercase truncate tracking-wide">{storeName}</p>
                         </div>
                     )}
                 </div>
 
                 <div className="flex-1 w-full space-y-3 overflow-y-auto custom-scrollbar pr-1">
                     {MENU_STRUCTURE.filter(grp => grp.allowedRoles.includes(userRole)).map(group => {
-                        const isActive = activePanel === group.id || (group.id === 'inicio' && pathname === `/dashboard/loja/${storeId}`);
+                        const isActive = activePanel === group.id || (group.id === 'inicio' && pathname === `/dashboard/loja/${storeId}` && activePanel === null);
+
+                        // Cores Neon para Ativos
+                        const neonGlow = isActive ?
+                            (group.id === 'atendimento' ? 'shadow-[0_0_15px_rgba(59,130,246,0.3)] bg-blue-500/20 text-blue-300 border-blue-500/30' :
+                                group.id === 'loja_vazia' ? 'shadow-[0_0_15px_rgba(245,158,11,0.3)] bg-amber-500/20 text-amber-300 border-amber-500/30' :
+                                    group.id === 'gerencia' ? 'shadow-[0_0_15px_rgba(168,85,247,0.3)] bg-purple-500/20 text-purple-300 border-purple-500/30' :
+                                        'shadow-[0_0_15px_rgba(255,255,255,0.1)] bg-white/10 text-white border-white/20')
+                            : 'text-slate-400 hover:bg-white/5 hover:text-white border-transparent';
+
                         return (
                             <button
                                 key={group.id}
                                 onClick={() => handleMainClick(group)}
-                                className={`flex items-center rounded-2xl transition-all duration-200 group relative ${isMainCollapsed ? 'justify-center w-14 h-14' : 'w-full px-4 py-3 gap-4'} ${isActive ? `${getActiveColor(group.id)} shadow-lg` : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'}`}
+                                className={`flex items-center rounded-2xl transition-all duration-200 group relative border ${isMainCollapsed ? 'justify-center w-14 h-14' : 'w-full px-4 py-3 gap-4'} ${neonGlow}`}
                                 title={isMainCollapsed ? group.label : ''}
                             >
-                                <group.icon className={`transition-transform flex-shrink-0 ${isMainCollapsed ? 'h-6 w-6' : 'h-5 w-5'} ${isActive && isMainCollapsed ? 'scale-110' : 'group-hover:scale-110'}`} />
-                                {!isMainCollapsed && <span className={`text-sm font-bold uppercase tracking-wide ${isActive ? 'opacity-100' : 'text-slate-500 group-hover:text-slate-700'}`}>{group.label}</span>}
-                                {activePanel === group.id && group.id !== 'inicio' && isMainCollapsed && <div className="absolute -right-3 top-1/2 -translate-y-1/2 w-0 h-0 border-t-[6px] border-t-transparent border-l-[6px] border-l-white border-b-[6px] border-b-transparent drop-shadow-sm filter"></div>}
+                                <group.icon className={`transition-transform flex-shrink-0 ${isMainCollapsed ? 'h-6 w-6' : 'h-5 w-5'} ${isActive ? 'scale-110 drop-shadow-md' : 'group-hover:scale-110'}`} />
+                                {!isMainCollapsed && <span className={`text-sm font-bold uppercase tracking-wide`}>{group.label}</span>}
+                                {activePanel === group.id && group.id !== 'inicio' && isMainCollapsed && <div className="absolute -right-3 top-1/2 -translate-y-1/2 w-0 h-0 border-t-[6px] border-t-transparent border-l-[6px] border-l-white/20 border-b-[6px] border-b-transparent drop-shadow-sm filter"></div>}
                                 {activePanel === group.id && group.id !== 'inicio' && !isMainCollapsed && <ChevronRight className="ml-auto h-4 w-4 opacity-50" />}
                             </button>
                         );
                     })}
                 </div>
 
-                <div className="mt-auto pt-4 border-t border-gray-100 w-full flex flex-col gap-2">
+                <div className="mt-auto pt-4 border-t border-white/10 w-full flex flex-col gap-2">
                     {/* === BOTÃO DA IA (SUPORTE) === */}
                     <button
                         onClick={() => router.push(`/dashboard/ajuda?storeId=${storeId}`, { scroll: false })}
-                        className={`flex items-center rounded-xl text-blue-600 bg-blue-50 hover:bg-blue-100 hover:text-blue-700 transition-all ${isMainCollapsed ? 'justify-center w-14 h-14' : 'w-full px-4 py-3 gap-3'}`}
+                        className={`flex items-center rounded-xl text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 hover:text-blue-200 border border-blue-500/20 transition-all ${isMainCollapsed ? 'justify-center w-14 h-14' : 'w-full px-4 py-3 gap-3'}`}
                         title="Ajuda Inteligente"
                     >
                         <Bot className={`h-5 w-5 ${!isMainCollapsed ? 'animate-pulse' : ''}`} />
                         {!isMainCollapsed && (
                             <div className="flex flex-col items-start">
                                 <span className="font-bold text-sm">Suporte IA</span>
-                                <span className="text-[10px] text-blue-400 font-medium">Tire suas dúvidas</span>
+                                <span className="text-[10px] text-blue-400/70 font-medium">Tire suas dúvidas</span>
                             </div>
                         )}
                     </button>
 
-                    <button onClick={() => setIsMainCollapsed(!isMainCollapsed)} className={`flex items-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all ${isMainCollapsed ? 'justify-center w-14 h-14' : 'w-full px-4 py-3 gap-3'}`} title={isMainCollapsed ? "Expandir Menu" : "Recolher Menu"}>
+                    <button onClick={() => setIsMainCollapsed(!isMainCollapsed)} className={`flex items-center rounded-xl text-slate-400 hover:bg-white/5 hover:text-white border border-transparent hover:border-white/10 transition-all ${isMainCollapsed ? 'justify-center w-14 h-14' : 'w-full px-4 py-3 gap-3'}`} title={isMainCollapsed ? "Expandir Menu" : "Recolher Menu"}>
                         {isMainCollapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
-                        {!isMainCollapsed && <span className="font-bold text-xs uppercase">Recolher</span>}
+                        {!isMainCollapsed && <span className="font-bold text-xs uppercase tracking-wider">Recolher</span>}
                     </button>
-                    <button onClick={handleLogout} className={`flex items-center rounded-xl text-red-300 hover:bg-red-50 hover:text-red-500 transition-all ${isMainCollapsed ? 'justify-center w-14 h-14' : 'w-full px-4 py-3 gap-3'}`} title="Sair">
+                    <button onClick={handleLogout} className={`flex items-center rounded-xl text-red-400/70 hover:bg-red-500/10 hover:text-red-300 border border-transparent hover:border-red-500/20 transition-all ${isMainCollapsed ? 'justify-center w-14 h-14' : 'w-full px-4 py-3 gap-3'}`} title="Sair">
                         <LogOut className="h-5 w-5" />
-                        {!isMainCollapsed && <span className="font-bold text-sm">Sair</span>}
+                        {!isMainCollapsed && <span className="font-bold text-sm uppercase tracking-wider">Sair</span>}
                     </button>
                 </div>
             </nav>

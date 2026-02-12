@@ -3,6 +3,8 @@
 import { ShoppingCart, Archive, LogOut, ArrowRight, Store } from 'lucide-react';
 import Image from 'next/image';
 
+import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
+
 interface OperatorMenuHomeProps {
     storeId: number;
     storeName: string;
@@ -18,11 +20,17 @@ export default function OperatorMenuHome({
     onNavigate,
     onLogout
 }: OperatorMenuHomeProps) {
+    const { preference } = useBackgroundPreference();
+
     return (
-        <div className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-950 font-sans">
+        <div className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-950 font-sans transition-colors duration-500">
+            {/* Toggle de Fundo */}
+            <div className="absolute top-6 right-6 z-50">
+                <BackgroundToggle />
+            </div>
 
             {/* BACKGROUND IGUAL AO LOGIN */}
-            <div className="absolute inset-0 z-0">
+            <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
                 <div className="absolute inset-0 bg-[url('/tela1.jpg')] bg-cover bg-center" />
                 <div className="absolute inset-0 bg-black/40 backdrop-blur-md" />
             </div>
@@ -82,7 +90,7 @@ export default function OperatorMenuHome({
                                 Atendimento
                             </h2>
                             <p className="text-blue-200/70 text-sm font-medium uppercase tracking-widest mb-4 group-hover:text-blue-100 transition-colors">
-                                Frente de Loja
+                                Cliente na Loja
                             </p>
 
                             <div className="w-12 h-1 bg-blue-500/50 rounded-full group-hover:w-24 group-hover:bg-blue-400 transition-all duration-300" />

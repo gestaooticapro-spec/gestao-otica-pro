@@ -140,3 +140,34 @@ export async function updateStoreProfile(prevState: any, formData: FormData): Pr
         return { success: false, message: e.message }
     }
 }
+
+export async function getStorePublicProfile(storeId: number) {
+    const supabaseAdmin = createAdminClient()
+    try {
+        const { data } = await (supabaseAdmin.from('stores') as any)
+            .select('name, tenant_id, settings')
+            .eq('id', storeId)
+            .single()
+        if (!data) return null
+        const settings = data.settings as any
+        const logoUrl = settings?.logo ? `/logos/${settings.logo}` : null
+        return { name: data.name, tenant_id: data.tenant_id, logo_url: logoUrl }
+    } catch (e) {
+
+        return null
+    }
+}
+
+export async function getTenantName(tenantId: string) {
+    const supabaseAdmin = createAdminClient()
+    try {
+        const { data } = await (supabaseAdmin.from('tenants') as any)
+            .select('name')
+            .eq('id', tenantId)
+            .single()
+        return data?.name as string | null
+    } catch (e) {
+
+        return null
+    }
+}

@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { useModals } from '@/lib/contexts/ModalsContext';
 
+import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
+
 interface OperatorMenuAtendimentoProps {
     storeId: number;
     onBack: () => void;
@@ -18,11 +20,17 @@ export default function OperatorMenuAtendimento({
     onNavigate
 }: OperatorMenuAtendimentoProps) {
     const { openParcelaModal, openEntregaModal, openCustomerHistoryModal } = useModals();
+    const { preference } = useBackgroundPreference();
 
     return (
-        <div className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-950">
+        <div className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-950 transition-colors duration-500">
+            {/* Toggle de Fundo */}
+            <div className="absolute top-6 right-6 z-50">
+                <BackgroundToggle />
+            </div>
+
             {/* Background Image */}
-            <div className="absolute inset-0 z-0">
+            <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
                 <div className="absolute inset-0 bg-[url('/atendimento.jpg')] bg-cover bg-center opacity-60" />
                 <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
             </div>
