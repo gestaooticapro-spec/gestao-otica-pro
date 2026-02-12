@@ -125,13 +125,21 @@ export async function adicionarMovimento(prevState: any, formData: FormData) {
     const categoriaFormatada = formatarCategoria(categoriaRaw);
 
     const val = MovimentoSchema.safeParse({
-        caixa_id: formData.get('caixa_id'), tipo: formData.get('tipo'), valor: formData.get('valor'), descricao: formData.get('descricao'), categoria: categoriaFormatada, forma_pagamento: formData.get('forma_pagamento')
+        caixa_id: formData.get('caixa_id'),
+        tipo: formData.get('tipo'),
+        valor: formData.get('valor'),
+        descricao: formData.get('descricao'),
+        categoria: categoriaFormatada || undefined,
+        forma_pagamento: formData.get('forma_pagamento') || undefined
     })
-    if (!val.success) return { success: false, message: 'Dados inválidos.' }
+    if (!val.success) {
+        console.error('Erro Validação Movimento:', val.error)
+        return { success: false, message: 'Dados inválidos.' }
+    }
 
     const supabaseAdmin = createAdminClient()
     const { error } = await (supabaseAdmin.from('caixa_movimentacoes') as any).insert({
-        tenant_id: profile.tenant_id, store_id: profile.store_id, caja_id: val.data.caixa_id, usuario_id: user.id, ...val.data, caixa_id: val.data.caixa_id
+        tenant_id: profile.tenant_id, store_id: profile.store_id, usuario_id: user.id, ...val.data
     })
     if (error) return { success: false, message: error.message }
 

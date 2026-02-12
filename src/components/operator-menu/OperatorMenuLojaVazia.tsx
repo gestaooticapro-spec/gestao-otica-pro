@@ -4,9 +4,45 @@ import { useEffect, useState } from 'react';
 import {
     DollarSign, HeartHandshake, Megaphone, Archive, Search,
     ArrowLeftRight, FileInput, Tag, FileSpreadsheet, ArrowLeft, Clock,
-    AlertCircle, Gift, Calendar, Package, ChevronRight
+    AlertCircle, Gift, Calendar, Package, ChevronRight, ChevronDown, ChevronUp,
+    MessageCircle, CalendarClock, CalendarCheck, ArrowRight
 } from 'lucide-react';
 import { useModals } from '@/lib/contexts/ModalsContext';
+import Link from 'next/link';
+
+// Tipos importados (ou definidos localmente se preferir não importar do server action em client component)
+// Para evitar erros de build se o arquivo de actions não exportar tipos para client, definimos aqui compatível.
+interface AlertaEntrega {
+    id: number;
+    created_at: string;
+    dt_prometido_para: string;
+    customer_name: string;
+    venda_id: number;
+}
+
+interface AlertaLaboratorio {
+    id: number;
+    created_at: string;
+    tempo_decorrido_horas: number;
+    customer_name: string;
+    venda_id: number;
+}
+
+interface Aniversariante {
+    id: number;
+    nome: string;
+    fone: string | null;
+    dia: string;
+}
+
+interface VencimentoProximo {
+    id: number;
+    customer_name: string;
+    fone_movel: string | null;
+    valor_parcela: number;
+    data_vencimento: string;
+    numero_parcela: number;
+}
 
 interface OperatorMenuLojaVaziaProps {
     storeId: number;
@@ -15,13 +51,16 @@ interface OperatorMenuLojaVaziaProps {
     onNavigate: (route: string) => void;
 }
 
-// Tipos simplificados para os dados do radar
 interface RadarData {
     vendasEmAberto: number;
-    aniversariantes: number;
-    entregarHoje: number;
-    lentesParadas: number;
+    aniversariantes: Aniversariante[];
+    entregas: AlertaEntrega[];
+    laboratorio: AlertaLaboratorio[];
+    vencimentos: VencimentoProximo[];
 }
+
+const formatDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+const formatMoney = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 export default function OperatorMenuLojaVazia({
     storeId,
@@ -31,16 +70,15 @@ export default function OperatorMenuLojaVazia({
 }: OperatorMenuLojaVaziaProps) {
     const { openLabModal } = useModals();
 
-    // Estados para dados do radar
     const [radar, setRadar] = useState<RadarData>({
         vendasEmAberto: 0,
-        aniversariantes: 0,
-        entregarHoje: 0,
-        lentesParadas: 0
+        aniversariantes: [],
+        entregas: [],
+        laboratorio: [],
+        vencimentos: []
     });
     const [loading, setLoading] = useState(true);
 
-    // Buscar dados ao montar o componente
     useEffect(() => {
         async function fetchData() {
             try {
@@ -49,9 +87,10 @@ export default function OperatorMenuLojaVazia({
                     const data = await response.json();
                     setRadar({
                         vendasEmAberto: data.vendasEmAberto || 0,
-                        aniversariantes: data.aniversariantes?.length || 0,
-                        entregarHoje: data.entregas?.length || 0,
-                        lentesParadas: data.laboratorio?.length || 0
+                        aniversariantes: data.aniversariantes || [],
+                        entregas: data.entregas || [],
+                        laboratorio: data.laboratorio || [],
+                        vencimentos: data.vencimentos || []
                     });
                 }
             } catch (error) {
@@ -63,237 +102,410 @@ export default function OperatorMenuLojaVazia({
         fetchData();
     }, [storeId]);
 
-    return (
-        <div className="min-h-screen relative flex flex-col items-center justify-start p-6 overflow-auto">
-            {/* Fundo gradiente suave */}
-            <div className="fixed inset-0 bg-gradient-to-br from-amber-50 via-slate-50 to-orange-50 -z-10" />
+    const handleZapAniversario = (fone: string | null, nome: string) => {
+        const numero = fone ? fone.replace(/\D/g, '') : '';
+        const msg = `Parabéns ${nome.split(' ')[0]}! 🎉 A Ótica Pro deseja um feliz aniversário!`;
+        window.open(`https://wa.me/${numero ? '55' + numero : ''}?text=${encodeURIComponent(msg)}`, '_blank');
+    };
 
-            {/* Círculos decorativos */}
-            <div className="fixed top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-gradient-to-br from-amber-200/40 to-orange-300/30 blur-3xl -z-10" />
-            <div className="fixed bottom-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full bg-gradient-to-br from-orange-200/40 to-amber-300/30 blur-3xl -z-10" />
+    const handleZapVencimento = (item: VencimentoProximo) => {
+        if (!item.fone_movel) return alert("Cliente sem celular cadastrado.");
+        const num = item.fone_movel.replace(/\D/g, '');
+        const primeiroNome = item.customer_name.split(' ')[0];
+        const hoje = new Date().toISOString().split('T')[0];
+        // Lógica simples: se for hoje "hoje", senão "em breve" ou a data específica
+        const venceHoje = item.data_vencimento === hoje;
+        const dataFormatada = new Date(item.data_vencimento).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        const textoDia = venceHoje ? "hoje" : `dia ${dataFormatada}`;
+        const msg = `Olá ${primeiroNome}, tudo bem? Aqui é da ${storeName}. Passando apenas para lembrar que sua parcela (${item.numero_parcela}ª) vence ${textoDia}. Se precisar da chave Pix, é só pedir!`;
+        window.open(`https://wa.me/55${num}?text=${encodeURIComponent(msg)}`, '_blank');
+    };
 
-            {/* Conteúdo */}
-            <div className="relative z-10 flex flex-col items-center w-full max-w-6xl">
-                {/* Header */}
-                <div className="mb-6 text-center">
-                    <h1 className="text-2xl font-bold text-amber-700">Loja Vazia</h1>
+
+    // --- IDÊNTICO AO COMPONENTE INTERNO REUTILIZÁVEL ---
+    const RadarWidget = ({
+        title,
+        subtitle,
+        icon: Icon,
+        colorClass, // ex: 'amber', 'rose', 'indigo', 'emerald'
+        count,
+        children,
+        isOpen,
+        setIsOpen
+    }: any) => {
+        // Mapeamento de Cores para Tailwind (evita classes dinâmicas quebradas)
+        const colors: any = {
+            amber: { bg: 'bg-amber-500/20', text: 'text-amber-300', border: 'hover:border-amber-500/30' },
+            rose: { bg: 'bg-rose-500/20', text: 'text-rose-300', border: 'hover:border-rose-500/30' },
+            indigo: { bg: 'bg-indigo-500/20', text: 'text-indigo-300', border: 'hover:border-indigo-500/30' },
+            emerald: { bg: 'bg-emerald-500/20', text: 'text-emerald-300', border: 'hover:border-emerald-500/30' },
+            pink: { bg: 'bg-pink-500/20', text: 'text-pink-300', border: 'hover:border-pink-500/30' },
+        };
+        const c = colors[colorClass] || colors.amber;
+
+        return (
+            <div className={`group bg-white/5 hover:bg-white/10 rounded-xl border border-white/5 ${c.border} transition-all duration-300 overflow-hidden`}>
+                <div
+                    onClick={() => setIsOpen(!isOpen)}
+                    className="p-4 flex items-center justify-between cursor-pointer"
+                >
+                    <div className="flex items-center gap-4">
+                        <div className={`w-10 h-10 rounded-lg ${c.bg} ${c.text} flex items-center justify-center transition-colors shadow-lg`}>
+                            <Icon className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <span className="text-slate-200 font-bold text-sm block group-hover:text-white transition-colors">{title}</span>
+                            <span className="text-slate-500 text-[10px] uppercase font-bold">{subtitle}</span>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        {count > 0 && <span className={`px-2 py-1 rounded-md text-xs font-bold ${c.bg} ${c.text} shadow-lg`}>{count}</span>}
+                        {isOpen ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                    </div>
                 </div>
 
-                {/* Layout Principal */}
-                <div className="flex flex-row gap-6 w-full">
+                {isOpen && (
+                    <div className="bg-black/20 p-4 border-t border-white/5 space-y-3 animate-in slide-in-from-top-2">
+                        {children}
+                    </div>
+                )}
+            </div>
+        );
+    };
 
-                    {/* Coluna Esquerda - Menu de Ações */}
-                    <div className="w-1/3 flex flex-col shrink-0">
-                        <h2 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-4 text-center">Ações</h2>
-                        <div className="grid grid-cols-2 gap-2">
-                            {/* Livro Caixa */}
-                            <button
-                                onClick={() => onNavigate(`/dashboard/loja/${storeId}/financeiro/caixa`)}
-                                className="group bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl flex flex-col items-center justify-center gap-1 p-3 shadow-[0_8px_30px_-8px_rgba(245,158,11,0.5)] hover:shadow-[0_12px_40px_-8px_rgba(245,158,11,0.6)] hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 cursor-pointer"
-                            >
-                                <DollarSign className="w-6 h-6 text-white/90 group-hover:scale-110 transition-transform" strokeWidth={1.5} />
-                                <span className="text-white text-xs font-bold">Caixa</span>
-                            </button>
+    // States para cada widget
+    const [openVencimentos, setOpenVencimentos] = useState(false);
+    const [openAniversarios, setOpenAniversarios] = useState(false);
+    const [openEntregas, setOpenEntregas] = useState(false);
+    const [openLaboratorio, setOpenLaboratorio] = useState(false);
 
-                            {/* Pós-Venda */}
-                            <button
-                                onClick={() => onNavigate(`/dashboard/loja/${storeId}/pos-venda`)}
-                                className="group bg-gradient-to-br from-pink-500 to-pink-600 rounded-xl flex flex-col items-center justify-center gap-1 p-3 shadow-[0_8px_30px_-8px_rgba(236,72,153,0.5)] hover:shadow-[0_12px_40px_-8px_rgba(236,72,153,0.6)] hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 cursor-pointer"
-                            >
-                                <HeartHandshake className="w-6 h-6 text-white/90 group-hover:scale-110 transition-transform" strokeWidth={1.5} />
-                                <span className="text-white text-xs font-bold">Pós-Venda</span>
-                            </button>
+    return (
+        <div className="min-h-screen relative flex flex-col items-center p-6 overflow-hidden bg-slate-950 font-sans">
+            {/* Background Image */}
+            <div className="absolute inset-0 z-0">
+                <div className="absolute inset-0 bg-[url('/lojavazia.png')] bg-cover bg-center" />
+                <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+            </div>
 
-                            {/* Cobrança */}
-                            <button
-                                onClick={() => onNavigate(`/dashboard/loja/${storeId}/cobranca`)}
-                                className="group bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex flex-col items-center justify-center gap-1 p-3 shadow-[0_8px_30px_-8px_rgba(239,68,68,0.5)] hover:shadow-[0_12px_40px_-8px_rgba(239,68,68,0.6)] hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 cursor-pointer"
-                            >
-                                <Megaphone className="w-6 h-6 text-white/90 group-hover:scale-110 transition-transform" strokeWidth={1.5} />
-                                <span className="text-white text-xs font-bold">Cobrança</span>
-                            </button>
+            {/* Conteúdo */}
+            <div className="relative z-10 w-full max-w-7xl flex flex-col h-full">
+                {/* Header */}
+                <div className="mb-8 text-center animate-in slide-in-from-top-5 duration-700">
+                    <h1 className="text-4xl font-black text-white drop-shadow-lg tracking-tight mb-2">
+                        Gestão & Interno
+                    </h1>
+                    <p className="text-slate-400 text-sm font-medium uppercase tracking-[0.2em] bg-white/5 px-4 py-1 rounded-full border border-white/5 inline-block">
+                        Loja Vazia
+                    </p>
+                </div>
 
-                            {/* Gaveta */}
-                            <button
-                                onClick={() => onNavigate(`/dashboard/loja/${storeId}/gaveta`)}
-                                className="group bg-gradient-to-br from-teal-500 to-teal-600 rounded-xl flex flex-col items-center justify-center gap-1 p-3 shadow-[0_8px_30px_-8px_rgba(20,184,166,0.5)] hover:shadow-[0_12px_40px_-8px_rgba(20,184,166,0.6)] hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 cursor-pointer"
-                            >
-                                <Archive className="w-6 h-6 text-white/90 group-hover:scale-110 transition-transform" strokeWidth={1.5} />
-                                <span className="text-white text-xs font-bold">Gaveta</span>
-                            </button>
+                <div className="flex flex-col xl:flex-row gap-8 w-full items-start">
 
-                            {/* Rastrear Lentes */}
-                            <button
-                                onClick={() => openLabModal()}
-                                className="group bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl flex flex-col items-center justify-center gap-1 p-3 shadow-[0_8px_30px_-8px_rgba(99,102,241,0.5)] hover:shadow-[0_12px_40px_-8px_rgba(99,102,241,0.6)] hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 cursor-pointer"
-                            >
-                                <Search className="w-6 h-6 text-white/90 group-hover:scale-110 transition-transform" strokeWidth={1.5} />
-                                <span className="text-white text-xs font-bold">Lentes</span>
-                            </button>
+                    {/* ESQUERDA: AÇÕES (3 Colunas Grid) */}
+                    <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 
-                            {/* Movimentações */}
-                            <button
-                                onClick={() => onNavigate(`/dashboard/loja/${storeId}/estoque/movimentacoes`)}
-                                className="group bg-gradient-to-br from-cyan-500 to-cyan-600 rounded-xl flex flex-col items-center justify-center gap-1 p-3 shadow-[0_8px_30px_-8px_rgba(6,182,212,0.5)] hover:shadow-[0_12px_40px_-8px_rgba(6,182,212,0.6)] hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 cursor-pointer"
-                            >
-                                <ArrowLeftRight className="w-6 h-6 text-white/90 group-hover:scale-110 transition-transform" strokeWidth={1.5} />
-                                <span className="text-white text-xs font-bold">Estoque</span>
-                            </button>
+                        {/* GRUPO 1: FINANCEIRO */}
+                        <div className="bg-black/20 border border-white/5 rounded-3xl p-6 backdrop-blur-md flex flex-col gap-4 shadow-xl">
+                            <h2 className="text-sm font-bold text-amber-400 uppercase tracking-widest flex items-center gap-2 mb-2 px-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.8)]"></span>
+                                Financeiro
+                            </h2>
+                            <div className="flex flex-col gap-3">
+                                {/* Caixa */}
+                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/financeiro/caixa`)} className="group bg-white/5 hover:bg-amber-500/10 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/5 hover:border-amber-500/30 transition-all duration-300 cursor-pointer backdrop-blur-sm">
+                                    <div className="p-2.5 rounded-lg bg-amber-500/20 text-amber-300 group-hover:bg-amber-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+                                        <DollarSign className="w-6 h-6" strokeWidth={1.5} />
+                                    </div>
+                                    <div className="text-left">
+                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Caixa</span>
+                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-amber-200/70 transition-colors">Movimento Diário</span>
+                                    </div>
+                                </button>
+                                {/* Cobrança */}
+                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/cobranca`)} className="group bg-white/5 hover:bg-amber-500/10 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/5 hover:border-amber-500/30 transition-all duration-300 cursor-pointer backdrop-blur-sm">
+                                    <div className="p-2.5 rounded-lg bg-amber-500/20 text-amber-300 group-hover:bg-amber-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+                                        <Megaphone className="w-6 h-6" strokeWidth={1.5} />
+                                    </div>
+                                    <div className="text-left">
+                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Cobrança</span>
+                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-amber-200/70 transition-colors">Inadimplência</span>
+                                    </div>
+                                </button>
 
-                            {/* Importar XML */}
-                            <button
-                                onClick={() => onNavigate(`/dashboard/loja/${storeId}/importacao`)}
-                                className="group bg-gradient-to-br from-slate-500 to-slate-600 rounded-xl flex flex-col items-center justify-center gap-1 p-3 shadow-[0_8px_30px_-8px_rgba(100,116,139,0.5)] hover:shadow-[0_12px_40px_-8px_rgba(100,116,139,0.6)] hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 cursor-pointer"
-                            >
-                                <FileInput className="w-6 h-6 text-white/90 group-hover:scale-110 transition-transform" strokeWidth={1.5} />
-                                <span className="text-white text-xs font-bold">XML</span>
-                            </button>
+                            </div>
+                        </div>
 
-                            {/* Produtos */}
-                            <button
-                                onClick={() => onNavigate(`/dashboard/loja/${storeId}/cadastros`)}
-                                className="group bg-gradient-to-br from-violet-500 to-violet-600 rounded-xl flex flex-col items-center justify-center gap-1 p-3 shadow-[0_8px_30px_-8px_rgba(139,92,246,0.5)] hover:shadow-[0_12px_40px_-8px_rgba(139,92,246,0.6)] hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 cursor-pointer"
-                            >
-                                <Tag className="w-6 h-6 text-white/90 group-hover:scale-110 transition-transform" strokeWidth={1.5} />
-                                <span className="text-white text-xs font-bold">Produtos</span>
-                            </button>
+                        {/* GRUPO 2: ESTOQUE */}
+                        <div className="bg-black/20 border border-white/5 rounded-3xl p-6 backdrop-blur-md flex flex-col gap-4 shadow-xl">
+                            <h2 className="text-sm font-bold text-blue-400 uppercase tracking-widest flex items-center gap-2 mb-2 px-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)]"></span>
+                                Estoque & Produtos
+                            </h2>
+                            <div className="flex flex-col gap-3">
+                                {/* Estoque */}
+                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/estoque/movimentacoes`)} className="group bg-white/5 hover:bg-blue-500/10 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/5 hover:border-blue-500/30 transition-all duration-300 cursor-pointer backdrop-blur-sm">
+                                    <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
+                                        <ArrowLeftRight className="w-6 h-6" strokeWidth={1.5} />
+                                    </div>
+                                    <div className="text-left">
+                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Estoque</span>
+                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">Movimentações</span>
+                                    </div>
+                                </button>
+                                {/* Produtos */}
+                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/cadastros`)} className="group bg-white/5 hover:bg-blue-500/10 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/5 hover:border-blue-500/30 transition-all duration-300 cursor-pointer backdrop-blur-sm">
+                                    <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
+                                        <Tag className="w-6 h-6" strokeWidth={1.5} />
+                                    </div>
+                                    <div className="text-left">
+                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Produtos</span>
+                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">Catálogo</span>
+                                    </div>
+                                </button>
+                                {/* Lentes */}
+                                <button onClick={() => openLabModal()} className="group bg-white/5 hover:bg-blue-500/10 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/5 hover:border-blue-500/30 transition-all duration-300 cursor-pointer backdrop-blur-sm">
+                                    <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
+                                        <Search className="w-6 h-6" strokeWidth={1.5} />
+                                    </div>
+                                    <div className="text-left">
+                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Lentes</span>
+                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">Rastreio Lab</span>
+                                    </div>
+                                </button>
+                                {/* XML */}
+                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/importacao`)} className="group bg-white/5 hover:bg-blue-500/10 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/5 hover:border-blue-500/30 transition-all duration-300 cursor-pointer backdrop-blur-sm">
+                                    <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
+                                        <FileInput className="w-6 h-6" strokeWidth={1.5} />
+                                    </div>
+                                    <div className="text-left">
+                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">XML</span>
+                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">Importação NFe</span>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
 
-                            {/* Histórico - ocupando 2 colunas */}
-                            <button
-                                onClick={() => onNavigate(`/dashboard/loja/${storeId}/vendas?mode=historico`)}
-                                className="group col-span-2 bg-gradient-to-br from-stone-500 to-stone-600 rounded-xl flex items-center justify-center gap-2 p-3 shadow-[0_8px_30px_-8px_rgba(120,113,108,0.5)] hover:shadow-[0_12px_40px_-8px_rgba(120,113,108,0.6)] hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 cursor-pointer"
-                            >
-                                <FileSpreadsheet className="w-5 h-5 text-white/90 group-hover:scale-110 transition-transform" strokeWidth={1.5} />
-                                <span className="text-white text-sm font-bold">Histórico Vendas</span>
-                            </button>
+                        {/* GRUPO 3: GESTÃO & CRM */}
+                        <div className="bg-black/20 border border-white/5 rounded-3xl p-6 backdrop-blur-md flex flex-col gap-4 shadow-xl">
+                            <h2 className="text-sm font-bold text-rose-400 uppercase tracking-widest flex items-center gap-2 mb-2 px-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.8)]"></span>
+                                Gestão & CRM
+                            </h2>
+                            <div className="flex flex-col gap-3">
+                                {/* Pós-Venda */}
+                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/pos-venda`)} className="group bg-white/5 hover:bg-rose-500/10 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/5 hover:border-rose-500/30 transition-all duration-300 cursor-pointer backdrop-blur-sm">
+                                    <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
+                                        <HeartHandshake className="w-6 h-6" strokeWidth={1.5} />
+                                    </div>
+                                    <div className="text-left">
+                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Pós-Venda</span>
+                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">CRM & Relacionamento</span>
+                                    </div>
+                                </button>
+                                {/* Histórico */}
+                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/vendas?mode=historico`)} className="group bg-white/5 hover:bg-rose-500/10 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/5 hover:border-rose-500/30 transition-all duration-300 cursor-pointer backdrop-blur-sm">
+                                    <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
+                                        <FileSpreadsheet className="w-6 h-6" strokeWidth={1.5} />
+                                    </div>
+                                    <div className="text-left">
+                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Histórico</span>
+                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">Vendas Anteriores</span>
+                                    </div>
+                                </button>
+                                {/* Gaveta (Moved from Financeiro) */}
+                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/gaveta`)} className="group bg-white/5 hover:bg-rose-500/10 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/5 hover:border-rose-500/30 transition-all duration-300 cursor-pointer backdrop-blur-sm">
+                                    <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
+                                        <Archive className="w-6 h-6" strokeWidth={1.5} />
+                                    </div>
+                                    <div className="text-left">
+                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Gaveta</span>
+                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">Conferência</span>
+                                    </div>
+                                </button>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Linha Divisória Vertical */}
-                    <div className="flex items-center">
-                        <div className="w-px h-full bg-gradient-to-b from-transparent via-slate-300 to-transparent" />
-                    </div>
+                    {/* DIREITA: RADAR OPERACIONAL */}
+                    <div className="w-full xl:w-[400px] shrink-0 flex flex-col gap-6">
 
-                    {/* Coluna Direita - Radar Operacional */}
-                    <div className="flex-1 flex flex-col gap-4">
-                        {/* ALERTA PRINCIPAL - Vendas em Aberto (ESTILO ORIGINAL) */}
+                        {/* Alerta de Vendas */}
                         {radar.vendasEmAberto > 0 && (
-                            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
-                                        <AlertCircle className="w-5 h-5 text-amber-600" />
+                            <div
+                                onClick={() => onNavigate(`/dashboard/loja/${storeId}/vendas?mode=pendencias`)}
+                                className="group bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/40 hover:border-amber-500/60 rounded-2xl p-5 flex items-center justify-between cursor-pointer shadow-lg backdrop-blur-md animate-in slide-in-from-right-5 duration-700 transition-all hover:scale-[1.02]"
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-lg shadow-amber-500/40 group-hover:scale-110 transition-transform">
+                                        <AlertCircle className="w-6 h-6" />
                                     </div>
                                     <div>
-                                        <span className="text-amber-800 font-bold text-sm">Atenção Operacional</span>
-                                        <p className="text-amber-700 text-xs">Você tem <span className="font-bold text-amber-600">{radar.vendasEmAberto} vendas em aberto</span></p>
+                                        <h3 className="text-amber-300 font-bold text-xs uppercase tracking-wider mb-0.5">Vendas em Aberto</h3>
+                                        <span className="text-3xl font-black text-white drop-shadow-md">{radar.vendasEmAberto}</span>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={() => onNavigate(`/dashboard/loja/${storeId}/vendas?mode=pendencias`)}
-                                    className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1 transition-colors"
-                                >
-                                    LISTAR <ChevronRight className="w-3 h-3" />
-                                </button>
+                                <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-amber-500 group-hover:text-white transition-all">
+                                    <ChevronRight className="w-5 h-5 text-amber-200 group-hover:text-white" />
+                                </div>
                             </div>
+
                         )}
 
-                        {/* RADAR OPERACIONAL (ESTILO ORIGINAL) */}
-                        <h2 className="text-sm font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                            <Clock className="w-4 h-4" /> Radar Operacional
-                        </h2>
+                        {/* Radar Lista */}
+                        <div className="bg-black/20 border border-white/5 rounded-3xl p-6 backdrop-blur-md flex flex-col shadow-xl">
+                            <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-3 mb-6">
+                                <Clock className="w-4 h-4 text-slate-500" />
+                                Radar Operacional
+                            </h2>
 
-                        {loading ? (
-                            <div className="flex items-center justify-center py-10">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
+                            <div className="space-y-4">
+                                {/* VENCIMENTOS */}
+                                <RadarWidget
+                                    title="Vencimentos"
+                                    subtitle="Próximos 3 Dias"
+                                    icon={CalendarClock}
+                                    colorClass="indigo"
+                                    count={radar.vencimentos.length}
+                                    isOpen={openVencimentos}
+                                    setIsOpen={setOpenVencimentos}
+                                >
+                                    {radar.vencimentos.length === 0 ? (
+                                        <p className="text-center text-xs text-slate-400 py-4 font-medium">Nenhum vencimento próximo.</p>
+                                    ) : (
+                                        radar.vencimentos.map(item => (
+                                            <div key={item.id} className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5 hover:border-white/20 transition-all">
+                                                <div>
+                                                    <p className="text-xs font-bold text-slate-200 truncate max-w-[150px]">{item.customer_name}</p>
+                                                    <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                                        {formatMoney(item.valor_parcela)} • {new Date(item.data_vencimento).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleZapVencimento(item)}
+                                                    className="w-8 h-8 rounded-full bg-green-500/20 text-green-400 hover:bg-green-500 hover:text-white flex items-center justify-center transition-all"
+                                                >
+                                                    <MessageCircle className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </RadarWidget>
+
+                                {/* ANIVERSARIANTES */}
+                                <RadarWidget
+                                    title="Aniversariantes"
+                                    subtitle="Do Dia"
+                                    icon={Gift}
+                                    colorClass="pink"
+                                    count={radar.aniversariantes.length}
+                                    isOpen={openAniversarios}
+                                    setIsOpen={setOpenAniversarios}
+                                >
+                                    {radar.aniversariantes.length === 0 ? (
+                                        <p className="text-center text-xs text-slate-400 py-4 font-medium">Ninguém sopra velinhas hoje. 🎂</p>
+                                    ) : (
+                                        radar.aniversariantes.map(c => (
+                                            <div key={c.id} className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5 hover:border-white/20 transition-all">
+                                                <div>
+                                                    <p className="text-xs font-bold text-slate-200 truncate max-w-[150px]">{c.nome}</p>
+                                                    <p className="text-[10px] text-slate-400">{c.fone || 'Sem fone'}</p>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleZapAniversario(c.fone, c.nome)}
+                                                    className="w-8 h-8 rounded-full bg-green-500/20 text-green-400 hover:bg-green-500 hover:text-white flex items-center justify-center transition-all"
+                                                >
+                                                    <MessageCircle className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </RadarWidget>
+
+
+                                {/* ENTREGAS */}
+                                <RadarWidget
+                                    title="Entregar Hoje"
+                                    subtitle="Gaveta"
+                                    icon={Package}
+                                    colorClass="emerald"
+                                    count={radar.entregas.length}
+                                    isOpen={openEntregas}
+                                    setIsOpen={setOpenEntregas}
+                                >
+                                    {radar.entregas.length === 0 ? (
+                                        <p className="text-center text-xs text-slate-400 py-4 font-medium">Sem entregas urgentes.</p>
+                                    ) : (
+                                        radar.entregas.map(item => {
+                                            const isAtrasado = new Date(item.dt_prometido_para) < new Date(new Date().setHours(0, 0, 0, 0));
+                                            return (
+                                                <div key={item.id} className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5 hover:border-white/20 transition-all">
+                                                    <div>
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <span className="text-xs font-bold text-slate-200 truncate max-w-[150px]">{item.customer_name}</span>
+                                                            {isAtrasado && <span className="text-[9px] font-black text-white bg-rose-500 px-1.5 py-0.5 rounded">ATRASADO</span>}
+                                                        </div>
+                                                        <p className="text-[10px] text-slate-400 font-mono">
+                                                            OS #{item.id} • {formatDate(item.dt_prometido_para)}
+                                                        </p>
+                                                    </div>
+                                                    <Link href={`/dashboard/loja/${storeId}/vendas/${item.venda_id}/os?os_id=${item.id}`}>
+                                                        <div className="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500 hover:text-white flex items-center justify-center transition-all cursor-pointer">
+                                                            <ArrowRight className="w-4 h-4" />
+                                                        </div>
+                                                    </Link>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </RadarWidget>
+
+                                {/* LENTES PARADAS */}
+                                <RadarWidget
+                                    title="Lentes Paradas"
+                                    subtitle="No Laboratório"
+                                    icon={AlertCircle}
+                                    colorClass="rose"
+                                    count={radar.laboratorio.length}
+                                    isOpen={openLaboratorio}
+                                    setIsOpen={setOpenLaboratorio}
+                                >
+                                    {radar.laboratorio.length === 0 ? (
+                                        <p className="text-center text-xs text-slate-400 py-4 font-medium">Laboratório em dia.</p>
+                                    ) : (
+                                        radar.laboratorio.map(item => (
+                                            <div key={item.id} className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5 hover:border-white/20 transition-all">
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className="text-xs font-bold text-slate-200 truncate max-w-[150px]">{item.customer_name}</span>
+                                                        <span className="text-[9px] bg-white/10 px-1 rounded text-slate-400">#{item.id}</span>
+                                                    </div>
+                                                    <p className="text-[10px] text-rose-400 font-bold flex items-center gap-1">
+                                                        <Clock className="w-3 h-3" /> {item.tempo_decorrido_horas}h parado
+                                                    </p>
+                                                </div>
+                                                <Link href={`/dashboard/loja/${storeId}/vendas/${item.venda_id}/os?os_id=${item.id}`}>
+                                                    <div className="w-8 h-8 rounded-full bg-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white flex items-center justify-center transition-all cursor-pointer">
+                                                        <ArrowRight className="w-4 h-4" />
+                                                    </div>
+                                                </Link>
+                                            </div>
+                                        ))
+                                    )}
+                                </RadarWidget>
+
                             </div>
-                        ) : (
-                            <div className="space-y-2">
-                                {/* Vencimentos */}
-                                <div
-                                    onClick={() => onNavigate(`/dashboard/loja/${storeId}/pos-venda?tab=vencimentos`)}
-                                    className="bg-white/80 backdrop-blur rounded-xl p-3 flex items-center justify-between shadow-sm border border-slate-100 hover:shadow-md transition-shadow cursor-pointer group"
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center">
-                                            <Calendar className="w-5 h-5 text-amber-600" />
-                                        </div>
-                                        <div>
-                                            <span className="text-slate-700 font-bold text-sm">Vencimentos (Hoje/Amanhã)</span>
-                                            <p className="text-slate-400 text-[10px]">Lembrete preventivo</p>
-                                        </div>
-                                    </div>
-                                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-colors" />
-                                </div>
-
-                                {/* Aniversariantes */}
-                                <div
-                                    onClick={() => onNavigate(`/dashboard/loja/${storeId}/pos-venda?tab=aniversarios`)}
-                                    className="bg-white/80 backdrop-blur rounded-xl p-3 flex items-center justify-between shadow-sm border border-slate-100 hover:shadow-md transition-shadow cursor-pointer group"
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-9 h-9 rounded-lg bg-pink-100 flex items-center justify-center">
-                                            <Gift className="w-5 h-5 text-pink-600" />
-                                        </div>
-                                        <span className="text-slate-700 font-bold text-sm">Aniversariantes do Dia</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        {radar.aniversariantes > 0 && (
-                                            <span className="bg-pink-100 text-pink-600 text-xs font-bold px-2 py-0.5 rounded-full">{radar.aniversariantes}</span>
-                                        )}
-                                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-colors" />
-                                    </div>
-                                </div>
-
-                                {/* Entregar Hoje */}
-                                <div
-                                    onClick={() => onNavigate(`/dashboard/loja/${storeId}/gaveta`)}
-                                    className="bg-white/80 backdrop-blur rounded-xl p-3 flex items-center justify-between shadow-sm border border-slate-100 hover:shadow-md transition-shadow cursor-pointer group"
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center">
-                                            <Package className="w-5 h-5 text-emerald-600" />
-                                        </div>
-                                        <span className="text-slate-700 font-bold text-sm">Entregar Hoje</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        {radar.entregarHoje > 0 && (
-                                            <span className="bg-emerald-100 text-emerald-600 text-xs font-bold px-2 py-0.5 rounded-full">{radar.entregarHoje}</span>
-                                        )}
-                                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-colors" />
-                                    </div>
-                                </div>
-
-                                {/* Lentes Paradas */}
-                                <div
-                                    onClick={() => openLabModal()}
-                                    className="bg-white/80 backdrop-blur rounded-xl p-3 flex items-center justify-between shadow-sm border border-slate-100 hover:shadow-md transition-shadow cursor-pointer group"
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-9 h-9 rounded-lg bg-rose-100 flex items-center justify-center">
-                                            <AlertCircle className="w-5 h-5 text-rose-600" />
-                                        </div>
-                                        <span className="text-slate-700 font-bold text-sm">Lentes Paradas</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        {radar.lentesParadas > 0 && (
-                                            <span className="bg-rose-100 text-rose-600 text-xs font-bold px-2 py-0.5 rounded-full">{radar.lentesParadas}</span>
-                                        )}
-                                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-colors" />
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {/* Botão Voltar - MAIS DESTACADO */}
+            {/* Botão Voltar */}
             <button
                 onClick={onBack}
-                className="fixed bottom-6 left-6 flex items-center gap-2 bg-white hover:bg-amber-50 text-amber-600 hover:text-amber-700 border border-amber-200 hover:border-amber-300 transition-all duration-200 text-sm font-bold z-10 px-5 py-3 rounded-xl shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+                className="absolute bottom-6 left-6 flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all duration-300 border border-white/5 hover:border-white/20 backdrop-blur-sm z-20 group"
             >
-                <ArrowLeft className="w-5 h-5" />
-                Voltar ao Menu
+                <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+                <span className="text-xs font-bold uppercase tracking-wider">Voltar</span>
             </button>
         </div>
     );

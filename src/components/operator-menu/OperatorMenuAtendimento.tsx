@@ -2,7 +2,7 @@
 
 import {
     Zap, FileText, CheckCircle2, Wallet,
-    LifeBuoy, Users, Globe, ArrowLeft, FileSearch
+    LifeBuoy, Users, Globe, ArrowLeft, FileSearch, ArrowRight
 } from 'lucide-react';
 import { useModals } from '@/lib/contexts/ModalsContext';
 
@@ -20,107 +20,137 @@ export default function OperatorMenuAtendimento({
     const { openParcelaModal, openEntregaModal, openCustomerHistoryModal } = useModals();
 
     return (
-        <div className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-hidden">
-            {/* Fundo gradiente suave - tema azul para atendimento */}
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-50 via-slate-50 to-indigo-50" />
-
-            {/* Círculos decorativos desfocados */}
-            <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-gradient-to-br from-blue-200/40 to-blue-300/30 blur-3xl" />
-            <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full bg-gradient-to-br from-indigo-200/40 to-blue-300/30 blur-3xl" />
+        <div className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-950">
+            {/* Background Image */}
+            <div className="absolute inset-0 z-0">
+                <div className="absolute inset-0 bg-[url('/atendimento.jpg')] bg-cover bg-center opacity-60" />
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            </div>
 
             {/* Conteúdo */}
-            <div className="relative z-10 flex flex-col items-center w-full max-w-4xl">
+            <div className="relative z-10 flex flex-col items-center w-full max-w-5xl">
                 {/* Header */}
-                <div className="mb-6 text-center">
-                    <h1 className="text-2xl font-bold text-blue-700">Atendimento</h1>
+                <div className="mb-8 text-center animate-in slide-in-from-top-5 duration-700">
+                    <h1 className="text-4xl font-black text-white drop-shadow-lg tracking-tight mb-2">
+                        Atendimento
+                    </h1>
+                    <p className="text-slate-300 text-sm font-medium uppercase tracking-[0.2em] bg-white/5 px-4 py-1 rounded-full border border-white/5 inline-block">
+                        Selecione uma Operação
+                    </p>
                 </div>
 
                 {/* Seção Superior: Vendas | Retorno */}
-                <div className="flex flex-col lg:flex-row items-start justify-center gap-6 lg:gap-0 w-full">
+                <div className="flex flex-col lg:flex-row items-start justify-center gap-8 lg:gap-0 w-full mb-8">
 
-                    {/* Coluna Vendas */}
-                    <div className="flex-1 flex flex-col items-center">
-                        <h2 className="text-lg font-black text-blue-600 uppercase tracking-widest mb-4 flex flex-col items-center">
+                    {/* Coluna Vendas (BLUE THEME) */}
+                    <div className="flex-1 flex flex-col items-center w-full">
+                        <h2 className="text-lg font-black text-blue-300 uppercase tracking-widest mb-6 flex flex-col items-center drop-shadow-md">
                             Vendas
-                            <span className="block w-12 h-1 bg-blue-400 rounded-full mt-1"></span>
+                            <span className="block w-12 h-1 bg-blue-500 rounded-full mt-2 shadow-[0_0_10px_rgba(59,130,246,0.5)]"></span>
                         </h2>
-                        <div className="flex flex-col gap-3 w-full max-w-xs">
+                        <div className="flex flex-col gap-4 w-full max-w-sm">
                             {/* Receituário */}
                             <button
                                 onClick={() => onNavigate(`/dashboard/loja/${storeId}/atendimento`)}
-                                className="group w-full bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center gap-4 px-5 py-4 shadow-[0_12px_40px_-10px_rgba(59,130,246,0.5)] hover:shadow-[0_16px_50px_-10px_rgba(59,130,246,0.6)] hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 cursor-pointer"
+                                className="group w-full bg-gradient-to-br from-blue-600/20 via-blue-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-5 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-blue-500/20 hover:border-blue-500/30"
                             >
-                                <FileText className="w-9 h-9 text-white/80 group-hover:scale-110 transition-transform duration-300 shrink-0" strokeWidth={1.5} />
-                                <div className="text-left">
-                                    <span className="text-white text-xl font-bold block">Receituário</span>
-                                    <span className="text-white/50 text-[11px]">Venda com receita médica</span>
+                                <div className="p-3 rounded-full bg-blue-500/20 ring-1 ring-blue-400/30 group-hover:bg-blue-500/40 transition-colors shadow-[0_0_15px_rgba(59,130,246,0.3)]">
+                                    <FileText className="w-8 h-8 text-blue-200 group-hover:text-white transition-colors shrink-0" strokeWidth={1.5} />
+                                </div>
+                                <div className="text-left flex-1">
+                                    <span className="text-white text-xl font-bold block mb-0.5">Receituário</span>
+                                    <span className="text-blue-200/70 text-xs font-medium group-hover:text-blue-100 transition-colors">Venda com receita médica</span>
+                                </div>
+                                {/* Arrow Overlay like Home */}
+                                <div className="absolute top-1/2 right-4 -translate-y-1/2 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all duration-300">
+                                    <ArrowRight className="w-5 h-5 text-blue-300" />
                                 </div>
                             </button>
 
                             {/* Venda Rápida */}
                             <button
                                 onClick={() => onNavigate(`/dashboard/loja/${storeId}/pdv-express`)}
-                                className="group w-full bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center gap-4 px-5 py-4 shadow-[0_12px_40px_-10px_rgba(59,130,246,0.5)] hover:shadow-[0_16px_50px_-10px_rgba(59,130,246,0.6)] hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 cursor-pointer"
+                                className="group w-full bg-gradient-to-br from-blue-600/20 via-blue-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-5 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-blue-500/20 hover:border-blue-500/30"
                             >
-                                <Zap className="w-9 h-9 text-white/80 group-hover:scale-110 transition-transform duration-300 shrink-0" strokeWidth={1.5} />
-                                <div className="text-left">
-                                    <span className="text-white text-xl font-bold block">Venda Rápida</span>
-                                    <span className="text-white/50 text-[11px]">Sem receita ou produtos avulsos</span>
+                                <div className="p-3 rounded-full bg-blue-500/20 ring-1 ring-blue-400/30 group-hover:bg-blue-500/40 transition-colors shadow-[0_0_15px_rgba(59,130,246,0.3)]">
+                                    <Zap className="w-8 h-8 text-blue-200 group-hover:text-white transition-colors shrink-0" strokeWidth={1.5} />
+                                </div>
+                                <div className="text-left flex-1">
+                                    <span className="text-white text-xl font-bold block mb-0.5">Venda Rápida</span>
+                                    <span className="text-blue-200/70 text-xs font-medium group-hover:text-blue-100 transition-colors">Sem receita / Avulso</span>
+                                </div>
+                                <div className="absolute top-1/2 right-4 -translate-y-1/2 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all duration-300">
+                                    <ArrowRight className="w-5 h-5 text-blue-300" />
                                 </div>
                             </button>
                         </div>
                     </div>
 
                     {/* Linha Divisória Vertical */}
-                    <div className="hidden lg:flex items-center px-6">
-                        <div className="w-px h-44 bg-gradient-to-b from-transparent via-slate-300 to-transparent" />
+                    <div className="hidden lg:flex items-center px-10 self-stretch">
+                        <div className="w-px h-full min-h-[200px] bg-gradient-to-b from-transparent via-white/10 to-transparent" />
                     </div>
 
                     {/* Linha Divisória Horizontal (mobile) */}
-                    <div className="lg:hidden w-full max-w-md flex items-center justify-center">
-                        <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
+                    <div className="lg:hidden w-full max-w-md flex items-center justify-center my-6">
+                        <div className="h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                     </div>
 
-                    {/* Coluna Retorno */}
-                    <div className="flex-1 flex flex-col items-center">
-                        <h2 className="text-lg font-black text-emerald-600 uppercase tracking-widest mb-4 flex flex-col items-center">
+                    {/* Coluna Retorno (AMBER THEME - Matching "Loja Vazia") */}
+                    <div className="flex-1 flex flex-col items-center w-full">
+                        <h2 className="text-lg font-black text-amber-300 uppercase tracking-widest mb-6 flex flex-col items-center drop-shadow-md">
                             Retorno
-                            <span className="block w-12 h-1 bg-emerald-400 rounded-full mt-1"></span>
+                            <span className="block w-12 h-1 bg-amber-500 rounded-full mt-2 shadow-[0_0_10px_rgba(245,158,11,0.5)]"></span>
                         </h2>
-                        <div className="flex flex-col gap-3 w-full max-w-xs">
+                        <div className="flex flex-col gap-4 w-full max-w-sm">
                             {/* Entrega Óculos */}
                             <button
                                 onClick={() => openEntregaModal()}
-                                className="group w-full bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center gap-4 px-5 py-3 shadow-[0_10px_35px_-8px_rgba(16,185,129,0.5)] hover:shadow-[0_14px_45px_-8px_rgba(16,185,129,0.6)] hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 cursor-pointer"
+                                className="group w-full bg-gradient-to-br from-amber-600/20 via-orange-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-4 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-amber-500/20 hover:border-amber-500/30"
                             >
-                                <CheckCircle2 className="w-7 h-7 text-white/80 group-hover:scale-110 transition-transform duration-300 shrink-0" strokeWidth={1.5} />
-                                <div className="text-left">
+                                <div className="p-2.5 rounded-full bg-amber-500/20 ring-1 ring-amber-400/30 group-hover:bg-amber-500/40 transition-colors shadow-[0_0_15px_rgba(245,158,11,0.3)]">
+                                    <CheckCircle2 className="w-7 h-7 text-amber-200 group-hover:text-white transition-colors shrink-0" strokeWidth={1.5} />
+                                </div>
+                                <div className="text-left flex-1">
                                     <span className="text-white text-lg font-bold block">Entrega</span>
-                                    <span className="text-white/50 text-[10px]">Cliente veio buscar seu óculos</span>
+                                    <span className="text-amber-200/70 text-[10px] uppercase tracking-wide group-hover:text-amber-100 transition-colors">Buscar óculos</span>
+                                </div>
+                                <div className="absolute top-1/2 right-4 -translate-y-1/2 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all duration-300">
+                                    <ArrowRight className="w-5 h-5 text-amber-300" />
                                 </div>
                             </button>
 
                             {/* Baixa Parcelas */}
                             <button
                                 onClick={() => openParcelaModal()}
-                                className="group w-full bg-gradient-to-br from-violet-500 to-violet-600 rounded-xl flex items-center gap-4 px-5 py-3 shadow-[0_10px_35px_-8px_rgba(139,92,246,0.5)] hover:shadow-[0_14px_45px_-8px_rgba(139,92,246,0.6)] hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 cursor-pointer"
+                                className="group w-full bg-gradient-to-br from-amber-600/20 via-orange-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-4 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-amber-500/20 hover:border-amber-500/30"
                             >
-                                <Wallet className="w-7 h-7 text-white/80 group-hover:scale-110 transition-transform duration-300 shrink-0" strokeWidth={1.5} />
-                                <div className="text-left">
+                                <div className="p-2.5 rounded-full bg-amber-500/20 ring-1 ring-amber-400/30 group-hover:bg-amber-500/40 transition-colors shadow-[0_0_15px_rgba(245,158,11,0.3)]">
+                                    <Wallet className="w-7 h-7 text-amber-200 group-hover:text-white transition-colors shrink-0" strokeWidth={1.5} />
+                                </div>
+                                <div className="text-left flex-1">
                                     <span className="text-white text-lg font-bold block">Parcelas</span>
-                                    <span className="text-white/50 text-[10px]">Cliente veio pagar parcela</span>
+                                    <span className="text-amber-200/70 text-[10px] uppercase tracking-wide group-hover:text-amber-100 transition-colors">Pagamento</span>
+                                </div>
+                                <div className="absolute top-1/2 right-4 -translate-y-1/2 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all duration-300">
+                                    <ArrowRight className="w-5 h-5 text-amber-300" />
                                 </div>
                             </button>
 
                             {/* Assistência */}
                             <button
                                 onClick={() => onNavigate(`/dashboard/loja/${storeId}/assistencia`)}
-                                className="group w-full bg-gradient-to-br from-rose-500 to-rose-600 rounded-xl flex items-center gap-4 px-5 py-3 shadow-[0_10px_35px_-8px_rgba(244,63,94,0.5)] hover:shadow-[0_14px_45px_-8px_rgba(244,63,94,0.6)] hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 cursor-pointer"
+                                className="group w-full bg-gradient-to-br from-amber-600/20 via-orange-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-4 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-amber-500/20 hover:border-amber-500/30"
                             >
-                                <LifeBuoy className="w-7 h-7 text-white/80 group-hover:scale-110 transition-transform duration-300 shrink-0" strokeWidth={1.5} />
-                                <div className="text-left">
+                                <div className="p-2.5 rounded-full bg-amber-500/20 ring-1 ring-amber-400/30 group-hover:bg-amber-500/40 transition-colors shadow-[0_0_15px_rgba(245,158,11,0.3)]">
+                                    <LifeBuoy className="w-7 h-7 text-amber-200 group-hover:text-white transition-colors shrink-0" strokeWidth={1.5} />
+                                </div>
+                                <div className="text-left flex-1">
                                     <span className="text-white text-lg font-bold block">Assistência</span>
-                                    <span className="text-white/50 text-[10px]">Conserto ou ajuste de óculos</span>
+                                    <span className="text-amber-200/70 text-[10px] uppercase tracking-wide group-hover:text-amber-100 transition-colors">Conserto/Ajuste</span>
+                                </div>
+                                <div className="absolute top-1/2 right-4 -translate-y-1/2 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all duration-300">
+                                    <ArrowRight className="w-5 h-5 text-amber-300" />
                                 </div>
                             </button>
                         </div>
@@ -128,63 +158,70 @@ export default function OperatorMenuAtendimento({
                 </div>
 
                 {/* Linha Divisória Horizontal */}
-                <div className="w-full max-w-2xl flex items-center justify-center my-5">
-                    <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
+                <div className="w-full max-w-3xl flex items-center justify-center mb-8 mt-2">
+                    <div className="h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                 </div>
 
-                {/* Seção Apoio */}
-                <div className="flex flex-col items-center w-full max-w-2xl">
-                    <h2 className="text-lg font-black text-slate-600 uppercase tracking-widest mb-4 flex flex-col items-center">
-                        Apoio
-                        <span className="block w-12 h-1 bg-slate-400 rounded-full mt-1"></span>
+                {/* Seção Apoio (NEUTRAL/SLATE THEME) */}
+                <div className="flex flex-col items-center w-full max-w-4xl bg-black/20 backdrop-blur-md rounded-3xl p-6 border border-white/5 mx-4">
+                    <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-3">
+                        <span className="w-8 h-px bg-slate-600"></span>
+                        Apoio Operacional
+                        <span className="w-8 h-px bg-slate-600"></span>
                     </h2>
-                    <div className="flex flex-col sm:flex-row gap-3 w-full justify-center">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
                         {/* Clientes */}
                         <button
                             onClick={() => onNavigate(`/dashboard/loja/${storeId}/clientes`)}
-                            className="group flex-1 max-w-xs bg-gradient-to-br from-cyan-500 to-cyan-600 rounded-xl flex items-center gap-4 px-5 py-3 shadow-[0_10px_35px_-8px_rgba(6,182,212,0.5)] hover:shadow-[0_14px_45px_-8px_rgba(6,182,212,0.6)] hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 cursor-pointer"
+                            className="group bg-white/5 hover:bg-slate-700/30 rounded-xl flex items-center gap-4 px-4 py-3 border border-white/5 hover:border-slate-500/30 transition-all duration-300 cursor-pointer"
                         >
-                            <Users className="w-8 h-8 text-white/80 group-hover:scale-110 transition-transform duration-300 shrink-0" strokeWidth={1.5} />
+                            <div className="p-2 rounded-lg bg-slate-500/20 text-slate-300 group-hover:bg-slate-500 group-hover:text-white transition-colors">
+                                <Users className="w-5 h-5" strokeWidth={2} />
+                            </div>
                             <div className="text-left">
-                                <span className="text-white text-lg font-bold block">Clientes</span>
-                                <span className="text-white/50 text-[10px]">Consultar ou cadastrar</span>
+                                <span className="text-slate-200 text-sm font-bold block group-hover:text-white transition-colors">Clientes</span>
+                                <span className="text-slate-500 text-[10px] group-hover:text-slate-300 transition-colors">Cadastro</span>
                             </div>
                         </button>
 
                         {/* Busca Universal */}
                         <button
                             onClick={() => onNavigate(`/dashboard/loja/${storeId}/consultas`)}
-                            className="group flex-1 max-w-xs bg-gradient-to-br from-slate-500 to-slate-600 rounded-xl flex items-center gap-4 px-5 py-3 shadow-[0_10px_35px_-8px_rgba(100,116,139,0.5)] hover:shadow-[0_14px_45px_-8px_rgba(100,116,139,0.6)] hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 cursor-pointer"
+                            className="group bg-white/5 hover:bg-slate-700/30 rounded-xl flex items-center gap-4 px-4 py-3 border border-white/5 hover:border-slate-500/30 transition-all duration-300 cursor-pointer"
                         >
-                            <Globe className="w-8 h-8 text-white/80 group-hover:scale-110 transition-transform duration-300 shrink-0" strokeWidth={1.5} />
+                            <div className="p-2 rounded-lg bg-slate-500/20 text-slate-300 group-hover:bg-slate-500 group-hover:text-white transition-colors">
+                                <Globe className="w-5 h-5" strokeWidth={2} />
+                            </div>
                             <div className="text-left">
-                                <span className="text-white text-lg font-bold block">Busca</span>
-                                <span className="text-white/50 text-[10px]">Pesquisar vendas, OS, etc.</span>
+                                <span className="text-slate-200 text-sm font-bold block group-hover:text-white transition-colors">Busca</span>
+                                <span className="text-slate-500 text-[10px] group-hover:text-slate-300 transition-colors">Geral</span>
                             </div>
                         </button>
 
                         {/* Info Clientes */}
                         <button
                             onClick={() => openCustomerHistoryModal()}
-                            className="group flex-1 max-w-xs bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center gap-4 px-5 py-3 shadow-[0_10px_35px_-8px_rgba(168,85,247,0.5)] hover:shadow-[0_14px_45px_-8px_rgba(168,85,247,0.6)] hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 cursor-pointer"
+                            className="group bg-white/5 hover:bg-slate-700/30 rounded-xl flex items-center gap-4 px-4 py-3 border border-white/5 hover:border-slate-500/30 transition-all duration-300 cursor-pointer"
                         >
-                            <FileSearch className="w-8 h-8 text-white/80 group-hover:scale-110 transition-transform duration-300 shrink-0" strokeWidth={1.5} />
+                            <div className="p-2 rounded-lg bg-slate-500/20 text-slate-300 group-hover:bg-slate-500 group-hover:text-white transition-colors">
+                                <FileSearch className="w-5 h-5" strokeWidth={2} />
+                            </div>
                             <div className="text-left">
-                                <span className="text-white text-lg font-bold block">Info Clientes</span>
-                                <span className="text-white/50 text-[10px]">Parcelas e graus do cliente</span>
+                                <span className="text-slate-200 text-sm font-bold block group-hover:text-white transition-colors">Info</span>
+                                <span className="text-slate-500 text-[10px] group-hover:text-slate-300 transition-colors">Histórico</span>
                             </div>
                         </button>
                     </div>
                 </div>
             </div>
 
-            {/* Botão Voltar - MAIS DESTACADO */}
+            {/* Botão Voltar */}
             <button
                 onClick={onBack}
-                className="absolute bottom-6 left-6 flex items-center gap-2 bg-white hover:bg-blue-50 text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-300 transition-all duration-200 text-sm font-bold z-10 px-5 py-3 rounded-xl shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+                className="absolute bottom-6 left-6 flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all duration-300 border border-white/5 hover:border-white/20 backdrop-blur-sm z-20 group"
             >
-                <ArrowLeft className="w-5 h-5" />
-                Voltar ao Menu
+                <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+                <span className="text-xs font-bold uppercase tracking-wider">Voltar</span>
             </button>
         </div>
     );

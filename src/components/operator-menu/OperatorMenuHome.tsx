@@ -28,7 +28,7 @@ export default function OperatorMenuHome({
             </div>
 
             {/* Conteúdo */}
-            <div className="relative z-10 w-full max-w-5xl flex flex-col items-center mt-[-12vh]">
+            <div className="relative z-10 w-full max-w-5xl flex flex-col items-center mt-[-18vh]">
 
                 {/* Header / Logo */}
                 <div className="mb-4 text-center flex flex-col items-center animate-in slide-in-from-top-5 duration-700">
@@ -126,7 +126,7 @@ export default function OperatorMenuHome({
                 </div>
 
                 {/* Footer */}
-                <div className="text-center opacity-40 hover:opacity-100 transition-opacity duration-300">
+                <div className="text-center opacity-40 hover:opacity-100 transition-opacity duration-300 mt-16">
                     <p className="text-[10px] text-slate-300 font-medium uppercase tracking-[0.3em]">
                         Powered by <span className="font-bold text-white">NeoManager 2.0</span>
                     </p>

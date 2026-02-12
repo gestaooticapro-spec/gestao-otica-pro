@@ -23,7 +23,7 @@ export type AlertaLaboratorio = {
 export type DashboardAlerts = {
     entregas: AlertaEntrega[]
     laboratorio: AlertaLaboratorio[]
-    vendasEmAberto: number 
+    vendasEmAberto: number
 }
 
 export async function getAlertasOperacionais(storeId: number): Promise<DashboardAlerts> {
@@ -44,7 +44,7 @@ export async function getAlertasOperacionais(storeId: number): Promise<Dashboard
                 .is('dt_entregue_em', null)
                 .lte('dt_prometido_para', amanha.toISOString())
                 .order('dt_prometido_para', { ascending: true }),
-            
+
             // Laboratório (Parado > 24h sem pedido)
             (supabaseAdmin
                 .from('service_orders') as any)
@@ -84,10 +84,10 @@ export async function getAlertasOperacionais(storeId: number): Promise<Dashboard
             }
         })
 
-        return { 
-            entregas, 
+        return {
+            entregas,
             laboratorio,
-            vendasEmAberto: resVendas.count || 0 
+            vendasEmAberto: resVendas.count || 0
         }
 
     } catch (error) {
@@ -106,14 +106,14 @@ export type ResultadoBusca = {
 export async function realizarBuscaUniversal(termo: string, storeId: number): Promise<ResultadoBusca> {
     const supabaseAdmin = createAdminClient()
     const cleanTerm = termo.trim()
-    
+
     const resultados: ResultadoBusca = { clientes: [], vendas: [], os: [], produtos: [] }
-    
+
     if (!cleanTerm) return resultados
 
     try {
         const isNumeric = /^\d+$/.test(cleanTerm)
-        
+
         // --- PASSO ZERO: DETECTA DEPENDENTES ---
         let dependenteIds: number[] = []
         let responsavelIds: number[] = []
@@ -126,7 +126,7 @@ export async function realizarBuscaUniversal(termo: string, storeId: number): Pr
                 .eq('store_id', storeId)
                 .ilike('full_name', `%${cleanTerm}%`)
                 .limit(5)
-            
+
             if (deps && deps.length > 0) {
                 deps.forEach((d: any) => {
                     dependenteIds.push(d.id)
@@ -138,7 +138,7 @@ export async function realizarBuscaUniversal(termo: string, storeId: number): Pr
 
         // --- 1. BUSCAR CLIENTES ---
         const promisesClientes = []
-        
+
         // CORREÇÃO: Cast as any na query base de clientes
         let queryA = (supabaseAdmin
             .from('customers') as any)
@@ -163,17 +163,17 @@ export async function realizarBuscaUniversal(termo: string, storeId: number): Pr
 
         const resultadosClientes = await Promise.all(promisesClientes as any)
         const todosClientes = resultadosClientes.flatMap((r: any) => r.data || [])
-        
+
         const mapClientesUnicos = new Map()
         todosClientes.forEach((c: any) => {
             if (!mapClientesUnicos.has(c.id)) {
                 const nomeDependente = mapaDependenteNome.get(c.id)
                 const extraInfo = nomeDependente ? `(Resp. por ${nomeDependente})` : undefined
-                mapClientesUnicos.set(c.id, { 
-                    id: c.id, 
-                    nome: c.full_name + (extraInfo ? ` ${extraInfo}` : ''), 
-                    cpf: c.cpf, 
-                    fone: c.fone_movel 
+                mapClientesUnicos.set(c.id, {
+                    id: c.id,
+                    nome: c.full_name + (extraInfo ? ` ${extraInfo}` : ''),
+                    cpf: c.cpf,
+                    fone: c.fone_movel
                 })
             }
         })
@@ -181,7 +181,7 @@ export async function realizarBuscaUniversal(termo: string, storeId: number): Pr
 
         // --- 2. BUSCAR VENDAS ---
         const promisesVendas = []
-        
+
         // CORREÇÃO: Cast as any na query de vendas
         let queryVendasA = (supabaseAdmin
             .from('vendas') as any)
@@ -213,12 +213,12 @@ export async function realizarBuscaUniversal(termo: string, storeId: number): Pr
         const mapVendasUnicas = new Map()
         todasVendas.forEach((v: any) => {
             if (!mapVendasUnicas.has(v.id)) {
-                mapVendasUnicas.set(v.id, { 
-                    id: v.id, 
-                    data: v.created_at, 
-                    valor: v.valor_final, 
-                    status: v.status, 
-                    cliente: v.customers?.full_name || 'N/A' 
+                mapVendasUnicas.set(v.id, {
+                    id: v.id,
+                    data: v.created_at,
+                    valor: v.valor_final,
+                    status: v.status,
+                    cliente: v.customers?.full_name || 'N/A'
                 })
             }
         })
@@ -265,13 +265,13 @@ export async function realizarBuscaUniversal(termo: string, storeId: number): Pr
         const mapOSUnicas = new Map()
         todasOS.forEach((o: any) => {
             if (!mapOSUnicas.has(o.id)) {
-                mapOSUnicas.set(o.id, { 
-                    id: o.id, 
-                    venda_id: o.venda_id, 
-                    protocolo: o.protocolo_fisico, 
-                    data: o.created_at, 
-                    cliente: o.customers?.full_name || 'N/A', 
-                    status: 'Aberta' 
+                mapOSUnicas.set(o.id, {
+                    id: o.id,
+                    venda_id: o.venda_id,
+                    protocolo: o.protocolo_fisico,
+                    data: o.created_at,
+                    cliente: o.customers?.full_name || 'N/A',
+                    status: 'Aberta'
                 })
             }
         })
@@ -299,9 +299,9 @@ export async function realizarBuscaUniversal(termo: string, storeId: number): Pr
         if (produtosEncontrados) {
             resultados.produtos = (produtosEncontrados as any[]).map((p: any) => ({
                 id: p.id,
-                tipo: p.tipo_produto === 'Armacao' ? 'Armação' : 
-                      p.tipo_produto === 'Lente' ? 'Lente' : 
-                      p.tipo_produto === 'Tratamento' ? 'Tratamento' : 'Geral',
+                tipo: p.tipo_produto === 'Armacao' ? 'Armação' :
+                    p.tipo_produto === 'Lente' ? 'Lente' :
+                        p.tipo_produto === 'Tratamento' ? 'Tratamento' : 'Geral',
                 nome: p.nome,
                 preco: p.preco_venda,
                 estoque: p.estoque_atual,
@@ -326,7 +326,7 @@ export type Aniversariante = {
 
 export async function getAniversariantes(storeId: number): Promise<Aniversariante[]> {
     const supabase = createAdminClient()
-    
+
     const hoje = new Date()
     const targetMonth = hoje.getMonth() + 1
     const targetDay = hoje.getDate()
@@ -381,12 +381,12 @@ export type VencimentoProximo = {
 export async function getVencimentosProximos(storeId: number): Promise<VencimentoProximo[]> {
     const supabaseAdmin = createAdminClient()
     const hoje = new Date()
-    const amanha = new Date(hoje)
-    amanha.setDate(hoje.getDate() + 1)
-
     // Formata YYYY-MM-DD
+    const fimDate = new Date(hoje)
+    fimDate.setDate(hoje.getDate() + 2) // Hoje, Amanhã, Depois de Amanhã (3 dias)
+
     const inicio = hoje.toISOString().split('T')[0]
-    const fim = amanha.toISOString().split('T')[0]
+    const fim = fimDate.toISOString().split('T')[0]
 
     try {
         const { data, error } = await (supabaseAdmin.from('financiamento_parcelas') as any)
