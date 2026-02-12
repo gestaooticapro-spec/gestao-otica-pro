@@ -138,14 +138,14 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
 
         // Detalhe por carnê
         financiamentos.forEach((f) => {
-            msg += `\n\n📋 *Carnê Venda #${f.vendaId}* (${formatDate(f.dataVenda)})`
+            msg += `\n\n-- *Carne Venda #${f.vendaId}* (${formatDate(f.dataVenda)}) --`
             msg += `\nNº | Venc. | Valor | Pgto | Pago`
             f.parcelas.forEach((p) => {
                 const venc = formatDate(p.dataVencimento)
                 const valor = formatCurrency(p.valor)
                 const dtPgto = p.dataPagamento ? formatDate(p.dataPagamento) : '-'
                 const vlrPago = p.status === 'Pago' ? formatCurrency(p.valorPago || p.valor) : '-'
-                const emoji = p.status === 'Pago' ? '✅' : '⏳'
+                const emoji = p.status === 'Pago' ? '[OK]' : '[  ]'
                 msg += `\n${emoji} ${p.numeroParcela} | ${venc} | ${valor} | ${dtPgto} | ${vlrPago}`
             })
         })
@@ -210,11 +210,11 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
 
     return (
         <div
-            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            className="fixed inset-0 z-[60] flex items-start justify-center bg-black/60 backdrop-blur-sm p-4 pt-20"
             onClick={onClose}
         >
             <div
-                className="relative w-full max-w-2xl bg-gray-100 rounded-xl shadow-2xl border border-gray-300 overflow-hidden flex flex-col max-h-[85vh]"
+                className="relative w-full max-w-2xl bg-gray-100 rounded-xl shadow-2xl border border-gray-300 overflow-hidden flex flex-col max-h-[85vh] min-h-[600px]"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
