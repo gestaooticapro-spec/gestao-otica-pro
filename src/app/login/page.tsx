@@ -6,20 +6,20 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useFormStatus } from 'react-dom'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Eye, EyeOff } from 'lucide-react'
 import Link from 'next/link'
 import { getLoginRoute } from '@/lib/actions/auth.actions'
 
-// --- Componente do Botão de Submit (Mantido) ---
+// --- Componente do Botão de Submit (Mantido e Estilizado) ---
 function SubmitButton() {
   const { pending } = useFormStatus()
   return (
     <button
       type="submit"
       disabled={pending}
-      className="flex w-full justify-center rounded-md border border-transparent bg-blue-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:bg-blue-400"
+      className="flex w-full justify-center rounded-lg border border-white/10 bg-gradient-to-r from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 py-3 px-4 text-sm font-bold text-white shadow-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-transparent transition-all uppercase tracking-wide bg-opacity-80 backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed"
     >
-      {pending ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Entrar'}
+      {pending ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Acessar Sistema'}
     </button>
   )
 }
@@ -29,6 +29,7 @@ export default function LoginPage() {
   const router = useRouter()
   const supabase = createClient()
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [showPassword, setShowPassword] = useState(false)
 
   const handleSubmit = async (formData: FormData) => {
     setErrorMessage(null)
@@ -50,10 +51,10 @@ export default function LoginPage() {
       const { route, message } = await getLoginRoute();
 
       if (route.startsWith('/dashboard')) {
-          router.push(route);
+        router.push(route);
       } else {
-          await supabase.auth.signOut();
-          setErrorMessage(message || 'Erro no roteamento. Tente novamente.');
+        await supabase.auth.signOut();
+        setErrorMessage(message || 'Erro no roteamento. Tente novamente.');
       }
 
     } catch (error: any) {
@@ -62,28 +63,32 @@ export default function LoginPage() {
   }
 
   return (
-    <main 
-        // CORREÇÃO: Removemos 'flex-1' e garantimos a centralização na tela.
-        className="flex min-h-screen flex-col items-center justify-center bg-gray-100 p-4"
+    <main
+      className="flex min-h-screen flex-col items-center justify-center p-4 bg-[url('/login.jpg')] bg-cover bg-center relative"
     >
-      {/* A classe 'text-white' é crucial para manter a caixa escura (gray-800) */}
-      <div className="w-full max-w-md rounded-lg bg-gray-800 p-8 shadow-lg text-white">
-        <h1 className="mb-6 text-center text-3xl font-bold">
-          Gestão Ótica Pro
-        </h1>
+      {/* Overlay escuro para melhorar leitura sobre a imagem */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"></div>
 
-        <form action={handleSubmit} className="space-y-4">
+      <div className="relative w-full max-w-md rounded-2xl bg-black/20 backdrop-blur-xl p-8 shadow-2xl text-white border border-white/10 ring-1 ring-white/5">
+
+        {/* LOGO / BRANDING */}
+        <div className="mb-8 text-center">
+          <h1 className="text-4xl font-black tracking-tight mb-2 text-white drop-shadow-lg">
+            <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Neo</span>Manager 2.0
+          </h1>
+          <p className="text-gray-300 text-xs font-medium uppercase tracking-widest text-shadow-sm opacity-80">Sistema de Gestão Ótica</p>
+        </div>
+
+        <form action={handleSubmit} className="space-y-6">
           {errorMessage && (
-            // Mensagem de erro fica em cores claras sobre o fundo escuro
-            <div className="mb-4 rounded border border-red-400 bg-red-100 p-3 text-sm text-red-700">
-              <p>
-                <strong>Erro:</strong> {errorMessage}
-              </p>
+            <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-200 flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+              <div className="h-2 w-2 rounded-full bg-red-500 shrink-0" />
+              <p>{errorMessage}</p>
             </div>
           )}
-          <div>
-            {/* O label deve ser branco para contraste */}
-            <label htmlFor="email" className="block text-sm font-medium text-white">
+
+          <div className="space-y-1">
+            <label htmlFor="email" className="block text-xs font-medium text-gray-300 ml-1">
               E-mail
             </label>
             <input
@@ -91,35 +96,53 @@ export default function LoginPage() {
               name="email"
               type="email"
               required
-              // O input continua branco com texto escuro
-              className="mt-1 block w-full rounded-md border-gray-300 bg-white shadow-sm text-gray-900 h-10 text-sm focus:border-blue-500 focus:ring-blue-500"
+              placeholder="seu@email.com"
+              className="block w-full rounded-lg border border-white/10 bg-black/40 text-white placeholder-gray-500 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 sm:text-sm h-11 transition-all hover:bg-black/50"
             />
           </div>
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-white">
+
+          <div className="space-y-1">
+            <label htmlFor="password" className="block text-xs font-medium text-gray-300 ml-1">
               Senha
             </label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              required
-              className="mt-1 block w-full rounded-md border-gray-300 bg-white shadow-sm text-gray-900 h-10 text-sm focus:border-blue-500 focus:ring-blue-500"
-            />
+            <div className="relative">
+              <input
+                id="password"
+                name="password"
+                type={showPassword ? "text" : "password"}
+                required
+                placeholder="••••••••"
+                className="block w-full rounded-lg border border-white/10 bg-black/40 text-white placeholder-gray-500 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 sm:text-sm h-11 transition-all hover:bg-black/50 pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-white transition-colors"
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              </button>
+            </div>
           </div>
-          <div className="pt-2">
+
+          <div className="pt-4">
             <SubmitButton />
           </div>
-          <div className="text-center text-sm">
+
+          <div className="text-center pt-2">
             <Link
               href="/forgot-password"
-              // Link em tom de azul claro para contraste no fundo escuro
-              className="font-medium text-blue-400 hover:text-blue-300"
+              className="text-xs font-medium text-gray-400 hover:text-white transition-colors"
             >
               Esqueceu sua senha?
             </Link>
           </div>
         </form>
+
+        {/* Footer discreto */}
+        <div className="mt-8 pt-6 border-t border-white/5 text-center">
+          <p className="text-[10px] text-gray-300 opacity-80">© {new Date().getFullYear()} NeoManager. Todos os direitos reservados.</p>
+        </div>
       </div>
     </main>
   )
