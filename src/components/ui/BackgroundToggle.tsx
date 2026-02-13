@@ -58,6 +58,7 @@ export function BackgroundToggle({ className = '' }: { className?: string }) {
 
     return (
         <button
+            type="button"
             onClick={togglePreference}
             title={preference === 'image' ? "Desativar imagem de fundo" : "Ativar imagem de fundo"}
             className={`p-2 rounded-full bg-black/20 hover:bg-black/40 text-white/50 hover:text-white border border-white/5 hover:border-white/20 transition-all backdrop-blur-sm z-50 ${className}`}

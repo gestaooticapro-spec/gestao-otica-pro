@@ -1,0 +1,106 @@
+
+"use client"
+
+import { useState, useEffect, useTransition, useCallback, useRef } from 'react'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { 
+    User, CalendarClock, Truck, Save, Trash2, 
+    ArrowLeft, Loader2, Plus, Search, FileDown, 
+    MessageCircle, Share2, History, X, ChevronLeft, ChevronRight,
+    Eye,
+    Ruler,
+    Glasses,
+    Sparkles
+} from 'lucide-react'
+import { useFormState, useFormStatus } from 'react-dom'
+import { getOSPageData, getVendaPageData, saveServiceOrder, deleteServiceOrder, reserveLens, checkLensStock } from './actions'
+import { OSPageData, ServiceOrderWithLinks, Dependente, LensStockMatch, SaveSOResult, PrescriptionHistoryItem } from './types'
+import { PrintProtocoloButton } from './print-button'
+import AddDependenteModal from '@/components/modals/AddDependenteModal'
+import AddOftalmoModal from '@/components/modals/AddOftalmoModal'
+import PrescriptionHistoryModal from '@/components/modals/PrescriptionHistoryModal'
+import ServiceOrderForm from './ServiceOrderForm'
+
+export default function ServiceOrderPage() {
+    const params = useParams()
+    const storeId = parseInt(params.storeId as string)
+    const vendaId = parseInt(params.vendaId as string)
+    const [data, setData] = useState<OSPageData | null>(null)
+    const [loading, setLoading] = useState(true)
+    const [errorMsg, setErrorMsg] = useState('')
+    const [saveState, dispatch] = useFormState(saveServiceOrder, { success: false, message: '' })
+    const [existingOrders, setExistingOrders] = useState<any[]>([])
+    const [authedEmployeeName, setAuthedEmployeeName] = useState('')
+
+    useEffect(() => {
+        async function load() {
+            try {
+                if (isNaN(storeId) || isNaN(vendaId)) {
+                    throw new Error(`IDs inválidos: Store=${params.storeId}, Venda=${params.vendaId}`)
+                }
+
+                const vendaRes = await getVendaPageData(vendaId, storeId)
+                if (!vendaRes.success || !vendaRes.data || !vendaRes.data.venda) {
+                    throw new Error(vendaRes.message || "Venda não encontrada.")
+                }
+
+                const venda = vendaRes.data.venda
+                const customerId = venda.customer_id
+
+                if (vendaRes.data.employee) {
+                    setAuthedEmployeeName(vendaRes.data.employee.full_name)
+                }
+
+                const res = await getOSPageData(vendaId, storeId, customerId)
+                if (!res.success || !res.data) {
+                    throw new Error(res.message || "Erro desconhecido ao carregar dados da OS.")
+                }
+
+                setData(res.data)
+                setExistingOrders(res.data.existingOrders)
+
+            } catch (e: any) {
+                console.error(e)
+                setErrorMsg(e.message || "Erro inesperado.")
+            } finally {
+                setLoading(false)
+            }
+        }
+        load()
+    }, [storeId, vendaId, params.storeId, params.vendaId])
+
+    if (loading) return <div className="p-10 flex justify-center"><Loader2 className="animate-spin h-8 w-8 text-blue-600" /></div>
+
+    if (errorMsg) return (
+        <div className="p-10 text-center">
+            <div className="text-red-600 font-bold mb-2">Erro ao carregar dados:</div>
+            <div className="text-gray-700 bg-gray-100 p-2 rounded inline-block mb-4">{errorMsg}</div>
+            <button
+                onClick={() => window.location.reload()}
+                className="block mx-auto bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
+            >
+                Tentar Novamente
+            </button>
+        </div>
+    )
+
+    if (!data) return null
+
+    return (
+        <ServiceOrderForm
+            storeId={storeId}
+            vendaId={vendaId}
+            customer={data.customer}
+            vendaItens={data.vendaItens}
+            dependentes={data.dependentes}
+            oftalmosList={data.oftalmologistas}
+            employees={data.employees}
+            existingOrders={existingOrders}
+            authedEmployeeName={authedEmployeeName}
+            onListChange={setExistingOrders}
+            saveState={saveState}
+            dispatch={dispatch}
+            venda={data.venda}
+        />
+    )
+}

@@ -1,4 +1,4 @@
-// ARQUIVO: src/app/dashboard/loja/[storeId]/vendas/[vendaId]/os/ServiceOrderForm.tsx
+﻿// ARQUIVO: src/app/dashboard/loja/[storeId]/vendas/[vendaId]/os/page.tsx
 'use client'
 
 import {
@@ -8,24 +8,29 @@ import {
     useTransition,
     useRef,
 } from 'react'
-import { useFormStatus } from 'react-dom'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useFormState, useFormStatus } from 'react-dom'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import {
     Loader2, Save, Trash2, ChevronLeft, ChevronRight,
     Eye, Glasses, User, Ruler, Truck, Plus, History, FileDown, CalendarClock,
     MessageCircle, Sparkles
 } from 'lucide-react'
 import {
+    saveServiceOrder,
     deleteServiceOrder,
     type OSPageData,
     type SaveSOResult,
-    type PrescriptionHistoryItem
+    type PrescriptionHistoryItem,
+    getOSPageData,
+    getVendaPageData
 } from '@/lib/actions/vendas.actions'
 import { checkLensStock, reserveLens, type LensStockMatch } from '@/lib/actions/stock.actions'
 import { Database } from '@/lib/database.types'
 import AddDependenteModal from '@/components/modals/AddDependenteModal'
+import AddOftalmoModal from '@/components/modals/AddOftalmoModal'
 import PrescriptionHistoryModal from '@/components/modals/PrescriptionHistoryModal'
 import { PrintProtocoloButton } from '@/components/vendas/PrintProtocoloButton'
+import { createClient } from '@/lib/supabase/client'
 
 type ServiceOrderWithLinks = any
 type Dependente = Database['public']['Tables']['dependentes']['Row']
@@ -40,17 +45,16 @@ const formatDate = (d: string) => {
     return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-// --- ESTILOS DO DESIGN SYSTEM Dark Glassmorphic ---
-const cardBase = "rounded-xl shadow-xl border border-white/5 bg-white/5 backdrop-blur-xl p-3 flex flex-col relative overflow-hidden transition-all hover:bg-white/10"
-const cardBlue = cardBase
-const cardSlate = cardBase
-const cardViolet = cardBase
-const cardTeal = cardBase
-const cardAmber = cardBase
+// --- ESTILOS DO DESIGN SYSTEM (COMPACTO) ---
+const cardBase = "rounded-xl shadow-sm border border-white/20 p-3 flex flex-col relative overflow-hidden"
+const cardBlue = `${cardBase} bg-gradient-to-br from-blue-600 to-indigo-700 shadow-blue-100`
+const cardSlate = `${cardBase} bg-gradient-to-br from-slate-600 to-slate-700 shadow-slate-200`
+const cardViolet = `${cardBase} bg-gradient-to-br from-indigo-600 to-violet-700 shadow-indigo-100`
+const cardTeal = `${cardBase} bg-gradient-to-br from-teal-500 to-emerald-600 shadow-emerald-100`
+const cardAmber = `${cardBase} bg-gradient-to-br from-amber-500 to-orange-600 shadow-orange-100`
 
-const labelStyle = 'block text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider'
-// Estilo de input transparente/escuro
-const inputStyle = 'block w-full rounded-lg border border-white/10 bg-black/20 shadow-inner text-white h-8 text-xs px-3 focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:outline-none font-medium placeholder:font-normal placeholder:text-slate-500 disabled:opacity-50 transition-all'
+const labelStyle = 'block text-[10px] font-bold text-white/80 mb-0.5 uppercase tracking-wider'
+const inputStyle = 'block w-full rounded border-0 bg-white shadow-sm text-gray-900 h-7 text-xs px-2 focus:ring-1 focus:ring-white/50 focus:outline-none font-semibold placeholder:font-normal placeholder:text-gray-400 disabled:bg-gray-200 disabled:text-gray-500'
 const gridInput = `${inputStyle} text-center`
 
 const baseButtonStyle = 'px-3 py-1.5 text-xs rounded-lg shadow-sm disabled:opacity-50 focus:outline-none transition-all duration-200 font-bold flex items-center gap-2'
@@ -81,7 +85,7 @@ function DegreeInput({ name, value, onChange, placeholder, className }: { name: 
 
     const isNegative = value.includes('-')
     const isPositive = value.includes('+')
-    const textColor = isNegative ? 'text-rose-400' : isPositive ? 'text-emerald-400' : 'text-slate-200'
+    const textColor = isNegative ? 'text-red-600' : isPositive ? 'text-green-600' : 'text-gray-900'
 
     return (
         <input
@@ -109,9 +113,26 @@ const StockBadge = ({
     const total = matches.exact.length + matches.similar.length
     if (total === 0) return null
 
-    const hasExact = matches.exact.length > 0
-    const colorClass = hasExact ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-amber-500/10 border-amber-500/20 text-amber-400"
-    const iconColor = hasExact ? "text-emerald-400" : "text-amber-400"
+    // Check for Gold/Silver
+    const hasGold = matches.exact.some(m => m.match_type === 'gold')
+    const hasSilver = matches.exact.some(m => m.match_type === 'silver')
+
+    let colorClass = "bg-amber-100 border-amber-200 text-amber-900"
+    let iconColor = "text-amber-600"
+    let text = "Estoque Similar"
+    let badge = null
+
+    if (hasGold) {
+        colorClass = "bg-green-100 border-green-200 text-green-900"
+        iconColor = "text-green-600"
+        text = "Estoque Perfeito!"
+        badge = <span className="text-[9px] bg-white px-1 rounded font-bold border border-green-300">OURO</span>
+    } else if (hasSilver) {
+        colorClass = "bg-blue-100 border-blue-200 text-blue-900"
+        iconColor = "text-blue-600"
+        text = "Estoque Compat├¡vel"
+        badge = <span className="text-[9px] bg-white px-1 rounded font-bold border border-blue-300">PRATA</span>
+    }
 
     return (
         <div
@@ -120,11 +141,11 @@ const StockBadge = ({
         >
             <div className="flex items-center gap-1 text-[10px] font-bold">
                 <Sparkles className={`h-3 w-3 ${iconColor} fill-current animate-pulse`} />
-                {hasExact ? 'Estoque Disponível!' : 'Estoque Similar Encontrado'} ({label})
+                {text} ({label})
             </div>
             <div className="flex gap-1 items-center">
-                {hasExact && <span className="text-[9px] bg-emerald-500/20 px-1 rounded font-bold border border-emerald-500/30 text-emerald-300">EXATO</span>}
-                <span className="text-[9px] underline opacity-80">Ver {total} opções</span>
+                {badge}
+                <span className="text-[9px] underline opacity-80">Ver {total} op├º├Áes</span>
             </div>
         </div>
     )
@@ -146,36 +167,39 @@ function StockReservationModal({
 }) {
     if (!isOpen) return null
 
+    const gold = matches.exact.filter(m => m.match_type === 'gold')
+    const silver = matches.exact.filter(m => m.match_type === 'silver')
+    const bronze = matches.similar // All similar are bronze by definition
+
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="bg-slate-900 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border border-white/10">
-                <div className="bg-slate-800/50 px-4 py-3 border-b border-white/5 flex justify-between items-center bg-white/5">
-                    <h3 className="font-bold text-white flex items-center gap-2">
-                        <Glasses className="h-4 w-4 text-cyan-400" /> Estoque Disponível ({label})
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                <div className="bg-gray-50 px-4 py-3 border-b border-gray-100 flex justify-between items-center">
+                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                        <Glasses className="h-4 w-4 text-blue-600" /> Estoque Dispon├¡vel ({label})
                     </h3>
-                    <button onClick={onClose} className="text-slate-400 hover:text-white"><Trash2 className="h-4 w-4 rotate-45" /></button>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><Trash2 className="h-4 w-4 rotate-45" /></button>
                 </div>
 
-                <div className="p-4 max-h-[60vh] overflow-y-auto space-y-4 custom-scrollbar">
-                    {matches.exact.length > 0 && (
+                <div className="p-4 max-h-[60vh] overflow-y-auto space-y-4">
+
+                    {/* GOLD */}
+                    {gold.length > 0 && (
                         <div>
-                            <h4 className="text-xs font-bold text-emerald-400 uppercase mb-2 flex items-center gap-1">
-                                <Sparkles className="h-3 w-3" /> Exatamente o que você precisa
+                            <h4 className="text-xs font-bold text-green-700 uppercase mb-2 flex items-center gap-1">
+                                <Sparkles className="h-3 w-3" /> Match Perfeito (Ouro)
                             </h4>
                             <div className="space-y-2">
-                                {matches.exact.map(m => (
-                                    <div key={m.variant_id} className="border border-emerald-500/20 bg-emerald-500/5 rounded-lg p-2 flex justify-between items-center">
+                                {gold.map(m => (
+                                    <div key={m.variant_id} className="border border-green-200 bg-green-50 rounded-lg p-2 flex justify-between items-center ring-1 ring-green-300">
                                         <div>
-                                            <p className="font-bold text-xs text-white">{m.product_name}</p>
-                                            <p className="text-[10px] text-slate-400">{m.variant_name} • {m.is_sobra ? 'SOBRA/RECUP.' : 'NOVO'}</p>
-                                            <p className="text-[10px] font-mono text-slate-500">
-                                                Sph {m.esferico > 0 ? '+' : ''}{m.esferico.toFixed(2)} Cyl {m.cilindrico > 0 ? '+' : ''}{m.cilindrico.toFixed(2)}
+                                            <p className="font-bold text-xs text-gray-800">{m.product_name}</p>
+                                            <p className="text-[10px] text-gray-500">{m.variant_name} ÔÇó {m.is_sobra ? 'SOBRA' : 'NOVO'}</p>
+                                            <p className="text-[10px] font-mono text-gray-600">
+                                                Sph {m.esferico > 0 ? '+' : ''}{m.esferico.toFixed(2)} Cyl {m.cilindrico > 0 ? '+' : ''}{m.cilindrico.toFixed(2)} {m.adicao ? `Add ${m.adicao.toFixed(2)}` : ''}
                                             </p>
                                         </div>
-                                        <button
-                                            onClick={() => onReserve(m.variant_id, m.product_id)}
-                                            className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-sm transition-colors border border-emerald-500/30"
-                                        >
+                                        <button onClick={() => onReserve(m.variant_id, m.product_id)} className="bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-sm transition-colors">
                                             RESERVAR
                                         </button>
                                     </div>
@@ -184,25 +208,23 @@ function StockReservationModal({
                         </div>
                     )}
 
-                    {matches.similar.length > 0 && (
+                    {/* SILVER */}
+                    {silver.length > 0 && (
                         <div>
-                            <h4 className="text-xs font-bold text-amber-400 uppercase mb-2 flex items-center gap-1">
-                                <History className="h-3 w-3" /> Similares / Aproximados
+                            <h4 className="text-xs font-bold text-blue-700 uppercase mb-2 flex items-center gap-1">
+                                <Sparkles className="h-3 w-3" /> Mesmo Grau, Outro Produto (Prata)
                             </h4>
                             <div className="space-y-2">
-                                {matches.similar.map(m => (
-                                    <div key={m.variant_id} className="border border-amber-500/20 bg-amber-500/5 rounded-lg p-2 flex justify-between items-center">
+                                {silver.map(m => (
+                                    <div key={m.variant_id} className="border border-blue-200 bg-blue-50 rounded-lg p-2 flex justify-between items-center">
                                         <div>
-                                            <p className="font-bold text-xs text-white">{m.product_name}</p>
-                                            <p className="text-[10px] text-slate-400">{m.variant_name} • {m.is_sobra ? 'SOBRA' : 'NOVO'}</p>
-                                            <p className="text-[10px] font-mono text-slate-500">
-                                                Sph {m.esferico > 0 ? '+' : ''}{m.esferico.toFixed(2)} Cyl {m.cilindrico > 0 ? '+' : ''}{m.cilindrico.toFixed(2)}
+                                            <p className="font-bold text-xs text-gray-800">{m.product_name}</p>
+                                            <p className="text-[10px] text-gray-500">{m.variant_name} ÔÇó {m.is_sobra ? 'SOBRA' : 'NOVO'}</p>
+                                            <p className="text-[10px] font-mono text-gray-600">
+                                                Sph {m.esferico > 0 ? '+' : ''}{m.esferico.toFixed(2)} Cyl {m.cilindrico > 0 ? '+' : ''}{m.cilindrico.toFixed(2)} {m.adicao ? `Add ${m.adicao.toFixed(2)}` : ''}
                                             </p>
                                         </div>
-                                        <button
-                                            onClick={() => onReserve(m.variant_id, m.product_id)}
-                                            className="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-sm transition-colors border border-amber-500/30"
-                                        >
+                                        <button onClick={() => onReserve(m.variant_id, m.product_id)} className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-sm transition-colors">
                                             RESERVAR
                                         </button>
                                     </div>
@@ -210,18 +232,39 @@ function StockReservationModal({
                             </div>
                         </div>
                     )}
-                </div>
 
-                <div className="bg-white/5 px-4 py-2 text-center text-[10px] text-slate-500 border-t border-white/5">
-                    A reserva bloqueia o item no estoque imediatamente.
+                    {/* BRONZE */}
+                    {bronze.length > 0 && (
+                        <div>
+                            <h4 className="text-xs font-bold text-amber-700 uppercase mb-2 flex items-center gap-1">
+                                <History className="h-3 w-3" /> Grau Aproximado (Bronze)
+                            </h4>
+                            <div className="space-y-2">
+                                {bronze.map(m => (
+                                    <div key={m.variant_id} className="border border-amber-200 bg-amber-50 rounded-lg p-2 flex justify-between items-center">
+                                        <div>
+                                            <p className="font-bold text-xs text-gray-800">{m.product_name}</p>
+                                            <p className="text-[10px] text-gray-500">{m.variant_name} ÔÇó {m.is_sobra ? 'SOBRA' : 'NOVO'}</p>
+                                            <p className="text-[10px] font-mono text-gray-600">
+                                                Sph {m.esferico > 0 ? '+' : ''}{m.esferico.toFixed(2)} Cyl {m.cilindrico > 0 ? '+' : ''}{m.cilindrico.toFixed(2)} {m.adicao ? `Add ${m.adicao.toFixed(2)}` : ''}
+                                            </p>
+                                        </div>
+                                        <button onClick={() => onReserve(m.variant_id, m.product_id)} className="bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-sm transition-colors">
+                                            RESERVAR
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
     )
 }
 
-// TIPO DO FORMULÁRIO
-export type ServiceOrderFormProps = Omit<OSPageData, 'oftalmologistas'> & {
+// TIPO DO FORMUL├üRIO
+type FormProps = Omit<OSPageData, 'oftalmologistas'> & {
     storeId: number
     vendaId: number
     oftalmosList: OSPageData['oftalmologistas']
@@ -232,10 +275,10 @@ export type ServiceOrderFormProps = Omit<OSPageData, 'oftalmologistas'> & {
     venda: any
 }
 
-export default function ServiceOrderFormContent({
+function ServiceOrderFormContent({
     storeId, vendaId, customer, vendaItens, dependentes: initialDependentes, oftalmosList, employees, existingOrders, authedEmployeeName, onListChange, saveState, dispatch,
     venda
-}: ServiceOrderFormProps) {
+}: FormProps) {
 
     const router = useRouter()
     const searchParams = useSearchParams()
@@ -243,6 +286,11 @@ export default function ServiceOrderFormContent({
 
     const { pending: isSaving } = useFormStatus()
     const [isDeleting, startDeleteTransition] = useTransition()
+
+    // WhatsApp Logic State
+    const formRef = useRef<HTMLFormElement>(null)
+    const [pendingWhatsApp, setPendingWhatsApp] = useState(false)
+    const isSilentSave = useRef(false)
 
     const [currentIndex, setCurrentIndex] = useState(() => {
         if (targetOsId && existingOrders.length > 0) {
@@ -254,16 +302,22 @@ export default function ServiceOrderFormContent({
 
     const [isDepModalOpen, setIsDepModalOpen] = useState(false)
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
+    const [isOftalmoModalOpen, setIsOftalmoModalOpen] = useState(false)
     const [localDependentes, setLocalDependentes] = useState<Dependente[]>(initialDependentes)
+    const [localOftalmos, setLocalOftalmos] = useState(oftalmosList)
 
     const lastSuccessRef = useRef<number | undefined>(0);
+
+    useEffect(() => {
+        setLocalOftalmos(oftalmosList)
+    }, [oftalmosList])
 
     // --- STATES DO FORM ---
     const [protocolo, setProtocolo] = useState('')
     const [dependenteId, setDependenteId] = useState('')
     const [oftalmologistaId, setOftalmologistaId] = useState('')
 
-    // Vínculos
+    // V├¡nculos
     const [lenteOdItemId, setLenteOdItemId] = useState('')
     const [lenteOeItemId, setLenteOeItemId] = useState('')
     const [armacaoItemId, setArmacaoItemId] = useState('')
@@ -296,69 +350,34 @@ export default function ServiceOrderFormContent({
             if (longeOdEsf && longeOdCil) {
                 const esf = parseFloat(longeOdEsf.replace(',', '.').replace('+', ''))
                 const cil = parseFloat(longeOdCil.replace(',', '.').replace('+', ''))
+
+                // Busca Produto ID
+                const item = vendaItens.find(i => i.id.toString() === lenteOdItemId)
+                const pid = item ? item.product_id : null
+
+                // Busca Adi├º├úo
+                const add = adicao ? parseFloat(adicao.replace(',', '.').replace('+', '')) : null
+
                 if (!isNaN(esf) && !isNaN(cil)) {
-                    const matches = await checkLensStock(storeId, esf, cil, null, null)
+                    const matches = await checkLensStock(storeId, esf, cil, pid, isNaN(add!) ? null : add)
                     setOdMatches(matches)
                 }
-            } else setOdMatches({ exact: [], similar: [] })
-        }, 800)
+
+            }
+        }, 500)
         return () => clearTimeout(timer)
-    }, [longeOdEsf, longeOdCil, storeId])
+    }, [longeOdEsf, longeOdCil, adicao, lenteOdItemId, storeId, vendaItens])
 
-    // Monitora OE para sobras e estoque
-    useEffect(() => {
-        const timer = setTimeout(async () => {
-            if (longeOeEsf && longeOeCil) {
-                const esf = parseFloat(longeOeEsf.replace(',', '.').replace('+', ''))
-                const cil = parseFloat(longeOeCil.replace(',', '.').replace('+', ''))
-                if (!isNaN(esf) && !isNaN(cil)) {
-                    const matches = await checkLensStock(storeId, esf, cil, null, null)
-                    setOeMatches(matches)
-                }
-            } else setOeMatches({ exact: [], similar: [] })
-        }, 800)
-        return () => clearTimeout(timer)
-    }, [longeOeEsf, longeOeCil, storeId])
-
-    const handleReserve = async (variantId: number, productId: number) => {
-        if (!currentOrder?.id) {
-            alert("Salve a OS primeiro antes de reservar itens.")
-            return
-        }
-
-        const empId = venda.employee_id || 0 // Fallback
-
-        const res = await reserveLens(storeId, variantId, productId, currentOrder.id, empId)
-        if (res.success) {
-            alert("Lente reservada com sucesso! O estoque foi atualizado.")
-            setStockModalOpen(null)
-            // Opcional: Recarregar dados ou atualizar UI
-        } else {
-            alert(`Erro ao reservar: ${res.message}`)
-        }
-    }
-
-    // LÓGICA INTELIGENTE DE FILTRAGEM DE LENTES
-    const itensLente = vendaItens.filter(i => i.item_tipo === 'Lente')
-
-    // Função auxiliar para verificar disponibilidade
+    // Helper para disponibilidade
     const isLenteDisponivel = (item: any, olho: 'OD' | 'OE') => {
-        // Se for Par, está sempre disponível (pode usar no OD e OE)
         if (item.unidade === 'Par') return true;
-
-        // Se for Unidade, precisamos ver se já foi usada no OUTRO olho
         const outroOlhoId = olho === 'OD' ? lenteOeItemId : lenteOdItemId;
-
-        // Se o outro olho não tem nada selecionado, ou tem OUTRA lente selecionada, esta está livre
         if (!outroOlhoId || outroOlhoId !== item.id.toString()) return true;
-
-        // Se o outro olho está usando ESTA MESMA lente (pelo ID), precisamos ver a quantidade comprada
-        // Se comprou 2 unidades, pode usar. Se comprou 1, já era.
         if (item.quantidade >= 2) return true;
-
         return false;
     }
 
+    const itensLente = vendaItens.filter(i => i.item_tipo === 'Lente' || i.item_tipo === 'Lente de Contato')
     const lentesDisponiveisOD = itensLente.filter(i => isLenteDisponivel(i, 'OD'));
     const lentesDisponiveisOE = itensLente.filter(i => isLenteDisponivel(i, 'OE'));
 
@@ -367,9 +386,16 @@ export default function ServiceOrderFormContent({
     // Cast 'as any' no currentOrder
     const currentOrder = (currentIndex >= 0 && currentIndex < existingOrders.length ? existingOrders[currentIndex] : undefined) as any
 
+    // CORRE├ç├âO: activeId garante que usamos o ID rec├®m-salvo mesmo se o currentIndex ainda n├úo atualizou
+    const activeId = currentOrder?.id || (saveState?.success && saveState?.data?.id ? saveState.data.id : undefined)
+
     useEffect(() => {
         if (saveState.success && saveState.data && saveState.timestamp !== lastSuccessRef.current) {
-            alert(saveState.message)
+            // Se n├úo for save silencioso, mostra alert
+            if (!isSilentSave.current) {
+                alert(saveState.message)
+            }
+
             const savedOS = saveState.data as ServiceOrderWithLinks
             let newList = [...existingOrders]
             const idx = newList.findIndex(o => o.id === savedOS.id)
@@ -378,8 +404,15 @@ export default function ServiceOrderFormContent({
             onListChange(newList)
             setCurrentIndex(newList.findIndex(o => o.id === savedOS.id))
             lastSuccessRef.current = saveState.timestamp;
+
+            // Se tinha WhatsApp pendente, envia agora
+            if (pendingWhatsApp) {
+                sendWhatsAppPedido(savedOS.id)
+                setPendingWhatsApp(false)
+                isSilentSave.current = false
+            }
         }
-    }, [saveState, onListChange, existingOrders])
+    }, [saveState, onListChange, existingOrders, pendingWhatsApp])
 
     const resetForm = useCallback(() => {
         setDependenteId(''); setOftalmologistaId(''); setLenteOdItemId(''); setLenteOeItemId(''); setArmacaoItemId('')
@@ -422,18 +455,23 @@ export default function ServiceOrderFormContent({
     }
 
     const handleDelete = () => {
-        if (!currentOrder) return; if (!confirm('Excluir OS?')) return;
+        if (!activeId) return; if (!confirm('Excluir OS?')) return;
         startDeleteTransition(async () => {
-            const res = await deleteServiceOrder(currentOrder.id, storeId, vendaId)
-            if (res.success) { onListChange(existingOrders.filter((o: any) => o.id !== currentOrder.id)); setCurrentIndex(-1) }
+            const res = await deleteServiceOrder(activeId, storeId, vendaId)
+            if (res.success) { onListChange(existingOrders.filter((o: any) => o.id !== activeId)); setCurrentIndex(-1) }
             else { alert(res.message) }
         })
     }
 
-    const handleDependenteAdded = (newDep: Dependente) => {
+    const handleDependenteAdded = useCallback((newDep: Dependente) => {
         setLocalDependentes(prev => [...prev, newDep])
         setDependenteId(newDep.id.toString())
-    }
+    }, [])
+
+    const handleOftalmoAdded = useCallback((newDoc: any) => {
+        setLocalOftalmos(prev => [...prev, newDoc])
+        setOftalmologistaId(newDoc.id.toString())
+    }, [])
 
     const handleImportPrescription = (data: PrescriptionHistoryItem) => {
         if (confirm("Deseja preencher os campos com os dados desta receita antiga?")) {
@@ -444,21 +482,51 @@ export default function ServiceOrderFormContent({
         }
     }
 
-    const sendWhatsAppPedido = () => {
-        const lenteOdDesc = vendaItens.find(i => i.id === parseInt(lenteOdItemId))?.descricao || 'Não informado';
-        const lenteOeDesc = vendaItens.find(i => i.id === parseInt(lenteOeItemId))?.descricao || 'Não informado';
+    const sendWhatsAppPedido = (overrideId?: number) => {
+        // Silent Save Trigger
+        const finalId = overrideId || activeId
+        if (!finalId) {
+            isSilentSave.current = true
+            setPendingWhatsApp(true)
+            formRef.current?.requestSubmit()
+            return
+        }
+
+        const lenteOdDesc = vendaItens.find(i => i.id === parseInt(lenteOdItemId))?.descricao || 'N├úo informado';
+        const lenteOeDesc = vendaItens.find(i => i.id === parseInt(lenteOeItemId))?.descricao || 'N├úo informado';
         const medico = oftalmosList.find(o => o.id === parseInt(oftalmologistaId));
-        const medicoTexto = medico ? `${medico.nome_completo} ${medico.crm ? 'CRM ' + medico.crm : ''}` : 'Não informado';
-        // Usa o nome do paciente (dependente se selecionado, senão o titular)
+        const medicoTexto = medico ? `${medico.nome_completo} ${medico.crm ? 'CRM ' + medico.crm : ''}` : 'N├úo informado';
+        // Usa o nome do paciente (dependente se selecionado, sen├úo o titular)
         const pacienteNome = dependenteId
             ? localDependentes.find(d => d.id === parseInt(dependenteId))?.full_name || customer?.full_name
             : customer?.full_name || 'Paciente';
         const prometidoPara = dtPrometido ? formatDate(dtPrometido) : 'A combinar';
 
+        // Helper para adicionar linha apenas se tiver valor
+        const addIf = (label: string, value: any) => value ? `${label}: ${value}` : null;
+
+        const hasComplexMeasures = medH || medV || medDiag || medPonte || diametro
+        const hasBasicMeasures = dnpOd || dnpOe || altOd || altOe
+
+        let medidasBlock = ''
+        if (hasComplexMeasures) {
+            medidasBlock = `
+--Medidas--
+${[
+                    addIf('Hor', medH),
+                    addIf('Vert', medV),
+                    addIf('Diag', medDiag),
+                    addIf('Ponte', medPonte),
+                    addIf('DP', (dnpOd || dnpOe) ? `${dnpOd}/${dnpOe}` : null),
+                    addIf('Diam', diametro),
+                    addIf('Alt', (altOd || altOe) ? `${altOd}/${altOe}` : null)
+                ].filter(Boolean).join('\n')}`
+        }
+
         const msg = `
 *Pedido de Lentes*
 
-Protocolo/OS #${protocolo || 'Nova'}
+Protocolo/OS #${protocolo || finalId}
 Prometido para: ${prometidoPara}
 
 --Receita--
@@ -466,69 +534,76 @@ Lente OD: ${lenteOdDesc}
 Lente OE: ${lenteOeDesc}
 OD: ${longeOdEsf} ${longeOdCil} ${longeOdEixo}
 OE: ${longeOeEsf} ${longeOeCil} ${longeOeEixo}
-AD: ${adicao}
-
---Medidas--
-Hor: ${medH}
-Vert: ${medV}
-Diag: ${medDiag}
-Ponte: ${medPonte}
-DP: ${dnpOd}/${dnpOe}
-Diam: ${diametro}
-Alt: ${altOd}/${altOe}
+${addIf('AD', adicao) || ''}
+${medidasBlock}
 
 --Dados Pessoais--
 Cliente: ${pacienteNome}
-Médico: ${medicoTexto}
+M├®dico: ${medicoTexto}
 
-Obs.: ${obsOs}
+${addIf('Obs.', obsOs) || ''}
 `.trim();
-
         const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
         window.open(url, '_blank');
+    }
+
+    const handleReserve = async (variantId: number, productId: number) => {
+        if (!activeId) { alert('Salve a OS antes de reservar lentes.'); return; }
+
+        // Usa o primeiro funcion├írio como padr├úo se n├úo houver um selecionado
+        const employeeId = employees[0]?.id
+        if (!employeeId) { alert('Nenhum funcion├írio dispon├¡vel para registrar a reserva.'); return; }
+
+        const res = await reserveLens(storeId, variantId, productId, activeId, employeeId)
+        if (res.success) {
+            alert('Lente reservada com sucesso!')
+            setStockModalOpen(null)
+        } else {
+            alert(res.message)
+        }
     }
 
     if (!customer) return <div className="p-4">Carregando dados do cliente...</div>
 
     return (
         <>
-            <form action={dispatch} className="flex-1 flex flex-col h-[calc(100vh-64px)]">
+            <form ref={formRef} action={dispatch} className="flex-1 flex flex-col h-[calc(100vh-64px)]">
 
-                {/* ÁREA DE SCROLL (HEADER + CONTEÚDO) */}
-                <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 custom-scrollbar">
+                {/* ├üREA DE SCROLL (HEADER + CONTE├ÜDO) */}
+                <div className="flex-1 overflow-y-auto overflow-x-hidden p-2">
 
                     {/* HEADER INFO */}
-                    <div className="p-3 rounded-xl bg-white/5 backdrop-blur-xl border border-white/10 flex justify-between items-center mb-3 shadow-lg">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-cyan-500/10 rounded-lg text-cyan-400 border border-cyan-500/20">
+                    <div className="p-2 rounded-lg bg-white shadow-sm border border-gray-200 flex justify-between items-center mb-2">
+                        <div className="flex items-center gap-2">
+                            <div className="p-1.5 bg-blue-100 rounded-full text-blue-700">
                                 <User className="h-4 w-4" />
                             </div>
                             <div>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cliente</p>
-                                <p className="font-black text-white text-sm leading-none tracking-tight">{customer.full_name}</p>
+                                <p className="text-[10px] font-bold text-gray-500 uppercase">Cliente</p>
+                                <p className="font-bold text-gray-800 text-sm leading-none">{customer.full_name}</p>
                             </div>
                         </div>
                         <div className="text-right">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Atendente</p>
-                            <p className="font-bold text-slate-200 text-xs">{authedEmployeeName}</p>
+                            <p className="text-[10px] font-bold text-gray-500 uppercase">Atendente</p>
+                            <p className="font-bold text-gray-800 text-xs">{authedEmployeeName}</p>
                         </div>
                     </div>
 
                     {/* NAV BAR */}
-                    <div className="bg-white/5 backdrop-blur-md p-2 rounded-xl shadow-lg border border-white/10 flex justify-between items-center gap-3 mb-3">
-                        <div className="flex items-center gap-3 ml-2 min-w-fit">
-                            <Eye className="h-5 w-5 text-cyan-400" />
-                            <h2 className="text-sm font-black text-white hidden sm:block tracking-tight">
-                                {currentOrder ? `Ficha #${currentOrder.id}` : 'Nova Ficha'}
+                    <div className="bg-white p-1 rounded-lg shadow-sm border border-gray-200 flex justify-between items-center gap-2 mb-2">
+                        <div className="flex items-center gap-2 ml-2 min-w-fit">
+                            <Eye className="h-4 w-4 text-blue-600" />
+                            <h2 className="text-sm font-bold text-gray-800 hidden sm:block">
+                                {activeId ? `Ficha #${activeId}` : 'Nova Ficha'}
                             </h2>
-                            <span className="bg-white/5 text-slate-300 text-[10px] px-2 py-0.5 rounded-full font-bold border border-white/10 whitespace-nowrap shadow-inner">
+                            <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-0.5 rounded-full font-bold border border-gray-300 whitespace-nowrap">
                                 {currentIndex === -1 ? 'NOVA' : `${currentIndex + 1}/${existingOrders.length}`}
                             </span>
                         </div>
 
                         <div className="flex-1 flex justify-center">
-                            <div className="flex items-center gap-2 bg-black/20 px-3 py-1 rounded-lg border border-white/5 w-full max-w-[200px] shadow-inner">
-                                <label htmlFor="protocolo_input" className="text-[9px] font-bold text-slate-500 uppercase whitespace-nowrap tracking-wider">
+                            <div className="flex items-center gap-2 bg-gray-50 px-2 py-0.5 rounded border border-gray-200 w-full max-w-[200px]">
+                                <label htmlFor="protocolo_input" className="text-[9px] font-bold text-gray-500 uppercase whitespace-nowrap">
                                     Protocolo
                                 </label>
                                 <input
@@ -537,16 +612,16 @@ Obs.: ${obsOs}
                                     type="text"
                                     value={protocolo}
                                     onChange={(e) => setProtocolo(e.target.value)}
-                                    className="bg-transparent border-none text-white text-xs focus:ring-0 block w-full h-6 px-1 font-bold text-center uppercase p-0 placeholder-slate-600"
-                                    placeholder="AUTO"
+                                    className="bg-transparent border-none text-gray-900 text-xs focus:ring-0 block w-full h-6 px-1 font-bold text-center uppercase p-0"
+                                    placeholder="Auto"
                                 />
                             </div>
                         </div>
 
                         <div className="flex gap-1 min-w-fit">
-                            <button type="button" onClick={() => handleNavigate('prev')} className="p-2 hover:bg-white/10 rounded-lg text-slate-400 transition-colors"><ChevronLeft className="h-4 w-4" /></button>
-                            <button type="button" onClick={() => handleNavigate('next')} className="p-2 hover:bg-white/10 rounded-lg text-slate-400 transition-colors"><ChevronRight className="h-4 w-4" /></button>
-                            <button type="button" onClick={() => handleNavigate('new')} className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold px-3 py-1 rounded-lg hover:bg-emerald-500/20 ml-1 shadow-sm transition-all uppercase tracking-wide">NOVA</button>
+                            <button type="button" onClick={() => handleNavigate('prev')} className="p-1.5 hover:bg-gray-100 rounded text-gray-600"><ChevronLeft className="h-4 w-4" /></button>
+                            <button type="button" onClick={() => handleNavigate('next')} className="p-1.5 hover:bg-gray-100 rounded text-gray-600"><ChevronRight className="h-4 w-4" /></button>
+                            <button type="button" onClick={() => handleNavigate('new')} className="bg-green-600 text-white text-[10px] font-bold px-3 py-1 rounded hover:bg-green-700 ml-1 shadow-sm">NOVA</button>
                         </div>
                     </div>
 
@@ -556,98 +631,107 @@ Obs.: ${obsOs}
                         <div className="lg:col-span-4 space-y-2 flex flex-col">
 
                             {/* CARD AZUL (DADOS) */}
-                            {/* CARD DADOS */}
                             <div className={cardBlue}>
-                                <h3 className="text-cyan-400 font-bold text-xs mb-3 flex items-center gap-2 border-b border-white/5 pb-2 tracking-wide uppercase">
-                                    <User className="h-3 w-3" /> DADOS E VÍNCULOS
+                                <h3 className="text-white font-bold text-xs mb-2 flex items-center gap-2 border-b border-white/20 pb-1">
+                                    <User className="h-3 w-3" /> DADOS E V├ìNCULOS
                                 </h3>
                                 <div className="space-y-2 flex-1">
                                     <div>
                                         <label className={labelStyle}>Paciente</label>
                                         <div className="flex gap-1">
-                                            <select name="dependente_id" value={dependenteId} onChange={e => setDependenteId(e.target.value)} className={`${inputStyle} text-slate-200`}>
-                                                <option value="" className="bg-slate-800">{customer.full_name} (Titular)</option>
+                                            <select name="dependente_id" value={dependenteId} onChange={e => setDependenteId(e.target.value)} className={inputStyle}>
+                                                <option value="">{customer.full_name} (Titular)</option>
                                                 {localDependentes.map(dep => (
-                                                    <option key={dep.id} value={dep.id} className="bg-slate-800">
+                                                    <option key={dep.id} value={dep.id}>
                                                         {dep.full_name} ({dep.parentesco || 'Dep.'})
                                                     </option>
                                                 ))}
                                             </select>
-                                            <button type="button" onClick={() => setIsDepModalOpen(true)} className="bg-white/5 hover:bg-white/10 text-cyan-400 p-1 rounded-lg shadow-sm border border-white/10 h-8 w-8 flex items-center justify-center transition-colors" title="Novo Dependente">
+                                            <button type="button" onClick={() => setIsDepModalOpen(true)} className="bg-white/20 hover:bg-white/30 text-white p-1 rounded shadow-sm border border-white/20 h-7 w-7 flex items-center justify-center" title="Novo Dependente">
                                                 <Plus className="h-4 w-4" />
                                             </button>
                                         </div>
                                     </div>
 
                                     <div>
-                                        <label className={labelStyle}>Médico</label>
-                                        <select name="oftalmologista_id" value={oftalmologistaId} onChange={e => setOftalmologistaId(e.target.value)} className={inputStyle}>
-                                            <option value="" className="bg-slate-800">Selecione...</option>
-                                            {oftalmosList.map(oft => <option key={oft.id} value={oft.id} className="bg-slate-800">{oft.nome_completo}</option>)}
-                                        </select>
+                                        <label className={labelStyle}>M├®dico</label>
+                                        <div className="flex gap-1">
+                                            <select name="oftalmologista_id" value={oftalmologistaId} onChange={e => setOftalmologistaId(e.target.value)} className={inputStyle}>
+                                                <option value="">Selecione...</option>
+                                                {localOftalmos.map(oft => <option key={oft.id} value={oft.id}>{oft.nome_completo}</option>)}
+                                            </select>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsOftalmoModalOpen(true)}
+                                                className="bg-white/20 hover:bg-white/30 text-white p-1 rounded shadow-sm border border-white/20 h-7 w-7 flex items-center justify-center"
+                                                title="Novo M├®dico"
+                                            >
+                                                <Plus className="h-4 w-4" />
+                                            </button>
+                                        </div>
                                     </div>
 
-                                    <div className="pt-3 border-t border-white/5 mt-2 space-y-3">
+                                    <div className="pt-2 border-t border-white/20 mt-1 space-y-2">
                                         <div>
                                             <label className={labelStyle}>Lente OD</label>
                                             <select value={lenteOdItemId} onChange={e => setLenteOdItemId(e.target.value)} className={inputStyle}>
-                                                <option value="" className="bg-slate-800">-- Selecione --</option>
-                                                {lentesDisponiveisOD.map(i => <option key={i.id} value={i.id} className="bg-slate-800">{i.descricao} ({i.unidade})</option>)}
+                                                <option value="">-- Selecione --</option>
+                                                {lentesDisponiveisOD.map(i => <option key={i.id} value={i.id}>{i.descricao} ({i.unidade})</option>)}
                                             </select>
                                         </div>
                                         <div>
                                             <label className={labelStyle}>Lente OE</label>
                                             <select value={lenteOeItemId} onChange={e => setLenteOeItemId(e.target.value)} className={inputStyle}>
-                                                <option value="" className="bg-slate-800">-- Selecione --</option>
-                                                {lentesDisponiveisOE.map(i => <option key={i.id} value={i.id} className="bg-slate-800">{i.descricao} ({i.unidade})</option>)}
+                                                <option value="">-- Selecione --</option>
+                                                {lentesDisponiveisOE.map(i => <option key={i.id} value={i.id}>{i.descricao} ({i.unidade})</option>)}
                                             </select>
                                         </div>
                                         <div>
-                                            <label className={labelStyle}>Armação</label>
+                                            <label className={labelStyle}>Arma├º├úo</label>
                                             <select value={armacaoItemId} onChange={e => setArmacaoItemId(e.target.value)} className={inputStyle}>
-                                                <option value="" className="bg-slate-800">-- Selecione --</option>
-                                                {itensArmacao.map(i => <option key={i.id} value={i.id} className="bg-slate-800">{i.descricao}</option>)}
+                                                <option value="">-- Selecione --</option>
+                                                {itensArmacao.map(i => <option key={i.id} value={i.id}>{i.descricao}</option>)}
                                             </select>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* CARD MEDIDAS */}
+                            {/* CARD SLATE (MEDIDAS) */}
                             <div className={cardSlate}>
-                                <h3 className="text-cyan-400 font-bold text-xs mb-3 flex items-center gap-2 border-b border-white/5 pb-2 tracking-wide uppercase">
-                                    <Ruler className="h-3 w-3" /> MEDIDAS TÉCNICAS
+                                <h3 className="text-white font-bold text-xs mb-2 flex items-center gap-2 border-b border-white/20 pb-1">
+                                    <Ruler className="h-3 w-3" /> MEDIDAS T├ëCNICAS
                                 </h3>
-                                <div className="grid grid-cols-3 gap-2 mb-3 items-end">
+                                <div className="grid grid-cols-3 gap-1 mb-2 items-end">
                                     <div className="col-span-1"></div>
-                                    <div className="text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">OD</div>
-                                    <div className="text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">OE</div>
+                                    <div className="text-center text-[10px] font-bold text-white/70">OD</div>
+                                    <div className="text-center text-[10px] font-bold text-white/70">OE</div>
 
-                                    <label className="text-right text-[10px] font-bold text-slate-400 pr-1 self-center uppercase tracking-wider">DNP</label>
+                                    <label className="text-right text-[10px] font-bold text-white/90 pr-1 self-center">DNP</label>
                                     <input name="medida_dnp_od" value={dnpOd} onChange={e => setDnpOd(e.target.value)} className={gridInput} />
                                     <input name="medida_dnp_oe" value={dnpOe} onChange={e => setDnpOe(e.target.value)} className={gridInput} />
 
-                                    <label className="text-right text-[10px] font-bold text-slate-400 pr-1 self-center uppercase tracking-wider">Altura</label>
+                                    <label className="text-right text-[10px] font-bold text-white/90 pr-1 self-center">Altura</label>
                                     <input name="medida_altura_od" value={altOd} onChange={e => setAltOd(e.target.value)} className={gridInput} />
                                     <input name="medida_altura_oe" value={altOe} onChange={e => setAltOe(e.target.value)} className={gridInput} />
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-2 border-t border-white/5 pt-3">
+                                <div className="grid grid-cols-2 gap-2 border-t border-white/20 pt-2">
                                     <div><label className={labelStyle}>Horizontal</label><input name="medida_horizontal" value={medH} onChange={e => setMedH(e.target.value)} className={inputStyle} /></div>
                                     <div><label className={labelStyle}>Vertical</label><input name="medida_vertical" value={medV} onChange={e => setMedV(e.target.value)} className={inputStyle} /></div>
                                     <div><label className={labelStyle}>Diagonal</label><input name="medida_diagonal" value={medDiag} onChange={e => setMedDiag(e.target.value)} className={inputStyle} /></div>
                                     <div><label className={labelStyle}>Ponte</label><input name="medida_ponte" value={medPonte} onChange={e => setMedPonte(e.target.value)} className={inputStyle} /></div>
 
-                                    {/* DIÂMETRO COM WHATSAPP */}
+                                    {/* DI├éMETRO COM WHATSAPP */}
                                     <div className="col-span-2 flex items-end gap-1">
                                         <div className="flex-1">
-                                            <label className={labelStyle}>Diâmetro</label>
+                                            <label className={labelStyle}>Di├ómetro</label>
                                             <input name="medida_diametro" value={diametro} onChange={e => setDiametro(e.target.value)} className={inputStyle} />
                                         </div>
                                         <button
                                             type="button"
-                                            onClick={sendWhatsAppPedido}
-                                            className="h-8 px-3 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded-lg shadow-sm flex items-center gap-2 transition-all hover:scale-105"
+                                            onClick={() => sendWhatsAppPedido()}
+                                            className="h-7 px-2 bg-green-500 hover:bg-green-600 text-white rounded shadow-md flex items-center gap-1 transition-all hover:scale-105"
                                             title="Enviar Pedido via WhatsApp"
                                         >
                                             <MessageCircle className="h-4 w-4" /> <span className="font-bold text-[10px] hidden xl:inline">PEDIR</span>
@@ -660,65 +744,65 @@ Obs.: ${obsOs}
                         {/* COLUNA 2: Receita, Prazos e Lab (8 colunas) */}
                         <div className="lg:col-span-8 space-y-2 flex flex-col">
 
-                            {/* CARD RECEITA */}
+                            {/* CARD VIOLETA (RECEITA) */}
                             <div className={cardViolet}>
-                                <div className="flex justify-between border-b border-white/5 pb-2 mb-3 items-center">
-                                    <h3 className="font-bold text-cyan-400 flex items-center gap-2 text-xs tracking-wide uppercase">
+                                <div className="flex justify-between border-b border-white/20 pb-1 mb-2 items-center">
+                                    <h3 className="font-bold text-white flex items-center gap-2 text-xs">
                                         <Glasses className="h-3 w-3" /> RECEITA
                                     </h3>
                                     <div className="flex gap-1">
                                         <button
                                             type="button"
                                             onClick={() => setIsHistoryModalOpen(true)}
-                                            className="text-[10px] font-bold text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 px-3 py-1 rounded-lg border border-cyan-500/20 shadow-sm flex items-center gap-1 transition-all uppercase tracking-wide"
+                                            className="text-[10px] font-bold text-indigo-900 bg-white hover:bg-indigo-50 px-2 py-0.5 rounded shadow-sm flex items-center gap-1 transition-colors uppercase tracking-wide"
                                         >
-                                            <History className="h-3 w-3" /> Histórico
+                                            <History className="h-3 w-3" /> Hist├│rico
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => { setLongeOdEsf('+0,00'); setLongeOdCil('+0,00'); setLongeOdEixo('0'); setLongeOeEsf('+0,00'); setLongeOeCil('+0,00'); setLongeOeCil('+0,00'); setLongeOeEixo('0'); }}
-                                            className="text-[10px] font-bold text-slate-400 border border-white/10 hover:bg-white/5 hover:text-white px-3 py-1 rounded-lg transition-colors uppercase tracking-wide"
+                                            className="text-[10px] font-bold text-white border border-white/40 hover:bg-white/10 px-2 py-0.5 rounded transition-colors uppercase tracking-wide"
                                         >
                                             <FileDown className="h-3 w-3 inline mr-1" /> Zerar
                                         </button>
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-7 gap-2 mb-2 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                    <div className="col-span-1"></div><div className="col-span-2">Esférico</div><div className="col-span-2">Cilíndrico</div><div className="col-span-2">Eixo</div>
+                                <div className="grid grid-cols-7 gap-1 mb-1 text-center text-[10px] font-bold text-white/60 uppercase tracking-wider">
+                                    <div className="col-span-1"></div><div className="col-span-2">Esf├®rico</div><div className="col-span-2">Cil├¡ndrico</div><div className="col-span-2">Eixo</div>
                                 </div>
 
                                 <StockBadge matches={odMatches} label="OD" onOpen={() => setStockModalOpen('OD')} />
 
                                 {/* OD */}
-                                <div className="grid grid-cols-7 gap-2 mb-3 items-center p-3 bg-black/20 rounded-xl border border-white/5 shadow-inner">
-                                    <div className="col-span-1 font-black text-right pr-3 text-xl text-cyan-400">OD</div>
+                                <div className="grid grid-cols-7 gap-1 mb-2 items-center p-2 bg-white/10 rounded-lg border border-white/10">
+                                    <div className="col-span-1 font-black text-right pr-2 text-xl text-white">OD</div>
                                     <div className="col-span-2"><DegreeInput name="receita_longe_od_esferico" value={longeOdEsf} onChange={setLongeOdEsf} className={gridInput} /></div>
                                     <div className="col-span-2"><DegreeInput name="receita_longe_od_cilindrico" value={longeOdCil} onChange={setLongeOdCil} className={gridInput} /></div>
-                                    <div className="col-span-2"><input name="receita_longe_od_eixo" value={longeOdEixo} onChange={e => setLongeOdEixo(e.target.value)} className={gridInput} placeholder="0º" /></div>
+                                    <div className="col-span-2"><input name="receita_longe_od_eixo" value={longeOdEixo} onChange={e => setLongeOdEixo(e.target.value)} className={gridInput} placeholder="0┬║" /></div>
                                 </div>
 
                                 <StockBadge matches={oeMatches} label="OE" onOpen={() => setStockModalOpen('OE')} />
 
                                 {/* OE */}
-                                <div className="grid grid-cols-7 gap-2 mb-3 items-center p-3 bg-black/20 rounded-xl border border-white/5 shadow-inner">
-                                    <div className="col-span-1 font-black text-right pr-3 text-xl text-cyan-400">OE</div>
+                                <div className="grid grid-cols-7 gap-1 mb-2 items-center p-2 bg-white/10 rounded-lg border border-white/10">
+                                    <div className="col-span-1 font-black text-right pr-2 text-xl text-white">OE</div>
                                     <div className="col-span-2"><DegreeInput name="receita_longe_oe_esferico" value={longeOeEsf} onChange={setLongeOeEsf} className={gridInput} /></div>
                                     <div className="col-span-2"><DegreeInput name="receita_longe_oe_cilindrico" value={longeOeCil} onChange={setLongeOeCil} className={gridInput} /></div>
-                                    <div className="col-span-2"><input name="receita_longe_oe_eixo" value={longeOeEixo} onChange={e => setLongeOeEixo(e.target.value)} className={gridInput} placeholder="0º" /></div>
+                                    <div className="col-span-2"><input name="receita_longe_oe_eixo" value={longeOeEixo} onChange={e => setLongeOeEixo(e.target.value)} className={gridInput} placeholder="0┬║" /></div>
                                 </div>
 
-                                <div className="flex justify-center mt-3">
-                                    <div className="w-40 bg-white/5 border border-white/10 p-3 rounded-xl text-center shadow-lg">
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1 tracking-wider">Adição</label>
-                                        <DegreeInput name="receita_adicao" value={adicao} onChange={setAdicao} className={`${gridInput} h-10 text-2xl font-black bg-transparent border-transparent text-emerald-400 focus:ring-0`} placeholder="+0.00" />
+                                <div className="flex justify-center mt-1">
+                                    <div className="w-32 bg-white/10 border border-white/20 p-2 rounded-lg text-center">
+                                        <label className="text-[10px] font-bold text-white uppercase block mb-1">Adi├º├úo</label>
+                                        <DegreeInput name="receita_adicao" value={adicao} onChange={setAdicao} className={`${gridInput} h-9 text-xl`} />
                                     </div>
                                 </div>
                             </div>
 
-                            {/* CARD PRAZOS */}
+                            {/* CARD TEAL (PRAZOS E OBS) */}
                             <div className={cardTeal}>
-                                <h3 className="text-cyan-400 font-bold text-xs mb-3 flex items-center gap-2 border-b border-white/5 pb-2 tracking-wide uppercase">
+                                <h3 className="text-white font-bold text-xs mb-2 flex items-center gap-2 border-b border-white/20 pb-1">
                                     <CalendarClock className="h-3 w-3" /> PRAZOS E OBS
                                 </h3>
                                 <div className="flex gap-2 items-start">
@@ -733,7 +817,7 @@ Obs.: ${obsOs}
                                         />
                                     </div>
                                     <div className="flex-1">
-                                        <label className={labelStyle}>Observações</label>
+                                        <label className={labelStyle}>Observa├º├Áes</label>
                                         <input
                                             name="obs_os"
                                             value={obsOs}
@@ -745,20 +829,20 @@ Obs.: ${obsOs}
                                 </div>
                             </div>
 
-                            {/* CARD LAB */}
+                            {/* CARD AMBER (LAB) */}
                             <div className={cardAmber}>
-                                <h3 className="text-cyan-400 font-bold text-xs mb-3 flex items-center gap-2 border-b border-white/5 pb-2 tracking-wide uppercase">
-                                    <Truck className="h-3 w-3" /> LABORATÓRIO
+                                <h3 className="text-white font-bold text-xs mb-2 flex items-center gap-2 border-b border-white/20 pb-1">
+                                    <Truck className="h-3 w-3" /> LABORAT├ôRIO
                                 </h3>
                                 <div className="grid grid-cols-3 gap-2">
                                     <div><label className={labelStyle}>Pedido Em</label><input type="datetime-local" name="dt_pedido_em" value={dtPedido} onChange={e => setDtPedido(e.target.value)} className={inputStyle} /></div>
                                     <div><label className={labelStyle}>Pedido Por</label>
                                         <select name="lab_pedido_por_id" value={pedidoPorId} onChange={e => setPedidoPorId(e.target.value)} className={inputStyle}>
-                                            <option value="" className="bg-slate-800">Selecione...</option>
-                                            {employees.map(emp => <option key={emp.id} value={emp.id} className="bg-slate-800">{emp.full_name}</option>)}
+                                            <option value="">Selecione...</option>
+                                            {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.full_name}</option>)}
                                         </select>
                                     </div>
-                                    <div><label className={labelStyle}>Laboratório</label><input type="text" name="lab_nome" value={labNome} onChange={e => setLabNome(e.target.value)} className={inputStyle} placeholder="Ex: Hoya" /></div>
+                                    <div><label className={labelStyle}>Laborat├│rio</label><input type="text" name="lab_nome" value={labNome} onChange={e => setLabNome(e.target.value)} className={inputStyle} placeholder="Ex: Hoya" /></div>
 
                                     <div><label className={labelStyle}>Lente Chegou</label><input type="datetime-local" name="dt_lente_chegou" value={dtChegou} onChange={e => setDtChegou(e.target.value)} className={inputStyle} /></div>
                                     <div><label className={labelStyle}>Montado Em</label><input type="datetime-local" name="dt_montado_em" value={dtMontado} onChange={e => setDtMontado(e.target.value)} className={inputStyle} /></div>
@@ -769,19 +853,19 @@ Obs.: ${obsOs}
                     </div>
                 </div>
 
-                {/* FOOTER FIXO */}
-                <div className="shrink-0 bg-white/5 backdrop-blur-xl border-t border-white/10 px-4 py-3 flex justify-end gap-3 z-20 shadow-[0_-5px_20px_rgba(0,0,0,0.2)]">
-                    <button type="button" onClick={() => router.back()} className={`${baseButtonStyle} bg-white/5 text-slate-400 hover:bg-white/10 border border-white/10`}>VOLTAR</button>
+                {/* FOOTER FIXO (Barra Branca) */}
+                <div className="shrink-0 bg-white border-t border-gray-300 px-4 py-3 flex justify-end gap-2 z-20 shadow-[0_-5px_15px_rgba(0,0,0,0.05)]">
+                    <button type="button" onClick={() => router.back()} className={`${baseButtonStyle} bg-gray-500 text-white hover:bg-gray-600`}>VOLTAR</button>
 
-                    {/* Botão de Impressão */}
-                    <PrintProtocoloButton osId={currentOrder?.id} disabled={!currentOrder} />
+                    {/* Bot├úo de Impress├úo */}
+                    <PrintProtocoloButton osId={activeId} disabled={!activeId} />
 
-                    {currentOrder && (
-                        <button type="button" onClick={handleDelete} disabled={isDeleting} className={`${baseButtonStyle} bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20`}>
+                    {activeId && (
+                        <button type="button" onClick={handleDelete} disabled={isDeleting} className={`${baseButtonStyle} bg-red-100 text-red-700 hover:bg-red-200 border border-red-200`}>
                             {isDeleting ? <Loader2 className="animate-spin h-3 w-3" /> : <Trash2 className="h-3 w-3" />} EXCLUIR
                         </button>
                     )}
-                    <button type="submit" disabled={isSaving} className={`${baseButtonStyle} bg-cyan-600 text-white hover:bg-cyan-500 px-6 text-sm shadow-lg shadow-cyan-500/20 border border-cyan-400/20`}>
+                    <button type="submit" disabled={isSaving} className={`${baseButtonStyle} bg-blue-600 text-white hover:bg-blue-700 px-6 text-sm shadow-md`}>
                         {isSaving ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="h-4 w-4" />} SALVAR OS
                     </button>
                 </div>
@@ -806,6 +890,14 @@ Obs.: ${obsOs}
                 />
             )}
 
+            {isOftalmoModalOpen && (
+                <AddOftalmoModal
+                    isOpen={isOftalmoModalOpen}
+                    onClose={() => setIsOftalmoModalOpen(false)}
+                    onSuccess={handleOftalmoAdded}
+                />
+            )}
+
             <PrescriptionHistoryModal
                 isOpen={isHistoryModalOpen}
                 onClose={() => setIsHistoryModalOpen(false)}
@@ -824,5 +916,91 @@ Obs.: ${obsOs}
                 onReserve={handleReserve}
             />
         </>
+    )
+}
+
+
+
+export default function ServiceOrderPage() {
+    const params = useParams()
+    const storeId = parseInt(params.storeId as string)
+    const vendaId = parseInt(params.vendaId as string)
+    const [data, setData] = useState<OSPageData | null>(null)
+    const [loading, setLoading] = useState(true)
+    const [errorMsg, setErrorMsg] = useState('')
+    const [saveState, dispatch] = useFormState(saveServiceOrder, { success: false, message: '' })
+    const [existingOrders, setExistingOrders] = useState<any[]>([])
+    const [authedEmployeeName, setAuthedEmployeeName] = useState('')
+
+    useEffect(() => {
+        async function load() {
+            try {
+                if (isNaN(storeId) || isNaN(vendaId)) {
+                    throw new Error(`IDs inv├ílidos: Store=${params.storeId}, Venda=${params.vendaId}`)
+                }
+
+                const vendaRes = await getVendaPageData(vendaId, storeId)
+                if (!vendaRes.success || !vendaRes.data || !vendaRes.data.venda) {
+                    throw new Error(vendaRes.message || "Venda n├úo encontrada.")
+                }
+
+                const venda = vendaRes.data.venda
+                const customerId = venda.customer_id
+
+                if (vendaRes.data.employee) {
+                    setAuthedEmployeeName(vendaRes.data.employee.full_name)
+                }
+
+                const res = await getOSPageData(vendaId, storeId, customerId)
+                if (!res.success || !res.data) {
+                    throw new Error(res.message || "Erro desconhecido ao carregar dados da OS.")
+                }
+
+                setData(res.data)
+                setExistingOrders(res.data.existingOrders)
+
+            } catch (e: any) {
+                console.error(e)
+                setErrorMsg(e.message || "Erro inesperado.")
+            } finally {
+                setLoading(false)
+            }
+        }
+        load()
+    }, [storeId, vendaId, params.storeId, params.vendaId])
+
+    if (loading) return <div className="p-10 flex justify-center"><Loader2 className="animate-spin h-8 w-8 text-blue-600" /></div>
+
+    if (errorMsg) return (
+        <div className="p-10 text-center">
+            <div className="text-red-600 font-bold mb-2">Erro ao carregar dados:</div>
+            <div className="text-gray-700 bg-gray-100 p-2 rounded inline-block mb-4">{errorMsg}</div>
+            <button
+                onClick={() => window.location.reload()}
+                className="block mx-auto bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
+            >
+                Tentar Novamente
+            </button>
+        </div>
+    )
+
+    if (!data) return null
+
+    return (
+        <ServiceOrderFormContent
+            storeId={storeId}
+            vendaId={vendaId}
+            customer={data.customer}
+            vendaItens={data.vendaItens}
+            dependentes={data.dependentes}
+            oftalmosList={data.oftalmologistas}
+            employees={data.employees}
+            existingOrders={existingOrders}
+            authedEmployeeName={authedEmployeeName}
+            onListChange={setExistingOrders}
+            saveState={saveState}
+            dispatch={dispatch}
+            venda={data.venda}
+        />
     )
 }

@@ -1,36 +1,22 @@
-// ARQUIVO: src/app/dashboard/loja/[storeId]/vendas/[vendaId]/os/page.tsx
-'use client'
 
-import {
-    useState,
-    useEffect,
-    useCallback,
-    useTransition,
-    useRef,
-} from 'react'
-import { useFormState, useFormStatus } from 'react-dom'
+"use client"
+
+import { useState, useEffect, useCallback, useRef, useTransition } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useFormState, useFormStatus } from 'react-dom'
 import {
     Loader2, Save, Trash2, ChevronLeft, ChevronRight,
     Eye, Glasses, User, Ruler, Truck, Plus, History, FileDown, CalendarClock,
-    MessageCircle, Sparkles
+    MessageCircle, Sparkles, Printer
 } from 'lucide-react'
-import {
-    saveServiceOrder,
-    deleteServiceOrder,
-    type OSPageData,
-    type SaveSOResult,
-    type PrescriptionHistoryItem,
-    getOSPageData,
-    getVendaPageData
-} from '@/lib/actions/vendas.actions'
-import { checkLensStock, reserveLens, type LensStockMatch } from '@/lib/actions/stock.actions'
+import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
+
+import { getOSPageData, getVendaPageData, saveServiceOrder, deleteServiceOrder, type OSPageData, type SaveSOResult, type PrescriptionHistoryItem } from '@/lib/actions/vendas.actions'
+import { reserveLens, checkLensStock, type LensStockMatch } from '@/lib/actions/stock.actions'
 import { Database } from '@/lib/database.types'
 import AddDependenteModal from '@/components/modals/AddDependenteModal'
 import AddOftalmoModal from '@/components/modals/AddOftalmoModal'
 import PrescriptionHistoryModal from '@/components/modals/PrescriptionHistoryModal'
-import { PrintProtocoloButton } from '@/components/vendas/PrintProtocoloButton'
-import { createClient } from '@/lib/supabase/client'
 
 type ServiceOrderWithLinks = any
 type Dependente = Database['public']['Tables']['dependentes']['Row']
@@ -45,16 +31,23 @@ const formatDate = (d: string) => {
     return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-// --- ESTILOS DO DESIGN SYSTEM (COMPACTO) ---
-const cardBase = "rounded-xl shadow-sm border border-white/20 p-3 flex flex-col relative overflow-hidden"
-const cardBlue = `${cardBase} bg-gradient-to-br from-blue-600 to-indigo-700 shadow-blue-100`
-const cardSlate = `${cardBase} bg-gradient-to-br from-slate-600 to-slate-700 shadow-slate-200`
-const cardViolet = `${cardBase} bg-gradient-to-br from-indigo-600 to-violet-700 shadow-indigo-100`
-const cardTeal = `${cardBase} bg-gradient-to-br from-teal-500 to-emerald-600 shadow-emerald-100`
-const cardAmber = `${cardBase} bg-gradient-to-br from-amber-500 to-orange-600 shadow-orange-100`
+// --- ESTILOS DO DESIGN SYSTEM (Refatorado para Dark Glassmorphism) ---
+const cardBase = "rounded-xl shadow-xl border backdrop-blur-xl p-3 flex flex-col relative overflow-hidden transition-all"
+const cardBlue = `${cardBase} bg-cyan-950/20 border-cyan-500/10 hover:bg-cyan-900/20`
+const cardSlate = `${cardBase} bg-slate-950/20 border-slate-500/10 hover:bg-slate-900/20`
+const cardViolet = `${cardBase} bg-purple-950/20 border-purple-500/10 hover:bg-purple-900/20`
+const cardTeal = `${cardBase} bg-emerald-950/20 border-emerald-500/10 hover:bg-emerald-900/20`
+const cardAmber = `${cardBase} bg-amber-950/20 border-amber-500/10 hover:bg-amber-900/20`
 
-const labelStyle = 'block text-[10px] font-bold text-white/80 mb-0.5 uppercase tracking-wider'
-const inputStyle = 'block w-full rounded border-0 bg-white shadow-sm text-gray-900 h-7 text-xs px-2 focus:ring-1 focus:ring-white/50 focus:outline-none font-semibold placeholder:font-normal placeholder:text-gray-400 disabled:bg-gray-200 disabled:text-gray-500'
+const labelStyle = 'block text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider'
+// REVERTIDO: Manter rótulos neutros para melhor hierarquia visual, conforme pedido do usuário.
+const labelBlue = labelStyle
+const labelSlate = labelStyle
+const labelViolet = labelStyle
+const labelTeal = labelStyle
+const labelAmber = labelStyle
+// Estilo de input transparente/escuro
+const inputStyle = 'block w-full rounded-lg border border-white/10 bg-black/20 shadow-inner text-white h-8 text-xs px-3 focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:outline-none font-medium placeholder:font-normal placeholder:text-slate-500 disabled:opacity-50 transition-all'
 const gridInput = `${inputStyle} text-center`
 
 const baseButtonStyle = 'px-3 py-1.5 text-xs rounded-lg shadow-sm disabled:opacity-50 focus:outline-none transition-all duration-200 font-bold flex items-center gap-2'
@@ -85,7 +78,7 @@ function DegreeInput({ name, value, onChange, placeholder, className }: { name: 
 
     const isNegative = value.includes('-')
     const isPositive = value.includes('+')
-    const textColor = isNegative ? 'text-red-600' : isPositive ? 'text-green-600' : 'text-gray-900'
+    const textColor = isNegative ? 'text-rose-400' : isPositive ? 'text-emerald-400' : 'text-slate-200'
 
     return (
         <input
@@ -113,26 +106,9 @@ const StockBadge = ({
     const total = matches.exact.length + matches.similar.length
     if (total === 0) return null
 
-    // Check for Gold/Silver
-    const hasGold = matches.exact.some(m => m.match_type === 'gold')
-    const hasSilver = matches.exact.some(m => m.match_type === 'silver')
-
-    let colorClass = "bg-amber-100 border-amber-200 text-amber-900"
-    let iconColor = "text-amber-600"
-    let text = "Estoque Similar"
-    let badge = null
-
-    if (hasGold) {
-        colorClass = "bg-green-100 border-green-200 text-green-900"
-        iconColor = "text-green-600"
-        text = "Estoque Perfeito!"
-        badge = <span className="text-[9px] bg-white px-1 rounded font-bold border border-green-300">OURO</span>
-    } else if (hasSilver) {
-        colorClass = "bg-blue-100 border-blue-200 text-blue-900"
-        iconColor = "text-blue-600"
-        text = "Estoque Compatível"
-        badge = <span className="text-[9px] bg-white px-1 rounded font-bold border border-blue-300">PRATA</span>
-    }
+    const hasExact = matches.exact.length > 0
+    const colorClass = hasExact ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-amber-500/10 border-amber-500/20 text-amber-400"
+    const iconColor = hasExact ? "text-emerald-400" : "text-amber-400"
 
     return (
         <div
@@ -141,10 +117,10 @@ const StockBadge = ({
         >
             <div className="flex items-center gap-1 text-[10px] font-bold">
                 <Sparkles className={`h-3 w-3 ${iconColor} fill-current animate-pulse`} />
-                {text} ({label})
+                {hasExact ? 'Estoque Disponível!' : 'Estoque Similar Encontrado'} ({label})
             </div>
             <div className="flex gap-1 items-center">
-                {badge}
+                {hasExact && <span className="text-[9px] bg-emerald-500/20 px-1 rounded font-bold border border-emerald-500/30 text-emerald-300">EXATO</span>}
                 <span className="text-[9px] underline opacity-80">Ver {total} opções</span>
             </div>
         </div>
@@ -167,39 +143,36 @@ function StockReservationModal({
 }) {
     if (!isOpen) return null
 
-    const gold = matches.exact.filter(m => m.match_type === 'gold')
-    const silver = matches.exact.filter(m => m.match_type === 'silver')
-    const bronze = matches.similar // All similar are bronze by definition
-
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-                <div className="bg-gray-50 px-4 py-3 border-b border-gray-100 flex justify-between items-center">
-                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                        <Glasses className="h-4 w-4 text-blue-600" /> Estoque Disponível ({label})
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-slate-900 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border border-white/10">
+                <div className="bg-slate-800/50 px-4 py-3 border-b border-white/5 flex justify-between items-center bg-white/5">
+                    <h3 className="font-bold text-white flex items-center gap-2">
+                        <Glasses className="h-4 w-4 text-cyan-400" /> Estoque Disponível ({label})
                     </h3>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><Trash2 className="h-4 w-4 rotate-45" /></button>
+                    <button onClick={onClose} className="text-slate-400 hover:text-white"><Trash2 className="h-4 w-4 rotate-45" /></button>
                 </div>
 
-                <div className="p-4 max-h-[60vh] overflow-y-auto space-y-4">
-
-                    {/* GOLD */}
-                    {gold.length > 0 && (
+                <div className="p-4 max-h-[60vh] overflow-y-auto space-y-4 custom-scrollbar">
+                    {matches.exact.length > 0 && (
                         <div>
-                            <h4 className="text-xs font-bold text-green-700 uppercase mb-2 flex items-center gap-1">
-                                <Sparkles className="h-3 w-3" /> Match Perfeito (Ouro)
+                            <h4 className="text-xs font-bold text-emerald-400 uppercase mb-2 flex items-center gap-1">
+                                <Sparkles className="h-3 w-3" /> Exatamente o que você precisa
                             </h4>
                             <div className="space-y-2">
-                                {gold.map(m => (
-                                    <div key={m.variant_id} className="border border-green-200 bg-green-50 rounded-lg p-2 flex justify-between items-center ring-1 ring-green-300">
+                                {matches.exact.map(m => (
+                                    <div key={m.variant_id} className="border border-emerald-500/20 bg-emerald-500/5 rounded-lg p-2 flex justify-between items-center">
                                         <div>
-                                            <p className="font-bold text-xs text-gray-800">{m.product_name}</p>
-                                            <p className="text-[10px] text-gray-500">{m.variant_name} • {m.is_sobra ? 'SOBRA' : 'NOVO'}</p>
-                                            <p className="text-[10px] font-mono text-gray-600">
-                                                Sph {m.esferico > 0 ? '+' : ''}{m.esferico.toFixed(2)} Cyl {m.cilindrico > 0 ? '+' : ''}{m.cilindrico.toFixed(2)} {m.adicao ? `Add ${m.adicao.toFixed(2)}` : ''}
+                                            <p className="font-bold text-xs text-white">{m.product_name}</p>
+                                            <p className="text-[10px] text-slate-400">{m.variant_name} • {m.is_sobra ? 'SOBRA/RECUP.' : 'NOVO'}</p>
+                                            <p className="text-[10px] font-mono text-slate-500">
+                                                Sph {m.esferico > 0 ? '+' : ''}{m.esferico.toFixed(2)} Cyl {m.cilindrico > 0 ? '+' : ''}{m.cilindrico.toFixed(2)}
                                             </p>
                                         </div>
-                                        <button onClick={() => onReserve(m.variant_id, m.product_id)} className="bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-sm transition-colors">
+                                        <button
+                                            onClick={() => onReserve(m.variant_id, m.product_id)}
+                                            className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-sm transition-colors border border-emerald-500/30"
+                                        >
                                             RESERVAR
                                         </button>
                                     </div>
@@ -208,23 +181,25 @@ function StockReservationModal({
                         </div>
                     )}
 
-                    {/* SILVER */}
-                    {silver.length > 0 && (
+                    {matches.similar.length > 0 && (
                         <div>
-                            <h4 className="text-xs font-bold text-blue-700 uppercase mb-2 flex items-center gap-1">
-                                <Sparkles className="h-3 w-3" /> Mesmo Grau, Outro Produto (Prata)
+                            <h4 className="text-xs font-bold text-amber-400 uppercase mb-2 flex items-center gap-1">
+                                <History className="h-3 w-3" /> Similares / Aproximados
                             </h4>
                             <div className="space-y-2">
-                                {silver.map(m => (
-                                    <div key={m.variant_id} className="border border-blue-200 bg-blue-50 rounded-lg p-2 flex justify-between items-center">
+                                {matches.similar.map(m => (
+                                    <div key={m.variant_id} className="border border-amber-500/20 bg-amber-500/5 rounded-lg p-2 flex justify-between items-center">
                                         <div>
-                                            <p className="font-bold text-xs text-gray-800">{m.product_name}</p>
-                                            <p className="text-[10px] text-gray-500">{m.variant_name} • {m.is_sobra ? 'SOBRA' : 'NOVO'}</p>
-                                            <p className="text-[10px] font-mono text-gray-600">
-                                                Sph {m.esferico > 0 ? '+' : ''}{m.esferico.toFixed(2)} Cyl {m.cilindrico > 0 ? '+' : ''}{m.cilindrico.toFixed(2)} {m.adicao ? `Add ${m.adicao.toFixed(2)}` : ''}
+                                            <p className="font-bold text-xs text-white">{m.product_name}</p>
+                                            <p className="text-[10px] text-slate-400">{m.variant_name} • {m.is_sobra ? 'SOBRA' : 'NOVO'}</p>
+                                            <p className="text-[10px] font-mono text-slate-500">
+                                                Sph {m.esferico > 0 ? '+' : ''}{m.esferico.toFixed(2)} Cyl {m.cilindrico > 0 ? '+' : ''}{m.cilindrico.toFixed(2)}
                                             </p>
                                         </div>
-                                        <button onClick={() => onReserve(m.variant_id, m.product_id)} className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-sm transition-colors">
+                                        <button
+                                            onClick={() => onReserve(m.variant_id, m.product_id)}
+                                            className="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-sm transition-colors border border-amber-500/30"
+                                        >
                                             RESERVAR
                                         </button>
                                     </div>
@@ -232,31 +207,10 @@ function StockReservationModal({
                             </div>
                         </div>
                     )}
+                </div>
 
-                    {/* BRONZE */}
-                    {bronze.length > 0 && (
-                        <div>
-                            <h4 className="text-xs font-bold text-amber-700 uppercase mb-2 flex items-center gap-1">
-                                <History className="h-3 w-3" /> Grau Aproximado (Bronze)
-                            </h4>
-                            <div className="space-y-2">
-                                {bronze.map(m => (
-                                    <div key={m.variant_id} className="border border-amber-200 bg-amber-50 rounded-lg p-2 flex justify-between items-center">
-                                        <div>
-                                            <p className="font-bold text-xs text-gray-800">{m.product_name}</p>
-                                            <p className="text-[10px] text-gray-500">{m.variant_name} • {m.is_sobra ? 'SOBRA' : 'NOVO'}</p>
-                                            <p className="text-[10px] font-mono text-gray-600">
-                                                Sph {m.esferico > 0 ? '+' : ''}{m.esferico.toFixed(2)} Cyl {m.cilindrico > 0 ? '+' : ''}{m.cilindrico.toFixed(2)} {m.adicao ? `Add ${m.adicao.toFixed(2)}` : ''}
-                                            </p>
-                                        </div>
-                                        <button onClick={() => onReserve(m.variant_id, m.product_id)} className="bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-sm transition-colors">
-                                            RESERVAR
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
+                <div className="bg-white/5 px-4 py-2 text-center text-[10px] text-slate-500 border-t border-white/5">
+                    A reserva bloqueia o item no estoque imediatamente.
                 </div>
             </div>
         </div>
@@ -302,7 +256,7 @@ function ServiceOrderFormContent({
 
     const [isDepModalOpen, setIsDepModalOpen] = useState(false)
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
-    const [isOftalmoModalOpen, setIsOftalmoModalOpen] = useState(false)
+    const [isOftalmoModalOpen, setIsOftalmoModalOpen] = useState(false) // MANTIDO: Logic Button for Doctor Modal
     const [localDependentes, setLocalDependentes] = useState<Dependente[]>(initialDependentes)
     const [localOftalmos, setLocalOftalmos] = useState(oftalmosList)
 
@@ -313,6 +267,7 @@ function ServiceOrderFormContent({
     }, [oftalmosList])
 
     // --- STATES DO FORM ---
+    const { preference } = useBackgroundPreference()
     const [protocolo, setProtocolo] = useState('')
     const [dependenteId, setDependenteId] = useState('')
     const [oftalmologistaId, setOftalmologistaId] = useState('')
@@ -496,13 +451,11 @@ function ServiceOrderFormContent({
         const lenteOeDesc = vendaItens.find(i => i.id === parseInt(lenteOeItemId))?.descricao || 'Não informado';
         const medico = oftalmosList.find(o => o.id === parseInt(oftalmologistaId));
         const medicoTexto = medico ? `${medico.nome_completo} ${medico.crm ? 'CRM ' + medico.crm : ''}` : 'Não informado';
-        // Usa o nome do paciente (dependente se selecionado, senão o titular)
         const pacienteNome = dependenteId
             ? localDependentes.find(d => d.id === parseInt(dependenteId))?.full_name || customer?.full_name
             : customer?.full_name || 'Paciente';
         const prometidoPara = dtPrometido ? formatDate(dtPrometido) : 'A combinar';
 
-        // Helper para adicionar linha apenas se tiver valor
         const addIf = (label: string, value: any) => value ? `${label}: ${value}` : null;
 
         const hasComplexMeasures = medH || medV || medDiag || medPonte || diametro
@@ -549,11 +502,8 @@ ${addIf('Obs.', obsOs) || ''}
 
     const handleReserve = async (variantId: number, productId: number) => {
         if (!activeId) { alert('Salve a OS antes de reservar lentes.'); return; }
-
-        // Usa o primeiro funcionário como padrão se não houver um selecionado
         const employeeId = employees[0]?.id
         if (!employeeId) { alert('Nenhum funcionário disponível para registrar a reserva.'); return; }
-
         const res = await reserveLens(storeId, variantId, productId, activeId, employeeId)
         if (res.success) {
             alert('Lente reservada com sucesso!')
@@ -567,43 +517,43 @@ ${addIf('Obs.', obsOs) || ''}
 
     return (
         <>
-            <form ref={formRef} action={dispatch} className="flex-1 flex flex-col h-[calc(100vh-64px)]">
+            <form ref={formRef} action={dispatch} className="flex-1 flex flex-col min-h-0 relative">
+                {/* BACKGROUND IMAGE - OS.JPG */}
+                <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
+                    <div className="absolute inset-0 bg-[url('/os.jpg')] bg-cover bg-center opacity-30" />
+                    <div className="absolute inset-0 bg-gradient-to-b from-slate-950/70 via-slate-950/80 to-slate-950" />
+                </div>
 
                 {/* ÁREA DE SCROLL (HEADER + CONTEÚDO) */}
-                <div className="flex-1 overflow-y-auto overflow-x-hidden p-2">
+                <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 custom-scrollbar z-10 relative">
 
                     {/* HEADER INFO */}
-                    <div className="p-2 rounded-lg bg-white shadow-sm border border-gray-200 flex justify-between items-center mb-2">
-                        <div className="flex items-center gap-2">
-                            <div className="p-1.5 bg-blue-100 rounded-full text-blue-700">
+                    <div className="p-3 rounded-xl bg-white/5 backdrop-blur-xl border border-white/10 flex justify-between items-center mb-3 shadow-lg">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-cyan-500/10 rounded-lg text-cyan-400 border border-cyan-500/20">
                                 <User className="h-4 w-4" />
                             </div>
                             <div>
-                                <p className="text-[10px] font-bold text-gray-500 uppercase">Cliente</p>
-                                <p className="font-bold text-gray-800 text-sm leading-none">{customer.full_name}</p>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cliente</p>
+                                <p className="font-black text-white text-sm leading-none tracking-tight">{customer.full_name}</p>
                             </div>
                         </div>
-                        <div className="text-right">
-                            <p className="text-[10px] font-bold text-gray-500 uppercase">Atendente</p>
-                            <p className="font-bold text-gray-800 text-xs">{authedEmployeeName}</p>
+                        <div className="flex items-center gap-4">
+                            <div className="text-right">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Atendente</p>
+                                <p className="font-bold text-slate-200 text-xs">{authedEmployeeName}</p>
+                            </div>
+                            <BackgroundToggle />
                         </div>
                     </div>
 
-                    {/* NAV BAR */}
-                    <div className="bg-white p-1 rounded-lg shadow-sm border border-gray-200 flex justify-between items-center gap-2 mb-2">
-                        <div className="flex items-center gap-2 ml-2 min-w-fit">
-                            <Eye className="h-4 w-4 text-blue-600" />
-                            <h2 className="text-sm font-bold text-gray-800 hidden sm:block">
-                                {activeId ? `Ficha #${activeId}` : 'Nova Ficha'}
-                            </h2>
-                            <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-0.5 rounded-full font-bold border border-gray-300 whitespace-nowrap">
-                                {currentIndex === -1 ? 'NOVA' : `${currentIndex + 1}/${existingOrders.length}`}
-                            </span>
-                        </div>
+                    {/* NAV BAR RE-DESIGNED */}
+                    <div className="bg-white/5 backdrop-blur-md p-2 rounded-xl shadow-lg border border-white/10 flex items-center justify-between gap-3 mb-3 relative h-14 z-20">
 
-                        <div className="flex-1 flex justify-center">
-                            <div className="flex items-center gap-2 bg-gray-50 px-2 py-0.5 rounded border border-gray-200 w-full max-w-[200px]">
-                                <label htmlFor="protocolo_input" className="text-[9px] font-bold text-gray-500 uppercase whitespace-nowrap">
+                        {/* LEFT: PROTOCOLO (MATCHING PATIENT INPUT) */}
+                        <div className="flex items-center gap-2 ml-2 z-20 w-48">
+                            <div className="w-full">
+                                <label htmlFor="protocolo_input" className={labelStyle}>
                                     Protocolo
                                 </label>
                                 <input
@@ -612,58 +562,78 @@ ${addIf('Obs.', obsOs) || ''}
                                     type="text"
                                     value={protocolo}
                                     onChange={(e) => setProtocolo(e.target.value)}
-                                    className="bg-transparent border-none text-gray-900 text-xs focus:ring-0 block w-full h-6 px-1 font-bold text-center uppercase p-0"
-                                    placeholder="Auto"
+                                    className={inputStyle}
+                                    placeholder="AUTO"
                                 />
                             </div>
                         </div>
 
-                        <div className="flex gap-1 min-w-fit">
-                            <button type="button" onClick={() => handleNavigate('prev')} className="p-1.5 hover:bg-gray-100 rounded text-gray-600"><ChevronLeft className="h-4 w-4" /></button>
-                            <button type="button" onClick={() => handleNavigate('next')} className="p-1.5 hover:bg-gray-100 rounded text-gray-600"><ChevronRight className="h-4 w-4" /></button>
-                            <button type="button" onClick={() => handleNavigate('new')} className="bg-green-600 text-white text-[10px] font-bold px-3 py-1 rounded hover:bg-green-700 ml-1 shadow-sm">NOVA</button>
+                        {/* CENTER: FICHA TITLE (ABSOLUTE) */}
+                        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2 z-10 pointer-events-none">
+                            <Eye className="h-5 w-5 text-cyan-400 opacity-80" />
+                            <h2 className="text-lg font-black text-white tracking-widest uppercase opacity-90">
+                                {activeId ? `Ficha #${activeId}` : 'Nova Ficha'}
+                            </h2>
+                        </div>
+
+                        {/* RIGHT: CONTROLS & ACTIONS */}
+                        <div className="flex items-center gap-2 min-w-fit z-20">
+                            {/* NAV ARROWS */}
+                            <div className="flex gap-1 mr-2">
+                                <button type="button" onClick={() => handleNavigate('prev')} className="p-1.5 hover:bg-white/10 rounded-lg text-slate-400 transition-colors border border-transparent hover:border-white/10"><ChevronLeft className="h-4 w-4" /></button>
+                                <button type="button" onClick={() => handleNavigate('next')} className="p-1.5 hover:bg-white/10 rounded-lg text-slate-400 transition-colors border border-transparent hover:border-white/10"><ChevronRight className="h-4 w-4" /></button>
+                            </div>
+
+                            {/* COUNTER */}
+                            <span className="bg-white/5 text-slate-300 text-[10px] px-2 py-0.5 rounded-full font-bold border border-white/10 whitespace-nowrap shadow-inner mr-2">
+                                {currentIndex === -1 ? 'NOVA' : `${currentIndex + 1}/${existingOrders.length}`}
+                            </span>
+
+                            <button type="button" onClick={() => handleNavigate('new')} className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-500/20 shadow-sm transition-all uppercase tracking-wide flex items-center gap-2">
+                                <Plus className="h-3 w-3" /> NOVA
+                            </button>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-2">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 pb-24">
 
                         {/* COLUNA 1: Dados Gerais e Medidas (4 colunas) */}
                         <div className="lg:col-span-4 space-y-2 flex flex-col">
 
                             {/* CARD AZUL (DADOS) */}
                             <div className={cardBlue}>
-                                <h3 className="text-white font-bold text-xs mb-2 flex items-center gap-2 border-b border-white/20 pb-1">
+                                <h3 className="text-cyan-400 font-bold text-xs mb-3 flex items-center gap-2 border-b border-white/5 pb-2 tracking-wide uppercase">
                                     <User className="h-3 w-3" /> DADOS E VÍNCULOS
                                 </h3>
                                 <div className="space-y-2 flex-1">
-                                    <div>
-                                        <label className={labelStyle}>Paciente</label>
-                                        <div className="flex gap-1">
-                                            <select name="dependente_id" value={dependenteId} onChange={e => setDependenteId(e.target.value)} className={inputStyle}>
-                                                <option value="">{customer.full_name} (Titular)</option>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <label className={`w-16 ${labelBlue} text-right shrink-0 mb-0`}>Paciente</label>
+                                        <div className="flex-1 flex gap-1">
+                                            <select name="dependente_id" value={dependenteId} onChange={e => setDependenteId(e.target.value)} className={`${inputStyle} text-slate-200`}>
+                                                <option value="" className="bg-slate-800">{customer.full_name} (Titular)</option>
                                                 {localDependentes.map(dep => (
-                                                    <option key={dep.id} value={dep.id}>
+                                                    <option key={dep.id} value={dep.id} className="bg-slate-800">
                                                         {dep.full_name} ({dep.parentesco || 'Dep.'})
                                                     </option>
                                                 ))}
                                             </select>
-                                            <button type="button" onClick={() => setIsDepModalOpen(true)} className="bg-white/20 hover:bg-white/30 text-white p-1 rounded shadow-sm border border-white/20 h-7 w-7 flex items-center justify-center" title="Novo Dependente">
+                                            <button type="button" onClick={() => setIsDepModalOpen(true)} className="bg-white/5 hover:bg-white/10 text-cyan-400 p-1 rounded-lg shadow-sm border border-white/10 h-8 w-8 flex items-center justify-center transition-colors" title="Novo Dependente">
                                                 <Plus className="h-4 w-4" />
                                             </button>
                                         </div>
                                     </div>
 
-                                    <div>
-                                        <label className={labelStyle}>Médico</label>
-                                        <div className="flex gap-1">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <label className={`w-16 ${labelBlue} text-right shrink-0 mb-0`}>Médico</label>
+                                        <div className="flex-1 flex gap-1">
                                             <select name="oftalmologista_id" value={oftalmologistaId} onChange={e => setOftalmologistaId(e.target.value)} className={inputStyle}>
-                                                <option value="">Selecione...</option>
-                                                {localOftalmos.map(oft => <option key={oft.id} value={oft.id}>{oft.nome_completo}</option>)}
+                                                <option value="" className="bg-slate-800">Selecione...</option>
+                                                {localOftalmos.map(oft => <option key={oft.id} value={oft.id} className="bg-slate-800">{oft.nome_completo}</option>)}
                                             </select>
                                             <button
                                                 type="button"
                                                 onClick={() => setIsOftalmoModalOpen(true)}
-                                                className="bg-white/20 hover:bg-white/30 text-white p-1 rounded shadow-sm border border-white/20 h-7 w-7 flex items-center justify-center"
+                                                className="bg-white/5 hover:bg-white/10 text-cyan-400 p-1 rounded-lg shadow-sm border border-white/10 h-8 w-8 flex items-center justify-center transition-colors"
                                                 title="Novo Médico"
                                             >
                                                 <Plus className="h-4 w-4" />
@@ -671,26 +641,26 @@ ${addIf('Obs.', obsOs) || ''}
                                         </div>
                                     </div>
 
-                                    <div className="pt-2 border-t border-white/20 mt-1 space-y-2">
-                                        <div>
-                                            <label className={labelStyle}>Lente OD</label>
+                                    <div className="pt-3 border-t border-white/5 mt-2 space-y-2">
+                                        <div className="flex items-center gap-2">
+                                            <label className={`w-16 ${labelBlue} text-right shrink-0 mb-0`}>Lente OD</label>
                                             <select value={lenteOdItemId} onChange={e => setLenteOdItemId(e.target.value)} className={inputStyle}>
-                                                <option value="">-- Selecione --</option>
-                                                {lentesDisponiveisOD.map(i => <option key={i.id} value={i.id}>{i.descricao} ({i.unidade})</option>)}
+                                                <option value="" className="bg-slate-800">-- Selecione --</option>
+                                                {lentesDisponiveisOD.map(i => <option key={i.id} value={i.id} className="bg-slate-800">{i.descricao} ({i.unidade})</option>)}
                                             </select>
                                         </div>
-                                        <div>
-                                            <label className={labelStyle}>Lente OE</label>
+                                        <div className="flex items-center gap-2">
+                                            <label className={`w-16 ${labelBlue} text-right shrink-0 mb-0`}>Lente OE</label>
                                             <select value={lenteOeItemId} onChange={e => setLenteOeItemId(e.target.value)} className={inputStyle}>
-                                                <option value="">-- Selecione --</option>
-                                                {lentesDisponiveisOE.map(i => <option key={i.id} value={i.id}>{i.descricao} ({i.unidade})</option>)}
+                                                <option value="" className="bg-slate-800">-- Selecione --</option>
+                                                {lentesDisponiveisOE.map(i => <option key={i.id} value={i.id} className="bg-slate-800">{i.descricao} ({i.unidade})</option>)}
                                             </select>
                                         </div>
-                                        <div>
-                                            <label className={labelStyle}>Armação</label>
+                                        <div className="flex items-center gap-2">
+                                            <label className={`w-16 ${labelBlue} text-right shrink-0 mb-0`}>Armação</label>
                                             <select value={armacaoItemId} onChange={e => setArmacaoItemId(e.target.value)} className={inputStyle}>
-                                                <option value="">-- Selecione --</option>
-                                                {itensArmacao.map(i => <option key={i.id} value={i.id}>{i.descricao}</option>)}
+                                                <option value="" className="bg-slate-800">-- Selecione --</option>
+                                                {itensArmacao.map(i => <option key={i.id} value={i.id} className="bg-slate-800">{i.descricao}</option>)}
                                             </select>
                                         </div>
                                     </div>
@@ -699,43 +669,50 @@ ${addIf('Obs.', obsOs) || ''}
 
                             {/* CARD SLATE (MEDIDAS) */}
                             <div className={cardSlate}>
-                                <h3 className="text-white font-bold text-xs mb-2 flex items-center gap-2 border-b border-white/20 pb-1">
+                                <h3 className="text-slate-200 font-bold text-xs mb-3 flex items-center gap-2 border-b border-white/5 pb-2 tracking-wide uppercase">
                                     <Ruler className="h-3 w-3" /> MEDIDAS TÉCNICAS
                                 </h3>
-                                <div className="grid grid-cols-3 gap-1 mb-2 items-end">
-                                    <div className="col-span-1"></div>
-                                    <div className="text-center text-[10px] font-bold text-white/70">OD</div>
-                                    <div className="text-center text-[10px] font-bold text-white/70">OE</div>
-
-                                    <label className="text-right text-[10px] font-bold text-white/90 pr-1 self-center">DNP</label>
-                                    <input name="medida_dnp_od" value={dnpOd} onChange={e => setDnpOd(e.target.value)} className={gridInput} />
-                                    <input name="medida_dnp_oe" value={dnpOe} onChange={e => setDnpOe(e.target.value)} className={gridInput} />
-
-                                    <label className="text-right text-[10px] font-bold text-white/90 pr-1 self-center">Altura</label>
-                                    <input name="medida_altura_od" value={altOd} onChange={e => setAltOd(e.target.value)} className={gridInput} />
-                                    <input name="medida_altura_oe" value={altOe} onChange={e => setAltOe(e.target.value)} className={gridInput} />
+                                <div className="space-y-2 mb-3">
+                                    {/* OD / OE Headers */}
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-16 shrink-0"></div>
+                                        <div className="w-20 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">OD</div>
+                                        <div className="w-20 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">OE</div>
+                                    </div>
+                                    {/* DNP */}
+                                    <div className="flex items-center gap-2">
+                                        <label className={`w-16 ${labelSlate} text-right shrink-0 mb-0`}>DNP</label>
+                                        <input name="medida_dnp_od" value={dnpOd} onChange={e => setDnpOd(e.target.value)} className="block w-20 rounded-lg border border-white/10 bg-black/20 shadow-inner text-white h-8 text-xs px-3 focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:outline-none font-medium text-center" />
+                                        <input name="medida_dnp_oe" value={dnpOe} onChange={e => setDnpOe(e.target.value)} className="block w-20 rounded-lg border border-white/10 bg-black/20 shadow-inner text-white h-8 text-xs px-3 focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:outline-none font-medium text-center" />
+                                    </div>
+                                    {/* ALTURA */}
+                                    <div className="flex items-center gap-2">
+                                        <label className={`w-16 ${labelSlate} text-right shrink-0 mb-0`}>Altura</label>
+                                        <input name="medida_altura_od" value={altOd} onChange={e => setAltOd(e.target.value)} className="block w-20 rounded-lg border border-white/10 bg-black/20 shadow-inner text-white h-8 text-xs px-3 focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:outline-none font-medium text-center" />
+                                        <input name="medida_altura_oe" value={altOe} onChange={e => setAltOe(e.target.value)} className="block w-20 rounded-lg border border-white/10 bg-black/20 shadow-inner text-white h-8 text-xs px-3 focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:outline-none font-medium text-center" />
+                                    </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-2 border-t border-white/20 pt-2">
-                                    <div><label className={labelStyle}>Horizontal</label><input name="medida_horizontal" value={medH} onChange={e => setMedH(e.target.value)} className={inputStyle} /></div>
-                                    <div><label className={labelStyle}>Vertical</label><input name="medida_vertical" value={medV} onChange={e => setMedV(e.target.value)} className={inputStyle} /></div>
-                                    <div><label className={labelStyle}>Diagonal</label><input name="medida_diagonal" value={medDiag} onChange={e => setMedDiag(e.target.value)} className={inputStyle} /></div>
-                                    <div><label className={labelStyle}>Ponte</label><input name="medida_ponte" value={medPonte} onChange={e => setMedPonte(e.target.value)} className={inputStyle} /></div>
+                                <div className="grid grid-cols-2 gap-2 border-t border-white/5 pt-3">
+                                    <div className="flex items-center gap-2"><label className={`w-16 ${labelSlate} text-right shrink-0 mb-0`}>Horiz.</label><input name="medida_horizontal" value={medH} onChange={e => setMedH(e.target.value)} className={inputStyle} /></div>
+                                    <div className="flex items-center gap-2"><label className={`w-16 ${labelSlate} text-right shrink-0 mb-0`}>Vert.</label><input name="medida_vertical" value={medV} onChange={e => setMedV(e.target.value)} className={inputStyle} /></div>
+                                    <div className="flex items-center gap-2"><label className={`w-16 ${labelSlate} text-right shrink-0 mb-0`}>Diag.</label><input name="medida_diagonal" value={medDiag} onChange={e => setMedDiag(e.target.value)} className={inputStyle} /></div>
+                                    <div className="flex items-center gap-2"><label className={`w-16 ${labelSlate} text-right shrink-0 mb-0`}>Ponte</label><input name="medida_ponte" value={medPonte} onChange={e => setMedPonte(e.target.value)} className={inputStyle} /></div>
 
                                     {/* DIÂMETRO COM WHATSAPP */}
-                                    <div className="col-span-2 flex items-end gap-1">
-                                        <div className="flex-1">
-                                            <label className={labelStyle}>Diâmetro</label>
+                                    <div className="col-span-2 flex items-center gap-2">
+                                        <label className={`w-16 ${labelSlate} text-right shrink-0 mb-0`}>Diâmetro</label>
+                                        <div className="flex-1 flex gap-1 items-center">
                                             <input name="medida_diametro" value={diametro} onChange={e => setDiametro(e.target.value)} className={inputStyle} />
+                                            <button
+                                                type="button"
+                                                onClick={() => sendWhatsAppPedido()}
+                                                className="h-8 px-3 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded-lg shadow-sm flex items-center gap-2 transition-all hover:scale-105"
+                                                title="Enviar Pedido via WhatsApp"
+                                            >
+                                                <MessageCircle className="h-4 w-4" /> <span className="font-bold text-[10px] hidden xl:inline">PEDIR</span>
+                                            </button>
                                         </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => sendWhatsAppPedido()}
-                                            className="h-7 px-2 bg-green-500 hover:bg-green-600 text-white rounded shadow-md flex items-center gap-1 transition-all hover:scale-105"
-                                            title="Enviar Pedido via WhatsApp"
-                                        >
-                                            <MessageCircle className="h-4 w-4" /> <span className="font-bold text-[10px] hidden xl:inline">PEDIR</span>
-                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -745,69 +722,80 @@ ${addIf('Obs.', obsOs) || ''}
                         <div className="lg:col-span-8 space-y-2 flex flex-col">
 
                             {/* CARD VIOLETA (RECEITA) */}
-                            <div className={cardViolet}>
-                                <div className="flex justify-between border-b border-white/20 pb-1 mb-2 items-center">
-                                    <h3 className="font-bold text-white flex items-center gap-2 text-xs">
+                            <div className={`${cardViolet} flex-1 flex flex-col justify-center`}>
+                                <div className="flex justify-between border-b border-white/5 pb-2 mb-3 items-center">
+                                    <h3 className="font-bold text-purple-300 flex items-center gap-2 text-xs tracking-wide uppercase">
                                         <Glasses className="h-3 w-3" /> RECEITA
                                     </h3>
                                     <div className="flex gap-1">
                                         <button
                                             type="button"
                                             onClick={() => setIsHistoryModalOpen(true)}
-                                            className="text-[10px] font-bold text-indigo-900 bg-white hover:bg-indigo-50 px-2 py-0.5 rounded shadow-sm flex items-center gap-1 transition-colors uppercase tracking-wide"
+                                            className="text-[10px] font-bold text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 px-3 py-1 rounded-lg border border-cyan-500/20 shadow-sm flex items-center gap-1 transition-all uppercase tracking-wide"
                                         >
                                             <History className="h-3 w-3" /> Histórico
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => { setLongeOdEsf('+0,00'); setLongeOdCil('+0,00'); setLongeOdEixo('0'); setLongeOeEsf('+0,00'); setLongeOeCil('+0,00'); setLongeOeCil('+0,00'); setLongeOeEixo('0'); }}
-                                            className="text-[10px] font-bold text-white border border-white/40 hover:bg-white/10 px-2 py-0.5 rounded transition-colors uppercase tracking-wide"
+                                            className="text-[10px] font-bold text-slate-400 border border-white/10 hover:bg-white/5 hover:text-white px-3 py-1 rounded-lg transition-colors uppercase tracking-wide"
                                         >
                                             <FileDown className="h-3 w-3 inline mr-1" /> Zerar
                                         </button>
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-7 gap-1 mb-1 text-center text-[10px] font-bold text-white/60 uppercase tracking-wider">
-                                    <div className="col-span-1"></div><div className="col-span-2">Esférico</div><div className="col-span-2">Cilíndrico</div><div className="col-span-2">Eixo</div>
-                                </div>
+                                <div className="flex gap-2">
+                                    <div className="flex-1">
+                                        <div className="grid grid-cols-7 gap-2 mb-2 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                            <div className="col-span-1"></div><div className="col-span-2">Esférico</div><div className="col-span-2">Cilíndrico</div><div className="col-span-2">Eixo</div>
+                                        </div>
 
-                                <StockBadge matches={odMatches} label="OD" onOpen={() => setStockModalOpen('OD')} />
+                                        <StockBadge matches={odMatches} label="OD" onOpen={() => setStockModalOpen('OD')} />
 
-                                {/* OD */}
-                                <div className="grid grid-cols-7 gap-1 mb-2 items-center p-2 bg-white/10 rounded-lg border border-white/10">
-                                    <div className="col-span-1 font-black text-right pr-2 text-xl text-white">OD</div>
-                                    <div className="col-span-2"><DegreeInput name="receita_longe_od_esferico" value={longeOdEsf} onChange={setLongeOdEsf} className={gridInput} /></div>
-                                    <div className="col-span-2"><DegreeInput name="receita_longe_od_cilindrico" value={longeOdCil} onChange={setLongeOdCil} className={gridInput} /></div>
-                                    <div className="col-span-2"><input name="receita_longe_od_eixo" value={longeOdEixo} onChange={e => setLongeOdEixo(e.target.value)} className={gridInput} placeholder="0º" /></div>
-                                </div>
+                                        {/* OD */}
+                                        <div className="grid grid-cols-7 gap-2 mb-3 items-center p-3 bg-black/20 rounded-xl border border-white/5 shadow-inner">
+                                            <div className="col-span-1 font-black text-right pr-3 text-xl text-cyan-400">OD</div>
+                                            <div className="col-span-2"><DegreeInput name="receita_longe_od_esferico" value={longeOdEsf} onChange={setLongeOdEsf} className={gridInput} /></div>
+                                            <div className="col-span-2"><DegreeInput name="receita_longe_od_cilindrico" value={longeOdCil} onChange={setLongeOdCil} className={gridInput} /></div>
+                                            <div className="col-span-2"><input name="receita_longe_od_eixo" value={longeOdEixo} onChange={e => setLongeOdEixo(e.target.value)} className={gridInput} placeholder="0º" /></div>
+                                        </div>
 
-                                <StockBadge matches={oeMatches} label="OE" onOpen={() => setStockModalOpen('OE')} />
+                                        <StockBadge matches={oeMatches} label="OE" onOpen={() => setStockModalOpen('OE')} />
 
-                                {/* OE */}
-                                <div className="grid grid-cols-7 gap-1 mb-2 items-center p-2 bg-white/10 rounded-lg border border-white/10">
-                                    <div className="col-span-1 font-black text-right pr-2 text-xl text-white">OE</div>
-                                    <div className="col-span-2"><DegreeInput name="receita_longe_oe_esferico" value={longeOeEsf} onChange={setLongeOeEsf} className={gridInput} /></div>
-                                    <div className="col-span-2"><DegreeInput name="receita_longe_oe_cilindrico" value={longeOeCil} onChange={setLongeOeCil} className={gridInput} /></div>
-                                    <div className="col-span-2"><input name="receita_longe_oe_eixo" value={longeOeEixo} onChange={e => setLongeOeEixo(e.target.value)} className={gridInput} placeholder="0º" /></div>
-                                </div>
+                                        {/* OE */}
+                                        <div className="grid grid-cols-7 gap-2 mb-3 items-center p-3 bg-black/20 rounded-xl border border-white/5 shadow-inner">
+                                            <div className="col-span-1 font-black text-right pr-3 text-xl text-cyan-400">OE</div>
+                                            <div className="col-span-2"><DegreeInput name="receita_longe_oe_esferico" value={longeOeEsf} onChange={setLongeOeEsf} className={gridInput} /></div>
+                                            <div className="col-span-2"><DegreeInput name="receita_longe_oe_cilindrico" value={longeOeCil} onChange={setLongeOeCil} className={gridInput} /></div>
+                                            <div className="col-span-2"><input name="receita_longe_oe_eixo" value={longeOeEixo} onChange={e => setLongeOeEixo(e.target.value)} className={gridInput} placeholder="0º" /></div>
+                                        </div>
+                                    </div>
 
-                                <div className="flex justify-center mt-1">
-                                    <div className="w-32 bg-white/10 border border-white/20 p-2 rounded-lg text-center">
-                                        <label className="text-[10px] font-bold text-white uppercase block mb-1">Adição</label>
-                                        <DegreeInput name="receita_adicao" value={adicao} onChange={setAdicao} className={`${gridInput} h-9 text-xl`} />
+                                    {/* COLUNA DA ADIÇÃO */}
+                                    <div className="w-24 flex flex-col">
+                                        <div className="mb-2 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider h-[15px]">Adição</div>
+                                        <div className="flex-1 bg-black/20 rounded-xl border border-white/5 shadow-inner p-1 flex items-center justify-center">
+                                            <div className="w-full">
+                                                <DegreeInput
+                                                    name="receita_perto_adicao"
+                                                    value={adicao}
+                                                    onChange={setAdicao}
+                                                    className="w-full bg-transparent text-center font-bold text-white text-xl placeholder-slate-700 h-full min-h-[80px]"
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-
-                            {/* CARD TEAL (PRAZOS E OBS) */}
+                            {/* CARD TEAL (PRAZOS) */}
                             <div className={cardTeal}>
-                                <h3 className="text-white font-bold text-xs mb-2 flex items-center gap-2 border-b border-white/20 pb-1">
+                                <h3 className="text-emerald-300 font-bold text-xs mb-3 flex items-center gap-2 border-b border-white/5 pb-2 tracking-wide uppercase">
                                     <CalendarClock className="h-3 w-3" /> PRAZOS E OBS
                                 </h3>
                                 <div className="flex gap-2 items-start">
                                     <div className="w-1/3">
-                                        <label className={labelStyle}>Prometido Para</label>
+                                        <label className={labelTeal}>Prometido Para</label>
                                         <input
                                             type="datetime-local"
                                             name="dt_prometido_para"
@@ -817,7 +805,7 @@ ${addIf('Obs.', obsOs) || ''}
                                         />
                                     </div>
                                     <div className="flex-1">
-                                        <label className={labelStyle}>Observações</label>
+                                        <label className={labelTeal}>Observações</label>
                                         <input
                                             name="obs_os"
                                             value={obsOs}
@@ -829,43 +817,60 @@ ${addIf('Obs.', obsOs) || ''}
                                 </div>
                             </div>
 
+
                             {/* CARD AMBER (LAB) */}
                             <div className={cardAmber}>
-                                <h3 className="text-white font-bold text-xs mb-2 flex items-center gap-2 border-b border-white/20 pb-1">
+                                <h3 className="text-amber-300 font-bold text-xs mb-3 flex items-center gap-2 border-b border-white/5 pb-2 tracking-wide uppercase">
                                     <Truck className="h-3 w-3" /> LABORATÓRIO
                                 </h3>
                                 <div className="grid grid-cols-3 gap-2">
-                                    <div><label className={labelStyle}>Pedido Em</label><input type="datetime-local" name="dt_pedido_em" value={dtPedido} onChange={e => setDtPedido(e.target.value)} className={inputStyle} /></div>
-                                    <div><label className={labelStyle}>Pedido Por</label>
+                                    <div><label className={labelAmber}>Pedido Em</label><input type="datetime-local" name="dt_pedido_em" value={dtPedido} onChange={e => setDtPedido(e.target.value)} className={inputStyle} /></div>
+                                    <div><label className={labelAmber}>Pedido Por</label>
                                         <select name="lab_pedido_por_id" value={pedidoPorId} onChange={e => setPedidoPorId(e.target.value)} className={inputStyle}>
-                                            <option value="">Selecione...</option>
-                                            {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.full_name}</option>)}
+                                            <option value="" className="bg-slate-800">Selecione...</option>
+                                            {employees.map(emp => <option key={emp.id} value={emp.id} className="bg-slate-800">{emp.full_name}</option>)}
                                         </select>
                                     </div>
-                                    <div><label className={labelStyle}>Laboratório</label><input type="text" name="lab_nome" value={labNome} onChange={e => setLabNome(e.target.value)} className={inputStyle} placeholder="Ex: Hoya" /></div>
+                                    <div><label className={labelAmber}>Laboratório</label><input type="text" name="lab_nome" value={labNome} onChange={e => setLabNome(e.target.value)} className={inputStyle} placeholder="Ex: Hoya" /></div>
 
-                                    <div><label className={labelStyle}>Lente Chegou</label><input type="datetime-local" name="dt_lente_chegou" value={dtChegou} onChange={e => setDtChegou(e.target.value)} className={inputStyle} /></div>
-                                    <div><label className={labelStyle}>Montado Em</label><input type="datetime-local" name="dt_montado_em" value={dtMontado} onChange={e => setDtMontado(e.target.value)} className={inputStyle} /></div>
-                                    <div><label className={labelStyle}>Entregue</label><input type="datetime-local" name="dt_entregue_em" value={dtEntregue} onChange={e => setDtEntregue(e.target.value)} className={inputStyle} /></div>
+                                    <div><label className={labelAmber}>Lente Chegou</label><input type="datetime-local" name="dt_lente_chegou" value={dtChegou} onChange={e => setDtChegou(e.target.value)} className={inputStyle} /></div>
+                                    <div><label className={labelAmber}>Montado Em</label><input type="datetime-local" name="dt_montado_em" value={dtMontado} onChange={e => setDtMontado(e.target.value)} className={inputStyle} /></div>
+                                    <div><label className={labelAmber}>Entregue</label><input type="datetime-local" name="dt_entregue_em" value={dtEntregue} onChange={e => setDtEntregue(e.target.value)} className={inputStyle} /></div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* FOOTER FIXO (Barra Branca) */}
-                <div className="shrink-0 bg-white border-t border-gray-300 px-4 py-3 flex justify-end gap-2 z-20 shadow-[0_-5px_15px_rgba(0,0,0,0.05)]">
-                    <button type="button" onClick={() => router.back()} className={`${baseButtonStyle} bg-gray-500 text-white hover:bg-gray-600`}>VOLTAR</button>
+                {/* 3. RODAPÉ FIXO (Pattern from VendaInterfaceExperimental) */}
+                <div className="relative z-30 bg-black/60 backdrop-blur-xl border-t border-white/10 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] shrink-0 px-4 py-3 flex justify-end gap-3">
+                    <button type="button" onClick={() => router.back()} className="px-4 py-2 text-xs font-bold rounded-lg border border-white/10 text-slate-400 hover:bg-white/5 transition-all flex items-center gap-2">VOLTAR</button>
 
-                    {/* Botão de Impressão */}
-                    <PrintProtocoloButton osId={activeId} disabled={!activeId} />
+                    {/* Botão de Impressão (Matching Theme) */}
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (!activeId) return
+                            const url = `/print/os/${activeId}`
+                            const width = 900
+                            const height = 800
+                            const left = (window.screen.width - width) / 2
+                            const top = (window.screen.height - height) / 2
+                            window.open(url, 'PrintWindow', `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,resizable=yes`)
+                        }}
+                        disabled={!activeId}
+                        className="px-4 py-2 text-xs font-bold rounded-lg border border-indigo-500/20 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Imprimir Protocolo"
+                    >
+                        <Printer className="h-4 w-4" /> <span className="hidden sm:inline">IMPRIMIR</span>
+                    </button>
 
                     {activeId && (
-                        <button type="button" onClick={handleDelete} disabled={isDeleting} className={`${baseButtonStyle} bg-red-100 text-red-700 hover:bg-red-200 border border-red-200`}>
+                        <button type="button" onClick={handleDelete} disabled={isDeleting} className="px-4 py-2 text-xs font-bold rounded-lg border border-rose-500/20 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-all flex items-center gap-2">
                             {isDeleting ? <Loader2 className="animate-spin h-3 w-3" /> : <Trash2 className="h-3 w-3" />} EXCLUIR
                         </button>
                     )}
-                    <button type="submit" disabled={isSaving} className={`${baseButtonStyle} bg-blue-600 text-white hover:bg-blue-700 px-6 text-sm shadow-md`}>
+                    <button type="submit" disabled={isSaving} className="px-6 py-2 text-xs font-bold rounded-lg border border-cyan-500/20 bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 shadow-[0_0_20px_rgba(6,182,212,0.15)] transition-all flex items-center gap-2">
                         {isSaving ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="h-4 w-4" />} SALVAR OS
                     </button>
                 </div>
@@ -880,23 +885,27 @@ ${addIf('Obs.', obsOs) || ''}
             </form>
 
             {/* --- MODAIS EXTERNOS --- */}
-            {isDepModalOpen && (
-                <AddDependenteModal
-                    isOpen={isDepModalOpen}
-                    onClose={() => setIsDepModalOpen(false)}
-                    onSuccess={handleDependenteAdded}
-                    storeId={storeId}
-                    customerId={customer.id}
-                />
-            )}
+            {
+                isDepModalOpen && (
+                    <AddDependenteModal
+                        isOpen={isDepModalOpen}
+                        onClose={() => setIsDepModalOpen(false)}
+                        onSuccess={handleDependenteAdded}
+                        storeId={storeId}
+                        customerId={customer.id}
+                    />
+                )
+            }
 
-            {isOftalmoModalOpen && (
-                <AddOftalmoModal
-                    isOpen={isOftalmoModalOpen}
-                    onClose={() => setIsOftalmoModalOpen(false)}
-                    onSuccess={handleOftalmoAdded}
-                />
-            )}
+            {
+                isOftalmoModalOpen && (
+                    <AddOftalmoModal
+                        isOpen={isOftalmoModalOpen}
+                        onClose={() => setIsOftalmoModalOpen(false)}
+                        onSuccess={handleOftalmoAdded}
+                    />
+                )
+            }
 
             <PrescriptionHistoryModal
                 isOpen={isHistoryModalOpen}
@@ -918,8 +927,6 @@ ${addIf('Obs.', obsOs) || ''}
         </>
     )
 }
-
-
 
 export default function ServiceOrderPage() {
     const params = useParams()
@@ -987,20 +994,22 @@ export default function ServiceOrderPage() {
     if (!data) return null
 
     return (
-        <ServiceOrderFormContent
-            storeId={storeId}
-            vendaId={vendaId}
-            customer={data.customer}
-            vendaItens={data.vendaItens}
-            dependentes={data.dependentes}
-            oftalmosList={data.oftalmologistas}
-            employees={data.employees}
-            existingOrders={existingOrders}
-            authedEmployeeName={authedEmployeeName}
-            onListChange={setExistingOrders}
-            saveState={saveState}
-            dispatch={dispatch}
-            venda={data.venda}
-        />
+        <div className="fixed inset-0 bg-slate-950 flex flex-col overflow-hidden z-40">
+            <ServiceOrderFormContent
+                storeId={storeId}
+                vendaId={vendaId}
+                customer={data.customer}
+                vendaItens={data.vendaItens}
+                dependentes={data.dependentes}
+                oftalmosList={data.oftalmologistas}
+                employees={data.employees}
+                existingOrders={existingOrders}
+                authedEmployeeName={authedEmployeeName}
+                onListChange={setExistingOrders}
+                saveState={saveState}
+                dispatch={dispatch}
+                venda={data.venda}
+            />
+        </div>
     )
 }
