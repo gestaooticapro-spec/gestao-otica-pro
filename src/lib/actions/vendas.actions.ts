@@ -1030,7 +1030,7 @@ function distributeDiscount(
   if (items.length === 0) return []
 
   const totalOriginal = items.reduce((acc, item) => acc + item.valor_original_total, 0)
-  if (totalOriginal === 0) return items.map(i => ({ id: i.id, novo_total: 0, novo_unitario: 0 }))
+  if (totalOriginal === 0) return items.map(i => ({ id: i.id, valor_total_item: 0, valor_unitario: 0 }))
 
   let currentSum = 0
   const distributed = items.map((item) => {
