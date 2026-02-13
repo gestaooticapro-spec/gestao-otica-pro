@@ -73,12 +73,12 @@ const ParcelaInput = ({ valor, index, onChange }: { valor: number, index: number
     useEffect(() => { if (!isFocused) setLocalStr(formatCurrency(valor)) }, [valor, isFocused])
     return (
         <div className="flex items-center gap-1 w-full justify-end">
-            <span className="text-gray-500 text-[10px] font-bold">R$</span>
+            <span className="text-slate-500 text-[10px] font-bold">R$</span>
             <input
                 type="text" value={localStr} onFocus={() => setIsFocused(true)}
                 onBlur={() => { setIsFocused(false); setLocalStr(formatCurrency(parseLocaleFloat(localStr))) }}
                 onChange={(e) => { setLocalStr(e.target.value); onChange(index, e.target.value) }}
-                className="w-20 text-right font-bold text-gray-900 bg-white border border-gray-400 rounded px-1 h-6 text-xs focus:ring-amber-500 focus:border-amber-500"
+                className="w-20 text-right font-bold text-slate-200 bg-white/5 border border-white/10 rounded px-1 h-6 text-xs focus:ring-amber-500/50 focus:border-amber-500/50 focus:outline-none placeholder:text-slate-600 transition-all"
             />
         </div>
     )
@@ -128,11 +128,11 @@ function RecebimentoModal({
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
-                <div className="bg-amber-50 px-6 py-4 border-b border-amber-100 flex justify-between items-center">
-                    <h3 className="font-bold text-amber-900 flex items-center gap-2">
+                <div className="bg-amber-950/30 px-6 py-4 border-b border-amber-500/20 flex justify-between items-center">
+                    <h3 className="font-bold text-amber-500 flex items-center gap-2">
                         <Wallet className="h-5 w-5" /> Receber Parcela {parcela.numero_parcela}
                     </h3>
-                    <button onClick={onClose} type="button" className="p-1 rounded hover:bg-amber-200/50 transition-colors"><X className="h-5 w-5 text-amber-600" /></button>
+                    <button onClick={onClose} type="button" className="p-1 rounded hover:bg-white/10 transition-colors"><X className="h-5 w-5 text-amber-500" /></button>
                 </div>
                 <form onSubmit={handlePreConfirm} className="p-6 space-y-5">
                     <div className="space-y-1 text-center">
@@ -323,22 +323,22 @@ export default function FinanciamentoBox({
     }
 
     // Estilos
-    const labelStyle = 'block text-[9px] font-bold text-amber-100 mb-0.5 uppercase tracking-wider';
-    const inputStyle = 'block w-full rounded-md border border-gray-400 bg-white shadow-sm text-gray-800 h-8 text-xs px-2 focus:ring-1 focus:ring-amber-300 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400 placeholder:text-gray-400 transition-all';
+    const labelStyle = 'block text-[10px] font-bold text-slate-400 mb-0.5 uppercase tracking-wider';
+    const inputStyle = 'block w-full rounded-md border border-white/10 bg-white/5 shadow-sm text-slate-200 h-9 text-xs px-2 focus:ring-1 focus:ring-amber-500/50 focus:outline-none disabled:bg-white/5 disabled:text-slate-500 placeholder:text-slate-600 transition-all';
 
     const renderContent = () => (
         <>
             {isFinanced ? (
                 /* MODO VISUALIZAÇÃO */
-                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-                    <div className="bg-amber-50 px-4 py-3 border-b border-amber-100 flex justify-between items-center">
+                <div className="bg-white/5 rounded-xl border border-white/10 overflow-hidden shadow-lg backdrop-blur-sm">
+                    <div className="bg-amber-500/5 px-4 py-3 border-b border-amber-500/10 flex justify-between items-center">
                         <div className="flex items-center gap-2">
-                            <div className="p-1.5 bg-amber-100 rounded-md text-amber-700">
+                            <div className="p-1.5 bg-amber-500/20 rounded-lg text-amber-400 ring-1 ring-amber-500/30">
                                 <ClipboardList className="h-4 w-4" />
                             </div>
                             <div>
-                                <h3 className="text-sm font-bold text-amber-900">Carnê Ativo</h3>
-                                <p className="text-[10px] text-amber-600 font-medium">
+                                <h3 className="text-sm font-bold text-amber-400">Carnê Ativo</h3>
+                                <p className="text-[10px] text-amber-200/60 font-medium">
                                     Total: R$ {formatCurrency(financiamento?.valor_total_financiado)}
                                 </p>
                             </div>
@@ -347,14 +347,14 @@ export default function FinanciamentoBox({
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => window.open(`/print/promissoria/${financiamento.id}`, '_blank')}
-                                    className="text-[10px] font-bold text-blue-600 hover:bg-blue-50 px-2 py-1 rounded border border-transparent hover:border-blue-100 transition-all flex items-center gap-1"
+                                    className="text-[10px] font-bold text-blue-400 hover:bg-blue-500/10 px-2 py-1 rounded border border-transparent hover:border-blue-500/20 transition-all flex items-center gap-1"
                                     title="Imprimir Compromisso de Pagamento"
                                 >
                                     <Printer className="h-3 w-3" /> IMPRIMIR DUPLICATA
                                 </button>
                                 <button
                                     onClick={() => window.open(`/print/carne/${financiamento.id}`, '_blank')}
-                                    className="text-[10px] font-bold text-amber-600 hover:bg-amber-50 px-2 py-1 rounded border border-transparent hover:border-amber-100 transition-all flex items-center gap-1"
+                                    className="text-[10px] font-bold text-amber-400 hover:bg-amber-500/10 px-2 py-1 rounded border border-transparent hover:border-amber-500/20 transition-all flex items-center gap-1"
                                     title="Imprimir Carnê de Pagamento"
                                 >
                                     <Printer className="h-3 w-3" /> IMPRIMIR CARNÊ
@@ -362,7 +362,7 @@ export default function FinanciamentoBox({
                                 <button
                                     onClick={handleResetCarne}
                                     disabled={isResetting}
-                                    className="text-[10px] font-bold text-red-600 hover:bg-red-50 px-2 py-1 rounded border border-transparent hover:border-red-100 transition-all flex items-center gap-1"
+                                    className="text-[10px] font-bold text-red-400 hover:bg-red-500/10 px-2 py-1 rounded border border-transparent hover:border-red-500/20 transition-all flex items-center gap-1"
                                 >
                                     {isResetting ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                                     RENEGOCIAR
@@ -372,36 +372,36 @@ export default function FinanciamentoBox({
                     </div>
 
                     {existeDivergencia && (
-                        <div className="bg-orange-50 p-2 text-[10px] text-orange-800 border-b border-orange-100 flex items-center gap-2 justify-center font-bold">
+                        <div className="bg-orange-900/20 p-2 text-[10px] text-orange-300 border-b border-orange-500/20 flex items-center gap-2 justify-center font-bold">
                             <AlertTriangle className="h-3 w-3" />
                             Há R$ {formatCurrency(valorRestante)} não financiados.
-                            <button onClick={handleResetCarne} className="underline hover:text-orange-900">Renegociar?</button>
+                            <button onClick={handleResetCarne} className="underline hover:text-orange-200">Renegociar?</button>
                         </div>
                     )}
 
-                    <div className="divide-y divide-gray-100">
+                    <div className="divide-y divide-white/5">
                         {financiamento?.financiamento_parcelas.sort((a, b) => a.numero_parcela - b.numero_parcela).map((p) => {
                             const isPago = p.status === 'Pago';
                             const isAtrasado = !isPago && new Date(p.data_vencimento) < new Date(new Date().setHours(0, 0, 0, 0));
                             return (
-                                <div key={p.id} className={`flex items-center justify-between p-3 hover:bg-gray-50 transition-colors ${isPago ? 'bg-green-50/50' : ''}`}>
+                                <div key={p.id} className={`flex items-center justify-between p-3 hover:bg-white/5 transition-colors ${isPago ? 'bg-green-500/5' : ''}`}>
                                     <div className="flex items-center gap-3">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border ${isPago ? 'bg-green-100 text-green-700 border-green-200' :
-                                            isAtrasado ? 'bg-red-100 text-red-700 border-red-200' :
-                                                'bg-gray-100 text-gray-600 border-gray-200'
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border ${isPago ? 'bg-green-500/20 text-green-400 border-green-500/30' :
+                                            isAtrasado ? 'bg-red-500/20 text-red-400 border-red-500/30' :
+                                                'bg-white/5 text-slate-400 border-white/10'
                                             }`}>
                                             {p.numero_parcela}
                                         </div>
                                         <div>
-                                            <p className="text-xs font-bold text-gray-800">R$ {formatCurrency(p.valor_parcela)}</p>
-                                            <p className="text-[10px] text-gray-500 flex items-center gap-1">
+                                            <p className="text-xs font-bold text-slate-200">R$ {formatCurrency(p.valor_parcela)}</p>
+                                            <p className="text-[10px] text-slate-500 flex items-center gap-1">
                                                 <Calendar className="h-3 w-3" /> {formatDate(p.data_vencimento)}
                                             </p>
                                         </div>
                                     </div>
                                     <div>
                                         {isPago ? (
-                                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-100 text-green-700 text-[10px] font-bold border border-green-200">
+                                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-500/20 text-green-400 text-[10px] font-bold border border-green-500/30">
                                                 <CheckCircle2 className="h-3 w-3" /> PAGO
                                             </span>
                                         ) : (
@@ -409,7 +409,7 @@ export default function FinanciamentoBox({
                                                 type="button"
                                                 onClick={(e) => { e.stopPropagation(); setSelectedParcela(p); }}
                                                 disabled={disabled || isQuitado}
-                                                className="px-3 py-1.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded hover:bg-amber-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                className="px-3 py-1.5 bg-amber-500/20 text-amber-400 text-[10px] font-bold rounded-lg hover:bg-amber-500/30 border border-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-amber-900/20"
                                             >
                                                 RECEBER
                                             </button>
@@ -422,13 +422,13 @@ export default function FinanciamentoBox({
                 </div>
             ) : (
                 /* MODO CRIAÇÃO */
-                <div className={isModal ? "bg-white p-3 h-full flex flex-col" : "relative bg-gradient-to-br from-amber-500 to-orange-600 p-3 rounded-xl shadow-md shadow-amber-200 border border-white/20"}>
+                <div className={isModal ? "bg-transparent p-3 h-full flex flex-col" : "relative bg-gradient-to-br from-amber-600/20 to-orange-700/20 backdrop-blur-md p-3 rounded-xl shadow-lg border border-amber-500/20"}>
                     {!isModal && (
-                        <div className="flex items-center gap-1.5 mb-2 border-b border-white/20 pb-2">
-                            <div className="p-1 bg-white/20 rounded-md text-white">
+                        <div className="flex items-center gap-1.5 mb-2 border-b border-amber-500/20 pb-2">
+                            <div className="p-1 bg-amber-500/20 rounded-md text-amber-400">
                                 <Calculator className="h-4 w-4" />
                             </div>
-                            <h3 className="text-xs font-bold text-white">Gerar Carnê</h3>
+                            <h3 className="text-xs font-bold text-amber-300">Gerar Carnê</h3>
                         </div>
                     )}
 
@@ -503,42 +503,42 @@ export default function FinanciamentoBox({
                             <div className="space-y-2">
                                 <div className="grid grid-cols-2 gap-2">
                                     <div>
-                                        <label className={isModal ? 'text-[10px] font-bold text-gray-500 mb-0.5' : labelStyle}>Valor Total (R$)</label>
-                                        <input type="text" value={valorFinanciadoStr} onChange={e => { setValorFinanciadoStr(e.target.value); setParcelasGrid([]); }} className={`${inputStyle} font-bold text-amber-700 text-right`} />
+                                        <label className={labelStyle}>Valor Total (R$)</label>
+                                        <input type="text" value={valorFinanciadoStr} onChange={e => { setValorFinanciadoStr(e.target.value); setParcelasGrid([]); }} className={`${inputStyle} font-bold text-amber-400 text-right`} />
                                     </div>
                                     <div>
-                                        <label className={isModal ? 'text-[10px] font-bold text-gray-500 mb-0.5' : labelStyle}>1º Vencimento</label>
+                                        <label className={labelStyle}>1º Vencimento</label>
                                         <input type="date" value={vencimentoPrimeira} onChange={e => { setVencimentoPrimeira(e.target.value); setParcelasGrid([]); }} className={`${inputStyle} text-[10px]`} />
                                     </div>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-2 items-end">
                                     <div>
-                                        <label className={isModal ? 'text-[10px] font-bold text-gray-500 mb-0.5' : labelStyle}>Qtd. Parcelas</label>
-                                        <select value={qtdeParcelas} onChange={e => { setQtdeParcelas(parseInt(e.target.value)); setParcelasGrid([]); }} className={`${inputStyle} font-bold cursor-pointer`}>
-                                            {[...Array(24)].map((_, i) => <option key={i} value={i + 1}>{i + 1}x</option>)}
+                                        <label className={labelStyle}>Qtd. Parcelas</label>
+                                        <select value={qtdeParcelas} onChange={e => { setQtdeParcelas(parseInt(e.target.value)); setParcelasGrid([]); }} className={`${inputStyle} font-bold cursor-pointer text-slate-300`}>
+                                            {[...Array(24)].map((_, i) => <option key={i} value={i + 1} className="bg-slate-800">{i + 1}x</option>)}
                                         </select>
                                     </div>
-                                    <button type="button" onClick={handleCalcular} className="h-8 bg-amber-700 hover:bg-amber-800 text-white text-[10px] font-bold uppercase rounded shadow-sm transition-colors flex items-center justify-center gap-1">
+                                    <button type="button" onClick={handleCalcular} className="h-8 bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold uppercase rounded shadow-lg shadow-amber-900/30 transition-colors flex items-center justify-center gap-1">
                                         <RefreshCw className="h-3 w-3" /> Calcular
                                     </button>
                                 </div>
 
                                 {parcelasGrid.length > 0 && (
-                                    <div className="bg-white/90 rounded-lg p-2 max-h-[180px] overflow-y-auto custom-scrollbar border border-amber-100 shadow-inner mt-2">
+                                    <div className="bg-white/5 rounded-lg p-2 max-h-[180px] overflow-y-auto custom-scrollbar border border-white/10 shadow-inner mt-2">
                                         <table className="w-full text-[10px]">
                                             <thead>
-                                                <tr className="text-amber-800 border-b border-amber-100">
+                                                <tr className="text-amber-400 border-b border-white/10">
                                                     <th className="text-left py-1 px-1">#</th>
                                                     <th className="text-left py-1 px-1">Vencimento</th>
                                                     <th className="text-right py-1 px-1">Valor</th>
                                                 </tr>
                                             </thead>
-                                            <tbody className="divide-y divide-gray-100">
+                                            <tbody className="divide-y divide-white/5">
                                                 {parcelasGrid.map((p, i) => (
-                                                    <tr key={i} className="hover:bg-amber-50">
-                                                        <td className="py-1 px-1 font-bold text-gray-600">{p.numero_parcela}x</td>
-                                                        <td className="py-1 px-1 text-gray-500">{formatDate(p.data_vencimento)}</td>
+                                                    <tr key={i} className="hover:bg-white/5 transition-colors">
+                                                        <td className="py-1 px-1 font-bold text-slate-400">{p.numero_parcela}x</td>
+                                                        <td className="py-1 px-1 text-slate-300">{formatDate(p.data_vencimento)}</td>
                                                         <td className="py-1 px-1">
                                                             <ParcelaInput valor={p.valor_parcela} index={i} onChange={handleParcelaChange} />
                                                         </td>
@@ -547,17 +547,17 @@ export default function FinanciamentoBox({
                                             </tbody>
                                             {/* Linha de totais com validação visual */}
                                             <tfoot>
-                                                <tr className={`border-t-2 font-bold ${somaValida ? 'border-green-400 bg-green-50' : 'border-red-400 bg-red-50'}`}>
-                                                    <td colSpan={2} className={`py-1.5 px-1 text-right ${somaValida ? 'text-green-700' : 'text-red-700'}`}>
+                                                <tr className={`border-t-2 font-bold ${somaValida ? 'border-green-500/30 bg-green-500/10' : 'border-red-500/30 bg-red-500/10'}`}>
+                                                    <td colSpan={2} className={`py-1.5 px-1 text-right ${somaValida ? 'text-green-400' : 'text-red-400'}`}>
                                                         {somaValida ? '✓ Total:' : '✗ Soma inválida:'}
                                                     </td>
-                                                    <td className={`py-1.5 px-1 text-right ${somaValida ? 'text-green-700' : 'text-red-700'}`}>
+                                                    <td className={`py-1.5 px-1 text-right ${somaValida ? 'text-green-400' : 'text-red-400'}`}>
                                                         R$ {formatCurrency(somaParcelasEditadas)}
                                                     </td>
                                                 </tr>
                                                 {!somaValida && (
-                                                    <tr className="bg-red-50">
-                                                        <td colSpan={3} className="py-1 px-1 text-center text-red-600 text-[9px]">
+                                                    <tr className="bg-red-500/10">
+                                                        <td colSpan={3} className="py-1 px-1 text-center text-red-400 text-[9px]">
                                                             Esperado: R$ {formatCurrency(valorTotalEsperado)} | Diferença: R$ {formatCurrency(diferencaSoma)}
                                                         </td>
                                                     </tr>
@@ -568,7 +568,7 @@ export default function FinanciamentoBox({
                                 )}
 
                                 <div>
-                                    <label className={isModal ? 'text-[10px] font-bold text-gray-500 mb-0.5' : labelStyle}>Observação</label>
+                                    <label className={labelStyle}>Observação</label>
                                     <input type="text" value={obs} onChange={(e) => setObs(e.target.value)} className={inputStyle} placeholder="Opcional..." />
                                 </div>
 
@@ -587,7 +587,7 @@ export default function FinanciamentoBox({
                                                 setIsConfigModalOpen(true)
                                             }}
                                             disabled={parcelasGrid.length === 0 || !somaValida}
-                                            className={`w-full h-9 font-bold text-xs rounded-lg shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed ${somaValida ? 'bg-white text-amber-700 hover:bg-amber-50' : 'bg-gray-300 text-gray-500'}`}
+                                            className={`w-full h-9 font-bold text-xs rounded-lg shadow-lg shadow-amber-900/20 transition-all active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wide ${somaValida ? 'bg-amber-500 hover:bg-amber-600 text-white border border-amber-500/50' : 'bg-white/10 text-slate-500 border border-white/10'}`}
                                         >
                                             <CheckCircle2 className="h-4 w-4" /> GERAR CARNÊ
                                         </button>
@@ -642,7 +642,7 @@ export default function FinanciamentoBox({
             {isFinanced ? (
                 <CollapsibleBox
                     title="Carnê da Loja"
-                    icon={<Wallet className="h-5 w-5 text-amber-700" />}
+                    icon={<Wallet className="h-5 w-5 text-amber-400" />}
                     color="amber"
                     defaultOpen={true}
                     badge="EMITIDO"

@@ -67,7 +67,7 @@ function DeleteButton({
       type="button"
       onClick={handleDelete}
       disabled={isDeleting || disabled}
-      className="p-1 text-red-500 rounded hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      className="p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 rounded-md transition-colors disabled:opacity-50"
       title="Remover Item"
     >
       {isDeleting ? (
@@ -92,7 +92,7 @@ export default function ListaItens({
       {/* Título removido pois já existe no container pai */}
 
       {/* Cabeçalho da Lista */}
-      <div className="hidden md:flex bg-gray-100 p-1.5 rounded-t-md font-bold text-gray-600 text-[10px] uppercase tracking-wider border-b border-gray-200">
+      <div className="hidden md:flex bg-white/5 p-2 rounded-t-xl font-bold text-slate-400 text-[10px] uppercase tracking-wider border-b border-white/10">
         <div className="w-1/2 pl-1">Descrição</div>
         <div className="w-1/6 text-center">Qtd.</div>
         <div className="w-1/6 text-right">Unit.</div>
@@ -101,9 +101,9 @@ export default function ListaItens({
       </div>
 
       {/* Lista de Itens */}
-      <div className="flex-1 overflow-y-auto space-y-1 bg-white p-0 rounded-b-md">
+      <div className="flex-1 overflow-y-auto space-y-1 bg-transparent p-0 rounded-b-xl custom-scrollbar">
         {itens.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 text-gray-400 bg-gray-50/50 rounded-b-md border border-dashed border-gray-200 m-1">
+          <div className="flex flex-col items-center justify-center py-8 text-slate-500 bg-white/5 rounded-b-xl border border-dashed border-white/10 m-0">
             <p className="text-xs font-medium">Carrinho vazio</p>
             <p className="text-[10px]">Adicione itens ao lado</p>
           </div>
@@ -111,37 +111,37 @@ export default function ListaItens({
           itens.map((item) => (
             <div
               key={item.id}
-              className="flex flex-col md:flex-row md:items-center p-1.5 rounded hover:bg-blue-50/50 border-b border-gray-50 last:border-0 transition-colors group"
+              className="flex flex-col md:flex-row md:items-center p-2 rounded-lg hover:bg-white/5 border-b border-white/5 last:border-0 transition-colors group"
             >
               {/* Descrição */}
-              <div className="w-full md:w-1/2 font-medium text-gray-800 text-xs pl-1">
-                <span className="md:hidden text-[10px] text-gray-500 uppercase font-bold mr-1">Item:</span>
+              <div className="w-full md:w-1/2 font-medium text-slate-200 text-xs pl-1">
+                <span className="md:hidden text-[10px] text-slate-500 uppercase font-bold mr-1">Item:</span>
                 {item.descricao}
-                <span className="text-[9px] text-gray-400 italic ml-1 bg-gray-100 px-1 rounded border">
+                <span className="text-[9px] text-slate-400 italic ml-2 bg-white/5 px-1.5 py-0.5 rounded border border-white/10">
                   {item.item_tipo}
                 </span>
               </div>
 
               {/* Qtd */}
-              <div className="w-full md:w-1/6 md:text-center text-xs">
-                <span className="md:hidden text-[10px] text-gray-500 uppercase font-bold mr-1">Qtd:</span>
-                <span className="font-bold">{item.quantidade}</span> <span className="text-[9px] text-gray-400 uppercase">{item.unidade || 'Un.'}</span>
+              <div className="w-full md:w-1/6 md:text-center text-xs text-slate-300">
+                <span className="md:hidden text-[10px] text-slate-500 uppercase font-bold mr-1">Qtd:</span>
+                <span className="font-bold">{item.quantidade}</span> <span className="text-[9px] text-slate-500 uppercase">{item.unidade || 'Un.'}</span>
               </div>
 
               {/* Vl. Unitário */}
-              <div className="w-full md:w-1/6 md:text-right text-xs text-gray-600">
-                <span className="md:hidden text-[10px] text-gray-500 uppercase font-bold mr-1">Unit:</span>
+              <div className="w-full md:w-1/6 md:text-right text-xs text-slate-400">
+                <span className="md:hidden text-[10px] text-slate-500 uppercase font-bold mr-1">Unit:</span>
                 {formatCurrency(item.valor_unitario)}
               </div>
 
               {/* Vl. Total */}
-              <div className="w-full md:w-1/6 md:text-right font-bold text-blue-700 text-xs pr-2">
-                <span className="md:hidden text-[10px] text-gray-500 uppercase font-bold mr-1">Total:</span>
+              <div className="w-full md:w-1/6 md:text-right font-bold text-blue-300 text-xs pr-2">
+                <span className="md:hidden text-[10px] text-slate-500 uppercase font-bold mr-1">Total:</span>
                 {formatCurrency(item.valor_total_item)}
               </div>
 
               {/* Botão Deletar */}
-              <div className="w-full md:w-6 flex justify-end md:justify-center mt-1 md:mt-0">
+              <div className="w-full md:w-6 flex justify-end md:justify-center mt-1 md:mt-0 opacity-0 group-hover:opacity-100 transition-opacity">
                 <DeleteButton
                   item={item}
                   vendaId={vendaId}

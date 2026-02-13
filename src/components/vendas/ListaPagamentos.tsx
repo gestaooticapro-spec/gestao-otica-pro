@@ -69,7 +69,7 @@ function DeleteButton({
       type="button"
       onClick={handleDelete}
       disabled={isDeleting || disabled}
-      className="p-1 text-red-500 rounded-md hover:bg-red-100 disabled:opacity-50 transition-colors"
+      className="p-1 text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 rounded-md transition-colors disabled:opacity-50"
       title="Estornar / Remover"
     >
       {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
@@ -91,8 +91,8 @@ export default function ListaPagamentos({
         Histórico de Pgto
       </h3>
 
-      {/* Cabeçalho Verde Esmeralda */}
-      <div className="hidden md:flex bg-emerald-50 p-1.5 rounded-t-md font-bold text-emerald-800 text-[10px] uppercase tracking-wider border-b border-emerald-100">
+      {/* Cabeçalho Laranja (Financeiro) */}
+      <div className="hidden md:flex bg-amber-500/10 p-2 rounded-t-xl font-bold text-amber-500 text-[10px] uppercase tracking-wider border-b border-amber-500/20">
         <div className="w-2/12 pl-1">Data</div>
         <div className="w-3/12">Forma</div>
         <div className="w-3/12">Responsável</div>
@@ -101,35 +101,35 @@ export default function ListaPagamentos({
         <div className="w-1/12 text-right pr-2"></div> {/* Coluna Ações */}
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-1 bg-white p-0 rounded-b-md shadow-inner border border-emerald-50 max-h-60">
+      <div className="flex-1 overflow-y-auto space-y-1 bg-transparent p-0 rounded-b-xl custom-scrollbar max-h-60">
         {pagamentos.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 text-gray-400 bg-emerald-50/30 rounded-b-md border border-dashed border-emerald-100 m-1">
+          <div className="flex flex-col items-center justify-center py-8 text-slate-500 bg-white/5 rounded-b-xl border border-dashed border-white/10 m-0">
             <p className="text-xs font-medium">Sem pagamentos</p>
           </div>
         ) : (
           pagamentos.map((pag) => (
             <div
               key={pag.id}
-              className="flex flex-col md:flex-row md:items-center p-1.5 rounded bg-white border-b border-emerald-50 last:border-0 hover:bg-emerald-50/50 transition-colors group"
+              className="flex flex-col md:flex-row md:items-center p-2 rounded-lg hover:bg-white/5 border-b border-white/5 last:border-0 transition-colors group"
             >
-              <div className="w-full md:w-2/12 font-medium text-gray-700 text-xs pl-1">
+              <div className="w-full md:w-2/12 font-medium text-slate-300 text-xs pl-1">
                 {formatDate(pag.data_pagamento)}
               </div>
-              <div className="w-full md:w-3/12 text-[10px] text-gray-600 font-semibold uppercase">
+              <div className="w-full md:w-3/12 text-[10px] text-amber-200/80 font-semibold uppercase">
                 {pag.forma_pagamento}
               </div>
-              <div className="w-full md:w-3/12 text-[10px] text-gray-500 uppercase truncate" title={pag.employee?.full_name || 'N/A'}>
+              <div className="w-full md:w-3/12 text-[10px] text-slate-500 uppercase truncate" title={pag.employee?.full_name || 'N/A'}>
                 {pag.employee?.full_name?.split(' ')[0] || '-'}
               </div>
-              <div className="w-full md:w-2/12 md:text-right font-bold text-emerald-700 text-xs">
+              <div className="w-full md:w-2/12 md:text-right font-bold text-amber-400 text-xs">
                 {formatCurrency(pag.valor_pago)}
               </div>
-              <div className="w-full md:w-1/12 md:text-center text-[10px] text-gray-500">
+              <div className="w-full md:w-1/12 md:text-center text-[10px] text-slate-400">
                 {pag.parcelas}x
               </div>
 
               {/* Coluna de Ações (Alinhada à direita) */}
-              <div className="w-full md:w-1/12 flex justify-end pr-1">
+              <div className="w-full md:w-1/12 flex justify-end pr-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <DeleteButton
                   pagamento={pag}
                   vendaId={vendaId}

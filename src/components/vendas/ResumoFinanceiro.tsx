@@ -35,7 +35,7 @@ function DescontoSubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className="p-1 bg-slate-200 text-slate-600 rounded-r-md hover:bg-slate-300 disabled:opacity-50 h-8 w-8 flex items-center justify-center"
+      className="p-1 bg-white/10 text-slate-400 rounded-r-md hover:bg-white/20 disabled:opacity-50 h-9 w-9 flex items-center justify-center border border-l-0 border-white/10"
       title="Aplicar"
     >
       {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <TrendingDown className="h-3 w-3" />}
@@ -81,13 +81,13 @@ export default function ResumoFinanceiro({
 
       {/* Bloco 1: Total Bruto */}
       <div className="flex flex-col">
-        <span className="text-[9px] text-gray-400 uppercase font-bold">Subtotal</span>
-        <span className="font-bold text-gray-600">{formatCurrency(venda.valor_total)}</span>
+        <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Subtotal</span>
+        <span className="font-bold text-slate-200 text-sm">{formatCurrency(venda.valor_total)}</span>
       </div>
 
       {/* Bloco 2: Desconto (Formulário Compacto) */}
       <div className="flex flex-col">
-        <span className="text-[9px] text-gray-400 uppercase font-bold mb-0.5">Desconto (R$)</span>
+        <span className="text-[10px] text-gray-400 uppercase font-bold mb-0.5 tracking-wider">Desconto (R$)</span>
         <form action={dispatchDesconto} className="flex items-center">
           <input type="hidden" name="venda_id" value={venda.id} />
           <input type="hidden" name="store_id" value={venda.store_id} />
@@ -99,7 +99,7 @@ export default function ResumoFinanceiro({
               value={descontoString}
               onChange={handleDescontoChange}
               disabled={disabled}
-              className="w-16 rounded-l-md border-gray-300 border-r-0 shadow-sm text-gray-900 h-8 text-xs font-bold text-right disabled:bg-gray-100 focus:ring-0 focus:border-blue-500"
+              className="w-20 rounded-l-md border-white/10 border-r-0 shadow-sm bg-white/5 text-slate-200 h-9 text-sm font-bold text-right disabled:bg-white/5 focus:ring-0 focus:border-blue-500/50"
             />
             {!disabled && <DescontoSubmitButton />}
           </div>
@@ -107,15 +107,15 @@ export default function ResumoFinanceiro({
       </div>
 
       {/* Bloco 3: Total Pago */}
-      <div className="flex flex-col border-l border-gray-200 pl-3">
-        <span className="text-[9px] text-gray-400 uppercase font-bold">Pago / Sinal</span>
-        <span className="font-bold text-green-600">{formatCurrency(totalPago)}</span>
+      <div className="flex flex-col border-l border-white/10 pl-4">
+        <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Pago / Sinal</span>
+        <span className="font-bold text-emerald-400 text-sm">{formatCurrency(totalPago)}</span>
       </div>
 
       {/* Bloco 4: A RECEBER (Destaque) */}
-      <div className="flex flex-col items-end border-l border-gray-200 pl-3">
-        <span className="text-[9px] text-gray-400 uppercase font-bold">A Receber</span>
-        <span className={`text-xl font-black leading-none ${venda.valor_restante > 0.01 ? 'text-red-600' : 'text-emerald-600'}`}>
+      <div className="flex flex-col items-end border-l border-white/10 pl-4">
+        <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">A Receber</span>
+        <span className={`text-xl font-black leading-none ${venda.valor_restante > 0.01 ? 'text-red-500' : 'text-emerald-500'}`}>
           {formatCurrency(venda.valor_restante)}
         </span>
       </div>

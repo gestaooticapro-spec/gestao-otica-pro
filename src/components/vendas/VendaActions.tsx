@@ -104,13 +104,13 @@ export default function VendaActions({
                                 if (res.success) onStatusChange()
                             }
                         }}
-                        className="flex items-center gap-2 px-4 py-2.5 h-10 text-sm rounded-lg border border-red-200 text-red-600 hover:bg-red-50 font-bold transition-colors"
+                        className="flex items-center gap-2 px-4 h-9 text-sm rounded-lg border border-red-500/50 text-red-400 hover:bg-red-500/10 font-bold transition-colors uppercase tracking-wide"
                     >
                         <X className="h-4 w-4" /> Cancelar
                     </button>
 
                     {isLocked ? (
-                        <div className="flex items-center gap-2 px-4 py-2.5 h-10 text-sm rounded-lg bg-gray-100 text-gray-400 font-bold cursor-not-allowed border border-gray-200" title="Zere o saldo ou gere um carnê para finalizar.">
+                        <div className="flex items-center gap-2 px-4 h-9 text-sm rounded-lg bg-white/5 text-slate-500 font-bold cursor-not-allowed border border-white/10 uppercase tracking-wide" title="Zere o saldo ou gere um carnê para finalizar.">
                             <Lock className="h-4 w-4" />
                             <span>Falta Destinar</span>
                         </div>
@@ -119,7 +119,7 @@ export default function VendaActions({
                             type="button"
                             disabled={isPending}
                             onClick={() => handleActionClick('Finalizar')}
-                            className="flex items-center gap-2 px-6 py-2.5 h-10 text-sm rounded-lg shadow-md bg-green-600 hover:bg-green-700 text-white font-bold transition-transform active:scale-95"
+                            className="flex items-center gap-2 px-6 h-9 text-sm rounded-lg shadow-lg shadow-emerald-900/20 bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-transform active:scale-95 uppercase tracking-wide"
                         >
                             {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                             <span>Finalizar Venda</span>
@@ -132,7 +132,7 @@ export default function VendaActions({
             {isVendaFechada && (
                 <div className="flex gap-3 items-center">
 
-                    <div className="flex items-center gap-2 text-green-700 bg-green-50 px-3 py-1 rounded text-sm font-bold border border-green-200 cursor-default">
+                    <div className="flex items-center gap-2 text-emerald-400 bg-emerald-500/10 px-3 h-9 rounded-lg text-sm font-bold border border-emerald-500/20 cursor-default uppercase tracking-wide">
                         <CheckCircle2 className="h-4 w-4" /> Finalizada
                     </div>
 
@@ -141,7 +141,7 @@ export default function VendaActions({
                             type="button"
                             disabled={isPending}
                             onClick={() => handleActionClick('Reabrir')}
-                            className="flex items-center gap-2 px-4 py-2.5 h-10 text-sm rounded-lg bg-orange-50 border border-orange-200 text-orange-700 hover:bg-orange-100 font-bold transition-colors"
+                            className="flex items-center gap-2 px-4 h-9 text-sm rounded-lg bg-amber-500/10 border border-amber-500/50 text-amber-500 hover:bg-amber-500/20 font-bold transition-colors uppercase tracking-wide"
                             title="Reabrir para correções (Estorna comissões)"
                         >
                             {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unlock className="h-4 w-4" />}
@@ -152,7 +152,7 @@ export default function VendaActions({
                     <button
                         type="button"
                         onClick={() => setIsReturnModalOpen(true)}
-                        className="flex items-center gap-2 px-4 py-2.5 h-10 text-sm rounded-lg bg-white border border-red-200 text-red-600 hover:bg-red-50 font-bold transition-colors"
+                        className="flex items-center gap-2 px-4 h-9 text-sm rounded-lg bg-red-500/10 border border-red-500/50 text-red-500 hover:bg-red-500/20 font-bold transition-colors uppercase tracking-wide"
                     >
                         <RefreshCcw className="h-4 w-4" />
                         <span>Devolução</span>
@@ -164,7 +164,7 @@ export default function VendaActions({
             <button
                 type="button"
                 onClick={onPrint}
-                className="flex items-center gap-2 px-4 py-2.5 h-10 text-sm rounded-lg bg-slate-700 text-white hover:bg-slate-800 font-bold transition-colors shadow-md"
+                className="flex items-center gap-2 px-4 h-9 text-sm rounded-lg bg-slate-700 text-white hover:bg-slate-600 font-bold transition-colors shadow-lg shadow-black/30 uppercase tracking-wide"
                 title="Imprimir Recibos de Pagamento"
             >
                 <Printer className="h-4 w-4" />
@@ -175,7 +175,7 @@ export default function VendaActions({
             <button
                 type="button"
                 onClick={() => setIsFiscalModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2.5 h-10 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-bold transition-colors shadow-md"
+                className="flex items-center gap-2 px-4 h-9 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 font-bold transition-colors shadow-lg shadow-indigo-900/20 uppercase tracking-wide"
                 title="Emitir Nota Fiscal ao Consumidor"
             >
                 <FileText className="h-4 w-4" />

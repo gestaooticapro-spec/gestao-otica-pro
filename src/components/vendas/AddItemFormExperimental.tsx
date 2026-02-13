@@ -40,7 +40,7 @@ function SubmitButton() {
         <button
             type="submit"
             disabled={pending}
-            className="flex items-center justify-center gap-1.5 w-full h-9 bg-blue-600 hover:bg-blue-700 text-white border border-blue-800 rounded-lg shadow-sm transition-all font-bold uppercase tracking-wide text-xs active:scale-95"
+            className="flex items-center justify-center gap-1.5 w-full h-9 bg-blue-600 hover:bg-blue-500 text-white border border-blue-500/50 rounded-lg shadow-lg shadow-blue-900/20 transition-all font-bold uppercase tracking-wide text-xs active:scale-95"
             title="Adicionar Item"
         >
             {pending ? (
@@ -176,12 +176,12 @@ export default function AddItemFormExperimental({
         setSelectedIds({ lente_id: null, armacao_id: null, tratamento_id: null });
     }
 
-    // ESTILOS ADAPTADOS PARA FUNDO BRANCO (MODAL)
-    const labelStyle = 'block text-[10px] font-bold text-gray-500 mb-0.5 uppercase tracking-wider'
-    const inputStyle = 'block w-full rounded-md border border-gray-400 bg-white shadow-sm text-gray-800 h-9 text-xs px-2 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400 placeholder:text-gray-400 transition-all'
+    // ESTILOS ADAPTADOS PARA DARK MODE (MODAL)
+    const labelStyle = 'block text-[10px] font-bold text-slate-400 mb-0.5 uppercase tracking-wider'
+    const inputStyle = 'block w-full rounded-md border border-white/10 bg-white/5 shadow-sm text-slate-200 h-9 text-xs px-2 focus:ring-1 focus:ring-blue-500/50 focus:outline-none disabled:bg-white/5 disabled:text-slate-500 placeholder:text-slate-600 transition-all'
 
     return (
-        <div className="bg-white p-1 h-full flex flex-col">
+        <div className="bg-transparent p-1 h-full flex flex-col">
             {/* REMOVIDO CABEÇALHO INTERNO POIS O MODAL JÁ TEM */}
 
             <form ref={formRef} action={dispatchSave} className="space-y-3">
@@ -215,25 +215,24 @@ export default function AddItemFormExperimental({
                             </div>
                         </div>
 
-                        {/* Dropdown de Sugestões */}
                         {isDropdownOpen && suggestions.length > 0 && (
-                            <div className="absolute z-50 w-full mt-1 bg-white rounded-lg shadow-xl max-h-60 overflow-y-auto border border-gray-200 ring-1 ring-black ring-opacity-5 animate-in fade-in slide-in-from-top-2">
+                            <div className="absolute z-50 w-full mt-1 bg-slate-900 rounded-lg shadow-xl max-h-60 overflow-y-auto border border-white/10 ring-1 ring-black ring-opacity-5 animate-in fade-in slide-in-from-top-2 custom-scrollbar">
                                 {suggestions.map((item) => (
                                     <div
                                         key={`${item.tipo}-${item.id}`}
                                         onClick={() => handleSuggestionClick(item)}
-                                        className="px-3 py-2.5 text-xs text-gray-700 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-0 group transition-colors"
+                                        className="px-3 py-2.5 text-xs text-slate-300 hover:bg-white/10 cursor-pointer border-b border-white/5 last:border-0 group transition-colors"
                                     >
                                         <div className="flex justify-between items-center">
                                             <div className="flex flex-col">
                                                 <div className="flex items-center gap-1.5">
-                                                    <span className="font-bold text-gray-800 group-hover:text-blue-700 text-sm">{item.descricao}</span>
-                                                    {item.marca && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200 font-bold uppercase">{item.marca}</span>}
-                                                    <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded border uppercase font-bold">{item.tipo}</span>
+                                                    <span className="font-bold text-slate-200 group-hover:text-blue-400 text-sm">{item.descricao}</span>
+                                                    {item.marca && <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded border border-blue-500/30 font-bold uppercase">{item.marca}</span>}
+                                                    <span className="text-[9px] bg-white/10 text-slate-400 px-1.5 py-0.5 rounded border border-white/10 uppercase font-bold">{item.tipo}</span>
                                                 </div>
-                                                {item.detalhes && <span className="text-[11px] text-gray-400 mt-0.5">{item.detalhes}</span>}
+                                                {item.detalhes && <span className="text-[11px] text-slate-500 mt-0.5">{item.detalhes}</span>}
                                             </div>
-                                            <span className="text-blue-700 font-bold bg-blue-50 px-2 py-1 rounded text-xs group-hover:bg-white border border-blue-100">
+                                            <span className="text-blue-400 font-bold bg-blue-500/10 px-2 py-1 rounded text-xs group-hover:bg-blue-500/20 border border-blue-500/20">
                                                 {formatCurrency(item.preco_venda)}
                                             </span>
                                         </div>
@@ -254,12 +253,12 @@ export default function AddItemFormExperimental({
                                 disabled={disabled}
                                 className={`${inputStyle} font-bold cursor-pointer appearance-none px-2`}
                             >
-                                <option value="Lente">Lente</option>
-                                <option value="Armacao">Armação</option>
-                                <option value="Solar">Solar</option>
-                                <option value="Tratamento">Tratamento</option>
-                                <option value="Servico">Serviço</option>
-                                <option value="Outro">Outro</option>
+                                <option value="Lente" className="bg-slate-800">Lente</option>
+                                <option value="Armacao" className="bg-slate-800">Armação</option>
+                                <option value="Solar" className="bg-slate-800">Solar</option>
+                                <option value="Tratamento" className="bg-slate-800">Tratamento</option>
+                                <option value="Servico" className="bg-slate-800">Serviço</option>
+                                <option value="Outro" className="bg-slate-800">Outro</option>
                             </select>
                         </div>
                     </div>
@@ -281,11 +280,11 @@ export default function AddItemFormExperimental({
                                 value={unidade}
                                 onChange={(e) => setUnidade(e.target.value)}
                                 disabled={disabled}
-                                className={`${inputStyle} text-[10px] px-0.5 w-1/2 appearance-none text-center bg-gray-50`}
+                                className={`${inputStyle} text-[10px] px-0.5 w-1/2 appearance-none text-center bg-white/5 text-slate-300`}
                             >
-                                <option value="Unidade">Un.</option>
-                                <option value="Par">Par</option>
-                                <option value="Caixa">Cx.</option>
+                                <option value="Unidade" className="bg-slate-800">Un.</option>
+                                <option value="Par" className="bg-slate-800">Par</option>
+                                <option value="Caixa" className="bg-slate-800">Cx.</option>
                             </select>
                         </div>
                     </div>
@@ -298,7 +297,7 @@ export default function AddItemFormExperimental({
                             value={valorUnitario}
                             onChange={(e) => setValorUnitario(e.target.value)}
                             disabled={disabled}
-                            className={`${inputStyle} text-right font-bold text-blue-700`}
+                            className={`${inputStyle} text-right font-bold text-blue-400`}
                         />
                     </div>
 

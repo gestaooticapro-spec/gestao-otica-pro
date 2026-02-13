@@ -20,6 +20,7 @@ import {
     AlertTriangle, CheckCircle2, User, Briefcase,
     ShoppingCart, UserPlus, Ban
 } from 'lucide-react'
+import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { Database } from '@/lib/database.types'
 import QuickCustomerModal from '@/components/modals/QuickCustomerModal'
 
@@ -170,7 +171,8 @@ function HistoryCard({ data, customerObs }: { data: CustomerSaleHistory, custome
 // --- PÁGINA PRINCIPAL ---
 export default function AtendimentoPage() {
     const params = useParams()
-    const router = useRouter()
+    const { push } = useRouter()
+    const { preference } = useBackgroundPreference();
     const storeId = parseInt(params.storeId as string, 10)
 
     // UI States
@@ -260,7 +262,7 @@ export default function AtendimentoPage() {
         startCreateTransition(async () => {
             const result = await createNewVenda(selectedCustomer.id, parseInt(selectedEmployeeId))
             if (result.success && result.data) {
-                router.push(`/dashboard/loja/${storeId}/vendas/${result.data.id}/experimental`)
+                push(`/dashboard/loja/${storeId}/vendas/${result.data.id}/experimental`)
             } else {
                 alert(result.message || 'Erro ao criar venda.')
             }
@@ -271,8 +273,11 @@ export default function AtendimentoPage() {
         <div className="relative flex flex-col h-[calc(100vh-64px)] bg-slate-950 overflow-hidden font-sans">
 
             {/* BACKGROUND PREMIUM */}
-            <div className="absolute inset-0 z-0 bg-[url('/vendasos.jpg')] bg-cover bg-center opacity-40 blur-[2px]" />
-            <div className="absolute inset-0 z-0 bg-gradient-to-b from-slate-950/60 via-slate-950/80 to-slate-950" />
+            {/* BACKGROUND PREMIUM (Controlado pelo preference) */}
+            <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
+                <div className="absolute inset-0 z-0 bg-[url('/vendasos.jpg')] bg-cover bg-center opacity-40 blur-[2px]" />
+                <div className="absolute inset-0 z-0 bg-gradient-to-b from-slate-950/60 via-slate-950/80 to-slate-950" />
+            </div>
 
             {/* Header Glassmorphic Superior */}
             <div className="relative z-30 bg-white/5 backdrop-blur-xl border-b border-white/10 px-6 py-3 flex items-center shrink-0 shadow-2xl h-14">
@@ -284,6 +289,11 @@ export default function AtendimentoPage() {
                         <h1 className="text-lg font-black text-white tracking-tight uppercase">Atendimento</h1>
                         <p className="text-[10px] text-cyan-400 font-black uppercase tracking-[0.2em] opacity-80">Recepção e Dossiê</p>
                     </div>
+                </div>
+                {/* Actions Header */}
+                <div className="ml-auto flex items-center gap-4">
+                    {/* Toggle de Fundo */}
+                    <BackgroundToggle />
                 </div>
             </div>
 

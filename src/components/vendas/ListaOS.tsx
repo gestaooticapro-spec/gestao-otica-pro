@@ -67,20 +67,20 @@ export default function ListaOS({
       )}
 
       {/* Lista de OSs */}
-      <div className="flex-1 overflow-y-auto space-y-2 bg-white p-2 rounded-lg shadow-inner">
+      <div className="flex-1 overflow-y-auto space-y-2 bg-transparent p-0 rounded-lg">
         {serviceOrders.length === 0 ? (
-          <p className="text-sm text-gray-500 text-center py-4">
+          <p className="text-xs text-slate-500 text-center py-4 italic">
             Nenhuma Ficha Técnica vinculada a esta venda.
           </p>
         ) : (
           serviceOrders.map((os) => (
             <div
               key={os.id}
-              className="flex justify-between items-center p-2 rounded bg-gray-50 border border-gray-200"
+              className="flex justify-between items-center p-3 rounded-xl bg-white/5 border border-white/5 hover:border-white/20 transition-all group"
             >
-              <div className="font-medium text-gray-800">
+              <div className="font-bold text-slate-200 text-sm">
                 OS #{os.id}
-                <span className="text-xs text-gray-500 ml-2">
+                <span className="text-[10px] text-slate-500 ml-2 font-normal">
                   (Criada em: {formatDate(os.created_at)})
                 </span>
               </div>
@@ -88,7 +88,7 @@ export default function ListaOS({
               {/* CORREÇÃO AQUI: Passamos 'os_id' explicitamente na URL */}
               <Link
                 href={`${linkBase}?os_id=${os.id}&${commonParams}`}
-                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+                className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 hover:border-blue-500/40 transition-all"
                 title="Ver e editar ficha técnica"
               >
                 <PenTool className="h-3 w-3" />

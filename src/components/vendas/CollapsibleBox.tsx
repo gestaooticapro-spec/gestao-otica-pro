@@ -9,11 +9,11 @@ type ColorScheme = 'blue' | 'emerald' | 'purple' | 'amber' | 'gray'
 interface CollapsibleBoxProps {
   title: string
   // MUDANÇA 1: Agora aceitamos um ReactNode (o ícone já montado) em vez de LucideIcon
-  icon: React.ReactNode 
+  icon: React.ReactNode
   children: React.ReactNode
   color?: ColorScheme
   defaultOpen?: boolean
-  badge?: string | number 
+  badge?: string | number
 }
 
 export default function CollapsibleBox({
@@ -52,12 +52,12 @@ export default function CollapsibleBox({
       badge: 'bg-purple-200 text-purple-800'
     },
     amber: {
-      bgHeader: 'bg-amber-50',
-      hoverHeader: 'hover:bg-amber-100',
-      textTitle: 'text-amber-900',
-      textIcon: 'text-amber-700',
-      border: 'border-amber-200',
-      badge: 'bg-amber-200 text-amber-800'
+      bgHeader: 'bg-amber-500/10',
+      hoverHeader: 'hover:bg-amber-500/20',
+      textTitle: 'text-amber-400',
+      textIcon: 'text-amber-400',
+      border: 'border-amber-500/20',
+      badge: 'bg-amber-500/20 text-amber-300'
     },
     gray: {
       bgHeader: 'bg-gray-50',
@@ -72,17 +72,17 @@ export default function CollapsibleBox({
   const currentStyle = styles[color]
 
   return (
-    <div className={`border rounded-xl shadow-sm overflow-hidden bg-white ${currentStyle.border}`}>
-      <div 
+    <div className={`border rounded-xl shadow-sm overflow-hidden bg-white/5 backdrop-blur-sm ${currentStyle.border}`}>
+      <div
         onClick={() => setIsOpen(!isOpen)}
         className={`flex justify-between items-center px-4 py-3 cursor-pointer transition-colors select-none ${currentStyle.bgHeader} ${currentStyle.hoverHeader}`}
       >
         <div className="flex items-center gap-3">
           {/* MUDANÇA 2: Renderizamos o ícone diretamente, pois ele já vem como elemento */}
           {icon}
-          
+
           <h2 className={`font-bold text-base ${currentStyle.textTitle}`}>{title}</h2>
-          
+
           {badge && (
             <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${currentStyle.badge}`}>
               {badge}
