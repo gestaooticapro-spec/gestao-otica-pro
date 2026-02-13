@@ -306,6 +306,7 @@ export default function VendaInterfaceExperimental({
                 <div className="flex-1">
                     <ResumoFinanceiro
                         venda={venda}
+                        vendaItens={vendaItens}
                         onUpdate={onDataReload}
                         disabled={isVendaFechadaOuCancelada}
                     />

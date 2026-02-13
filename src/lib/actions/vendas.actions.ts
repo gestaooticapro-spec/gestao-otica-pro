@@ -636,6 +636,7 @@ export async function addVendaItem(
     unidade: data.unidade,
     tenant_id: (profile as any).tenant_id, // Forçamos aqui
     store_id: (profile as any).store_id,   // CORREÃ‡ÃƒO: Forçamos aqui também
+    detalhes_avulsos: { original_price: data.valor_unitario } // Salva preço original para cálculos de desconto
   }
 
   const supabaseAdmin = createAdminClient();
@@ -658,8 +659,10 @@ export async function addVendaItem(
     if (rpcError) throw new Error(`Erro ao recalcular total: ${rpcError.message}`)
 
     // CORREÃ‡ÃƒO 3: Cast no profile para o revalidatePath
-    revalidatePath(`/dashboard/loja/${(profile as any).store_id}/vendas`)
-    revalidatePath(`/dashboard/loja/${(profile as any).store_id}/vendas/${data.venda_id}`)
+    revalidatePath(`/dashboard/loja/${(profile as any).store_id
+      } / vendas`)
+    revalidatePath(`/ dashboard / loja / ${(profile as any).store_id
+      } /vendas/${data.venda_id} `)
 
     return { success: true, message: 'Item adicionado!', data: newItem as any }
   } catch (error: any) {
@@ -695,9 +698,9 @@ export async function deleteVendaItem(
       p_venda_id: vendaId,
     })
 
-    if (rpcError) throw new Error(`Erro ao recalcular total: ${rpcError.message}`)
+    if (rpcError) throw new Error(`Erro ao recalcular total: ${rpcError.message} `)
 
-    revalidatePath(`/dashboard/loja/${storeId}/vendas`)
+    revalidatePath(`/ dashboard / loja / ${storeId}/vendas`)
     revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}`)
 
     return { success: true, message: 'Item removido.' }
@@ -1218,37 +1221,67 @@ export async function updateVendaDesconto(
     //    Vou seguir por este caminho: Rateio real, alteração de preço, zera desconto explícito.
     //    É o único jeito da "Soma dos Produtos" bater com o "Caixa" e não duplicar desconto.
 
-    // 1. Calcula Total Atual dos Itens (Sem confiar no da Venda)
-    const totalAtualBruto = itens.reduce((acc, item) => acc + item.valor_total_item, 0)
+    // 1. Calcula Total Original (Baseado no Metadata) para manter a base fixa
+    let totalOriginal = 0
+    const itemsWithOriginal = itens.map((item) => {
+      const detalhes = (item.detalhes_avulsos as any) || {}
+      let originalPrice = detalhes.original_price
 
-    // Se o desconto for maior que o total, erro.
-    if (valor_desconto >= totalAtualBruto) {
-      throw new Error(`Desconto (R$ ${valor_desconto}) não pode ser maior ou igual ao total (R$ ${totalAtualBruto}).`)
+      // Migration: Se não tem original, assume o atual (unitario) como original
+      if (originalPrice === undefined || originalPrice === null) {
+        originalPrice = item.valor_unitario
+      }
+
+      const originalTotalItem = originalPrice * item.quantidade
+      totalOriginal += originalTotalItem
+
+      return {
+        ...item,
+        originalPrice,
+        originalTotalItem,
+        detalhes,
+      }
+    })
+
+    // Se o desconto for maior que o total original, erro.
+    if (valor_desconto >= totalOriginal) {
+      throw new Error(
+        `Desconto (R$ ${valor_desconto}) não pode ser maior ou igual ao subtotal original (R$ ${totalOriginal}).`
+      )
     }
 
-    const totalLiquidoAlvo = totalAtualBruto - valor_desconto
+    const totalLiquidoAlvo = totalOriginal - valor_desconto
 
-    // 2. Distribui
-    // Mapeia para o formato esperado pelo helper (usando valor_total_item como base de peso)
-    const itemsForDistribution = itens.map(i => ({
+    // 2. Distribui (Usando o TOTAL ORIGINAL do item como peso)
+    const itemsForDistribution = itemsWithOriginal.map((i) => ({
       id: i.id,
-      valor_original_total: i.valor_total_item,
-      quantidade: i.quantidade
+      valor_original_total: i.originalTotalItem,
+      quantidade: i.quantidade,
     }))
 
     const distribuicao = distributeDiscount(totalLiquidoAlvo, itemsForDistribution)
 
     // 3. Atualiza Itens no Banco
-    // Fazemos em paralelo para ser rápido
-    await Promise.all(distribuicao.map(item =>
-      supabase
-        .from('venda_itens')
-        .update({
-          valor_total_item: item.valor_total_item,
-          valor_unitario: item.valor_unitario
-        })
-        .eq('id', item.id)
-    ))
+    await Promise.all(
+      distribuicao.map((d) => {
+        const originalItem = itemsWithOriginal.find((i) => i.id === d.id)!
+
+        // Garante que o metadata tenha o original_price salvo
+        const newDetalhes = {
+          ...originalItem.detalhes,
+          original_price: originalItem.originalPrice,
+        }
+
+        return supabase
+          .from('venda_itens')
+          .update({
+            valor_total_item: d.valor_total_item,
+            valor_unitario: d.valor_unitario,
+            detalhes_avulsos: newDetalhes,
+          })
+          .eq('id', d.id)
+      })
+    )
 
     // 4. Atualiza Venda (Zera desconto explícito, pois já foi aplicado nos itens)
     // Mantemos o valor_desconto como 0 para não duplicar.

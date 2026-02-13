@@ -10,9 +10,11 @@ import { Database } from '@/lib/database.types'
 import { Loader2, TrendingDown } from 'lucide-react'
 
 type Venda = Database['public']['Tables']['vendas']['Row']
+type VendaItem = Database['public']['Tables']['venda_itens']['Row']
 
 type ResumoFinanceiroProps = {
   venda: Venda
+  vendaItens: VendaItem[]
   onUpdate: () => Promise<void>
   disabled: boolean
 }
@@ -45,9 +47,27 @@ function DescontoSubmitButton() {
 
 export default function ResumoFinanceiro({
   venda,
+  vendaItens,
   onUpdate,
   disabled,
 }: ResumoFinanceiroProps) {
+
+  // 1. Calcula o Total Original (Base Fixa)
+  const totalOriginal = vendaItens.reduce((acc, item) => {
+    const detalhes = (item.detalhes_avulsos as any) || {}
+    let originalPrice = detalhes.original_price
+
+    // Fallback: Se não tem original salvo, o preço atual É o original
+    if (originalPrice === undefined || originalPrice === null) {
+      originalPrice = item.valor_unitario
+    }
+
+    return acc + (originalPrice * item.quantidade)
+  }, 0)
+
+  // 2. Calcula o Desconto Derivado (Original - Praticado)
+  // Praticado = venda.valor_total (que é a soma dos itens já com desconto)
+  const derivedDiscount = Math.max(0, totalOriginal - venda.valor_total)
 
   const [descontoString, setDescontoString] = useState('0,00')
 
@@ -55,8 +75,9 @@ export default function ResumoFinanceiro({
   const [descontoState, dispatchDesconto] = useFormState(updateVendaDesconto, descontoInitialState)
 
   useEffect(() => {
-    setDescontoString(formatCurrency(venda.valor_desconto).replace('R$', '').trim())
-  }, [venda.valor_desconto])
+    // Atualiza o input sempre que o desconto derivado mudar (ex: ao carregar ou recalcular)
+    setDescontoString(formatCurrency(derivedDiscount).replace('R$', '').trim())
+  }, [derivedDiscount])
 
   useEffect(() => {
     if (descontoState.success) {
@@ -79,10 +100,10 @@ export default function ResumoFinanceiro({
   return (
     <div className="flex items-center gap-4 text-xs">
 
-      {/* Bloco 1: Total Bruto */}
+      {/* Bloco 1: Total Bruto (Original) */}
       <div className="flex flex-col">
         <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Subtotal</span>
-        <span className="font-bold text-slate-200 text-sm">{formatCurrency(venda.valor_total)}</span>
+        <span className="font-bold text-slate-200 text-sm">{formatCurrency(totalOriginal)}</span>
       </div>
 
       {/* Bloco 2: Desconto (Formulário Compacto) */}
