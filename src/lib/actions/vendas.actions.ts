@@ -1107,13 +1107,19 @@ export async function updateVendaDesconto(
 
     const { data: itensRaw, error: itensError } = await supabase
       .from('venda_itens')
-      .select('id, quantidade, valor_unitario, valor_total_item')
+      .select('id, quantidade, valor_unitario, valor_total_item, detalhes_avulsos')
       .eq('venda_id', venda_id)
 
     if (itensError) throw new Error('Erro ao buscar itens.')
     if (!itensRaw) throw new Error('Itens não encontrados.')
 
-    const itens = itensRaw as { id: number; quantidade: number; valor_unitario: number; valor_total_item: number }[]
+    const itens = itensRaw as {
+      id: number
+      quantidade: number
+      valor_unitario: number
+      valor_total_item: number
+      detalhes_avulsos: any
+    }[]
 
     // 2. Calcula Rateio Inteligente
     // O "valor_original_total" deve ser (qtd * unitario_original) ou o valor_total_item ATUAL se não tivermos o histórico.
