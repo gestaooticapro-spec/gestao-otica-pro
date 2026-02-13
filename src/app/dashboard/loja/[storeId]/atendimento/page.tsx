@@ -35,31 +35,31 @@ function HistoryCard({ data, customerObs }: { data: CustomerSaleHistory, custome
     const formatMoney = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
     return (
-        <div className="bg-white/80 backdrop-blur-md rounded-2xl border border-white/20 shadow-xl overflow-hidden transition-all hover:shadow-2xl hover:bg-white/90 w-full group">
-            <div onClick={() => setIsOpen(!isOpen)} className="p-5 cursor-pointer flex justify-between items-center hover:bg-white/50 transition-colors">
+        <div className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 shadow-xl overflow-hidden transition-all hover:shadow-2xl hover:bg-white/10 w-full group">
+            <div onClick={() => setIsOpen(!isOpen)} className="p-5 cursor-pointer flex justify-between items-center hover:bg-white/5 transition-colors">
                 <div className="flex items-center gap-5 flex-1">
-                    <div className={`p-3.5 rounded-2xl flex-shrink-0 transition-transform group-hover:scale-110 shadow-lg ${isAtrasado ? 'bg-red-500/10 text-red-600 border border-red-500/20' : 'bg-cyan-500/10 text-cyan-600 border border-cyan-500/20'}`}>
+                    <div className={`p-3.5 rounded-2xl flex-shrink-0 transition-transform group-hover:scale-110 shadow-lg ${isAtrasado ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'}`}>
                         {isAtrasado ? <AlertTriangle className="h-7 w-7" /> : <History className="h-7 w-7" />}
                     </div>
                     <div>
                         <div className="flex items-baseline gap-2">
-                            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Venda #{data.venda_id}</p>
-                            <span className="text-sm font-black text-slate-900">{new Date(data.data).toLocaleDateString('pt-BR')}</span>
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Venda #{data.venda_id}</p>
+                            <span className="text-sm font-black text-white">{new Date(data.data).toLocaleDateString('pt-BR')}</span>
                         </div>
                         <div className="flex items-center gap-2 mt-1">
                             <User className="h-4 w-4 text-slate-400" />
-                            <span className="text-xs text-slate-500 font-medium uppercase tracking-tighter">Para:</span>
-                            <strong className="text-lg text-slate-900 tracking-tight">{data.paciente_nome}</strong>
+                            <span className="text-xs text-slate-400 font-medium uppercase tracking-tighter">Para:</span>
+                            <strong className="text-lg text-white tracking-tight">{data.paciente_nome}</strong>
                         </div>
                     </div>
                 </div>
                 <div className="flex items-center gap-8">
                     <div className="text-right hidden sm:block">
-                        <p className="text-2xl font-black text-slate-900 tracking-tighter">{formatMoney(data.valor_total)}</p>
+                        <p className="text-2xl font-black text-white tracking-tighter">{formatMoney(data.valor_total)}</p>
                         <div className="flex flex-col items-end gap-1 mt-1">
-                            <span className="text-[10px] font-black text-slate-500 border border-slate-200 px-2 py-0.5 rounded-full uppercase tracking-widest">{data.financeiro.forma_pagamento_resumo || 'Em Aberto'}</span>
+                            <span className="text-[10px] font-black text-slate-400 border border-white/10 bg-white/5 px-2 py-0.5 rounded-full uppercase tracking-widest">{data.financeiro.forma_pagamento_resumo || 'Em Aberto'}</span>
                             {data.financeiro.tem_carne && (
-                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full shadow-sm ${isQuitado ? 'text-emerald-700 bg-emerald-100 border border-emerald-200' : isAtrasado ? 'text-rose-700 bg-rose-100 border border-rose-200' : 'text-amber-700 bg-amber-100 border border-amber-200'}`}>
+                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full shadow-sm ${isQuitado ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20' : isAtrasado ? 'text-rose-400 bg-rose-500/10 border border-rose-500/20' : 'text-amber-400 bg-amber-500/10 border border-amber-500/20'}`}>
                                     {data.financeiro.status_geral}
                                 </span>
                             )}
@@ -69,16 +69,16 @@ function HistoryCard({ data, customerObs }: { data: CustomerSaleHistory, custome
                 </div>
             </div>
             {isOpen && (
-                <div className="p-6 border-t border-slate-100/50 animate-in slide-in-from-top-4 duration-300">
+                <div className="p-6 border-t border-white/5 animate-in slide-in-from-top-4 duration-300">
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                         <div className="lg:col-span-7 space-y-6">
                             <div>
                                 <h4 className="text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest flex items-center gap-2">
                                     <ShoppingCart className="h-3 w-3" /> Produtos Adquiridos
                                 </h4>
-                                <div className="bg-white/50 rounded-2xl border border-slate-200/60 overflow-hidden shadow-sm">
+                                <div className="bg-white/5 rounded-2xl border border-white/5 overflow-hidden shadow-sm">
                                     <table className="w-full text-sm text-left">
-                                        <thead className="bg-slate-50/80 text-slate-400 font-black text-[10px] uppercase tracking-widest">
+                                        <thead className="bg-white/5 text-slate-400 font-black text-[10px] uppercase tracking-widest">
                                             <tr>
                                                 <th className="px-4 py-3">Descrição</th>
                                                 <th className="px-4 py-3 text-center">Qtd.</th>
@@ -86,13 +86,13 @@ function HistoryCard({ data, customerObs }: { data: CustomerSaleHistory, custome
                                                 <th className="px-4 py-3 text-right">Total</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-slate-100">
+                                        <tbody className="divide-y divide-white/5">
                                             {data.itens.map((item, idx) => (
-                                                <tr key={idx} className="hover:bg-cyan-50/30 transition-colors">
-                                                    <td className="px-4 py-3 font-bold text-slate-700">{item.descricao}</td>
+                                                <tr key={idx} className="hover:bg-white/5 transition-colors">
+                                                    <td className="px-4 py-3 font-bold text-slate-200">{item.descricao}</td>
                                                     <td className="px-4 py-3 text-center text-slate-500 font-medium">{item.quantidade}</td>
                                                     <td className="px-4 py-3 text-right text-slate-500 font-medium">{formatMoney(item.valor_unitario)}</td>
-                                                    <td className="px-4 py-3 text-right font-black text-cyan-600">{formatMoney(item.valor_total)}</td>
+                                                    <td className="px-4 py-3 text-right font-black text-cyan-400">{formatMoney(item.valor_total)}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -104,12 +104,12 @@ function HistoryCard({ data, customerObs }: { data: CustomerSaleHistory, custome
                                     <h4 className="text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest flex items-center gap-2">
                                         <Wallet className="h-3 w-3" /> Parcelamento (Carnê)
                                     </h4>
-                                    <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
+                                    <div className="flex gap-3 overflow-x-auto pb-4 custom-scrollbar">
                                         {data.financeiro.parcelas_detalhes.map((p) => (
-                                            <div key={p.numero} className={`flex-shrink-0 p-3 rounded-2xl border min-w-[120px] transition-all hover:translate-y-[-2px] shadow-sm ${p.status === 'Pago' ? 'bg-emerald-50/50 border-emerald-100' : new Date(p.vencimento) < new Date() ? 'bg-rose-50/50 border-rose-100' : 'bg-white border-slate-200'}`}>
-                                                <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">{p.numero}ª Parc</p>
-                                                <p className="font-black text-lg text-slate-800 tracking-tight">{formatMoney(p.valor)}</p>
-                                                <p className={`text-[10px] font-bold mt-1 ${p.status === 'Pago' ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                            <div key={p.numero} className={`flex-shrink-0 p-3 rounded-2xl border min-w-[120px] transition-all hover:translate-y-[-2px] shadow-sm ${p.status === 'Pago' ? 'bg-emerald-500/10 border-emerald-500/20' : new Date(p.vencimento) < new Date() ? 'bg-rose-500/10 border-rose-500/20' : 'bg-white/5 border-white/10'}`}>
+                                                <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest">{p.numero}ª Parc</p>
+                                                <p className={`font-black text-lg tracking-tight ${p.status === 'Pago' ? 'text-emerald-400' : new Date(p.vencimento) < new Date() ? 'text-rose-400' : 'text-slate-200'}`}>{formatMoney(p.valor)}</p>
+                                                <p className={`text-[10px] font-bold mt-1 ${p.status === 'Pago' ? 'text-emerald-500' : 'text-slate-500'}`}>
                                                     {new Date(p.vencimento).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                                                 </p>
                                             </div>
@@ -119,25 +119,28 @@ function HistoryCard({ data, customerObs }: { data: CustomerSaleHistory, custome
                             )}
                         </div>
                         <div className="lg:col-span-5 space-y-4">
-                            <div className="bg-gradient-to-br from-cyan-50/80 to-blue-50/80 p-6 rounded-3xl border border-cyan-100/50 h-full shadow-inner">
-                                <p className="text-[10px] font-black text-cyan-500 uppercase mb-4 flex items-center gap-2 tracking-widest shadow-sm">
+                            <div className="bg-white/5 p-6 rounded-3xl border border-white/10 h-full shadow-inner relative overflow-hidden">
+                                { /* Glow effect */}
+                                <div className="absolute -top-10 -right-10 w-32 h-32 bg-cyan-500/10 blur-[50px] rounded-full pointer-events-none" />
+
+                                <p className="text-[10px] font-black text-cyan-400 uppercase mb-4 flex items-center gap-2 tracking-widest shadow-sm relative z-10">
                                     <Eye className="h-4 w-4" /> DADOS DA RECEITA USADA
                                 </p>
                                 {data.tecnico ? (
-                                    <div className="space-y-5">
-                                        <div className="flex justify-between text-sm items-baseline border-b border-cyan-100/50 pb-3">
-                                            <span className="text-slate-400 font-bold uppercase text-[10px] tracking-widest">Médico:</span>
-                                            <span className="font-black text-slate-800 text-right">{data.tecnico.medico}</span>
+                                    <div className="space-y-5 relative z-10">
+                                        <div className="flex justify-between text-sm items-baseline border-b border-white/5 pb-3">
+                                            <span className="text-slate-500 font-bold uppercase text-[10px] tracking-widest">Médico:</span>
+                                            <span className="font-black text-slate-200 text-right">{data.tecnico.medico}</span>
                                         </div>
                                         <div className="grid grid-cols-3 gap-3 text-center">
-                                            <div className="text-[9px] font-black text-cyan-400 uppercase tracking-widest">Olho</div>
-                                            <div className="text-[9px] font-black text-cyan-400 uppercase tracking-widest">Esf / Cil</div>
-                                            <div className="text-[9px] font-black text-cyan-400 uppercase tracking-widest">Adição</div>
-                                            <div className="font-black text-cyan-600 text-lg flex items-center justify-center">OD</div>
-                                            <div className="bg-white rounded-xl py-2 px-3 text-base font-mono shadow-sm border border-cyan-50 text-slate-700 font-bold">{data.tecnico.longe_od}</div>
-                                            <div className="bg-white rounded-xl py-2 px-3 text-base font-mono shadow-sm border border-cyan-50 text-slate-700 row-span-2 flex items-center justify-center font-black">{data.tecnico.adicao}</div>
-                                            <div className="font-black text-cyan-600 text-lg flex items-center justify-center">OE</div>
-                                            <div className="bg-white rounded-xl py-2 px-3 text-base font-mono shadow-sm border border-cyan-50 text-slate-700 font-bold">{data.tecnico.longe_oe}</div>
+                                            <div className="text-[9px] font-black text-cyan-500 uppercase tracking-widest">Olho</div>
+                                            <div className="text-[9px] font-black text-cyan-500 uppercase tracking-widest">Esf / Cil</div>
+                                            <div className="text-[9px] font-black text-cyan-500 uppercase tracking-widest">Adição</div>
+                                            <div className="font-black text-cyan-400 text-lg flex items-center justify-center">OD</div>
+                                            <div className="bg-black/20 rounded-xl py-2 px-3 text-base font-mono shadow-sm border border-white/5 text-slate-300 font-bold">{data.tecnico.longe_od}</div>
+                                            <div className="bg-black/20 rounded-xl py-2 px-3 text-base font-mono shadow-sm border border-white/5 text-slate-300 row-span-2 flex items-center justify-center font-black">{data.tecnico.adicao}</div>
+                                            <div className="font-black text-cyan-400 text-lg flex items-center justify-center">OE</div>
+                                            <div className="bg-black/20 rounded-xl py-2 px-3 text-base font-mono shadow-sm border border-white/5 text-slate-300 font-bold">{data.tecnico.longe_oe}</div>
                                         </div>
                                     </div>
                                 ) : (
@@ -152,11 +155,11 @@ function HistoryCard({ data, customerObs }: { data: CustomerSaleHistory, custome
 
                     {/* ATUALIZAÇÃO 2: Exibindo a observação do cadastro na parte inferior do card */}
                     {customerObs && (
-                        <div className="mt-8 pt-6 border-t border-slate-100">
-                            <p className="text-[10px] font-black text-rose-500 uppercase mb-3 flex items-center gap-2 tracking-widest">
+                        <div className="mt-8 pt-6 border-t border-white/5">
+                            <p className="text-[10px] font-black text-rose-400 uppercase mb-3 flex items-center gap-2 tracking-widest">
                                 <AlertTriangle className="h-4 w-4" /> Observações do Cadastro
                             </p>
-                            <div className="bg-rose-50/50 text-rose-800 text-sm p-4 rounded-2xl border border-rose-100 font-bold shadow-inner leading-relaxed">
+                            <div className="bg-rose-500/10 text-rose-300 text-sm p-4 rounded-2xl border border-rose-500/20 font-bold shadow-inner leading-relaxed">
                                 {customerObs}
                             </div>
                         </div>
@@ -534,6 +537,7 @@ export default function AtendimentoPage() {
             <style jsx global>{`
                 .custom-scrollbar::-webkit-scrollbar {
                     width: 6px;
+                    height: 6px;
                 }
                 .custom-scrollbar::-webkit-scrollbar-track {
                     background: transparent;
