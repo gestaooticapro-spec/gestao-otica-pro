@@ -3,7 +3,7 @@
 import { useState, useEffect, useTransition } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import { Search, X, Loader2, Save, Truck, User, AlertCircle } from 'lucide-react'
+import { Search, X, Loader2, Save, Truck, User, AlertCircle, Calendar, CheckCircle2, Microscope, Wrench } from 'lucide-react'
 import { searchOSForLab, updateLabTracking, getEmployees, LabOSResult, EmployeeSimple } from '@/lib/actions/lab.actions'
 
 interface Props {
@@ -21,42 +21,39 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
     const [step, setStep] = useState<'search' | 'edit'>('search')
     const [query, setQuery] = useState('')
     const [results, setResults] = useState<LabOSResult[]>([])
-    // Estado para controlar se a busca já foi feita (para exibir "Nenhum resultado" só na hora certa)
+    // Estado para controlar se a busca já foi feita
     const [hasSearched, setHasSearched] = useState(false)
 
     const [selectedOS, setSelectedOS] = useState<LabOSResult | null>(null)
     const [employees, setEmployees] = useState<EmployeeSimple[]>([])
     const [isPending, startTransition] = useTransition()
 
-    // Efeito para garantir que rodamos no cliente (Portal requirement)
     useEffect(() => {
         setMounted(true)
     }, [])
 
-    // Reseta tudo quando o modal abre/fecha
     useEffect(() => {
         if (isOpen) {
             getEmployees(storeId).then(setEmployees)
             setStep('search')
             setQuery('')
             setResults([])
-            setHasSearched(false) // Reset
+            setHasSearched(false)
             setSelectedOS(null)
         }
     }, [isOpen, storeId])
 
     const handleSearch = async (e: React.FormEvent) => {
-        e.preventDefault() // Impede reload da página
+        e.preventDefault()
         if (!query.trim()) return
 
-        // Limpa resultados anteriores antes de buscar
         setResults([])
         setHasSearched(false)
 
         startTransition(async () => {
             const data = await searchOSForLab(storeId, query)
             setResults(data)
-            setHasSearched(true) // Marca que a busca terminou
+            setHasSearched(true)
         })
     }
 
@@ -92,41 +89,52 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
         return new Date(isoString).toISOString().slice(0, 16)
     }
 
-    // Se não estiver montado ou fechado, não renderiza nada
     if (!mounted || !isOpen) return null
 
-    // --- PORTAL APLICADO ---
     return createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-            <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-slate-950 w-full max-w-2xl rounded-2xl shadow-2xl border border-white/10 overflow-hidden flex flex-col max-h-[90vh]">
 
-                {/* HEADER LARANJA (AMBER) */}
-                <div className="bg-amber-600 p-4 flex justify-between items-center text-white shrink-0">
-                    <div className="flex items-center gap-2">
-                        <Truck className="h-5 w-5 text-amber-200" />
-                        <h2 className="font-bold text-lg">
-                            {step === 'search' ? 'Entrega de Óculos' : `Entregar OS #${selectedOS?.id}`}
-                        </h2>
+                {/* HEADER EMERALD (Contexto de Entrega/Sucesso) */}
+                <div className="bg-emerald-950/30 border-b border-emerald-500/20 p-4 flex justify-between items-center shrink-0">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+                            <Truck className="h-5 w-5 text-emerald-400" />
+                        </div>
+                        <div>
+                            <h2 className="font-bold text-lg text-emerald-100">
+                                {step === 'search' ? 'Entrega de Óculos' : `Entregar OS #${selectedOS?.id}`}
+                            </h2>
+                            <p className="text-[10px] uppercase tracking-wider text-emerald-500/60 font-bold">
+                                {step === 'search' ? 'Localizar Ordem de Serviço' : 'Confirmação de Recebimento'}
+                            </p>
+                        </div>
                     </div>
-                    <button onClick={onClose} className="text-amber-100 hover:text-white transition-colors">
-                        <X className="h-6 w-6" />
+                    <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full text-slate-400 hover:text-white transition-colors">
+                        <X className="h-5 w-5" />
                     </button>
                 </div>
 
                 {step === 'search' && (
-                    <div className="p-6 flex-1 overflow-y-auto">
+                    <div className="p-6 flex-1 overflow-y-auto custom-scrollbar">
                         <form onSubmit={handleSearch} className="flex gap-2 mb-6">
-                            <input
-                                autoFocus
-                                type="text"
-                                placeholder="Nº OS, Protocolo, Nome Cliente ou Dependente..."
-                                className="flex-1 border-2 border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-700 focus:border-amber-500 focus:outline-none"
-                                value={query}
-                                onChange={e => setQuery(e.target.value)}
-                            />
-                            {/* type="submit" garante que o Enter funcione e chame handleSearch */}
-                            <button type="submit" disabled={isPending} className="bg-amber-600 hover:bg-amber-700 text-white px-6 rounded-xl font-bold transition-colors flex items-center gap-2">
-                                {isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
+                            <div className="relative flex-1">
+                                <Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-500" />
+                                <input
+                                    autoFocus
+                                    type="text"
+                                    placeholder="Nº OS, Protocolo, Nome Cliente..."
+                                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 font-medium text-slate-200 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 focus:outline-none placeholder:text-slate-600 transition-all"
+                                    value={query}
+                                    onChange={e => setQuery(e.target.value)}
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                disabled={isPending}
+                                className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-900/20 active:scale-95 flex items-center gap-2"
+                            >
+                                {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
                                 Buscar
                             </button>
                         </form>
@@ -136,36 +144,47 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
                                 <button
                                     key={os.id}
                                     onClick={() => handleSelect(os)}
-                                    className="w-full text-left p-4 rounded-xl border border-slate-100 hover:border-amber-200 hover:bg-amber-50 transition-all group relative overflow-hidden"
+                                    className="w-full text-left p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-emerald-500/5 hover:border-emerald-500/20 transition-all group relative overflow-hidden"
                                 >
                                     {os.status === 'Em Aberto' && (
-                                        <div className="absolute right-0 top-0 bottom-0 w-1.5 bg-yellow-400" />
+                                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500/50" />
+                                    )}
+                                    {os.status === 'Fechada' && (
+                                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500/50" />
                                     )}
 
-                                    <div className="flex justify-between items-center mb-1">
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-black text-slate-700 text-lg group-hover:text-amber-800">OS #{os.id}</span>
-                                            {os.protocolo_fisico && <span className="text-[9px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded font-mono font-bold">P: {os.protocolo_fisico}</span>}
+                                    <div className="flex justify-between items-start mb-2 pl-2">
+                                        <div className="flex items-center gap-3">
+                                            <span className="font-black text-slate-200 text-lg group-hover:text-emerald-400 transition-colors">OS #{os.id}</span>
+                                            {os.protocolo_fisico && (
+                                                <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-white/5 font-mono">
+                                                    P: {os.protocolo_fisico}
+                                                </span>
+                                            )}
                                         </div>
-                                        <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded flex items-center gap-1 ${os.status === 'Fechada' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                                        <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded flex items-center gap-1.5 border backdrop-blur-md ${os.status === 'Fechada'
+                                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                            : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                                             }`}>
                                             {os.status === 'Em Aberto' && <AlertCircle className="h-3 w-3" />}
+                                            {os.status === 'Fechada' && <CheckCircle2 className="h-3 w-3" />}
                                             {os.status}
                                         </span>
                                     </div>
-                                    <div className="flex flex-col gap-1 text-slate-500 text-sm">
-                                        <div className="flex items-center gap-2">
-                                            <User className="h-4 w-4" />
-                                            <span className="font-bold">{os.customer_name}</span>
+
+                                    <div className="flex flex-col gap-1 pl-2">
+                                        <div className="flex items-center gap-2 text-slate-400">
+                                            <User className="h-3.5 w-3.5 text-slate-500" />
+                                            <span className="font-medium text-sm">{os.customer_name}</span>
                                         </div>
                                         {os.dependente_name && (
-                                            <div className="flex items-center gap-2 pl-6 text-xs text-amber-600 font-medium">
+                                            <div className="flex items-center gap-2 pl-5 text-xs text-slate-500 group-hover:text-slate-400 transition-colors">
                                                 <span>↳ Dep: {os.dependente_name}</span>
                                             </div>
                                         )}
                                     </div>
 
-                                    <div className="mt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                                    <div className="mt-3 pl-2 text-[10px] font-bold uppercase tracking-wide text-slate-500 group-hover:text-emerald-500/70 transition-colors flex items-center justify-end">
                                         {os.status === 'Em Aberto'
                                             ? 'Ir para pagamento →'
                                             : 'Realizar entrega →'}
@@ -173,11 +192,13 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
                                 </button>
                             ))}
 
-                            {/* Só exibe mensagem se JÁ buscou e não achou nada */}
                             {hasSearched && results.length === 0 && !isPending && (
-                                <p className="text-center text-slate-400 py-8 font-medium">
-                                    Nenhuma OS encontrada para "{query}".
-                                </p>
+                                <div className="text-center py-12 flex flex-col items-center gap-3">
+                                    <div className="p-4 bg-white/5 rounded-full">
+                                        <Search className="h-8 w-8 text-slate-600" />
+                                    </div>
+                                    <p className="text-slate-400 font-medium">Nenhuma OS encontrada.</p>
+                                </div>
                             )}
                         </div>
                     </div>
@@ -185,53 +206,92 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
 
                 {step === 'edit' && selectedOS && (
                     <form action={handleSave} className="flex flex-col h-full">
-                        <div className="p-6 bg-slate-50 flex-1 overflow-y-auto">
+                        <div className="p-6 flex-1 overflow-y-auto custom-scrollbar">
 
-                            <div className="bg-amber-600 rounded-xl p-5 shadow-lg text-white">
-                                <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest mb-4 opacity-90 border-b border-amber-400/50 pb-2">
-                                    <Truck className="h-4 w-4" /> Confirmar Entrega
+                            <div className="bg-emerald-900/20 border border-emerald-500/20 rounded-xl p-5 mb-6 text-emerald-100 relative overflow-hidden">
+                                <div className="absolute top-0 right-0 p-4 opacity-10">
+                                    <Truck className="h-24 w-24 text-emerald-500" />
+                                </div>
+
+                                <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest mb-4 opacity-90 pb-2 border-b border-emerald-500/20">
+                                    <CheckCircle2 className="h-4 w-4 text-emerald-400" /> Confirmar Entrega
                                 </h3>
 
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 opacity-70 hover:opacity-100 transition-opacity">
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold uppercase opacity-80">Pedido Em</label>
-                                        <input type="datetime-local" name="dt_pedido_em" defaultValue={formatForInput(selectedOS.dt_pedido_em)} className="w-full rounded-lg px-3 py-2 text-xs font-bold text-slate-800 shadow-sm outline-none" />
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 relative z-10">
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold uppercase text-emerald-500/70 flex items-center gap-1.5">
+                                            <Calendar className="h-3 w-3" /> Pedido Em
+                                        </label>
+                                        <input
+                                            type="datetime-local"
+                                            name="dt_pedido_em"
+                                            defaultValue={formatForInput(selectedOS.dt_pedido_em)}
+                                            className="w-full bg-emerald-950/40 border border-emerald-500/20 rounded-lg px-3 py-2 text-xs font-bold text-emerald-100 shadow-sm focus:border-emerald-400/50 outline-none transition-colors"
+                                        />
                                     </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold uppercase opacity-80">Pedido Por</label>
-                                        <div className="relative text-slate-800">
-                                            <User className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400 z-10" />
-                                            <select name="lab_pedido_por_id" defaultValue={selectedOS.lab_pedido_por_id || ''} className="w-full rounded-lg pl-9 pr-3 py-2 text-xs font-bold bg-white text-slate-800 shadow-sm outline-none appearance-none cursor-pointer">
-                                                <option value="">Selecione...</option>
-                                                {employees.map(emp => (<option key={emp.id} value={emp.id}>{emp.name}</option>))}
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold uppercase text-emerald-500/70 flex items-center gap-1.5">
+                                            <User className="h-3 w-3" /> Pedido Por
+                                        </label>
+                                        <div className="relative">
+                                            <select
+                                                name="lab_pedido_por_id"
+                                                defaultValue={selectedOS.lab_pedido_por_id || ''}
+                                                className="w-full bg-emerald-950/40 border border-emerald-500/20 rounded-lg px-3 py-2 text-xs font-bold text-emerald-100 shadow-sm focus:border-emerald-400/50 outline-none appearance-none cursor-pointer"
+                                            >
+                                                <option value="" className="bg-slate-900 text-slate-400">Selecione...</option>
+                                                {employees.map(emp => (
+                                                    <option key={emp.id} value={emp.id} className="bg-slate-900 text-white">{emp.name}</option>
+                                                ))}
                                             </select>
                                         </div>
                                     </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold uppercase opacity-80">Laboratório</label>
-                                        <input type="text" name="lab_nome" defaultValue={selectedOS.lab_nome || ''} className="w-full rounded-lg px-3 py-2 text-xs font-bold text-slate-800 shadow-sm outline-none" />
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold uppercase text-emerald-500/70 flex items-center gap-1.5">
+                                            <Microscope className="h-3 w-3" /> Laboratório
+                                        </label>
+                                        <input
+                                            type="text"
+                                            name="lab_nome"
+                                            defaultValue={selectedOS.lab_nome || ''}
+                                            className="w-full bg-emerald-950/40 border border-emerald-500/20 rounded-lg px-3 py-2 text-xs font-bold text-emerald-100 shadow-sm focus:border-emerald-400/50 outline-none"
+                                        />
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div className="space-y-1 opacity-70 hover:opacity-100">
-                                        <label className="text-[10px] font-bold uppercase opacity-80">Lente Chegou</label>
-                                        <input type="datetime-local" name="dt_lente_chegou" defaultValue={formatForInput(selectedOS.dt_lente_chegou)} className="w-full rounded-lg px-3 py-2 text-xs font-bold text-slate-800 shadow-sm outline-none" />
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 relative z-10">
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold uppercase text-emerald-500/70 flex items-center gap-1.5">
+                                            <Calendar className="h-3 w-3" /> Lente Chegou
+                                        </label>
+                                        <input
+                                            type="datetime-local"
+                                            name="dt_lente_chegou"
+                                            defaultValue={formatForInput(selectedOS.dt_lente_chegou)}
+                                            className="w-full bg-emerald-950/40 border border-emerald-500/20 rounded-lg px-3 py-2 text-xs font-bold text-emerald-100 shadow-sm outline-none focus:border-emerald-400/50"
+                                        />
                                     </div>
-                                    <div className="space-y-1 opacity-70 hover:opacity-100">
-                                        <label className="text-[10px] font-bold uppercase opacity-80">Montado Em</label>
-                                        <input type="datetime-local" name="dt_montado_em" defaultValue={formatForInput(selectedOS.dt_montado_em)} className="w-full rounded-lg px-3 py-2 text-xs font-bold text-slate-800 shadow-sm outline-none" />
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold uppercase text-emerald-500/70 flex items-center gap-1.5">
+                                            <Wrench className="h-3 w-3" /> Montado Em
+                                        </label>
+                                        <input
+                                            type="datetime-local"
+                                            name="dt_montado_em"
+                                            defaultValue={formatForInput(selectedOS.dt_montado_em)}
+                                            className="w-full bg-emerald-950/40 border border-emerald-500/20 rounded-lg px-3 py-2 text-xs font-bold text-emerald-100 shadow-sm outline-none focus:border-emerald-400/50"
+                                        />
                                     </div>
 
-                                    <div className="space-y-1 scale-105 origin-left">
-                                        <label className="text-[10px] font-bold uppercase text-white bg-amber-800 px-2 py-0.5 rounded-full inline-block mb-1 shadow-sm">
-                                            Entregue Cliente (Hoje)
+                                    <div className="space-y-1.5 scale-105 origin-left">
+                                        <label className="text-[10px] font-black uppercase text-emerald-300 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded-full inline-block mb-1 shadow-sm flex items-center gap-1.5 w-fit">
+                                            <CheckCircle2 className="h-3 w-3" /> Entregue Cliente
                                         </label>
                                         <input
                                             type="datetime-local"
                                             name="dt_entregue_em"
                                             defaultValue={formatForInput(selectedOS.dt_entregue_em) || formatForInput(new Date().toISOString())}
-                                            className="w-full rounded-lg px-3 py-2 text-sm font-black text-slate-800 shadow-lg ring-4 ring-amber-400/30 focus:ring-amber-300 outline-none"
+                                            className="w-full bg-emerald-950 border border-emerald-400/50 rounded-lg px-3 py-2 text-sm font-black text-emerald-300 shadow-lg shadow-emerald-900/50 focus:ring-2 focus:ring-emerald-500/50 outline-none"
                                             autoFocus
                                         />
                                     </div>
@@ -239,9 +299,18 @@ export default function EntregaModal({ isOpen, onClose, storeId }: Props) {
                             </div>
                         </div>
 
-                        <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 shrink-0">
-                            <button type="button" onClick={() => setStep('search')} className="px-4 py-2 text-slate-500 font-bold hover:bg-slate-200 rounded-lg transition-colors">Voltar</button>
-                            <button disabled={isPending} className="px-6 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg shadow-lg flex items-center gap-2 transition-colors">
+                        <div className="p-4 border-t border-white/10 bg-white/5 flex justify-end gap-3 shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setStep('search')}
+                                className="px-4 py-2 text-slate-400 font-bold hover:bg-white/5 hover:text-white rounded-lg transition-colors text-sm uppercase tracking-wide"
+                            >
+                                Voltar
+                            </button>
+                            <button
+                                disabled={isPending}
+                                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg shadow-lg shadow-emerald-900/30 flex items-center gap-2 transition-all active:scale-95 text-sm uppercase tracking-wide"
+                            >
                                 {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                                 Confirmar Entrega
                             </button>
