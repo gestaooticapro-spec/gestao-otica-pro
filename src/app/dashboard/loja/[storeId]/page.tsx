@@ -7,6 +7,7 @@ import { getProfileByAdmin, createAdminClient } from '@/lib/supabase/admin'
 // Importação das Actions de Dados
 import { getManagerKPIs, getAdminKPIs } from '@/lib/actions/dashboard.actions'
 import { getAlertasOperacionais, getAniversariantes, getVencimentosProximos } from '@/lib/actions/consultas.actions'
+import { getRetornosDeHoje } from '@/lib/actions/collection.actions'
 
 // Importação dos Painéis Visuais
 import { ManagerDashboard, AdminDashboard } from '@/components/dashboard/DashboardViews'
@@ -61,10 +62,11 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
 
     // 3. OPERADOR / VENDEDOR (Dashboard Operacional)
     // Busca em paralelo para ser rápido
-    const [alertas, aniversariantes, vencimentos] = await Promise.all([
+    const [alertas, aniversariantes, vencimentos, retornos] = await Promise.all([
         getAlertasOperacionais(storeId),
         getAniversariantes(storeId),
-        getVencimentosProximos(storeId) // <--- Busca nova
+        getVencimentosProximos(storeId),
+        getRetornosDeHoje(storeId)
     ])
 
     return (
@@ -73,7 +75,8 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
             storeName={storeName} // <--- Passa o nome da loja
             alerts={alertas}
             birthdays={aniversariantes}
-            vencimentos={vencimentos} // <--- Passa os vencimentos
+            vencimentos={vencimentos}
+            retornos={retornos}
         />
     )
 }

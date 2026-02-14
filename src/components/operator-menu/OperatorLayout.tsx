@@ -98,24 +98,24 @@ export default function OperatorLayout({
 
     // Quando está em uma página específica, mostra o children com um botão de voltar
     return (
-        <div className="min-h-screen bg-gray-100">
+        <div className="min-h-screen bg-slate-950">
             {/* Barra superior simplificada */}
-            <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm">
+            <div className="bg-slate-900/80 backdrop-blur-xl border-b border-white/10 px-4 py-3 flex items-center justify-between shadow-xl shadow-black/20">
                 <button
                     onClick={() => router.push(`/dashboard/loja/${storeId}`)}
-                    className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors text-sm font-medium"
+                    className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm font-medium"
                 >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                     </svg>
                     Menu Principal
                 </button>
-                <span className="text-slate-400 text-xs font-medium uppercase tracking-wider">
+                <span className="text-slate-500 text-xs font-bold uppercase tracking-widest">
                     {storeName}
                 </span>
                 <button
                     onClick={handleLogout}
-                    className="text-slate-400 hover:text-red-500 transition-colors text-sm"
+                    className="text-slate-500 hover:text-red-400 transition-colors text-sm font-medium"
                 >
                     Sair
                 </button>

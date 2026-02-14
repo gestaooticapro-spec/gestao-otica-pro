@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getAlertasOperacionais, getAniversariantes, getVencimentosProximos } from '@/lib/actions/consultas.actions';
+import { getRetornosDeHoje } from '@/lib/actions/collection.actions';
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
@@ -14,10 +15,11 @@ export async function GET(request: NextRequest) {
 
     try {
         // Busca todos os dados em paralelo
-        const [alertas, aniversariantes, vencimentos] = await Promise.all([
+        const [alertas, aniversariantes, vencimentos, retornos] = await Promise.all([
             getAlertasOperacionais(storeId),
             getAniversariantes(storeId),
-            getVencimentosProximos(storeId)
+            getVencimentosProximos(storeId),
+            getRetornosDeHoje(storeId)
         ]);
 
         return NextResponse.json({
@@ -25,7 +27,8 @@ export async function GET(request: NextRequest) {
             entregas: alertas.entregas,
             vendasEmAberto: alertas.vendasEmAberto,
             aniversariantes: aniversariantes,
-            vencimentos: vencimentos
+            vencimentos: vencimentos,
+            retornos: retornos
         });
     } catch (error) {
         console.error('Erro ao buscar alertas operacionais:', error);

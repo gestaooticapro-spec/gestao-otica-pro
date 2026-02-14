@@ -1,58 +1,59 @@
 'use client'
 
-import { useState, useTransition, useRef, useEffect } from 'react'
-import {
-    X, Search, Package, ArrowRight, Loader2,
-    ArrowUpCircle, ArrowDownCircle, AlertTriangle, Lock
-} from 'lucide-react'
-import { buscarProdutoExpress, type ProdutoExpressResult } from '@/lib/actions/vendas.actions'
-import { registrarMovimentacao } from '@/lib/actions/stock.actions'
-import { getLensGrid, type LensGridItem } from '@/lib/actions/catalog.actions'
-import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
+import { useState, useRef, useEffect } from 'react'
+import { X, Search, Check, AlertTriangle, ArrowRightLeft, ArrowDownCircle, ArrowDownUp, Save, Loader2, PackageX, Receipt, PackageOpen } from 'lucide-react'
+import { buscarProdutoExpress, ProdutoExpressResult } from '@/lib/actions/vendas.actions'
+import { registrarMovimentacao, getProductVariants } from '@/lib/actions/stock.actions'
 
 interface Props {
     isOpen: boolean
     onClose: () => void
     storeId: number
+    initialSearchTerm?: string
 }
+
+// --- ESTILOS DO DESIGN SYSTEM (Dark Glassmorphism) ---
+const modalOverlayStyle = "fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300"
+const modalContentStyle = "bg-slate-950 border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200"
+const inputStyle = "w-full pl-11 pr-4 py-3 rounded-xl border border-white/10 bg-black/20 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 text-sm font-medium transition-all"
+const labelStyle = "block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider pl-1"
 
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-export default function StockMovementModal({ isOpen, onClose, storeId }: Props) {
+export default function StockMovementModal({ isOpen, onClose, storeId, initialSearchTerm }: Props) {
     const [step, setStep] = useState<'search' | 'form'>('search')
     const [query, setQuery] = useState('')
     const [results, setResults] = useState<ProdutoExpressResult[]>([])
+    const [isSearching, setIsSearching] = useState(false)
     const [selectedProduct, setSelectedProduct] = useState<ProdutoExpressResult | null>(null)
+    const searchInputRef = useRef<HTMLInputElement>(null)
 
-    const [tipo, setTipo] = useState<'Entrada' | 'Saida' | 'Perda' | 'Ajuste' | 'Brinde'>('Saida')
+    // Form States
     const [quantidade, setQuantidade] = useState(1)
+    const [tipo, setTipo] = useState<'Entrada' | 'Saida' | 'Perda' | 'Brinde' | 'Ajuste'>('Entrada')
     const [motivo, setMotivo] = useState('')
+    const [isSaving, setIsSaving] = useState(false)
 
-    // --- NOVOS ESTADOS PARA O FLUXO 2 ---
+    // Novos Campos
     const [relatedVendaId, setRelatedVendaId] = useState('')
+
+    // Sobras de Lentes
     const [gerouSobra, setGerouSobra] = useState(false)
-    const [sobraDiametro, setSobraDiametro] = useState('')
-    const [sobraOlho, setSobraOlho] = useState('OD')
+    const [sobraOlho, setSobraOlho] = useState<'OD' | 'OE'>('OD')
     const [sobraEsferico, setSobraEsferico] = useState('')
     const [sobraCilindrico, setSobraCilindrico] = useState('')
+    const [sobraDiametro, setSobraDiametro] = useState('')
 
-    // --- NOVOS ESTADOS PARA LENTES (VARIANTES) ---
-    const [variants, setVariants] = useState<LensGridItem[]>([])
+    // Variações (Grade)
+    const [variants, setVariants] = useState<any[]>([])
     const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null)
-    // ------------------------------------
-
-    const [isSearching, startSearch] = useTransition()
-    const [isSaving, startSave] = useTransition()
-
-    const [isAuthOpen, setIsAuthOpen] = useState(false)
-
-    const searchInputRef = useRef<HTMLInputElement>(null)
+    const [isLoadingVariants, setIsLoadingVariants] = useState(false)
 
     // Reset ao abrir
     useEffect(() => {
         if (isOpen) {
             setStep('search')
-            setQuery('')
+            setQuery(initialSearchTerm || '')
             setResults([])
             setSelectedProduct(null)
             setQuantidade(1)
@@ -69,306 +70,374 @@ export default function StockMovementModal({ isOpen, onClose, storeId }: Props) 
             setVariants([])
             setSelectedVariantId(null)
 
-            setTimeout(() => searchInputRef.current?.focus(), 100)
+            // Se tiver termo inicial, já dispara a busca
+            if (initialSearchTerm && initialSearchTerm.length >= 3) {
+                performSearch(initialSearchTerm)
+            } else {
+                setTimeout(() => searchInputRef.current?.focus(), 100)
+            }
         }
-    }, [isOpen])
+    }, [isOpen, initialSearchTerm])
 
     // Lógica de Busca
     const performSearch = (searchTerm: string) => {
-        if (searchTerm.length < 3) return
-        startSearch(async () => {
-            const res = await buscarProdutoExpress(searchTerm, storeId)
-            setResults(res)
-        })
+        if (searchTerm.length < 2) return
+        setIsSearching(true)
+        buscarProdutoExpress(searchTerm, storeId)
+            .then(data => {
+                setResults(data)
+                setIsSearching(false)
+            })
+            .catch(() => setIsSearching(false))
     }
 
-    // Busca Automática (Debounce)
-    useEffect(() => {
-        if (step !== 'search' || query.length < 3) {
-            if (query.length === 0) setResults([]);
-            return;
+    const handleSearchInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value
+        setQuery(val)
+        if (val.length >= 3) {
+            performSearch(val)
+        } else {
+            setResults([])
         }
-
-        const timer = setTimeout(() => {
-            performSearch(query);
-        }, 500);
-
-        return () => clearTimeout(timer);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [query, step, storeId]);
-
-    const handleSearchSubmit = (e: React.FormEvent) => {
-        e.preventDefault()
-        performSearch(query)
     }
 
-    const handleSelect = async (prod: ProdutoExpressResult) => {
+    // Selecionar Produto
+    const handleSelectProduct = async (prod: ProdutoExpressResult) => {
         setSelectedProduct(prod)
 
-        // Se for lente (tem_grade), busca as variantes
         if (prod.tem_grade) {
-            const res = await getLensGrid(prod.id, storeId)
-            if (res.success && res.data) {
-                setVariants(res.data)
-            }
+            setIsLoadingVariants(true)
+            getProductVariants(prod.id)
+                .then(vt => {
+                    setVariants(vt || [])
+                    setStep('form')
+                })
+                .finally(() => setIsLoadingVariants(false))
+        } else {
+            setStep('form')
         }
 
-        setStep('form')
     }
 
-    const handlePreSubmit = () => {
+    const handleSave = async () => {
         if (!selectedProduct) return
-        if (selectedProduct.tem_grade && !selectedVariantId) return alert("Selecione o grau (variante) da lente.")
-        if (!motivo.trim()) return alert("O motivo é obrigatório.")
-        if (quantidade <= 0) return alert("Quantidade inválida.")
+        setIsSaving(true)
 
-        setIsAuthOpen(true)
-    }
-
-    const handleAuthSuccess = (employee: { id: number, full_name: string }) => {
-        setIsAuthOpen(false)
+        // Se tem grade e não selecionou variante, erro
+        if (selectedProduct.tem_grade && !selectedVariantId) {
+            alert('Selecione a variação (grau/cor) do produto.')
+            setIsSaving(false)
+            return
+        }
 
         const formData = new FormData()
         formData.append('store_id', storeId.toString())
-        formData.append('employee_id', employee.id.toString())
-        formData.append('product_id', selectedProduct!.id.toString())
+        formData.append('product_id', selectedProduct.id.toString())
+        formData.append('product_name', selectedProduct.descricao)
         if (selectedVariantId) formData.append('variant_id', selectedVariantId.toString())
-        formData.append('tipo', tipo)
         formData.append('quantidade', quantidade.toString())
-        formData.append('motivo', motivo)
+        formData.append('tipo', tipo)
+        formData.append('motivo', motivo || (tipo === 'Entrada' ? 'Entrada Avulsa' : typeLabels[tipo]))
 
-        // --- NOVOS DADOS ---
+        // Novos campos opcionais
         if (relatedVendaId) formData.append('related_venda_id', relatedVendaId)
 
-        if (tipo === 'Perda' && gerouSobra) {
-            formData.append('sobra_detalhes', JSON.stringify({
-                diametro: parseFloat(sobraDiametro),
+        if (gerouSobra) {
+            const sobraObj = {
                 olho: sobraOlho,
-                esferico: sobraEsferico ? parseFloat(sobraEsferico) : null,
-                cilindrico: sobraCilindrico ? parseFloat(sobraCilindrico) : null
-            }))
-        }
-        // -------------------
-
-        startSave(async () => {
-            const res = await registrarMovimentacao({ success: false, message: '' }, formData)
-            if (res.success) {
-                alert("Movimentação registrada!")
-                onClose()
-            } else {
-                alert("Erro: " + res.message)
+                esferico: sobraEsferico ? Number(sobraEsferico) : null,
+                cilindrico: sobraCilindrico ? Number(sobraCilindrico) : null,
+                diametro: sobraDiametro ? Number(sobraDiametro) : null
             }
-        })
+            formData.append('sobra_detalhes', JSON.stringify(sobraObj))
+        }
+
+        // Mock prevState for server action call from client
+        const res = await registrarMovimentacao({ success: false, message: '' }, formData)
+
+        if (res.success) {
+            onClose()
+        } else {
+            alert('Erro: ' + res.message)
+        }
+        setIsSaving(false)
+    }
+
+    const typeLabels: Record<string, string> = {
+        'Entrada': 'Entrada (Compra/Retorno)',
+        'Saida': 'Saída (Venda/Baixa)',
+        'Perda': 'Perda / Quebra',
+        'Brinde': 'Brinde / Cortesia',
+        'Ajuste': 'Ajuste de Inventário'
     }
 
     if (!isOpen) return null
 
-    const isEntrada = tipo === 'Entrada' || tipo === 'Ajuste';
-
-    // --- ESTILOS PADRONIZADOS (ALTO CONTRASTE) ---
-    // Borda Slate-300 visível mesmo sem foco
-    const inputClass = "w-full rounded-lg border border-slate-300 bg-white shadow-sm text-slate-800 font-bold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all";
-
     return (
-        <>
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className={modalOverlayStyle}>
+            <div className={modalContentStyle}>
 
-                    {/* Header */}
-                    <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                        <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                            <ArrowLeftRightIcon tipo={tipo} />
-                            {step === 'search' ? 'Buscar Produto' : 'Registrar Movimentação'}
-                        </h3>
-                        <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-full text-gray-500"><X className="h-5 w-5" /></button>
-                    </div>
-
-                    <div className="p-6 overflow-y-auto">
-                        {step === 'search' && (
-                            <div className="space-y-4">
-                                <form onSubmit={handleSearchSubmit} className="relative">
-                                    <input
-                                        ref={searchInputRef}
-                                        value={query}
-                                        onChange={e => setQuery(e.target.value)}
-                                        placeholder="Digite 3 letras ou bipe o código..."
-                                        className={`${inputClass} h-12 pl-10 pr-4 text-lg`}
-                                    />
-                                    <Search className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
-                                    {isSearching && <Loader2 className="absolute right-3 top-3.5 h-5 w-5 text-blue-500 animate-spin" />}
-                                </form>
-                                <div className="space-y-2">
-                                    {results.map(prod => (
-                                        <button key={prod.id} onClick={() => handleSelect(prod)} className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition-all flex justify-between items-center group">
-                                            <div>
-                                                <p className="font-bold text-gray-800 text-sm">{prod.descricao}</p>
-                                                <p className="text-xs text-gray-500 font-mono mt-0.5">Est: {prod.estoque}</p>
-                                            </div>
-                                            <span className="block font-bold text-green-600 text-sm">{formatCurrency(prod.preco)}</span>
-                                        </button>
-                                    ))}
-                                    {results.length === 0 && query.length >= 3 && !isSearching && (
-                                        <p className="text-center text-gray-400 text-sm py-4">Nenhum produto encontrado.</p>
-                                    )}
-                                </div>
-                            </div>
+                {/* Header */}
+                <div className="flex items-center justify-between p-5 border-b border-white/5 bg-white/[0.02]">
+                    <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+                        {step === 'search' ? (
+                            <>
+                                <ArrowDownCircle className="h-5 w-5 text-amber-500" />
+                                Buscar Produto
+                            </>
+                        ) : (
+                            <>
+                                <ArrowRightLeft className="h-5 w-5 text-amber-500" />
+                                Registrar Movimentação
+                            </>
                         )}
+                    </h2>
+                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white">
+                        <X className="h-5 w-5" />
+                    </button>
+                </div>
 
-                        {step === 'form' && selectedProduct && (
-                            <div className="space-y-5">
-                                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex items-start gap-3">
-                                    <div className="p-2 bg-white rounded-lg shadow-sm"><Package className="h-6 w-6 text-blue-600" /></div>
-                                    <div>
-                                        <p className="font-bold text-blue-900 text-sm">{selectedProduct.descricao}</p>
-                                        <p className="text-xs text-blue-700 mt-1">Estoque: <strong>{selectedProduct.estoque}</strong></p>
+                {/* Content */}
+                <div className="p-6 overflow-y-auto custom-scrollbar flex-1 min-h-[300px]">
+
+                    {step === 'search' && (
+                        <div className="space-y-6">
+                            <div className="relative">
+                                <Search className="absolute left-4 top-3.5 h-5 w-5 text-slate-500" />
+                                <input
+                                    ref={searchInputRef}
+                                    type="text"
+                                    value={query}
+                                    onChange={handleSearchInput}
+                                    placeholder="Nome, código de barras ou referência..."
+                                    className={inputStyle}
+                                    autoFocus
+                                />
+                                {isSearching && (
+                                    <div className="absolute right-4 top-3.5">
+                                        <Loader2 className="h-5 w-5 animate-spin text-amber-500" />
                                     </div>
-                                </div>
+                                )}
+                            </div>
 
-                                {/* SELEÇÃO DE VARIANTE (SE FOR LENTE) */}
-                                {selectedProduct.tem_grade && variants.length > 0 && (
-                                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Selecione o Grau (Variante)</label>
-                                        <select
-                                            value={selectedVariantId || ''}
-                                            onChange={e => setSelectedVariantId(Number(e.target.value))}
-                                            className={`${inputClass} h-10 text-sm`}
-                                        >
-                                            <option value="">-- Selecione --</option>
-                                            {variants.map(v => (
-                                                <option key={v.id} value={v.id}>
-                                                    {v.nome_variante} (Est: {v.estoque_atual})
-                                                </option>
-                                            ))}
-                                        </select>
+                            <div className="space-y-2">
+                                {results.length === 0 && query.length > 2 && !isSearching && (
+                                    <div className="text-center py-10 text-slate-500">
+                                        <PackageX className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                                        <p>Nenhum produto encontrado.</p>
                                     </div>
                                 )}
 
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Tipo de Movimento</label>
-                                        <select value={tipo} onChange={e => setTipo(e.target.value as any)} className={`${inputClass} h-10`}>
-                                            <option value="Saida">Saída (Baixa)</option>
-                                            <option value="Brinde">Brinde / Cortesia</option>
-                                            <option value="Perda">Perda / Quebra</option>
-                                            <option value="Ajuste">Ajuste</option>
-                                            <option value="Entrada">Entrada</option>
+                                {results.map(prod => (
+                                    <button
+                                        key={prod.id}
+                                        onClick={() => handleSelectProduct(prod)}
+                                        className="w-full text-left p-4 rounded-xl border border-white/5 bg-slate-900/50 hover:bg-amber-500/10 hover:border-amber-500/30 transition-all group"
+                                    >
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <h4 className="font-bold text-slate-200 group-hover:text-amber-400 transition-colors">{prod.descricao}</h4>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                                                        {prod.tipo_origem === 'armacoes' ? 'ARMAÇÃO' : 'PRODUTO GERAL'}
+                                                    </span>
+                                                    {prod.codigo_barras && (
+                                                        <span className="text-xs text-slate-500 flex items-center gap-1">
+                                                            <div className="w-px h-3 bg-slate-700 mx-1"></div>
+                                                            EAN: {prod.codigo_barras}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-xs text-slate-500 mb-1">Estoque Atual</div>
+                                                <span className={`text-sm font-bold px-2 py-1 rounded-lg ${prod.estoque > 0 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+                                                    {prod.estoque} un
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {step === 'form' && selectedProduct && (
+                        <div className="space-y-5 animate-in slide-in-from-right-5 duration-200">
+
+                            {/* Produto Selecionado Card */}
+                            <div className="p-4 rounded-xl bg-slate-900/50 border border-white/5 flex justify-between items-center">
+                                <div>
+                                    <p className="text-xs text-slate-500 mb-1">Produto Selecionado</p>
+                                    <h3 className="font-bold text-slate-200">{selectedProduct.descricao}</h3>
+                                </div>
+                                <button onClick={() => { setStep('search'); setSelectedProduct(null) }} className="text-xs text-amber-500 hover:text-amber-400 font-bold hover:underline">
+                                    Trocar
+                                </button>
+                            </div>
+
+                            {/* Seletor de Variante (Grade) */}
+                            {selectedProduct.tem_grade && (
+                                <div className="space-y-2 p-4 rounded-xl bg-blue-950/20 border border-blue-500/20">
+                                    <h4 className="text-sm font-bold text-blue-400 mb-2 flex items-center gap-2">
+                                        <PackageOpen className="h-4 w-4" /> Selecione a Variação *
+                                    </h4>
+
+                                    {isLoadingVariants ? (
+                                        <div className="py-4 flex justify-center"><Loader2 className="h-5 w-5 animate-spin text-blue-500" /></div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 gap-2 max-h-[150px] overflow-y-auto custom-scrollbar pr-1">
+                                            {variants.map(v => (
+                                                <button
+                                                    key={v.id}
+                                                    onClick={() => setSelectedVariantId(v.id)}
+                                                    className={`p-3 rounded-lg border text-left transition-all text-xs flex justify-between items-center ${selectedVariantId === v.id
+                                                        ? 'bg-blue-500/20 border-blue-500 text-blue-100 ring-1 ring-blue-500'
+                                                        : 'bg-slate-900/50 border-white/5 text-slate-400 hover:bg-slate-800'
+                                                        }`}
+                                                >
+                                                    <span className="font-medium">
+                                                        {v.olho ? `Olho: ${v.olho} | ` : ''}
+                                                        Esf: {v.esferico} | Cil: {v.cilindrico} | Eixo: {v.eixo}°
+                                                        {v.adicao ? ` | Ad: ${v.adicao}` : ''}
+                                                    </span>
+                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${v.estoque > 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                                                        {v.estoque} un
+                                                    </span>
+                                                </button>
+                                            ))}
+                                            {variants.length === 0 && <p className="text-xs text-slate-500 italic">Nenhuma variação encontrada.</p>}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className={labelStyle}>Tipo de Movimento</label>
+                                    <div className="relative">
+                                        <select
+                                            value={tipo}
+                                            onChange={(e) => setTipo(e.target.value as any)}
+                                            className={`${inputStyle} pl-4 appearance-none cursor-pointer`}
+                                        >
+                                            {Object.entries(typeLabels).map(([key, label]) => (
+                                                <option key={key} value={key} className="bg-slate-900 text-slate-200">{label}</option>
+                                            ))}
                                         </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Quantidade</label>
-                                        <input type="number" min="1" value={quantidade} onChange={e => setQuantidade(parseInt(e.target.value))} className={`${inputClass} h-10 text-center text-lg`} />
+                                        <div className="absolute right-3 top-3.5 pointer-events-none text-slate-500">
+                                            <ArrowDownUp className="h-4 w-4" />
+                                        </div>
                                     </div>
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Motivo *</label>
-                                    <textarea value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Ex: Brinde para o cliente X por fidelidade..." className={`${inputClass} h-24 p-3 resize-none text-sm font-normal`} />
+                                    <label className={labelStyle}>
+                                        Quantidade
+                                        {/* Linha fantasma para alinhamento com "Tipo de Movimento" */}
+                                        <span className="block invisible h-[15px]" aria-hidden="true">_</span>
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={quantidade}
+                                        onChange={(e) => setQuantidade(Number(e.target.value))}
+                                        className={inputStyle}
+                                    />
                                 </div>
+                            </div>
 
-                                {/* --- INICIO DOS CAMPOS DE PERDA/QUEBRA --- */}
-                                {tipo === 'Perda' && (
-                                    <div className="bg-rose-50 p-4 rounded-xl border border-rose-200 space-y-3 animate-in slide-in-from-top-2">
+                            <div>
+                                <label className={labelStyle}>Motivo / Observação</label>
+                                <textarea
+                                    value={motivo}
+                                    onChange={(e) => setMotivo(e.target.value)}
+                                    placeholder={tipo === 'Entrada' ? "Entrada Avulsa" : "Descreva o motivo..."}
+                                    className={`${inputStyle} min-h-[80px] resize-none`}
+                                />
+                            </div>
+
+                            {/* CAMPOS AVANÇADOS (OPCIONAIS) */}
+                            <div className="pt-2 border-t border-white/5">
+                                <details className="group">
+                                    <summary className="text-[10px] uppercase font-bold text-slate-500 cursor-pointer hover:text-amber-500 flex items-center gap-1 select-none">
+                                        Opções Avançadas <ArrowDownCircle className="h-3 w-3 group-open:rotate-180 transition-transform" />
+                                    </summary>
+
+                                    <div className="mt-3 space-y-4 p-3 bg-black/20 rounded-xl border border-white/5">
+                                        {/* Vínculo com Venda */}
                                         <div>
-                                            <label className="block text-xs font-bold text-rose-800 uppercase mb-1">Vincular à Venda (Opcional)</label>
-                                            <input
-                                                type="number"
-                                                placeholder="ID da Venda ou OS"
-                                                value={relatedVendaId}
-                                                onChange={e => setRelatedVendaId(e.target.value)}
-                                                className={`${inputClass} h-9 border-rose-300 focus:ring-rose-500 text-sm`}
-                                            />
-                                            <p className="text-[10px] text-rose-600 mt-1">Isso aloca o prejuízo ao relatório da venda.</p>
+                                            <label className={labelStyle}>Vincular à Venda ID (Opcional)</label>
+                                            <div className="relative">
+                                                <Receipt className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
+                                                <input
+                                                    type="number"
+                                                    value={relatedVendaId}
+                                                    onChange={e => setRelatedVendaId(e.target.value)}
+                                                    placeholder="Ex: 1024"
+                                                    className={`${inputStyle} pl-9`}
+                                                />
+                                            </div>
+                                            <p className="text-[10px] text-slate-600 mt-1">Útil para baixas ou retornos vinculados a uma venda específica.</p>
                                         </div>
 
-                                        <div className="flex items-center gap-2 pt-2 border-t border-rose-200">
-                                            <input
-                                                type="checkbox"
-                                                id="chk_sobra"
-                                                checked={gerouSobra}
-                                                onChange={e => setGerouSobra(e.target.checked)}
-                                                className="rounded text-rose-600 focus:ring-rose-500 w-5 h-5 border-rose-300"
-                                            />
-                                            <label htmlFor="chk_sobra" className="text-sm font-bold text-rose-900 select-none cursor-pointer">
-                                                Gerou sobra aproveitável?
-                                            </label>
-                                        </div>
+                                        {/* Registro de Sobra (Apenas para Lentes e se for Entrada/Perda/Ajuste) */}
+                                        {((selectedProduct.tipo_origem === 'produtos_gerais' && selectedProduct.descricao.toLowerCase().includes('lente')) || tipo !== 'Saida') && (
+                                            <div className="pt-2 border-t border-white/5 mt-2">
+                                                <label className="flex items-center gap-2 cursor-pointer mb-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={gerouSobra}
+                                                        onChange={e => setGerouSobra(e.target.checked)}
+                                                        className="rounded border-slate-600 bg-slate-800 text-amber-600 focus:ring-amber-500/50"
+                                                    />
+                                                    <span className="text-xs font-bold text-slate-300">Registrar Sobra de Lente (Bloco)</span>
+                                                </label>
 
-                                        {gerouSobra && (
-                                            <div className="grid grid-cols-2 gap-3 pl-6 animate-in fade-in">
-                                                <div>
-                                                    <label className="block text-[10px] font-bold text-rose-800 uppercase mb-1">Diâmetro Útil</label>
-                                                    <input type="number" value={sobraDiametro} onChange={e => setSobraDiametro(e.target.value)} className={`${inputClass} h-9 border-rose-300 text-sm`} placeholder="Ex: 65" />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-[10px] font-bold text-rose-800 uppercase mb-1">Olho</label>
-                                                    <select value={sobraOlho} onChange={e => setSobraOlho(e.target.value)} className={`${inputClass} h-9 border-rose-300 text-sm`}>
-                                                        <option value="OD">OD</option>
-                                                        <option value="OE">OE</option>
-                                                    </select>
-                                                </div>
-
-                                                {/* SE NÃO TIVER GRADE (OU NÃO SELECIONOU VARIANTE), PEDE GRAU MANUAL */}
-                                                {(!selectedProduct.tem_grade || !selectedVariantId) && (
-                                                    <>
+                                                {gerouSobra && (
+                                                    <div className="grid grid-cols-2 gap-2 animate-in slide-in-from-top-2">
                                                         <div>
-                                                            <label className="block text-[10px] font-bold text-rose-800 uppercase mb-1">Esférico</label>
-                                                            <input type="number" step="0.25" value={sobraEsferico} onChange={e => setSobraEsferico(e.target.value)} className={`${inputClass} h-9 border-rose-300 text-sm`} placeholder="-2.00" />
+                                                            <label className={labelStyle}>Olho</label>
+                                                            <select value={sobraOlho} onChange={e => setSobraOlho(e.target.value as any)} className={inputStyle}>
+                                                                <option value="OD">OD (Direito)</option>
+                                                                <option value="OE">OE (Esquerdo)</option>
+                                                            </select>
                                                         </div>
                                                         <div>
-                                                            <label className="block text-[10px] font-bold text-rose-800 uppercase mb-1">Cilíndrico</label>
-                                                            <input type="number" step="0.25" value={sobraCilindrico} onChange={e => setSobraCilindrico(e.target.value)} className={`${inputClass} h-9 border-rose-300 text-sm`} placeholder="-0.50" />
+                                                            <label className={labelStyle}>Diâmetro</label>
+                                                            <input type="text" value={sobraDiametro} onChange={e => setSobraDiametro(e.target.value)} placeholder="Ex: 70mm" className={inputStyle} />
                                                         </div>
-                                                    </>
+                                                        <div>
+                                                            <label className={labelStyle}>Esférico</label>
+                                                            <input type="text" value={sobraEsferico} onChange={e => setSobraEsferico(e.target.value)} placeholder="-2.00" className={inputStyle} />
+                                                        </div>
+                                                        <div>
+                                                            <label className={labelStyle}>Cilíndrico</label>
+                                                            <input type="text" value={sobraCilindrico} onChange={e => setSobraCilindrico(e.target.value)} placeholder="-1.00" className={inputStyle} />
+                                                        </div>
+                                                    </div>
                                                 )}
                                             </div>
                                         )}
                                     </div>
-                                )}
-                                {/* --- FIM DOS CAMPOS DE PERDA/QUEBRA --- */}
-
-                                {(tipo === 'Saida' || tipo === 'Perda' || tipo === 'Brinde') && (selectedProduct.estoque - quantidade < 0) && (
-                                    <div className="flex items-center gap-2 text-xs font-bold text-amber-700 bg-amber-50 p-3 rounded-lg border border-amber-200">
-                                        <AlertTriangle className="h-4 w-4" />
-                                        Atenção: Estoque ficará negativo ({selectedProduct.estoque - quantidade}).
-                                    </div>
-                                )}
-
-                                <div className="flex gap-3 pt-2">
-                                    <button onClick={() => setStep('search')} className="flex-1 py-3 rounded-xl border border-gray-300 font-bold text-gray-600 hover:bg-gray-100 bg-white">Voltar</button>
-                                    <button
-                                        onClick={handlePreSubmit}
-                                        disabled={isSaving}
-                                        className={`flex-1 py-3 rounded-xl text-white font-bold shadow-md flex items-center justify-center gap-2
-                                ${isEntrada ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
-                            `}
-                                    >
-                                        {isSaving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Lock className="h-5 w-5" />}
-                                        Autorizar & Salvar
-                                    </button>
-                                </div>
+                                </details>
                             </div>
-                        )}
-                    </div>
+
+                            <button
+                                onClick={handleSave}
+                                disabled={isSaving || (selectedProduct.tem_grade && !selectedVariantId)}
+                                className="w-full h-12 rounded-xl font-bold transition-all active:scale-[0.98]
+                                    bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-100 border border-emerald-500/50 
+                                    shadow-lg shadow-emerald-900/10 backdrop-blur-md flex items-center justify-center gap-4 group relative overflow-hidden"
+                            >
+                                <div className="absolute inset-0 bg-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                                {isSaving ? <Loader2 className="h-5 w-5 animate-spin relative z-10" /> : <Save className="h-5 w-5 group-hover:scale-110 transition-transform relative z-10" />}
+                                <span className="relative z-10">CONFIRMAR MOVIMENTAÇÃO</span>
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
-
-            {/* Modal de Autenticação */}
-            {isAuthOpen && (
-                <EmployeeAuthModal
-                    storeId={storeId}
-                    isOpen={isAuthOpen}
-                    onClose={() => setIsAuthOpen(false)}
-                    onSuccess={handleAuthSuccess}
-                    title="Autorizar Movimentação"
-                    description="Insira seu PIN para confirmar a alteração de estoque."
-                />
-            )}
-        </>
+        </div>
     )
-}
-
-function ArrowLeftRightIcon({ tipo }: { tipo: string }) {
-    if (tipo === 'Entrada') return <ArrowUpCircle className="h-5 w-5 text-green-600" />
-    if (tipo === 'Ajuste') return <ArrowRight className="h-5 w-5 text-blue-600" />
-    return <ArrowDownCircle className="h-5 w-5 text-red-600" />
 }

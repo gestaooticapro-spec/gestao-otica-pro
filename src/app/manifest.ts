@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: 'Ótica Pro',
     description: 'Sistema de Gestão para Óticas',
     start_url: '/',
-    display: 'standalone',
-    background_color: '#f3f4f6',
+    display: 'fullscreen',
+    background_color: '#020617',
     theme_color: '#2563eb',
     orientation: 'portrait',
     icons: [

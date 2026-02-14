@@ -4,17 +4,22 @@ import { useState, useEffect, useTransition } from 'react';
 import {
     Users, Plus, Save, Power, Loader2, Lock, User,
     ShieldCheck, Briefcase, Wrench, BadgeCheck, Percent, CheckCircle2,
-    Store, MapPin, Phone, QrCode
+    Store, MapPin, Phone, QrCode, ArrowLeftToLine
 } from 'lucide-react';
 import { getEmployees, saveEmployee, toggleEmployeeStatus } from '@/lib/actions/employee.actions';
 import { getStoreProfile, updateStoreProfile } from '@/lib/actions/store.actions';
 import { Database } from '@/lib/database.types';
+import { useRouter } from 'next/navigation';
+import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 
 type Employee = Database['public']['Tables']['employees']['Row'];
 
-const labelStyle = "block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider";
-const inputStyle = "block w-full rounded-md border border-slate-300 bg-white shadow-sm text-slate-900 h-9 text-sm px-3 focus:ring-2 focus:ring-violet-500 focus:border-violet-500 font-bold placeholder:font-normal placeholder:text-slate-400 disabled:bg-slate-100 disabled:text-slate-500 transition-all";
-const cardStyle = "bg-white p-5 rounded-xl shadow-sm border border-slate-200 mb-4 relative overflow-hidden";
+// ═══════════════════════════════════════════════
+// 🎨 DESIGN SYSTEM: Dark Glassmorphism + Indigo
+// ═══════════════════════════════════════════════
+const labelStyle = "block text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-wider";
+const inputStyle = "block w-full rounded-lg border border-white/10 bg-black/20 shadow-inner text-slate-200 h-9 text-sm px-3 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 font-bold placeholder:font-normal placeholder:text-slate-500 disabled:bg-black/10 disabled:text-slate-500 transition-all outline-none backdrop-blur-sm";
+const cardStyle = "bg-white/5 backdrop-blur-xl border border-white/10 p-5 rounded-xl shadow-xl mb-4 relative overflow-hidden";
 
 // --- SUB-COMPONENTE: FORMULÁRIO DA LOJA ---
 function StoreDataForm({ storeId }: { storeId: number }) {
@@ -37,15 +42,17 @@ function StoreDataForm({ storeId }: { storeId: number }) {
         })
     }
 
-    if (loading) return <div className="p-10 text-center"><Loader2 className="animate-spin h-8 w-8 text-slate-300 mx-auto" /></div>
+    if (loading) return <div className="p-10 text-center"><Loader2 className="animate-spin h-8 w-8 text-indigo-400 mx-auto" /></div>
 
     return (
         <form action={handleSave} className="max-w-4xl mx-auto space-y-6 animate-in fade-in">
             <input type="hidden" name="id" value={storeId} />
 
+            {/* IDENTIDADE & FISCAL */}
             <div className={cardStyle}>
-                <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2 border-b border-slate-100 pb-2">
-                    <Store className="h-4 w-4 text-blue-500" /> Identidade & Fiscal
+                <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                <h3 className="text-sm font-bold text-indigo-300 mb-4 flex items-center gap-2 border-b border-white/10 pb-2">
+                    <Store className="h-4 w-4 text-indigo-400" /> Identidade & Fiscal
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
                     <div className="col-span-2 md:col-span-1">
@@ -67,18 +74,20 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                 </div>
             </div>
 
+            {/* CONTATO */}
             <div className={cardStyle}>
-                <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2 border-b border-slate-100 pb-2">
-                    <Phone className="h-4 w-4 text-green-500" /> Contato
+                <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
+                <h3 className="text-sm font-bold text-emerald-300 mb-4 flex items-center gap-2 border-b border-white/10 pb-2">
+                    <Phone className="h-4 w-4 text-emerald-400" /> Contato
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label className={labelStyle}>WhatsApp da Loja (Link Rastreio)</label>
                         <div className="relative">
-                            <span className="absolute left-3 top-2.5 text-green-600 font-bold text-xs">WA</span>
-                            <input name="whatsapp" defaultValue={data.whatsapp} className={`${inputStyle} pl-10 border-green-200 focus:ring-green-500`} placeholder="(00) 90000-0000" />
+                            <span className="absolute left-3 top-2.5 text-emerald-400 font-bold text-xs">WA</span>
+                            <input name="whatsapp" defaultValue={data.whatsapp} className={`${inputStyle} pl-10 border-emerald-500/20 focus:ring-emerald-500/50`} placeholder="(00) 90000-0000" />
                         </div>
-                        <p className="text-[9px] text-slate-400 mt-1">Este número será usado no botão "Falar com Atendente" do rastreio.</p>
+                        <p className="text-[9px] text-slate-500 mt-1">Este número será usado no botão &quot;Falar com Atendente&quot; do rastreio.</p>
                     </div>
                     <div>
                         <label className={labelStyle}>Telefone Fixo</label>
@@ -95,9 +104,11 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                 </div>
             </div>
 
+            {/* ENDEREÇO */}
             <div className={cardStyle}>
-                <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2 border-b border-slate-100 pb-2">
-                    <MapPin className="h-4 w-4 text-rose-500" /> Endereço
+                <div className="absolute top-0 left-0 w-1 h-full bg-rose-500"></div>
+                <h3 className="text-sm font-bold text-rose-300 mb-4 flex items-center gap-2 border-b border-white/10 pb-2">
+                    <MapPin className="h-4 w-4 text-rose-400" /> Endereço
                 </h3>
                 <div className="grid grid-cols-6 gap-3">
                     <div className="col-span-2">
@@ -127,19 +138,20 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                 </div>
             </div>
 
-            {/* NOVA SEÇÃO: CONFIGURAÇÃO FISCAL (NFC-e) */}
+            {/* CONFIGURAÇÃO FISCAL (NFC-e) */}
             <div className={cardStyle}>
-                <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2 border-b border-slate-100 pb-2">
-                    <ShieldCheck className="h-4 w-4 text-orange-500" /> Configuração Fiscal (NFC-e)
+                <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
+                <h3 className="text-sm font-bold text-amber-300 mb-4 flex items-center gap-2 border-b border-white/10 pb-2">
+                    <ShieldCheck className="h-4 w-4 text-amber-400" /> Configuração Fiscal (NFC-e)
                 </h3>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* CSC - Código de Segurança do Contribuinte */}
                     <div className="space-y-4">
-                        <h4 className="text-xs font-bold text-slate-500 uppercase border-b border-slate-200 pb-1">CSC (Token)</h4>
+                        <h4 className="text-xs font-bold text-slate-400 uppercase border-b border-white/10 pb-1">CSC (Token)</h4>
 
-                        <div className="bg-orange-50 p-3 rounded-lg border border-orange-100 space-y-3">
-                            <p className="text-[10px] font-bold text-orange-800 uppercase mb-1">Homologação (Testes)</p>
+                        <div className="bg-amber-500/10 p-3 rounded-lg border border-amber-500/20 space-y-3">
+                            <p className="text-[10px] font-bold text-amber-300 uppercase mb-1">Homologação (Testes)</p>
                             <div className="grid grid-cols-3 gap-2">
                                 <div className="col-span-1">
                                     <label className={labelStyle}>ID Token</label>
@@ -152,8 +164,8 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                             </div>
                         </div>
 
-                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
-                            <p className="text-[10px] font-bold text-slate-600 uppercase mb-1">Produção (Valendo)</p>
+                        <div className="bg-white/5 p-3 rounded-lg border border-white/10 space-y-3">
+                            <p className="text-[10px] font-bold text-slate-300 uppercase mb-1">Produção (Valendo)</p>
                             <div className="grid grid-cols-3 gap-2">
                                 <div className="col-span-1">
                                     <label className={labelStyle}>ID Token</label>
@@ -169,18 +181,18 @@ function StoreDataForm({ storeId }: { storeId: number }) {
 
                     {/* Certificado Digital */}
                     <div className="space-y-4">
-                        <h4 className="text-xs font-bold text-slate-500 uppercase border-b border-slate-200 pb-1">Certificado Digital A1</h4>
+                        <h4 className="text-xs font-bold text-slate-400 uppercase border-b border-white/10 pb-1">Certificado Digital A1</h4>
 
-                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                        <div className="bg-sky-500/10 p-4 rounded-lg border border-sky-500/20">
                             <div className="flex items-start gap-3 mb-4">
-                                <div className="bg-white p-2 rounded-full shadow-sm">
-                                    <ShieldCheck className="h-6 w-6 text-blue-600" />
+                                <div className="bg-sky-500/20 p-2 rounded-full shadow-sm border border-sky-500/30">
+                                    <ShieldCheck className="h-6 w-6 text-sky-400" />
                                 </div>
                                 <div>
-                                    <p className="text-xs font-bold text-blue-900">Certificado Atual</p>
+                                    <p className="text-xs font-bold text-sky-300">Certificado Atual</p>
                                     {data.certificate_thumbprint ? (
                                         <div className="mt-1">
-                                            <p className="text-[10px] text-green-600 font-bold flex items-center gap-1">
+                                            <p className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
                                                 <CheckCircle2 className="h-3 w-3" /> Configurado
                                             </p>
                                             <p className="text-[10px] text-slate-500">
@@ -188,21 +200,21 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                                             </p>
                                         </div>
                                     ) : (
-                                        <p className="text-[10px] text-red-500 font-bold mt-1">Não configurado</p>
+                                        <p className="text-[10px] text-red-400 font-bold mt-1">Não configurado</p>
                                     )}
                                 </div>
                             </div>
 
-                            <div className="space-y-3 pt-3 border-t border-blue-200">
+                            <div className="space-y-3 pt-3 border-t border-sky-500/20">
                                 <div>
                                     <label className={labelStyle}>Arquivo .PFX ou .P12</label>
-                                    <input type="file" name="certificate_file" accept=".pfx,.p12" className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200 transition-all" />
+                                    <input type="file" name="certificate_file" accept=".pfx,.p12" className="block w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-sky-500/20 file:text-sky-300 hover:file:bg-sky-500/30 transition-all cursor-pointer" />
                                 </div>
                                 <div>
                                     <label className={labelStyle}>Senha do Certificado</label>
                                     <input name="certificate_password" type="password" className={inputStyle} placeholder="Senha do arquivo" />
                                 </div>
-                                <p className="text-[9px] text-blue-600/70 leading-tight">
+                                <p className="text-[9px] text-sky-400/60 leading-tight">
                                     O certificado será enviado diretamente para a Nuvem Fiscal e não será salvo em nosso banco de dados por segurança.
                                 </p>
                             </div>
@@ -211,23 +223,24 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                 </div>
             </div>
 
-            {/* NOVA SEÇÃO: PIX */}
+            {/* PIX */}
             <div className={cardStyle}>
-                <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2 border-b border-slate-100 pb-2">
-                    <QrCode className="h-4 w-4 text-purple-500" /> Configuração Pix
+                <div className="absolute top-0 left-0 w-1 h-full bg-cyan-500"></div>
+                <h3 className="text-sm font-bold text-cyan-300 mb-4 flex items-center gap-2 border-b border-white/10 pb-2">
+                    <QrCode className="h-4 w-4 text-cyan-400" /> Configuração Pix
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label className={labelStyle}>Chave Pix</label>
                         <input name="pix_key" defaultValue={data.pix_key} className={inputStyle} placeholder="CPF, CNPJ, Email ou Aleatória" />
-                        <p className="text-[9px] text-slate-400 mt-1">
+                        <p className="text-[9px] text-slate-500 mt-1">
                             A chave será usada para gerar o QR Code nos carnês.
                         </p>
                     </div>
                     <div>
                         <label className={labelStyle}>Cidade do Pix</label>
                         <input name="pix_city" defaultValue={data.pix_city} className={inputStyle} placeholder="Ex: Toledo" />
-                        <p className="text-[9px] text-slate-400 mt-1">
+                        <p className="text-[9px] text-slate-500 mt-1">
                             Cidade onde a conta bancária foi aberta (obrigatório pelo Banco Central).
                         </p>
                     </div>
@@ -235,7 +248,7 @@ function StoreDataForm({ storeId }: { storeId: number }) {
             </div>
 
             <div className="flex justify-end pb-10">
-                <button disabled={isSaving} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg flex items-center gap-2 disabled:opacity-50">
+                <button disabled={isSaving} className="bg-indigo-600 hover:bg-indigo-500 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-indigo-500/20 flex items-center gap-2 disabled:opacity-50 border border-white/10 transition-colors">
                     {isSaving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
                     SALVAR DADOS DA LOJA
                 </button>
@@ -346,47 +359,53 @@ function TeamManagement({ storeId }: { storeId: number }) {
     return (
         <div className="flex h-full gap-4">
             {/* ESQUERDA: LISTA */}
-            <div className="w-1/3 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="bg-gradient-to-br from-violet-600 to-purple-700 p-4 flex flex-col gap-3 shadow-md z-20">
-                    <div className="flex justify-between items-center text-white">
+            <div className="w-1/3 flex flex-col bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl shadow-xl overflow-hidden">
+                <div className="bg-gradient-to-br from-indigo-900/60 to-slate-900/60 p-4 flex flex-col gap-3 shadow-md z-20 border-b border-indigo-500/20 backdrop-blur-md">
+                    <div className="flex justify-between items-center text-indigo-200">
                         <h2 className="font-bold text-sm flex items-center gap-2 uppercase tracking-wide">
                             <ShieldCheck className="h-5 w-5" /> Equipe
                         </h2>
-                        <button onClick={handleNew} className="bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors">
+                        <button onClick={handleNew} className="bg-white/10 hover:bg-white/20 text-indigo-200 px-3 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors border border-white/10">
                             <Plus className="h-3 w-3" /> NOVO
                         </button>
                     </div>
                 </div>
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
                     {loadingList ? (
-                        <div className="flex justify-center p-8"><Loader2 className="animate-spin text-violet-500 h-6 w-6" /></div>
+                        <div className="flex justify-center p-8"><Loader2 className="animate-spin text-indigo-400 h-6 w-6" /></div>
                     ) : employees.length === 0 ? (
-                        <p className="text-center text-slate-400 text-xs p-6">Nenhum colaborador.</p>
+                        <p className="text-center text-slate-500 text-xs p-6">Nenhum colaborador.</p>
                     ) : (
                         employees.map(emp => (
                             <div
                                 key={emp.id}
-                                className={`p-4 border-b border-slate-100 cursor-pointer transition-colors flex justify-between items-center group
-                                    ${selectedId === emp.id ? 'bg-violet-50 border-l-4 border-l-violet-600' : 'hover:bg-slate-50 border-l-4 border-l-transparent'}
+                                className={`p-3 rounded-xl cursor-pointer transition-all flex justify-between items-center group relative overflow-hidden backdrop-blur-sm
+                                    ${selectedId === emp.id
+                                        ? 'bg-indigo-500/30 border border-indigo-500/40 shadow-lg shadow-indigo-500/10'
+                                        : 'bg-white/5 border border-white/5 hover:border-white/10 hover:bg-white/10'}
                                 `}
                                 onClick={() => handleSelect(emp)}
                             >
                                 <div>
                                     <div className="flex items-center gap-2">
-                                        <p className={`font-bold text-sm ${selectedId === emp.id ? 'text-violet-800' : 'text-slate-700'}`}>{emp.full_name}</p>
-                                        {!emp.is_active && <span className="text-[9px] bg-red-100 text-red-600 px-1.5 rounded font-bold uppercase">Inativo</span>}
+                                        <p className={`font-bold text-xs ${selectedId === emp.id ? 'text-indigo-200' : 'text-slate-300 group-hover:text-white'}`}>{emp.full_name}</p>
+                                        {!emp.is_active && <span className="text-[9px] bg-red-500/20 text-red-300 px-1.5 rounded font-bold uppercase border border-red-500/30">Inativo</span>}
                                     </div>
                                     <div className="flex items-center gap-2 mt-1">
                                         <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 uppercase tracking-wide
-                                            ${emp.role === 'gerente' ? 'bg-purple-100 text-purple-700 border border-purple-200' :
-                                                emp.role === 'tecnico' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
-                                                    'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                                            ${emp.role === 'gerente' ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' :
+                                                emp.role === 'tecnico' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
+                                                    'bg-white/10 text-slate-400 border border-white/10'}`}>
                                             <RoleIcon role={emp.role || 'vendedor'} />
                                             {emp.role || 'Vendedor'}
                                         </span>
                                     </div>
                                 </div>
-                                {selectedId === emp.id && <CheckCircle2 className="h-4 w-4 text-violet-500" />}
+                                {selectedId === emp.id && <CheckCircle2 className="h-4 w-4 text-indigo-400" />}
+
+                                {selectedId === emp.id && (
+                                    <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 to-transparent pointer-events-none" />
+                                )}
                             </div>
                         ))
                     )}
@@ -394,9 +413,9 @@ function TeamManagement({ storeId }: { storeId: number }) {
             </div>
 
             {/* DIREITA: FORMULÁRIO */}
-            <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
-                <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 shadow-sm shrink-0">
-                    <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <div className="flex-1 bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl shadow-xl flex flex-col overflow-hidden">
+                <div className="bg-slate-900/60 px-6 py-4 border-b border-white/10 shadow-sm shrink-0 backdrop-blur-md">
+                    <h2 className="text-lg font-bold text-slate-200 flex items-center gap-2">
                         {selectedId ? `Editando: ${formData.full_name}` : 'Novo Cadastro'}
                     </h2>
                 </div>
@@ -404,14 +423,15 @@ function TeamManagement({ storeId }: { storeId: number }) {
                     <form onSubmit={handleSubmit} className="space-y-6">
                         {/* SEÇÃO 1: ACESSO */}
                         <div className={cardStyle}>
-                            <h3 className="text-xs font-bold text-slate-400 uppercase mb-4 flex items-center gap-2">
+                            <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                            <h3 className="text-xs font-bold text-indigo-300 uppercase mb-4 flex items-center gap-2">
                                 <Lock className="h-4 w-4" /> Credenciais
                             </h3>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="col-span-2">
                                     <label className={labelStyle}>Nome Completo</label>
                                     <div className="relative">
-                                        <User className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                                        <User className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
                                         <input type="text" required value={formData.full_name} onChange={e => setFormData({ ...formData, full_name: e.target.value })} className={`${inputStyle} pl-9`} placeholder="Ex: Fábio Silva" disabled={isSaving} />
                                     </div>
                                 </div>
@@ -426,7 +446,7 @@ function TeamManagement({ storeId }: { storeId: number }) {
                                 <div>
                                     <label className={labelStyle}>PIN (4+ Dígitos)</label>
                                     <div className="relative">
-                                        <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                                        <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
                                         <input type="text" required value={formData.pin} onChange={e => setFormData({ ...formData, pin: e.target.value.replace(/\D/g, '') })} maxLength={6} className={`${inputStyle} pl-9 tracking-widest`} placeholder="****" disabled={isSaving} />
                                     </div>
                                 </div>
@@ -435,13 +455,13 @@ function TeamManagement({ storeId }: { storeId: number }) {
 
                         {/* SEÇÃO 2: COMISSÕES */}
                         <div className={cardStyle}>
-                            <div className="absolute top-0 left-0 w-1 h-full bg-green-500"></div>
-                            <h3 className="text-xs font-bold text-green-700 uppercase mb-4 flex items-center gap-2">
+                            <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
+                            <h3 className="text-xs font-bold text-emerald-300 uppercase mb-4 flex items-center gap-2">
                                 <Percent className="h-4 w-4" /> Comissões (%)
                             </h3>
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-                                <div className="col-span-full p-3 bg-green-50/50 rounded-lg border border-green-100">
-                                    <p className="text-[10px] font-bold text-green-800 uppercase mb-2">Vendas Próprias</p>
+                                <div className="col-span-full p-3 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+                                    <p className="text-[10px] font-bold text-emerald-300 uppercase mb-2">Vendas Próprias</p>
                                     <div className="flex gap-4">
                                         <div className="flex-1">
                                             <label className={labelStyle}>Garantida</label>
@@ -468,13 +488,13 @@ function TeamManagement({ storeId }: { storeId: number }) {
                             </div>
                         </div>
 
-                        <div className="flex justify-between items-center pt-4 border-t border-slate-100">
+                        <div className="flex justify-between items-center pt-4 border-t border-white/10">
                             {selectedId ? (
-                                <button type="button" onClick={() => { const emp = employees.find(e => e.id === selectedId); if (emp) handleToggleStatus(emp); }} disabled={isSaving} className="px-4 py-2 bg-white border border-slate-300 text-slate-600 hover:text-red-600 rounded-lg font-bold text-xs shadow-sm transition-colors flex items-center gap-2">
+                                <button type="button" onClick={() => { const emp = employees.find(e => e.id === selectedId); if (emp) handleToggleStatus(emp); }} disabled={isSaving} className="px-4 py-2 bg-white/5 border border-white/10 text-slate-400 hover:text-red-300 hover:bg-red-500/10 hover:border-red-500/30 rounded-lg font-bold text-xs shadow-sm transition-colors flex items-center gap-2">
                                     <Power className="h-4 w-4" /> {employees.find(e => e.id === selectedId)?.is_active ? 'BLOQUEAR' : 'DESBLOQUEAR'}
                                 </button>
                             ) : <div></div>}
-                            <button type="submit" disabled={isSaving} className="px-6 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg font-bold text-xs shadow-md transition-transform active:scale-95 flex items-center gap-2 disabled:opacity-50">
+                            <button type="submit" disabled={isSaving} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs shadow-lg shadow-indigo-500/20 transition-transform active:scale-95 flex items-center gap-2 disabled:opacity-50 border border-white/10">
                                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                                 SALVAR DADOS
                             </button>
@@ -489,26 +509,48 @@ function TeamManagement({ storeId }: { storeId: number }) {
 // --- COMPONENTE PRINCIPAL (COM ABAS) ---
 export default function ConfigInterface({ storeId }: { storeId: number }) {
     const [activeTab, setActiveTab] = useState<'loja' | 'equipe'>('loja')
+    const router = useRouter()
+    const preference = useBackgroundPreference()
 
     return (
-        <div className="flex flex-col h-full bg-slate-100 overflow-hidden">
+        <div className="relative flex flex-col h-[calc(100vh-64px)] bg-slate-950 overflow-hidden font-sans">
+
+            {/* BACKGROUND PREMIUM */}
+            <div className={`absolute inset-0 z-0 transition-opacity duration-1000 pointer-events-none ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
+                <img src="/dashboard.jpg" alt="" className="absolute inset-0 w-full h-full object-cover opacity-40 blur-[2px]" />
+                <div className="absolute inset-0 z-0 bg-gradient-to-b from-slate-950/50 via-slate-950/70 to-slate-950/95" />
+            </div>
+
             {/* Header de Abas */}
-            <div className="bg-white px-6 border-b border-slate-200 flex gap-6 shadow-sm shrink-0">
+            <div className="relative z-20 bg-slate-900/60 backdrop-blur-xl border-b border-white/10 px-6 flex items-center gap-6 shadow-lg shrink-0">
+                <button
+                    type="button"
+                    onClick={() => router.back()}
+                    className="py-3 text-xs font-bold text-slate-400 hover:text-white transition-colors flex items-center gap-1.5 mr-2"
+                >
+                    <ArrowLeftToLine className="h-4 w-4" /> Voltar
+                </button>
+
+                <div className="w-px h-8 bg-white/10"></div>
+
                 <button
                     onClick={() => setActiveTab('loja')}
-                    className={`py-4 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'loja' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                    className={`py-4 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'loja' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
                 >
                     <Store className="h-4 w-4" /> Dados da Loja
                 </button>
                 <button
                     onClick={() => setActiveTab('equipe')}
-                    className={`py-4 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'equipe' ? 'border-violet-600 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                    className={`py-4 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'equipe' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
                 >
                     <Users className="h-4 w-4" /> Equipe & Acesso
                 </button>
+
+                <div className="flex-1" />
+                <BackgroundToggle />
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+            <div className="relative z-10 flex-1 overflow-y-auto p-6 custom-scrollbar">
                 {activeTab === 'loja' ? (
                     <StoreDataForm storeId={storeId} />
                 ) : (

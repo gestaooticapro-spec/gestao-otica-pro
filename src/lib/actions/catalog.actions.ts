@@ -221,6 +221,18 @@ export async function saveArmacao(prevState: CatalogActionResult, formData: Form
 
     const payload = {
       tenant_id: profile.tenant_id,
+      store_id: profile.store_id,
+      nome: `${data.marca} ${data.modelo || ''}`.trim(),
+      marca: data.marca,
+      referencia: data.referencia,
+      codigo_barras: finalBarcode,
+      tipo_produto: 'Armacao',
+      categoria: 'Armação',
+      preco_custo: data.preco_custo,
+      preco_venda: data.preco_venda,
+      estoque_atual: data.quantidade_estoque,
+      detalhes: detalhes,
+      gerencia_estoque: true
     }
 
     if (id) {
@@ -507,7 +519,7 @@ export async function fetchCatalogItems(
     }
 
     // Fallback para Produtos Gerais / Outros
-    rawData = { ...rawData, nome_completo: p.nome, ...p }
+    rawData = { ...rawData, nome_completo: p.nome, descricao: p.nome, ...p }
     return { id: p.id, title: p.nome, raw: rawData }
   })
 }
@@ -665,5 +677,44 @@ export async function generateLensGrid(params: GenerateGridParams): Promise<Cata
   } catch (e: any) {
     console.error("Erro ao gerar grade:", e)
     return { success: false, message: `Erro: ${e.message}` }
+  }
+}
+
+// ============================================================================
+// FEATURE: ALTERAR TIPO DE PRODUTO
+// ============================================================================
+export async function changeProductType(
+  productId: number,
+  storeId: number,
+  newType: 'lentes' | 'solar' | 'receituario' | 'tratamentos' | 'produtos_gerais'
+): Promise<CatalogActionResult> {
+  try {
+    const { supabaseAdmin } = await getContext()
+
+    let tipoDb = ''
+    let categoriaDb = ''
+
+    if (newType === 'lentes') { tipoDb = 'Lente'; categoriaDb = 'Lente Oftálmica' }
+    else if (newType === 'solar') { tipoDb = 'Solar'; categoriaDb = 'Solar' }
+    else if (newType === 'receituario') { tipoDb = 'Armacao'; categoriaDb = 'Armação' }
+    else if (newType === 'tratamentos') { tipoDb = 'Tratamento'; categoriaDb = 'Tratamento' }
+    else if (newType === 'produtos_gerais') { tipoDb = 'Outro'; categoriaDb = 'Outros' }
+
+    if (!tipoDb) return { success: false, message: 'Tipo inválido.' }
+
+    const { error } = await (supabaseAdmin.from('products') as any)
+      .update({
+        tipo_produto: tipoDb,
+        categoria: categoriaDb
+      })
+      .eq('id', productId)
+      .eq('store_id', storeId)
+
+    if (error) throw error
+
+    revalidatePath(`/dashboard/loja/${storeId}/cadastros`)
+    return { success: true, message: 'Tipo de produto atualizado com sucesso!' }
+  } catch (e: any) {
+    return { success: false, message: e.message }
   }
 }

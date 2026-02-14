@@ -9,96 +9,152 @@ import { z } from 'zod'
 
 // --- Tipos ---
 export type DevedorResumo = {
-  customer_id: number
-  full_name: string
-  fone_movel: string | null
-  is_spc: boolean
-  total_atrasado: number
-  dias_atraso: number
-  quantidade_parcelas_atrasadas: number
-  vendas_afetadas: number[]
+    customer_id: number
+    full_name: string
+    fone_movel: string | null
+    is_spc: boolean
+    total_atrasado: number
+    dias_atraso: number
+    quantidade_parcelas_atrasadas: number
+    vendas_afetadas: number[]
 }
 
 export type CobrancaHistoricoItem = Database['public']['Tables']['cobranca_historico']['Row']
 
+export type RetornoCobranca = {
+    id: number
+    customer_id: number
+    customer_name: string
+    fone_movel: string | null
+    tipo_contato: string
+    resumo_conversa: string
+    proxima_acao: string
+}
+
 // --- 1. BUSCAR LISTA DE INADIMPLENTES ---
-export async function getInadimplentes(storeId: number, filtro: 'todos' | 'sem_spc' = 'todos') {
-  const supabaseAdmin = createAdminClient()
-  const hoje = new Date().toISOString().split('T')[0]
+export async function getInadimplentes(storeId: number, filtro: 'cobrar' | 'ja_cobrados' = 'cobrar') {
+    const supabaseAdmin = createAdminClient()
+    const hoje = new Date().toISOString().split('T')[0]
 
-  try {
-    // CORREÇÃO: Cast "as any" para evitar erro de tipagem nos joins complexos ou campos novos
-    let query = (supabaseAdmin
-      .from('financiamento_parcelas') as any)
-      .select(`
-        id,
-        valor_parcela,
-        data_vencimento,
-        customer_id,
-        status,
-        financiamento_loja ( venda_id ), 
-        customers!inner ( id, full_name, fone_movel, is_spc )
-      `)
-      .eq('store_id', storeId)
-      .eq('status', 'Pendente')
-      .lt('data_vencimento', hoje)
-      .order('data_vencimento', { ascending: true })
+    try {
+        let query = (supabaseAdmin
+            .from('financiamento_parcelas') as any)
+            .select(`
+                id,
+                valor_parcela,
+                data_vencimento,
+                customer_id,
+                status,
+                financiamento_loja ( venda_id ), 
+                customers!inner ( id, full_name, fone_movel, is_spc, cobranca_status )
+            `)
+            .eq('store_id', storeId)
+            .eq('status', 'Pendente')
+            .lt('data_vencimento', hoje)
+            .order('data_vencimento', { ascending: true })
 
-    if (filtro === 'sem_spc') {
-      // is_spc foi adicionado manualmente, o TS pode não reconhecer sem o cast anterior
-      query = query.is('customers.is_spc', false)
-    }
+        const { data, error } = await query
 
-    const { data, error } = await query
+        console.log("DEBUG: getInadimplentes storeId:", storeId, "filtro:", filtro)
+        if (error) {
+            console.error("DEBUG: Error fetching data:", error)
+            throw error
+        }
+        console.log("DEBUG: Raw data count:", data?.length)
+        if (data && data.length > 0) {
+            console.log("DEBUG: Sample customer:", data[0].customers)
+        }
 
-    if (error) throw error
-    if (!data) return []
+        if (!data) return []
 
-    const mapaClientes = new Map<number, DevedorResumo>()
+        // PÓS-PROCESSAMENTO PARA FILTROS (Proxima Ação e Status)
 
-    data.forEach((parcela: any) => {
-        const cust = parcela.customers
-        if (!cust) return;
+        // 1. Busca todos historicos recentes desses clientes para saber a próxima ação
+        const clienteIds = Array.from(new Set(data.map((p: any) => p.customer_id))) as number[]
 
-        // O ID da venda vem do objeto aninhado
-        const vendaId = parcela.financiamento_loja?.venda_id;
+        if (clienteIds.length === 0) return []
 
-        const vencimento = new Date(parcela.data_vencimento)
-        const hojeDate = new Date()
-      
-        const diffTime = Math.abs(hojeDate.getTime() - vencimento.getTime())
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+        const { data: ultimasAcoes } = await (supabaseAdmin.from('cobranca_historico') as any)
+            .select('customer_id, proxima_acao')
+            .in('customer_id', clienteIds)
+            // Ordenar por updated_at ou created_at desc para pegar o último agendamento
+            .order('created_at', { ascending: false })
 
-        if (!mapaClientes.has(cust.id)) {
-            mapaClientes.set(cust.id, {
-                customer_id: cust.id,
-                full_name: cust.full_name,
-                fone_movel: cust.fone_movel,
-                is_spc: cust.is_spc ?? false,
-                total_atrasado: 0,
-                dias_atraso: 0,
-                quantidade_parcelas_atrasadas: 0,
-                vendas_afetadas: []
+        // Mapa: CustomerID -> Data Proxima Acao (string YYYY-MM-DD ou null)
+        const mapaProximaAcao = new Map<number, string | null>()
+
+        if (ultimasAcoes) {
+            ultimasAcoes.forEach((acao: any) => {
+                // Só pegar o primeiro (mais recente) de cada cliente
+                if (!mapaProximaAcao.has(acao.customer_id)) {
+                    mapaProximaAcao.set(acao.customer_id, acao.proxima_acao)
+                }
             })
         }
 
-        const current = mapaClientes.get(cust.id)!
-        current.total_atrasado += parcela.valor_parcela
-        current.quantidade_parcelas_atrasadas += 1
-        
-        if (diffDays > current.dias_atraso) current.dias_atraso = diffDays
-        
-        if (vendaId && !current.vendas_afetadas.includes(vendaId)) {
-            current.vendas_afetadas.push(vendaId)
-        }
-    })
+        const mapaClientes = new Map<number, DevedorResumo>()
 
-    return Array.from(mapaClientes.values()).sort((a, b) => b.dias_atraso - a.dias_atraso)
+        data.forEach((parcela: any) => {
+            const cust = parcela.customers
+            if (!cust) return;
 
-  } catch (error: any) {
-    console.error('Erro ao buscar inadimplentes:', error)
-    return []
-  }
+            // STATUS: Excluir 'Perdido' e 'Externa'
+            // Assumindo que null/undefined seja 'Normal'
+            const statusCobranca = cust.cobranca_status || 'Normal'
+            if (statusCobranca === 'Perdido' || statusCobranca === 'Externa') return;
+
+            // FILTRO DE ABAS
+            const proximaData = mapaProximaAcao.get(cust.id)
+
+            // "Já Cobrados" = Tem data agendada FUTURA (> hoje)
+            // OBS: Se a data for hoje ou passada, volta para "Cobrar"
+            const isFuturo = proximaData && proximaData > hoje
+
+            if (filtro === 'cobrar') {
+                // Mostrar apenas quem NÃO tem agendamento futuro
+                if (isFuturo) return
+            } else {
+                // 'ja_cobrados': Mostrar apenas quem TEM agendamento futuro
+                if (!isFuturo) return
+            }
+
+            // --- Montagem do Objeto de Resumo ---
+            const vendaId = parcela.financiamento_loja?.venda_id;
+            const vencimento = new Date(parcela.data_vencimento)
+            const hojeDate = new Date()
+            const diffTime = Math.abs(hojeDate.getTime() - vencimento.getTime())
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+            if (!mapaClientes.has(cust.id)) {
+                mapaClientes.set(cust.id, {
+                    customer_id: cust.id,
+                    full_name: cust.full_name,
+                    fone_movel: cust.fone_movel,
+                    is_spc: cust.is_spc ?? false,
+                    total_atrasado: 0,
+                    dias_atraso: 0,
+                    quantidade_parcelas_atrasadas: 0,
+                    vendas_afetadas: []
+                })
+            }
+
+            const current = mapaClientes.get(cust.id)!
+            current.total_atrasado += parcela.valor_parcela
+            current.quantidade_parcelas_atrasadas += 1
+
+            if (diffDays > current.dias_atraso) current.dias_atraso = diffDays
+
+            if (vendaId && !current.vendas_afetadas.includes(vendaId)) {
+                current.vendas_afetadas.push(vendaId)
+            }
+        })
+
+        return Array.from(mapaClientes.values()).sort((a, b) => b.dias_atraso - a.dias_atraso)
+
+    } catch (error: any) {
+        console.error('Erro ao buscar inadimplentes:', error)
+        return []
+    }
 }
 
 // --- 2. REGISTRAR CONTATO (HISTÓRICO) ---
@@ -117,14 +173,14 @@ export async function registrarCobranca(prevState: any, formData: FormData) {
     if (!user) return { success: false, message: 'Usuário não logado' }
 
     type SimpleProfile = {
-      store_id: number
-      tenant_id: string | null
+        store_id: number
+        tenant_id: string | null
     }
 
     const profile = (await getProfileByAdmin(user.id)) as SimpleProfile | null
 
     if (!profile) {
-      return { success: false, message: 'Perfil não encontrado' }
+        return { success: false, message: 'Perfil não encontrado' }
     }
 
     const validated = CobrancaSchema.safeParse({
@@ -139,7 +195,7 @@ export async function registrarCobranca(prevState: any, formData: FormData) {
     if (!validated.success) return { success: false, message: 'Dados inválidos' }
 
     const supabaseAdmin = createAdminClient()
-    
+
     try {
         // CORREÇÃO: Cast as any para permitir insert em cobranca_historico sem validação estrita
         await (supabaseAdmin.from('cobranca_historico') as any).insert({
@@ -168,7 +224,7 @@ export async function toggleSpcStatus(customerId: number, currentStatus: boolean
         await (supabaseAdmin.from('customers') as any)
             .update({ is_spc: !currentStatus })
             .eq('id', customerId)
-        
+
         revalidatePath(`/dashboard/loja/${storeId}/cobranca`)
         return { success: true, message: `Cliente ${!currentStatus ? 'adicionado ao' : 'removido do'} SPC.` }
     } catch (e: any) {
@@ -185,7 +241,7 @@ export async function getHistoricoCobranca(customerId: number) {
             .select('*')
             .eq('customer_id', customerId)
             .order('created_at', { ascending: false })
-        
+
         return data || []
     } catch (e) {
         return []
@@ -195,7 +251,7 @@ export async function getHistoricoCobranca(customerId: number) {
 // --- 5. BUSCAR DETALHES COMPLETOS ---
 export async function getDetalhesDivida(customerId: number, storeId: number) {
     const supabaseAdmin = createAdminClient()
-    
+
     try {
         // CORREÇÃO: Cast as any para permitir os joins complexos que podem não estar nos tipos locais
         const { data: financiamentos, error } = await (supabaseAdmin.from('financiamento_loja') as any)
@@ -230,5 +286,55 @@ export async function getDetalhesDivida(customerId: number, storeId: number) {
     } catch (e) {
         console.error("Erro ao buscar detalhes:", e)
         return []
+    }
+}
+
+// --- 6. BUSCAR RETORNOS AGENDADOS (PARA O RADAR) ---
+export async function getRetornosDeHoje(storeId: number): Promise<RetornoCobranca[]> {
+    const supabaseAdmin = createAdminClient()
+    const hoje = new Date().toISOString().split('T')[0]
+
+    try {
+        const { data, error } = await (supabaseAdmin.from('cobranca_historico') as any)
+            .select(`
+                id,
+                customer_id,
+                tipo_contato,
+                resumo_conversa,
+                proxima_acao,
+                customers ( full_name, fone_movel )
+            `)
+            .eq('store_id', storeId)
+            .lte('proxima_acao', hoje) // Pega hoje ou atrasados
+            .order('proxima_acao', { ascending: true })
+
+        if (error) throw error
+
+        return (data || []).map((item: any) => ({
+            id: item.id,
+            customer_id: item.customer_id,
+            customer_name: item.customers?.full_name || 'Desconhecido',
+            fone_movel: item.customers?.fone_movel,
+            tipo_contato: item.tipo_contato,
+            resumo_conversa: item.resumo_conversa,
+            proxima_acao: item.proxima_acao
+        }))
+    } catch (e) {
+        console.error("Erro ao buscar retornos:", e)
+        return []
+    }
+}
+// --- 7. ATUALIZAR STATUS DA COBRANÇA ---
+export async function updateCobrancaStatus(customerId: number, status: 'Normal' | 'Perdido' | 'Externa', storeId: number) {
+    const supabaseAdmin = createAdminClient()
+    try {
+        await (supabaseAdmin.from('customers') as any)
+            .update({ cobranca_status: status })
+            .eq('id', customerId)
+
+        revalidatePath(`/dashboard/loja/${storeId}/cobranca`)
+        return { success: true, message: `Status atualizado para ${status}.` }
+    } catch (e: any) {
+        return { success: false, message: e.message }
     }
 }

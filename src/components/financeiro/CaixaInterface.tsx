@@ -20,9 +20,9 @@ import HistoricoCaixaModal from './HistoricoCaixaModal'
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const formatTime = (dateStr: string) => new Date(dateStr).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
-// --- DESIGN SYSTEM (ALTO CONTRASTE) ---
-const labelStyle = "block text-[10px] font-bold text-emerald-100 uppercase mb-1 tracking-wider"
-const inputStyle = "block w-full rounded-lg border-0 bg-white shadow-sm text-slate-900 h-10 text-sm px-3 focus:ring-2 focus:ring-emerald-300 focus:outline-none font-bold placeholder:font-normal placeholder:text-slate-400 disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+// --- DESIGN SYSTEM (DARK GLASSMORPHISM) ---
+const labelStyle = "block text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-wider"
+const inputStyle = "block w-full rounded-lg border border-white/10 bg-black/20 shadow-inner text-slate-200 h-10 text-sm px-3 focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/50 font-bold placeholder:font-normal placeholder:text-slate-500 disabled:bg-black/10 disabled:text-slate-500 transition-all outline-none backdrop-blur-sm"
 
 export default function CaixaInterface({ initialData, storeId, ultimoFechamento }: { initialData: ResumoCaixa | null, storeId: number, ultimoFechamento?: { saldo_final: number, data_fechamento: string } | null }) {
     const router = useRouter()
@@ -108,17 +108,17 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
 
     // --- RENDERIZAÇÃO CONDICIONAL ---
 
-    // 1. MODO CAIXA FECHADO (Tela de Abertura Estilizada)
+    // 1. MODO CAIXA FECHADO
     if (!initialData) {
         return (
             <div className="flex items-center justify-center h-full">
-                <div className="bg-emerald-600 p-8 rounded-2xl shadow-2xl max-w-md w-full text-white border border-emerald-500">
+                <div className="bg-white/5 backdrop-blur-xl p-8 rounded-2xl shadow-2xl shadow-black/30 max-w-md w-full border border-white/10">
                     <div className="text-center mb-6">
-                        <div className="inline-flex items-center justify-center p-4 bg-emerald-700 rounded-full mb-4 shadow-inner">
-                            <Lock className="h-8 w-8 text-emerald-200" />
+                        <div className="inline-flex items-center justify-center p-4 bg-emerald-500/20 rounded-full mb-4 border border-emerald-500/20">
+                            <Lock className="h-8 w-8 text-emerald-400" />
                         </div>
-                        <h2 className="text-2xl font-black uppercase tracking-tight">Caixa Fechado</h2>
-                        <p className="text-emerald-200 text-sm mt-1 font-medium">Inicie o dia informando o fundo de troco.</p>
+                        <h2 className="text-2xl font-black uppercase tracking-tight text-white">Caixa Fechado</h2>
+                        <p className="text-slate-400 text-sm mt-1 font-medium">Inicie o dia informando o fundo de troco.</p>
                     </div>
 
                     <form action={handleAbrir} className="space-y-4">
@@ -126,7 +126,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                         <div>
                             <label className={labelStyle}>Saldo Inicial (Fundo de Caixa)</label>
                             <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold z-10">R$</span>
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold z-10">R$</span>
                                 <input
                                     type="number"
                                     name="saldo_inicial"
@@ -142,17 +142,17 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
 
                         {/* SUGESTÃO DE SALDO ANTERIOR */}
                         {ultimoFechamento && (
-                            <div className="bg-emerald-700/50 p-3 rounded-lg border border-emerald-500/50 flex flex-col gap-2">
-                                <div className="flex items-center gap-2 text-[10px] text-emerald-200 uppercase font-bold tracking-wider">
+                            <div className="bg-emerald-500/10 p-3 rounded-lg border border-emerald-500/20 flex flex-col gap-2">
+                                <div className="flex items-center gap-2 text-[10px] text-emerald-400 uppercase font-bold tracking-wider">
                                     <Wallet className="h-3 w-3" />
                                     Último Fechamento ({new Date(ultimoFechamento.data_fechamento).toLocaleDateString()}):
                                 </div>
                                 <div className="flex items-center justify-between">
-                                    <span className="text-lg font-black">{formatCurrency(ultimoFechamento.saldo_final)}</span>
+                                    <span className="text-lg font-black text-white">{formatCurrency(ultimoFechamento.saldo_final)}</span>
                                     <button
                                         type="button"
                                         onClick={() => setSaldoInicialInput(String(ultimoFechamento.saldo_final))}
-                                        className="text-[10px] bg-emerald-500 hover:bg-emerald-400 text-white px-3 py-1.5 rounded font-bold uppercase transition-colors shadow-sm"
+                                        className="text-[10px] bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 px-3 py-1.5 rounded font-bold uppercase transition-colors border border-emerald-500/20"
                                     >
                                         Usar Saldo
                                     </button>
@@ -162,7 +162,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
 
                         <button
                             disabled={isPending}
-                            className="w-full h-12 bg-white text-emerald-700 font-black uppercase rounded-lg hover:bg-emerald-50 transition-colors shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                            className="w-full h-12 bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase rounded-lg transition-colors shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 disabled:opacity-50 border border-white/10"
                         >
                             {isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Unlock className="h-5 w-5" />}
                             Abrir Caixa
@@ -179,24 +179,23 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
     return (
         <div className="flex flex-col h-full space-y-4">
 
-            {/* --- TOPO: INDICADORES (KPIs) REFORMULADOS --- */}
             {/* --- TOOLBAR --- */}
             <div className="flex justify-end shrink-0">
                 <button
                     onClick={() => setIsHistoricoModalOpen(true)}
-                    className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-3 py-1.5 rounded-lg flex items-center gap-2 text-xs font-bold shadow-sm transition-all"
+                    className="bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 px-3 py-1.5 rounded-lg flex items-center gap-2 text-xs font-bold shadow-sm transition-all backdrop-blur-sm"
                     title="Ver histórico de fechamentos e quebras"
                 >
-                    <History className="h-4 w-4 text-emerald-600" />
+                    <History className="h-4 w-4 text-emerald-400" />
                     Histórico de Fechamentos
                 </button>
             </div>
 
-            {/* --- TOPO: INDICADORES (KPIs) REFORMULADOS --- */}
+            {/* --- TOPO: INDICADORES (KPIs) --- */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 shrink-0">
 
-                {/* Card 0: FATURAMENTO MENSAL (NOVO) */}
-                <div className="bg-gradient-to-br from-indigo-600 to-blue-700 text-white p-3 rounded-xl shadow-md flex items-center justify-between border border-white/10 group relative">
+                {/* Card 0: FATURAMENTO MENSAL */}
+                <div className="bg-indigo-500/15 backdrop-blur-md text-white p-3 rounded-xl shadow-lg border border-indigo-500/20 group relative">
                     <div className="absolute inset-0 overflow-hidden rounded-xl">
                         <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
                             <TrendingUp className="h-12 w-12" />
@@ -204,7 +203,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                     </div>
                     <div className="relative z-10 w-full">
                         <div className="flex items-center gap-1 mb-1">
-                            <p className="text-[9px] font-bold uppercase tracking-wider opacity-90">Vendas (Mês)</p>
+                            <p className="text-[9px] font-bold uppercase tracking-wider text-indigo-300">Vendas (Mês)</p>
                             <HelpTooltip text="Total acumulado de vendas neste mês (1º dia até hoje) comparado com o mesmo período do mês anterior." />
                         </div>
                         <p className="text-xl font-black">
@@ -221,7 +220,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                     const isPositive = diff >= 0
 
                                     return (
-                                        <div className={`px-1.5 py-0.5 rounded text-[9px] font-bold flex items-center gap-1 ${isPositive ? 'bg-emerald-400/20 text-emerald-100' : 'bg-red-400/20 text-red-100'}`}>
+                                        <div className={`px-1.5 py-0.5 rounded text-[9px] font-bold flex items-center gap-1 ${isPositive ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'}`}>
                                             {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
                                             {Math.abs(pct).toFixed(1)}% vs. Mês Anterior
                                         </div>
@@ -232,23 +231,23 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                     </div>
                 </div>
 
-                {/* Card 1: Saldo Gaveta (Dinheiro Físico) */}
-                <div className="bg-emerald-600 text-white p-3 rounded-xl shadow-md flex items-center justify-between border border-white/10 relative">
+                {/* Card 1: Saldo Gaveta */}
+                <div className="bg-emerald-500/15 backdrop-blur-md text-white p-3 rounded-xl shadow-lg border border-emerald-500/20 relative">
                     <div className="absolute inset-0 overflow-hidden rounded-xl">
-                        <div className="p-2 bg-white/20 rounded-lg absolute right-3 top-3"><Wallet className="h-5 w-5" /></div>
+                        <div className="p-2 bg-emerald-500/20 rounded-lg absolute right-3 top-3"><Wallet className="h-5 w-5 text-emerald-300" /></div>
                     </div>
                     <div className="relative z-10 w-full">
                         <div className="flex items-center gap-1 mb-1">
-                            <p className="text-[9px] font-bold uppercase tracking-wider opacity-70">Saldo Gaveta</p>
+                            <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-300">Saldo Gaveta</p>
                             <HelpTooltip text="Dinheiro físico que deve estar na gaveta AGORA. (Saldo Inicial + Entradas Dinheiro - Saídas Dinheiro)" />
                         </div>
                         <p className="text-xl font-black">{formatCurrency(totais.saldo_esperado_dinheiro)}</p>
                         <div className="flex items-center gap-2 mt-1">
-                            <p className="text-[9px] opacity-70">Fundo: {formatCurrency(initialData.caixa?.saldo_inicial || 0)}</p>
+                            <p className="text-[9px] text-slate-400">Fundo: {formatCurrency(initialData.caixa?.saldo_inicial || 0)}</p>
                             <button
                                 type="button"
                                 onClick={() => setIsSaldoModalOpen(true)}
-                                className="text-[9px] bg-white/20 hover:bg-white/30 px-2 py-0.5 rounded font-bold uppercase transition-colors"
+                                className="text-[9px] bg-white/10 hover:bg-white/20 px-2 py-0.5 rounded font-bold uppercase transition-colors text-slate-300"
                                 title="Editar fundo de caixa"
                             >
                                 Editar
@@ -257,50 +256,50 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                     </div>
                 </div>
 
-                {/* Card 2: Total Recebido em Caixa */}
-                <div className="bg-white p-3 rounded-xl border border-emerald-200 shadow-sm flex items-center justify-between relative">
+                {/* Card 2: Mov. Caixa (Hoje) */}
+                <div className="bg-white/5 backdrop-blur-md p-3 rounded-xl border border-emerald-500/20 shadow-lg relative">
                     <div className="absolute inset-0 overflow-hidden rounded-xl pointer-events-none">
-                        <div className="absolute right-3 top-3 p-2 bg-emerald-50 text-emerald-600 rounded-lg"><Package className="h-5 w-5" /></div>
+                        <div className="absolute right-3 top-3 p-2 bg-emerald-500/10 text-emerald-400 rounded-lg"><Package className="h-5 w-5" /></div>
                     </div>
                     <div className="relative z-10 w-full pr-12">
                         <div className="flex items-center gap-1 mb-1">
-                            <p className="text-[9px] font-bold text-emerald-700 uppercase tracking-wider">Mov. Caixa (Hoje)</p>
-                            <HelpTooltip text="Total de dinheiro que entrou hoje (Vendas em Dinheiro + Suprimentos - Sangrias/Retiradas)." dark />
+                            <p className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider">Mov. Caixa (Hoje)</p>
+                            <HelpTooltip text="Total de dinheiro que entrou hoje (Vendas em Dinheiro + Suprimentos - Sangrias/Retiradas)." />
                         </div>
-                        <p className="text-xl font-black text-emerald-700">{formatCurrency(vendas.total_dinheiro + totais.entradas_manuais - totais.saidas_manuais)}</p>
+                        <p className="text-xl font-black text-emerald-400">{formatCurrency(vendas.total_dinheiro + totais.entradas_manuais - totais.saidas_manuais)}</p>
                     </div>
                 </div>
 
-                {/* Card 3: Total Recebido em Banco */}
-                <div className="bg-white p-3 rounded-xl border border-blue-200 shadow-sm flex items-center justify-between relative">
+                {/* Card 3: Mov. Banco (Hoje) */}
+                <div className="bg-white/5 backdrop-blur-md p-3 rounded-xl border border-sky-500/20 shadow-lg relative">
                     <div className="absolute inset-0 overflow-hidden rounded-xl pointer-events-none">
-                        <div className="absolute right-3 top-3 p-2 bg-blue-50 text-blue-600 rounded-lg"><TrendingUp className="h-5 w-5" /></div>
+                        <div className="absolute right-3 top-3 p-2 bg-sky-500/10 text-sky-400 rounded-lg"><TrendingUp className="h-5 w-5" /></div>
                     </div>
                     <div className="relative z-10 w-full pr-12">
                         <div className="flex items-center gap-1 mb-1">
-                            <p className="text-[9px] font-bold text-blue-700 uppercase tracking-wider">Mov. Banco (Hoje)</p>
-                            <HelpTooltip text="Total de recebimentos digitais HOJE (Pix + Cartões). Não entra na gaveta." dark />
+                            <p className="text-[9px] font-bold text-sky-400 uppercase tracking-wider">Mov. Banco (Hoje)</p>
+                            <HelpTooltip text="Total de recebimentos digitais HOJE (Pix + Cartões). Não entra na gaveta." />
                         </div>
-                        <p className="text-xl font-black text-blue-700">{formatCurrency(vendas.total_pix + vendas.total_cartao)}</p>
+                        <p className="text-xl font-black text-sky-400">{formatCurrency(vendas.total_pix + vendas.total_cartao)}</p>
                         <div className="flex gap-1 mt-1">
-                            <span className="text-[8px] bg-blue-50 px-1 py-0.5 rounded text-blue-500 font-bold">Pix: {formatCurrency(vendas.total_pix)}</span>
-                            <span className="text-[8px] bg-blue-50 px-1 py-0.5 rounded text-blue-500 font-bold">Cartão: {formatCurrency(vendas.total_cartao)}</span>
+                            <span className="text-[8px] bg-sky-500/10 px-1 py-0.5 rounded text-sky-300 font-bold border border-sky-500/10">Pix: {formatCurrency(vendas.total_pix)}</span>
+                            <span className="text-[8px] bg-sky-500/10 px-1 py-0.5 rounded text-sky-300 font-bold border border-sky-500/10">Cartão: {formatCurrency(vendas.total_cartao)}</span>
                         </div>
                     </div>
                 </div>
 
-                {/* Card 4: Saídas */}
-                <div className="bg-white p-3 rounded-xl border border-red-200 shadow-sm flex items-center justify-between relative">
+                {/* Card 4: Sangrias */}
+                <div className="bg-white/5 backdrop-blur-md p-3 rounded-xl border border-red-500/20 shadow-lg relative">
                     <div className="absolute inset-0 overflow-hidden rounded-xl pointer-events-none">
-                        <div className="absolute right-3 top-3 p-2 bg-red-50 text-red-600 rounded-lg"><TrendingDown className="h-5 w-5" /></div>
+                        <div className="absolute right-3 top-3 p-2 bg-red-500/10 text-red-400 rounded-lg"><TrendingDown className="h-5 w-5" /></div>
                     </div>
                     <div className="relative z-10 w-full pr-12">
                         <div className="flex items-center gap-1 mb-1">
-                            <p className="text-[9px] font-bold text-red-600 uppercase tracking-wider">Sangrias</p>
-                            <HelpTooltip text="Total de retiradas de dinheiro da gaveta hoje (pagamentos, vales, depósitos)." dark />
+                            <p className="text-[9px] font-bold text-red-400 uppercase tracking-wider">Sangrias</p>
+                            <HelpTooltip text="Total de retiradas de dinheiro da gaveta hoje (pagamentos, vales, depósitos)." />
                         </div>
-                        <p className="text-xl font-black text-red-600">{formatCurrency(totais.saidas_manuais)}</p>
-                        <p className="text-[9px] text-slate-400">{movimentacoes.filter(m => m.tipo === 'Saida').length} lançamentos</p>
+                        <p className="text-xl font-black text-red-400">{formatCurrency(totais.saidas_manuais)}</p>
+                        <p className="text-[9px] text-slate-500">{movimentacoes.filter(m => m.tipo === 'Saida').length} lançamentos</p>
                     </div>
                 </div>
             </div>
@@ -311,10 +310,10 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                 {/* ESQUERDA (30%): CONTROLES */}
                 <div className="w-1/3 flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-1">
 
-                    {/* CARD 1: NOVO LANÇAMENTO (GRADIENTE) */}
-                    <div className="bg-gradient-to-br from-emerald-500 to-teal-600 p-5 rounded-2xl shadow-lg shadow-emerald-100 border border-white/20">
-                        <div className="flex items-center gap-2 mb-4 border-b border-white/20 pb-2">
-                            <div className="p-1 bg-white/20 rounded text-white"><Save className="h-4 w-4" /></div>
+                    {/* CARD 1: NOVO LANÇAMENTO */}
+                    <div className="bg-emerald-500/10 backdrop-blur-xl p-5 rounded-2xl shadow-lg border border-emerald-500/20">
+                        <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-2">
+                            <div className="p-1 bg-emerald-500/20 rounded text-emerald-400"><Save className="h-4 w-4" /></div>
                             <h3 className="text-sm font-bold text-white">Lançamento Manual</h3>
                         </div>
 
@@ -351,42 +350,42 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                 <input name="descricao" type="text" required className={inputStyle} placeholder="Detalhes do lançamento..." />
                             </div>
 
-                            <button disabled={isPending} className="w-full mt-2 bg-white text-emerald-700 h-10 rounded-xl font-bold text-sm hover:bg-emerald-50 shadow-sm transition-all active:scale-95 flex items-center justify-center gap-2">
+                            <button disabled={isPending} className="w-full mt-2 bg-emerald-600 hover:bg-emerald-500 text-white h-10 rounded-xl font-bold text-sm shadow-lg shadow-emerald-500/20 transition-all active:scale-95 flex items-center justify-center gap-2 border border-white/10">
                                 {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                                 LANÇAR
                             </button>
                         </form>
                     </div>
 
-                    {/* CARD 2: FECHAMENTO (BRANCO/ALERTA) */}
-                    <div className="bg-white border border-red-100 p-5 rounded-2xl shadow-sm mt-auto">
-                        <h3 className="text-red-800 font-bold text-sm mb-3 flex items-center gap-2">
+                    {/* CARD 2: FECHAMENTO */}
+                    <div className="bg-red-500/10 backdrop-blur-xl border border-red-500/20 p-5 rounded-2xl shadow-lg mt-auto">
+                        <h3 className="text-red-400 font-bold text-sm mb-3 flex items-center gap-2">
                             <Lock className="h-4 w-4" /> Fechar Caixa
                         </h3>
                         <form action={handleFechar} className="space-y-3">
                             <div>
-                                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Contagem Física (Dinheiro)</label>
+                                <label className={labelStyle}>Contagem Física (Dinheiro)</label>
                                 <div className="relative">
-                                    <span className="absolute left-3 top-2.5 text-slate-400 font-bold">R$</span>
+                                    <span className="absolute left-3 top-2.5 text-slate-500 font-bold">R$</span>
                                     <input
                                         type="number"
                                         step="0.01"
                                         name="saldo_final"
-                                        className="w-full h-10 pl-9 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:ring-red-500 focus:border-red-500 font-bold text-slate-900 transition-all"
+                                        className={`${inputStyle} pl-9 focus:ring-red-500/50 focus:border-red-500/50`}
                                         placeholder="0.00"
                                         required
                                     />
                                 </div>
                             </div>
 
-                            <div className="bg-red-50 p-2 rounded border border-red-100 text-[10px] text-red-600 font-medium flex gap-2">
+                            <div className="bg-red-500/10 p-2 rounded border border-red-500/20 text-[10px] text-red-300 font-medium flex gap-2">
                                 <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
                                 Diferenças serão registradas como Quebra de Caixa.
                             </div>
 
                             <button
                                 disabled={isPending}
-                                className="w-full bg-red-600 hover:bg-red-700 text-white h-10 rounded-xl font-bold shadow-md flex justify-center items-center gap-2 transition-all active:scale-95"
+                                className="w-full bg-red-600 hover:bg-red-500 text-white h-10 rounded-xl font-bold shadow-lg shadow-red-500/20 flex justify-center items-center gap-2 transition-all active:scale-95 border border-white/10"
                             >
                                 {isPending ? <Loader2 className="animate-spin h-4 w-4" /> : "ENCERRAR O DIA"}
                             </button>
@@ -398,12 +397,12 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                 <div className="flex-1 flex flex-col gap-4 overflow-hidden">
 
                     {/* PAINEL 1: MOVIMENTAÇÃO CAIXA (50%) */}
-                    <div className="h-1/2 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
-                        <div className="bg-emerald-50 px-5 py-2 border-b border-emerald-100 flex justify-between items-center">
-                            <h3 className="font-bold text-emerald-800 text-xs flex items-center gap-2 uppercase tracking-wide">
-                                <Package className="h-4 w-4 text-emerald-600" /> Extrato de Movimentação Caixa
+                    <div className="h-1/2 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 flex flex-col overflow-hidden shadow-lg">
+                        <div className="bg-emerald-500/10 px-5 py-2 border-b border-white/10 flex justify-between items-center">
+                            <h3 className="font-bold text-emerald-300 text-xs flex items-center gap-2 uppercase tracking-wide">
+                                <Package className="h-4 w-4 text-emerald-400" /> Extrato de Movimentação Caixa
                             </h3>
-                            <span className="text-[10px] bg-white px-2 py-0.5 rounded text-emerald-600 font-bold border border-emerald-200">
+                            <span className="text-[10px] bg-emerald-500/10 px-2 py-0.5 rounded text-emerald-300 font-bold border border-emerald-500/20">
                                 Dinheiro Total
                             </span>
                         </div>
@@ -420,10 +419,10 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                     </div>
 
                     {/* PAINEL 2: MOVIMENTAÇÃO BANCO (50%) */}
-                    <div className="h-1/2 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
-                        <div className="bg-blue-50 px-5 py-2 border-b border-blue-100 flex justify-between items-center">
-                            <h3 className="font-bold text-blue-800 text-xs flex items-center gap-2 uppercase tracking-wide">
-                                <DollarSign className="h-4 w-4 text-blue-600" /> Extrato de Movimentação Banco
+                    <div className="h-1/2 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 flex flex-col overflow-hidden shadow-lg">
+                        <div className="bg-sky-500/10 px-5 py-2 border-b border-white/10 flex justify-between items-center">
+                            <h3 className="font-bold text-sky-300 text-xs flex items-center gap-2 uppercase tracking-wide">
+                                <DollarSign className="h-4 w-4 text-sky-400" /> Extrato de Movimentação Banco
                             </h3>
                             <div className="flex items-center gap-2">
                                 <button
@@ -431,7 +430,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                         setReportType('pix')
                                         setIsReportModalOpen(true)
                                     }}
-                                    className="text-[10px] bg-white hover:bg-blue-100 px-2 py-0.5 rounded text-blue-700 font-bold border border-blue-200 flex items-center gap-1 transition-colors"
+                                    className="text-[10px] bg-white/5 hover:bg-white/10 px-2 py-0.5 rounded text-sky-300 font-bold border border-white/10 flex items-center gap-1 transition-colors"
                                     title="Imprimir Relatório PIX"
                                 >
                                     <Printer className="h-3 w-3" /> PIX
@@ -441,7 +440,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                         setReportType('cartoes')
                                         setIsReportModalOpen(true)
                                     }}
-                                    className="text-[10px] bg-white hover:bg-blue-100 px-2 py-0.5 rounded text-blue-700 font-bold border border-blue-200 flex items-center gap-1 transition-colors"
+                                    className="text-[10px] bg-white/5 hover:bg-white/10 px-2 py-0.5 rounded text-sky-300 font-bold border border-white/10 flex items-center gap-1 transition-colors"
                                     title="Imprimir Relatório Cartões"
                                 >
                                     <Printer className="h-3 w-3" /> Cartões
@@ -491,19 +490,19 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                 >
                     <form action={handleAtualizarSaldo} className="space-y-3">
                         <div>
-                            <label className="block text-xs font-bold text-slate-600 mb-1">Novo Saldo Inicial (R$)</label>
+                            <label className={labelStyle}>Novo Saldo Inicial (R$)</label>
                             <input
                                 name="saldo_inicial"
                                 type="number"
                                 step="0.01"
                                 defaultValue={initialData.caixa.saldo_inicial}
-                                className="w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold"
+                                className={inputStyle}
                                 required
                             />
                         </div>
                         <button
                             disabled={isPending}
-                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-10 rounded-lg font-bold"
+                            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white h-10 rounded-lg font-bold border border-white/10 transition-colors"
                         >
                             {isPending ? <Loader2 className="animate-spin h-4 w-4 inline mr-2" /> : null}
                             Salvar
@@ -523,44 +522,44 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                     <form action={handleAtualizarMov} className="space-y-3">
                         <div className="grid grid-cols-2 gap-3">
                             <div>
-                                <label className="block text-xs font-bold text-slate-600 mb-1">Tipo</label>
-                                <select name="tipo" defaultValue={editingMov.tipo} className="w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold">
+                                <label className={labelStyle}>Tipo</label>
+                                <select name="tipo" defaultValue={editingMov.tipo} className={`${inputStyle} cursor-pointer`}>
                                     <option value="Saida">Saída</option>
                                     <option value="Entrada">Entrada</option>
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-600 mb-1">Valor (R$)</label>
+                                <label className={labelStyle}>Valor (R$)</label>
                                 <input
                                     name="valor"
                                     type="number"
                                     step="0.01"
                                     defaultValue={editingMov.valor}
-                                    className="w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-right"
+                                    className={`${inputStyle} text-right`}
                                     required
                                 />
                             </div>
                         </div>
                         <div>
-                            <label className="block text-xs font-bold text-slate-600 mb-1">Categoria</label>
+                            <label className={labelStyle}>Categoria</label>
                             <input
                                 name="categoria"
                                 defaultValue={editingMov.categoria || ''}
-                                className="w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold"
+                                className={inputStyle}
                             />
                         </div>
                         <div>
-                            <label className="block text-xs font-bold text-slate-600 mb-1">Descrição</label>
+                            <label className={labelStyle}>Descrição</label>
                             <input
                                 name="descricao"
                                 defaultValue={editingMov.descricao}
-                                className="w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold"
+                                className={inputStyle}
                                 required
                             />
                         </div>
                         <button
                             disabled={isPending}
-                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-10 rounded-lg font-bold"
+                            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white h-10 rounded-lg font-bold border border-white/10 transition-colors"
                         >
                             {isPending ? <Loader2 className="animate-spin h-4 w-4 inline mr-2" /> : null}
                             Salvar
@@ -576,7 +575,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
 function TabelaMovimentos({ movimentos, emptyMessage, onEdit }: { movimentos: any[], emptyMessage: string, onEdit?: (mov: any) => void }) {
     if (movimentos.length === 0) {
         return (
-            <div className="h-full flex flex-col items-center justify-center text-slate-300">
+            <div className="h-full flex flex-col items-center justify-center text-slate-500">
                 <DollarSign className="h-8 w-8 mb-2 opacity-20" />
                 <p className="text-[10px] font-bold uppercase">{emptyMessage}</p>
             </div>
@@ -585,36 +584,36 @@ function TabelaMovimentos({ movimentos, emptyMessage, onEdit }: { movimentos: an
 
     return (
         <table className="w-full text-sm text-left">
-            <thead className="bg-white sticky top-0 text-[9px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 z-10">
+            <thead className="bg-white/5 sticky top-0 text-[9px] font-bold text-slate-500 uppercase tracking-wider border-b border-white/10 z-10">
                 <tr>
-                    <th className="px-4 py-2 bg-white">Hora</th>
-                    <th className="px-4 py-2 bg-white">Tipo</th>
-                    <th className="px-4 py-2 bg-white">Descrição</th>
-                    <th className="px-4 py-2 text-right bg-white">Valor</th>
-                    <th className="px-2 py-2 text-right bg-white">Ações</th>
+                    <th className="px-4 py-2">Hora</th>
+                    <th className="px-4 py-2">Tipo</th>
+                    <th className="px-4 py-2">Descrição</th>
+                    <th className="px-4 py-2 text-right">Valor</th>
+                    <th className="px-2 py-2 text-right">Ações</th>
                 </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody className="divide-y divide-white/5">
                 {movimentos.map((mov) => {
                     const isEntrada = mov.tipo === 'Entrada' || mov.tipo === 'Venda' || mov.tipo === 'Recebimento' || mov.tipo === 'Suprimento';
                     const isManual = typeof mov.id === 'string' && mov.id.startsWith('mov-')
                     const rawId = isManual ? Number(mov.id.replace('mov-', '')) : null
                     return (
-                        <tr key={mov.id} className="hover:bg-slate-50/80 transition-colors">
-                            <td className="px-4 py-2 text-slate-400 w-20 font-mono text-[10px]">{formatTime(mov.horario)}</td>
+                        <tr key={mov.id} className="hover:bg-white/5 transition-colors">
+                            <td className="px-4 py-2 text-slate-500 w-20 font-mono text-[10px]">{formatTime(mov.horario)}</td>
                             <td className="px-4 py-2 w-32">
-                                <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold uppercase ${mov.tipo === 'Venda' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
-                                    mov.tipo === 'Recebimento' ? 'bg-purple-50 text-purple-600 border-purple-100' :
-                                        mov.tipo === 'Saida' ? 'bg-red-50 text-red-600 border-red-100' :
-                                            'bg-emerald-50 text-emerald-600 border-emerald-100'
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold uppercase ${mov.tipo === 'Venda' ? 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20' :
+                                    mov.tipo === 'Recebimento' ? 'bg-purple-500/10 text-purple-300 border-purple-500/20' :
+                                        mov.tipo === 'Saida' ? 'bg-red-500/10 text-red-300 border-red-500/20' :
+                                            'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
                                     }`}>
                                     {mov.forma_pagamento ? mov.forma_pagamento : mov.categoria || mov.tipo}
                                 </span>
                             </td>
-                            <td className="px-4 py-2 font-bold text-slate-700 text-xs truncate max-w-[150px]" title={mov.descricao}>
+                            <td className="px-4 py-2 font-bold text-slate-300 text-xs truncate max-w-[150px]" title={mov.descricao}>
                                 {mov.descricao}
                             </td>
-                            <td className={`px-4 py-2 font-black text-right w-36 text-xs ${isEntrada ? 'text-emerald-600' : 'text-red-600'}`}>
+                            <td className={`px-4 py-2 font-black text-right w-36 text-xs ${isEntrada ? 'text-emerald-400' : 'text-red-400'}`}>
                                 {isEntrada ? '+' : '-'} {formatCurrency(mov.valor)}
                             </td>
                             <td className="px-2 py-2 text-right w-16">
@@ -622,13 +621,13 @@ function TabelaMovimentos({ movimentos, emptyMessage, onEdit }: { movimentos: an
                                     <button
                                         type="button"
                                         onClick={() => onEdit({ ...mov, raw_id: rawId })}
-                                        className="text-[10px] bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded font-bold"
+                                        className="text-[10px] bg-white/5 hover:bg-white/10 px-2 py-1 rounded font-bold text-slate-400 hover:text-white transition-colors"
                                         title="Editar lançamento"
                                     >
                                         <Pencil className="h-3 w-3 inline" />
                                     </button>
                                 ) : (
-                                    <span className="text-[9px] text-slate-300">-</span>
+                                    <span className="text-[9px] text-slate-600">-</span>
                                 )}
                             </td>
                         </tr>
@@ -641,11 +640,11 @@ function TabelaMovimentos({ movimentos, emptyMessage, onEdit }: { movimentos: an
 
 function SimpleModal({ title, onClose, children }: { title: string, onClose: () => void, children: React.ReactNode }) {
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
-            <div className="w-full max-w-md bg-white rounded-xl shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-slate-800">{title}</h3>
-                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600">X</button>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-md p-4" onClick={onClose}>
+            <div className="w-full max-w-md bg-slate-900/95 backdrop-blur-xl rounded-xl shadow-2xl shadow-black/50 overflow-hidden border border-white/10" onClick={(e) => e.stopPropagation()}>
+                <div className="px-4 py-3 border-b border-white/10 bg-slate-800/60 flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-white">{title}</h3>
+                    <button onClick={onClose} className="text-slate-500 hover:text-red-400 transition-colors">✕</button>
                 </div>
                 <div className="p-4">
                     {children}
@@ -658,8 +657,8 @@ function SimpleModal({ title, onClose, children }: { title: string, onClose: () 
 function HelpTooltip({ text, dark }: { text: string, dark?: boolean }) {
     return (
         <div className="group relative inline-block ml-1 align-middle z-20">
-            <HelpCircle className={`h-3 w-3 cursor-help opacity-40 hover:opacity-100 transition-opacity ${dark ? 'text-slate-400' : 'text-current'}`} />
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-800 text-white text-[10px] leading-tight rounded shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all pointer-events-none transform translate-y-2 group-hover:translate-y-0 text-center font-normal">
+            <HelpCircle className="h-3 w-3 cursor-help opacity-40 hover:opacity-100 transition-opacity text-current" />
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-800 text-white text-[10px] leading-tight rounded shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all pointer-events-none transform translate-y-2 group-hover:translate-y-0 text-center font-normal border border-white/10">
                 {text}
                 <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
             </div>

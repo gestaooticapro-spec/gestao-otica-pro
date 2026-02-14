@@ -209,6 +209,28 @@ export type StockFilters = {
     dataFim?: string
     tipo?: string
     busca?: string
+    productId?: number
+}
+
+// ================================================================
+// 2. ACTION: LISTAR VARIANTES DO PRODUTO (GRADE)
+// ================================================================
+export async function getProductVariants(productId: number) {
+    const supabaseAdmin = createAdminClient()
+
+    // Cast 'as any' para select em product_variants
+    const { data: variants, error } = await (supabaseAdmin
+        .from('product_variants') as any)
+        .select('*')
+        .eq('product_id', productId)
+        .order('nome_variante', { ascending: true })
+
+    if (error) {
+        console.error('Erro ao buscar variantes:', error)
+        return []
+    }
+
+    return variants
 }
 
 export async function getStockMovements(storeId: number, filters?: StockFilters) {
@@ -243,6 +265,10 @@ export async function getStockMovements(storeId: number, filters?: StockFilters)
 
     if (filters?.busca) {
         query = query.ilike('motivo', `%${filters.busca}%`)
+    }
+
+    if (filters?.productId) {
+        query = query.eq('product_id', filters.productId)
     }
 
     const { data, error } = await query

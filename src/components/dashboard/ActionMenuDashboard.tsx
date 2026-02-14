@@ -11,7 +11,9 @@ import {
 import AniversariantesWidget from '@/components/consultas/AniversariantesWidget'
 import { WidgetEntregas, WidgetLaboratorio } from '@/components/consultas/PaineisAlertas'
 import WidgetVencimentos from '@/components/consultas/WidgetVencimentos'
+import RetornosCobrancaWidget from '@/components/consultas/RetornosCobrancaWidget'
 import { AlertaEntrega, AlertaLaboratorio, Aniversariante, VencimentoProximo } from '@/lib/actions/consultas.actions'
+import { RetornoCobranca } from '@/lib/actions/collection.actions'
 import ParcelaSearchModal from '@/components/modals/ParcelaSearchModal'
 import EntregaModal from '@/components/modals/EntregaModal'
 
@@ -25,9 +27,10 @@ interface Props {
   }
   birthdays: Aniversariante[]
   vencimentos: VencimentoProximo[]
+  retornos: RetornoCobranca[]
 }
 
-export default function ActionMenuDashboard({ storeId, storeName, alerts, birthdays, vencimentos }: Props) {
+export default function ActionMenuDashboard({ storeId, storeName, alerts, birthdays, vencimentos, retornos }: Props) {
   const [isParcelaModalOpen, setIsParcelaModalOpen] = useState(false)
   const [isEntregaModalOpen, setIsEntregaModalOpen] = useState(false)
 
@@ -242,6 +245,11 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
                 {/* Widget Vencimentos */}
                 <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
                   <WidgetVencimentos dados={vencimentos} storeName={storeName} />
+                </div>
+
+                {/* Widget Retornos Cobrança */}
+                <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
+                  <RetornosCobrancaWidget retornos={retornos} />
                 </div>
 
                 {/* Widget Aniversariantes */}

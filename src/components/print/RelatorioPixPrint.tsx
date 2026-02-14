@@ -103,11 +103,6 @@ export default function RelatorioPixPrint({
                                             </td>
                                             <td className="py-1 align-top uppercase">
                                                 {item.customer_name || 'Consumidor Final'}
-                                                {item.obs && item.obs.includes('Parc') && (
-                                                    <div className="text-[10px] italic pl-2 border-l-2 border-gray-300">
-                                                        {item.obs.split(' - Cliente:')[0]}
-                                                    </div>
-                                                )}
                                             </td>
                                             <td className="py-1 text-right font-bold align-top">
                                                 {formatCurrency(item.valor_pago)}

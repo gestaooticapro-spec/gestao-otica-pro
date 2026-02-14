@@ -1592,8 +1592,8 @@ export async function searchProductCatalog(
 
     terms.forEach(term => {
       // Para cada termo digitado, ele deve aparecer em pelo menos UM dos campos
-      // Adicionamos 'marca' na busca
-      q = q.or(`nome.ilike.%${term}%,codigo_barras.ilike.%${term}%,referencia.ilike.%${term}%,marca.ilike.%${term}%`)
+      // Adicionamos 'marca', 'referencia' e campos JSON ('modelo' e 'cor') na busca
+      q = q.or(`nome.ilike.%${term}%,codigo_barras.ilike.%${term}%,referencia.ilike.%${term}%,marca.ilike.%${term}%,detalhes->>modelo.ilike.%${term}%,detalhes->>cor.ilike.%${term}%`)
     });
 
     q = q.order('nome').limit(50)
@@ -1659,13 +1659,27 @@ export async function buscarProdutoExpress(query: string, storeId: number) {
   const resultados: ProdutoExpressResult[] = []
 
   try {
-    const { data } = await supabaseAdmin
+    let queryBuilder = supabaseAdmin
       .from('products')
       .select('*, tem_grade')
       .eq('store_id', storeId)
-      .in('tipo_produto', ['Armacao', 'Outro', 'Lente'])
-      .or(`codigo_barras.eq.${termo},nome.ilike.%${termo}%`)
-      .limit(10)
+      .in('tipo_produto', ['Armacao', 'Outro', 'Lente', 'Solar'])
+
+    // Lógica de busca refinada
+    const terms = termo.split(/\s+/).filter(t => t.length > 0)
+
+    if (terms.length === 1) {
+      // Se for um termo só, pode ser qualquer campo, incluindo JSON
+      queryBuilder = queryBuilder.or(`codigo_barras.eq.${termo},nome.ilike.%${termo}%,marca.ilike.%${termo}%,referencia.ilike.%${termo}%,detalhes->>modelo.ilike.%${termo}%,detalhes->>cor.ilike.%${termo}%`)
+    } else {
+      // Se forem vários termos (ex: "Prada SPR 65Z"), assumimos que é busca por NOME/MARCA/REF/MODELO(JSON)
+      // e TODOS os termos devem estar presentes em ALGUM dos campos (AND lógico de ORs)
+      terms.forEach(t => {
+        queryBuilder = queryBuilder.or(`nome.ilike.%${t}%,marca.ilike.%${t}%,codigo_barras.eq.${t},referencia.ilike.%${t}%,detalhes->>modelo.ilike.%${t}%,detalhes->>cor.ilike.%${t}%`)
+      })
+    }
+
+    const { data } = await queryBuilder.limit(10)
 
     // CORREÃ‡ÃƒO: Adicionado (p: any) para o TypeScript aceitar as propriedades
     data?.forEach((p: any) => {

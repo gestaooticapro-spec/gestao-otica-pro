@@ -1,6 +1,7 @@
 // Caminho: src/app/layout.tsx
 import type { Metadata, Viewport } from 'next' // <--- Importe Viewport
 import { Inter } from 'next/font/google'
+import { Toaster } from 'sonner'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -39,6 +40,7 @@ export default function RootLayout({
         className={`${inter.className} flex flex-col min-h-screen bg-gray-100 text-slate-800`}
       >
         {children}
+        <Toaster position="top-center" richColors />
       </body>
     </html>
   )

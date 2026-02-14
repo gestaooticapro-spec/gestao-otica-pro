@@ -1,18 +1,18 @@
-// ARQUIVO: src/app/dashboard/loja/[storeId]/clientes/page.tsx
 'use client';
 
-import { useState, useEffect, useRef, useTransition } from 'react';
+import { useState, useEffect, useTransition } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
     Loader2, Save, Trash2, Search, X,
     ArrowLeftToLine, ArrowRightToLine, ChevronLeft, ChevronRight,
     User, ClipboardList, ScrollText, Users2, UserPlus, Calendar, Pencil,
-    AlertTriangle, CheckCircle2, Briefcase, Trophy, Gem, Medal
+    AlertTriangle, Gem, Trophy, Medal
 } from 'lucide-react';
 import { Database } from '@/lib/database.types';
 import { saveCustomerDetails, deleteCustomer } from '@/lib/actions/customer.actions';
 import { searchCustomersByName, getCustomerById, fetchDefaultCustomers } from '@/lib/actions/vendas.actions';
 import { getDependentes, deleteDependente, saveDependente } from '@/lib/actions/dependents.actions';
+import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 
 type Customer = Database['public']['Tables']['customers']['Row'];
 type Dependente = Database['public']['Tables']['dependentes']['Row'];
@@ -42,13 +42,10 @@ const maskCPF = (value: string) => value.replace(/\D/g, '').replace(/(\d{3})(\d)
 const maskPhone = (value: string) => value.replace(/\D/g, '').replace(/^(\d{2})(\d)/g, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2').substring(0, 15);
 const formatRenda = (value: string) => { let v = value.replace(/\D/g, ''); if (!v) return '0,00'; let i = v.slice(0, -2); let d = v.slice(-2); if (i.length > 3) i = i.replace(/\B(?=(\d{3})+(?!\d))/g, "."); return `${i || '0'},${d}`; };
 
-// --- DESIGN SYSTEM COMPACTO (ALTO CONTRASTE) ---
-// Label mais escuro
-const labelStyle = "block text-[9px] font-bold text-slate-700 uppercase mb-0.5 tracking-wider";
-// Input branco com borda visível
-const inputStyle = "block w-full rounded-md border border-slate-300 bg-white shadow-sm text-slate-900 h-8 text-xs px-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-bold placeholder:font-normal placeholder:text-slate-400 disabled:bg-slate-100 disabled:text-slate-500 transition-all";
-// Card branco
-const cardStyle = "bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-3";
+// --- DESIGN SYSTEM DOCTAS GLASS ---
+const labelStyle = "block text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-wider";
+const inputStyle = "block w-full rounded-xl border border-white/10 bg-black/20 shadow-sm text-slate-200 h-9 text-xs px-3 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 font-bold placeholder:font-normal placeholder:text-slate-600 disabled:opacity-50 transition-all outline-none";
+const cardStyle = "bg-white/5 p-4 rounded-xl shadow-sm border border-white/10 backdrop-blur-md mb-3";
 
 // Função auxiliar para desenhar o selo
 const getRankingBadge = (ranking: string | null) => {
@@ -56,21 +53,20 @@ const getRankingBadge = (ranking: string | null) => {
     const r = ranking.toLowerCase();
 
     if (r === 'diamante') return (
-        <span className="inline-flex items-center gap-1 text-[9px] bg-cyan-50 text-cyan-700 px-1.5 py-0.5 rounded border border-cyan-100 font-bold ml-2">
+        <span className="inline-flex items-center gap-1 text-[9px] bg-cyan-500/10 text-cyan-300 px-1.5 py-0.5 rounded border border-cyan-500/20 font-bold ml-2 shadow-[0_0_10px_rgba(34,211,238,0.1)]">
             <Gem className="h-3 w-3" /> Diamante
         </span>
     );
     if (r === 'ouro') return (
-        <span className="inline-flex items-center gap-1 text-[9px] bg-yellow-50 text-yellow-700 px-1.5 py-0.5 rounded border border-yellow-100 font-bold ml-2">
+        <span className="inline-flex items-center gap-1 text-[9px] bg-yellow-500/10 text-yellow-300 px-1.5 py-0.5 rounded border border-yellow-500/20 font-bold ml-2 shadow-[0_0_10px_rgba(250,204,21,0.1)]">
             <Trophy className="h-3 w-3" /> Ouro
         </span>
     );
     if (r === 'prata') return (
-        <span className="inline-flex items-center gap-1 text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200 font-bold ml-2">
+        <span className="inline-flex items-center gap-1 text-[9px] bg-slate-500/10 text-slate-300 px-1.5 py-0.5 rounded border border-slate-500/20 font-bold ml-2">
             <Medal className="h-3 w-3" /> Prata
         </span>
     );
-    // Bronze não precisa de selo para não poluir
     return null;
 };
 
@@ -79,6 +75,7 @@ export default function StoreClientPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const urlClientId = searchParams.get('id');
+    const { preference } = useBackgroundPreference();
 
     const storeId = parseInt(params.storeId as string, 10);
 
@@ -234,7 +231,6 @@ export default function StoreClientPage() {
         setRefPessoal1(currentCustomer?.ref_pessoal_1 ?? '');
         setRefPessoal2(currentCustomer?.ref_pessoal_2 ?? '');
         setFaixaEtaria(currentCustomer?.faixa_etaria ?? '');
-        // AQUI: setObsGeral recebe notes ou obs_debito
         setObsGeral(currentCustomer?.notes ?? currentCustomer?.obs_debito ?? '');
     }, [currentCustomer, currentIndex]);
 
@@ -296,7 +292,7 @@ export default function StoreClientPage() {
 
     const handleNavigate = (direction: 'first' | 'prev' | 'next' | 'last' | 'new') => {
         if (direction === 'new') {
-            handleNew(); // Chama a função dedicada
+            handleNew();
             return;
         }
         if (customers.length === 0) return;
@@ -316,11 +312,9 @@ export default function StoreClientPage() {
         setCurrentIndex(newIndex);
     };
 
-    // --- CORREÇÃO: Função handleNew declarada aqui ---
     const handleNew = () => {
         setCurrentIndex(-1);
         setActiveTab('principal');
-        // O useEffect detecta currentIndex === -1 e limpa o form
     };
 
     const handleSelectCustomer = async (cust: Customer, index: number) => {
@@ -337,43 +331,49 @@ export default function StoreClientPage() {
         setCurrentIndex(index);
     };
 
-    const baseButtonStyle = "px-3 py-1.5 text-xs font-bold rounded-lg shadow-sm disabled:opacity-50 transition-all active:scale-95 flex items-center justify-center gap-1";
+    const baseButtonStyle = "px-3 py-1.5 text-xs font-bold rounded-lg shadow-sm disabled:opacity-50 transition-all active:scale-95 flex items-center justify-center gap-1 border border-white/5";
 
     return (
-        <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-slate-100">
+        <div className="relative flex h-[calc(100vh-64px)] overflow-hidden bg-slate-950 font-sans">
+
+            {/* BACKGROUND PREMIUM (Controlado pelo preference) */}
+            <div className={`absolute inset-0 z-0 transition-opacity duration-1000 pointer-events-none ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
+                <img src="/cliente.jpg" alt="" className="absolute inset-0 w-full h-full object-cover opacity-50 blur-[2px]" />
+                <div className="absolute inset-0 z-0 bg-gradient-to-b from-slate-950/40 via-slate-950/60 to-slate-950/90" />
+            </div>
 
             {/* --- COLUNA ESQUERDA (30%) --- */}
-            <div className="w-1/3 flex flex-col border-r border-slate-200 bg-white z-10 shadow-sm">
+            <div className="w-1/3 flex flex-col border-r border-white/10 bg-slate-900/40 backdrop-blur-md z-10 shadow-xl">
 
                 {/* Header de Busca (Gradiente) */}
-                <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-4 flex flex-col gap-3 shadow-md z-20">
-                    <div className="flex justify-between items-center text-white">
-                        <h2 className="font-bold text-sm flex items-center gap-2">
+                <div className="bg-gradient-to-br from-indigo-900/60 to-slate-900/60 p-4 flex flex-col gap-3 shadow-md z-20 border-b border-indigo-500/20 backdrop-blur-md">
+                    <div className="flex justify-between items-center text-indigo-300">
+                        <h2 className="font-bold text-xs flex items-center gap-2 tracking-wider">
                             <Users2 className="h-4 w-4" /> LISTA DE CLIENTES
                         </h2>
-                        <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-medium">
+                        <span className="text-[10px] bg-indigo-500/20 px-2 py-0.5 rounded-full font-bold border border-indigo-500/30 text-indigo-200 shadow-sm">
                             {customers.length}
                         </span>
                     </div>
-                    <div className="relative">
+                    <div className="relative group">
                         <input
                             type="text"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             placeholder="Buscar por nome, CPF..."
-                            className="w-full h-9 pl-9 pr-3 rounded-lg border-0 bg-white shadow-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-blue-300 font-bold text-xs"
+                            className="w-full h-10 pl-10 pr-3 rounded-xl border border-white/10 bg-black/40 shadow-inner text-slate-200 placeholder:text-slate-500 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 font-bold text-xs transition-all outline-none group-hover:border-white/20 backdrop-blur-sm"
                         />
-                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                        {isSearching && <Loader2 className="absolute right-2.5 top-2.5 h-4 w-4 animate-spin text-blue-500" />}
+                        <Search className="absolute left-3 top-3 h-4 w-4 text-slate-500 group-hover:text-indigo-400 transition-colors" />
+                        {isSearching && <Loader2 className="absolute right-3 top-3 h-4 w-4 animate-spin text-indigo-500" />}
                     </div>
                 </div>
 
                 {/* Lista Rolável */}
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto custom-scrollbar bg-transparent p-2 space-y-1">
                     {loading ? (
-                        <div className="flex justify-center p-10"><Loader2 className="h-6 w-6 animate-spin text-blue-500" /></div>
+                        <div className="flex justify-center p-10"><Loader2 className="h-6 w-6 animate-spin text-indigo-500" /></div>
                     ) : customers.length === 0 ? (
-                        <div className="text-center p-10 text-slate-400">
+                        <div className="text-center p-10 text-slate-600">
                             <User className="h-10 w-10 mx-auto mb-2 opacity-20" />
                             <p className="text-xs">Nenhum cliente encontrado.</p>
                         </div>
@@ -382,21 +382,29 @@ export default function StoreClientPage() {
                             <div
                                 key={c.id || idx}
                                 onClick={() => handleSelectCustomer(c, idx)}
-                                className={`p-3 border-b border-slate-100 cursor-pointer transition-colors flex justify-between items-center group
-                                ${currentIndex === idx ? 'bg-blue-50 border-l-4 border-l-blue-600' : 'hover:bg-slate-50 border-l-4 border-l-transparent'}
+                                className={`p-3 rounded-xl cursor-pointer transition-all flex justify-between items-center group relative overflow-hidden backdrop-blur-sm
+                                ${currentIndex === idx
+                                        ? 'bg-indigo-500/30 border border-indigo-500/40 shadow-lg shadow-indigo-500/10'
+                                        : 'bg-white/5 border border-white/5 hover:border-white/10 hover:bg-white/10'}
                             `}
                             >
-                                <div className="min-w-0">
-                                    <p className={`font-bold text-xs truncate ${currentIndex === idx ? 'text-blue-700' : 'text-slate-700'}`}>
+                                <div className="min-w-0 relative z-10">
+                                    <p className={`font-bold text-xs truncate ${currentIndex === idx ? 'text-indigo-200' : 'text-slate-300 group-hover:text-white'}`}>
                                         {c.full_name}
                                     </p>
-                                    {getRankingBadge(c.ranking)}
-                                    <p className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
-                                        {c.cpf ? `CPF: ${c.cpf}` : 'Sem CPF'}
-                                        {c.obs_debito && <AlertTriangle className="h-3 w-3 text-red-500 ml-1" />}
-                                    </p>
+                                    <div className="flex items-center mt-1">
+                                        {getRankingBadge(c.ranking)}
+                                        <p className="text-[10px] text-slate-500 ml-2 flex items-center gap-1 group-hover:text-slate-400">
+                                            {c.cpf ? `${c.cpf}` : 'Sem CPF'}
+                                            {c.obs_debito && <AlertTriangle className="h-3 w-3 text-red-400 ml-1 dropshadow-sm" />}
+                                        </p>
+                                    </div>
                                 </div>
-                                <ChevronRight className={`h-3 w-3 text-slate-300 group-hover:text-blue-400 ${currentIndex === idx ? 'text-blue-500' : ''}`} />
+                                <ChevronRight className={`h-3 w-3 text-slate-600 group-hover:text-indigo-400 transition-transform group-hover:translate-x-1 ${currentIndex === idx ? 'text-indigo-400' : ''}`} />
+
+                                {currentIndex === idx && (
+                                    <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 to-transparent pointer-events-none" />
+                                )}
                             </div>
                         ))
                     )}
@@ -404,13 +412,19 @@ export default function StoreClientPage() {
             </div>
 
             {/* --- COLUNA DIREITA (70%) --- */}
-            <div className="flex-1 flex flex-col bg-slate-50/50 relative overflow-hidden">
-                <form onSubmit={handleSaveSubmit} className="flex flex-col h-full">
+            <div className="flex-1 flex flex-col bg-slate-900/40 relative overflow-hidden z-10 backdrop-blur-sm">
+
+                {/* Header Actions & Toggle */}
+                <div className="absolute top-4 right-4 z-50">
+                    <BackgroundToggle />
+                </div>
+
+                <form onSubmit={handleSaveSubmit} className="flex flex-col h-full bg-transparent">
                     <input type="hidden" name="store_id" value={storeId} />
                     {currentCustomer?.id && <input type="hidden" name="id" value={currentCustomer.id} />}
 
                     {/* Header das Abas */}
-                    <div className="bg-white border-b border-slate-200 px-4 pt-3 flex gap-4 shadow-sm flex-shrink-0">
+                    <div className="bg-slate-900/60 border-b border-white/10 px-4 pt-3 flex gap-4 shadow-xl shadow-black/20 flex-shrink-0 z-20 backdrop-blur-md">
                         <TabButton label="Dados Pessoais" icon={User} isActive={activeTab === 'principal'} onClick={() => setActiveTab('principal')} />
                         <TabButton label="Detalhes" icon={ClipboardList} isActive={activeTab === 'detalhes'} onClick={() => setActiveTab('detalhes')} />
                         <TabButton label="Ref. / Obs" icon={ScrollText} isActive={activeTab === 'referencias'} onClick={() => setActiveTab('referencias')} />
@@ -420,10 +434,10 @@ export default function StoreClientPage() {
                     </div>
 
                     {/* Conteúdo com Scroll */}
-                    <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                        <div className="max-w-5xl mx-auto">
+                    <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                        <div className="max-w-4xl mx-auto">
                             {errorMessage && (
-                                <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-2 mb-3 rounded-r text-xs flex items-center gap-2">
+                                <div className="bg-red-500/10 border-l-4 border-red-500 text-red-400 p-3 mb-4 rounded-r-lg text-xs flex items-center gap-2 shadow-lg backdrop-blur-sm">
                                     <AlertTriangle className="h-4 w-4" /> <strong>Erro:</strong> {errorMessage}
                                 </div>
                             )}
@@ -469,27 +483,30 @@ export default function StoreClientPage() {
 
                     {/* RODAPÉ FIXO (Some na aba Dependentes) */}
                     {!isDepTab && (
-                        <div className="bg-white border-t border-slate-200 p-3 shadow-[0_-5px_20px_rgba(0,0,0,0.05)] flex justify-between items-center z-20 shrink-0">
+                        <div className="bg-slate-900/80 border-t border-white/10 p-3 shadow-[0_-5px_20px_rgba(0,0,0,0.2)] flex justify-between items-center z-30 shrink-0 backdrop-blur-xl">
                             <div className="flex gap-1">
-                                <button type="button" onClick={() => handleNavigate('first')} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-500"><ArrowLeftToLine className="h-4 w-4" /></button>
-                                <button type="button" onClick={() => handleNavigate('prev')} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-500"><ChevronLeft className="h-4 w-4" /></button>
-                                <span className="bg-slate-800 text-white text-xs px-3 py-2 rounded-lg font-mono font-bold min-w-[70px] text-center">
+                                <button type="button" onClick={() => handleNavigate('first')} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors border border-white/5"><ArrowLeftToLine className="h-4 w-4" /></button>
+                                <button type="button" onClick={() => handleNavigate('prev')} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors border border-white/5"><ChevronLeft className="h-4 w-4" /></button>
+                                <span className="bg-black/40 text-slate-200 text-xs px-3 py-2 rounded-lg font-mono font-bold min-w-[70px] text-center border border-white/10 shadow-inner">
                                     {currentIndex === -1 ? 'NOVO' : `${currentIndex + 1} / ${customers.length}`}
                                 </span>
-                                <button type="button" onClick={() => handleNavigate('next')} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-500"><ChevronRight className="h-4 w-4" /></button>
-                                <button type="button" onClick={() => handleNavigate('last')} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-500"><ArrowRightToLine className="h-4 w-4" /></button>
+                                <button type="button" onClick={() => handleNavigate('next')} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors border border-white/5"><ChevronRight className="h-4 w-4" /></button>
+                                <button type="button" onClick={() => handleNavigate('last')} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors border border-white/5"><ArrowRightToLine className="h-4 w-4" /></button>
                             </div>
 
                             <div className="flex gap-2">
-                                <button type="button" onClick={handleNew} disabled={isSaving} className={`${baseButtonStyle} bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200`}>
+                                <button type="button" onClick={() => router.back()} className={`${baseButtonStyle} bg-white/5 text-slate-400 hover:text-white hover:bg-white/10 border-white/5`}>
+                                    <ArrowLeftToLine className="h-4 w-4" /> Voltar
+                                </button>
+                                <button type="button" onClick={handleNew} disabled={isSaving} className={`${baseButtonStyle} bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 border-blue-500/30`}>
                                     <UserPlus className="h-4 w-4" /> Novo
                                 </button>
                                 {currentIndex !== -1 && (
-                                    <button type="button" onClick={handleDelete} disabled={isDeleting} className={`${baseButtonStyle} bg-red-50 text-red-700 hover:bg-red-100 border border-red-200`}>
+                                    <button type="button" onClick={handleDelete} disabled={isDeleting} className={`${baseButtonStyle} bg-red-500/10 text-red-300 hover:bg-red-500/20 border-red-500/30`}>
                                         {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Excluir
                                     </button>
                                 )}
-                                <button type="submit" disabled={isSaving} className={`${baseButtonStyle} bg-green-600 text-white hover:bg-green-700 shadow-md px-6`}>
+                                <button type="submit" disabled={isSaving} className={`${baseButtonStyle} bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/20 border-transparent px-6 border border-white/10`}>
                                     {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4 mr-1" /> SALVAR</>}
                                 </button>
                             </div>
@@ -503,19 +520,21 @@ export default function StoreClientPage() {
 
 function TabButton({ label, icon: Icon, isActive, onClick }: { label: string, icon: React.ElementType, isActive: boolean, onClick: () => void }) {
     return (
-        <button type="button" onClick={onClick} className={`flex items-center gap-2 pb-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${isActive ? 'text-blue-600 border-blue-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>
-            <Icon className={`h-4 w-4 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} /> {label}
+        <button type="button" onClick={onClick} className={`flex items-center gap-2 pb-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${isActive ? 'text-indigo-300 border-indigo-400 scale-105' : 'text-slate-500 border-transparent hover:text-slate-300'}`}>
+            <Icon className={`h-4 w-4 ${isActive ? 'text-indigo-400' : 'text-slate-500'}`} /> {label}
         </button>
     );
 }
 
 function AbaPrincipal({ state, handlers, isSaving, inputStyle }: any) {
     const lbl = labelStyle;
-    const cpfStyle = state.isCpfValid ? inputStyle : "block w-full rounded-md border-red-300 shadow-sm text-red-900 h-8 text-xs bg-red-50 px-2 focus:ring-red-500 focus:border-red-500 font-bold";
+    const cpfStyle = state.isCpfValid ? inputStyle : "block w-full rounded-xl border-2 border-red-500/50 shadow-sm text-red-400 h-9 text-xs bg-red-500/10 px-3 focus:ring-red-500 focus:border-red-500 font-bold outline-none";
 
     return (
-        <div className="grid grid-cols-12 gap-3 gap-y-2">
-            <h3 className="col-span-full font-bold text-xs text-blue-700 border-b border-slate-100 pb-1 mb-1 uppercase">Identificação</h3>
+        <div className="grid grid-cols-12 gap-3 gap-y-3">
+            <h3 className="col-span-full font-bold text-[10px] text-indigo-400 border-b border-white/5 pb-1 mb-1 uppercase tracking-widest flex items-center gap-2 opacity-80">
+                <div className="h-1 w-1 bg-indigo-500 rounded-full" /> Identificação
+            </h3>
             <div className="col-span-8">
                 <label className={lbl}>Nome Completo *</label>
                 <input name="full_name" type="text" required value={state.fullName} onChange={e => handlers.setFullName(e.target.value)} className={inputStyle} disabled={isSaving} />
@@ -527,7 +546,7 @@ function AbaPrincipal({ state, handlers, isSaving, inputStyle }: any) {
             <div className="col-span-3 relative">
                 <label className={lbl}>CPF</label>
                 <input name="cpf" type="text" value={state.cpf} onChange={(e) => handlers.handleCpfChange(e.target.value)} className={cpfStyle} disabled={isSaving} />
-                {!state.isCpfValid && <span className="text-[9px] text-red-600 font-bold absolute -bottom-3 right-0">Inválido</span>}
+                {!state.isCpfValid && <span className="text-[9px] text-red-400 font-bold absolute -bottom-3 right-0 drop-shadow-md">Inválido</span>}
             </div>
             <div className="col-span-3">
                 <label className={lbl}>RG</label>
@@ -542,7 +561,9 @@ function AbaPrincipal({ state, handlers, isSaving, inputStyle }: any) {
                 <input name="phone" type="text" value={state.phone} onChange={(e) => handlers.setPhone(maskPhone(e.target.value))} className={inputStyle} disabled={isSaving} />
             </div>
 
-            <h3 className="col-span-full font-bold text-xs text-blue-700 border-b border-slate-100 pb-1 mb-1 mt-2 uppercase">Endereço</h3>
+            <h3 className="col-span-full font-bold text-[10px] text-indigo-400 border-b border-white/5 pb-1 mb-1 mt-3 uppercase tracking-widest flex items-center gap-2 opacity-80">
+                <div className="h-1 w-1 bg-indigo-500 rounded-full" /> Endereço
+            </h3>
             <div className="col-span-2">
                 <label className={lbl}>CEP</label>
                 <input name="cep" type="text" value={state.cep} onChange={(e) => handlers.setCep(e.target.value)} className={inputStyle} disabled={isSaving} />
@@ -576,15 +597,14 @@ function AbaPrincipal({ state, handlers, isSaving, inputStyle }: any) {
                 <input name="email" type="email" value={state.email} onChange={e => handlers.setEmail(e.target.value)} className={inputStyle} disabled={isSaving} />
             </div>
 
-            {/* --- NOVO LOCAL DA OBSERVAÇÃO --- */}
-            <div className="col-span-12 mt-2 pt-2 border-t border-slate-100">
-                <label className={`${lbl} text-red-600`}>Observações Gerais / Restrições</label>
+            <div className="col-span-12 mt-2 pt-2 border-t border-white/5">
+                <label className={`${lbl} text-red-400`}>Observações Gerais / Restrições</label>
                 <textarea
                     name="notes"
                     rows={3}
                     value={state.obsGeral}
                     onChange={e => handlers.setObsGeral(e.target.value)}
-                    className="block w-full rounded-md border border-slate-300 shadow-sm text-xs p-2 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none placeholder:text-slate-400 font-bold text-slate-700"
+                    className="block w-full rounded-xl border border-white/10 shadow-sm text-xs p-3 bg-white/5 focus:ring-1 focus:ring-red-500/50 focus:border-red-500/50 resize-none placeholder:text-slate-600 font-bold text-slate-300 outline-none"
                     disabled={isSaving}
                     placeholder="Digite aqui restrições de crédito ou notas importantes..."
                 />
@@ -596,8 +616,10 @@ function AbaPrincipal({ state, handlers, isSaving, inputStyle }: any) {
 function AbaDetalhes({ state, handlers, isSaving, inputStyle }: any) {
     const lbl = labelStyle;
     return (
-        <div className="grid grid-cols-12 gap-3 gap-y-2">
-            <h3 className="col-span-full font-bold text-xs text-blue-700 border-b border-slate-100 pb-1 mb-1 uppercase">Filiação e Situação</h3>
+        <div className="grid grid-cols-12 gap-3 gap-y-3">
+            <h3 className="col-span-full font-bold text-[10px] text-indigo-400 border-b border-white/5 pb-1 mb-1 uppercase tracking-widest flex items-center gap-2 opacity-80">
+                <div className="h-1 w-1 bg-indigo-500 rounded-full" /> Filiação e Situação
+            </h3>
             <div className="col-span-6">
                 <label className={lbl}>Pai</label>
                 <input name="pai" type="text" value={state.pai} onChange={e => handlers.setPai(e.target.value)} className={inputStyle} disabled={isSaving} />
@@ -615,7 +637,9 @@ function AbaDetalhes({ state, handlers, isSaving, inputStyle }: any) {
                 <input name="estado_civil" type="text" value={state.estadoCivil} onChange={handlers.setEstadoCivil} className={inputStyle} disabled={isSaving} />
             </div>
 
-            <h3 className="col-span-full font-bold text-xs text-blue-700 border-b border-slate-100 pb-1 mb-1 mt-2 uppercase">Cônjuge</h3>
+            <h3 className="col-span-full font-bold text-[10px] text-indigo-400 border-b border-white/5 pb-1 mb-1 mt-3 uppercase tracking-widest flex items-center gap-2 opacity-80">
+                <div className="h-1 w-1 bg-indigo-500 rounded-full" /> Cônjuge
+            </h3>
             <div className="col-span-4">
                 <label className={lbl}>Nome</label>
                 <input name="conjuge_nome" type="text" value={state.conjugeNome} onChange={handlers.setConjugeNome} className={inputStyle} disabled={isSaving} />
@@ -633,7 +657,9 @@ function AbaDetalhes({ state, handlers, isSaving, inputStyle }: any) {
                 <input name="conjuge_trabalho" type="text" value={state.conjugeTrabalho} onChange={handlers.setConjugeTrabalho} className={inputStyle} disabled={isSaving} />
             </div>
 
-            <h3 className="col-span-full font-bold text-xs text-blue-700 border-b border-slate-100 pb-1 mb-1 mt-2 uppercase">Dados Comerciais</h3>
+            <h3 className="col-span-full font-bold text-[10px] text-indigo-400 border-b border-white/5 pb-1 mb-1 mt-3 uppercase tracking-widest flex items-center gap-2 opacity-80">
+                <div className="h-1 w-1 bg-indigo-500 rounded-full" /> Dados Comerciais
+            </h3>
             <div className="col-span-4">
                 <label className={lbl}>Empresa</label>
                 <input name="comercial_trabalho" type="text" value={state.comercialTrabalho} onChange={handlers.setComercialTrabalho} className={inputStyle} disabled={isSaving} />
@@ -661,8 +687,10 @@ function AbaDetalhes({ state, handlers, isSaving, inputStyle }: any) {
 function AbaReferencias({ state, handlers, isSaving, inputStyle }: any) {
     const lbl = labelStyle;
     return (
-        <div className="grid grid-cols-12 gap-3 gap-y-2">
-            <h3 className="col-span-full font-bold text-xs text-blue-700 border-b border-slate-100 pb-1 mb-1 uppercase">Referências Pessoais</h3>
+        <div className="grid grid-cols-12 gap-3 gap-y-3">
+            <h3 className="col-span-full font-bold text-[10px] text-indigo-400 border-b border-white/5 pb-1 mb-1 uppercase tracking-widest flex items-center gap-2 opacity-80">
+                <div className="h-1 w-1 bg-indigo-500 rounded-full" /> Referências Pessoais
+            </h3>
             <div className="col-span-6">
                 <label className={lbl}>Ref. Pessoal 1</label>
                 <input name="ref_pessoal_1" type="text" value={state.refPessoal1} onChange={handlers.setRefPessoal1} className={inputStyle} disabled={isSaving} placeholder="Nome e Telefone" />
@@ -672,7 +700,9 @@ function AbaReferencias({ state, handlers, isSaving, inputStyle }: any) {
                 <input name="ref_pessoal_2" type="text" value={state.refPessoal2} onChange={handlers.setRefPessoal2} className={inputStyle} disabled={isSaving} placeholder="Nome e Telefone" />
             </div>
 
-            <h3 className="col-span-full font-bold text-xs text-blue-700 border-b border-slate-100 pb-1 mb-1 mt-2 uppercase">Referências Comerciais</h3>
+            <h3 className="col-span-full font-bold text-[10px] text-indigo-400 border-b border-white/5 pb-1 mb-1 mt-3 uppercase tracking-widest flex items-center gap-2 opacity-80">
+                <div className="h-1 w-1 bg-indigo-500 rounded-full" /> Referências Comerciais
+            </h3>
             <div className="col-span-6">
                 <label className={lbl}>Ref. Comercial 1</label>
                 <input name="ref_comercio_1" type="text" value={state.refComercio1} onChange={handlers.setRefComercio1} className={inputStyle} disabled={isSaving} placeholder="Empresa e Telefone" />
@@ -740,13 +770,13 @@ function AbaDependentes({ customerId, storeId, dependentes, onUpdate, inputStyle
     };
 
     if (!customerId) {
-        return <div className="flex h-full items-center justify-center text-slate-400 text-sm italic p-10">Salve o cliente titular primeiro para adicionar dependentes.</div>;
+        return <div className="flex h-full items-center justify-center text-slate-500 text-sm italic p-10 font-bold opacity-50">Salve o cliente titular primeiro para adicionar dependentes.</div>;
     }
 
     return (
         <div className="flex flex-col h-full gap-4">
-            <div className={`p-4 rounded-xl border shadow-sm transition-colors ${editingId ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
-                <h4 className={`text-xs font-bold uppercase mb-3 flex items-center gap-2 ${editingId ? 'text-amber-700' : 'text-blue-700'}`}>
+            <div className={`p-4 rounded-xl border-white/5 shadow-sm transition-colors border backdrop-blur-md ${editingId ? 'bg-amber-500/10 border-amber-500/20' : 'bg-white/5'}`}>
+                <h4 className={`text-xs font-bold uppercase mb-3 flex items-center gap-2 ${editingId ? 'text-amber-400' : 'text-indigo-400'}`}>
                     {editingId ? <><Pencil className="h-4 w-4" /> Editando Dependente</> : <><UserPlus className="h-4 w-4" /> Adicionar Dependente</>}
                 </h4>
 
@@ -757,42 +787,42 @@ function AbaDependentes({ customerId, storeId, dependentes, onUpdate, inputStyle
                     </div>
                     <div className="w-1/4">
                         <label className={labelStyle}>Parentesco</label>
-                        <select value={depParentesco} onChange={e => setDepParentesco(e.target.value)} className={inputStyle}>
-                            <option value="Filho(a)">Filho(a)</option>
-                            <option value="Cônjuge">Cônjuge</option>
-                            <option value="Pai/Mãe">Pai/Mãe</option>
-                            <option value="Outro">Outro</option>
+                        <select value={depParentesco} onChange={e => setDepParentesco(e.target.value)} className={`${inputStyle} appearance-none`}>
+                            <option value="Filho(a)" className="text-black">Filho(a)</option>
+                            <option value="Cônjuge" className="text-black">Cônjuge</option>
+                            <option value="Pai/Mãe" className="text-black">Pai/Mãe</option>
+                            <option value="Outro" className="text-black">Outro</option>
                         </select>
                     </div>
                     <div className="w-1/4">
                         <label className={labelStyle}>Nascimento</label>
                         <input type="date" value={depNasc} onChange={e => setDepNasc(e.target.value)} className={inputStyle} />
                     </div>
-                    <button type="button" onClick={handleSave} disabled={isSaving} className={`h-8 px-4 rounded-lg text-xs font-bold text-white flex items-center gap-1 shadow-sm transition-transform active:scale-95 ${editingId ? 'bg-amber-600 hover:bg-amber-700' : 'bg-green-600 hover:bg-green-700'}`}>
+                    <button type="button" onClick={handleSave} disabled={isSaving} className={`h-9 px-4 rounded-xl text-xs font-bold text-white flex items-center gap-1 shadow-md transition-transform active:scale-95 ${editingId ? 'bg-amber-600 hover:bg-amber-700' : 'bg-green-600 hover:bg-green-700'}`}>
                         {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} {editingId ? 'Atualizar' : 'Adicionar'}
                     </button>
                     {editingId && (
-                        <button type="button" onClick={handleCancelEdit} className="h-8 px-2 rounded-lg text-slate-500 hover:bg-slate-100 border border-slate-200" title="Cancelar"><X className="h-4 w-4" /></button>
+                        <button type="button" onClick={handleCancelEdit} className="h-9 px-2 rounded-xl text-slate-400 hover:bg-white/10 border border-white/10" title="Cancelar"><X className="h-4 w-4" /></button>
                     )}
                 </div>
             </div>
 
             <div className="space-y-2">
                 {dependentes.length === 0 ? (
-                    <p className="text-center text-slate-400 text-xs py-4">Nenhum dependente cadastrado.</p>
+                    <p className="text-center text-slate-500 text-xs py-4">Nenhum dependente cadastrado.</p>
                 ) : (
                     dependentes.map(dep => (
-                        <div key={dep.id} className={`flex justify-between items-center p-3 border rounded-xl bg-white shadow-sm transition-colors ${editingId === dep.id ? 'border-amber-400 ring-1 ring-amber-400' : 'border-slate-100 hover:border-blue-200'}`}>
+                        <div key={dep.id} className={`flex justify-between items-center p-3 border rounded-xl shadow-sm transition-colors backdrop-blur-md ${editingId === dep.id ? 'bg-amber-500/10 border-amber-500/50' : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/20'}`}>
                             <div className="flex-1">
-                                <p className="font-bold text-slate-700 text-sm">{dep.full_name}</p>
+                                <p className="font-bold text-slate-200 text-sm">{dep.full_name}</p>
                                 <div className="flex gap-3 mt-1">
-                                    <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-bold uppercase">{dep.parentesco || 'Outro'}</span>
-                                    {dep.birth_date && <span className="text-[10px] text-slate-400 flex items-center gap-1"><Calendar className="h-3 w-3" /> {formatDate(dep.birth_date)}</span>}
+                                    <span className="text-[10px] bg-white/10 text-slate-400 px-2 py-0.5 rounded font-bold uppercase border border-white/5">{dep.parentesco || 'Outro'}</span>
+                                    {dep.birth_date && <span className="text-[10px] text-slate-500 flex items-center gap-1"><Calendar className="h-3 w-3" /> {formatDate(dep.birth_date)}</span>}
                                 </div>
                             </div>
                             <div className="flex gap-1">
-                                <button type="button" onClick={() => handleEditClick(dep)} className="text-slate-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-lg transition-colors" title="Editar"><Pencil className="h-4 w-4" /></button>
-                                <button type="button" onClick={() => handleDelete(dep.id)} className="text-slate-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg transition-colors" title="Remover"><Trash2 className="h-4 w-4" /></button>
+                                <button type="button" onClick={() => handleEditClick(dep)} className="text-slate-500 hover:text-indigo-400 p-2 hover:bg-indigo-500/10 rounded-lg transition-colors" title="Editar"><Pencil className="h-4 w-4" /></button>
+                                <button type="button" onClick={() => handleDelete(dep.id)} className="text-slate-500 hover:text-red-400 p-2 hover:bg-red-500/10 rounded-lg transition-colors" title="Remover"><Trash2 className="h-4 w-4" /></button>
                             </div>
                         </div>
                     ))

@@ -5,7 +5,7 @@ import {
     DollarSign, HeartHandshake, Megaphone, Archive, Search,
     ArrowLeftRight, FileInput, Tag, FileSpreadsheet, ArrowLeft, Clock,
     AlertCircle, Gift, Calendar, Package, ChevronRight, ChevronDown, ChevronUp,
-    MessageCircle, CalendarClock, CalendarCheck, ArrowRight
+    MessageCircle, CalendarClock, CalendarCheck, ArrowRight, Send
 } from 'lucide-react';
 import { useModals } from '@/lib/contexts/ModalsContext';
 import Link from 'next/link';
@@ -44,6 +44,16 @@ interface VencimentoProximo {
     numero_parcela: number;
 }
 
+interface RetornoCobranca {
+    id: number;
+    customer_id: number;
+    customer_name: string;
+    fone_movel: string | null;
+    tipo_contato: string;
+    resumo_conversa: string;
+    proxima_acao: string;
+}
+
 interface OperatorMenuLojaVaziaProps {
     storeId: number;
     storeName?: string;
@@ -57,6 +67,7 @@ interface RadarData {
     entregas: AlertaEntrega[];
     laboratorio: AlertaLaboratorio[];
     vencimentos: VencimentoProximo[];
+    retornos: RetornoCobranca[];
 }
 
 const formatDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
@@ -78,7 +89,8 @@ export default function OperatorMenuLojaVazia({
         aniversariantes: [],
         entregas: [],
         laboratorio: [],
-        vencimentos: []
+        vencimentos: [],
+        retornos: []
     });
     const [loading, setLoading] = useState(true);
 
@@ -93,7 +105,8 @@ export default function OperatorMenuLojaVazia({
                         aniversariantes: data.aniversariantes || [],
                         entregas: data.entregas || [],
                         laboratorio: data.laboratorio || [],
-                        vencimentos: data.vencimentos || []
+                        vencimentos: data.vencimentos || [],
+                        retornos: data.retornos || []
                     });
                 }
             } catch (error) {
@@ -143,6 +156,7 @@ export default function OperatorMenuLojaVazia({
             indigo: { bg: 'bg-indigo-500/20', text: 'text-indigo-300', border: 'hover:border-indigo-500/30' },
             emerald: { bg: 'bg-emerald-500/20', text: 'text-emerald-300', border: 'hover:border-emerald-500/30' },
             pink: { bg: 'bg-pink-500/20', text: 'text-pink-300', border: 'hover:border-pink-500/30' },
+            orange: { bg: 'bg-orange-500/20', text: 'text-orange-400', border: 'hover:border-orange-500/30' },
         };
         const c = colors[colorClass] || colors.amber;
 
@@ -180,6 +194,7 @@ export default function OperatorMenuLojaVazia({
     const [openVencimentos, setOpenVencimentos] = useState(false);
     const [openAniversarios, setOpenAniversarios] = useState(false);
     const [openEntregas, setOpenEntregas] = useState(false);
+    const [openRetornos, setOpenRetornos] = useState(false);
     const [openLaboratorio, setOpenLaboratorio] = useState(false);
 
     return (
@@ -428,6 +443,40 @@ export default function OperatorMenuLojaVazia({
                                         ))
                                     )}
                                 </RadarWidget>
+
+
+                                {/* RETORNOS DE COBRANÇA */}
+                                <RadarWidget
+                                    title="Retornos Cobrança"
+                                    subtitle="Agendados Hoje"
+                                    icon={MessageCircle}
+                                    colorClass="orange"
+                                    count={radar.retornos.length}
+                                    isOpen={openRetornos}
+                                    setIsOpen={setOpenRetornos}
+                                >
+                                    {radar.retornos.length === 0 ? (
+                                        <p className="text-center text-xs text-slate-400 py-4 font-medium">Sem contatos agendados.</p>
+                                    ) : (
+                                        radar.retornos.map(item => (
+                                            <div key={item.id} className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5 hover:border-white/20 transition-all">
+                                                <div className="flex-1 overflow-hidden pr-2">
+                                                    <p className="text-xs font-bold text-slate-200 truncate">{item.customer_name}</p>
+                                                    <p className="text-[10px] text-orange-400 font-medium truncate mt-0.5">
+                                                        {item.tipo_contato}: {item.resumo_conversa}
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    onClick={() => window.open(`https://wa.me/55${item.fone_movel?.replace(/\D/g, '')}`, '_blank')}
+                                                    className="w-8 h-8 shrink-0 rounded-full bg-orange-500/20 text-orange-400 hover:bg-orange-500 hover:text-white flex items-center justify-center transition-all"
+                                                >
+                                                    <Send className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </RadarWidget>
+
 
 
                                 {/* ENTREGAS */}

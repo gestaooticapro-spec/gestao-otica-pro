@@ -21,6 +21,10 @@ export type XmlPreviewItem = {
     status_sistema: 'Novo' | 'Encontrado' | 'Vinculado'
     id_sistema?: number // Se já existir
     estoque_atual?: number
+    // Campos para controle manual na tela de importação
+    manual_match_id?: number | null
+    use_xml_name?: boolean
+    original_system_name?: string
 }
 
 export type XmlPreviewData = {
@@ -57,7 +61,7 @@ export async function parseNfeAndPreview(formData: FormData): Promise<{ success:
     const supabaseAdmin = createAdminClient()
     const { data: { user } } = await createClient().auth.getUser()
     if (!user) return { success: false, message: 'Login necessário.' }
-    
+
     const profile = await getProfileByAdmin(user.id)
     if (!profile) return { success: false, message: 'Perfil não encontrado.' }
 
@@ -72,15 +76,15 @@ export async function parseNfeAndPreview(formData: FormData): Promise<{ success:
         // Navegar na estrutura NFe
         const nfeProc = xmlObj.nfeProc || xmlObj.NFe
         if (!nfeProc || !nfeProc.NFe) throw new Error("XML inválido ou não é uma NFe.")
-        
+
         const infNFe = nfeProc.NFe.infNFe
-        
+
         // 1. TRAVA DE SEGURANÇA: Verificar Chave de Acesso
-        const rawKey = infNFe["@_Id"] 
+        const rawKey = infNFe["@_Id"]
         if (!rawKey) throw new Error("Chave de acesso não encontrada no XML.")
-        
+
         const accessKey = cleanKey(rawKey)
-        
+
         const { data: invoiceExists } = await (supabaseAdmin.from('imported_invoices') as any)
             .select('id, imported_at')
             .eq('store_id', (profile as any).store_id)
@@ -94,7 +98,7 @@ export async function parseNfeAndPreview(formData: FormData): Promise<{ success:
 
         // 2. Dados Gerais
         const emit = infNFe.emit
-        const detList = Array.isArray(infNFe.det) ? infNFe.det : [infNFe.det] 
+        const detList = Array.isArray(infNFe.det) ? infNFe.det : [infNFe.det]
 
         // 3. Processar Fornecedor
         const cnpjFornecedor = emit.CNPJ
@@ -124,7 +128,7 @@ export async function parseNfeAndPreview(formData: FormData): Promise<{ success:
         // 4. Processar Produtos
         const itensPreview: XmlPreviewItem[] = []
         const eansDoXml = detList.map((d: any) => d.prod.cEAN).filter((c: string) => c && c !== 'SEM GTIN')
-        
+
         const { data: produtosExistentes } = await (supabaseAdmin.from('products') as any)
             .select('id, codigo_barras, estoque_atual, nome')
             .eq('store_id', (profile as any).store_id)
@@ -133,7 +137,7 @@ export async function parseNfeAndPreview(formData: FormData): Promise<{ success:
         for (const det of detList) {
             const prod = det.prod
             const impostos = det.imposto || {}
-            
+
             // CÁLCULO DO CUSTO EFETIVO (LANDED COST)
             const vProd = parseFloatSafe(prod.vProd)
             const qCom = parseFloatSafe(prod.qCom)
@@ -141,10 +145,10 @@ export async function parseNfeAndPreview(formData: FormData): Promise<{ success:
             const vFrete = parseFloatSafe(prod.vFrete)
             const vSeg = parseFloatSafe(prod.vSeg)
             const vOutro = parseFloatSafe(prod.vOutro)
-            
+
             const vIPI = parseFloatSafe(impostos.IPI?.IPITrib?.vIPI)
             const vST = parseFloatSafe(impostos.ICMS?.ICMS10?.vICMSST) || parseFloatSafe(impostos.ICMS?.ICMS30?.vICMSST) || parseFloatSafe(impostos.ICMS?.ICMS70?.vICMSST) || parseFloatSafe(impostos.ICMS?.ICMS90?.vICMSST) || 0
-            
+
             const custoTotalItem = vProd + vIPI + vST + vFrete + vSeg + vOutro - vDesc
             const custoUnitarioReal = custoTotalItem / qCom
 
@@ -211,18 +215,18 @@ export async function saveImportedData(data: XmlPreviewData, storeId: number) {
                 cidade: data.fornecedor.cidade,
                 uf: data.fornecedor.uf
             }).select().single()
-            
+
             if (error) throw new Error("Erro ao criar fornecedor: " + error.message)
             supplierId = newSup.id
         }
 
         // 2. Processar Produtos
         for (const item of data.itens) {
-            
+
             const nome = item.descricao.toUpperCase()
-            const ncmString = String(item.ncm || '') 
+            const ncmString = String(item.ncm || '')
             const ncm = ncmString.replace(/\./g, '')
-            
+
             let tipoDetectado = 'Outro'
             let categoriaDetectada = 'Importado XML'
 
@@ -245,27 +249,39 @@ export async function saveImportedData(data: XmlPreviewData, storeId: number) {
                 }
             }
 
-            const precoVendaSugerido = item.valor_unitario * 2 
+            const precoVendaSugerido = item.valor_unitario * 2
 
-            let productId = item.id_sistema
+            let productId = item.manual_match_id || item.id_sistema
 
             if (productId) {
                 // PRODUTO JÁ EXISTE: Atualiza estoque e custo (mas não mexe na marca/nome)
-                const { error: updateError } = await (supabaseAdmin as any).rpc('increment_stock', { 
-                    p_product_id: productId, 
+                const { error: updateError } = await (supabaseAdmin as any).rpc('increment_stock', {
+                    p_product_id: productId,
                     p_quantity: item.quantidade,
                     p_new_cost: item.valor_unitario
                 })
-                
-                if (updateError) { 
+
+                if (updateError) {
                     const { data: prodAtual } = await (supabaseAdmin.from('products') as any)
                         .select('estoque_atual')
                         .eq('id', productId)
                         .single()
-                        
+
                     await (supabaseAdmin.from('products') as any).update({
                         estoque_atual: (prodAtual?.estoque_atual || 0) + item.quantidade,
                         preco_custo: item.valor_unitario,
+                    }).eq('id', productId)
+
+                    // Se o usuário optou por usar o nome da nota, atualizamos o nome
+                    if (item.use_xml_name) {
+                        await (supabaseAdmin.from('products') as any).update({
+                            nome: item.descricao
+                        }).eq('id', productId)
+                    }
+                } else if (item.use_xml_name) {
+                    // Caso não tenha erro no RPC, mas precisamos atualizar o nome
+                    await (supabaseAdmin.from('products') as any).update({
+                        nome: item.descricao
                     }).eq('id', productId)
                 }
             } else {
@@ -276,12 +292,12 @@ export async function saveImportedData(data: XmlPreviewData, storeId: number) {
                     nome: item.descricao,
                     codigo_barras: item.codigo_barras || null,
                     referencia: item.codigo_fornecedor,
-                    tipo_produto: tipoDetectado, 
+                    tipo_produto: tipoDetectado,
                     categoria: categoriaDetectada,
-                    
+
                     // Marca: Deixamos NULL para preenchimento manual correto depois
-                    marca: null, 
-                    
+                    marca: null,
+
                     preco_custo: item.valor_unitario,
                     preco_venda: precoVendaSugerido,
                     estoque_atual: item.quantidade,
@@ -293,7 +309,7 @@ export async function saveImportedData(data: XmlPreviewData, storeId: number) {
                     unidade_medida: item.unidade,
                     origem_mercadoria: 0,
                     supplier_id: supplierId, // Vínculo com a tabela Suppliers
-                    detalhes: {} 
+                    detalhes: {}
                 }).select().single()
 
                 if (insertError) throw new Error(`Erro ao criar produto ${item.descricao}: ${insertError.message}`)
@@ -334,4 +350,26 @@ export async function saveImportedData(data: XmlPreviewData, storeId: number) {
         console.error("Erro ao salvar importação:", e)
         return { success: false, message: e.message }
     }
+}
+
+// ============================================================================
+// 3. BUSCA PARA VÍNCULO MANUAL
+// ============================================================================
+export async function searchProductsForManualMatch(term: string, storeId: number) {
+    const supabaseAdmin = createAdminClient()
+
+    if (!term || term.length < 3) return []
+
+    const { data, error } = await (supabaseAdmin.from('products') as any)
+        .select('id, nome, referencia, codigo_barras, estoque_atual, marca')
+        .eq('store_id', storeId)
+        .or(`nome.ilike.%${term}%,referencia.ilike.%${term}%,codigo_barras.ilike.%${term}%,marca.ilike.%${term}%`)
+        .limit(20)
+
+    if (error) {
+        console.error("Erro na busca manual:", error)
+        return []
+    }
+
+    return data as any[]
 }
