@@ -510,7 +510,7 @@ function TeamManagement({ storeId }: { storeId: number }) {
 export default function ConfigInterface({ storeId }: { storeId: number }) {
     const [activeTab, setActiveTab] = useState<'loja' | 'equipe'>('loja')
     const router = useRouter()
-    const preference = useBackgroundPreference()
+    const { preference } = useBackgroundPreference()
 
     return (
         <div className="relative flex flex-col h-[calc(100vh-64px)] bg-slate-950 overflow-hidden font-sans">
