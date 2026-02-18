@@ -23,6 +23,7 @@ import {
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { Database } from '@/lib/database.types'
 import QuickCustomerModal from '@/components/modals/QuickCustomerModal'
+import CashGuard from '@/components/financeiro/CashGuard'
 
 type Employee = Database['public']['Tables']['employees']['Row']
 type Customer = Database['public']['Tables']['customers']['Row']
@@ -276,6 +277,7 @@ export default function AtendimentoPage() {
         <div className="relative flex flex-col h-[calc(100vh-64px)] bg-slate-950 overflow-hidden font-sans">
 
             {/* BACKGROUND PREMIUM */}
+            <CashGuard storeId={storeId} />
             {/* BACKGROUND PREMIUM (Controlado pelo preference) */}
             <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
                 <div className="absolute inset-0 z-0 bg-[url('/vendasos.jpg')] bg-cover bg-center opacity-40 blur-[2px]" />
@@ -433,15 +435,25 @@ export default function AtendimentoPage() {
                                     </div>
                                 </div>
                             </div>
-                            {selectedCustomer.obs_debito && (
-                                <div className="bg-rose-500/20 text-rose-300 px-5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-3 border border-rose-500/30 shadow-2xl backdrop-blur-sm animate-pulse">
-                                    <AlertTriangle className="h-5 w-5 text-rose-500" />
-                                    <div className="flex flex-col">
-                                        <span className="uppercase text-[9px] tracking-widest opacity-70 font-black">Restrição Interna</span>
-                                        <span className="text-white tracking-tight">{selectedCustomer.obs_debito}</span>
+                            <div className="flex flex-col items-end gap-2">
+                                <button
+                                    onClick={() => push(`/dashboard/loja/${storeId}/cliente/${selectedCustomer.id}/historico`)}
+                                    className="p-2.5 bg-white/5 hover:bg-cyan-500/20 text-slate-400 hover:text-cyan-300 rounded-xl border border-white/5 hover:border-cyan-500/30 transition-all flex items-center gap-2 group"
+                                    title="Ver Raio-X Completo"
+                                >
+                                    <History className="h-5 w-5 group-hover:scale-110 transition-transform" />
+                                    <span className="text-xs font-bold uppercase tracking-widest hidden sm:inline">Raio-X</span>
+                                </button>
+                                {selectedCustomer.obs_debito && (
+                                    <div className="bg-rose-500/20 text-rose-300 px-5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-3 border border-rose-500/30 shadow-2xl backdrop-blur-sm animate-pulse">
+                                        <AlertTriangle className="h-5 w-5 text-rose-500" />
+                                        <div className="flex flex-col">
+                                            <span className="uppercase text-[9px] tracking-widest opacity-70 font-black">Restrição Interna</span>
+                                            <span className="text-white tracking-tight">{selectedCustomer.obs_debito}</span>
+                                        </div>
                                     </div>
-                                </div>
-                            )}
+                                )}
+                            </div>
                         </div>
 
                         {/* ===== NOVO: ALERTA DE DÍVIDA (AQUI) ===== */}

@@ -1460,7 +1460,8 @@ export async function saveFinanciamentoLoja(...args: any[]) {
     .update({
       financiamento_id: capaCriada.id,
       valor_restante: novoValorRestante,
-      status: novoStatus
+      status: novoStatus,
+      data_fechamento: novoStatus === 'Fechada' ? new Date().toISOString() : null
     })
     .eq('id', venda_id);
 
@@ -1495,21 +1496,28 @@ export type SalesFilterOptions = {
   mode?: 'pendencias' | 'historico'
   startDate?: string
   endDate?: string
+  search?: string
 }
 
 export async function getSalesList(storeId: number, options?: SalesFilterOptions) {
   const supabaseAdmin = createAdminClient()
 
   const mode = options?.mode || 'pendencias'
+  const search = options?.search
 
   try {
+    // Se tem busca, precisamos do !inner para filtrar pelo none do cliente
     let query = supabaseAdmin
       .from('vendas')
       .select(`
         *,
-        customers ( full_name )
+        customers${search ? '!inner' : ''} ( full_name )
       `)
       .eq('store_id', storeId)
+
+    if (search) {
+      query = query.ilike('customers.full_name', `%${search}%`)
+    }
 
     if (mode === 'pendencias') {
       // MODO PENDÃŠNCIAS: Traz tudo que está aberto, ignorando data (Prioridade Total)

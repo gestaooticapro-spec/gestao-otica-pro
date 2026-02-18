@@ -5,7 +5,6 @@ import { redirect, notFound } from 'next/navigation';
 import SideNav from '@/components/SideNav';
 import { getProfileByAdmin } from '@/lib/supabase/admin';
 import { createAdminClient } from '@/lib/supabase/admin';
-import CashGuard from '@/components/financeiro/CashGuard';
 import { ModalsProvider } from '@/lib/contexts/ModalsContext';
 import { OperatorLayout } from '@/components/operator-menu';
 import DashboardLayoutWrapper from '@/components/dashboard/DashboardLayoutWrapper';
@@ -64,7 +63,6 @@ export default async function StoreLayout({
           storeName={storeName}
           logoUrl={logoUrl}
         >
-          <CashGuard storeId={storeIdParam} />
           {children}
         </OperatorLayout>
       </ModalsProvider>
@@ -80,8 +78,6 @@ export default async function StoreLayout({
 
         {/* WRAPPER ENVOLVE SIDEBAR E MAIN PARA O BACKGROUND */}
         <DashboardLayoutWrapper>
-
-          <CashGuard storeId={storeIdParam} />
 
           <div className="flex-shrink-0 h-full relative z-20"> {/* z-20 para SideNav ficar acima do bg */}
             <SideNav

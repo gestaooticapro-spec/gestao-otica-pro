@@ -1,6 +1,7 @@
 import { getResumoCaixa, getUltimoFechamento } from '@/lib/actions/cashflow.actions'
 import CaixaInterface from '@/components/financeiro/CaixaInterface'
 import CaixaBackground from '@/components/financeiro/CaixaBackground'
+import CashGuard from '@/components/financeiro/CashGuard'
 import { DollarSign } from 'lucide-react'
 
 export default async function CaixaPage({ params }: { params: { storeId: string } }) {
@@ -14,6 +15,7 @@ export default async function CaixaPage({ params }: { params: { storeId: string 
 
   return (
     <CaixaBackground>
+      <CashGuard storeId={storeId} />
       <div className="flex flex-col h-full">
         {/* Header */}
         <div className="bg-slate-900/40 backdrop-blur-xl border-b border-white/10 px-6 py-4 shadow-xl shadow-black/20 flex-shrink-0">

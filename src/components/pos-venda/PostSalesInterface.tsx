@@ -13,9 +13,10 @@ import {
 } from '@/lib/actions/postsales.actions'
 import {
     User, Phone, MessageCircle, Star, CheckCircle,
-    Clock, Send, Eye, Wallet, Loader2, Edit3, Check, X
+    Clock, Send, Eye, Wallet, Loader2, Edit3, Check, X, HeartHandshake
 } from 'lucide-react'
 import SaleDetailsModal from '@/components/modals/SaleDetailsModal'
+import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
 
 // Helpers
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -31,7 +32,7 @@ function StarRating({ value, onChange }: { value: number, onChange: (v: number) 
                     className={`p-1 transition-all hover:scale-125 focus:outline-none`}
                 >
                     <Star
-                        className={`h-8 w-8 drop-shadow-sm ${star <= value ? 'fill-amber-400 text-amber-400' : 'text-gray-300'}`}
+                        className={`h-8 w-8 drop-shadow-sm ${star <= value ? 'fill-amber-400 text-amber-400' : 'text-slate-600'}`}
                     />
                 </button>
             ))}
@@ -40,6 +41,7 @@ function StarRating({ value, onChange }: { value: number, onChange: (v: number) 
 }
 
 export default function PostSalesInterface({ initialQueue, storeId }: { initialQueue: PostSaleQueueItem[], storeId: number }) {
+    const { preference } = useBackgroundPreference()
     const [selectedId, setSelectedId] = useState<number | null>(null)
     const [interactions, setInteractions] = useState<Interaction[]>([])
     const [loadingHistory, setLoadingHistory] = useState(false)
@@ -76,8 +78,14 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
     const handleWhatsApp = () => {
         if (!selectedItem || !selectedItem.titular_tel) return alert("Telefone não cadastrado. Clique em 'Sem fone' ao lado do nome do titular para cadastrar.")
         const num = selectedItem.titular_tel.replace(/\D/g, '')
-        const nome = selectedItem.titular_nome.split(' ')[0]
-        const msg = `Olá ${nome}, aqui é da Ótica. Como está a adaptação com os novos óculos?`
+        const nomeTitular = selectedItem.titular_nome.split(' ')[0]
+        const dias = selectedItem.dias_desde_entrega
+        const ehProprio = selectedItem.dependente_nome === selectedItem.titular_nome || !selectedItem.dependente_nome || selectedItem.dependente_nome === 'Mesmo'
+
+        const msg = ehProprio
+            ? `Olá ${nomeTitular}, aqui é da Ótica. Já faz ${dias} dias que vc buscou seu óculos. Como está a adaptação?`
+            : `Olá ${nomeTitular}, aqui é da Ótica. Já faz ${dias} dias que ${selectedItem.dependente_nome?.split(' ')[0]} retirou os óculos. Como está a adaptação, você sabe?`
+
         window.open(`https://wa.me/55${num}?text=${encodeURIComponent(msg)}`, '_blank')
     }
 
@@ -126,258 +134,292 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
     }
 
     return (
-        <div className="flex h-full gap-8">
+        <div className="relative flex flex-col h-[calc(100vh-64px)] bg-slate-950 overflow-hidden font-sans">
 
-            {/* --- PAINEL ESQUERDO (LISTA FLUTUANTE) --- */}
-            <div className="w-80 bg-white/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 flex flex-col overflow-hidden">
-                <div className="p-4 border-b border-gray-100 bg-white/50">
-                    <h3 className="font-black text-slate-700 text-xs tracking-wider uppercase opacity-70">Fila de Adaptação</h3>
+            {/* Background Image + Overlay (controlado pelo toggle) */}
+            <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
+                <div className="absolute inset-0 z-0 bg-[url('/dashboard.jpg')] bg-cover bg-center opacity-40 blur-[2px]" />
+                <div className="absolute inset-0 z-0 bg-gradient-to-b from-slate-950/50 via-slate-950/70 to-slate-950/95" />
+            </div>
+
+            {/* Header Glass */}
+            <div className="relative z-10 bg-white/5 backdrop-blur-xl border-b border-white/10 px-6 py-3 flex items-center gap-3 flex-shrink-0 shadow-2xl h-14">
+                <div className="p-2 bg-pink-500/20 text-pink-400 rounded-xl border border-pink-500/20 shadow-[0_0_15px_rgba(236,72,153,0.2)]">
+                    <HeartHandshake className="h-5 w-5" />
                 </div>
-                <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
-                    {initialQueue.length === 0 ? (
-                        <div className="p-8 text-center text-gray-400 flex flex-col items-center">
-                            <CheckCircle className="h-12 w-12 mb-3 text-emerald-400 opacity-50" />
-                            <p className="text-sm font-medium">Nenhuma pendência.</p>
+                <div>
+                    <h1 className="text-lg font-black text-white tracking-tight uppercase">Pós-Vendas</h1>
+                    <p className="text-[10px] text-pink-400 font-black uppercase tracking-[0.2em] opacity-80">
+                        Acompanhamento de Adaptação
+                    </p>
+                </div>
+                <div className="ml-auto">
+                    <BackgroundToggle />
+                </div>
+            </div>
+
+            {/* Área de Trabalho */}
+            <div className="relative z-10 flex-1 overflow-hidden p-4 lg:p-6">
+                <div className="flex h-full gap-6">
+
+                    {/* --- PAINEL ESQUERDO (LISTA) --- */}
+                    <div className="w-72 bg-white/5 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/10 flex flex-col overflow-hidden">
+                        <div className="p-4 border-b border-white/5">
+                            <h3 className="font-black text-slate-400 text-[10px] tracking-[0.2em] uppercase">Fila de Adaptação</h3>
                         </div>
-                    ) : (
-                        initialQueue.map(item => (
-                            <div
-                                key={item.os_id}
-                                onClick={() => setSelectedId(item.os_id)}
-                                className={`p-4 rounded-xl cursor-pointer transition-all duration-200 border relative group
+                        <div className="flex-1 overflow-y-auto p-2 space-y-1.5 custom-scrollbar">
+                            {initialQueue.length === 0 ? (
+                                <div className="p-8 text-center flex flex-col items-center">
+                                    <CheckCircle className="h-12 w-12 mb-3 text-emerald-400 opacity-30" />
+                                    <p className="text-sm font-medium text-slate-500">Nenhuma pendência.</p>
+                                </div>
+                            ) : (
+                                initialQueue.map(item => (
+                                    <div
+                                        key={item.os_id}
+                                        onClick={() => setSelectedId(item.os_id)}
+                                        className={`p-4 rounded-xl cursor-pointer transition-all duration-200 border relative group
                                     ${selectedId === item.os_id
-                                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 border-transparent scale-[1.02]'
-                                        : 'bg-white hover:bg-slate-50 border-transparent hover:border-slate-200 shadow-sm'
-                                    }`}
-                            >
-                                <div className="flex justify-between items-start mb-1">
-                                    <span className={`font-bold text-sm ${selectedId === item.os_id ? 'text-white' : 'text-slate-800'}`}>
-                                        {item.dependente_nome}
-                                    </span>
-                                    {item.status === 'Em Acompanhamento' && (
-                                        <span className="absolute top-4 right-4 h-2 w-2 rounded-full bg-amber-400 shadow-sm animate-pulse"></span>
-                                    )}
+                                                ? 'bg-indigo-500/20 text-indigo-200 shadow-[0_0_15px_rgba(99,102,241,0.15)] border-indigo-500/30'
+                                                : 'bg-white/5 hover:bg-white/10 border-transparent hover:border-white/10 text-slate-300'
+                                            }`}
+                                    >
+                                        <div className="flex justify-between items-start mb-1">
+                                            <span className={`font-bold text-sm ${selectedId === item.os_id ? 'text-white' : 'text-slate-200'}`}>
+                                                {item.dependente_nome}
+                                            </span>
+                                            {item.status === 'Em Acompanhamento' && (
+                                                <span className="absolute top-4 right-4 h-2 w-2 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)] animate-pulse"></span>
+                                            )}
+                                        </div>
+                                        <p className={`text-xs mt-1 flex items-center gap-1 ${selectedId === item.os_id ? 'text-indigo-300' : 'text-slate-500'}`}>
+                                            <Clock className="h-3 w-3" /> Há {item.dias_desde_entrega} dias
+                                        </p>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
+                    {/* --- PAINEL DIREITO (DETALHES) --- */}
+                    <div className="flex-1 flex flex-col overflow-hidden">
+                        {selectedItem ? (
+                            <div className="flex-1 overflow-y-auto pr-2 pb-10 space-y-5 custom-scrollbar">
+
+                                {/* CARD 1: CABEÇALHO DO CLIENTE */}
+                                <div className="bg-white/5 backdrop-blur-md rounded-2xl shadow-xl border border-white/10 p-6 flex justify-between items-start animate-in slide-in-from-bottom-4 duration-300">
+                                    <div>
+                                        <h2 className="text-3xl font-black text-white tracking-tight">{selectedItem.dependente_nome}</h2>
+                                        <div className="mt-2 flex gap-6 text-sm text-slate-400">
+                                            <div className="flex items-center gap-2">
+                                                <User className="h-4 w-4" />
+                                                <span>Titular: <strong className="text-slate-200">{selectedItem.titular_nome}</strong></span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <Phone className="h-4 w-4" />
+                                                {selectedItem.titular_tel ? (
+                                                    <span className="text-slate-300">{selectedItem.titular_tel}</span>
+                                                ) : isEditingPhone ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="tel"
+                                                            value={newPhoneValue}
+                                                            onChange={(e) => setNewPhoneValue(e.target.value)}
+                                                            placeholder="(99) 99999-9999"
+                                                            className="w-36 px-2 py-1 text-sm bg-slate-900/50 border border-white/10 rounded-lg text-white placeholder:text-slate-600 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50"
+                                                            autoFocus
+                                                        />
+                                                        <button
+                                                            onClick={handleSavePhone}
+                                                            disabled={savingPhone}
+                                                            className="p-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 rounded-lg hover:bg-emerald-600/40 disabled:opacity-50"
+                                                        >
+                                                            {savingPhone ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => { setIsEditingPhone(false); setNewPhoneValue('') }}
+                                                            className="p-1 bg-white/5 text-slate-400 rounded-lg hover:bg-white/10"
+                                                        >
+                                                            <X className="h-4 w-4" />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => setIsEditingPhone(true)}
+                                                        className="flex items-center gap-1 text-amber-400 hover:text-amber-300 font-medium"
+                                                    >
+                                                        <span>Sem fone</span>
+                                                        <Edit3 className="h-3 w-3" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={handleWhatsApp}
+                                        className="bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 px-5 py-3 rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.15)] font-bold flex items-center gap-2 transition-all hover:-translate-y-0.5"
+                                    >
+                                        <MessageCircle className="h-5 w-5" />
+                                        Enviar Mensagem
+                                    </button>
                                 </div>
-                                <p className={`text-xs mt-1 flex items-center gap-1 ${selectedId === item.os_id ? 'text-blue-100' : 'text-slate-500'}`}>
-                                    <Clock className="h-3 w-3" /> Há {item.dias_desde_entrega} dias
-                                </p>
+
+                                {/* CARD 2: REGISTRAR CONTATO (INLINE) */}
+                                <div className="bg-cyan-500/10 backdrop-blur-md rounded-2xl shadow-[0_0_20px_rgba(6,182,212,0.08)] border border-cyan-400/30 p-4 animate-in slide-in-from-bottom-5 duration-400">
+                                    <form action={handleSaveInteraction} className="flex items-center gap-3">
+                                        <input type="hidden" name="os_id" value={selectedItem.os_id} />
+                                        <input type="hidden" name="store_id" value={storeId} />
+                                        <input type="hidden" name="post_sales_id" value={selectedItem.post_sales_id || ''} />
+
+                                        <select name="tipo" value={tipoContato} onChange={e => setTipoContato(e.target.value)} className="w-28 rounded-xl bg-slate-800/80 border border-cyan-400/20 text-sm h-10 text-cyan-200 font-bold focus:ring-1 focus:ring-cyan-500/50 focus:border-cyan-500/50 cursor-pointer appearance-none px-3">
+                                            <option className="bg-slate-800 text-cyan-200">WhatsApp</option>
+                                            <option className="bg-slate-800 text-cyan-200">Ligação</option>
+                                            <option className="bg-slate-800 text-cyan-200">Presencial</option>
+                                        </select>
+                                        <input name="resumo" value={resumoMsg} onChange={e => setResumoMsg(e.target.value)} placeholder="O que foi conversado?" className="flex-1 rounded-xl bg-slate-900/50 border border-white/10 text-sm h-10 px-3 text-white placeholder:text-slate-600 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50" required />
+                                        <button disabled={isPending} className="bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 font-bold px-4 py-2 h-10 rounded-xl transition-all flex items-center gap-2 text-sm whitespace-nowrap">
+                                            {isPending ? <Loader2 className="animate-spin h-4 w-4" /> : <Send className="h-4 w-4" />} Salvar Contato
+                                        </button>
+                                    </form>
+                                </div>
+
+                                {/* CARD 3: SITUAÇÃO FINANCEIRA */}
+                                <div className="bg-slate-900/60 backdrop-blur-md rounded-2xl shadow-xl border border-white/10 p-5 text-white flex items-center justify-between animate-in slide-in-from-bottom-6 duration-500">
+                                    <div className="flex items-center gap-6">
+                                        <div className="p-3 bg-emerald-500/10 rounded-xl border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
+                                            <Wallet className="h-6 w-6 text-emerald-400" />
+                                        </div>
+                                        <div>
+                                            <p className="text-slate-500 text-[10px] font-black uppercase mb-1 tracking-widest">Status Financeiro</p>
+                                            <div className="flex gap-6 items-baseline">
+                                                <div>
+                                                    <span className="text-slate-500 text-xs mr-1">Total Venda</span>
+                                                    <span className="font-bold text-lg text-slate-200">{formatCurrency(selectedItem.valor_final)}</span>
+                                                </div>
+                                                <div className="h-8 w-px bg-white/10"></div>
+                                                {selectedItem.valor_restante > 0.01 ? (
+                                                    <div>
+                                                        <span className="text-slate-500 text-xs mr-1">A Receber</span>
+                                                        <span className="font-bold text-2xl text-amber-400">
+                                                            {formatCurrency(selectedItem.valor_restante)}
+                                                        </span>
+                                                    </div>
+                                                ) : selectedItem.status_venda === 'Fechada' ? (
+                                                    <span className="text-emerald-400 font-bold text-lg">✓ Venda Fechada</span>
+                                                ) : (
+                                                    <span className="text-amber-400 font-medium text-sm">⚠ Lembre-se de fechar essa venda</span>
+                                                )}
+                                                {selectedItem.tem_carne && (
+                                                    <span className="text-[10px] bg-white/10 border border-white/10 px-2 py-1 rounded-lg font-bold tracking-wide uppercase text-slate-300">Carnê Ativo</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        onClick={async () => {
+                                            setLoadingDetails(true)
+                                            const res = await getPostSaleDetails(selectedItem.os_id)
+                                            if (res.success) {
+                                                setDetailsData(res.data)
+                                                setDetailsModalOpen(true)
+                                            } else {
+                                                alert("Erro ao carregar detalhes: " + res.message)
+                                            }
+                                            setLoadingDetails(false)
+                                        }}
+                                        disabled={loadingDetails}
+                                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-sm font-bold text-slate-300 disabled:opacity-50"
+                                    >
+                                        {loadingDetails ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                                        Ver Detalhes / Receita
+                                    </button>
+                                </div>
+
+                                {/* GRID DE DETALHES TÉCNICOS E AÇÕES */}
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+                                    {/* COLUNA 1: HISTÓRICO */}
+                                    <div className="space-y-5">
+                                        {/* Timeline / Histórico */}
+                                        <div className="bg-white/5 backdrop-blur-md rounded-2xl shadow-xl border border-white/10 p-5 min-h-[200px]">
+                                            <h3 className="font-bold text-slate-300 mb-4 flex items-center gap-2">
+                                                <Clock className="h-5 w-5 text-slate-500" /> Histórico de Contatos
+                                            </h3>
+                                            <div className="space-y-4 pl-2">
+                                                {loadingHistory ? <Loader2 className="animate-spin text-slate-600 mx-auto" /> :
+                                                    interactions.length === 0 ? <p className="text-slate-600 italic text-sm">Nenhum contato registrado.</p> :
+                                                        interactions.map(int => (
+                                                            <div key={int.id} className="relative pl-6 border-l-2 border-white/5 pb-2">
+                                                                <div className="absolute -left-[5px] top-1 h-2.5 w-2.5 rounded-full bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.5)]"></div>
+                                                                <div className="bg-white/5 p-3 rounded-xl rounded-tl-none border border-white/5">
+                                                                    <div className="flex justify-between text-xs text-slate-500 mb-1 font-bold uppercase tracking-wider">
+                                                                        <span>{int.tipo_contato}</span>
+                                                                        <span>{new Date(int.created_at).toLocaleDateString('pt-BR')}</span>
+                                                                    </div>
+                                                                    <p className="text-sm text-slate-300">{int.resumo}</p>
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* COLUNA 2: FECHAMENTO */}
+                                    <div className="space-y-5">
+                                        {/* Conclusão */}
+                                        <div className="bg-white/5 backdrop-blur-md rounded-2xl shadow-xl border border-white/10 overflow-hidden">
+                                            <div className="bg-white/5 p-4 border-b border-white/5">
+                                                <h3 className="font-bold text-slate-300 text-sm uppercase tracking-widest">Encerrar Acompanhamento</h3>
+                                            </div>
+                                            <div className="p-6 flex flex-col items-center">
+                                                <p className="text-sm text-slate-500 mb-4 font-medium">Como foi a adaptação do cliente?</p>
+                                                <StarRating value={rating} onChange={setRating} />
+
+                                                <textarea
+                                                    value={obsFinal}
+                                                    onChange={e => setObsFinal(e.target.value)}
+                                                    placeholder="Considerações finais..."
+                                                    className="w-full mt-6 rounded-xl bg-slate-900/50 border border-white/10 text-sm p-3 h-20 resize-none text-white placeholder:text-slate-600 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-colors"
+                                                />
+
+                                                <button
+                                                    onClick={handleConclude}
+                                                    disabled={isPending || rating === 0}
+                                                    className="w-full mt-4 bg-emerald-600/20 hover:bg-emerald-600/30 disabled:bg-white/5 disabled:text-slate-600 disabled:border-white/5 text-emerald-400 border border-emerald-500/30 font-bold py-3 rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.1)] transition-all flex justify-center items-center gap-2"
+                                                >
+                                                    <CheckCircle className="h-5 w-5" />
+                                                    CONCLUIR E ARQUIVAR
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
                             </div>
-                        ))
-                    )}
+                        ) : (
+                            <div className="h-full flex flex-col items-center justify-center">
+                                <div className="relative mb-8 group">
+                                    <div className="absolute inset-0 bg-pink-500/10 rounded-full blur-3xl group-hover:bg-pink-500/20 transition-all duration-1000" />
+                                    <div className="relative w-28 h-28 bg-white/5 backdrop-blur-2xl rounded-[2rem] flex items-center justify-center border border-white/10 shadow-2xl group-hover:rotate-6 transition-all duration-700">
+                                        <User className="h-12 w-12 text-pink-400 opacity-40 group-hover:scale-110 transition-transform duration-500" />
+                                    </div>
+                                </div>
+                                <p className="text-2xl font-black text-white tracking-widest uppercase">Selecione um cliente</p>
+                                <p className="text-slate-500 mt-2 text-sm font-medium">Escolha na lista à esquerda para ver os detalhes</p>
+                            </div>
+                        )}
+
+                    </div>
+                    <SaleDetailsModal
+                        isOpen={detailsModalOpen}
+                        onClose={() => setDetailsModalOpen(false)}
+                        data={detailsData}
+                    />
+
                 </div>
             </div>
-
-            {/* --- PAINEL DIREITO (CARTÕES DE DETALHES) --- */}
-            <div className="flex-1 flex flex-col overflow-hidden">
-                {selectedItem ? (
-                    <div className="flex-1 overflow-y-auto pr-2 pb-10 space-y-6 custom-scrollbar">
-
-                        {/* CARD 1: CABEÇALHO DO CLIENTE */}
-                        <div className="bg-white rounded-2xl shadow-lg border border-slate-100 p-6 flex justify-between items-start animate-in slide-in-from-bottom-4 duration-300">
-                            <div>
-                                <h2 className="text-3xl font-black text-slate-800">{selectedItem.dependente_nome}</h2>
-                                <div className="mt-2 flex gap-6 text-sm text-slate-500">
-                                    <div className="flex items-center gap-2">
-                                        <User className="h-4 w-4" />
-                                        <span>Titular: <strong className="text-slate-700">{selectedItem.titular_nome}</strong></span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Phone className="h-4 w-4" />
-                                        {selectedItem.titular_tel ? (
-                                            <span>{selectedItem.titular_tel}</span>
-                                        ) : isEditingPhone ? (
-                                            <div className="flex items-center gap-2">
-                                                <input
-                                                    type="tel"
-                                                    value={newPhoneValue}
-                                                    onChange={(e) => setNewPhoneValue(e.target.value)}
-                                                    placeholder="(99) 99999-9999"
-                                                    className="w-36 px-2 py-1 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                                                    autoFocus
-                                                />
-                                                <button
-                                                    onClick={handleSavePhone}
-                                                    disabled={savingPhone}
-                                                    className="p-1 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50"
-                                                >
-                                                    {savingPhone ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                                                </button>
-                                                <button
-                                                    onClick={() => { setIsEditingPhone(false); setNewPhoneValue('') }}
-                                                    className="p-1 bg-slate-300 text-slate-600 rounded-lg hover:bg-slate-400"
-                                                >
-                                                    <X className="h-4 w-4" />
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <button
-                                                onClick={() => setIsEditingPhone(true)}
-                                                className="flex items-center gap-1 text-amber-600 hover:text-amber-700 font-medium"
-                                            >
-                                                <span>Sem fone</span>
-                                                <Edit3 className="h-3 w-3" />
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                            <button
-                                onClick={handleWhatsApp}
-                                className="bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-emerald-200 shadow-lg font-bold flex items-center gap-2 transition-all hover:-translate-y-1"
-                            >
-                                <MessageCircle className="h-5 w-5" />
-                                Mensagem de Adaptação
-                            </button>
-                        </div>
-
-                        {/* CARD 2: REGISTRAR CONTATO (INLINE) */}
-                        <div className="bg-white rounded-2xl shadow-lg border border-blue-100 p-4 animate-in slide-in-from-bottom-5 duration-400">
-                            <form action={handleSaveInteraction} className="flex items-center gap-3">
-                                <input type="hidden" name="os_id" value={selectedItem.os_id} />
-                                <input type="hidden" name="store_id" value={storeId} />
-                                <input type="hidden" name="post_sales_id" value={selectedItem.post_sales_id || ''} />
-
-                                <select name="tipo" value={tipoContato} onChange={e => setTipoContato(e.target.value)} className="w-28 rounded-lg border-2 border-slate-400 text-sm h-10 focus:ring-blue-500 focus:border-blue-500">
-                                    <option>WhatsApp</option>
-                                    <option>Ligação</option>
-                                    <option>Presencial</option>
-                                </select>
-                                <input name="resumo" value={resumoMsg} onChange={e => setResumoMsg(e.target.value)} placeholder="O que foi conversado?" className="flex-1 rounded-lg border-2 border-slate-400 text-sm h-10 px-3 focus:ring-blue-500 focus:border-blue-500" required />
-                                <button disabled={isPending} className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 h-10 rounded-lg shadow-md shadow-blue-100 transition-all flex items-center gap-2 text-sm whitespace-nowrap">
-                                    {isPending ? <Loader2 className="animate-spin h-4 w-4" /> : <Send className="h-4 w-4" />} Salvar Contato
-                                </button>
-                            </form>
-                        </div>
-
-                        {/* CARD 3: SITUAÇÃO FINANCEIRA (FAIXA PRETA) */}
-                        <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-2xl shadow-xl p-5 text-white flex items-center justify-between animate-in slide-in-from-bottom-6 duration-500">
-                            <div className="flex items-center gap-6">
-                                <div className="p-3 bg-white/10 rounded-lg backdrop-blur-sm">
-                                    <Wallet className="h-6 w-6 text-emerald-400" />
-                                </div>
-                                <div>
-                                    <p className="text-slate-400 text-xs font-bold uppercase mb-1">Status Financeiro</p>
-                                    <div className="flex gap-6 items-baseline">
-                                        <div>
-                                            <span className="text-slate-400 text-xs mr-1">Total Venda</span>
-                                            <span className="font-bold text-lg">{formatCurrency(selectedItem.valor_final)}</span>
-                                        </div>
-                                        <div className="h-8 w-px bg-white/20"></div>
-                                        {selectedItem.valor_restante > 0.01 ? (
-                                            <div>
-                                                <span className="text-slate-400 text-xs mr-1">A Receber</span>
-                                                <span className="font-bold text-2xl text-amber-400">
-                                                    {formatCurrency(selectedItem.valor_restante)}
-                                                </span>
-                                            </div>
-                                        ) : selectedItem.status_venda === 'Fechada' ? (
-                                            <span className="text-emerald-400 font-bold text-lg">✓ Venda Fechada</span>
-                                        ) : (
-                                            <span className="text-amber-400 font-medium text-sm">⚠ Lembre-se de fechar essa venda</span>
-                                        )}
-                                        {selectedItem.tem_carne && (
-                                            <span className="text-[10px] bg-white/20 px-2 py-1 rounded font-bold tracking-wide uppercase">Carnê Ativo</span>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                            <button
-                                onClick={async () => {
-                                    setLoadingDetails(true)
-                                    const res = await getPostSaleDetails(selectedItem.os_id)
-                                    if (res.success) {
-                                        setDetailsData(res.data)
-                                        setDetailsModalOpen(true)
-                                    } else {
-                                        alert("Erro ao carregar detalhes: " + res.message)
-                                    }
-                                    setLoadingDetails(false)
-                                }}
-                                disabled={loadingDetails}
-                                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-sm font-bold text-white disabled:opacity-50"
-                            >
-                                {loadingDetails ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
-                                Ver Detalhes / Receita
-                            </button>
-                        </div>
-
-                        {/* GRID DE DETALHES TÉCNICOS E AÇÕES */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-                            {/* COLUNA 1: HISTÓRICO */}
-                            <div className="space-y-6">
-                                {/* Timeline / Histórico */}
-                                <div className="bg-white rounded-2xl shadow-md border border-slate-100 p-5 min-h-[200px]">
-                                    <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
-                                        <Clock className="h-5 w-5 text-slate-400" /> Histórico de Contatos
-                                    </h3>
-                                    <div className="space-y-4 pl-2">
-                                        {loadingHistory ? <Loader2 className="animate-spin text-slate-300 mx-auto" /> :
-                                            interactions.length === 0 ? <p className="text-slate-300 italic text-sm">Nenhum contato registrado.</p> :
-                                                interactions.map(int => (
-                                                    <div key={int.id} className="relative pl-6 border-l-2 border-slate-100 pb-2">
-                                                        <div className="absolute -left-[5px] top-1 h-2.5 w-2.5 rounded-full bg-slate-300"></div>
-                                                        <div className="bg-slate-50 p-3 rounded-lg rounded-tl-none border border-slate-100">
-                                                            <div className="flex justify-between text-xs text-slate-400 mb-1 font-bold uppercase tracking-wider">
-                                                                <span>{int.tipo_contato}</span>
-                                                                <span>{new Date(int.created_at).toLocaleDateString('pt-BR')}</span>
-                                                            </div>
-                                                            <p className="text-sm text-slate-700">{int.resumo}</p>
-                                                        </div>
-                                                    </div>
-                                                ))
-                                        }
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* COLUNA 2: FECHAMENTO */}
-                            <div className="space-y-6">
-                                {/* Conclusão */}
-                                <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
-                                    <div className="bg-slate-50 p-4 border-b border-slate-100">
-                                        <h3 className="font-bold text-slate-700 text-sm uppercase">Encerrar Acompanhamento</h3>
-                                    </div>
-                                    <div className="p-6 flex flex-col items-center">
-                                        <p className="text-sm text-slate-500 mb-4 font-medium">Como foi a adaptação do cliente?</p>
-                                        <StarRating value={rating} onChange={setRating} />
-
-                                        <textarea
-                                            value={obsFinal}
-                                            onChange={e => setObsFinal(e.target.value)}
-                                            placeholder="Considerações finais..."
-                                            className="w-full mt-6 rounded-lg border-slate-200 bg-slate-50 text-sm p-3 h-20 resize-none focus:bg-white transition-colors focus:ring-slate-400 focus:border-slate-400"
-                                        />
-
-                                        <button
-                                            onClick={handleConclude}
-                                            disabled={isPending || rating === 0}
-                                            className="w-full mt-4 bg-green-600 hover:bg-green-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl shadow-lg shadow-green-100 transition-all flex justify-center items-center gap-2"
-                                        >
-                                            <CheckCircle className="h-5 w-5" />
-                                            CONCLUIR E ARQUIVAR
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                        </div>
-                    </div>
-                ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-slate-300">
-                        <User className="h-24 w-24 mb-6 opacity-20" />
-                        <p className="text-2xl font-light text-slate-400">Selecione um cliente</p>
-                    </div>
-                )}
-
-            </div>
-            <SaleDetailsModal
-                isOpen={detailsModalOpen}
-                onClose={() => setDetailsModalOpen(false)}
-                data={detailsData}
-            />
-
         </div>
     )
 }

@@ -778,7 +778,7 @@ ${addIf('Obs.', obsOs) || ''}
                                         <div className="flex-1 bg-black/20 rounded-xl border border-white/5 shadow-inner p-1 flex items-center justify-center">
                                             <div className="w-full">
                                                 <DegreeInput
-                                                    name="receita_perto_adicao"
+                                                    name="receita_adicao"
                                                     value={adicao}
                                                     onChange={setAdicao}
                                                     className="w-full bg-transparent text-center font-bold text-white text-xl placeholder-slate-700 h-full min-h-[80px]"

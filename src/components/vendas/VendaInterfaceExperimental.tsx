@@ -17,6 +17,7 @@ import ResumoFinanceiro from '@/components/vendas/ResumoFinanceiro'
 import VendaActions from '@/components/vendas/VendaActions'
 import ListaOS from '@/components/vendas/ListaOS'
 import ReceiptSelectionModal from '@/components/modals/ReceiptSelectionModal'
+import UpdateCpfModal from '@/components/modals/UpdateCpfModal'
 
 import { Database } from '@/lib/database.types'
 
@@ -159,11 +160,23 @@ export default function VendaInterfaceExperimental({
 
     // Estado para controlar qual modal está aberto
     const [activeModal, setActiveModal] = useState<'none' | 'produto' | 'pagamento' | 'parcelamento'>('none')
+    const [isCpfModalOpen, setIsCpfModalOpen] = useState(false)
 
     const vendedorNome = employee?.full_name || 'N/A'
     const employeeIdFinanceiro = employee?.id || 0
 
     const closeModal = () => setActiveModal('none')
+    const hasCpf = !!customer?.cpf?.toString().replace(/\D/g, '')
+    const hasPhone = !!(customer?.fone_movel || customer?.phone)?.toString().replace(/\D/g, '')
+    const canOpenParcelamento = hasCpf && hasPhone
+
+    const handleOpenParcelamento = () => {
+        if (!canOpenParcelamento) {
+            setIsCpfModalOpen(true)
+            return
+        }
+        setActiveModal('parcelamento')
+    }
 
     return (
         <div className="relative flex flex-col h-[calc(100vh-64px)] bg-slate-950 overflow-hidden font-sans">
@@ -250,7 +263,7 @@ export default function VendaInterfaceExperimental({
                     <SectionCard
                         title="Parcelamento"
                         icon={FileText}
-                        onAdd={!financiamento ? () => setActiveModal('parcelamento') : undefined} // Só mostra botão se não tiver financiamento
+                        onAdd={!financiamento ? handleOpenParcelamento : undefined} // Só mostra botão se não tiver financiamento
                         actionLabel="Novo Parcelamento"
                         theme="orange"
                     >
@@ -389,6 +402,23 @@ export default function VendaInterfaceExperimental({
                 onReload={onDataReload}
             />
 
+            {customer && (
+                <UpdateCpfModal
+                    isOpen={isCpfModalOpen}
+                    onClose={() => setIsCpfModalOpen(false)}
+                    onSuccess={async () => {
+                        setIsCpfModalOpen(false)
+                        await onDataReload()
+                        setActiveModal('parcelamento')
+                    }}
+                    customerId={customer.id}
+                    customerName={customer.full_name}
+                    currentCpf={customer.cpf || ''}
+                    currentPhone={customer.fone_movel || customer.phone || ''}
+                />
+            )}
+
         </div>
     )
 }
+

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ListFilter, Calendar, Search } from 'lucide-react'
 
@@ -20,6 +20,9 @@ export default function VendasFilter() {
 
     const [dataInicio, setDataInicio] = useState(searchParams.get('inicio') || inicioMes)
     const [dataFim, setDataFim] = useState(searchParams.get('fim') || fimMes)
+    const [search, setSearch] = useState(searchParams.get('search') || '')
+
+    const [isPending, startTransition] = useTransition()
 
     // CORREÇÃO: Sincroniza o estado com a URL quando ela muda (navegação externa)
     useEffect(() => {
@@ -27,49 +30,87 @@ export default function VendasFilter() {
         if (urlMode && urlMode !== mode) {
             setMode(urlMode)
         }
-    }, [searchParams])
+        setSearch(searchParams.get('search') || '')
+    }, [searchParams, mode])
 
     // Atualiza a URL quando clica em filtrar ou muda a aba
-    const applyFilter = (newMode: 'pendencias' | 'historico') => {
-        setMode(newMode)
-        const params = new URLSearchParams()
-        params.set('mode', newMode)
+    const applyFilter = (newMode: 'pendencias' | 'historico', newSearch?: string) => {
+        startTransition(() => {
+            setMode(newMode)
+            const params = new URLSearchParams(searchParams.toString())
+            params.set('mode', newMode)
 
-        if (newMode === 'historico') {
-            params.set('inicio', dataInicio)
-            params.set('fim', dataFim)
-        } else {
-            // Limpa datas se for modo pendência para não poluir a URL
-            params.delete('inicio')
-            params.delete('fim')
-        }
+            // Se passar newSearch string (mesmo vazia), usa ela. Se undefined, usa o state atual.
+            const termo = newSearch !== undefined ? newSearch : search
+            if (termo) params.set('search', termo)
+            else params.delete('search')
 
-        router.push(`?${params.toString()}`)
+            if (newMode === 'historico') {
+                params.set('inicio', dataInicio)
+                params.set('fim', dataFim)
+            } else {
+                // Limpa datas se for modo pendência para não poluir a URL
+                params.delete('inicio')
+                params.delete('fim')
+            }
+
+            router.push(`?${params.toString()}`)
+        })
+    }
+    const handleSearchSubmit = (e?: React.FormEvent) => {
+        e?.preventDefault()
+        applyFilter(mode, search)
+    }
+
+    // Busca ao limpar o input
+    const handleClearSearch = () => {
+        setSearch('')
+        applyFilter(mode, '')
     }
 
     return (
-        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm mb-6 space-y-4">
+        <div className={`bg-white/5 backdrop-blur-md p-4 rounded-xl border border-white/10 shadow-lg mb-6 space-y-4 transition-opacity duration-300 ${isPending ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+// ...
+
+
+            {/* BARRA DE BUSCA GLOBAL */}
+            <form onSubmit={handleSearchSubmit} className="relative flex items-center gap-2">
+                <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                    <input
+                        type="text"
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        placeholder="Buscar por nome do cliente..."
+                        className="w-full h-10 pl-9 pr-4 rounded-lg bg-slate-900/50 border border-white/10 text-white text-sm focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50 placeholder:text-slate-600 transition-all font-medium"
+                    />
+                    {search && (
+                        <button type="button" onClick={handleClearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors text-[10px] uppercase font-bold">
+                            Limpar
+                        </button>
+                    )}
+                </div>
+            </form>
+
+            <div className="h-px bg-white/5" />
 
             {/* Abas Superiores */}
-            <div className="flex p-1 bg-gray-100 rounded-lg w-fit">
+            <div className="flex p-1 bg-black/20 rounded-lg w-fit border border-white/5">
                 <button
                     onClick={() => applyFilter('pendencias')}
                     className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all ${mode === 'pendencias'
-                            ? 'bg-white text-blue-600 shadow-sm'
-                            : 'text-gray-500 hover:text-gray-700'
+                        ? 'bg-amber-500/20 text-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.2)] border border-amber-500/30'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5'
                         }`}
                 >
                     <ListFilter className="h-4 w-4" />
                     Pendências (Em Aberto)
                 </button>
                 <button
-                    onClick={() => {
-                        setMode('historico')
-                        // Não aplica direto para deixar o usuário escolher a data, mas muda a UI visualmente
-                    }}
+                    onClick={() => applyFilter('historico')}
                     className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all ${mode === 'historico'
-                            ? 'bg-white text-purple-600 shadow-sm'
-                            : 'text-gray-500 hover:text-gray-700'
+                        ? 'bg-purple-500/20 text-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)] border border-purple-500/30'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5'
                         }`}
                 >
                     <Calendar className="h-4 w-4" />
@@ -81,29 +122,28 @@ export default function VendasFilter() {
             {mode === 'historico' && (
                 <div className="flex flex-wrap items-end gap-3 animate-in slide-in-from-top-2">
                     <div>
-                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">De</label>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">De</label>
                         <input
                             type="date"
                             value={dataInicio}
                             onChange={e => setDataInicio(e.target.value)}
-                            className="h-10 rounded-lg border-gray-300 text-sm font-bold"
+                            className="h-10 rounded-lg bg-slate-900/50 border-white/10 text-white text-sm font-bold focus:ring-purple-500/50 focus:border-purple-500/50 block w-full"
                         />
                     </div>
                     <div>
-                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Até</label>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Até</label>
                         <input
                             type="date"
                             value={dataFim}
                             onChange={e => setDataFim(e.target.value)}
-                            className="h-10 rounded-lg border-gray-300 text-sm font-bold"
+                            className="h-10 rounded-lg bg-slate-900/50 border-white/10 text-white text-sm font-bold focus:ring-purple-500/50 focus:border-purple-500/50 block w-full"
                         />
                     </div>
                     <button
                         onClick={() => applyFilter('historico')}
-                        className="h-10 px-6 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-sm flex items-center gap-2 shadow-sm transition-transform active:scale-95"
+                        className="h-10 px-6 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-sm flex items-center gap-2 shadow-[0_0_15px_rgba(147,51,234,0.3)] transition-transform active:scale-95 border border-purple-500/50"
                     >
-                        <Search className="h-4 w-4" />
-                        Buscar
+                        Filtros de Data
                     </button>
                 </div>
             )}

@@ -2,16 +2,119 @@
 
 import {
     Zap, FileText, CheckCircle2, Wallet,
-    LifeBuoy, Users, Globe, ArrowLeft, FileSearch, ArrowRight
+    LifeBuoy, Users, Globe, ArrowLeft, FileSearch, ArrowRight,
+    Search, Loader2, X, User
 } from 'lucide-react';
 import { useModals } from '@/lib/contexts/ModalsContext';
-
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { searchCustomersQuick, CustomerSearchResult } from '@/lib/actions/customer-history.actions';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 
 interface OperatorMenuAtendimentoProps {
     storeId: number;
     onBack: () => void;
     onNavigate: (route: string) => void;
+}
+
+// --- SUB-COMPONENTE: MODAL DE BUSCA PARA HISTÓRICO ---
+function SearchRedirectModal({
+    isOpen,
+    onClose,
+    storeId,
+    onNavigate
+}: {
+    isOpen: boolean;
+    onClose: () => void;
+    storeId: number;
+    onNavigate: (route: string) => void;
+}) {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [results, setResults] = useState<CustomerSearchResult[]>([]);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (!isOpen) {
+            setSearchTerm('');
+            setResults([]);
+        }
+    }, [isOpen]);
+
+    useEffect(() => {
+        const timer = setTimeout(async () => {
+            if (searchTerm.length >= 2) {
+                setLoading(true);
+                const res = await searchCustomersQuick(searchTerm, storeId);
+                setResults(res);
+                setLoading(false);
+            } else {
+                setResults([]);
+            }
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchTerm, storeId]);
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="w-full max-w-lg bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[600px]">
+                <div className="p-4 border-b border-white/10 flex justify-between items-center bg-white/5">
+                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                        <FileSearch className="w-5 h-5 text-indigo-400" />
+                        Buscar Cliente para Histórico
+                    </h3>
+                    <button onClick={onClose} className="p-1 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+
+                <div className="p-4">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                        <input
+                            autoFocus
+                            placeholder="Nome, CPF ou Telefone..."
+                            className="w-full bg-black/40 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white placeholder-slate-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                        />
+                        {loading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-400 animate-spin" />}
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-2 custom-scrollbar space-y-1">
+                    {results.length > 0 ? (
+                        results.map(c => (
+                            <button
+                                key={c.id}
+                                onClick={() => onNavigate(`/dashboard/loja/${storeId}/cliente/${c.id}/historico`)}
+                                className="w-full text-left p-3 hover:bg-white/5 rounded-xl flex items-center gap-3 transition-colors group border border-transparent hover:border-white/5"
+                            >
+                                <div className="w-10 h-10 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-300 border border-indigo-500/20 group-hover:bg-indigo-500/30 group-hover:text-indigo-200 transition-colors">
+                                    <User className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <p className="font-bold text-slate-200 group-hover:text-white transition-colors">{c.nome}</p>
+                                    <p className="text-xs text-slate-500">{c.cpf || 'Sem CPF'} • {c.fone || 'Sem Tel'}</p>
+                                </div>
+                                <ArrowRight className="w-4 h-4 text-slate-600 ml-auto group-hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition-all" />
+                            </button>
+                        ))
+                    ) : searchTerm.length >= 2 && !loading ? (
+                        <div className="text-center py-8 text-slate-500">
+                            <p>Nenhum cliente encontrado.</p>
+                        </div>
+                    ) : (
+                        <div className="text-center py-8 text-slate-500 flex flex-col items-center">
+                            <Search className="w-12 h-12 mb-2 opacity-20" />
+                            <p className="text-sm">Digite para pesquisar...</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
 }
 
 export default function OperatorMenuAtendimento({
@@ -21,9 +124,18 @@ export default function OperatorMenuAtendimento({
 }: OperatorMenuAtendimentoProps) {
     const { openParcelaModal, openEntregaModal, openCustomerHistoryModal } = useModals();
     const { preference } = useBackgroundPreference();
+    const [isSearchOpen, setIsSearchOpen] = useState(false);
 
     return (
         <div className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-950 transition-colors duration-500">
+
+            <SearchRedirectModal
+                isOpen={isSearchOpen}
+                onClose={() => setIsSearchOpen(false)}
+                storeId={storeId}
+                onNavigate={onNavigate}
+            />
+
             {/* Toggle de Fundo */}
             <div className="absolute top-6 right-6 z-50">
                 <BackgroundToggle />
@@ -177,7 +289,7 @@ export default function OperatorMenuAtendimento({
                         Apoio Operacional
                         <span className="w-8 h-px bg-slate-600"></span>
                     </h2>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
                         {/* Clientes */}
                         <button
                             onClick={() => onNavigate(`/dashboard/loja/${storeId}/clientes`)}
@@ -206,7 +318,7 @@ export default function OperatorMenuAtendimento({
                             </div>
                         </button>
 
-                        {/* Info Clientes */}
+                        {/* Info Clientes (Link para Modal Antigo) */}
                         <button
                             onClick={() => openCustomerHistoryModal()}
                             className="group bg-white/5 hover:bg-slate-700/30 rounded-xl flex items-center gap-4 px-4 py-3 border border-white/5 hover:border-slate-500/30 transition-all duration-300 cursor-pointer"
@@ -216,7 +328,21 @@ export default function OperatorMenuAtendimento({
                             </div>
                             <div className="text-left">
                                 <span className="text-slate-200 text-sm font-bold block group-hover:text-white transition-colors">Info</span>
-                                <span className="text-slate-500 text-[10px] group-hover:text-slate-300 transition-colors">Histórico</span>
+                                <span className="text-slate-500 text-[10px] group-hover:text-slate-300 transition-colors">Consulta/WA</span>
+                            </div>
+                        </button>
+
+                        {/* Histórico X-Ray */}
+                        <button
+                            onClick={() => setIsSearchOpen(true)}
+                            className="group bg-white/5 hover:bg-slate-700/30 rounded-xl flex items-center gap-4 px-4 py-3 border border-white/5 hover:border-slate-500/30 transition-all duration-300 cursor-pointer"
+                        >
+                            <div className="p-2 rounded-lg bg-slate-500/20 text-slate-300 group-hover:bg-slate-500 group-hover:text-white transition-colors">
+                                <FileText className="w-5 h-5" strokeWidth={2} />
+                            </div>
+                            <div className="text-left">
+                                <span className="text-slate-200 text-sm font-bold block group-hover:text-white transition-colors">Histórico</span>
+                                <span className="text-slate-500 text-[10px] group-hover:text-slate-300 transition-colors">Raio-X Completo</span>
                             </div>
                         </button>
                     </div>

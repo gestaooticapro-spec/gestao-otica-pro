@@ -1,0 +1,176 @@
+'use client'
+
+import Link from 'next/link'
+import { Plus, ShoppingCart, Calendar, User, ArrowRight, AlertCircle, CheckCircle2, XCircle, Clock, RefreshCcw } from 'lucide-react'
+import { formatCurrency } from '@/lib/utils'
+import VendasFilter from '@/components/vendas/VendasFilter'
+import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
+
+interface VendasListInterfaceProps {
+    vendas: any[]
+    storeId: number
+    mode: 'pendencias' | 'historico'
+    startDate?: string
+    endDate?: string
+}
+
+export default function VendasListInterface({ vendas, storeId, mode, startDate, endDate }: VendasListInterfaceProps) {
+    const { preference } = useBackgroundPreference()
+
+    const formatDate = (dateString: string) => {
+        return new Date(dateString).toLocaleDateString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+        })
+    }
+
+    // Helper de Status Visual
+    const getStatusBadge = (status: string) => {
+        if (status === 'Fechada') return <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase"><CheckCircle2 className="h-3 w-3" /> Fechada</span>
+        if (status === 'Cancelada') return <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-black bg-red-500/10 text-red-400 border border-red-500/20 uppercase"><XCircle className="h-3 w-3" /> Cancelada</span>
+        if (status === 'Devolvida') return <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-black bg-purple-500/10 text-purple-400 border border-purple-500/20 uppercase"><RefreshCcw className="h-3 w-3" /> Devolvida</span>
+        return <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-black bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase"><Clock className="h-3 w-3" /> Em Aberto</span>
+    }
+
+    return (
+        <div className="relative flex flex-col h-[calc(100vh-64px)] bg-slate-950 overflow-hidden font-sans">
+
+            {/* Background Image + Overlay */}
+            <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
+                <div className="absolute inset-0 z-0 bg-[url('/dashboard.jpg')] bg-cover bg-center opacity-40 blur-[2px]" />
+                <div className="absolute inset-0 z-0 bg-gradient-to-b from-slate-950/50 via-slate-950/70 to-slate-950/95" />
+            </div>
+
+            {/* Header Glass */}
+            <div className="relative z-10 bg-white/5 backdrop-blur-xl border-b border-white/10 px-6 py-3 flex items-center gap-3 flex-shrink-0 shadow-2xl h-14">
+                <div className="p-2 bg-blue-500/20 text-blue-400 rounded-xl border border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.2)]">
+                    <ShoppingCart className="h-5 w-5" />
+                </div>
+                <div>
+                    <h1 className="text-lg font-black text-white tracking-tight uppercase">Central de Vendas</h1>
+                    <p className="text-[10px] text-blue-400 font-black uppercase tracking-[0.2em] opacity-80">
+                        Gerencie fechamentos e histórico
+                    </p>
+                </div>
+
+                <div className="ml-auto flex items-center gap-4">
+                    <Link
+                        href={`/dashboard/loja/${storeId}/atendimento`}
+                        className="bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.15)] transition-all hover:-translate-y-0.5"
+                    >
+                        <Plus className="h-4 w-4" />
+                        NOVA VENDA
+                    </Link>
+                    <div className="h-8 w-px bg-white/10"></div>
+                    <BackgroundToggle />
+                </div>
+            </div>
+
+            <div className="relative z-10 flex-1 overflow-hidden p-4 lg:p-6 flex flex-col gap-6">
+
+                {/* Wrapper do Filtro para garantir o z-index e o estilo glass se vazar algo */}
+                <VendasFilter />
+
+                {/* Tabela de Resultados Glass */}
+                <div className="bg-white/5 backdrop-blur-md rounded-2xl shadow-xl border border-white/10 overflow-hidden flex flex-col flex-1">
+
+                    <div className={`px-4 py-3 border-b border-white/10 flex items-center justify-between flex-shrink-0 ${mode === 'pendencias' ? 'bg-amber-500/5' : 'bg-white/5'}`}>
+                        <h2 className={`font-bold text-sm flex items-center gap-2 ${mode === 'pendencias' ? 'text-amber-400' : 'text-slate-200'}`}>
+                            {mode === 'pendencias' ? <AlertCircle className="h-4 w-4" /> : <Calendar className="h-4 w-4" />}
+                            {mode === 'pendencias' ? 'Fila de Pendências' : 'Histórico do Período'}
+                            <span className="opacity-60 text-xs ml-1 bg-white/10 px-2 py-0.5 rounded-full text-white">
+                                {vendas?.length || 0}
+                            </span>
+                        </h2>
+                    </div>
+
+                    <div className="overflow-y-auto flex-1 p-0 custom-scrollbar">
+                        <table className="w-full text-left border-collapse">
+                            <thead className="bg-white/5 sticky top-0 z-10 backdrop-blur-md">
+                                <tr className="text-slate-400 text-[10px] uppercase font-bold border-b border-white/10">
+                                    <th className="p-3 w-32">ID / Criada Em</th>
+                                    <th className="p-3 w-32">Fechada Em</th>
+                                    <th className="p-3">Cliente</th>
+                                    <th className="p-3 text-center">Status</th>
+                                    <th className="p-3 text-right">Total</th>
+                                    <th className="p-3 text-right">Falta Pagar</th>
+                                    <th className="p-3 text-center w-20">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/5">
+                                {!vendas || vendas.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={7} className="p-16 text-center text-slate-500">
+                                            <div className="flex flex-col items-center justify-center opacity-50">
+                                                <ShoppingCart className="h-12 w-12 mb-4 text-slate-600" />
+                                                <p className="text-lg font-medium text-slate-400">Nenhum registro encontrado.</p>
+                                                {mode === 'pendencias' ? (
+                                                    <p className="text-sm mt-1">Tudo limpo! Nenhuma venda em aberto.</p>
+                                                ) : (
+                                                    <p className="text-sm mt-1">Tente ajustar as datas do filtro.</p>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    vendas.map((venda: any) => (
+                                        <tr key={venda.id} className="hover:bg-white/5 transition-colors group">
+                                            <td className="p-3">
+                                                <div className="font-black text-sm text-white">#{venda.id}</div>
+                                                <div className="text-[10px] text-slate-500 flex items-center gap-1 mt-1 font-medium">
+                                                    <Calendar className="h-3 w-3" />
+                                                    {formatDate(venda.created_at)}
+                                                </div>
+                                            </td>
+                                            <td className="p-3">
+                                                {venda.data_fechamento ? (
+                                                    <div className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 bg-emerald-500/10 px-2 py-1 rounded w-fit border border-emerald-500/20">
+                                                        <Clock className="h-3 w-3" />
+                                                        {formatDate(venda.data_fechamento)}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-slate-600 text-[10px] font-mono">--/--/--</span>
+                                                )}
+                                            </td>
+                                            <td className="p-3">
+                                                <div className="font-bold text-sm text-slate-300 flex items-center gap-2">
+                                                    <div className="p-1 rounded bg-blue-500/10 text-blue-400">
+                                                        <User className="h-3 w-3" />
+                                                    </div>
+                                                    {venda.customers?.full_name || 'Consumidor Final'}
+                                                </div>
+                                            </td>
+                                            <td className="p-3 text-center">
+                                                {getStatusBadge(venda.status)}
+                                            </td>
+                                            <td className="p-3 text-right font-bold text-sm text-slate-400">
+                                                {formatCurrency(venda.valor_final)}
+                                            </td>
+                                            <td className="p-3 text-right">
+                                                <span className={`font-black text-sm ${venda.valor_restante > 0.01 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                                    {formatCurrency(venda.valor_restante)}
+                                                </span>
+                                            </td>
+                                            <td className="p-3 text-center">
+                                                <Link
+                                                    href={`/dashboard/loja/${storeId}/vendas/${venda.id}/experimental`}
+                                                    className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white/5 text-slate-400 hover:bg-indigo-500/20 hover:text-indigo-300 border border-transparent hover:border-indigo-500/30 transition-all"
+                                                    title="Ver Detalhes"
+                                                >
+                                                    <ArrowRight className="h-4 w-4" />
+                                                </Link>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    )
+}
