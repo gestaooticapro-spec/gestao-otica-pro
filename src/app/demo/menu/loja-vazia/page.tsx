@@ -166,7 +166,7 @@ export default function DemoLojaVaziaPage() {
                                     <div className="w-9 h-9 rounded-lg bg-rose-100 flex items-center justify-center">
                                         <AlertCircle className="w-5 h-5 text-rose-600" />
                                     </div>
-                                    <span className="text-slate-700 font-bold text-sm">Lentes Paradas</span>
+                                    <span className="text-slate-700 font-bold text-sm">Lentes Não Pedidas</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <span className="bg-rose-100 text-rose-600 text-xs font-bold px-2 py-0.5 rounded-full">6</span>

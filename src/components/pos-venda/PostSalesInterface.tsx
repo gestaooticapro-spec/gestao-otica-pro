@@ -138,8 +138,8 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
 
             {/* Background Image + Overlay (controlado pelo toggle) */}
             <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
-                <div className="absolute inset-0 z-0 bg-[url('/dashboard.jpg')] bg-cover bg-center opacity-40 blur-[2px]" />
-                <div className="absolute inset-0 z-0 bg-gradient-to-b from-slate-950/50 via-slate-950/70 to-slate-950/95" />
+                <div className="absolute inset-0 z-0 bg-[url('/pos.jpeg')] bg-cover bg-center opacity-70 blur-[1px]" />
+                <div className="absolute inset-0 z-0 bg-gradient-to-b from-slate-950/20 via-slate-950/60 to-slate-950/95" />
             </div>
 
             {/* Header Glass */}

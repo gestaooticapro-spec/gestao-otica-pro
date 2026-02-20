@@ -3,7 +3,7 @@
 import {
     Zap, FileText, CheckCircle2, Wallet,
     LifeBuoy, Users, Globe, ArrowLeft, FileSearch, ArrowRight,
-    Search, Loader2, X, User
+    Search, Loader2, X, User, MessageCircle
 } from 'lucide-react';
 import { useModals } from '@/lib/contexts/ModalsContext';
 import { useState, useEffect } from 'react';
@@ -160,49 +160,79 @@ export default function OperatorMenuAtendimento({
                 </div>
 
                 {/* Seção Superior: Vendas | Retorno */}
-                <div className="flex flex-col lg:flex-row items-start justify-center gap-8 lg:gap-0 w-full mb-8">
+                <div className="flex flex-col lg:flex-row items-start justify-center gap-6 lg:gap-0 w-full mb-4">
 
-                    {/* Coluna Vendas (BLUE THEME) */}
-                    <div className="flex-1 flex flex-col items-center w-full">
-                        <h2 className="text-lg font-black text-blue-300 uppercase tracking-widest mb-6 flex flex-col items-center drop-shadow-md">
-                            Vendas
-                            <span className="block w-12 h-1 bg-blue-500 rounded-full mt-2 shadow-[0_0_10px_rgba(59,130,246,0.5)]"></span>
-                        </h2>
-                        <div className="flex flex-col gap-4 w-full max-w-sm">
-                            {/* Receituário */}
-                            <button
-                                onClick={() => onNavigate(`/dashboard/loja/${storeId}/atendimento`)}
-                                className="group w-full bg-gradient-to-br from-blue-600/20 via-blue-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-5 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-blue-500/20 hover:border-blue-500/30"
-                            >
-                                <div className="p-3 rounded-full bg-blue-500/20 ring-1 ring-blue-400/30 group-hover:bg-blue-500/40 transition-colors shadow-[0_0_15px_rgba(59,130,246,0.3)]">
-                                    <FileText className="w-8 h-8 text-blue-200 group-hover:text-white transition-colors shrink-0" strokeWidth={1.5} />
-                                </div>
-                                <div className="text-left flex-1">
-                                    <span className="text-white text-xl font-bold block mb-0.5">Receituário</span>
-                                    <span className="text-blue-200/70 text-xs font-medium group-hover:text-blue-100 transition-colors">Venda com receita médica</span>
-                                </div>
-                                {/* Arrow Overlay like Home */}
-                                <div className="absolute top-1/2 right-4 -translate-y-1/2 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all duration-300">
-                                    <ArrowRight className="w-5 h-5 text-blue-300" />
-                                </div>
-                            </button>
+                    {/* Coluna Esquerda: Pré-Venda e Vendas */}
+                    <div className="flex-1 flex flex-col items-center w-full gap-4">
 
-                            {/* Venda Rápida */}
-                            <button
-                                onClick={() => onNavigate(`/dashboard/loja/${storeId}/pdv-express`)}
-                                className="group w-full bg-gradient-to-br from-blue-600/20 via-blue-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-5 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-blue-500/20 hover:border-blue-500/30"
-                            >
-                                <div className="p-3 rounded-full bg-blue-500/20 ring-1 ring-blue-400/30 group-hover:bg-blue-500/40 transition-colors shadow-[0_0_15px_rgba(59,130,246,0.3)]">
-                                    <Zap className="w-8 h-8 text-blue-200 group-hover:text-white transition-colors shrink-0" strokeWidth={1.5} />
-                                </div>
-                                <div className="text-left flex-1">
-                                    <span className="text-white text-xl font-bold block mb-0.5">Venda Rápida</span>
-                                    <span className="text-blue-200/70 text-xs font-medium group-hover:text-blue-100 transition-colors">Sem receita / Avulso</span>
-                                </div>
-                                <div className="absolute top-1/2 right-4 -translate-y-1/2 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all duration-300">
-                                    <ArrowRight className="w-5 h-5 text-blue-300" />
-                                </div>
-                            </button>
+                        {/* Bloco Pré-Venda */}
+                        <div className="flex flex-col items-center w-full">
+                            <h2 className="text-lg font-black text-indigo-300 uppercase tracking-widest mb-6 flex flex-col items-center drop-shadow-md">
+                                Pré-Venda
+                                <span className="block w-12 h-1 bg-indigo-500 rounded-full mt-2 shadow-[0_0_10px_rgba(99,102,241,0.5)]"></span>
+                            </h2>
+                            <div className="flex flex-col gap-4 w-full max-w-sm">
+                                {/* Botão Dossiê */}
+                                <button
+                                    onClick={() => setIsSearchOpen(true)}
+                                    className="group w-full bg-gradient-to-br from-indigo-600/20 via-indigo-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-3 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-indigo-500/20 hover:border-indigo-500/30"
+                                >
+                                    <div className="p-2.5 rounded-full bg-indigo-500/20 ring-1 ring-indigo-400/30 group-hover:bg-indigo-500/40 transition-colors shadow-[0_0_15px_rgba(99,102,241,0.3)]">
+                                        <FileSearch className="w-7 h-7 text-indigo-200 group-hover:text-white transition-colors shrink-0" strokeWidth={1.5} />
+                                    </div>
+                                    <div className="text-left flex-1">
+                                        <span className="text-white text-lg font-bold block mb-0.5">Dossiê</span>
+                                        <span className="text-indigo-200/70 text-[10px] uppercase tracking-wide group-hover:text-indigo-100 transition-colors">Raio-X Completo</span>
+                                    </div>
+                                    <div className="absolute top-1/2 right-4 -translate-y-1/2 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all duration-300">
+                                        <ArrowRight className="w-5 h-5 text-indigo-300" />
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Bloco Vendas */}
+                        <div className="flex flex-col items-center w-full">
+                            <h2 className="text-lg font-black text-blue-300 uppercase tracking-widest mb-6 flex flex-col items-center drop-shadow-md">
+                                Vendas
+                                <span className="block w-12 h-1 bg-blue-500 rounded-full mt-2 shadow-[0_0_10px_rgba(59,130,246,0.5)]"></span>
+                            </h2>
+                            <div className="flex flex-col gap-4 w-full max-w-sm">
+                                {/* Receituário */}
+                                <button
+                                    onClick={() => onNavigate(`/dashboard/loja/${storeId}/atendimento`)}
+                                    className="group w-full bg-gradient-to-br from-blue-600/20 via-blue-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-3 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-blue-500/20 hover:border-blue-500/30"
+                                >
+                                    <div className="p-2.5 rounded-full bg-blue-500/20 ring-1 ring-blue-400/30 group-hover:bg-blue-500/40 transition-colors shadow-[0_0_15px_rgba(59,130,246,0.3)]">
+                                        <FileText className="w-7 h-7 text-blue-200 group-hover:text-white transition-colors shrink-0" strokeWidth={1.5} />
+                                    </div>
+                                    <div className="text-left flex-1">
+                                        <span className="text-white text-lg font-bold block mb-0.5">Receituário</span>
+                                        <span className="text-blue-200/70 text-[10px] uppercase tracking-wide group-hover:text-blue-100 transition-colors">Venda com receita médica</span>
+                                    </div>
+                                    {/* Arrow Overlay like Home */}
+                                    <div className="absolute top-1/2 right-4 -translate-y-1/2 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all duration-300">
+                                        <ArrowRight className="w-5 h-5 text-blue-300" />
+                                    </div>
+                                </button>
+
+                                {/* Venda Rápida */}
+                                <button
+                                    onClick={() => onNavigate(`/dashboard/loja/${storeId}/pdv-express`)}
+                                    className="group w-full bg-gradient-to-br from-blue-600/20 via-blue-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-3 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-blue-500/20 hover:border-blue-500/30"
+                                >
+                                    <div className="p-2.5 rounded-full bg-blue-500/20 ring-1 ring-blue-400/30 group-hover:bg-blue-500/40 transition-colors shadow-[0_0_15px_rgba(59,130,246,0.3)]">
+                                        <Zap className="w-7 h-7 text-blue-200 group-hover:text-white transition-colors shrink-0" strokeWidth={1.5} />
+                                    </div>
+                                    <div className="text-left flex-1">
+                                        <span className="text-white text-lg font-bold block mb-0.5">Venda Rápida</span>
+                                        <span className="text-blue-200/70 text-[10px] uppercase tracking-wide group-hover:text-blue-100 transition-colors">Sem receita / Avulso</span>
+                                    </div>
+                                    <div className="absolute top-1/2 right-4 -translate-y-1/2 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all duration-300">
+                                        <ArrowRight className="w-5 h-5 text-blue-300" />
+                                    </div>
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -278,18 +308,18 @@ export default function OperatorMenuAtendimento({
                 </div>
 
                 {/* Linha Divisória Horizontal */}
-                <div className="w-full max-w-3xl flex items-center justify-center mb-8 mt-2">
+                <div className="w-full max-w-3xl flex items-center justify-center mb-2 mt-0">
                     <div className="h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                 </div>
 
                 {/* Seção Apoio (NEUTRAL/SLATE THEME) */}
-                <div className="flex flex-col items-center w-full max-w-4xl bg-black/20 backdrop-blur-md rounded-3xl p-6 border border-white/5 mx-4">
+                <div className="flex flex-col items-center w-full max-w-4xl bg-black/20 backdrop-blur-md rounded-3xl py-4 px-6 border border-white/5 mx-4">
                     <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-3">
                         <span className="w-8 h-px bg-slate-600"></span>
                         Apoio Operacional
                         <span className="w-8 h-px bg-slate-600"></span>
                     </h2>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
                         {/* Clientes */}
                         <button
                             onClick={() => onNavigate(`/dashboard/loja/${storeId}/clientes`)}
@@ -324,25 +354,11 @@ export default function OperatorMenuAtendimento({
                             className="group bg-white/5 hover:bg-slate-700/30 rounded-xl flex items-center gap-4 px-4 py-3 border border-white/5 hover:border-slate-500/30 transition-all duration-300 cursor-pointer"
                         >
                             <div className="p-2 rounded-lg bg-slate-500/20 text-slate-300 group-hover:bg-slate-500 group-hover:text-white transition-colors">
-                                <FileSearch className="w-5 h-5" strokeWidth={2} />
+                                <MessageCircle className="w-5 h-5" strokeWidth={2} />
                             </div>
                             <div className="text-left">
-                                <span className="text-slate-200 text-sm font-bold block group-hover:text-white transition-colors">Info</span>
-                                <span className="text-slate-500 text-[10px] group-hover:text-slate-300 transition-colors">Consulta/WA</span>
-                            </div>
-                        </button>
-
-                        {/* Histórico X-Ray */}
-                        <button
-                            onClick={() => setIsSearchOpen(true)}
-                            className="group bg-white/5 hover:bg-slate-700/30 rounded-xl flex items-center gap-4 px-4 py-3 border border-white/5 hover:border-slate-500/30 transition-all duration-300 cursor-pointer"
-                        >
-                            <div className="p-2 rounded-lg bg-slate-500/20 text-slate-300 group-hover:bg-slate-500 group-hover:text-white transition-colors">
-                                <FileText className="w-5 h-5" strokeWidth={2} />
-                            </div>
-                            <div className="text-left">
-                                <span className="text-slate-200 text-sm font-bold block group-hover:text-white transition-colors">Histórico</span>
-                                <span className="text-slate-500 text-[10px] group-hover:text-slate-300 transition-colors">Raio-X Completo</span>
+                                <span className="text-slate-200 text-sm font-bold block group-hover:text-white transition-colors">Enviar Informação</span>
+                                <span className="text-slate-500 text-[10px] group-hover:text-slate-300 transition-colors">WhatsApp</span>
                             </div>
                         </button>
                     </div>
@@ -357,6 +373,6 @@ export default function OperatorMenuAtendimento({
                 <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
                 <span className="text-xs font-bold uppercase tracking-wider">Voltar</span>
             </button>
-        </div>
+        </div >
     );
 }

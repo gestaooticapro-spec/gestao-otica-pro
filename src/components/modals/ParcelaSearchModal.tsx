@@ -55,7 +55,9 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
     const [step, setStep] = useState<'search' | 'details' | 'pay' | 'success'>('search')
     const [query, setQuery] = useState('')
     const [results, setResults] = useState<any[]>([])
+    const [hasSearched, setHasSearched] = useState(false)
     const [isSearching, startSearch] = useTransition()
+
 
     const [selectedClientData, setSelectedClientData] = useState<any>(null)
     const [selectedParcela, setSelectedParcela] = useState<any>(null)
@@ -79,9 +81,11 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
             setStep('search')
             setQuery('')
             setResults([])
+            setHasSearched(false)
             setPaidParcelaId(null)
             setTimeout(() => searchInputRef.current?.focus(), 100)
         }
+
     }, [isOpen])
 
     const handleSearch = (e: React.FormEvent) => {
@@ -91,6 +95,7 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
             try {
                 const res = await searchPendenciasCliente(storeId, query)
                 setResults(res as any[])
+                setHasSearched(true)
             } catch (error) {
                 console.error("[DEBUG] Erro na busca:", error)
             }
@@ -257,7 +262,7 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
                                         </button>
                                     ))}
 
-                                    {results.length === 0 && !isSearching && query.length >= 3 && (
+                                    {results.length === 0 && !isSearching && hasSearched && (
                                         <div className="text-center py-12 text-slate-500 font-medium">
                                             Nenhum cliente encontrado.
                                         </div>
@@ -337,7 +342,7 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
                                 {new Date(selectedParcela.data_vencimento) < new Date(getToday()) && (
                                     <div className="bg-red-500/10 p-4 rounded-xl border border-red-500/20">
                                         <label className="block text-[10px] font-bold text-red-400 mb-1.5 uppercase flex items-center gap-2">
-                                            <AlertTriangle className="h-3 w-3" /> Juros / Multa (Incluso no total)
+                                            <AlertTriangle className="h-3 w-3" /> Juros / Multa (SE DESEJAR COLOQUE OS JUROS AQUI)
                                         </label>
                                         <div className="relative">
                                             <span className="absolute left-3 top-2.5 text-red-400 font-bold">R$</span>

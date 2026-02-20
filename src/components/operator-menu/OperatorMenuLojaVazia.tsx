@@ -292,7 +292,7 @@ export default function OperatorMenuLojaVazia({
                                     </div>
                                     <div className="text-left">
                                         <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Lentes</span>
-                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">Rastreio Lab</span>
+                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">ATUALIZAR RASTREIO</span>
                                     </div>
                                 </button>
                                 {/* XML */}
@@ -518,7 +518,7 @@ export default function OperatorMenuLojaVazia({
 
                                 {/* LENTES PARADAS */}
                                 <RadarWidget
-                                    title="Lentes Paradas"
+                                    title="Lentes Não Pedidas"
                                     subtitle="No Laboratório"
                                     icon={AlertCircle}
                                     colorClass="rose"

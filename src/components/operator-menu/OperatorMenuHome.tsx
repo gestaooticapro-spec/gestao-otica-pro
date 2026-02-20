@@ -36,7 +36,7 @@ export default function OperatorMenuHome({
             </div>
 
             {/* Conteúdo */}
-            <div className="relative z-10 w-full max-w-5xl flex flex-col items-center mt-[-18vh]">
+            <div className="relative z-10 w-full max-w-5xl flex flex-col items-center mt-[-12vh]">
 
                 {/* Header / Logo */}
                 <div className="mb-4 text-center flex flex-col items-center animate-in slide-in-from-top-5 duration-700">
@@ -64,7 +64,7 @@ export default function OperatorMenuHome({
                 </div>
 
                 {/* Botões Principais */}
-                <div className="flex flex-col md:flex-row gap-6 w-full max-w-3xl justify-center px-4">
+                <div className="flex flex-col md:flex-row gap-12 md:gap-16 w-full max-w-4xl justify-center px-4">
 
                     {/* Botão Atendimento */}
                     <button
@@ -134,7 +134,7 @@ export default function OperatorMenuHome({
                 </div>
 
                 {/* Footer */}
-                <div className="text-center opacity-40 hover:opacity-100 transition-opacity duration-300 mt-16">
+                <div className="text-center opacity-40 hover:opacity-100 transition-opacity duration-300 mt-16 mb-8 md:mb-0">
                     <p className="text-[10px] text-slate-300 font-medium uppercase tracking-[0.3em]">
                         Powered by <span className="font-bold text-white">NeoManager 2.0</span>
                     </p>
