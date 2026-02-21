@@ -77,7 +77,9 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
 
     const handleWhatsApp = () => {
         if (!selectedItem || !selectedItem.titular_tel) return alert("Telefone não cadastrado. Clique em 'Sem fone' ao lado do nome do titular para cadastrar.")
-        const num = selectedItem.titular_tel.replace(/\D/g, '')
+        const rawPhone = selectedItem.titular_tel.trim()
+        const num = rawPhone.replace(/\D/g, '')
+        const phoneForWhatsApp = rawPhone.startsWith('+') ? num : `55${num}`
         const nomeTitular = selectedItem.titular_nome.split(' ')[0]
         const dias = selectedItem.dias_desde_entrega
         const ehProprio = selectedItem.dependente_nome === selectedItem.titular_nome || !selectedItem.dependente_nome || selectedItem.dependente_nome === 'Mesmo'
@@ -86,7 +88,7 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
             ? `Olá ${nomeTitular}, aqui é da Ótica. Já faz ${dias} dias que vc buscou seu óculos. Como está a adaptação?`
             : `Olá ${nomeTitular}, aqui é da Ótica. Já faz ${dias} dias que ${selectedItem.dependente_nome?.split(' ')[0]} retirou os óculos. Como está a adaptação, você sabe?`
 
-        window.open(`https://wa.me/55${num}?text=${encodeURIComponent(msg)}`, '_blank')
+        window.open(`https://wa.me/${phoneForWhatsApp}?text=${encodeURIComponent(msg)}`, '_blank')
     }
 
     const handleSaveInteraction = (formData: FormData) => {

@@ -134,7 +134,7 @@ export default function OperatorMenuHome({
                 </div>
 
                 {/* Footer */}
-                <div className="text-center opacity-40 hover:opacity-100 transition-opacity duration-300 mt-16 mb-8 md:mb-0">
+                <div className="text-center opacity-40 hover:opacity-100 transition-opacity duration-300 mt-8 mb-8 md:mb-0">
                     <p className="text-[10px] text-slate-300 font-medium uppercase tracking-[0.3em]">
                         Powered by <span className="font-bold text-white">NeoManager 2.0</span>
                     </p>
@@ -144,7 +144,7 @@ export default function OperatorMenuHome({
             {/* Botão Sair */}
             <button
                 onClick={onLogout}
-                className="absolute bottom-6 right-6 md:bottom-10 md:right-10 flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 hover:bg-red-500/20 text-slate-400 hover:text-red-200 transition-all duration-300 border border-white/5 hover:border-red-500/30 backdrop-blur-sm z-20 group"
+                className="fixed bottom-6 right-6 md:bottom-10 md:right-10 flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 hover:bg-red-500/20 text-slate-400 hover:text-red-200 transition-all duration-300 border border-white/5 hover:border-red-500/30 backdrop-blur-sm z-30 group"
             >
                 <LogOut className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
                 <span className="text-xs font-bold uppercase tracking-wider">Sair</span>
