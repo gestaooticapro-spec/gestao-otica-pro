@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import {
-    DollarSign, HeartHandshake, Megaphone, Archive, Search,
+    DollarSign, HeartHandshake, Megaphone, Archive, Search, Globe,
     ArrowLeftRight, FileInput, Tag, FileSpreadsheet, ArrowLeft, Clock,
     AlertCircle, Gift, Calendar, Package, ChevronRight, ChevronDown, ChevronUp,
     MessageCircle, CalendarClock, CalendarCheck, ArrowRight, Send
@@ -225,7 +225,8 @@ export default function OperatorMenuLojaVazia({
                 <div className="flex flex-col xl:flex-row gap-8 w-full items-start">
 
                     {/* ESQUERDA: AÇÕES (3 Colunas Grid) */}
-                    <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="flex-1 w-full flex flex-col gap-6">
+                        <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 
                         {/* GRUPO 1: FINANCEIRO */}
                         <div className="bg-black/20 border border-white/5 rounded-3xl p-6 backdrop-blur-md flex flex-col gap-4 shadow-xl">
@@ -235,7 +236,7 @@ export default function OperatorMenuLojaVazia({
                             </h2>
                             <div className="flex flex-col gap-3">
                                 {/* Caixa */}
-                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/financeiro/caixa`)} className="group bg-white/5 hover:bg-amber-500/10 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/5 hover:border-amber-500/30 transition-all duration-300 cursor-pointer backdrop-blur-sm">
+                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/financeiro/caixa`)} className="group bg-gradient-to-br from-amber-600/12 via-orange-900/25 to-slate-900/60 hover:from-amber-500/22 hover:via-orange-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-amber-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(245,158,11,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40">
                                     <div className="p-2.5 rounded-lg bg-amber-500/20 text-amber-300 group-hover:bg-amber-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(245,158,11,0.2)]">
                                         <DollarSign className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
@@ -245,7 +246,7 @@ export default function OperatorMenuLojaVazia({
                                     </div>
                                 </button>
                                 {/* Cobrança */}
-                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/cobranca`)} className="group bg-white/5 hover:bg-amber-500/10 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/5 hover:border-amber-500/30 transition-all duration-300 cursor-pointer backdrop-blur-sm">
+                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/cobranca`)} className="group bg-gradient-to-br from-amber-600/12 via-orange-900/25 to-slate-900/60 hover:from-amber-500/22 hover:via-orange-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-amber-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(245,158,11,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40">
                                     <div className="p-2.5 rounded-lg bg-amber-500/20 text-amber-300 group-hover:bg-amber-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(245,158,11,0.2)]">
                                         <Megaphone className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
@@ -266,7 +267,7 @@ export default function OperatorMenuLojaVazia({
                             </h2>
                             <div className="flex flex-col gap-3">
                                 {/* Estoque */}
-                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/estoque/movimentacoes`)} className="group bg-white/5 hover:bg-blue-500/10 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/5 hover:border-blue-500/30 transition-all duration-300 cursor-pointer backdrop-blur-sm">
+                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/estoque/movimentacoes`)} className="group bg-gradient-to-br from-blue-600/12 via-blue-900/25 to-slate-900/60 hover:from-blue-500/22 hover:via-blue-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-blue-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(59,130,246,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40">
                                     <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
                                         <ArrowLeftRight className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
@@ -276,7 +277,7 @@ export default function OperatorMenuLojaVazia({
                                     </div>
                                 </button>
                                 {/* Produtos */}
-                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/cadastros`)} className="group bg-white/5 hover:bg-blue-500/10 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/5 hover:border-blue-500/30 transition-all duration-300 cursor-pointer backdrop-blur-sm">
+                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/cadastros`)} className="group bg-gradient-to-br from-blue-600/12 via-blue-900/25 to-slate-900/60 hover:from-blue-500/22 hover:via-blue-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-blue-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(59,130,246,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40">
                                     <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
                                         <Tag className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
@@ -286,7 +287,7 @@ export default function OperatorMenuLojaVazia({
                                     </div>
                                 </button>
                                 {/* Lentes */}
-                                <button onClick={() => openLabModal()} className="group bg-white/5 hover:bg-blue-500/10 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/5 hover:border-blue-500/30 transition-all duration-300 cursor-pointer backdrop-blur-sm">
+                                <button onClick={() => openLabModal()} className="group bg-gradient-to-br from-blue-600/12 via-blue-900/25 to-slate-900/60 hover:from-blue-500/22 hover:via-blue-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-blue-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(59,130,246,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40">
                                     <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
                                         <Search className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
@@ -296,7 +297,7 @@ export default function OperatorMenuLojaVazia({
                                     </div>
                                 </button>
                                 {/* XML */}
-                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/importacao`)} className="group bg-white/5 hover:bg-blue-500/10 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/5 hover:border-blue-500/30 transition-all duration-300 cursor-pointer backdrop-blur-sm">
+                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/importacao`)} className="group bg-gradient-to-br from-blue-600/12 via-blue-900/25 to-slate-900/60 hover:from-blue-500/22 hover:via-blue-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-blue-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(59,130,246,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40">
                                     <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
                                         <FileInput className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
@@ -316,7 +317,7 @@ export default function OperatorMenuLojaVazia({
                             </h2>
                             <div className="flex flex-col gap-3">
                                 {/* Pós-Venda */}
-                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/pos-venda`)} className="group bg-white/5 hover:bg-rose-500/10 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/5 hover:border-rose-500/30 transition-all duration-300 cursor-pointer backdrop-blur-sm">
+                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/pos-venda`)} className="group bg-gradient-to-br from-rose-600/12 via-rose-900/25 to-slate-900/60 hover:from-rose-500/22 hover:via-rose-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-rose-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(244,63,94,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40">
                                     <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
                                         <HeartHandshake className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
@@ -326,7 +327,7 @@ export default function OperatorMenuLojaVazia({
                                     </div>
                                 </button>
                                 {/* Histórico */}
-                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/vendas?mode=historico`)} className="group bg-white/5 hover:bg-rose-500/10 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/5 hover:border-rose-500/30 transition-all duration-300 cursor-pointer backdrop-blur-sm">
+                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/vendas?mode=historico`)} className="group bg-gradient-to-br from-rose-600/12 via-rose-900/25 to-slate-900/60 hover:from-rose-500/22 hover:via-rose-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-rose-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(244,63,94,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40">
                                     <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
                                         <FileSpreadsheet className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
@@ -336,7 +337,7 @@ export default function OperatorMenuLojaVazia({
                                     </div>
                                 </button>
                                 {/* Gaveta (Moved from Financeiro) */}
-                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/gaveta`)} className="group bg-white/5 hover:bg-rose-500/10 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/5 hover:border-rose-500/30 transition-all duration-300 cursor-pointer backdrop-blur-sm">
+                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/gaveta`)} className="group bg-gradient-to-br from-rose-600/12 via-rose-900/25 to-slate-900/60 hover:from-rose-500/22 hover:via-rose-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-rose-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(244,63,94,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40">
                                     <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
                                         <Archive className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
@@ -345,34 +346,44 @@ export default function OperatorMenuLojaVazia({
                                         <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">Conferência</span>
                                     </div>
                                 </button>
+                                {/* Busca Universal */}
+                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/consultas`)} className="group bg-gradient-to-br from-rose-600/12 via-rose-900/25 to-slate-900/60 hover:from-rose-500/22 hover:via-rose-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-rose-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(244,63,94,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40">
+                                    <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
+                                        <Globe className="w-6 h-6" strokeWidth={1.5} />
+                                    </div>
+                                    <div className="text-left">
+                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Busca</span>
+                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">Geral</span>
+                                    </div>
+                                </button>
                             </div>
                         </div>
-                    </div>
-
-                    {/* DIREITA: RADAR OPERACIONAL */}
-                    <div className="w-full xl:w-[400px] shrink-0 flex flex-col gap-6">
+                        </div>
 
                         {/* Alerta de Vendas */}
                         {radar.vendasEmAberto > 0 && (
                             <Link
                                 href={`/dashboard/loja/${storeId}/vendas?mode=pendencias`}
-                                className="group bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/40 hover:border-amber-500/60 rounded-2xl p-5 flex items-center justify-between cursor-pointer shadow-lg backdrop-blur-md animate-in slide-in-from-right-5 duration-700 transition-all hover:scale-[1.02]"
+                                className="group w-full bg-gradient-to-r from-amber-500/12 to-orange-500/12 border border-amber-500/25 hover:border-amber-500/35 rounded-xl p-4 flex items-center justify-between cursor-pointer shadow-md backdrop-blur-md animate-in slide-in-from-bottom-3 duration-700 transition-all hover:scale-[1.005]"
                             >
                                 <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-lg shadow-amber-500/40 group-hover:scale-110 transition-transform">
-                                        <AlertCircle className="w-6 h-6" />
+                                    <div className="w-10 h-10 rounded-lg bg-amber-500/85 text-white flex items-center justify-center shadow-md shadow-amber-500/25 group-hover:scale-110 transition-transform">
+                                        <AlertCircle className="w-5 h-5" />
                                     </div>
                                     <div>
                                         <h3 className="text-amber-300 font-bold text-xs uppercase tracking-wider mb-0.5">Vendas em Aberto</h3>
-                                        <span className="text-3xl font-black text-white drop-shadow-md">{radar.vendasEmAberto}</span>
+                                        <span className="text-2xl font-black text-white drop-shadow-md">{radar.vendasEmAberto}</span>
                                     </div>
                                 </div>
-                                <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-amber-500 group-hover:text-white transition-all">
+                                <div className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-amber-500 group-hover:text-white transition-all">
                                     <ChevronRight className="w-5 h-5 text-amber-200 group-hover:text-white" />
                                 </div>
                             </Link>
-
                         )}
+                    </div>
+
+                    {/* DIREITA: RADAR OPERACIONAL */}
+                    <div className="w-full xl:w-[400px] shrink-0 flex flex-col">
 
                         {/* Radar Lista */}
                         <div className="bg-black/20 border border-white/5 rounded-3xl p-6 backdrop-blur-md flex flex-col shadow-xl">
@@ -559,7 +570,8 @@ export default function OperatorMenuLojaVazia({
             {/* Botão Voltar */}
             <button
                 onClick={onBack}
-                className="absolute bottom-6 left-6 flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all duration-300 border border-white/5 hover:border-white/20 backdrop-blur-sm z-20 group"
+                className="fixed flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all duration-300 border border-white/5 hover:border-white/20 backdrop-blur-sm z-20 group"
+                style={{ left: 'max(1rem, env(safe-area-inset-left))', bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
             >
                 <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
                 <span className="text-xs font-bold uppercase tracking-wider">Voltar</span>
@@ -567,3 +579,6 @@ export default function OperatorMenuLojaVazia({
         </div>
     );
 }
+
+
+

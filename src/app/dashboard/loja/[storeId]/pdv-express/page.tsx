@@ -1,7 +1,7 @@
 import { getEmployees } from '@/lib/actions/employee.actions'
 import PdvExpressInterface from '@/components/vendas/PdvExpressInterface'
 import { Zap } from 'lucide-react'
-import CashGuard from '@/components/financeiro/CashGuard'
+
 
 export const dynamic = 'force-dynamic'
 
@@ -18,7 +18,7 @@ export default async function PdvExpressPage({ params }: { params: { storeId: st
       {/* BACKGROUND IGUAL AO MENU */}
       <div className="absolute inset-0 z-0 bg-[url('/tela1.jpg')] bg-cover bg-center opacity-40 blur-sm" />
       <div className="absolute inset-0 z-0 bg-gradient-to-b from-slate-950/80 via-slate-950/90 to-slate-950" />
-      <CashGuard storeId={storeId} />
+
 
       {/* Header Simplificado Glass */}
       <div className="relative z-10 bg-white/5 backdrop-blur-md border-b border-white/10 px-6 py-4 flex justify-between items-center flex-shrink-0">

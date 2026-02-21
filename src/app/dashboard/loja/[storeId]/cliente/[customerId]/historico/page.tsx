@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { BackgroundToggle } from '@/components/ui/BackgroundToggle'
 import { HistoryBackgroundLayer } from '@/components/history/HistoryBackgroundLayer'
 import { headers } from 'next/headers'
-import { BackButton } from '@/components/history/BackButton'
 
 // FORCE DYNAMIC
 export const dynamic = 'force-dynamic'
@@ -46,7 +45,13 @@ export default async function Page({
                 {/* Page Header */}
                 <div className="flex justify-between items-center mb-6 shrink-0">
                     <div className="flex items-center gap-4">
-                        <BackButton />
+                        <Link
+                            href={`/dashboard/loja/${storeId}?menu=atendimento`}
+                            className="p-2 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors border border-white/5"
+                            title="Voltar para Atendimento"
+                        >
+                            <ArrowLeft className="w-5 h-5" />
+                        </Link>
                         <div>
                             <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 to-purple-400 uppercase tracking-tight">
                                 Raio-X do Cliente

@@ -7,7 +7,7 @@ import { useFormState, useFormStatus } from 'react-dom'
 import {
     Loader2, Save, Trash2, ChevronLeft, ChevronRight,
     Eye, Glasses, User, Ruler, Truck, Plus, History, FileDown, CalendarClock,
-    MessageCircle, Sparkles, Printer
+    MessageCircle, Sparkles, Printer, FileText
 } from 'lucide-react'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
 
@@ -518,10 +518,10 @@ ${addIf('Obs.', obsOs) || ''}
     return (
         <>
             <form ref={formRef} action={dispatch} className="flex-1 flex flex-col min-h-0 relative">
-                {/* BACKGROUND IMAGE - OS.JPG */}
+                {/* BACKGROUND IMAGE - VENDASOS.JPG */}
                 <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
-                    <div className="absolute inset-0 bg-[url('/os.jpg')] bg-cover bg-center opacity-30" />
-                    <div className="absolute inset-0 bg-gradient-to-b from-slate-950/70 via-slate-950/80 to-slate-950" />
+                    <div className="absolute inset-0 bg-cover bg-center opacity-50" style={{ backgroundImage: "url('/os.jpg')" }} />
+                    <div className="absolute inset-0 bg-gradient-to-b from-slate-950/50 via-slate-950/70 to-slate-950/60" />
                 </div>
 
                 {/* ÁREA DE SCROLL (HEADER + CONTEÚDO) */}
@@ -588,6 +588,17 @@ ${addIf('Obs.', obsOs) || ''}
                             <span className="bg-white/5 text-slate-300 text-[10px] px-2 py-0.5 rounded-full font-bold border border-white/10 whitespace-nowrap shadow-inner mr-2">
                                 {currentIndex === -1 ? 'NOVA' : `${currentIndex + 1}/${existingOrders.length}`}
                             </span>
+
+                            {/* VER VENDA BUTTON */}
+                            <button
+                                type="button"
+                                onClick={() => router.push(`/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`)}
+                                className="mr-2 flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-lg border border-white/10 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-wider whitespace-nowrap"
+                                title="Voltar para a Venda que gerou esta OS"
+                            >
+                                <FileText className="h-3 w-3 text-cyan-400" />
+                                <span className="hidden sm:inline">Ver Venda</span>
+                            </button>
 
                             <button type="button" onClick={() => handleNavigate('new')} className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-500/20 shadow-sm transition-all uppercase tracking-wide flex items-center gap-2">
                                 <Plus className="h-3 w-3" /> NOVA

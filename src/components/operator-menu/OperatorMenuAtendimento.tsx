@@ -368,7 +368,8 @@ export default function OperatorMenuAtendimento({
             {/* Botão Voltar */}
             <button
                 onClick={onBack}
-                className="absolute bottom-6 left-6 flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all duration-300 border border-white/5 hover:border-white/20 backdrop-blur-sm z-20 group"
+                className="fixed flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all duration-300 border border-white/5 hover:border-white/20 backdrop-blur-sm z-20 group"
+                style={{ left: 'max(1rem, env(safe-area-inset-left))', bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
             >
                 <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
                 <span className="text-xs font-bold uppercase tracking-wider">Voltar</span>
@@ -376,3 +377,5 @@ export default function OperatorMenuAtendimento({
         </div >
     );
 }
+
+

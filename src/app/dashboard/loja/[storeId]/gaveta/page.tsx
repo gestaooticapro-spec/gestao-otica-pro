@@ -41,7 +41,7 @@ export default function GavetaPage({
 
       {/* BACKGROUND PREMIUM */}
       <div className={`absolute inset-0 z-0 transition-opacity duration-1000 pointer-events-none ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
-        <img src="/dashboard.jpg" alt="" className="absolute inset-0 w-full h-full object-cover opacity-30 fixed" />
+        <img src="/gaveta.png" alt="" className="absolute inset-0 w-full h-full object-cover opacity-30 fixed" />
         <div className="absolute inset-0 z-0 bg-gradient-to-b from-slate-950/80 via-slate-950/80 to-slate-950" />
       </div>
 

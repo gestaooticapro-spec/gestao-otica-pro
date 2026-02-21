@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import OperatorMenuHome from './OperatorMenuHome';
 import OperatorMenuAtendimento from './OperatorMenuAtendimento';
@@ -24,6 +24,7 @@ export default function OperatorLayout({
 }: OperatorLayoutProps) {
     const router = useRouter();
     const pathname = usePathname();
+    const searchParams = useSearchParams();
     const supabase = createClient();
 
     // Determina o estado do menu baseado na rota atual
@@ -32,15 +33,17 @@ export default function OperatorLayout({
     // Detecta se estamos em uma página específica (não é a home da loja)
     useEffect(() => {
         const storeHomePath = `/dashboard/loja/${storeId}`;
+        const menuParam = searchParams.get('menu');
 
         // Se não estiver exatamente na home da loja, mostra o children
         if (pathname !== storeHomePath) {
             setCurrentMenu('page');
+        } else if (menuParam === 'atendimento' || menuParam === 'loja-vazia') {
+            setCurrentMenu(menuParam);
         } else {
-            // Volta para home se estiver na rota raiz da loja
             setCurrentMenu('home');
         }
-    }, [pathname, storeId]);
+    }, [pathname, storeId, searchParams]);
 
     const handleLogout = async () => {
         const { error } = await supabase.auth.signOut();
@@ -128,3 +131,4 @@ export default function OperatorLayout({
         </div>
     );
 }
+

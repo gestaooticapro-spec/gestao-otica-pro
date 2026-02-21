@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 // Tipagem básica para facilitar o retorno (pode ajustar conforme seu projeto)
 interface DadosProtocolo {
-os_numero: string | number
+  os_numero: string | number
   data_emissao: string
   data_entrega: string
   cliente_nome: string
@@ -30,6 +30,7 @@ os_numero: string | number
   altura: string
   diametro: string
   laboratorio: string
+  obs_os: string
 }
 
 export async function getDadosProtocolo(osId: number) {
@@ -98,7 +99,7 @@ export async function getDadosProtocolo(osId: number) {
         .select('valor_final, financiamento_id')
         .eq('id', vendaId)
         .single()
-      
+
       if (vendaRaw) {
         const v = vendaRaw as any
         totalVenda = parseFloat(v.valor_final || '0')
@@ -219,44 +220,45 @@ export async function getDadosProtocolo(osId: number) {
       }
     }
 
- // ------------------------------------------------------------------
+    // ------------------------------------------------------------------
     // RETORNO FINAL (Mapeado para o objeto esperado)
     // ------------------------------------------------------------------
     const dadosFinais: DadosProtocolo = {
       os_numero: os.protocolo_fisico,
       data_emissao: os.created_at,
       data_entrega: os.dt_prometido_para,
-      
+
       cliente_nome: clienteNome,
       cliente_fone: clienteFone,
-      
+
       total_venda: totalVenda,
       valor_sinal: valorSinal,
       valor_restante: valorRestante < 0 ? 0 : valorRestante, // Evita negativo
-      
+
       qtd_parcelas: qtdParcelas,
       valor_primeira_parcela: valorPrimeiraParcela,
-      
+
       desc_lente: descLente,
       valor_lente: valorLente,
       desc_armacao: descArmacao,
       valor_armacao: valorArmacao,
-      
+
       // Dados Técnicos (Receita) - Verifica nulos
       od_esf: os.receita_longe_od_esferico || '',
       od_cil: os.receita_longe_od_cilindrico || '',
       od_eixo: os.receita_longe_od_eixo || '',
       od_dnp: os.medida_dnp_od || '',
-      
+
       oe_esf: os.receita_longe_oe_esferico || '',
       oe_cil: os.receita_longe_oe_cilindrico || '',
       oe_eixo: os.receita_longe_oe_eixo || '',
       oe_dnp: os.medida_dnp_oe || '',
-      
+
       adicao: os.receita_adicao || '',
       altura: os.medida_altura_od || '', // Usando OD como padrão conforme conversado
       diametro: os.medida_diametro || '',
-      laboratorio: os.lab_nome || ''
+      laboratorio: os.lab_nome || '',
+      obs_os: os.obs_os || ''
     }
 
     console.log(`[PRINT_DEBUG] Sucesso OS ${osId}. Cliente: ${clienteNome}`)

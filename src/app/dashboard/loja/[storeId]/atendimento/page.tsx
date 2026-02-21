@@ -23,7 +23,7 @@ import {
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { Database } from '@/lib/database.types'
 import QuickCustomerModal from '@/components/modals/QuickCustomerModal'
-import CashGuard from '@/components/financeiro/CashGuard'
+
 
 type Employee = Database['public']['Tables']['employees']['Row']
 type Customer = Database['public']['Tables']['customers']['Row']
@@ -276,8 +276,6 @@ export default function AtendimentoPage() {
     return (
         <div className="relative flex flex-col h-[calc(100vh-64px)] bg-slate-950 overflow-hidden font-sans">
 
-            {/* BACKGROUND PREMIUM */}
-            <CashGuard storeId={storeId} />
             {/* BACKGROUND PREMIUM (Controlado pelo preference) */}
             <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
                 <div className="absolute inset-0 z-0 bg-[url('/vendasos.jpg')] bg-cover bg-center opacity-40 blur-[2px]" />

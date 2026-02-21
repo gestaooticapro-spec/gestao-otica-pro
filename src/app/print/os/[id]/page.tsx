@@ -21,23 +21,23 @@ export default function PrintOSPage({ params }: { params: { id: string } }) {
         if (isNaN(osId)) throw new Error('ID inválido')
 
         const res = await getDadosProtocolo(osId)
-        
+
         if (!res.success || !res.data) {
           throw new Error(res.error || 'Erro ao buscar dados')
         }
 
         setData(res.data)
-        
-// Dispara a impressão quando os dados estiverem prontos
+
+        // Dispara a impressão quando os dados estiverem prontos
         setTimeout(() => {
           // Fecha a janela automaticamente após imprimir ou cancelar
           window.onafterprint = () => {
             window.close()
           }
-          
+
           window.print()
         }, 800)
-        
+
       } catch (err: any) {
         setError(err.message)
       } finally {
@@ -50,9 +50,9 @@ export default function PrintOSPage({ params }: { params: { id: string } }) {
 
   // --- HELPER DE RENDERIZAÇÃO ---
   // Renderiza um texto nas posições (Superior e Inferior) definidas no config
-  const RenderField = ({ value, config }: { value: string | number | null | undefined, config: Coord[] }) => {
+  const RenderField = ({ value, config, isExtraBold = false }: { value: string | number | null | undefined, config: Coord[], isExtraBold?: boolean }) => {
     if (!value || !config) return null
-    
+
     return (
       <>
         {config.map((pos, idx) => (
@@ -64,10 +64,11 @@ export default function PrintOSPage({ params }: { params: { id: string } }) {
               top: `${pos.y}mm`,
               whiteSpace: 'nowrap',
               fontFamily: 'Courier New, monospace', // Fonte monoespaçada ajuda no alinhamento
-              fontWeight: 'bold',
-              fontSize: '12px', // Ajuste conforme necessário
+              fontWeight: isExtraBold ? 900 : 'bold',
+              fontSize: isExtraBold ? '13px' : '12px', // Ajuste conforme necessário
               transform: 'translateY(-50%)', // Centraliza verticalmente na coordenada
-              pointerEvents: 'none'
+              pointerEvents: 'none',
+              WebkitTextStroke: isExtraBold ? '0.5px black' : 'none'
             }}
           >
             {String(value).toUpperCase()}
@@ -114,7 +115,7 @@ export default function PrintOSPage({ params }: { params: { id: string } }) {
         <AlertTriangle className="h-10 w-10" />
         <h1 className="text-xl font-bold">Erro na Impressão</h1>
         <p>{error}</p>
-        <button 
+        <button
           onClick={() => window.close()}
           className="rounded bg-gray-200 px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-300"
         >
@@ -150,7 +151,7 @@ export default function PrintOSPage({ params }: { params: { id: string } }) {
       <RenderField value={fmtMoney(data.total_venda)} config={PRINT_CONFIG.total_venda} />
       <RenderField value={fmtMoney(data.valor_sinal)} config={PRINT_CONFIG.valor_sinal} />
       <RenderField value={fmtMoney(data.valor_restante)} config={PRINT_CONFIG.valor_restante} />
-      
+
       {data.qtd_parcelas > 0 && (
         <>
           <RenderField value={data.qtd_parcelas} config={PRINT_CONFIG.qtd_parcelas} />
@@ -180,6 +181,8 @@ export default function PrintOSPage({ params }: { params: { id: string } }) {
 
       <RenderField value={data.desc_armacao} config={PRINT_CONFIG.desc_armacao} />
       {data.valor_armacao > 0 && <RenderField value={fmtMoney(data.valor_armacao)} config={PRINT_CONFIG.valor_armacao} />}
+
+      <RenderField value={data.obs_os} config={PRINT_CONFIG.obs_os} isExtraBold />
 
       {/* ESTILO GLOBAL DE IMPRESSÃO */}
       <style jsx global>{`

@@ -36,7 +36,7 @@ export default function OperatorMenuHome({
             </div>
 
             {/* Conteúdo */}
-            <div className="relative z-10 w-full max-w-5xl flex flex-col items-center mt-[-12vh]">
+            <div className="relative z-10 w-full max-w-5xl flex flex-col items-center mt-0 pt-3 md:pt-4">
 
                 {/* Header / Logo */}
                 <div className="mb-4 text-center flex flex-col items-center animate-in slide-in-from-top-5 duration-700">

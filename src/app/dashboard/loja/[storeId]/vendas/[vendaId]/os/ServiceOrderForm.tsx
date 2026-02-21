@@ -13,7 +13,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import {
     Loader2, Save, Trash2, ChevronLeft, ChevronRight,
     Eye, Glasses, User, Ruler, Truck, Plus, History, FileDown, CalendarClock,
-    MessageCircle, Sparkles
+    MessageCircle, Sparkles, FileText
 } from 'lucide-react'
 import {
     deleteServiceOrder,
@@ -524,6 +524,15 @@ Obs.: ${obsOs}
                             <span className="bg-white/5 text-slate-300 text-[10px] px-2 py-0.5 rounded-full font-bold border border-white/10 whitespace-nowrap shadow-inner">
                                 {currentIndex === -1 ? 'NOVA' : `${currentIndex + 1}/${existingOrders.length}`}
                             </span>
+                            <button
+                                type="button"
+                                onClick={() => router.push(`/dashboard/loja/${storeId}/vendas/${vendaId}`)}
+                                className="ml-2 flex items-center gap-1.5 px-3 py-1 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-lg border border-white/10 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-wider whitespace-nowrap"
+                                title="Voltar para a Venda que gerou esta OS"
+                            >
+                                <FileText className="h-3 w-3 text-cyan-400" />
+                                Ver Venda
+                            </button>
                         </div>
 
                         <div className="flex-1 flex justify-center">
