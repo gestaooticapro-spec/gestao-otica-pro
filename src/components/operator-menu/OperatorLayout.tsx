@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import OperatorMenuHome from './OperatorMenuHome';
@@ -8,42 +8,41 @@ import OperatorMenuAtendimento from './OperatorMenuAtendimento';
 import OperatorMenuLojaVazia from './OperatorMenuLojaVazia';
 
 type MenuState = 'home' | 'atendimento' | 'loja-vazia' | 'page';
+type HomeSelection = 'atendimento' | 'loja-vazia' | null;
 
 interface OperatorLayoutProps {
     children: React.ReactNode;
     storeId: number;
     storeName: string;
     logoUrl: string | null;
+    onBackToHub?: () => void;
+    hubLabel?: string;
 }
 
 export default function OperatorLayout({
     children,
     storeId,
     storeName,
-    logoUrl
+    logoUrl,
+    onBackToHub,
+    hubLabel = 'Voltar'
 }: OperatorLayoutProps) {
     const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const supabase = createClient();
 
-    // Determina o estado do menu baseado na rota atual
-    const [currentMenu, setCurrentMenu] = useState<MenuState>('home');
+    const [homeSelection, setHomeSelection] = useState<HomeSelection>(null);
 
-    // Detecta se estamos em uma página específica (não é a home da loja)
-    useEffect(() => {
-        const storeHomePath = `/dashboard/loja/${storeId}`;
-        const menuParam = searchParams.get('menu');
+    const storeHomePath = `/dashboard/loja/${storeId}`;
+    const menuParam = searchParams.get('menu');
 
-        // Se não estiver exatamente na home da loja, mostra o children
-        if (pathname !== storeHomePath) {
-            setCurrentMenu('page');
-        } else if (menuParam === 'atendimento' || menuParam === 'loja-vazia') {
-            setCurrentMenu(menuParam);
-        } else {
-            setCurrentMenu('home');
-        }
-    }, [pathname, storeId, searchParams]);
+    const currentMenu: MenuState = (() => {
+        if (pathname !== storeHomePath) return 'page';
+        if (menuParam === 'atendimento' || menuParam === 'loja-vazia') return menuParam;
+        if (homeSelection) return homeSelection;
+        return 'home';
+    })();
 
     const handleLogout = async () => {
         const { error } = await supabase.auth.signOut();
@@ -55,18 +54,17 @@ export default function OperatorLayout({
     };
 
     const handleNavigate = (menu: 'atendimento' | 'loja-vazia') => {
-        setCurrentMenu(menu);
+        setHomeSelection(menu);
     };
 
     const handleBack = () => {
-        setCurrentMenu('home');
+        setHomeSelection(null);
     };
 
     const handleRouteNavigate = (route: string) => {
         router.push(route);
     };
 
-    // Renderiza o menu apropriado ou a página
     if (currentMenu === 'home') {
         return (
             <OperatorMenuHome
@@ -75,34 +73,22 @@ export default function OperatorLayout({
                 logoUrl={logoUrl}
                 onNavigate={handleNavigate}
                 onLogout={handleLogout}
+                onBackToHub={onBackToHub}
+                backLabel={hubLabel}
             />
         );
     }
 
     if (currentMenu === 'atendimento') {
-        return (
-            <OperatorMenuAtendimento
-                storeId={storeId}
-                onBack={handleBack}
-                onNavigate={handleRouteNavigate}
-            />
-        );
+        return <OperatorMenuAtendimento storeId={storeId} onBack={handleBack} onNavigate={handleRouteNavigate} />;
     }
 
     if (currentMenu === 'loja-vazia') {
-        return (
-            <OperatorMenuLojaVazia
-                storeId={storeId}
-                onBack={handleBack}
-                onNavigate={handleRouteNavigate}
-            />
-        );
+        return <OperatorMenuLojaVazia storeId={storeId} onBack={handleBack} onNavigate={handleRouteNavigate} />;
     }
 
-    // Quando está em uma página específica, mostra o children com um botão de voltar
     return (
         <div className="min-h-screen bg-slate-950">
-            {/* Barra superior simplificada */}
             <div className="bg-slate-900/80 backdrop-blur-xl border-b border-white/10 px-4 py-3 flex items-center justify-between shadow-xl shadow-black/20">
                 <button
                     onClick={() => router.push(`/dashboard/loja/${storeId}`)}
@@ -113,22 +99,28 @@ export default function OperatorLayout({
                     </svg>
                     Menu Principal
                 </button>
-                <span className="text-slate-500 text-xs font-bold uppercase tracking-widest">
-                    {storeName}
-                </span>
-                <button
-                    onClick={handleLogout}
-                    className="text-slate-500 hover:text-red-400 transition-colors text-sm font-medium"
-                >
-                    Sair
-                </button>
+                <span className="text-slate-500 text-xs font-bold uppercase tracking-widest">{storeName}</span>
+                <div className="flex items-center gap-4">
+                    {onBackToHub && (
+                        <button
+                            onClick={onBackToHub}
+                            className="text-slate-500 hover:text-blue-300 transition-colors text-sm font-medium"
+                        >
+                            {hubLabel}
+                        </button>
+                    )}
+                    <button
+                        onClick={handleLogout}
+                        className="text-slate-500 hover:text-red-400 transition-colors text-sm font-medium"
+                    >
+                        Sair
+                    </button>
+                </div>
             </div>
 
-            {/* Conteúdo da página */}
             <main className="overflow-y-auto" style={{ height: 'calc(100vh - 57px)' }}>
                 {children}
             </main>
         </div>
     );
 }
-

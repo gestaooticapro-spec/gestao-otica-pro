@@ -2,6 +2,7 @@
 'use client'
 
 import { useState, useEffect, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import {
     PostSaleQueueItem,
     Interaction,
@@ -13,13 +14,18 @@ import {
 } from '@/lib/actions/postsales.actions'
 import {
     User, Phone, MessageCircle, Star, CheckCircle,
-    Clock, Send, Eye, Wallet, Loader2, Edit3, Check, X, HeartHandshake
+    Clock, Send, Eye, Wallet, Loader2, Edit3, Check, X, HeartHandshake, Search
 } from 'lucide-react'
 import SaleDetailsModal from '@/components/modals/SaleDetailsModal'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
 
 // Helpers
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+const normalizeSearchText = (value: string | null | undefined) =>
+    (value ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
 
 function StarRating({ value, onChange }: { value: number, onChange: (v: number) => void }) {
     return (
@@ -41,8 +47,10 @@ function StarRating({ value, onChange }: { value: number, onChange: (v: number) 
 }
 
 export default function PostSalesInterface({ initialQueue, storeId }: { initialQueue: PostSaleQueueItem[], storeId: number }) {
+    const router = useRouter()
     const { preference } = useBackgroundPreference()
     const [selectedId, setSelectedId] = useState<number | null>(null)
+    const [searchName, setSearchName] = useState('')
     const [interactions, setInteractions] = useState<Interaction[]>([])
     const [loadingHistory, setLoadingHistory] = useState(false)
 
@@ -62,6 +70,23 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
 
     const [isPending, startTransition] = useTransition()
     const selectedItem = initialQueue.find(item => item.os_id === selectedId)
+    const normalizedQuery = normalizeSearchText(searchName.trim())
+    const filteredQueue = initialQueue.filter((item) => {
+        if (!normalizedQuery) return true
+        return (
+            normalizeSearchText(item.dependente_nome).includes(normalizedQuery) ||
+            normalizeSearchText(item.titular_nome).includes(normalizedQuery)
+        )
+    })
+
+    const resetClientFormState = () => {
+        setTipoContato('WhatsApp')
+        setResumoMsg('')
+        setRating(0)
+        setObsFinal('')
+        setIsEditingPhone(false)
+        setNewPhoneValue('')
+    }
 
     useEffect(() => {
         if (selectedItem && selectedItem.post_sales_id) {
@@ -74,6 +99,11 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
             setInteractions([])
         }
     }, [selectedItem])
+
+    const handleSelectItem = (osId: number) => {
+        resetClientFormState()
+        setSelectedId(osId)
+    }
 
     const handleWhatsApp = () => {
         if (!selectedItem || !selectedItem.titular_tel) return alert("Telefone não cadastrado. Clique em 'Sem fone' ao lado do nome do titular para cadastrar.")
@@ -116,8 +146,14 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
         formData.append('obs', obsFinal)
 
         startTransition(async () => {
-            await concludePostSale(formData)
+            const res = await concludePostSale(formData)
+            if (!res.success) {
+                alert(res.message || 'Erro ao concluir pos-venda.')
+                return
+            }
+            resetClientFormState()
             setSelectedId(null)
+            router.refresh()
         })
     }
 
@@ -169,17 +205,44 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
                         <div className="p-4 border-b border-white/5">
                             <h3 className="font-black text-slate-400 text-[10px] tracking-[0.2em] uppercase">Fila de Adaptação</h3>
                         </div>
+                        <div className="px-3 pt-3">
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                                <input
+                                    type="text"
+                                    value={searchName}
+                                    onChange={(e) => setSearchName(e.target.value)}
+                                    placeholder="Buscar nome..."
+                                    className="w-full h-10 rounded-xl bg-slate-900/60 border border-white/10 pl-9 pr-10 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50"
+                                />
+                                {searchName && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSearchName('')}
+                                        aria-label="Limpar filtro"
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-slate-500 hover:text-slate-200 hover:bg-white/10 transition-colors"
+                                    >
+                                        <X className="h-3.5 w-3.5" />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
                         <div className="flex-1 overflow-y-auto p-2 space-y-1.5 custom-scrollbar">
                             {initialQueue.length === 0 ? (
                                 <div className="p-8 text-center flex flex-col items-center">
                                     <CheckCircle className="h-12 w-12 mb-3 text-emerald-400 opacity-30" />
                                     <p className="text-sm font-medium text-slate-500">Nenhuma pendência.</p>
                                 </div>
+                            ) : filteredQueue.length === 0 ? (
+                                <div className="p-8 text-center flex flex-col items-center">
+                                    <Search className="h-10 w-10 mb-3 text-slate-500 opacity-60" />
+                                    <p className="text-sm font-medium text-slate-400">Nenhum cliente encontrado.</p>
+                                </div>
                             ) : (
-                                initialQueue.map(item => (
+                                filteredQueue.map(item => (
                                     <div
                                         key={item.os_id}
-                                        onClick={() => setSelectedId(item.os_id)}
+                                        onClick={() => handleSelectItem(item.os_id)}
                                         className={`p-4 rounded-xl cursor-pointer transition-all duration-200 border relative group
                                     ${selectedId === item.os_id
                                                 ? 'bg-indigo-500/20 text-indigo-200 shadow-[0_0_15px_rgba(99,102,241,0.15)] border-indigo-500/30'

@@ -1,5 +1,3 @@
-// Caminho: src/app/dashboard/loja/[storeId]/layout.tsx
-
 import { createClient } from '@/lib/supabase/server';
 import { redirect, notFound } from 'next/navigation';
 import SideNav from '@/components/SideNav';
@@ -8,8 +6,17 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { ModalsProvider } from '@/lib/contexts/ModalsContext';
 import { OperatorLayout } from '@/components/operator-menu';
 import DashboardLayoutWrapper from '@/components/dashboard/DashboardLayoutWrapper';
+import ManagerLayout from '@/components/manager-menu/ManagerLayout';
 
 type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor' | 'tecnico';
+type StoreProfile = {
+  role?: string | null;
+  store_id?: number | null;
+};
+type StoreDataShape = {
+  name?: string | null;
+  settings?: unknown;
+};
 
 export default async function StoreLayout({
   children,
@@ -23,10 +30,13 @@ export default async function StoreLayout({
 
   if (isNaN(storeIdParam)) return notFound();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   if (!user) return redirect('/login');
 
-  const profile = await getProfileByAdmin(user.id) as any;
+  const profile = (await getProfileByAdmin(user.id)) as StoreProfile | null;
 
   if (!profile || !profile.role) {
     return redirect('/login?error=profile_incomplete');
@@ -42,58 +52,56 @@ export default async function StoreLayout({
   }
 
   const supabaseAdmin = createAdminClient();
-  const { data: storeData } = await (supabaseAdmin
-    .from('stores') as any)
+  const { data: rawStoreData } = await supabaseAdmin
+    .from('stores')
     .select('name, settings')
     .eq('id', storeIdParam)
     .single();
+  const storeData = rawStoreData as StoreDataShape | null;
 
-  const storeName = storeData?.name || 'Ótica';
-  const settings = storeData?.settings as any;
-  const logoUrl = settings?.logo ? `/logos/${settings.logo}` : null;
+  const storeName = storeData?.name || 'Otica';
+  const settings = storeData?.settings;
+  let logoFile: string | null = null;
 
-  // --- LAYOUT CONDICIONAL POR ROLE ---
+  if (settings && typeof settings === 'object' && 'logo' in settings) {
+    const maybeLogo = (settings as { logo?: unknown }).logo;
+    if (typeof maybeLogo === 'string' && maybeLogo.length > 0) {
+      logoFile = maybeLogo;
+    }
+  }
 
-  // Se for store_operator, usa o layout de menu por botões
+  const logoUrl = logoFile ? `/logos/${logoFile}` : null;
+
   if (userRole === 'store_operator') {
     return (
       <ModalsProvider storeId={storeIdParam}>
-        <OperatorLayout
-          storeId={storeIdParam}
-          storeName={storeName}
-          logoUrl={logoUrl}
-        >
+        <OperatorLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl}>
           {children}
         </OperatorLayout>
       </ModalsProvider>
     );
   }
 
+  if (userRole === 'manager') {
+    return (
+      <ModalsProvider storeId={storeIdParam}>
+        <ManagerLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl}>
+          {children}
+        </ManagerLayout>
+      </ModalsProvider>
+    );
+  }
 
-
-  // Layout tradicional com sidebar para outros roles
   return (
     <ModalsProvider storeId={storeIdParam}>
-      <div className="flex w-full h-full overflow-hidden"> {/* REMOVED bg-gray-100 */}
-
-        {/* WRAPPER ENVOLVE SIDEBAR E MAIN PARA O BACKGROUND */}
+      <div className="flex w-full h-full overflow-hidden">
         <DashboardLayoutWrapper>
-
-          <div className="flex-shrink-0 h-full relative z-20"> {/* z-20 para SideNav ficar acima do bg */}
-            <SideNav
-              userRole={userRole}
-              storeId={storeIdParam}
-              storeName={storeName}
-              logoUrl={logoUrl}
-            />
+          <div className="flex-shrink-0 h-full relative z-20">
+            <SideNav userRole={userRole} storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl} />
           </div>
 
-          <main className="flex-1 overflow-y-auto relative z-10 w-full"> {/* REMOVED bg-gray-100 */}
-            {children}
-          </main>
-
+          <main className="flex-1 overflow-y-auto relative z-10 w-full">{children}</main>
         </DashboardLayoutWrapper>
-
       </div>
     </ModalsProvider>
   );

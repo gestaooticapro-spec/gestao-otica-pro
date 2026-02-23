@@ -50,6 +50,32 @@ export interface CustomerXRayData {
             olho_esquerdo?: any
         }[]
     }[]
+    postSales: {
+        mediaAvaliacao: number | null
+        totalRegistros: number
+        totalConcluidosComNota: number
+        registros: {
+            id: number
+            createdAt: string
+            status: string
+            avaliacaoCliente: number | null
+            observacoesFinais: string | null
+            serviceOrderId: number | null
+        }[]
+    }
+    cobranca: {
+        totalRegistros: number
+        vendasComCobranca: number
+        metricaPrincipal: 'vendas' | 'contatos'
+        valorMetrica: number
+        jaFoiCobrado: boolean
+        ultimoContatoEm: string | null
+    }
+    devedor: {
+        isDevedor: boolean
+        saldoPendente: number
+        vendasComSaldo: number
+    }
 }
 
 export async function getCustomerXRay(customerId: number, storeId: number): Promise<{ success: boolean, data?: CustomerXRayData, error?: string }> {
@@ -77,7 +103,7 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
         const { data: vendasData, error: vendasError } = await supabase
             .from('vendas')
             .select(`
-                id, created_at, valor_total, status,
+                id, created_at, valor_total, valor_restante, status,
                 vendedor:employees!employee_id(full_name),
                 itens:venda_itens(
                     id, valor_unitario, quantidade, product_id
@@ -100,6 +126,96 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
 
         vendas = vendasData as any[]
         console.log('[X-Ray] Found', vendas.length, 'sales')
+
+        // 2c. Fetch service orders for customer (for robust post-sales lookup)
+        let serviceOrders: any[] = []
+        const { data: serviceOrdersData, error: serviceOrdersError } = await (supabase
+            .from('service_orders') as any)
+            .select('id')
+            .eq('store_id', storeId)
+            .eq('customer_id', customerId)
+
+        if (serviceOrdersError) {
+            console.error('[X-Ray] Service orders query error:', serviceOrdersError.message)
+        } else {
+            serviceOrders = serviceOrdersData || []
+        }
+
+        const serviceOrderIds = serviceOrders
+            .map((os: any) => Number(os.id))
+            .filter((id: number) => Number.isFinite(id))
+
+        // 2d. Fetch post-sales by service_order_id
+        let postSalesRows: any[] = []
+        if (serviceOrderIds.length > 0) {
+            const { data: postSalesData, error: postSalesError } = await (supabase
+                .from('post_sales') as any)
+                .select('id, created_at, status, avaliacao_cliente, observacoes_finais, service_order_id')
+                .eq('store_id', storeId)
+                .in('service_order_id', serviceOrderIds)
+                .order('created_at', { ascending: false })
+
+            if (postSalesError) {
+                console.error('[X-Ray] Post-sales query error:', postSalesError.message)
+            } else {
+                postSalesRows = postSalesData || []
+            }
+        }
+
+        const postSalesConcluidosComNota = postSalesRows.filter((row: any) =>
+            row.status === 'Concluido' &&
+            row.avaliacao_cliente !== null &&
+            row.avaliacao_cliente !== undefined
+        )
+
+        const totalConcluidosComNota = postSalesConcluidosComNota.length
+        const mediaAvaliacao = totalConcluidosComNota > 0
+            ? Number((
+                postSalesConcluidosComNota.reduce((acc: number, row: any) => acc + Number(row.avaliacao_cliente || 0), 0) /
+                totalConcluidosComNota
+            ).toFixed(1))
+            : null
+
+        const postSalesRegistros = postSalesRows.map((row: any) => ({
+            id: row.id,
+            createdAt: row.created_at,
+            status: row.status || 'Pendente',
+            avaliacaoCliente: row.avaliacao_cliente === null || row.avaliacao_cliente === undefined
+                ? null
+                : Number(row.avaliacao_cliente),
+            observacoesFinais: row.observacoes_finais || null,
+            serviceOrderId: row.service_order_id || null
+        }))
+
+        // 2e. Fetch cobranças for customer
+        let cobrancaRows: any[] = []
+        const { data: cobrancaData, error: cobrancaError } = await (supabase
+            .from('cobranca_historico') as any)
+            .select('id, venda_id, created_at')
+            .eq('store_id', storeId)
+            .eq('customer_id', customerId)
+            .order('created_at', { ascending: false })
+
+        if (cobrancaError) {
+            console.error('[X-Ray] Cobranca query error:', cobrancaError.message)
+        } else {
+            cobrancaRows = cobrancaData || []
+        }
+
+        const vendasComCobrancaSet = new Set<number>()
+        cobrancaRows.forEach((row: any) => {
+            const vendaId = Number(row.venda_id)
+            if (Number.isFinite(vendaId) && vendaId > 0) {
+                vendasComCobrancaSet.add(vendaId)
+            }
+        })
+
+        const totalCobrancas = cobrancaRows.length
+        const vendasComCobranca = vendasComCobrancaSet.size
+        const metricaPrincipal: 'vendas' | 'contatos' = vendasComCobranca > 0 ? 'vendas' : 'contatos'
+        const valorMetrica = vendasComCobranca > 0 ? vendasComCobranca : totalCobrancas
+        const jaFoiCobrado = totalCobrancas > 0
+        const ultimoContatoEm = cobrancaRows[0]?.created_at || null
 
         // 2b. Fetch product names separately (avoids FK dependency)
         const allProductIds = new Set<number>()
@@ -129,6 +245,11 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
         const itemCounts: Record<string, number> = {}
         let paraSi = 0
         let paraDependentes = 0
+
+        const vendasComSaldo = vendas.filter((venda: any) => Number(venda.valor_restante || 0) > 0)
+        const saldoPendente = vendasComSaldo.reduce((acc: number, venda: any) => acc + Number(venda.valor_restante || 0), 0)
+        const totalVendasComSaldo = vendasComSaldo.length
+        const isDevedor = saldoPendente > 0
 
 
         // Process Sales
@@ -232,7 +353,26 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
                     compraMaisPara,
                     topProdutos
                 },
-                sales: formattedSales
+                sales: formattedSales,
+                postSales: {
+                    mediaAvaliacao,
+                    totalRegistros: postSalesRows.length,
+                    totalConcluidosComNota,
+                    registros: postSalesRegistros
+                },
+                cobranca: {
+                    totalRegistros: totalCobrancas,
+                    vendasComCobranca,
+                    metricaPrincipal,
+                    valorMetrica,
+                    jaFoiCobrado,
+                    ultimoContatoEm
+                },
+                devedor: {
+                    isDevedor,
+                    saldoPendente,
+                    vendasComSaldo: totalVendasComSaldo
+                }
             }
         }
 

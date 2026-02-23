@@ -6,6 +6,7 @@ import Header from '@/components/header';
 import { getProfileByAdmin } from '@/lib/supabase/admin';
 
 type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor' | 'tecnico';
+type ProfileWithRole = { role?: string | null };
 
 export default async function DashboardLayout({
   children,
@@ -21,11 +22,11 @@ export default async function DashboardLayout({
   }
 
   // 2. Buscar o profile para verificar o role
-  const profile = await getProfileByAdmin(user.id) as any;
+  const profile = (await getProfileByAdmin(user.id)) as ProfileWithRole | null;
   const userRole = profile?.role as Role | undefined;
 
-  // 3. Para store_operator, renderiza sem header (fullscreen)
-  if (userRole === 'store_operator') {
+  // 3. Para store_operator e manager, renderiza sem header (fullscreen)
+  if (userRole === 'store_operator' || userRole === 'manager') {
     return (
       <div className="min-h-screen">
         {children}

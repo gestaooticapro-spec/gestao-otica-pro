@@ -31,6 +31,52 @@ interface Props {
     employees: Employee[]
 }
 
+function EditablePrice({ value, onChange }: { value: number, onChange: (val: number) => void }) {
+    const [isEditing, setIsEditing] = useState(false);
+    const [inputValue, setInputValue] = useState(value.toString());
+
+    useEffect(() => {
+        if (!isEditing) setInputValue(value.toString());
+    }, [value, isEditing]);
+
+    const handleBlur = () => {
+        setIsEditing(false);
+        const parsed = parseFloat(inputValue);
+        if (!isNaN(parsed) && parsed >= 0) {
+            onChange(parsed);
+        } else {
+            setInputValue(value.toString());
+        }
+    };
+
+    if (isEditing) {
+        return (
+            <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onBlur={handleBlur}
+                onKeyDown={(e) => e.key === 'Enter' && handleBlur()}
+                autoFocus
+                className="w-28 bg-black/30 text-white font-black text-xl tracking-tight leading-none drop-shadow-md border border-cyan-500/50 rounded px-2 py-1 text-right focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+            />
+        );
+    }
+
+    return (
+        <button
+            onClick={() => setIsEditing(true)}
+            className="font-black text-white hover:text-cyan-400 text-xl tracking-tight leading-none drop-shadow-md transition-colors cursor-text group-hover:bg-white/5 px-2 py-1 rounded border border-transparent hover:border-cyan-500/30"
+            title="Editar preço"
+            type="button"
+        >
+            {formatCurrency(value)}
+        </button>
+    );
+}
+
 export default function PdvExpressInterface({ storeId, employees }: Props) {
     const router = useRouter()
 
@@ -71,6 +117,12 @@ export default function PdvExpressInterface({ storeId, employees }: Props) {
 
     const handleRemoveItem = (tempId: string) => {
         setCartItems(prev => prev.filter(item => item.tempId !== tempId))
+    }
+
+    const handlePriceChange = (tempId: string, newPrice: number) => {
+        setCartItems(prev => prev.map(item =>
+            item.tempId === tempId ? { ...item, price: newPrice } : item
+        ))
     }
 
     const executaBusca = () => {
@@ -289,8 +341,8 @@ export default function PdvExpressInterface({ storeId, employees }: Props) {
                                             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">1 Unidade • {formatCurrency(item.price)}</span>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-6 pl-4 flex-shrink-0">
-                                        <p className="font-black text-white text-xl tracking-tight leading-none drop-shadow-md">{formatCurrency(item.price)}</p>
+                                    <div className="flex items-center gap-4 pl-4 flex-shrink-0">
+                                        <EditablePrice value={item.price} onChange={(val) => handlePriceChange(item.tempId, val)} />
                                         <button onClick={() => handleRemoveItem(item.tempId)} className="p-2.5 text-slate-600 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-all border border-transparent hover:border-red-500/20" title="Remover">
                                             <Trash2 className="h-5 w-5" />
                                         </button>

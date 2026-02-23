@@ -1,8 +1,28 @@
-export default function ManagerDashboardPage() {
-  return (
-    <div className="text-center p-10 w-full">
-      <h1 className="text-4xl font-bold text-white">Painel Gerencial</h1>
-      <p className="mt-4 text-slate-400">Bem-vindo, Gerente. Acesse sua loja pelo menu.</p>
-    </div>
-  );
+import { redirect } from 'next/navigation';
+
+import { createClient } from '@/lib/supabase/server';
+import { getProfileByAdmin } from '@/lib/supabase/admin';
+
+type ManagerProfile = {
+  role?: string | null;
+  store_id?: number | null;
+};
+
+export default async function ManagerDashboardPage() {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return redirect('/login');
+  }
+
+  const profile = (await getProfileByAdmin(user.id)) as ManagerProfile | null;
+
+  if (!profile || profile.role !== 'manager' || !profile.store_id) {
+    return redirect('/dashboard');
+  }
+
+  return redirect(`/dashboard/loja/${profile.store_id}`);
 }

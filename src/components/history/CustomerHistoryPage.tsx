@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react'
 import { CustomerXRayData } from '@/lib/actions/history.actions'
 import {
     User, ShoppingBag, TrendingUp, Calendar,
-    ArrowUpRight, Clock, Star, Search, Users, Wallet, FileText, Eye, EyeOff, ChevronDown
+    ArrowUpRight, Clock, Star, Search, Users, Wallet, FileText, Eye, EyeOff, ChevronDown, AlertTriangle, X
 } from 'lucide-react'
 
 interface CustomerHistoryPageProps {
@@ -17,6 +17,15 @@ const formatCurrency = (val: number) =>
 
 const formatDate = (dateStr: string) =>
     new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(dateStr))
+
+const formatDateTime = (dateStr: string) =>
+    new Intl.DateTimeFormat('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    }).format(new Date(dateStr))
 
 const getLevelColor = (level: string) => {
     switch (level) {
@@ -34,16 +43,43 @@ const deg = (val: any) => {
 }
 
 export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPageProps) {
-    const { customer, stats, habits, sales } = data
+    const { customer, stats, habits, sales, postSales, cobranca, devedor } = data
     const [selectedSaleId, setSelectedSaleId] = useState<number | null>(sales[0]?.id || null)
     const [expandedOsId, setExpandedOsId] = useState<number | null>(null)
+    const [isPostSalesModalOpen, setIsPostSalesModalOpen] = useState(false)
 
     const selectedSale = useMemo(() =>
         sales.find(s => s.id === selectedSaleId),
         [sales, selectedSaleId])
 
+    const cobrancaLabel = cobranca.metricaPrincipal === 'vendas'
+        ? 'Vendas com cobrança'
+        : 'Contatos de cobrança'
+
     const toggleOs = (osId: number) => {
         setExpandedOsId(prev => prev === osId ? null : osId)
+    }
+
+    const renderRatingStars = (rating: number | null) => {
+        if (!rating || rating < 1) {
+            return <span className="text-[11px] font-medium text-slate-500">Sem avaliação</span>
+        }
+
+        const rounded = Math.max(1, Math.min(5, Math.round(rating)))
+
+        return (
+            <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-0.5">
+                    {Array.from({ length: 5 }).map((_, idx) => (
+                        <Star
+                            key={idx}
+                            className={`w-3.5 h-3.5 ${idx < rounded ? 'text-amber-400 fill-amber-400' : 'text-slate-600'}`}
+                        />
+                    ))}
+                </div>
+                <span className="text-[11px] font-bold text-amber-300">{rounded}/5</span>
+            </div>
+        )
     }
 
     return (
@@ -101,8 +137,8 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                     </div>
                 </div>
 
-                {/* COL 3-4: KPI Cards (2x2 compact grid) */}
-                <div className="lg:col-span-2 grid grid-cols-2 gap-3">
+                {/* COL 3-4: KPI Cards (expanded) */}
+                <div className="lg:col-span-2 grid grid-cols-2 xl:grid-cols-3 gap-3">
                     <div className="bg-emerald-950/30 border border-emerald-500/20 rounded-2xl p-4 flex flex-col justify-between backdrop-blur-md hover:bg-emerald-900/20 transition-colors duration-300">
                         <div className="p-2 bg-emerald-500/10 rounded-xl ring-1 ring-emerald-500/20 w-fit">
                             <ShoppingBag className="w-4 h-4 text-emerald-400" />
@@ -118,7 +154,7 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                         </div>
                         <div>
                             <p className="text-xl font-black text-white mt-2 tracking-tight">{formatCurrency(stats.ticketMedio)}</p>
-                            <p className="text-[10px] text-blue-400/70 font-bold uppercase tracking-wider">Ticket Médio</p>
+                            <p className="text-[10px] text-blue-400/70 font-bold uppercase tracking-wider">Ticket Medio</p>
                         </div>
                     </div>
                     <div className="bg-amber-950/30 border border-amber-500/20 rounded-2xl p-4 flex flex-col justify-between backdrop-blur-md hover:bg-amber-900/20 transition-colors duration-300">
@@ -139,8 +175,68 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                             <p className="text-[10px] text-purple-400/70 font-bold uppercase tracking-wider">Dias s/ Comprar</p>
                         </div>
                     </div>
+                    <div className="bg-fuchsia-950/30 border border-fuchsia-500/20 rounded-2xl p-4 flex flex-col justify-between backdrop-blur-md hover:bg-fuchsia-900/20 transition-colors duration-300">
+                        <div className="flex items-start justify-between gap-2">
+                            <div className="p-2 bg-fuchsia-500/10 rounded-xl ring-1 ring-fuchsia-500/20 w-fit">
+                                <Star className="w-4 h-4 text-fuchsia-300" />
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsPostSalesModalOpen(true)}
+                                disabled={postSales.totalRegistros === 0}
+                                className={`px-2 py-1 rounded-lg border text-[9px] font-bold uppercase tracking-wider transition-colors ${postSales.totalRegistros > 0
+                                    ? 'text-fuchsia-200 bg-fuchsia-500/10 border-fuchsia-500/30 hover:bg-fuchsia-500/20'
+                                    : 'text-slate-500 bg-white/5 border-white/10 cursor-not-allowed'
+                                    }`}
+                            >
+                                Ver histórico
+                            </button>
+                        </div>
+                        <div>
+                            <p className="text-xl font-black text-white mt-2 tracking-tight">
+                                {postSales.mediaAvaliacao !== null ? `${postSales.mediaAvaliacao.toFixed(1)} / 5` : 'Sem nota'}
+                            </p>
+                            <p className="text-[10px] text-fuchsia-300/80 font-bold uppercase tracking-wider">Média Pós-Venda</p>
+                            <p className="text-[10px] text-slate-500 font-medium mt-1">
+                                {postSales.totalRegistros > 0
+                                    ? `${postSales.totalRegistros} registro(s) de pós-venda`
+                                    : 'Nenhum pós-venda registrado'}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="bg-orange-950/30 border border-orange-500/20 rounded-2xl p-4 flex flex-col justify-between backdrop-blur-md hover:bg-orange-900/20 transition-colors duration-300">
+                        <div className="p-2 bg-orange-500/10 rounded-xl ring-1 ring-orange-500/20 w-fit">
+                            <Wallet className="w-4 h-4 text-orange-300" />
+                        </div>
+                        <div>
+                            <p className="text-xl font-black text-white mt-2 tracking-tight">{cobranca.valorMetrica}</p>
+                            <p className="text-[10px] text-orange-300/80 font-bold uppercase tracking-wider">{cobrancaLabel}</p>
+                            <p className="text-[10px] text-slate-500 font-medium mt-1">
+                                {cobranca.jaFoiCobrado ? 'Cliente já foi cobrado' : 'Sem cobrança registrada'}
+                            </p>
+                        </div>
+                    </div>
                 </div>
             </div>
+
+            {devedor.isDevedor && (
+                <div className="bg-red-950/25 border border-red-500/30 rounded-2xl p-4 backdrop-blur-md flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                        <div className="p-2 rounded-xl bg-red-500/15 ring-1 ring-red-500/30 shrink-0">
+                            <AlertTriangle className="w-4 h-4 text-red-300" />
+                        </div>
+                        <div>
+                            <p className="text-sm font-black text-red-200 uppercase tracking-wider">Cliente devedor</p>
+                            <p className="text-xs text-red-200/80 font-medium">{devedor.vendasComSaldo} venda(s) com saldo pendente.</p>
+                        </div>
+                    </div>
+                    <div className="sm:text-right">
+                        <p className="text-[10px] font-bold text-red-200/70 uppercase tracking-wider">Saldo pendente</p>
+                        <p className="text-xl font-black text-red-200">{formatCurrency(devedor.saldoPendente)}</p>
+                    </div>
+                </div>
+            )}
+
 
             {/* ROW 2: MAIN — History List | Sale Details */}
             <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -307,8 +403,8 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                                                                 <button
                                                                     onClick={() => toggleOs(os.id)}
                                                                     className={`w-full mt-2 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all duration-300 border flex items-center justify-center gap-1.5 ${isExpanded
-                                                                            ? 'bg-blue-600/30 text-blue-200 border-blue-500/30'
-                                                                            : 'bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border-blue-500/20'
+                                                                        ? 'bg-blue-600/30 text-blue-200 border-blue-500/30'
+                                                                        : 'bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border-blue-500/20'
                                                                         }`}
                                                                 >
                                                                     {isExpanded ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
@@ -421,6 +517,77 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                     )}
                 </div>
             </div>
+
+            {isPostSalesModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <button
+                        type="button"
+                        className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+                        onClick={() => setIsPostSalesModalOpen(false)}
+                        aria-label="Fechar modal"
+                    />
+                    <div className="relative w-full max-w-3xl max-h-[82vh] rounded-3xl bg-slate-950/95 border border-white/15 shadow-2xl overflow-hidden">
+                        <div className="p-5 border-b border-white/10 bg-white/5 flex items-center justify-between">
+                            <div>
+                                <p className="text-[10px] font-black text-fuchsia-300 uppercase tracking-[0.2em]">Pós-venda</p>
+                                <h3 className="text-lg font-black text-white">Histórico de acompanhamentos</h3>
+                                <p className="text-[11px] text-slate-400">{postSales.totalRegistros} registro(s)</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsPostSalesModalOpen(false)}
+                                className="w-9 h-9 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors flex items-center justify-center"
+                                aria-label="Fechar"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        <div className="max-h-[calc(82vh-88px)] overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                            {postSales.totalRegistros === 0 ? (
+                                <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center">
+                                    <p className="text-sm font-semibold text-slate-300">Nenhum pós-venda registrado.</p>
+                                </div>
+                            ) : (
+                                postSales.registros.map((registro) => (
+                                    <div key={registro.id} className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[10px] font-black px-2 py-1 rounded border bg-slate-900 text-slate-300 border-slate-700">
+                                                    #{registro.id}
+                                                </span>
+                                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded border ${registro.status === 'Concluido'
+                                                    ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
+                                                    : 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+                                                    }`}>
+                                                    {registro.status}
+                                                </span>
+                                            </div>
+                                            <p className="text-[11px] font-medium text-slate-400">{formatDateTime(registro.createdAt)}</p>
+                                        </div>
+
+                                        <div>
+                                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Avaliação</p>
+                                            {renderRatingStars(registro.avaliacaoCliente)}
+                                        </div>
+
+                                        <div>
+                                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Observação</p>
+                                            <p className="text-sm text-slate-200 leading-relaxed">
+                                                {registro.observacoesFinais?.trim() || 'Sem observação'}
+                                            </p>
+                                        </div>
+
+                                        <p className="text-[10px] text-slate-500">
+                                            O.S.: {registro.serviceOrderId ? `#${registro.serviceOrderId}` : 'não vinculada'}
+                                        </p>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
