@@ -91,8 +91,8 @@ export default function ListaPagamentos({
         Histórico de Pgto
       </h3>
 
-      {/* Cabeçalho Laranja (Financeiro) */}
-      <div className="hidden md:flex bg-amber-500/10 p-2 rounded-t-xl font-bold text-amber-500 text-[10px] uppercase tracking-wider border-b border-amber-500/20">
+      {/* Cabeçalho Verde (Financeiro) */}
+      <div className="hidden md:flex bg-emerald-500/10 p-2 rounded-t-xl font-bold text-emerald-500 text-[10px] uppercase tracking-wider border-b border-emerald-500/20">
         <div className="w-2/12 pl-1">Data</div>
         <div className="w-3/12">Forma</div>
         <div className="w-3/12">Responsável</div>
@@ -121,7 +121,7 @@ export default function ListaPagamentos({
               <div className="w-full md:w-3/12 text-[10px] text-slate-500 uppercase truncate" title={pag.employee?.full_name || 'N/A'}>
                 {pag.employee?.full_name?.split(' ')[0] || '-'}
               </div>
-              <div className="w-full md:w-2/12 md:text-right font-bold text-amber-400 text-xs">
+              <div className="w-full md:w-2/12 md:text-right font-bold text-emerald-400 text-xs">
                 {formatCurrency(pag.valor_pago)}
               </div>
               <div className="w-full md:w-1/12 md:text-center text-[10px] text-slate-400">

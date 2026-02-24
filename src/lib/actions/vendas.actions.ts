@@ -528,7 +528,7 @@ export async function getVendaPageData(
       supabaseAdmin.from('service_orders').select('*').eq('venda_id', vendaId),
       // CORREÇÃO: Cast 'as any' para buscar relacionamento com employees
       (supabaseAdmin.from('pagamentos') as any).select('*, employee:employees(full_name)').eq('venda_id', vendaId).order('data_pagamento'),
-      supabaseAdmin.from('financiamento_loja').select('*, financiamento_parcelas(*)').eq('venda_id', vendaId).maybeSingle(),
+      supabaseAdmin.from('financiamento_loja').select('*, financiamento_parcelas(*), employee:employees(full_name)').eq('venda_id', vendaId).maybeSingle(),
 
       // Consultas unificadas
       supabaseAdmin.from('products').select('*').eq('store_id', storeId).eq('tipo_produto', 'Lente'),

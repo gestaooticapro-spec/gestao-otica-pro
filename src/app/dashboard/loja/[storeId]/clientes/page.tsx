@@ -149,7 +149,7 @@ export default function StoreClientPage() {
                     const listResult = await fetchDefaultCustomers(storeId);
                     if (listResult.success && listResult.data) {
                         setCustomers(listResult.data as Customer[]);
-                        setCurrentIndex(listResult.data.length > 0 ? 0 : -1);
+                        setCurrentIndex(-1); // NOVO: Abre com formulário vazio
                     }
                 }
             } else {
@@ -157,8 +157,7 @@ export default function StoreClientPage() {
                 if (result.success && result.data) {
                     const lista = result.data as Customer[];
                     setCustomers(lista);
-                    if (!currentCustomer && lista.length > 0) setCurrentIndex(0);
-                    else if (lista.length === 0) setCurrentIndex(-1);
+                    setCurrentIndex(-1); // NOVO: Abre com formulário vazio
                 }
             }
         } catch (error) { console.error("Erro crítico:", error); }

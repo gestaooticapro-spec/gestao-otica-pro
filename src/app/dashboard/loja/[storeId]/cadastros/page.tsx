@@ -669,10 +669,22 @@ function FormTratamentos({ data, onChange, disabled }: any) {
 }
 
 function FormOftalmos({ data, onChange, disabled }: any) {
+  const [showComissao, setShowComissao] = useState(false);
+
   return (
     <div className="grid grid-cols-12 gap-3 gap-y-4">
       <div className="col-span-8">
-        <label className={labelStyle}>Nome do Médico *</label>
+        <label className={`${labelStyle} flex items-center gap-2`}>
+          <span>Nome do Médico *</span>
+          <button
+            type="button"
+            onClick={() => setShowComissao(!showComissao)}
+            className="opacity-0 hover:opacity-100 focus:opacity-100 transition-opacity outline-none"
+            title="Setup"
+          >
+            <Lock className="w-3 h-3 text-slate-500" />
+          </button>
+        </label>
         <input type="text" required value={data.nome_completo || ''} onChange={e => onChange('nome_completo', e.target.value)} className={inputStyle} disabled={disabled} />
       </div>
       <div className="col-span-4">
@@ -687,10 +699,20 @@ function FormOftalmos({ data, onChange, disabled }: any) {
         <label className={labelStyle}>E-mail</label>
         <input type="email" value={data.email || ''} onChange={e => onChange('email', e.target.value)} className={inputStyle} disabled={disabled} />
       </div>
-      <div className="col-span-12">
+      <div className={showComissao ? "col-span-8" : "col-span-12"}>
         <label className={labelStyle}>Clínica / Local de Atendimento</label>
         <input type="text" value={data.clinica || ''} onChange={e => onChange('clinica', e.target.value)} className={inputStyle} disabled={disabled} />
       </div>
+
+      {showComissao && (
+        <div className="col-span-4 animate-in fade-in slide-in-from-top-2">
+          <label className={`${labelStyle} text-amber-500/70`}>Comissão (%)</label>
+          <div className="relative">
+            <input type="number" step="0.01" value={data.comissao || ''} onChange={e => onChange('comissao', e.target.value)} className={`${inputStyle} border-amber-500/30 text-amber-400 focus:ring-amber-500/50 pr-8`} disabled={disabled} placeholder="0.00" />
+            <span className="absolute right-3 top-2 text-xs font-bold text-amber-500/50">%</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

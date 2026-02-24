@@ -8,7 +8,7 @@ import { Database } from '@/lib/database.types'
 import { Loader2, Check, X, Printer, RefreshCcw, CheckCircle2, Lock, Unlock, FileText } from 'lucide-react'
 import ReturnModal from '@/components/modals/ReturnModal'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
-import FiscalEmissionModal from '@/components/modals/FiscalEmissionModal'
+// import FiscalEmissionModal from '@/components/modals/FiscalEmissionModal'
 
 type Venda = Database['public']['Tables']['vendas']['Row']
 type VendaItem = Database['public']['Tables']['venda_itens']['Row']
@@ -35,7 +35,7 @@ export default function VendaActions({
 
     const [isReturnModalOpen, setIsReturnModalOpen] = useState(false)
     const [isAuthOpen, setIsAuthOpen] = useState(false)
-    const [isFiscalModalOpen, setIsFiscalModalOpen] = useState(false)
+    // const [isFiscalModalOpen, setIsFiscalModalOpen] = useState(false)
     const [authAction, setAuthAction] = useState<'Finalizar' | 'Reabrir' | null>(null)
 
     const [isPending, startTransition] = useTransition()
@@ -171,15 +171,18 @@ export default function VendaActions({
                 <span>Imprimir</span>
             </button>
 
-            {/* BOTÃO NFC-e (NOVO) */}
+            {/* BOTÃO NFC-e (TEMPORARIAMENTE BLOQUEADO) */}
             <button
                 type="button"
-                onClick={() => setIsFiscalModalOpen(true)}
-                className="flex items-center gap-2 px-4 h-9 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 font-bold transition-colors shadow-lg shadow-indigo-900/20 uppercase tracking-wide"
-                title="Emitir Nota Fiscal ao Consumidor"
+                disabled
+                className="flex items-center gap-2 px-4 h-9 text-sm rounded-lg bg-white/5 text-slate-500 font-bold transition-colors border border-white/10 cursor-not-allowed uppercase tracking-wide"
+                title="Funcionalidade em desenvolvimento"
             >
-                <FileText className="h-4 w-4" />
-                <span>NFC-e</span>
+                <FileText className="h-4 w-4 opacity-50" />
+                <div className="flex flex-col items-start leading-none justify-center h-full">
+                    <span className="opacity-50">NFC-e</span>
+                    <span className="text-[8px] text-amber-500/80 font-black tracking-widest mt-0.5">EM BREVE</span>
+                </div>
             </button>
 
             {/* MODAIS */}
@@ -206,7 +209,7 @@ export default function VendaActions({
             )}
 
             {/* MODAL FISCAL (NOVO) */}
-            {isFiscalModalOpen && (
+            {/* isFiscalModalOpen && (
                 <FiscalEmissionModal
                     isOpen={isFiscalModalOpen}
                     onClose={() => setIsFiscalModalOpen(false)}
@@ -217,7 +220,7 @@ export default function VendaActions({
                         onStatusChange()
                     }}
                 />
-            )}
+            ) */}
         </div>
     )
 }

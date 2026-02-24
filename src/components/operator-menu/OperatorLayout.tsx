@@ -59,6 +59,7 @@ export default function OperatorLayout({
 
     const handleBack = () => {
         setHomeSelection(null);
+        router.push(storeHomePath);
     };
 
     const handleRouteNavigate = (route: string) => {

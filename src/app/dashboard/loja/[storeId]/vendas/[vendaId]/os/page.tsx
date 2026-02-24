@@ -7,7 +7,7 @@ import { useFormState, useFormStatus } from 'react-dom'
 import {
     Loader2, Save, Trash2, ChevronLeft, ChevronRight,
     Eye, Glasses, User, Ruler, Truck, Plus, History, FileDown, CalendarClock,
-    MessageCircle, Sparkles, Printer, FileText
+    MessageCircle, Sparkles, Printer, FileText, ArrowLeft
 } from 'lucide-react'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
 
@@ -449,7 +449,7 @@ function ServiceOrderFormContent({
 
         const lenteOdDesc = vendaItens.find(i => i.id === parseInt(lenteOdItemId))?.descricao || 'Não informado';
         const lenteOeDesc = vendaItens.find(i => i.id === parseInt(lenteOeItemId))?.descricao || 'Não informado';
-        const medico = oftalmosList.find(o => o.id === parseInt(oftalmologistaId));
+        const medico = localOftalmos.find(o => o.id === parseInt(oftalmologistaId));
         const medicoTexto = medico ? `${medico.nome_completo} ${medico.crm ? 'CRM ' + medico.crm : ''}` : 'Não informado';
         const pacienteNome = dependenteId
             ? localDependentes.find(d => d.id === parseInt(dependenteId))?.full_name || customer?.full_name
@@ -530,6 +530,14 @@ ${addIf('Obs.', obsOs) || ''}
                     {/* HEADER INFO */}
                     <div className="p-3 rounded-xl bg-white/5 backdrop-blur-xl border border-white/10 flex justify-between items-center mb-3 shadow-lg">
                         <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => router.push(`/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`)}
+                                className="mr-1 p-1.5 bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white rounded-lg transition-colors border border-white/10 shadow-sm"
+                                title="Voltar para a Venda"
+                                type="button"
+                            >
+                                <ArrowLeft className="h-5 w-5" />
+                            </button>
                             <div className="p-2 bg-cyan-500/10 rounded-lg text-cyan-400 border border-cyan-500/20">
                                 <User className="h-4 w-4" />
                             </div>
@@ -1005,7 +1013,7 @@ export default function ServiceOrderPage() {
     if (!data) return null
 
     return (
-        <div className="fixed inset-0 bg-slate-950 flex flex-col overflow-hidden z-40">
+        <div className="h-full bg-slate-950 flex flex-col overflow-hidden relative z-0">
             <ServiceOrderFormContent
                 storeId={storeId}
                 vendaId={vendaId}

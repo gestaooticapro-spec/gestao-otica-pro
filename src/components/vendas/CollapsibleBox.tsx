@@ -8,6 +8,7 @@ type ColorScheme = 'blue' | 'emerald' | 'purple' | 'amber' | 'gray'
 
 interface CollapsibleBoxProps {
   title: string
+  subtitle?: React.ReactNode // NEW: Optional subtitle element to render next to the title
   // MUDANÇA 1: Agora aceitamos um ReactNode (o ícone já montado) em vez de LucideIcon
   icon: React.ReactNode
   children: React.ReactNode
@@ -18,6 +19,7 @@ interface CollapsibleBoxProps {
 
 export default function CollapsibleBox({
   title,
+  subtitle,
   icon,
   children,
   color = 'gray',
@@ -75,22 +77,27 @@ export default function CollapsibleBox({
     <div className={`border rounded-xl shadow-sm overflow-hidden bg-white/5 backdrop-blur-sm ${currentStyle.border}`}>
       <div
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex justify-between items-center px-4 py-3 cursor-pointer transition-colors select-none ${currentStyle.bgHeader} ${currentStyle.hoverHeader}`}
+        className={`relative flex justify-between items-center px-4 py-3 cursor-pointer transition-colors select-none ${currentStyle.bgHeader} ${currentStyle.hoverHeader}`}
       >
-        <div className="flex items-center gap-3">
-          {/* MUDANÇA 2: Renderizamos o ícone diretamente, pois ele já vem como elemento */}
+        <div className="flex items-center gap-3 flex-1">
           {icon}
 
-          <h2 className={`font-bold text-base ${currentStyle.textTitle}`}>{title}</h2>
+          <h2 className={`font-bold text-base ${currentStyle.textTitle} whitespace-nowrap`}>{title}</h2>
 
           {badge && (
-            <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${currentStyle.badge}`}>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${currentStyle.badge} mr-2`}>
               {badge}
             </span>
           )}
+
+          {subtitle && (
+            <div className="flex-1 min-w-0">
+              {subtitle}
+            </div>
+          )}
         </div>
 
-        <div className={currentStyle.textIcon}>
+        <div className={`ml-4 ${currentStyle.textIcon}`}>
           {isOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
         </div>
       </div>

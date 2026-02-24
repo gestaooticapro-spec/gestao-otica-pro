@@ -338,9 +338,6 @@ export default function FinanciamentoBox({
                             </div>
                             <div>
                                 <h3 className="text-sm font-bold text-amber-400">Carnê Ativo</h3>
-                                <p className="text-[10px] text-amber-200/60 font-medium">
-                                    Total: R$ {formatCurrency(financiamento?.valor_total_financiado)}
-                                </p>
                             </div>
                         </div>
                         {!disabled && !isQuitado && (
@@ -646,6 +643,25 @@ export default function FinanciamentoBox({
                     color="amber"
                     defaultOpen={true}
                     badge="EMITIDO"
+                    subtitle={
+                        <div className="absolute inset-0 pointer-events-none hidden md:flex items-center">
+                            {/* This inner div mimics the column spacing of the Pagamentos table above */}
+                            <div className="w-full flex px-2" style={{ marginRight: '16px' }}>
+                                {/* 2/12 (Data) + 3/12 (Forma) = 5/12 offset */}
+                                <div className="w-5/12"></div>
+                                {/* 3/12 (Responsável) */}
+                                <div className="w-3/12 font-bold text-xs text-slate-500 uppercase truncate pl-1" title={(financiamento as any)?.employee?.full_name}>
+                                    {(financiamento as any)?.employee?.full_name?.split(' ')[0] || ''}
+                                </div>
+                                {/* 2/12 (Valor) */}
+                                <div className="w-2/12 text-right font-bold text-xs text-amber-400">
+                                    {formatCurrency(financiamento?.valor_total_financiado)}
+                                </div>
+                                {/* 1/12 + 1/12 (Parc + Actions) */}
+                                <div className="w-2/12"></div>
+                            </div>
+                        </div>
+                    }
                 >
                     {renderContent()}
                 </CollapsibleBox>

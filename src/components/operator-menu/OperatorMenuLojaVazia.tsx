@@ -5,7 +5,7 @@ import {
     DollarSign, HeartHandshake, Megaphone, Archive, Search, Globe,
     ArrowLeftRight, FileInput, Tag, FileSpreadsheet, ArrowLeft, Clock,
     AlertCircle, Gift, Calendar, Package, ChevronRight, ChevronDown, ChevronUp,
-    MessageCircle, CalendarClock, CalendarCheck, ArrowRight, Send
+    MessageCircle, CalendarClock, CalendarCheck, ArrowRight, Send, Users2
 } from 'lucide-react';
 import { useModals } from '@/lib/contexts/ModalsContext';
 import Link from 'next/link';
@@ -228,136 +228,146 @@ export default function OperatorMenuLojaVazia({
                     <div className="flex-1 w-full flex flex-col gap-6">
                         <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 
-                        {/* GRUPO 1: FINANCEIRO */}
-                        <div className="bg-black/20 border border-white/5 rounded-3xl p-6 backdrop-blur-md flex flex-col gap-4 shadow-xl">
-                            <h2 className="text-sm font-bold text-amber-400 uppercase tracking-widest flex items-center gap-2 mb-2 px-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.8)]"></span>
-                                Financeiro
-                            </h2>
-                            <div className="flex flex-col gap-3">
-                                {/* Caixa */}
-                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/financeiro/caixa`)} className="group bg-gradient-to-br from-amber-600/12 via-orange-900/25 to-slate-900/60 hover:from-amber-500/22 hover:via-orange-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-amber-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(245,158,11,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40">
-                                    <div className="p-2.5 rounded-lg bg-amber-500/20 text-amber-300 group-hover:bg-amber-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(245,158,11,0.2)]">
-                                        <DollarSign className="w-6 h-6" strokeWidth={1.5} />
-                                    </div>
-                                    <div className="text-left">
-                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Caixa</span>
-                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-amber-200/70 transition-colors">Movimento Diário</span>
-                                    </div>
-                                </button>
-                                {/* Cobrança */}
-                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/cobranca`)} className="group bg-gradient-to-br from-amber-600/12 via-orange-900/25 to-slate-900/60 hover:from-amber-500/22 hover:via-orange-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-amber-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(245,158,11,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40">
-                                    <div className="p-2.5 rounded-lg bg-amber-500/20 text-amber-300 group-hover:bg-amber-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(245,158,11,0.2)]">
-                                        <Megaphone className="w-6 h-6" strokeWidth={1.5} />
-                                    </div>
-                                    <div className="text-left">
-                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Cobrança</span>
-                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-amber-200/70 transition-colors">Inadimplência</span>
-                                    </div>
-                                </button>
+                            {/* GRUPO 1: FINANCEIRO */}
+                            <div className="bg-black/20 border border-white/5 rounded-3xl p-6 backdrop-blur-md flex flex-col gap-4 shadow-xl">
+                                <h2 className="text-sm font-bold text-amber-400 uppercase tracking-widest flex items-center gap-2 mb-2 px-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.8)]"></span>
+                                    Financeiro
+                                </h2>
+                                <div className="flex flex-col gap-3">
+                                    {/* Caixa */}
+                                    <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/financeiro/caixa`)} className="group bg-gradient-to-br from-amber-600/12 via-orange-900/25 to-slate-900/60 hover:from-amber-500/22 hover:via-orange-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-amber-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(245,158,11,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40">
+                                        <div className="p-2.5 rounded-lg bg-amber-500/20 text-amber-300 group-hover:bg-amber-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+                                            <DollarSign className="w-6 h-6" strokeWidth={1.5} />
+                                        </div>
+                                        <div className="text-left">
+                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Caixa</span>
+                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-amber-200/70 transition-colors">Movimento Diário</span>
+                                        </div>
+                                    </button>
+                                    {/* Cobrança */}
+                                    <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/cobranca`)} className="group bg-gradient-to-br from-amber-600/12 via-orange-900/25 to-slate-900/60 hover:from-amber-500/22 hover:via-orange-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-amber-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(245,158,11,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40">
+                                        <div className="p-2.5 rounded-lg bg-amber-500/20 text-amber-300 group-hover:bg-amber-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+                                            <Megaphone className="w-6 h-6" strokeWidth={1.5} />
+                                        </div>
+                                        <div className="text-left">
+                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Cobrança</span>
+                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-amber-200/70 transition-colors">Inadimplência</span>
+                                        </div>
+                                    </button>
 
+                                </div>
                             </div>
-                        </div>
 
-                        {/* GRUPO 2: ESTOQUE */}
-                        <div className="bg-black/20 border border-white/5 rounded-3xl p-6 backdrop-blur-md flex flex-col gap-4 shadow-xl">
-                            <h2 className="text-sm font-bold text-blue-400 uppercase tracking-widest flex items-center gap-2 mb-2 px-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)]"></span>
-                                Estoque & Produtos
-                            </h2>
-                            <div className="flex flex-col gap-3">
-                                {/* Estoque */}
-                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/estoque/movimentacoes`)} className="group bg-gradient-to-br from-blue-600/12 via-blue-900/25 to-slate-900/60 hover:from-blue-500/22 hover:via-blue-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-blue-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(59,130,246,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40">
-                                    <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
-                                        <ArrowLeftRight className="w-6 h-6" strokeWidth={1.5} />
-                                    </div>
-                                    <div className="text-left">
-                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Estoque</span>
-                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">Movimentações</span>
-                                    </div>
-                                </button>
-                                {/* Produtos */}
-                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/cadastros`)} className="group bg-gradient-to-br from-blue-600/12 via-blue-900/25 to-slate-900/60 hover:from-blue-500/22 hover:via-blue-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-blue-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(59,130,246,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40">
-                                    <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
-                                        <Tag className="w-6 h-6" strokeWidth={1.5} />
-                                    </div>
-                                    <div className="text-left">
-                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Produtos</span>
-                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">Catálogo</span>
-                                    </div>
-                                </button>
-                                {/* Lentes */}
-                                <button onClick={() => openLabModal()} className="group bg-gradient-to-br from-blue-600/12 via-blue-900/25 to-slate-900/60 hover:from-blue-500/22 hover:via-blue-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-blue-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(59,130,246,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40">
-                                    <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
-                                        <Search className="w-6 h-6" strokeWidth={1.5} />
-                                    </div>
-                                    <div className="text-left">
-                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Lentes</span>
-                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">ATUALIZAR RASTREIO</span>
-                                    </div>
-                                </button>
-                                {/* XML */}
-                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/importacao`)} className="group bg-gradient-to-br from-blue-600/12 via-blue-900/25 to-slate-900/60 hover:from-blue-500/22 hover:via-blue-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-blue-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(59,130,246,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40">
-                                    <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
-                                        <FileInput className="w-6 h-6" strokeWidth={1.5} />
-                                    </div>
-                                    <div className="text-left">
-                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">XML</span>
-                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">Importação NFe</span>
-                                    </div>
-                                </button>
+                            {/* GRUPO 2: ESTOQUE */}
+                            <div className="bg-black/20 border border-white/5 rounded-3xl p-6 backdrop-blur-md flex flex-col gap-4 shadow-xl">
+                                <h2 className="text-sm font-bold text-blue-400 uppercase tracking-widest flex items-center gap-2 mb-2 px-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)]"></span>
+                                    Estoque & Produtos
+                                </h2>
+                                <div className="flex flex-col gap-3">
+                                    {/* Estoque */}
+                                    <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/estoque/movimentacoes`)} className="group bg-gradient-to-br from-blue-600/12 via-blue-900/25 to-slate-900/60 hover:from-blue-500/22 hover:via-blue-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-blue-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(59,130,246,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40">
+                                        <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
+                                            <ArrowLeftRight className="w-6 h-6" strokeWidth={1.5} />
+                                        </div>
+                                        <div className="text-left">
+                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Estoque</span>
+                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">Movimentações</span>
+                                        </div>
+                                    </button>
+                                    {/* Produtos */}
+                                    <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/cadastros`)} className="group bg-gradient-to-br from-blue-600/12 via-blue-900/25 to-slate-900/60 hover:from-blue-500/22 hover:via-blue-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-blue-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(59,130,246,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40">
+                                        <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
+                                            <Tag className="w-6 h-6" strokeWidth={1.5} />
+                                        </div>
+                                        <div className="text-left">
+                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Cadastros</span>
+                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">Catálogo</span>
+                                        </div>
+                                    </button>
+                                    {/* Lentes */}
+                                    <button onClick={() => openLabModal()} className="group bg-gradient-to-br from-blue-600/12 via-blue-900/25 to-slate-900/60 hover:from-blue-500/22 hover:via-blue-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-blue-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(59,130,246,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40">
+                                        <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
+                                            <Search className="w-6 h-6" strokeWidth={1.5} />
+                                        </div>
+                                        <div className="text-left">
+                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Lentes</span>
+                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">ATUALIZAR RASTREIO</span>
+                                        </div>
+                                    </button>
+                                    {/* XML */}
+                                    <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/importacao`)} className="group bg-gradient-to-br from-blue-600/12 via-blue-900/25 to-slate-900/60 hover:from-blue-500/22 hover:via-blue-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-blue-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(59,130,246,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40">
+                                        <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
+                                            <FileInput className="w-6 h-6" strokeWidth={1.5} />
+                                        </div>
+                                        <div className="text-left">
+                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">XML</span>
+                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">Importação NFe</span>
+                                        </div>
+                                    </button>
+                                    {/* Clientes */}
+                                    <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/clientes`)} className="group bg-gradient-to-br from-blue-600/12 via-blue-900/25 to-slate-900/60 hover:from-blue-500/22 hover:via-blue-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-blue-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(59,130,246,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40">
+                                        <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
+                                            <Users2 className="w-6 h-6" strokeWidth={1.5} />
+                                        </div>
+                                        <div className="text-left">
+                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Clientes</span>
+                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">Gerenciar</span>
+                                        </div>
+                                    </button>
+                                </div>
                             </div>
-                        </div>
 
-                        {/* GRUPO 3: GESTÃO & CRM */}
-                        <div className="bg-black/20 border border-white/5 rounded-3xl p-6 backdrop-blur-md flex flex-col gap-4 shadow-xl">
-                            <h2 className="text-sm font-bold text-rose-400 uppercase tracking-widest flex items-center gap-2 mb-2 px-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.8)]"></span>
-                                Gestão & CRM
-                            </h2>
-                            <div className="flex flex-col gap-3">
-                                {/* Pós-Venda */}
-                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/pos-venda`)} className="group bg-gradient-to-br from-rose-600/12 via-rose-900/25 to-slate-900/60 hover:from-rose-500/22 hover:via-rose-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-rose-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(244,63,94,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40">
-                                    <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
-                                        <HeartHandshake className="w-6 h-6" strokeWidth={1.5} />
-                                    </div>
-                                    <div className="text-left">
-                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Pós-Venda</span>
-                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">CRM & Relacionamento</span>
-                                    </div>
-                                </button>
-                                {/* Histórico */}
-                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/vendas?mode=historico`)} className="group bg-gradient-to-br from-rose-600/12 via-rose-900/25 to-slate-900/60 hover:from-rose-500/22 hover:via-rose-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-rose-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(244,63,94,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40">
-                                    <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
-                                        <FileSpreadsheet className="w-6 h-6" strokeWidth={1.5} />
-                                    </div>
-                                    <div className="text-left">
-                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Histórico</span>
-                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">Vendas Anteriores</span>
-                                    </div>
-                                </button>
-                                {/* Gaveta (Moved from Financeiro) */}
-                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/gaveta`)} className="group bg-gradient-to-br from-rose-600/12 via-rose-900/25 to-slate-900/60 hover:from-rose-500/22 hover:via-rose-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-rose-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(244,63,94,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40">
-                                    <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
-                                        <Archive className="w-6 h-6" strokeWidth={1.5} />
-                                    </div>
-                                    <div className="text-left">
-                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Gaveta</span>
-                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">Conferência</span>
-                                    </div>
-                                </button>
-                                {/* Busca Universal */}
-                                <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/consultas`)} className="group bg-gradient-to-br from-rose-600/12 via-rose-900/25 to-slate-900/60 hover:from-rose-500/22 hover:via-rose-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-rose-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(244,63,94,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40">
-                                    <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
-                                        <Globe className="w-6 h-6" strokeWidth={1.5} />
-                                    </div>
-                                    <div className="text-left">
-                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Busca</span>
-                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">Geral</span>
-                                    </div>
-                                </button>
+                            {/* GRUPO 3: GESTÃO & CRM */}
+                            <div className="bg-black/20 border border-white/5 rounded-3xl p-6 backdrop-blur-md flex flex-col gap-4 shadow-xl">
+                                <h2 className="text-sm font-bold text-rose-400 uppercase tracking-widest flex items-center gap-2 mb-2 px-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.8)]"></span>
+                                    Gestão & CRM
+                                </h2>
+                                <div className="flex flex-col gap-3">
+                                    {/* Pós-Venda */}
+                                    <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/pos-venda`)} className="group bg-gradient-to-br from-rose-600/12 via-rose-900/25 to-slate-900/60 hover:from-rose-500/22 hover:via-rose-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-rose-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(244,63,94,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40">
+                                        <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
+                                            <HeartHandshake className="w-6 h-6" strokeWidth={1.5} />
+                                        </div>
+                                        <div className="text-left">
+                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Pós-Venda</span>
+                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">RELACIONAMENTO</span>
+                                        </div>
+                                    </button>
+                                    {/* Histórico */}
+                                    <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/vendas?mode=historico`)} className="group bg-gradient-to-br from-rose-600/12 via-rose-900/25 to-slate-900/60 hover:from-rose-500/22 hover:via-rose-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-rose-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(244,63,94,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40">
+                                        <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
+                                            <FileSpreadsheet className="w-6 h-6" strokeWidth={1.5} />
+                                        </div>
+                                        <div className="text-left">
+                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Histórico</span>
+                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">Vendas Anteriores</span>
+                                        </div>
+                                    </button>
+                                    {/* Gaveta (Moved from Financeiro) */}
+                                    <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/gaveta`)} className="group bg-gradient-to-br from-rose-600/12 via-rose-900/25 to-slate-900/60 hover:from-rose-500/22 hover:via-rose-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-rose-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(244,63,94,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40">
+                                        <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
+                                            <Archive className="w-6 h-6" strokeWidth={1.5} />
+                                        </div>
+                                        <div className="text-left">
+                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Gaveta</span>
+                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">Conferência</span>
+                                        </div>
+                                    </button>
+                                    {/* Busca Universal */}
+                                    <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/consultas`)} className="group bg-gradient-to-br from-rose-600/12 via-rose-900/25 to-slate-900/60 hover:from-rose-500/22 hover:via-rose-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-rose-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(244,63,94,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40">
+                                        <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
+                                            <Globe className="w-6 h-6" strokeWidth={1.5} />
+                                        </div>
+                                        <div className="text-left">
+                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Busca</span>
+                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">Geral</span>
+                                        </div>
+                                    </button>
+                                </div>
                             </div>
-                        </div>
                         </div>
 
                         {/* Alerta de Vendas */}
@@ -576,7 +586,7 @@ export default function OperatorMenuLojaVazia({
                 <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
                 <span className="text-xs font-bold uppercase tracking-wider">Voltar</span>
             </button>
-        </div>
+        </div >
     );
 }
 

@@ -69,7 +69,7 @@ function SimpleModal({ isOpen, onClose, title, children, headerClass = "bg-white
 }
 
 // Tipos de Tema
-type SectionTheme = 'blue' | 'orange' | 'slate' | 'rose';
+type SectionTheme = 'blue' | 'orange' | 'slate' | 'rose' | 'green';
 
 // Configuração de Cores por Tema (Dark Mode Glass)
 const themeStyles: Record<SectionTheme, { headerBg: string; borderColor: string; titleColor: string; iconColor: string; iconBg: string }> = {
@@ -86,6 +86,13 @@ const themeStyles: Record<SectionTheme, { headerBg: string; borderColor: string;
         titleColor: 'text-amber-400',
         iconColor: 'text-amber-300',
         iconBg: 'bg-amber-500/20'
+    },
+    green: {
+        headerBg: 'bg-emerald-500/5',
+        borderColor: 'border-emerald-500/20',
+        titleColor: 'text-emerald-400',
+        iconColor: 'text-emerald-300',
+        iconBg: 'bg-emerald-500/20'
     },
     slate: {
         headerBg: 'bg-white/5',
@@ -125,20 +132,21 @@ function SectionCard({
 
     return (
         <div className={`bg-black/20 backdrop-blur-md rounded-2xl shadow-xl border ${styles.borderColor} overflow-hidden flex flex-col transition-all hover:bg-black/30 hover:shadow-2xl hover:border-white/10`}>
-            <div className={`${styles.headerBg} px-4 py-3 border-b ${styles.borderColor} flex justify-between items-center h-12 shrink-0`}>
-                <div className="flex items-center gap-3">
-                    <div className={`p-1.5 rounded-lg ${styles.iconBg}`}>
-                        <Icon className={`h-4 w-4 ${styles.iconColor}`} strokeWidth={2} />
+            <div className={`${styles.headerBg} px-4 py-3 border-b ${styles.borderColor} flex justify-between items-center h-16 shrink-0`}>
+                <div className="flex items-center gap-4">
+                    <div className={`p-2 rounded-xl ${styles.iconBg}`}>
+                        <Icon className={`h-6 w-6 ${styles.iconColor}`} strokeWidth={2} />
                     </div>
-                    <span className={`text-xs font-black ${styles.titleColor} uppercase tracking-widest`}>{title} {count !== undefined && <span className="text-white/40 ml-1">({count})</span>}</span>
+                    <span className={`text-base font-black ${styles.titleColor} uppercase tracking-widest leading-none`}>{title} {count !== undefined && <span className="text-white/40 ml-1">({count})</span>}</span>
                 </div>
                 {onAdd && (
-                    <button onClick={onAdd} className={`flex items-center gap-1.5 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all shadow-lg active:scale-95 hover:brightness-110 
+                    <button onClick={onAdd} className={`flex items-center justify-center gap-2 text-white px-4 h-9 rounded-xl text-xs font-bold uppercase transition-all shadow-lg active:scale-95 hover:brightness-110 w-48 shrink-0
                         ${theme === 'blue' ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/20' :
                             theme === 'orange' ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-900/20' :
-                                'bg-slate-700 hover:bg-slate-600 shadow-slate-900/20'
+                                theme === 'green' ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/20' :
+                                    'bg-slate-700 hover:bg-slate-600 shadow-slate-900/20'
                         }`}>
-                        <Plus className="h-3 w-3" strokeWidth={3} /> {actionLabel}
+                        <Plus className="h-4 w-4 shrink-0" strokeWidth={3} /> <span className="truncate">{actionLabel}</span>
                     </button>
                 )}
             </div>
@@ -236,7 +244,7 @@ export default function VendaInterfaceExperimental({
                         title="Produtos"
                         count={vendaItens.length}
                         icon={ShoppingBag}
-                        onAdd={() => setActiveModal('produto')}
+                        onAdd={isVendaFechadaOuCancelada ? undefined : () => setActiveModal('produto')}
                         actionLabel="Novo Produto"
                         theme="blue"
                     >
@@ -245,25 +253,47 @@ export default function VendaInterfaceExperimental({
                         </div>
                     </SectionCard>
 
-                    {/* QUADRO 2: PAGAMENTOS (LARANJA - Financeiro) */}
+                    {/* QUADRO 2: PROTOCOLO (OS) (SLATE/CINZA - Operacional) */}
+                    <SectionCard
+                        title="Protocolo (OS)"
+                        count={serviceOrders.length}
+                        icon={Wrench}
+                        onAdd={isVendaFechadaOuCancelada ? undefined : () => router.push(`/dashboard/loja/${venda.store_id}/vendas/${venda.id}/os?employee_id=${employee?.id}&employee_name=${employee?.full_name}`)}
+                        actionLabel="Nova OS"
+                        theme="slate"
+                    >
+                        <div className="p-2">
+                            <ListaOS
+                                vendaId={venda.id}
+                                storeId={venda.store_id}
+                                serviceOrders={serviceOrders}
+                                employeeId={employee?.id.toString() || '0'}
+                                employeeName={vendedorNome}
+                                disabled={isVendaFechadaOuCancelada}
+                                hideHeader={true}
+                            />
+                        </div>
+                    </SectionCard>
+
+                    {/* QUADRO 3: PAGAMENTOS (VERDE - Financeiro) */}
                     <SectionCard
                         title="Pagamentos"
                         count={pagamentos.length}
                         icon={DollarSign}
-                        onAdd={() => setActiveModal('pagamento')}
+                        onAdd={isVendaFechadaOuCancelada ? undefined : () => setActiveModal('pagamento')}
                         actionLabel="Novo Pagamento"
-                        theme="orange"
+                        theme="green"
                     >
                         <div className="p-1">
                             <ListaPagamentos pagamentos={pagamentos} vendaId={venda.id} storeId={venda.store_id} onDelete={onDataReload} disabled={isVendaFechadaOuCancelada} />
                         </div>
                     </SectionCard>
 
-                    {/* QUADRO 3: PARCELAMENTO (LARANJA - Financeiro) */}
+                    {/* QUADRO 4: PARCELAMENTO (LARANJA - Financeiro) */}
                     <SectionCard
                         title="Parcelamento"
                         icon={FileText}
-                        onAdd={!financiamento ? handleOpenParcelamento : undefined} // Só mostra botão se não tiver financiamento
+                        onAdd={(!financiamento && !isVendaFechadaOuCancelada) ? handleOpenParcelamento : undefined} // Só mostra botão se não tiver financiamento e não estiver fechada
                         actionLabel="Novo Parcelamento"
                         theme="orange"
                     >
@@ -286,28 +316,6 @@ export default function VendaInterfaceExperimental({
                                     Nenhum parcelamento registrado. Clique em "Novo Parcelamento" para criar.
                                 </div>
                             )}
-                        </div>
-                    </SectionCard>
-
-                    {/* QUADRO 4: PROTOCOLO (OS) (SLATE/CINZA - Operacional) */}
-                    <SectionCard
-                        title="Protocolo (OS)"
-                        count={serviceOrders.length}
-                        icon={Wrench}
-                        onAdd={() => router.push(`/dashboard/loja/${venda.store_id}/vendas/${venda.id}/os?employee_id=${employee?.id}&employee_name=${employee?.full_name}`)}
-                        actionLabel="Nova OS"
-                        theme="slate"
-                    >
-                        <div className="p-2">
-                            <ListaOS
-                                vendaId={venda.id}
-                                storeId={venda.store_id}
-                                serviceOrders={serviceOrders}
-                                employeeId={employee?.id.toString() || '0'}
-                                employeeName={vendedorNome}
-                                disabled={isVendaFechadaOuCancelada}
-                                hideHeader={true}
-                            />
                         </div>
                     </SectionCard>
 
