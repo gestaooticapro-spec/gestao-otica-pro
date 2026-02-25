@@ -30,7 +30,7 @@ export default function DailySessionGuard() {
                 await supabase.auth.signOut()
 
                 // Redireciona para login com aviso
-                router.replace('/login?reason=daily_expired')
+                window.location.href = '/login?reason=daily_expired'
             }
         }
 

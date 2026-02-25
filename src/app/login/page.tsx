@@ -51,7 +51,7 @@ export default function LoginPage() {
       const { route, message } = await getLoginRoute();
 
       if (route.startsWith('/dashboard')) {
-        router.push(route);
+        window.location.href = route;
       } else {
         await supabase.auth.signOut();
         setErrorMessage(message || 'Erro no roteamento. Tente novamente.');

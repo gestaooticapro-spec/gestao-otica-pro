@@ -20,7 +20,7 @@ export default function LogoutButton() {
     }
 
     // Redireciona para a tela de login
-    router.push('/login')
+    window.location.href = '/login'
   }
 
   return (

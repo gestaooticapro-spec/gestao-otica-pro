@@ -48,10 +48,10 @@ const GERENCIA_LINKS = [
     },
     {
         id: 'relatorios',
-        title: 'Relat. Vendas',
+        title: 'Central de Relatórios',
         subtitle: 'Indicadores',
         icon: BarChart3,
-        route: (storeId: number) => `/dashboard/loja/${storeId}/reports/vendas`,
+        route: (storeId: number) => `/dashboard/loja/${storeId}/reports`,
         tone: 'from-amber-600/15 via-amber-900/25 to-slate-900/60 hover:border-amber-400/30'
     },
     {
@@ -89,7 +89,7 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
             alert('Erro ao sair');
             return;
         }
-        router.push('/login');
+        window.location.href = '/login';
     };
 
     if (currentState === 'operator') {

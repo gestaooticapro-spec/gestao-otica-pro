@@ -8,6 +8,7 @@ import {
     MessageCircle, CalendarClock, CalendarCheck, ArrowRight, Send, Users2
 } from 'lucide-react';
 import { useModals } from '@/lib/contexts/ModalsContext';
+import { openWhatsApp } from '@/lib/utils/whatsapp';
 import Link from 'next/link';
 
 // Tipos importados (ou definidos localmente se preferir não importar do server action em client component)
@@ -119,9 +120,9 @@ export default function OperatorMenuLojaVazia({
     }, [storeId]);
 
     const handleZapAniversario = (fone: string | null, nome: string) => {
-        const numero = fone ? fone.replace(/\D/g, '') : '';
-        const msg = `Parabéns ${nome.split(' ')[0]}! 🎉 A Ótica Pro deseja um feliz aniversário!`;
-        window.open(`https://wa.me/${numero ? '55' + numero : ''}?text=${encodeURIComponent(msg)}`, '_blank');
+        if (!fone) return alert(`${nome.split(' ')[0]} não tem celular cadastrado.`);
+        const msg = `Oi ${nome.split(' ')[0]}! Sabemos que esse é um dia especial pra você. Te desejamos toda a felicidade do mundo!`;
+        openWhatsApp(fone, msg);
     };
 
     const handleZapVencimento = (item: VencimentoProximo) => {
@@ -306,16 +307,6 @@ export default function OperatorMenuLojaVazia({
                                             <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">Importação NFe</span>
                                         </div>
                                     </button>
-                                    {/* Clientes */}
-                                    <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/clientes`)} className="group bg-gradient-to-br from-blue-600/12 via-blue-900/25 to-slate-900/60 hover:from-blue-500/22 hover:via-blue-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-blue-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(59,130,246,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40">
-                                        <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
-                                            <Users2 className="w-6 h-6" strokeWidth={1.5} />
-                                        </div>
-                                        <div className="text-left">
-                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Clientes</span>
-                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">Gerenciar</span>
-                                        </div>
-                                    </button>
                                 </div>
                             </div>
 
@@ -366,6 +357,16 @@ export default function OperatorMenuLojaVazia({
                                             <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">Geral</span>
                                         </div>
                                     </button>
+                                    {/* Clientes */}
+                                    <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/clientes`)} className="group bg-gradient-to-br from-rose-600/12 via-rose-900/25 to-slate-900/60 hover:from-rose-500/22 hover:via-rose-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-rose-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(244,63,94,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40">
+                                        <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
+                                            <Users2 className="w-6 h-6" strokeWidth={1.5} />
+                                        </div>
+                                        <div className="text-left">
+                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Clientes</span>
+                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">Gerenciar</span>
+                                        </div>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -381,7 +382,7 @@ export default function OperatorMenuLojaVazia({
                                         <AlertCircle className="w-5 h-5" />
                                     </div>
                                     <div>
-                                        <h3 className="text-amber-300 font-bold text-xs uppercase tracking-wider mb-0.5">Vendas em Aberto</h3>
+                                        <h3 className="text-amber-300 font-bold text-xs uppercase tracking-wider mb-0.5">Vendas Paradas há +21 dias</h3>
                                         <span className="text-2xl font-black text-white drop-shadow-md">{radar.vendasEmAberto}</span>
                                     </div>
                                 </div>
@@ -455,7 +456,7 @@ export default function OperatorMenuLojaVazia({
                                                     <p className="text-[10px] text-slate-400">{c.fone || 'Sem fone'}</p>
                                                 </div>
                                                 <button
-                                                    onClick={() => handleZapAniversario(c.fone, c.nome)}
+                                                    onClick={(e) => { e.stopPropagation(); handleZapAniversario(c.fone, c.nome); }}
                                                     className="w-8 h-8 rounded-full bg-green-500/20 text-green-400 hover:bg-green-500 hover:text-white flex items-center justify-center transition-all"
                                                 >
                                                     <MessageCircle className="w-4 h-4" />

@@ -12,6 +12,7 @@ import {
     toggleSpcStatus, getHistoricoCobranca, CobrancaHistoricoItem,
     getDetalhesDivida, updateCobrancaStatus
 } from '@/lib/actions/collection.actions'
+import { getEmployees } from '@/lib/actions/employee.actions'
 import { toast } from 'sonner'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
 
@@ -45,6 +46,16 @@ export default function CobrancaInterface({
         setActiveTab(defaultTab)
     }, [defaultTab])
 
+    // Se o initialData atualizar (ex: revalidatePath) e o cliente não estiver mais na lista (ex: foi agendado pro futuro), fecha o painel.
+    useEffect(() => {
+        if (selectedCustomer) {
+            const aindaExiste = initialData.some(c => c.customer_id === selectedCustomer.customer_id)
+            if (!aindaExiste) {
+                setSelectedCustomer(null)
+            }
+        }
+    }, [initialData])
+
     // DADOS CARREGADOS SOB DEMANDA
     const [historico, setHistorico] = useState<CobrancaHistoricoItem[]>([])
     const [detalhesDivida, setDetalhesDivida] = useState<any[]>([])
@@ -54,7 +65,20 @@ export default function CobrancaInterface({
     const [tipoContato, setTipoContato] = useState('Whatsapp')
     const [resumo, setResumo] = useState('')
     const [proximaAcao, setProximaAcao] = useState('')
+    const [selectedVendaId, setSelectedVendaId] = useState<number | ''>('')
+    const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('')
+    const [employees, setEmployees] = useState<any[]>([])
     const [isPending, startTransition] = useTransition()
+
+    // CARREGAR LISTA DE FUNCIONÁRIOS DA LOJA
+    useEffect(() => {
+        if (!storeId) return
+        const loadEmployees = async () => {
+            const data = await getEmployees(storeId)
+            setEmployees(data)
+        }
+        loadEmployees()
+    }, [storeId])
 
     // --- LÓGICA DE FILTRAGEM (CLIENT SIDE PARA SPC E BUSCA) ---
     // A lista 'initialData' já vem filtrada do servidor pelo critério da ABA (Cobrar vs Já Cobrados)
@@ -95,11 +119,21 @@ export default function CobrancaInterface({
         if (!selectedCustomer) return
         if (!resumo.trim()) return toast.error("Digite um resumo da conversa")
 
+        let finalVendaId = selectedVendaId
+        if (selectedCustomer.vendas_afetadas.length === 1) {
+            finalVendaId = selectedCustomer.vendas_afetadas[0]
+        }
+        if (selectedCustomer.vendas_afetadas.length > 1 && !finalVendaId) {
+            return toast.error("Selecione qual venda você está cobrando.")
+        }
+
         const formData = new FormData()
         formData.append('customer_id', String(selectedCustomer.customer_id))
         formData.append('tipo_contato', tipoContato)
         formData.append('resumo', resumo)
+        if (finalVendaId) formData.append('venda_id', String(finalVendaId))
         if (proximaAcao) formData.append('proxima_acao', proximaAcao)
+        if (selectedEmployeeId) formData.append('registrado_por_id', selectedEmployeeId)
 
         startTransition(async () => {
             const res = await registrarCobranca(null, formData)
@@ -107,6 +141,7 @@ export default function CobrancaInterface({
                 toast.success("Contato registrado!")
                 setResumo('')
                 setProximaAcao('')
+                setSelectedVendaId('')
                 // Recarrega histórico
                 const hist = await getHistoricoCobranca(selectedCustomer.customer_id)
                 setHistorico(hist)
@@ -322,7 +357,7 @@ export default function CobrancaInterface({
                             <div className="h-full flex flex-col gap-6 overflow-y-auto custom-scrollbar pr-2 pb-10">
 
                                 {/* CARTÃO DE INFO DO CLIENTE */}
-                                <div className="bg-gradient-to-br from-slate-900 to-slate-950 p-6 rounded-3xl border border-white/5 shadow-2xl relative overflow-hidden group">
+                                <div className="shrink-0 bg-gradient-to-br from-slate-900 to-slate-950 p-6 rounded-3xl border border-white/5 shadow-2xl relative overflow-hidden group">
                                     <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/5 rounded-full blur-[80px] -mr-16 -mt-16 pointer-events-none"></div>
 
                                     <div className="flex justify-between items-start relative z-10">
@@ -415,6 +450,36 @@ export default function CobrancaInterface({
                                                     ))}
                                                 </div>
 
+                                                {selectedCustomer.vendas_afetadas.length > 1 && (
+                                                    <div>
+                                                        <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block pl-1">Venda Cobrada</label>
+                                                        <select
+                                                            value={selectedVendaId}
+                                                            onChange={e => setSelectedVendaId(Number(e.target.value) || '')}
+                                                            className="w-full bg-black/20 border border-white/10 rounded-xl p-2.5 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-orange-500/50"
+                                                        >
+                                                            <option value="" disabled>Selecione a venda...</option>
+                                                            {selectedCustomer.vendas_afetadas.map(vid => (
+                                                                <option key={vid} value={vid}>Venda #{vid}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                )}
+
+                                                <div>
+                                                    <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block pl-1">Operador</label>
+                                                    <select
+                                                        value={selectedEmployeeId}
+                                                        onChange={e => setSelectedEmployeeId(e.target.value)}
+                                                        className="w-full bg-black/20 border border-white/10 rounded-xl p-2.5 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-orange-500/50 [&>option]:bg-slate-900 [&>option]:text-slate-200"
+                                                    >
+                                                        <option value="" disabled className="bg-slate-900 text-slate-400">Selecione o operador...</option>
+                                                        {employees.map(emp => (
+                                                            <option key={emp.id} value={emp.id} className="bg-slate-900 text-slate-200">{emp.full_name}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+
                                                 <textarea
                                                     placeholder="Resumo da conversa..."
                                                     value={resumo}
@@ -437,7 +502,7 @@ export default function CobrancaInterface({
 
                                                 <button
                                                     onClick={handleRegistrarContato}
-                                                    disabled={isPending || !resumo.trim()}
+                                                    disabled={isPending || !resumo.trim() || !selectedEmployeeId}
                                                     className="w-full bg-orange-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-orange-900/20 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
                                                 >
                                                     {isPending ? 'Salvando...' : 'Registrar Ação'}
@@ -456,7 +521,10 @@ export default function CobrancaInterface({
                                                 historico.map(item => (
                                                     <div key={item.id} className="bg-slate-900/40 rounded-2xl p-4 border border-white/5 relative">
                                                         <div className="flex justify-between items-start mb-2">
-                                                            <span className="text-xs font-bold text-slate-300">{item.tipo_contato}</span>
+                                                            <div className="flex flex-col">
+                                                                <span className="text-xs font-bold text-slate-300">{item.tipo_contato}</span>
+                                                                <span className="text-[10px] text-slate-500 mt-0.5">Operador: {item.profiles?.full_name || 'Sistema'}</span>
+                                                            </div>
                                                             <span className="text-[10px] text-slate-500">{new Date(item.created_at || '').toLocaleString('pt-BR')}</span>
                                                         </div>
                                                         <p className="text-sm text-slate-400 leading-relaxed bg-black/20 p-3 rounded-xl border border-white/5">
@@ -465,7 +533,7 @@ export default function CobrancaInterface({
                                                         {item.proxima_acao && (
                                                             <div className="mt-2 flex items-center gap-1.5 text-[10px] text-orange-400 font-bold bg-orange-500/10 w-fit px-2 py-1 rounded-lg border border-orange-500/10">
                                                                 <Calendar className="w-3 h-3" />
-                                                                Próxima revisão: {new Date(item.proxima_acao).toLocaleDateString()}
+                                                                Próxima revisão: {new Date(item.proxima_acao + 'T12:00:00').toLocaleDateString('pt-BR')}
                                                             </div>
                                                         )}
                                                     </div>

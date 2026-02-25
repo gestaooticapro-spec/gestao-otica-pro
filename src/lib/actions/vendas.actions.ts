@@ -922,6 +922,93 @@ export async function deletePagamento(
     return { success: false, message: error.message }
   }
 }
+// ================================================================
+// HELPER: REGISTRAR SAÍDA DE ESTOQUE AO FECHAR VENDA
+// Centraliza a baixa de estoque + log em stock_movements
+// ================================================================
+async function registrarSaidaVenda(vendaId: number, storeId: string | number, userId: string, tenantId: string) {
+  const supabaseAdmin = createAdminClient()
+
+  // Busca itens da venda que têm product_id (itens reais de estoque)
+  const { data: itens } = await (supabaseAdmin.from('venda_itens') as any)
+    .select('id, product_id, quantidade, unidade, descricao')
+    .eq('venda_id', vendaId)
+    .not('product_id', 'is', null)
+
+  if (!itens || itens.length === 0) return
+
+  for (const item of itens) {
+    // Par = 2 unidades reais de lente, Unidade = 1
+    const multiplicador = item.unidade === 'Par' ? 2 : 1
+    const qtdReal = (item.quantidade || 1) * multiplicador
+
+    // 1. Decrementa estoque físico
+    const { data: produto } = await (supabaseAdmin.from('products') as any)
+      .select('estoque_atual, preco_custo')
+      .eq('id', item.product_id)
+      .single()
+
+    if (produto) {
+      await (supabaseAdmin.from('products') as any)
+        .update({ estoque_atual: Math.max(0, (produto.estoque_atual || 0) - qtdReal) })
+        .eq('id', item.product_id)
+
+      // 2. Log na stock_movements
+      await (supabaseAdmin.from('stock_movements') as any).insert({
+        tenant_id: tenantId,
+        store_id: storeId,
+        product_id: item.product_id,
+        tipo: 'Saida',
+        quantidade: qtdReal,
+        motivo: `Venda #${vendaId} — ${item.descricao}`,
+        custo_unitario_momento: produto.preco_custo || 0,
+        registrado_por_id: userId,
+        created_at: new Date().toISOString()
+      })
+    }
+  }
+}
+
+// Helper reverso: estorna saídas de venda no cancelamento/reabertura
+async function estornarSaidaVenda(vendaId: number, storeId: string | number, userId: string, tenantId: string) {
+  const supabaseAdmin = createAdminClient()
+
+  // Busca as saídas que foram geradas por esta venda
+  const { data: movimentos } = await (supabaseAdmin.from('stock_movements') as any)
+    .select('id, product_id, quantidade, custo_unitario_momento')
+    .eq('store_id', storeId)
+    .eq('tipo', 'Saida')
+    .ilike('motivo', `Venda #${vendaId}%`)
+
+  if (!movimentos || movimentos.length === 0) return
+
+  for (const mov of movimentos) {
+    // 1. Devolve ao estoque
+    const { data: produto } = await (supabaseAdmin.from('products') as any)
+      .select('estoque_atual')
+      .eq('id', mov.product_id)
+      .single()
+
+    if (produto) {
+      await (supabaseAdmin.from('products') as any)
+        .update({ estoque_atual: (produto.estoque_atual || 0) + mov.quantidade })
+        .eq('id', mov.product_id)
+    }
+
+    // 2. Registra a devolução
+    await (supabaseAdmin.from('stock_movements') as any).insert({
+      tenant_id: tenantId,
+      store_id: storeId,
+      product_id: mov.product_id,
+      tipo: 'Devolucao',
+      quantidade: mov.quantidade,
+      motivo: `Estorno — Venda #${vendaId} cancelada/reaberta`,
+      custo_unitario_momento: mov.custo_unitario_momento || 0,
+      registrado_por_id: userId,
+      created_at: new Date().toISOString()
+    })
+  }
+}
 
 // ================================================================
 // 11. ACTION: ATUALIZAR STATUS DA VENDA (COM TIMESTAMP E RANKING)
@@ -941,6 +1028,8 @@ export async function updateVendaStatus(
 ): Promise<CreateVendaResult> {
 
   const supabaseAdmin = createAdminClient()
+  const { data: { user } } = await createClient().auth.getUser()
+  const profile = user ? await getProfileByAdmin(user.id) : null
 
   try {
     const updatePayload: any = { status: newStatus };
@@ -957,6 +1046,11 @@ export async function updateVendaStatus(
 
       // 3. Cancela reservas de estoque
       await cancelReservations(vendaId)
+
+      // 4. Estorna saídas de estoque geradas pelo fechamento anterior
+      if (user && profile) {
+        await estornarSaidaVenda(vendaId, storeId, user.id, (profile as any).tenant_id)
+      }
     }
 
     // --- GATILHO DE FECHAMENTO ---
@@ -987,10 +1081,18 @@ export async function updateVendaStatus(
       // Confirma reservas de estoque
       await confirmReservations(vendaId)
 
-      // Opcional: Aqui poderíamos salvar um log de "Quem fechou"
+      // Registra saídas de estoque para itens não-reservados (armações, etc)
+      if (user && profile) {
+        await registrarSaidaVenda(vendaId, storeId, user.id, (profile as any).tenant_id)
+      }
     } else if (newStatus === 'Cancelada') {
       await cancelarComissao(vendaId)
       await cancelReservations(vendaId)
+
+      // Estorna saídas de estoque
+      if (user && profile) {
+        await estornarSaidaVenda(vendaId, storeId, user.id, (profile as any).tenant_id)
+      }
     }
     // ---------------------------
 
@@ -2094,6 +2196,9 @@ export async function finalizarVendaExpress(formData: FormData) {
 
   await calcularERegistrarComissao(novaVenda.id)
 
+  // Registra saídas de estoque
+  await registrarSaidaVenda(novaVenda.id, storeId, user.id, (profile as any).tenant_id)
+
   revalidatePath(`/dashboard/loja/${storeId}/vendas`)
   revalidatePath(`/dashboard/loja/${storeId}/financeiro/comissoes`)
   return { success: true, message: 'Venda finalizada!', vendaId: novaVenda.id }
@@ -2145,6 +2250,9 @@ export async function criarVendaParcialCarnê(formData: FormData) {
 
   // CORREÃ‡ÃƒO 3: Cast no insert dos itens
   await (supabaseAdmin.from('venda_itens') as any).insert(itensToInsert)
+
+  // Registra saídas de estoque (itens saem da loja mesmo com pagamento pendente)
+  await registrarSaidaVenda(novaVenda.id, storeId, user!.id, (profile as any).tenant_id)
 
   return { success: true, vendaId: novaVenda.id }
 }

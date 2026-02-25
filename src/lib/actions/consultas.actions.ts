@@ -54,12 +54,17 @@ export async function getAlertasOperacionais(storeId: number): Promise<Dashboard
                 .lt('created_at', ontem)
                 .order('created_at', { ascending: true }),
 
-            // Contagem de Vendas em Aberto
-            (supabaseAdmin
-                .from('vendas') as any)
-                .select('*', { count: 'exact', head: true }) // head: true traz só a contagem
-                .eq('store_id', storeId)
-                .eq('status', 'Em Aberto')
+            // Contagem de Vendas em Aberto há mais de 21 dias (urgência)
+            (() => {
+                const limite = new Date(hoje);
+                limite.setDate(hoje.getDate() - 21);
+                return (supabaseAdmin
+                    .from('vendas') as any)
+                    .select('*', { count: 'exact', head: true })
+                    .eq('store_id', storeId)
+                    .eq('status', 'Em Aberto')
+                    .lt('created_at', limite.toISOString());
+            })()
         ])
 
         // Processamento Entregas

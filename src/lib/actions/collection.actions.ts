@@ -19,7 +19,9 @@ export type DevedorResumo = {
     vendas_afetadas: number[]
 }
 
-export type CobrancaHistoricoItem = Database['public']['Tables']['cobranca_historico']['Row']
+export type CobrancaHistoricoItem = Database['public']['Tables']['cobranca_historico']['Row'] & {
+    profiles?: { full_name: string } | null
+}
 
 export type RetornoCobranca = {
     id: number
@@ -29,12 +31,13 @@ export type RetornoCobranca = {
     tipo_contato: string
     resumo_conversa: string
     proxima_acao: string
+    profiles?: { full_name: string } | null
 }
 
 // --- 1. BUSCAR LISTA DE INADIMPLENTES ---
 export async function getInadimplentes(storeId: number, filtro: 'cobrar' | 'ja_cobrados' = 'cobrar') {
     const supabaseAdmin = createAdminClient()
-    const hoje = new Date().toISOString().split('T')[0]
+    const hoje = new Intl.DateTimeFormat('fr-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
 
     try {
         let query = (supabaseAdmin
@@ -197,11 +200,13 @@ export async function registrarCobranca(prevState: any, formData: FormData) {
     const supabaseAdmin = createAdminClient()
 
     try {
-        // CORREÇÃO: Cast as any para permitir insert em cobranca_historico sem validação estrita
+        // Se houver operador selecionado no dropdown, usa esse ID; caso contrário, usa o UUID do usuário logado
+        const employeeId = formData.get('registrado_por_id') as string | null
+
         await (supabaseAdmin.from('cobranca_historico') as any).insert({
             tenant_id: profile.tenant_id,
             store_id: profile.store_id,
-            registrado_por_id: user.id,
+            registrado_por_id: employeeId || user.id,
             customer_id: validated.data.customer_id,
             venda_id: validated.data.venda_id,
             tipo_contato: validated.data.tipo_contato,
@@ -236,13 +241,50 @@ export async function toggleSpcStatus(customerId: number, currentStatus: boolean
 export async function getHistoricoCobranca(customerId: number) {
     const supabaseAdmin = createAdminClient()
     try {
-        // CORREÇÃO: Cast as any para tabela de cobrança
-        const { data } = await (supabaseAdmin.from('cobranca_historico') as any)
+        // Busca o histórico básico
+        const { data, error } = await (supabaseAdmin.from('cobranca_historico') as any)
             .select('*')
             .eq('customer_id', customerId)
             .order('created_at', { ascending: false })
 
-        return data || []
+        if (error || !data) return []
+
+        // Busca os IDs de quem registrou (pode ser employee ID numérico ou UUID do auth)
+        const idsOperadores = Array.from(new Set(data.filter((d: any) => d.registrado_por_id).map((d: any) => String(d.registrado_por_id)))) as string[]
+
+        if (idsOperadores.length === 0) return data
+
+        // Separa IDs numéricos (employees) de UUIDs (profiles/auth)
+        const idsNumericos = idsOperadores.filter(id => /^\d+$/.test(id)).map(Number)
+        const idsUUID = idsOperadores.filter(id => !/^\d+$/.test(id))
+
+        const mapaNomes = new Map<string, string>()
+
+        // Busca funcionários pelo ID numérico (dropdown de operador)
+        if (idsNumericos.length > 0) {
+            const { data: empData } = await (supabaseAdmin.from('employees') as any)
+                .select('id, full_name')
+                .in('id', idsNumericos)
+            if (empData) {
+                empData.forEach((e: any) => mapaNomes.set(String(e.id), e.full_name))
+            }
+        }
+
+        // Busca perfis pelo UUID (registros antigos que usavam user.id)
+        if (idsUUID.length > 0) {
+            const { data: perfis } = await supabaseAdmin.from('profiles').select('id, full_name').in('id', idsUUID)
+            if (perfis) {
+                perfis.forEach((p: any) => mapaNomes.set(p.id, p.full_name))
+            }
+        }
+
+        // Junta os nomes no histórico
+        return data.map((item: any) => ({
+            ...item,
+            profiles: item.registrado_por_id && mapaNomes.has(String(item.registrado_por_id))
+                ? { full_name: mapaNomes.get(String(item.registrado_por_id)) }
+                : null
+        }))
     } catch (e) {
         return []
     }

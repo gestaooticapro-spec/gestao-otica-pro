@@ -5,6 +5,7 @@ import {
     TrendingUp, DollarSign, ShoppingBag, AlertTriangle,
     Store, Calendar, Users, Package, Award
 } from 'lucide-react'
+import { openWhatsApp } from '@/lib/utils/whatsapp'
 
 const formatMoney = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -92,12 +93,8 @@ export function ManagerDashboard({ data }: { data: StoreKPIs }) {
 
                                     <div className="flex items-center gap-3">
 
-                                        <a
-                                            href={`https://wa.me/${cli.fone ? '55' + cli.fone.replace(/\D/g, '') : ''}?text=${encodeURIComponent(
-                                                `Parabéns ${cli.nome.split(' ')[0]}! 🎉 A Ótica Pro deseja um feliz aniversário!`
-                                            )}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
+                                        <button
+                                            onClick={() => cli.fone && openWhatsApp(cli.fone, `Oi ${cli.nome.split(' ')[0]}! Sabemos que esse é um dia especial pra você. Te desejamos toda a felicidade do mundo!`)}
                                             className="p-1.5 bg-emerald-500/20 rounded-lg text-emerald-400 hover:bg-emerald-500 hover:text-white transition-all shadow-lg shadow-emerald-500/20"
                                             title="Enviar felicitações pelo WhatsApp"
                                         >
@@ -105,7 +102,7 @@ export function ManagerDashboard({ data }: { data: StoreKPIs }) {
                                                 fill="currentColor" viewBox="0 0 24 24">
                                                 <path d="M20.52 3.48A11.8 11.8 0 0 0 12 0C5.37 0 0 5.37 0 12a11.9 11.9 0 0 0 1.64 6L0 24l6.25-1.64A11.9 11.9 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.19-1.24-6.2-3.48-8.52zM12 22a10 10 0 0 1-5.12-1.42l-.37-.22L3 21l.63-3.5-.23-.36A10 10 0 1 1 12 22zm5.13-7.53c-.28-.14-1.68-.83-1.94-.92-.26-.1-.45-.14-.64.14-.19.28-.74.92-.9 1.11-.17.19-.33.21-.62.07-.28-.14-1.17-.43-2.24-1.38-.83-.74-1.39-1.65-1.55-1.93-.16-.28-.02-.43.12-.57.13-.13.28-.33.42-.49.14-.16.19-.28.28-.47.1-.19.05-.36-.02-.5-.07-.14-.64-1.54-.88-2.11-.23-.55-.47-.47-.64-.48h-.55c-.19 0-.5.07-.76.36-.26.28-1 1-1 2.43s1.02 2.82 1.16 3.01c.14.19 2 3.06 4.93 4.29.69.3 1.23.48 1.65.61.69.22 1.31.19 1.81.12.55-.08 1.68-.69 1.92-1.36.24-.66.24-1.23.17-1.36-.07-.14-.26-.21-.54-.35z" />
                                             </svg>
-                                        </a>
+                                        </button>
 
                                         <span className="text-xs text-slate-500 font-mono">
                                             {cli.fone ?? '—'}

@@ -146,7 +146,7 @@ const MENU_STRUCTURE: MenuGroup[] = [
             { label: 'Comissões', icon: Percent, route: '/dashboard/loja/[id]/financeiro/comissoes', allowedRoles: ['admin', 'manager'] },
 
             // Separador após Relatórios
-            { label: 'Relat. Vendas', icon: BarChart3, route: '/dashboard/loja/[id]/reports/vendas', allowedRoles: ['admin', 'manager'], withSeparator: true },
+            { label: 'Central de Relatórios', icon: BarChart3, route: '/dashboard/loja/[id]/reports', allowedRoles: ['admin', 'manager'], withSeparator: true },
 
             { label: 'Configuração', icon: Settings, route: '/dashboard/loja/[id]/config', allowedRoles: ['admin', 'manager'] },
             { label: 'Fiscal (NFC-e)', icon: FileText, route: '/dashboard/loja/[id]/fiscal', allowedRoles: ['admin', 'manager'] },
@@ -175,7 +175,7 @@ export default function SideNav({ userRole, storeId, storeName, logoUrl }: SideN
     const handleLogout = async () => {
         const { error } = await supabase.auth.signOut();
         if (error) alert('Erro ao sair');
-        router.push('/login');
+        window.location.href = '/login';
     };
 
     const handleMainClick = (group: MenuGroup) => {

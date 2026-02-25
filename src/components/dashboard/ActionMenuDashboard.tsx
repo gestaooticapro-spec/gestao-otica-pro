@@ -132,9 +132,9 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
                   <AlertCircle className="h-6 w-6" />
                 </div>
                 <div>
-                  <p className="font-bold text-amber-200 text-sm">Atenção Operacional</p>
+                  <p className="font-bold text-amber-200 text-sm">⚠️ Vendas Paradas há +21 dias</p>
                   <p className="text-amber-100/80 text-xs mt-0.5">
-                    Você tem <strong className="text-amber-300 underline underline-offset-2">{alerts.vendasEmAberto} vendas em aberto</strong> que precisam de atenção.
+                    <strong className="text-amber-300 underline underline-offset-2">{alerts.vendasEmAberto} vendas</strong> estão em aberto há mais de 21 dias. Possível esquecimento ou problema.
                   </p>
                 </div>
               </div>
@@ -142,7 +142,7 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
                 href={`/dashboard/loja/${storeId}/vendas`}
                 className="whitespace-nowrap px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-amber-950 text-xs font-black rounded-lg shadow-lg shadow-amber-900/20 transition-all transform hover:-translate-y-0.5 flex items-center gap-2"
               >
-                RESOLVER AGORA <ArrowRight className="h-3 w-3" />
+                VERIFICAR AGORA <ArrowRight className="h-3 w-3" />
               </Link>
             </div>
           )}

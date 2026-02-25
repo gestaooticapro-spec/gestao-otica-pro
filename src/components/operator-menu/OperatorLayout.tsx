@@ -50,7 +50,7 @@ export default function OperatorLayout({
             alert('Erro ao sair');
             return;
         }
-        router.push('/login');
+        window.location.href = '/login';
     };
 
     const handleNavigate = (menu: 'atendimento' | 'loja-vazia') => {

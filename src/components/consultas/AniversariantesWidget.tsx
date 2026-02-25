@@ -3,14 +3,15 @@
 import { useState } from 'react'
 import { Gift, ChevronDown, ChevronUp } from 'lucide-react'
 import { Aniversariante } from '@/lib/actions/consultas.actions'
+import { openWhatsApp } from '@/lib/utils/whatsapp'
 
 export default function AniversariantesWidget({ clientes }: { clientes: Aniversariante[] }) {
     const [isOpen, setIsOpen] = useState(false)
 
     const handleZap = (fone: string | null, nome: string) => {
-        const numero = fone ? fone.replace(/\D/g, '') : ''
-        const msg = `Parabéns ${nome.split(' ')[0]}! 🎉 A Ótica Pro deseja um feliz aniversário!`
-        window.open(`https://wa.me/${numero ? '55' + numero : ''}?text=${encodeURIComponent(msg)}`, '_blank')
+        if (!fone) return
+        const msg = `Oi ${nome.split(' ')[0]}! Sabemos que esse é um dia especial pra você. Te desejamos toda a felicidade do mundo!`
+        openWhatsApp(fone, msg)
     }
 
     return (
