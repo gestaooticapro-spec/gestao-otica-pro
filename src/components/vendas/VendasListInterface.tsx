@@ -89,15 +89,15 @@ export default function VendasListInterface({ vendas, storeId, mode, startDate, 
 
                     <div className="overflow-y-auto flex-1 p-0 custom-scrollbar">
                         <table className="w-full text-left border-collapse">
-                            <thead className="bg-white/5 sticky top-0 z-10 backdrop-blur-md">
-                                <tr className="text-slate-400 text-[10px] uppercase font-bold border-b border-white/10">
-                                    <th className="p-3 w-32">ID / Criada Em</th>
-                                    <th className="p-3 w-32">Fechada Em</th>
-                                    <th className="p-3">Cliente</th>
-                                    <th className="p-3 text-center">Status</th>
-                                    <th className="p-3 text-right">Total</th>
-                                    <th className="p-3 text-right">Falta Pagar</th>
-                                    <th className="p-3 text-center w-20">Ação</th>
+                            <thead className="sticky top-0 z-30">
+                                <tr className="text-slate-400 text-[10px] uppercase font-bold border-b border-white/10 shadow-[0_6px_16px_rgba(2,6,23,0.45)]">
+                                    <th className="p-3 w-32 bg-slate-900/95 backdrop-blur-xl">ID / Criada Em</th>
+                                    <th className="p-3 w-32 bg-slate-900/95 backdrop-blur-xl">Fechada Em</th>
+                                    <th className="p-3 bg-slate-900/95 backdrop-blur-xl">Cliente</th>
+                                    <th className="p-3 text-center bg-slate-900/95 backdrop-blur-xl">Status</th>
+                                    <th className="p-3 text-right bg-slate-900/95 backdrop-blur-xl">Total</th>
+                                    <th className="p-3 text-right bg-slate-900/95 backdrop-blur-xl">Falta Pagar</th>
+                                    <th className="p-3 text-center w-20 bg-slate-900/95 backdrop-blur-xl">Ação</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-white/5">
