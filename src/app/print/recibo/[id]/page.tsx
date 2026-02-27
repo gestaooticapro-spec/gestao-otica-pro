@@ -15,12 +15,25 @@ export default async function PrintReciboPage({ params, searchParams }: { params
     const supabase = createAdminClient()
 
     // 1. Busca OS Pagamentos
-    const { data: pagamentos } = await (supabase
+    let { data: pagamentos } = await (supabase
         .from('pagamentos') as any)
         .select('*')
         .in('id', ids)
 
-    if (!pagamentos || pagamentos.length === 0) return <div className="p-10">Pagamentos não encontrados.</div>
+    // Se não encontrou por ID de pagamento, tenta buscar por ID de venda (vendaIdGerada)
+    if (!pagamentos || pagamentos.length === 0) {
+        const { data: pagamentosByVenda } = await (supabase
+            .from('pagamentos') as any)
+            .select('*')
+            .in('venda_id', ids)
+            .order('created_at', { ascending: false }) // Pega os mais recentes, se houver vários associados àquela venda nesta "sessão"
+
+        if (pagamentosByVenda && pagamentosByVenda.length > 0) {
+            pagamentos = pagamentosByVenda;
+        }
+    }
+
+    if (!pagamentos || pagamentos.length === 0) return <div className="p-10">Pagamentos não encontrados. (Tentei o ID {ids.join(',')} como ID de Pagamento e como ID de Venda)</div>
 
     const vendaId = pagamentos[0].venda_id
 

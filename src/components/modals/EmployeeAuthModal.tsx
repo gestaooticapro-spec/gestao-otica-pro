@@ -32,12 +32,12 @@ function SubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className="flex w-full justify-center rounded-md border border-transparent bg-blue-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:bg-blue-400"
+      className="flex w-full justify-center rounded-xl bg-cyan-500/20 py-3.5 px-4 text-sm font-black uppercase tracking-widest text-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.2)] border border-cyan-500/20 hover:bg-cyan-500/40 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 disabled:opacity-50 disabled:bg-cyan-500/10 transition-all active:scale-95"
     >
       {pending ? (
         <Loader2 className="h-5 w-5 animate-spin mx-auto" />
       ) : (
-        'Login'
+        'Autorizar'
       )}
     </button>
   )
@@ -48,80 +48,82 @@ export default function EmployeeAuthModal({
   isOpen,
   onClose,
   onSuccess,
-  title = 'Autenticação de Funcionário',
-  description = 'Por favor, insira seu PIN para continuar.',
+  title = 'Autorizar Pagamento',
+  description = 'Insira seu PIN para confirmar o recebimento.',
 }: EmployeeAuthModalProps) {
-  
+
   const initialState: AuthEmployeeResult = { success: false, message: '' }
   const [state, dispatch] = useFormState(autenticarFuncionarioPorPin, initialState)
-  
+
   const [pin, setPin] = useState('')
 
   useEffect(() => {
     if (state.success && state.employee) {
-      onSuccess(state.employee) 
+      onSuccess(state.employee)
       onClose()
       setPin('')
     }
   }, [state, onSuccess, onClose])
 
-  // LÓGICA DE KEYDOWN REMOVIDA: O formulário HTML já lida com o Enter nativamente
-
   if (!isOpen) return null
 
-  const inputStyle = 'block w-full rounded-md border-gray-400 shadow-sm text-gray-900 h-10 text-lg text-center bg-white disabled:bg-gray-100'
-  const labelStyle = 'text-sm font-medium text-gray-700'
+  const inputStyle = 'block w-full rounded-xl border border-white/10 bg-white/5 text-white h-11 text-center text-xl tracking-[0.2em] focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:outline-none font-bold transition-all placeholder:font-normal placeholder:text-slate-500 placeholder:tracking-normal backdrop-blur-md'
+  const labelStyle = 'block text-[10px] font-black text-slate-400 uppercase tracking-[0.1em] text-center mb-1.5'
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-70"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-sm p-6 bg-gray-200 rounded-lg shadow-lg"
+        className="relative w-full max-w-sm p-6 md:p-8 bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-[2rem] shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
+        <div className="absolute top-0 right-0 w-48 h-48 bg-cyan-500/10 blur-[60px] rounded-full pointer-events-none" />
+
         <button
           onClick={onClose}
-          className="absolute top-2 right-2 p-1 text-gray-500 hover:text-gray-800"
+          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-full transition-colors z-20"
           title="Fechar"
         >
           <X className="h-5 w-5" />
         </button>
 
-        <h2 className="text-xl font-bold text-gray-800 text-center mb-4">
-          {title}
-        </h2>
-        <p className="text-sm text-gray-600 mb-4 text-center">{description}</p>
+        <div className="relative z-10">
+          <h2 className="text-xl md:text-2xl font-black text-white text-center mb-2 tracking-tight">
+            {title}
+          </h2>
+          <p className="text-sm text-slate-400 font-bold mb-6 text-center">{description}</p>
 
-        <form action={dispatch} className="space-y-4">
-          <input type="hidden" name="store_id" value={storeId} />
-          
-          <div>
-            <label htmlFor="auth_pin" className={labelStyle}>
-              Senha (PIN)
-            </label>
-            <input
-              id="auth_pin"
-              name="pin"
-              type="password"
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              // onKeyDown removido daqui
-              className={inputStyle}
-              required
-              autoFocus
-              maxLength={6}
-              autoComplete="off"
-            />
-          </div>
-          
-          {state.message && !state.success && (
-             <p className="text-sm text-red-600 text-center font-bold bg-red-100 p-2 rounded">{state.message}</p>
-          )}
+          <form action={dispatch} className="space-y-6">
+            <input type="hidden" name="store_id" value={storeId} />
 
-          <SubmitButton />
-        </form>
+            <div>
+              <label htmlFor="auth_pin" className={labelStyle}>
+                Senha (PIN)
+              </label>
+              <input
+                id="auth_pin"
+                name="pin"
+                type="password"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                className={inputStyle}
+                required
+                autoFocus
+                maxLength={6}
+                autoComplete="off"
+                placeholder="******"
+              />
+            </div>
+
+            {state.message && !state.success && (
+              <p className="text-xs text-red-400 text-center font-black uppercase tracking-widest bg-red-500/10 border border-red-500/20 p-2.5 rounded-xl">{state.message}</p>
+            )}
+
+            <SubmitButton />
+          </form>
+        </div>
       </div>
     </div>
   )

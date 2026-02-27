@@ -4,6 +4,99 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { format, parseISO, startOfDay, endOfDay, addDays, getDaysInMonth, startOfMonth, endOfMonth, isSameDay } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
+export interface VendaRelatorioItem {
+  id: number
+  data: string
+  data_fechamento: string | null
+  cliente: string
+  vendedor: string
+  itens_resumo: string
+  status: string
+  valor_total: number
+  valor_final: number
+  valor_pago: number
+  saldo_devedor: number
+}
+
+export async function getRelatorioVendas(
+  storeId: number,
+  dataInicio: string,
+  dataFim: string
+): Promise<VendaRelatorioItem[]> {
+  const supabase = createAdminClient()
+  const inicioIso = startOfDay(new Date(dataInicio)).toISOString()
+  const fimIso = endOfDay(new Date(dataFim)).toISOString()
+
+  const { data: vendas, error: vendasError } = await (supabase.from('vendas') as any)
+    .select(`
+      id,
+      created_at,
+      data_fechamento,
+      status,
+      valor_total,
+      valor_final,
+      valor_restante,
+      customers(full_name),
+      employees(full_name)
+    `)
+    .eq('store_id', storeId)
+    .gte('created_at', inicioIso)
+    .lte('created_at', fimIso)
+    .order('id', { ascending: false })
+
+  if (vendasError) throw new Error(vendasError.message)
+  if (!vendas || vendas.length === 0) return []
+
+  const vendaIds = vendas.map((v: any) => v.id)
+
+  const [itensRes, pagamentosRes] = await Promise.all([
+    supabase
+      .from('venda_itens')
+      .select('venda_id, descricao, quantidade')
+      .in('venda_id', vendaIds),
+    supabase
+      .from('pagamentos')
+      .select('venda_id, valor_pago')
+      .in('venda_id', vendaIds),
+  ])
+
+  if (itensRes.error) throw new Error(itensRes.error.message)
+  if (pagamentosRes.error) throw new Error(pagamentosRes.error.message)
+
+  const itensPorVenda = new Map<number, string[]>()
+  ;(itensRes.data || []).forEach((item: any) => {
+    const atual = itensPorVenda.get(item.venda_id) || []
+    const qtd = Number(item.quantidade || 0)
+    const desc = String(item.descricao || '').trim()
+    if (desc) atual.push(`${qtd > 0 ? `${qtd}x ` : ''}${desc}`)
+    itensPorVenda.set(item.venda_id, atual)
+  })
+
+  const pagoPorVenda = new Map<number, number>()
+  ;(pagamentosRes.data || []).forEach((pag: any) => {
+    const atual = pagoPorVenda.get(pag.venda_id) || 0
+    pagoPorVenda.set(pag.venda_id, atual + Number(pag.valor_pago || 0))
+  })
+
+  return vendas.map((v: any) => {
+    const valorPago = pagoPorVenda.get(v.id) || 0
+    const saldoDevedor = Math.max(0, Number(v.valor_restante ?? (v.valor_final || 0) - valorPago))
+    return {
+      id: v.id,
+      data: v.created_at,
+      data_fechamento: v.data_fechamento || null,
+      cliente: v.customers?.full_name || 'Consumidor Final',
+      vendedor: v.employees?.full_name || '-',
+      itens_resumo: (itensPorVenda.get(v.id) || []).join(' | ') || '-',
+      status: v.status,
+      valor_total: Number(v.valor_total || 0),
+      valor_final: Number(v.valor_final || 0),
+      valor_pago: valorPago,
+      saldo_devedor: saldoDevedor,
+    }
+  })
+}
+
 export interface DailyFlowRow {
   date: Date;
   diaSemana: string;
@@ -32,20 +125,19 @@ export async function getDailyFlowReport(storeId: number, monthStr: string, year
   const endDateStr = endOfDay(endDate).toISOString();
 
   // 1. Buscar Pagamentos (Entradas reais) no período
-  const { data: pagamentos, error: pagError } = await supabase
-    .from('pagamentos')
+  const { data: pagamentosRaw, error: pagError } = await (supabase.from('pagamentos') as any)
     .select('data_pagamento, valor_pago')
     .eq('store_id', storeId)
     .gte('data_pagamento', startDateStr)
     .lte('data_pagamento', endDateStr);
 
   if (pagError) throw new Error(pagError.message);
+  const pagamentos = (pagamentosRaw || []) as any[];
 
   // 2. Buscar Vendas no período (para calcular garantida vs parcelada)
   // Para identificar o quanto da venda foi parcelado na loja, olhamos para a tabela de financiamento
   // Como a venda tem 'valor_final', a venda garantida é (valor_final - valor_financiado).
-  const { data: vendas, error: vendError } = await supabase
-    .from('vendas')
+  const { data: vendasRaw, error: vendError } = await (supabase.from('vendas') as any)
     .select(`
             id, 
             created_at, 
@@ -58,6 +150,7 @@ export async function getDailyFlowReport(storeId: number, monthStr: string, year
     .lte('created_at', endDateStr);
 
   if (vendError) throw new Error(vendError.message);
+  const vendas = (vendasRaw || []) as any[];
 
   // 3. Montar as linhas (um para cada dia do mês)
   const daysInMonth = getDaysInMonth(startDate);
@@ -129,38 +222,38 @@ export async function getParcelamentoMetrics(storeId: number) {
   const ninetyDaysAgoStr = startOfDay(addDays(new Date(), -90)).toISOString();
 
   // Vincendas (A vencer: data_vencimento >= hoje)
-  const { data: vincendas, error: err1 } = await supabase
-    .from('financiamento_parcelas')
+  const { data: vincendasRaw, error: err1 } = await (supabase.from('financiamento_parcelas') as any)
     .select('valor_parcela')
     .eq('store_id', storeId)
     .eq('status', 'Pendente')
     .gte('data_vencimento', todayStr);
 
-  const vincendasValor = vincendas?.reduce((acc, p) => acc + p.valor_parcela, 0) || 0;
-  const vincendasQtd = vincendas?.length || 0;
+  const vincendas = (vincendasRaw || []) as any[];
+  const vincendasValor = vincendas.reduce((acc: number, p: any) => acc + Number(p.valor_parcela || 0), 0);
+  const vincendasQtd = vincendas.length || 0;
 
   // Atrasadas (Vencidas, mas menos de 90 dias: hoje > data_vencimento >= hoje - 90 dias)
-  const { data: atrasadas, error: err2 } = await supabase
-    .from('financiamento_parcelas')
+  const { data: atrasadasRaw, error: err2 } = await (supabase.from('financiamento_parcelas') as any)
     .select('valor_parcela')
     .eq('store_id', storeId)
     .eq('status', 'Pendente')
     .lt('data_vencimento', todayStr)
     .gte('data_vencimento', ninetyDaysAgoStr);
 
-  const atrasadasValor = atrasadas?.reduce((acc, p) => acc + p.valor_parcela, 0) || 0;
-  const atrasadasQtd = atrasadas?.length || 0;
+  const atrasadas = (atrasadasRaw || []) as any[];
+  const atrasadasValor = atrasadas.reduce((acc: number, p: any) => acc + Number(p.valor_parcela || 0), 0);
+  const atrasadasQtd = atrasadas.length || 0;
 
   // Perdidas (Vencidas há mais de 90 dias)
-  const { data: perdidas, error: err3 } = await supabase
-    .from('financiamento_parcelas')
+  const { data: perdidasRaw, error: err3 } = await (supabase.from('financiamento_parcelas') as any)
     .select('valor_parcela')
     .eq('store_id', storeId)
     .eq('status', 'Pendente')
     .lt('data_vencimento', ninetyDaysAgoStr);
 
-  const perdidasValor = perdidas?.reduce((acc, p) => acc + p.valor_parcela, 0) || 0;
-  const perdidasQtd = perdidas?.length || 0;
+  const perdidas = (perdidasRaw || []) as any[];
+  const perdidasValor = perdidas.reduce((acc: number, p: any) => acc + Number(p.valor_parcela || 0), 0);
+  const perdidasQtd = perdidas.length || 0;
 
   // Clientes no SPC
   const { count: clientesSpc, error: err4 } = await supabase
@@ -196,8 +289,7 @@ export async function getFinanceiroMetrics(storeId: number, monthStr: string, ye
   const endDateStr = endOfDay(endDate).toISOString();
 
   // Recebimentos (Pagamentos)
-  const { data: recebimentos, error: err1 } = await supabase
-    .from('pagamentos')
+  const { data: recebimentosRaw, error: err1 } = await (supabase.from('pagamentos') as any)
     .select('valor_pago, forma_pagamento')
     .eq('store_id', storeId)
     .gte('data_pagamento', startDateStr)
@@ -208,7 +300,8 @@ export async function getFinanceiroMetrics(storeId: number, monthStr: string, ye
   let recebidoPix = 0;
   let recebidoCartao = 0;
 
-  recebimentos?.forEach(r => {
+  const recebimentos = (recebimentosRaw || []) as any[];
+  recebimentos.forEach((r: any) => {
     recebidoTotal += r.valor_pago;
     const forma = (r.forma_pagamento || '').toLowerCase();
     if (forma.includes('dinheiro')) recebidoDinheiro += r.valor_pago;
@@ -217,8 +310,7 @@ export async function getFinanceiroMetrics(storeId: number, monthStr: string, ye
   });
 
   // Despesas (Contas a Pagar pagas)
-  const { data: despesas, error: err2 } = await supabase
-    .from('accounts_payable')
+  const { data: despesasRaw, error: err2 } = await (supabase.from('accounts_payable') as any)
     .select('amount_paid, category')
     .eq('store_id', storeId)
     .eq('status', 'Pago')
@@ -228,7 +320,8 @@ export async function getFinanceiroMetrics(storeId: number, monthStr: string, ye
   let despesasTotal = 0;
   const despesasPorCategoria: Record<string, number> = {};
 
-  despesas?.forEach(d => {
+  const despesas = (despesasRaw || []) as any[];
+  despesas.forEach((d: any) => {
     const valor = d.amount_paid || 0;
     despesasTotal += valor;
     const cat = d.category || 'Sem Categoria';
@@ -236,15 +329,15 @@ export async function getFinanceiroMetrics(storeId: number, monthStr: string, ye
   });
 
   // Valores a Receber (Cartão / Contas a Receber)
-  const { data: aReceber, error: err3 } = await supabase
-    .from('contas_a_receber')
+  const { data: aReceberRaw, error: err3 } = await (supabase.from('contas_a_receber') as any)
     .select('valor_liquido')
     .eq('store_id', storeId)
     .eq('status', 'Pendente')
     .gte('data_prevista', startDateStr)
     .lte('data_prevista', endDateStr);
 
-  const cartaoAReceber = aReceber?.reduce((acc, c) => acc + c.valor_liquido, 0) || 0;
+  const aReceber = (aReceberRaw || []) as any[];
+  const cartaoAReceber = aReceber.reduce((acc: number, c: any) => acc + Number(c.valor_liquido || 0), 0);
 
   if (err1 || err2 || err3) {
     console.error("Erro consultando métricas financeiras", { err1, err2, err3 });
@@ -300,8 +393,7 @@ export async function getProdutosMetrics(storeId: number) {
   // Produtos Mais Vendidos
   const trintaDiasAtras = startOfDay(addDays(new Date(), -30)).toISOString();
 
-  const { data: itensVendidos, error: err3 } = await supabase
-    .from('venda_itens')
+  const { data: itensVendidosRaw, error: err3 } = await (supabase.from('venda_itens') as any)
     .select(`
             quantidade,
             valor_total_item,
@@ -314,9 +406,10 @@ export async function getProdutosMetrics(storeId: number) {
     .order('id', { ascending: false })
     .limit(1000);
 
+  const itensVendidos = (itensVendidosRaw || []) as any[];
   const vendasPorProduto: Record<number, { nome: string; categoria: string; qtd: number; valor: number; unidadeLabel: string }> = {};
 
-  itensVendidos?.forEach(item => {
+  itensVendidos.forEach((item: any) => {
     if (!item.product_id) return;
     const pid = item.product_id;
     const prodData = item.products as any;
@@ -358,8 +451,7 @@ export async function getClientesMetrics(storeId: number) {
   const doisAnosAtras = startOfDay(addDays(new Date(), -730)).toISOString();
   const umAnoAtras = addDays(new Date(), -365);
 
-  const { data: vendas, error: err1 } = await supabase
-    .from('vendas')
+  const { data: vendasRaw, error: err1 } = await (supabase.from('vendas') as any)
     .select(`
             customer_id,
             valor_final,
@@ -374,7 +466,8 @@ export async function getClientesMetrics(storeId: number) {
   // Agrupar por cliente
   const clientesMap: Record<number, { nome: string; telefone: string; totalGasto: number; ultimaVenda: Date }> = {};
 
-  vendas?.forEach(v => {
+  const vendas = (vendasRaw || []) as any[];
+  vendas.forEach((v: any) => {
     if (!v.customer_id) return;
     const cid = v.customer_id;
     const custData = v.customers as any;
@@ -432,8 +525,7 @@ export async function getMovimentoMetrics(storeId: number, monthStr: string, yea
   const startDate = startOfMonth(new Date(year, month)).toISOString();
   const endDate = endOfMonth(new Date(year, month)).toISOString();
 
-  const { data: movements, error: err1 } = await supabase
-    .from('stock_movements')
+  const { data: movementsRaw, error: err1 } = await (supabase.from('stock_movements') as any)
     .select(`
             tipo,
             quantidade,
@@ -449,7 +541,8 @@ export async function getMovimentoMetrics(storeId: number, monthStr: string, yea
   let sobrasEntraram = 0;
   let sobrasVendidas = 0;
 
-  movements?.forEach(m => {
+  const movements = (movementsRaw || []) as any[];
+  movements.forEach((m: any) => {
     const qty = m.quantidade || 0;
     const isSobra = (m.product_variants as any)?.is_sobra === true;
 
@@ -483,8 +576,7 @@ export async function getCobrancaMetrics(storeId: number, monthStr: string, year
   const endDate = endOfMonth(new Date(year, month)).toISOString();
 
   // 1. Pega todas as ações de cobrança feitas no mês atual
-  const { data: cobrancas, error: errCobrancas } = await supabase
-    .from('cobranca_historico')
+  const { data: cobrancasRaw, error: errCobrancas } = await (supabase.from('cobranca_historico') as any)
     .select(`
             id,
             created_at,
@@ -503,7 +595,8 @@ export async function getCobrancaMetrics(storeId: number, monthStr: string, year
   }
 
   // 2. Busca os pagamentos de financiamento dos clientes cobrados para avaliar "Sucesso"
-  const clienteIds = Array.from(new Set(cobrancas?.map(c => c.customer_id) || []));
+  const cobrancas = (cobrancasRaw || []) as any[];
+  const clienteIds = Array.from(new Set(cobrancas.map((c: any) => c.customer_id) || []));
   let parcelasPagas: any[] = [];
 
   if (clienteIds.length > 0) {
@@ -529,7 +622,7 @@ export async function getCobrancaMetrics(storeId: number, monthStr: string, year
   const timelineMap: Record<string, number> = {};
   const timelineSucessoMap: Record<string, number> = {};
 
-  cobrancas?.forEach(c => {
+  cobrancas.forEach((c: any) => {
     const cobThis = c as any;
     totalAcionamentos++;
     const dateStr = cobThis.created_at.split('T')[0];

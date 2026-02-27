@@ -1,7 +1,6 @@
 import { getRelatorioVendas } from '@/lib/actions/reports.actions'
 import TabelaVendas from '@/components/relatorios/TabelaVendas'
 import { Calendar, Filter } from 'lucide-react'
-import { redirect } from 'next/navigation'
 
 export default async function RelatorioVendasPage({
   params,
