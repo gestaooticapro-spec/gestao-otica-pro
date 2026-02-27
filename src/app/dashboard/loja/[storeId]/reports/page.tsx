@@ -11,6 +11,7 @@ import {
     PhoneCall,
     Megaphone,
     ArrowRight,
+    ArrowLeft,
     LineChart
 } from 'lucide-react';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
@@ -110,14 +111,23 @@ export default function ReportsHubPage() {
 
             {/* Cabeçalho */}
             <div className="mb-10 max-w-7xl mx-auto w-full animate-in slide-in-from-top-5 duration-700">
-                <div className="flex items-center gap-3 mb-2">
-                    <div className="p-3 bg-blue-500/20 rounded-xl ring-1 ring-blue-500/30 backdrop-blur-md">
-                        <BarChart3 className="w-8 h-8 text-blue-400" />
+                <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-3">
+                        <div className="p-3 bg-blue-500/20 rounded-xl ring-1 ring-blue-500/30 backdrop-blur-md">
+                            <BarChart3 className="w-8 h-8 text-blue-400" />
+                        </div>
+                        <div>
+                            <h1 className="text-4xl font-black text-white tracking-tight drop-shadow-md">Central de Relatórios</h1>
+                            <p className="text-slate-400 text-sm font-medium uppercase tracking-widest mt-1">Inteligência e Análise de Dados</p>
+                        </div>
                     </div>
-                    <div>
-                        <h1 className="text-4xl font-black text-white tracking-tight drop-shadow-md">Central de Relatórios</h1>
-                        <p className="text-slate-400 text-sm font-medium uppercase tracking-widest mt-1">Inteligência e Análise de Dados</p>
-                    </div>
+                    <button
+                        onClick={() => router.push(`/dashboard/loja/${storeId}`)}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-all duration-200 text-sm font-semibold backdrop-blur-md group"
+                    >
+                        <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+                        Voltar
+                    </button>
                 </div>
             </div>
 

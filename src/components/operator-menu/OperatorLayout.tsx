@@ -92,7 +92,7 @@ export default function OperatorLayout({
         <div className="min-h-screen bg-slate-950">
             <div className="bg-slate-900/80 backdrop-blur-xl border-b border-white/10 px-4 py-3 flex items-center justify-between shadow-xl shadow-black/20">
                 <button
-                    onClick={() => router.push(`/dashboard/loja/${storeId}`)}
+                    onClick={handleBack}
                     className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm font-medium"
                 >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

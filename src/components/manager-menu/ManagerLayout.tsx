@@ -36,7 +36,8 @@ const GERENCIA_LINKS = [
         subtitle: 'Financeiro',
         icon: CalendarRange,
         route: (storeId: number) => `/dashboard/loja/${storeId}/financeiro/contas`,
-        tone: 'from-emerald-600/15 via-emerald-900/25 to-slate-900/60 hover:border-emerald-400/30'
+        tone: 'from-emerald-600/15 via-emerald-900/25 to-slate-900/60 hover:border-emerald-400/30',
+        colSpan: false
     },
     {
         id: 'comissoes',
@@ -44,23 +45,8 @@ const GERENCIA_LINKS = [
         subtitle: 'Equipe',
         icon: Percent,
         route: (storeId: number) => `/dashboard/loja/${storeId}/financeiro/comissoes`,
-        tone: 'from-blue-600/15 via-blue-900/25 to-slate-900/60 hover:border-blue-400/30'
-    },
-    {
-        id: 'relatorios',
-        title: 'Central de Relatórios',
-        subtitle: 'Indicadores',
-        icon: BarChart3,
-        route: (storeId: number) => `/dashboard/loja/${storeId}/reports`,
-        tone: 'from-amber-600/15 via-amber-900/25 to-slate-900/60 hover:border-amber-400/30'
-    },
-    {
-        id: 'config',
-        title: 'Configuração',
-        subtitle: 'Loja',
-        icon: Settings,
-        route: (storeId: number) => `/dashboard/loja/${storeId}/config`,
-        tone: 'from-fuchsia-600/15 via-fuchsia-900/25 to-slate-900/60 hover:border-fuchsia-400/30'
+        tone: 'from-blue-600/15 via-blue-900/25 to-slate-900/60 hover:border-blue-400/30',
+        colSpan: false
     },
     {
         id: 'fiscal',
@@ -68,7 +54,26 @@ const GERENCIA_LINKS = [
         subtitle: 'Documentos',
         icon: FileText,
         route: (storeId: number) => `/dashboard/loja/${storeId}/fiscal`,
-        tone: 'from-rose-600/15 via-rose-900/25 to-slate-900/60 hover:border-rose-400/30'
+        tone: 'from-rose-600/15 via-rose-900/25 to-slate-900/60 hover:border-rose-400/30',
+        colSpan: false
+    },
+    {
+        id: 'config',
+        title: 'Configuração',
+        subtitle: 'Loja',
+        icon: Settings,
+        route: (storeId: number) => `/dashboard/loja/${storeId}/config`,
+        tone: 'from-fuchsia-600/15 via-fuchsia-900/25 to-slate-900/60 hover:border-fuchsia-400/30',
+        colSpan: false
+    },
+    {
+        id: 'relatorios',
+        title: 'Central de Relatórios',
+        subtitle: 'Indicadores',
+        icon: BarChart3,
+        route: (storeId: number) => `/dashboard/loja/${storeId}/reports`,
+        tone: 'from-amber-600/15 via-amber-900/25 to-slate-900/60 hover:border-amber-400/30',
+        colSpan: true
     }
 ] as const;
 
@@ -216,7 +221,7 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
                                     <button
                                         key={item.id}
                                         onClick={() => router.push(item.route(storeId))}
-                                        className={`group text-left rounded-2xl px-5 py-5 border border-white/10 bg-gradient-to-br ${item.tone} transition-all duration-300 hover:-translate-y-0.5`}
+                                        className={`group text-left rounded-2xl px-5 py-5 border border-white/10 bg-gradient-to-br ${item.tone} transition-all duration-300 hover:-translate-y-0.5 ${item.colSpan ? 'md:col-span-2' : ''}`}
                                     >
                                         <div className="flex items-center gap-3 mb-3">
                                             <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center border border-white/10">

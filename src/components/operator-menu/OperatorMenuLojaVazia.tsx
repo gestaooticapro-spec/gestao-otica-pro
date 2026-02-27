@@ -5,7 +5,7 @@ import {
     DollarSign, HeartHandshake, Megaphone, Archive, Search, Globe,
     ArrowLeftRight, FileInput, Tag, FileSpreadsheet, ArrowLeft, Clock,
     AlertCircle, Gift, Calendar, Package, ChevronRight, ChevronDown, ChevronUp,
-    MessageCircle, CalendarClock, CalendarCheck, ArrowRight, Send, Users2
+    MessageCircle, CalendarClock, CalendarCheck, ArrowRight, Send, Users2, UserMinus
 } from 'lucide-react';
 import { useModals } from '@/lib/contexts/ModalsContext';
 import { openWhatsApp } from '@/lib/utils/whatsapp';
@@ -55,6 +55,13 @@ interface RetornoCobranca {
     proxima_acao: string;
 }
 
+interface ClienteInativo {
+    nome: string;
+    telefone: string;
+    totalGasto: number;
+    ultimaVenda: string;
+}
+
 interface OperatorMenuLojaVaziaProps {
     storeId: number;
     storeName?: string;
@@ -69,6 +76,7 @@ interface RadarData {
     laboratorio: AlertaLaboratorio[];
     vencimentos: VencimentoProximo[];
     retornos: RetornoCobranca[];
+    clientesInativos: ClienteInativo[];
 }
 
 const formatDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
@@ -91,7 +99,8 @@ export default function OperatorMenuLojaVazia({
         entregas: [],
         laboratorio: [],
         vencimentos: [],
-        retornos: []
+        retornos: [],
+        clientesInativos: []
     });
     const [loading, setLoading] = useState(true);
 
@@ -107,7 +116,8 @@ export default function OperatorMenuLojaVazia({
                         entregas: data.entregas || [],
                         laboratorio: data.laboratorio || [],
                         vencimentos: data.vencimentos || [],
-                        retornos: data.retornos || []
+                        retornos: data.retornos || [],
+                        clientesInativos: data.clientesInativos || []
                     });
                 }
             } catch (error) {
@@ -138,6 +148,12 @@ export default function OperatorMenuLojaVazia({
         window.open(`https://wa.me/55${num}?text=${encodeURIComponent(msg)}`, '_blank');
     };
 
+    const handleZapClienteInativo = (cliente: ClienteInativo) => {
+        if (!cliente.telefone) return alert(`${cliente.nome.split(' ')[0]} não tem celular cadastrado.`);
+        const primeiroNome = cliente.nome.split(' ')[0];
+        const msg = `Olá ${primeiroNome}, tudo bem? Aqui é da ${storeName}! Faz um tempinho que não te vemos por aqui. Que tal dar uma passadinha na loja? Temos novidades esperando por você! 😊`;
+        openWhatsApp(cliente.telefone, msg);
+    };
 
     // --- IDÊNTICO AO COMPONENTE INTERNO REUTILIZÁVEL ---
     const RadarWidget = ({
@@ -229,34 +245,72 @@ export default function OperatorMenuLojaVazia({
                     <div className="flex-1 w-full flex flex-col gap-6">
                         <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 
-                            {/* GRUPO 1: FINANCEIRO */}
-                            <div className="bg-black/20 border border-white/5 rounded-3xl p-6 backdrop-blur-md flex flex-col gap-4 shadow-xl">
-                                <h2 className="text-sm font-bold text-amber-400 uppercase tracking-widest flex items-center gap-2 mb-2 px-1">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.8)]"></span>
-                                    Financeiro
-                                </h2>
-                                <div className="flex flex-col gap-3">
-                                    {/* Caixa */}
-                                    <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/financeiro/caixa`)} className="group bg-gradient-to-br from-amber-600/12 via-orange-900/25 to-slate-900/60 hover:from-amber-500/22 hover:via-orange-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-amber-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(245,158,11,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40">
-                                        <div className="p-2.5 rounded-lg bg-amber-500/20 text-amber-300 group-hover:bg-amber-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(245,158,11,0.2)]">
-                                            <DollarSign className="w-6 h-6" strokeWidth={1.5} />
-                                        </div>
-                                        <div className="text-left">
-                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Caixa</span>
-                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-amber-200/70 transition-colors">Movimento Diário</span>
-                                        </div>
-                                    </button>
-                                    {/* Cobrança */}
-                                    <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/cobranca`)} className="group bg-gradient-to-br from-amber-600/12 via-orange-900/25 to-slate-900/60 hover:from-amber-500/22 hover:via-orange-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-amber-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(245,158,11,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40">
-                                        <div className="p-2.5 rounded-lg bg-amber-500/20 text-amber-300 group-hover:bg-amber-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(245,158,11,0.2)]">
-                                            <Megaphone className="w-6 h-6" strokeWidth={1.5} />
-                                        </div>
-                                        <div className="text-left">
-                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Cobrança</span>
-                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-amber-200/70 transition-colors">Inadimplência</span>
-                                        </div>
-                                    </button>
+                            {/* GRUPO 1: FINANCEIRO + PONTOS DE ATENÇÃO */}
+                            <div className="flex flex-col gap-6">
+                                {/* FINANCEIRO */}
+                                <div className="bg-black/20 border border-white/5 rounded-3xl p-6 backdrop-blur-md flex flex-col gap-4 shadow-xl">
+                                    <h2 className="text-sm font-bold text-amber-400 uppercase tracking-widest flex items-center gap-2 mb-2 px-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.8)]"></span>
+                                        Financeiro
+                                    </h2>
+                                    <div className="flex flex-col gap-3">
+                                        {/* Caixa */}
+                                        <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/financeiro/caixa`)} className="group bg-gradient-to-br from-amber-600/12 via-orange-900/25 to-slate-900/60 hover:from-amber-500/22 hover:via-orange-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-amber-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(245,158,11,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40">
+                                            <div className="p-2.5 rounded-lg bg-amber-500/20 text-amber-300 group-hover:bg-amber-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+                                                <DollarSign className="w-6 h-6" strokeWidth={1.5} />
+                                            </div>
+                                            <div className="text-left">
+                                                <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Caixa</span>
+                                                <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-amber-200/70 transition-colors">Movimento Diário</span>
+                                            </div>
+                                        </button>
+                                        {/* Cobrança */}
+                                        <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/cobranca`)} className="group bg-gradient-to-br from-amber-600/12 via-orange-900/25 to-slate-900/60 hover:from-amber-500/22 hover:via-orange-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-amber-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(245,158,11,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40">
+                                            <div className="p-2.5 rounded-lg bg-amber-500/20 text-amber-300 group-hover:bg-amber-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+                                                <Megaphone className="w-6 h-6" strokeWidth={1.5} />
+                                            </div>
+                                            <div className="text-left">
+                                                <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Cobrança</span>
+                                                <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-amber-200/70 transition-colors">Inadimplência</span>
+                                            </div>
+                                        </button>
+                                    </div>
+                                </div>
 
+                                {/* PONTOS DE ATENÇÃO */}
+                                <div className="bg-black/20 border border-white/5 rounded-3xl p-6 backdrop-blur-md flex flex-col gap-4 shadow-xl">
+                                    <h2 className="text-sm font-bold text-orange-400 uppercase tracking-widest flex items-center gap-2 mb-2 px-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]"></span>
+                                        Pontos de Atenção
+                                    </h2>
+                                    <div className="flex flex-col gap-3">
+                                        {/* Vendas Paradas */}
+                                        <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/vendas?mode=pendencias`)} className="group bg-gradient-to-br from-orange-600/12 via-orange-900/25 to-slate-900/60 hover:from-orange-500/22 hover:via-orange-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-orange-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(249,115,22,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/40">
+                                            <div className="p-2.5 rounded-lg bg-orange-500/20 text-orange-300 group-hover:bg-orange-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(249,115,22,0.2)]">
+                                                <AlertCircle className="w-6 h-6" strokeWidth={1.5} />
+                                            </div>
+                                            <div className="text-left flex-1">
+                                                <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Vendas Paradas</span>
+                                                <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-orange-200/70 transition-colors">Há +21 Dias</span>
+                                            </div>
+                                            {radar.vendasEmAberto > 0 && (
+                                                <span className="px-2.5 py-1 rounded-lg text-xs font-black bg-orange-500/25 text-orange-300 shadow-lg">{radar.vendasEmAberto}</span>
+                                            )}
+                                        </button>
+                                        {/* Clientes Sumidos */}
+                                        <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/clientes-inativos`)} className="group bg-gradient-to-br from-rose-600/12 via-rose-900/25 to-slate-900/60 hover:from-rose-500/22 hover:via-rose-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-rose-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(244,63,94,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40">
+                                            <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
+                                                <UserMinus className="w-6 h-6" strokeWidth={1.5} />
+                                            </div>
+                                            <div className="text-left flex-1">
+                                                <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Clientes Sumidos</span>
+                                                <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">+1 Ano Sem Comprar</span>
+                                            </div>
+                                            {radar.clientesInativos.length > 0 && (
+                                                <span className="px-2.5 py-1 rounded-lg text-xs font-black bg-rose-500/25 text-rose-300 shadow-lg">{radar.clientesInativos.length}</span>
+                                            )}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -371,26 +425,7 @@ export default function OperatorMenuLojaVazia({
                             </div>
                         </div>
 
-                        {/* Alerta de Vendas */}
-                        {radar.vendasEmAberto > 0 && (
-                            <Link
-                                href={`/dashboard/loja/${storeId}/vendas?mode=pendencias`}
-                                className="group w-full bg-gradient-to-r from-amber-500/12 to-orange-500/12 border border-amber-500/25 hover:border-amber-500/35 rounded-xl p-4 flex items-center justify-between cursor-pointer shadow-md backdrop-blur-md animate-in slide-in-from-bottom-3 duration-700 transition-all hover:scale-[1.005]"
-                            >
-                                <div className="flex items-center gap-4">
-                                    <div className="w-10 h-10 rounded-lg bg-amber-500/85 text-white flex items-center justify-center shadow-md shadow-amber-500/25 group-hover:scale-110 transition-transform">
-                                        <AlertCircle className="w-5 h-5" />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-amber-300 font-bold text-xs uppercase tracking-wider mb-0.5">Vendas Paradas há +21 dias</h3>
-                                        <span className="text-2xl font-black text-white drop-shadow-md">{radar.vendasEmAberto}</span>
-                                    </div>
-                                </div>
-                                <div className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-amber-500 group-hover:text-white transition-all">
-                                    <ChevronRight className="w-5 h-5 text-amber-200 group-hover:text-white" />
-                                </div>
-                            </Link>
-                        )}
+
                     </div>
 
                     {/* DIREITA: RADAR OPERACIONAL */}

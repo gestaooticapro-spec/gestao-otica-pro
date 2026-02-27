@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { Plus, ShoppingCart, Calendar, User, ArrowRight, AlertCircle, CheckCircle2, XCircle, Clock, RefreshCcw } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Plus, ShoppingCart, Calendar, User, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, XCircle, Clock, RefreshCcw } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import VendasFilter from '@/components/vendas/VendasFilter'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
@@ -16,6 +17,7 @@ interface VendasListInterfaceProps {
 
 export default function VendasListInterface({ vendas, storeId, mode, startDate, endDate }: VendasListInterfaceProps) {
     const { preference } = useBackgroundPreference()
+    const router = useRouter()
 
     const formatDate = (dateString: string) => {
         return new Date(dateString).toLocaleDateString('pt-BR', {
@@ -46,6 +48,14 @@ export default function VendasListInterface({ vendas, storeId, mode, startDate, 
 
             {/* Header Glass */}
             <div className="relative z-10 bg-white/5 backdrop-blur-xl border-b border-white/10 px-6 py-3 flex items-center gap-3 flex-shrink-0 shadow-2xl h-14">
+                <button
+                    onClick={() => router.back()}
+                    className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors text-sm font-medium group"
+                >
+                    <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+                    Voltar
+                </button>
+                <div className="h-6 w-px bg-white/10"></div>
                 <div className="p-2 bg-blue-500/20 text-blue-400 rounded-xl border border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.2)]">
                     <ShoppingCart className="h-5 w-5" />
                 </div>

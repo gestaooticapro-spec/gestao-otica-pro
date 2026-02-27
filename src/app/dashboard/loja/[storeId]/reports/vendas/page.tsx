@@ -1,6 +1,7 @@
 import { getRelatorioVendas } from '@/lib/actions/reports.actions'
 import TabelaVendas from '@/components/relatorios/TabelaVendas'
-import { Calendar, Filter } from 'lucide-react'
+import { Calendar, Filter, ArrowLeft } from 'lucide-react'
+import Link from 'next/link'
 
 export default async function RelatorioVendasPage({
   params,
@@ -23,44 +24,53 @@ export default async function RelatorioVendasPage({
   const dados = await getRelatorioVendas(storeId, dataInicio, dataFim)
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)] bg-gray-100 overflow-hidden">
-      
+    <div className="flex flex-col h-[calc(100vh-64px)] bg-slate-950 overflow-hidden">
+
       {/* HEADER DE FILTROS GLOBAIS */}
-      <div className="bg-white border-b border-gray-300 px-4 py-3 flex items-center justify-between shadow-sm flex-shrink-0">
-        <h1 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-            <Filter className="h-5 w-5 text-blue-600" />
+      <div className="bg-white/5 border-b border-white/10 px-4 py-3 flex items-center justify-between backdrop-blur-xl flex-shrink-0">
+        <div className="flex items-center gap-4">
+          <Link
+            href={`/dashboard/loja/${storeId}/reports`}
+            className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors text-sm font-medium group"
+          >
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+            Voltar
+          </Link>
+          <h1 className="text-lg font-bold text-white flex items-center gap-2">
+            <Filter className="h-5 w-5 text-blue-400" />
             Relatório de Vendas Detalhado
-        </h1>
+          </h1>
+        </div>
 
         {/* Formulário de Filtro de Data (Server Side Navigation) */}
         <form className="flex items-center gap-2">
-            <div className="flex items-center bg-gray-100 rounded border border-gray-300 px-2 py-1">
-                <Calendar className="h-4 w-4 text-gray-500 mr-2" />
-                <input 
-                    name="inicio" 
-                    type="date" 
-                    defaultValue={dataInicio} 
-                    className="bg-transparent border-none text-xs font-bold text-gray-700 focus:ring-0 p-0" 
-                    required
-                />
-                <span className="mx-2 text-gray-400">-</span>
-                <input 
-                    name="fim" 
-                    type="date" 
-                    defaultValue={dataFim} 
-                    className="bg-transparent border-none text-xs font-bold text-gray-700 focus:ring-0 p-0" 
-                    required
-                />
-            </div>
-            <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-bold shadow-sm">
-                FILTRAR
-            </button>
+          <div className="flex items-center bg-white/10 rounded border border-white/10 px-2 py-1 backdrop-blur-md">
+            <Calendar className="h-4 w-4 text-slate-400 mr-2" />
+            <input
+              name="inicio"
+              type="date"
+              defaultValue={dataInicio}
+              className="bg-transparent border-none text-xs font-bold text-slate-200 focus:ring-0 p-0 [color-scheme:dark]"
+              required
+            />
+            <span className="mx-2 text-slate-500">-</span>
+            <input
+              name="fim"
+              type="date"
+              defaultValue={dataFim}
+              className="bg-transparent border-none text-xs font-bold text-slate-200 focus:ring-0 p-0 [color-scheme:dark]"
+              required
+            />
+          </div>
+          <button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded text-xs font-bold shadow-lg shadow-blue-500/20 transition-colors">
+            FILTRAR
+          </button>
         </form>
       </div>
 
       {/* ÁREA DA TABELA */}
       <div className="flex-1 p-4 overflow-hidden">
-         <TabelaVendas data={dados} storeId={storeId} />
+        <TabelaVendas data={dados} storeId={storeId} />
       </div>
     </div>
   )
