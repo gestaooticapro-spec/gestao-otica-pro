@@ -45,7 +45,7 @@ export default function PaymentModal({
 
     // Estados do Pagamento
     const [valorPago, setValorPago] = useState(formatCurrency(valorTotal))
-    const [formaPagamento, setFormaPagamento] = useState('PIX')
+    const [formaPagamento, setFormaPagamento] = useState('PIX Remoto')
     const [parcelas, setParcelas] = useState(1)
     const [cpfNota, setCpfNota] = useState('')
 
@@ -205,7 +205,7 @@ export default function PaymentModal({
                                                     <div>
                                                         <label className={labelStyle}>Forma</label>
                                                         <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} className={`${inputStyle} cursor-pointer appearance-none`}>
-                                                            <option className="bg-slate-900 text-white">PIX</option><option className="bg-slate-900 text-white">Dinheiro</option><option className="bg-slate-900 text-white">Cartão Débito</option><option className="bg-slate-900 text-white">Cartão Crédito</option>
+                                                            <option className="bg-slate-900 text-white">PIX Remoto</option><option className="bg-slate-900 text-white">PIX na maquininha</option><option className="bg-slate-900 text-white">Dinheiro</option><option className="bg-slate-900 text-white">Cartão Débito</option><option className="bg-slate-900 text-white">Cartão Crédito</option>
                                                         </select>
                                                     </div>
                                                 </div>

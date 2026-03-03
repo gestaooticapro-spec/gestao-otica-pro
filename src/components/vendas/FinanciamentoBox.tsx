@@ -147,7 +147,7 @@ function RecebimentoModal({
                         <div>
                             <label className="block text-xs font-bold text-gray-500 mb-1">Forma</label>
                             <select value={forma} onChange={e => setForma(e.target.value)} className="w-full rounded-lg border-gray-300 focus:ring-amber-500 h-[46px]">
-                                <option>Dinheiro</option><option>PIX</option><option>Cartão Débito</option><option>Cartão Crédito</option>
+                                <option>Dinheiro</option><option>PIX Remoto</option><option>PIX na maquininha</option><option>Cartão Débito</option><option>Cartão Crédito</option>
                             </select>
                         </div>
                     </div>

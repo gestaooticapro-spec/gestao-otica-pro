@@ -65,7 +65,7 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
 
     const [valorTotalPagoStr, setValorTotalPagoStr] = useState('')
     const [valorJurosStr, setValorJurosStr] = useState('0,00')
-    const [forma, setForma] = useState('PIX')
+    const [forma, setForma] = useState('PIX Remoto')
     const [estrategia, setEstrategia] = useState('criar_pendencia')
 
     const [isAuthOpen, setIsAuthOpen] = useState(false)
@@ -329,7 +329,8 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
                                         <label className="block text-[10px] font-bold text-amber-500/80 mb-1.5 uppercase">Forma</label>
                                         <div className="relative">
                                             <select value={forma} onChange={e => setForma(e.target.value)} className="w-full h-11 bg-white/5 border border-white/10 rounded-lg shadow-sm focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 outline-none font-bold text-slate-200 cursor-pointer appearance-none px-4">
-                                                <option className="bg-slate-900">PIX</option>
+                                                <option className="bg-slate-900">PIX Remoto</option>
+                                                <option className="bg-slate-900">PIX na maquininha</option>
                                                 <option className="bg-slate-900">Dinheiro</option>
                                                 <option className="bg-slate-900">Cartão Débito</option>
                                                 <option className="bg-slate-900">Cartão Crédito</option>

@@ -71,7 +71,7 @@ export default function AddPagamentoForm({
   const [authedEmployee, setAuthedEmployee] = useState<Pick<Employee, 'id' | 'full_name'> | null>(null)
 
   const [valorPago, setValorPago] = useState(formatCurrency(valorRestante))
-  const [formaPagamento, setFormaPagamento] = useState('PIX')
+  const [formaPagamento, setFormaPagamento] = useState('PIX Remoto')
   const [parcelas, setParcelas] = useState(1)
   const [dataPagamento, setDataPagamento] = useState(getToday())
   const [obs, setObs] = useState<string>('')
@@ -175,7 +175,8 @@ export default function AddPagamentoForm({
                 onChange={(e) => setFormaPagamento(e.target.value)}
                 className={`${inputStyle} font-bold cursor-pointer text-[10px]`}
               >
-                <option value="PIX" className="bg-slate-800">PIX</option>
+                <option value="PIX Remoto" className="bg-slate-800">PIX Remoto</option>
+                <option value="PIX na maquininha" className="bg-slate-800">PIX na maquininha</option>
                 <option value="Dinheiro" className="bg-slate-800">Dinheiro</option>
                 <option value="Cartão Débito" className="bg-slate-800">Cartão Débito</option>
                 <option value="Cartão Crédito" className="bg-slate-800">Cartão Crédito</option>

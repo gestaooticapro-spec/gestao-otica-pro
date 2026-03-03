@@ -21,7 +21,7 @@ function SubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className="flex w-full justify-center items-center gap-2 rounded-md bg-blue-600 py-2 px-4 text-sm font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+      className="flex w-full justify-center items-center gap-2 rounded-md bg-blue-600/90 py-2 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-blue-500 disabled:opacity-50"
     >
       {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
       SALVAR MÉDICO
@@ -43,26 +43,26 @@ export default function AddOftalmoModal({ isOpen, onClose, onSuccess }: AddOftal
 
   if (!isOpen) return null
 
-  const inputStyle = "block w-full rounded-md border-gray-300 shadow-sm h-9 text-sm px-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
-  const labelStyle = "block text-xs font-bold text-gray-700 mb-1"
+  const inputStyle = "block w-full rounded-md border border-white/30 shadow-sm h-9 text-sm px-2 focus:ring-2 focus:ring-blue-400/70 focus:border-blue-300 bg-white/50 text-slate-900 placeholder:text-slate-500 backdrop-blur-sm"
+  const labelStyle = "block text-xs font-bold text-slate-700 mb-1"
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/55 backdrop-blur-md p-4" onClick={onClose}>
       <div
-        className="relative w-full max-w-md bg-gray-100 rounded-lg shadow-xl border border-gray-300 overflow-hidden"
+        className="relative w-full max-w-md rounded-lg border border-white/25 bg-white/35 shadow-2xl backdrop-blur-xl overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex justify-between items-center px-4 py-3 bg-white border-b border-gray-200">
-          <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-            <Stethoscope className="h-5 w-5 text-blue-600" />
+        <div className="flex justify-between items-center px-4 py-3 bg-white/20 border-b border-white/25">
+          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <Stethoscope className="h-5 w-5 text-blue-500" />
             Novo Médico
           </h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-red-500">
+          <button onClick={onClose} className="text-slate-500 transition hover:text-red-500">
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <form action={dispatch} ref={formRef} className="p-5 space-y-4">
+        <form action={dispatch} ref={formRef} className="p-5 space-y-4 bg-white/10">
           <div>
             <label className={labelStyle}>Nome Completo *</label>
             <input type="text" name="nome_completo" required className={inputStyle} placeholder="Ex: Dra. Maria Silva" />
@@ -74,7 +74,7 @@ export default function AddOftalmoModal({ isOpen, onClose, onSuccess }: AddOftal
           </div>
 
           {state.message && !state.success && (
-            <div className="p-2 bg-red-100 border border-red-200 text-red-700 text-xs rounded">
+            <div className="p-2 bg-red-500/15 border border-red-300/50 text-red-800 text-xs rounded backdrop-blur-sm">
               {state.message}
             </div>
           )}

@@ -368,11 +368,27 @@ export async function saveOftalmo(prevState: CatalogActionResult, formData: Form
       .insert({ ...data, tenant_id: profile.tenant_id })
       .select('*')
       .single()
-    if (insertError) throw insertError
+    if (insertError) {
+      if (insertError.code === '23505' && insertError.constraint === 'oftalmologistas_pkey') {
+        return {
+          success: false,
+          message: 'Conflito no ID automático de médicos. A sequence da tabela oftalmologistas está desalinhada.'
+        }
+      }
+      throw insertError
+    }
 
     revalidatePath(`/dashboard/loja/${profile.store_id}/cadastros`)
     return { success: true, message: 'Oftalmologista salvo!', data: created }
-  } catch (e: any) { return { success: false, message: e.message } }
+  } catch (e: any) {
+    if (e?.code === '23505' && e?.constraint === 'oftalmologistas_pkey') {
+      return {
+        success: false,
+        message: 'Conflito no ID automático de médicos. A sequence da tabela oftalmologistas está desalinhada.'
+      }
+    }
+    return { success: false, message: e.message }
+  }
 }
 
 export async function saveSupplier(prevState: CatalogActionResult, formData: FormData): Promise<CatalogActionResult> {
