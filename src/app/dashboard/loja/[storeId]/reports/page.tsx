@@ -12,7 +12,8 @@ import {
     Megaphone,
     ArrowRight,
     ArrowLeft,
-    LineChart
+    LineChart,
+    Stethoscope
 } from 'lucide-react';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 
@@ -94,6 +95,14 @@ export default function ReportsHubPage() {
             route: `/dashboard/loja/${storeId}/reports/vendas`,
             tone: 'from-slate-600/20 via-slate-800/30 to-slate-900/80 hover:border-slate-500/50 hover:shadow-slate-500/20',
             iconTone: 'text-slate-300 bg-slate-500/20 ring-slate-400/30'
+        },
+        {
+            title: 'Ranking de Médicos',
+            description: 'Ranking por receitas, faturamento e ticket médio dos oftalmologistas parceiros.',
+            icon: Stethoscope,
+            route: `/dashboard/loja/${storeId}/reports/medicos`,
+            tone: 'from-teal-600/20 via-teal-900/30 to-slate-900/80 hover:border-teal-500/50 hover:shadow-teal-500/20',
+            iconTone: 'text-teal-400 bg-teal-500/20 ring-teal-400/30'
         }
     ];
 

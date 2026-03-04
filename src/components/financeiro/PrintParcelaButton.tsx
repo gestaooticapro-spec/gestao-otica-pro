@@ -61,7 +61,7 @@ export function PrintParcelaButton({ parcelaId, variant = 'icon' }: PrintParcela
           doc.text('*** REIMPRESSÃO ***', COORDS.REIMPRESSAO.x, COORDS.REIMPRESSAO.y)
         }
 
-        doc.text(String(data.num_parcela), COORDS.NUM_PARCELA.x, COORDS.NUM_PARCELA.y)
+        doc.text(`${data.num_parcela}/${data.total_parcelas}`, COORDS.NUM_PARCELA.x, COORDS.NUM_PARCELA.y)
         doc.text(vencimentoTexto, COORDS.VENCIMENTO.x, COORDS.VENCIMENTO.y)
         doc.text((data.nome_cliente || '').substring(0, 45).toUpperCase(), COORDS.NOME.x, COORDS.NOME.y)
         doc.text('X', COORDS.CHECK_PRESTACAO.x, COORDS.CHECK_PRESTACAO.y)

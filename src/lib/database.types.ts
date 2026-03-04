@@ -12,7 +12,7 @@ export interface Database {
   public: {
     Tables: {
       // --- TABELAS DE CONFIGURAÇÃO & GESTÃO ---
-      
+
       profiles: {
         Row: {
           id: string
@@ -36,7 +36,7 @@ export interface Database {
           created_at?: string
         }
       }
-      
+
       employees: {
         Row: {
           id: number
@@ -223,29 +223,29 @@ export interface Database {
       // --- NOVA TABELA: CONTAS A RECEBER ---
       contas_a_receber: {
         Row: {
-            id: number
-            tenant_id: string | null
-            store_id: number
-            pagamento_id: number
-            data_prevista: string
-            valor_bruto: number
-            valor_taxa: number | null
-            valor_liquido: number
-            status: string
+          id: number
+          tenant_id: string | null
+          store_id: number
+          pagamento_id: number
+          data_prevista: string
+          valor_bruto: number
+          valor_taxa: number | null
+          valor_liquido: number
+          status: string
         }
         Insert: {
-            id?: number
-            tenant_id?: string | null
-            store_id: number
-            pagamento_id: number
-            data_prevista: string
-            valor_bruto: number
-            valor_taxa?: number | null
-            valor_liquido: number
-            status?: string
+          id?: number
+          tenant_id?: string | null
+          store_id: number
+          pagamento_id: number
+          data_prevista: string
+          valor_bruto: number
+          valor_taxa?: number | null
+          valor_liquido: number
+          status?: string
         }
         Update: {
-            [key: string]: any
+          [key: string]: any
         }
       }
 
@@ -330,7 +330,7 @@ export interface Database {
           cpf?: string | null
           is_spc?: boolean | null
           tenant_id?: string
-          [key: string]: any 
+          [key: string]: any
           ranking?: string
         }
         Update: {
@@ -340,7 +340,7 @@ export interface Database {
           ranking?: string
         }
       }
-      
+
       dependentes: {
         Row: {
           id: number
@@ -369,76 +369,76 @@ export interface Database {
       // --- NOVAS TABELAS DE ASSISTÊNCIA ---
       assistance_tickets: {
         Row: {
-            id: number
-            tenant_id: string | null
-            store_id: number
-            tracking_token: string // UUID
-            customer_id: number
-            venda_original_id: number | null
-            product_id: number | null
-            product_descricao: string
-            contato_usado: string | null
-            modalidade: string
-            status: string
-            status_publico: string | null
-            descricao_defeito: string | null
-            fotos_urls: Json | null
-            dt_abertura: string | null
-            dt_solicitacao_peca: string | null
-            dt_chegada_peca: string | null
-            dt_troca_cliente: string | null
-            dt_envio_fornecedor: string | null
-            dt_conclusao: string | null
-            rastreio_entrada: string | null
-            rastreio_saida: string | null
-            created_by_user_id: string | null
-            created_at: string | null
-            updated_at: string | null
+          id: number
+          tenant_id: string | null
+          store_id: number
+          tracking_token: string // UUID
+          customer_id: number
+          venda_original_id: number | null
+          product_id: number | null
+          product_descricao: string
+          contato_usado: string | null
+          modalidade: string
+          status: string
+          status_publico: string | null
+          descricao_defeito: string | null
+          fotos_urls: Json | null
+          dt_abertura: string | null
+          dt_solicitacao_peca: string | null
+          dt_chegada_peca: string | null
+          dt_troca_cliente: string | null
+          dt_envio_fornecedor: string | null
+          dt_conclusao: string | null
+          rastreio_entrada: string | null
+          rastreio_saida: string | null
+          created_by_user_id: string | null
+          created_at: string | null
+          updated_at: string | null
         }
         Insert: {
-            id?: number
-            tenant_id?: string | null
-            store_id: number
-            tracking_token?: string
-            customer_id: number
-            venda_original_id?: number | null
-            product_id?: number | null
-            product_descricao: string
-            contato_usado?: string | null
-            modalidade: string
-            status: string
-            status_publico?: string | null
-            descricao_defeito?: string | null
-            fotos_urls?: Json | null
-            created_by_user_id?: string | null
-            [key: string]: any
+          id?: number
+          tenant_id?: string | null
+          store_id: number
+          tracking_token?: string
+          customer_id: number
+          venda_original_id?: number | null
+          product_id?: number | null
+          product_descricao: string
+          contato_usado?: string | null
+          modalidade: string
+          status: string
+          status_publico?: string | null
+          descricao_defeito?: string | null
+          fotos_urls?: Json | null
+          created_by_user_id?: string | null
+          [key: string]: any
         }
         Update: {
-            [key: string]: any
+          [key: string]: any
         }
       }
 
       assistance_timeline: {
         Row: {
-            id: number
-            ticket_id: number
-            tenant_id: string | null
-            tipo: string
-            mensagem: string
-            usuario_id: string | null
-            created_at: string
+          id: number
+          ticket_id: number
+          tenant_id: string | null
+          tipo: string
+          mensagem: string
+          usuario_id: string | null
+          created_at: string
         }
         Insert: {
-            id?: number
-            ticket_id: number
-            tenant_id?: string | null
-            tipo: string
-            mensagem: string
-            usuario_id?: string | null
-            created_at?: string
+          id?: number
+          ticket_id: number
+          tenant_id?: string | null
+          tipo: string
+          mensagem: string
+          usuario_id?: string | null
+          created_at?: string
         }
         Update: {
-            [key: string]: any
+          [key: string]: any
         }
       }
 
@@ -668,6 +668,7 @@ export interface Database {
           clinica: string | null
           telefone: string | null
           email: string | null
+          comissao: number | null
         }
         Insert: { [key: string]: any }
         Update: { [key: string]: any }
@@ -718,7 +719,7 @@ export interface Database {
           tenant_id: string | null
           product_id: number | null
           variant_id: number | null
-          item_tipo: string | null 
+          item_tipo: string | null
           descricao: string | null
           quantidade: number
           valor_unitario: number
@@ -875,26 +876,26 @@ export interface Database {
           venda_id: number
           customer_id: number
           tenant_id?: string
-          [key: string]: any 
+          [key: string]: any
         }
         Update: {
-           [key: string]: any 
+          [key: string]: any
         }
       }
-      
+
       venda_itens_os_links: {
         Row: {
-            id: number
-            service_order_id: number
-            venda_item_id: number
-            uso_na_os: string
+          id: number
+          service_order_id: number
+          venda_item_id: number
+          uso_na_os: string
         }
         Insert: {
-            service_order_id: number
-            venda_item_id: number
-            uso_na_os: string
-            tenant_id?: string
-            store_id?: number
+          service_order_id: number
+          venda_item_id: number
+          uso_na_os: string
+          tenant_id?: string
+          store_id?: number
         }
         Update: {}
       }
@@ -1003,17 +1004,17 @@ export interface Database {
           [key: string]: any
         }
       }
-      
+
       // ... FIM TABLES
       post_sales: {
-          Row: { id: number; status: string }
-          Insert: { [key: string]: any }
-          Update: { [key: string]: any }
+        Row: { id: number; status: string }
+        Insert: { [key: string]: any }
+        Update: { [key: string]: any }
       }
       post_sales_interactions: {
-          Row: { id: number; tipo_contato: string; resumo: string; created_at: string }
-          Insert: { [key: string]: any }
-          Update: { [key: string]: any }
+        Row: { id: number; tipo_contato: string; resumo: string; created_at: string }
+        Insert: { [key: string]: any }
+        Update: { [key: string]: any }
       }
     }
     Views: {

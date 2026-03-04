@@ -33,6 +33,16 @@ export default function RelatorioPixPrint({
         return () => clearTimeout(timer)
     }, [])
 
+    const pixRemoto = data.filter(item => item.forma_pagamento?.toLowerCase().includes('remoto'))
+    const pixMaquina = data.filter(item => item.forma_pagamento?.toLowerCase().includes('maquininha') || item.forma_pagamento?.toLowerCase().includes('máquina'))
+    const pixOutros = data.filter(item => {
+        const p = item.forma_pagamento?.toLowerCase() || ''
+        return !p.includes('remoto') && !p.includes('maquininha') && !p.includes('máquina')
+    })
+
+    const totalRemoto = pixRemoto.reduce((acc, curr) => acc + Number(curr.valor_pago), 0)
+    const totalMaquina = pixMaquina.reduce((acc, curr) => acc + Number(curr.valor_pago), 0)
+    const totalOutros = pixOutros.reduce((acc, curr) => acc + Number(curr.valor_pago), 0)
     const total = data.reduce((acc, curr) => acc + Number(curr.valor_pago), 0)
 
     return (
@@ -81,38 +91,62 @@ export default function RelatorioPixPrint({
                                 <p className="text-sm mt-1">Período: {periodo}</p>
                             </div>
 
-                            {/* TABELA */}
-                            <table className="w-full text-left mb-6">
-                                <thead>
-                                    <tr className="border-b border-black">
-                                        <th className="py-2 w-24">Data</th>
-                                        <th className="py-2">Cliente / Descrição</th>
-                                        <th className="py-2 text-right w-32">Valor</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {data.length === 0 && (
-                                        <tr>
-                                            <td colSpan={3} className="py-4 text-center italic">Nenhum registro encontrado.</td>
-                                        </tr>
-                                    )}
-                                    {data.map((item) => (
-                                        <tr key={item.id} className="border-b border-gray-300">
-                                            <td className="py-1 align-top">
-                                                {formatDate(item.created_at)}
-                                            </td>
-                                            <td className="py-1 align-top uppercase">
-                                                {item.customer_name || 'Consumidor Final'}
-                                            </td>
-                                            <td className="py-1 text-right font-bold align-top">
-                                                {formatCurrency(item.valor_pago)}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                            {/* RENDERIZAÇÃO POR GRUPOS */}
+                            {data.length === 0 && (
+                                <table className="w-full text-left mb-6">
+                                    <thead>
+                                        <tr className="border-b border-black"><th className="py-2">Data</th><th>Cliente</th><th className="py-2 text-right">Valor</th></tr>
+                                    </thead>
+                                    <tbody><tr><td colSpan={3} className="py-4 text-center italic">Nenhum registro encontrado.</td></tr></tbody>
+                                </table>
+                            )}
 
-                            <div className="border-t-2 border-black font-bold text-lg flex justify-between pt-2 px-1 break-inside-avoid">
+                            {pixRemoto.length > 0 && (
+                                <div className="mb-6">
+                                    <h3 className="font-bold text-md border-b-2 border-black mb-2 pb-1 uppercase">PIX REMOTO (Direto na Conta)</h3>
+                                    <table className="w-full text-left">
+                                        <thead><tr className="border-b border-black text-xs"><th className="py-1 w-24">Data</th><th className="py-1">Cliente / Descrição</th><th className="py-1 text-right w-32">Valor</th></tr></thead>
+                                        <tbody>
+                                            {pixRemoto.map((item) => (
+                                                <tr key={item.id} className="border-b border-gray-300"><td className="py-1 align-top">{formatDate(item.created_at)}</td><td className="py-1 align-top uppercase">{item.customer_name || 'Consumidor Final'}</td><td className="py-1 text-right font-bold align-top">{formatCurrency(item.valor_pago)}</td></tr>
+                                            ))}
+                                            <tr><td colSpan={2} className="py-2 font-bold text-right">Subtotal PIX Remoto:</td><td className="py-2 font-bold text-right">{formatCurrency(totalRemoto)}</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+
+                            {pixMaquina.length > 0 && (
+                                <div className="mb-6">
+                                    <h3 className="font-bold text-md border-b-2 border-black mb-2 pb-1 uppercase">PIX NA MAQUININHA</h3>
+                                    <table className="w-full text-left">
+                                        <thead><tr className="border-b border-black text-xs"><th className="py-1 w-24">Data</th><th className="py-1">Cliente / Descrição</th><th className="py-1 text-right w-32">Valor</th></tr></thead>
+                                        <tbody>
+                                            {pixMaquina.map((item) => (
+                                                <tr key={item.id} className="border-b border-gray-300"><td className="py-1 align-top">{formatDate(item.created_at)}</td><td className="py-1 align-top uppercase">{item.customer_name || 'Consumidor Final'}</td><td className="py-1 text-right font-bold align-top">{formatCurrency(item.valor_pago)}</td></tr>
+                                            ))}
+                                            <tr><td colSpan={2} className="py-2 font-bold text-right">Subtotal PIX Maquininha:</td><td className="py-2 font-bold text-right">{formatCurrency(totalMaquina)}</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+
+                            {pixOutros.length > 0 && (
+                                <div className="mb-6">
+                                    <h3 className="font-bold text-md border-b-2 border-black mb-2 pb-1 uppercase">OUTROS PIX (Sem Classificação)</h3>
+                                    <table className="w-full text-left">
+                                        <thead><tr className="border-b border-black text-xs"><th className="py-1 w-24">Data</th><th className="py-1">Cliente / Descrição</th><th className="py-1 text-right w-32">Valor</th></tr></thead>
+                                        <tbody>
+                                            {pixOutros.map((item) => (
+                                                <tr key={item.id} className="border-b border-gray-300"><td className="py-1 align-top">{formatDate(item.created_at)}</td><td className="py-1 align-top uppercase">{item.customer_name || 'Consumidor Final'}</td><td className="py-1 text-right font-bold align-top">{formatCurrency(item.valor_pago)}</td></tr>
+                                            ))}
+                                            <tr><td colSpan={2} className="py-2 font-bold text-right">Subtotal Outros:</td><td className="py-2 font-bold text-right">{formatCurrency(totalOutros)}</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+
+                            <div className="border-t-4 border-black font-black text-xl flex justify-between pt-3 px-1 break-inside-avoid mt-4">
                                 <span>TOTAL GERAL:</span>
                                 <span>{formatCurrency(total)}</span>
                             </div>

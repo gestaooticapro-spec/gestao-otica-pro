@@ -8,11 +8,12 @@ import {
     adicionarMovimento,
     atualizarSaldoInicial,
     atualizarMovimento,
+    deletarMovimento,
     fecharCaixa
 } from '@/lib/actions/cashflow.actions'
 import {
     Wallet, ArrowUpCircle, ArrowDownCircle, Lock, Unlock,
-    Save, Loader2, DollarSign, AlertTriangle, TrendingUp, TrendingDown, Package, Printer, Pencil, HelpCircle, History
+    Save, Loader2, DollarSign, AlertTriangle, TrendingUp, TrendingDown, Package, Printer, Pencil, Trash2, HelpCircle, History
 } from 'lucide-react'
 import RelatorioDateModal from '@/components/modals/RelatorioDateModal'
 import HistoricoCaixaModal from './HistoricoCaixaModal'
@@ -99,6 +100,18 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
             if (res.success) {
                 setIsMovModalOpen(false)
                 setEditingMov(null)
+                router.refresh()
+            } else {
+                alert(res.message)
+            }
+        })
+    }
+
+    const handleDeletarMov = async (rawId: number) => {
+        if (!confirm('Tem certeza que deseja apagar este lançamento?')) return
+        startTransition(async () => {
+            const res = await deletarMovimento(rawId)
+            if (res.success) {
                 router.refresh()
             } else {
                 alert(res.message)
@@ -414,6 +427,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                     setEditingMov(mov)
                                     setIsMovModalOpen(true)
                                 }}
+                                onDelete={(rawId: number) => handleDeletarMov(rawId)}
                             />
                         </div>
                     </div>
@@ -458,6 +472,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                     setEditingMov(mov)
                                     setIsMovModalOpen(true)
                                 }}
+                                onDelete={(rawId: number) => handleDeletarMov(rawId)}
                             />
                         </div>
                     </div>
@@ -572,7 +587,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
 }
 
 // --- SUB-COMPONENTE DE TABELA (REUTILIZÁVEL) ---
-function TabelaMovimentos({ movimentos, emptyMessage, onEdit }: { movimentos: any[], emptyMessage: string, onEdit?: (mov: any) => void }) {
+function TabelaMovimentos({ movimentos, emptyMessage, onEdit, onDelete }: { movimentos: any[], emptyMessage: string, onEdit?: (mov: any) => void, onDelete?: (rawId: number) => void }) {
     if (movimentos.length === 0) {
         return (
             <div className="h-full flex flex-col items-center justify-center text-slate-500">
@@ -616,16 +631,30 @@ function TabelaMovimentos({ movimentos, emptyMessage, onEdit }: { movimentos: an
                             <td className={`px-4 py-2 font-black text-right w-36 text-xs ${isEntrada ? 'text-emerald-400' : 'text-red-400'}`}>
                                 {isEntrada ? '+' : '-'} {formatCurrency(mov.valor)}
                             </td>
-                            <td className="px-2 py-2 text-right w-16">
-                                {isManual && onEdit && rawId ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => onEdit({ ...mov, raw_id: rawId })}
-                                        className="text-[10px] bg-white/5 hover:bg-white/10 px-2 py-1 rounded font-bold text-slate-400 hover:text-white transition-colors"
-                                        title="Editar lançamento"
-                                    >
-                                        <Pencil className="h-3 w-3 inline" />
-                                    </button>
+                            <td className="px-2 py-2 text-right w-20">
+                                {isManual && rawId ? (
+                                    <div className="flex items-center justify-end gap-1">
+                                        {onEdit && (
+                                            <button
+                                                type="button"
+                                                onClick={() => onEdit({ ...mov, raw_id: rawId })}
+                                                className="text-[10px] bg-white/5 hover:bg-white/10 px-2 py-1 rounded font-bold text-slate-400 hover:text-white transition-colors"
+                                                title="Editar lançamento"
+                                            >
+                                                <Pencil className="h-3 w-3 inline" />
+                                            </button>
+                                        )}
+                                        {onDelete && (
+                                            <button
+                                                type="button"
+                                                onClick={() => onDelete(rawId)}
+                                                className="text-[10px] bg-white/5 hover:bg-red-500/20 px-2 py-1 rounded font-bold text-slate-400 hover:text-red-400 transition-colors"
+                                                title="Apagar lançamento"
+                                            >
+                                                <Trash2 className="h-3 w-3 inline" />
+                                            </button>
+                                        )}
+                                    </div>
                                 ) : (
                                     <span className="text-[9px] text-slate-600">-</span>
                                 )}

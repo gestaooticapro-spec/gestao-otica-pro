@@ -29,7 +29,7 @@ export async function getDadosReciboParcela(parcelaId: number) {
     // PASSO 2: Busca o Financiamento (Pai)
     // ------------------------------------------------------------------
     let vendaId = 0
-    let finalCustomerId = parcela.customer_id 
+    let finalCustomerId = parcela.customer_id
 
     if (parcela.financiamento_id) {
       const { data: financRaw, error: erroFinanc } = await supabase
@@ -39,17 +39,25 @@ export async function getDadosReciboParcela(parcelaId: number) {
         .single()
 
       if (financRaw) {
-        // CORREÇÃO DE TIPAGEM
         const financ = financRaw as any
-        
+
         vendaId = financ.venda_id
-        
-        // Se o financiamento tem customer_id (e sabemos que tem), priorizamos ele
+
         if (financ.customer_id) {
-           finalCustomerId = financ.customer_id
+          finalCustomerId = financ.customer_id
         }
         console.log(`[PRINT_DEBUG] 2. Financiamento OK. Venda: ${vendaId} | ClienteID: ${finalCustomerId}`)
       }
+    }
+
+    // Conta total de parcelas do mesmo financiamento
+    let totalParcelas = 1
+    if (parcela.financiamento_id) {
+      const { count } = await supabase
+        .from('financiamento_parcelas')
+        .select('*', { count: 'exact', head: true })
+        .eq('financiamento_id', parcela.financiamento_id)
+      totalParcelas = count || 1
     }
 
     // ------------------------------------------------------------------
@@ -63,11 +71,11 @@ export async function getDadosReciboParcela(parcelaId: number) {
         .select('full_name')
         .eq('id', finalCustomerId)
         .single()
-      
+
       if (clienteRaw) {
         // CORREÇÃO DE TIPAGEM
         const cliente = clienteRaw as any
-        
+
         nomeCliente = cliente.full_name
         console.log(`[PRINT_DEBUG] 3. Cliente encontrado: ${nomeCliente}`)
       } else {
@@ -82,11 +90,11 @@ export async function getDadosReciboParcela(parcelaId: number) {
       success: true,
       data: {
         num_parcela: parcela.numero_parcela,
+        total_parcelas: totalParcelas,
         valor: parcela.valor_parcela,
         vencimento: parcela.data_vencimento,
-        // Fallback seguro se data_pagamento for null
         pagamento: parcela.data_pagamento || new Date().toISOString(),
-        is_reimpressao: false, 
+        is_reimpressao: false,
         nome_cliente: nomeCliente,
         venda_id: vendaId
       }

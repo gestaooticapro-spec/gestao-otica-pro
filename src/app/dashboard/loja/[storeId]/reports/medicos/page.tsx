@@ -1,0 +1,74 @@
+import { getRankingMedicos } from '@/lib/actions/reports.actions'
+import RankingMedicosClient from './RankingMedicosClient'
+import { Calendar, Filter, ArrowLeft, Stethoscope } from 'lucide-react'
+import Link from 'next/link'
+
+export default async function RankingMedicosPage({
+    params,
+    searchParams,
+}: {
+    params: { storeId: string }
+    searchParams: { inicio?: string; fim?: string }
+}) {
+    const storeId = parseInt(params.storeId, 10)
+
+    const hoje = new Date()
+    const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().split('T')[0]
+    const fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).toISOString().split('T')[0]
+
+    const dataInicio = searchParams.inicio || inicioMes
+    const dataFim = searchParams.fim || fimMes
+
+    const dados = await getRankingMedicos(storeId, dataInicio, dataFim)
+
+    return (
+        <div className="flex flex-col h-[calc(100vh-64px)] bg-slate-950 overflow-hidden">
+
+            {/* HEADER */}
+            <div className="bg-white/5 border-b border-white/10 px-4 py-3 flex items-center justify-between backdrop-blur-xl flex-shrink-0">
+                <div className="flex items-center gap-4">
+                    <Link
+                        href={`/dashboard/loja/${storeId}/reports`}
+                        className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors text-sm font-medium group"
+                    >
+                        <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+                        Voltar
+                    </Link>
+                    <h1 className="text-lg font-bold text-white flex items-center gap-2">
+                        <Stethoscope className="h-5 w-5 text-teal-400" />
+                        Ranking de Médicos Parceiros
+                    </h1>
+                </div>
+
+                <form className="flex items-center gap-2">
+                    <div className="flex items-center bg-white/10 rounded border border-white/10 px-2 py-1 backdrop-blur-md">
+                        <Calendar className="h-4 w-4 text-slate-400 mr-2" />
+                        <input
+                            name="inicio"
+                            type="date"
+                            defaultValue={dataInicio}
+                            className="bg-transparent border-none text-xs font-bold text-slate-200 focus:ring-0 p-0 [color-scheme:dark]"
+                            required
+                        />
+                        <span className="mx-2 text-slate-500">-</span>
+                        <input
+                            name="fim"
+                            type="date"
+                            defaultValue={dataFim}
+                            className="bg-transparent border-none text-xs font-bold text-slate-200 focus:ring-0 p-0 [color-scheme:dark]"
+                            required
+                        />
+                    </div>
+                    <button type="submit" className="bg-teal-600 hover:bg-teal-500 text-white px-3 py-1 rounded text-xs font-bold shadow-lg shadow-teal-500/20 transition-colors">
+                        FILTRAR
+                    </button>
+                </form>
+            </div>
+
+            {/* CONTENT */}
+            <div className="flex-1 p-4 overflow-auto">
+                <RankingMedicosClient data={dados} />
+            </div>
+        </div>
+    )
+}

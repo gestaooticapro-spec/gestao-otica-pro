@@ -19,6 +19,7 @@ type Dependente = Database['public']['Tables']['dependentes']['Row'];
 type ActiveTab = 'principal' | 'detalhes' | 'referencias' | 'dependentes';
 
 // --- HELPERS ---
+const safeStr = (v: any): string => { if (v == null) return ''; if (typeof v === 'object') return JSON.stringify(v) !== '{}' ? Object.values(v).filter(Boolean).join(' ') : ''; return String(v); };
 const validaCPF = (strCPF: string) => {
     if (!strCPF) return true;
     const cpf = strCPF.replace(/[^\d]+/g, '');
@@ -219,7 +220,7 @@ export default function StoreClientPage() {
         setPhone(maskPhone(currentCustomer?.phone ?? ''));
         setFoneMovel(maskPhone(currentCustomer?.fone_movel ?? ''));
         setEmail(currentCustomer?.email ?? '');
-        setComercialTrabalho(currentCustomer?.comercial_trabalho ?? '');
+        setComercialTrabalho(safeStr(currentCustomer?.comercial_trabalho));
         setComercialCargo(currentCustomer?.comercial_cargo ?? '');
         setComercialEndereco(currentCustomer?.comercial_endereco ?? '');
         setComercialFone(maskPhone(currentCustomer?.comercial_fone ?? ''));
@@ -581,7 +582,7 @@ function AbaPrincipal({ state, handlers, isSaving, inputStyle }: any) {
             </div>
             <div className="col-span-4">
                 <label className={lbl}>Complemento</label>
-                <input name="complemento" type="text" value={state.complemento} onChange={handlers.setComplemento} className={inputStyle} disabled={isSaving} />
+                <input name="complemento" type="text" value={state.complemento} onChange={e => handlers.setComplemento(e.target.value)} className={inputStyle} disabled={isSaving} />
             </div>
             <div className="col-span-3">
                 <label className={lbl}>Cidade</label>
@@ -629,11 +630,11 @@ function AbaDetalhes({ state, handlers, isSaving, inputStyle }: any) {
             </div>
             <div className="col-span-6">
                 <label className={lbl}>Naturalidade</label>
-                <input name="naturalidade" type="text" value={state.naturalidade} onChange={handlers.setNaturalidade} className={inputStyle} disabled={isSaving} />
+                <input name="naturalidade" type="text" value={state.naturalidade} onChange={e => handlers.setNaturalidade(e.target.value)} className={inputStyle} disabled={isSaving} />
             </div>
             <div className="col-span-6">
                 <label className={lbl}>Estado Civil</label>
-                <input name="estado_civil" type="text" value={state.estadoCivil} onChange={handlers.setEstadoCivil} className={inputStyle} disabled={isSaving} />
+                <input name="estado_civil" type="text" value={state.estadoCivil} onChange={e => handlers.setEstadoCivil(e.target.value)} className={inputStyle} disabled={isSaving} />
             </div>
 
             <h3 className="col-span-full font-bold text-[10px] text-indigo-400 border-b border-white/5 pb-1 mb-1 mt-3 uppercase tracking-widest flex items-center gap-2 opacity-80">
@@ -641,11 +642,11 @@ function AbaDetalhes({ state, handlers, isSaving, inputStyle }: any) {
             </h3>
             <div className="col-span-4">
                 <label className={lbl}>Nome</label>
-                <input name="conjuge_nome" type="text" value={state.conjugeNome} onChange={handlers.setConjugeNome} className={inputStyle} disabled={isSaving} />
+                <input name="conjuge_nome" type="text" value={state.conjugeNome} onChange={e => handlers.setConjugeNome(e.target.value)} className={inputStyle} disabled={isSaving} />
             </div>
             <div className="col-span-2">
                 <label className={lbl}>Nasc.</label>
-                <input name="conjuge_nascimento" type="date" value={state.conjugeNascimento} onChange={handlers.setConjugeNascimento} className={inputStyle} disabled={isSaving} />
+                <input name="conjuge_nascimento" type="date" value={state.conjugeNascimento} onChange={e => handlers.setConjugeNascimento(e.target.value)} className={inputStyle} disabled={isSaving} />
             </div>
             <div className="col-span-2">
                 <label className={lbl}>Fone</label>
@@ -653,7 +654,7 @@ function AbaDetalhes({ state, handlers, isSaving, inputStyle }: any) {
             </div>
             <div className="col-span-4">
                 <label className={lbl}>Trab. Cônjuge</label>
-                <input name="conjuge_trabalho" type="text" value={state.conjugeTrabalho} onChange={handlers.setConjugeTrabalho} className={inputStyle} disabled={isSaving} />
+                <input name="conjuge_trabalho" type="text" value={state.conjugeTrabalho} onChange={e => handlers.setConjugeTrabalho(e.target.value)} className={inputStyle} disabled={isSaving} />
             </div>
 
             <h3 className="col-span-full font-bold text-[10px] text-indigo-400 border-b border-white/5 pb-1 mb-1 mt-3 uppercase tracking-widest flex items-center gap-2 opacity-80">
@@ -661,11 +662,11 @@ function AbaDetalhes({ state, handlers, isSaving, inputStyle }: any) {
             </h3>
             <div className="col-span-4">
                 <label className={lbl}>Empresa</label>
-                <input name="comercial_trabalho" type="text" value={state.comercialTrabalho} onChange={handlers.setComercialTrabalho} className={inputStyle} disabled={isSaving} />
+                <input name="comercial_trabalho" type="text" value={state.comercialTrabalho} onChange={e => handlers.setComercialTrabalho(e.target.value)} className={inputStyle} disabled={isSaving} />
             </div>
             <div className="col-span-3">
                 <label className={lbl}>Cargo</label>
-                <input name="comercial_cargo" type="text" value={state.comercialCargo} onChange={handlers.setComercialCargo} className={inputStyle} disabled={isSaving} />
+                <input name="comercial_cargo" type="text" value={state.comercialCargo} onChange={e => handlers.setComercialCargo(e.target.value)} className={inputStyle} disabled={isSaving} />
             </div>
             <div className="col-span-2">
                 <label className={lbl}>Renda</label>
@@ -677,7 +678,7 @@ function AbaDetalhes({ state, handlers, isSaving, inputStyle }: any) {
             </div>
             <div className="col-span-12">
                 <label className={lbl}>Endereço Coml.</label>
-                <input name="comercial_endereco" type="text" value={state.comercialEndereco} onChange={handlers.setComercialEndereco} className={inputStyle} disabled={isSaving} />
+                <input name="comercial_endereco" type="text" value={state.comercialEndereco} onChange={e => handlers.setComercialEndereco(e.target.value)} className={inputStyle} disabled={isSaving} />
             </div>
         </div>
     );

@@ -273,3 +273,180 @@ export async function pagarComissoesEmLote(
         return { success: false, message: e.message }
     }
 }
+
+// ================================================================
+// COMISSÃO DE MÉDICOS PARCEIROS
+// ================================================================
+
+export async function calcularComissaoMedico(vendaId: number) {
+    const supabase = createAdminClient()
+
+    try {
+        // Busca a venda com suas OS vinculadas
+        const { data: venda, error } = await (supabase
+            .from('vendas') as any)
+            .select(`
+                id, valor_final, store_id, tenant_id, data_fechamento,
+                service_orders ( oftalmologista_id ),
+                customers ( full_name )
+            `)
+            .eq('id', vendaId)
+            .single()
+
+        if (error || !venda) return
+
+        // Pega o primeiro oftalmologista_id das OS da venda
+        const oss = venda.service_orders || []
+        const oftalmoId = oss.find((os: any) => os.oftalmologista_id)?.oftalmologista_id
+        if (!oftalmoId) return
+
+        // Busca a taxa de comissão do médico
+        const { data: medico } = await (supabase
+            .from('oftalmologistas') as any)
+            .select('id, comissao')
+            .eq('id', oftalmoId)
+            .single()
+
+        if (!medico || !medico.comissao || medico.comissao <= 0) return
+
+        const valorComissao = parseFloat((venda.valor_final * (medico.comissao / 100)).toFixed(2))
+        if (valorComissao <= 0) return
+
+        // Remove comissão anterior do médico para esta venda (reprocessamento)
+        await (supabase.from('commissions') as any)
+            .delete()
+            .eq('venda_id', vendaId)
+            .eq('oftalmologista_id', oftalmoId)
+
+        const dataComissao = venda.data_fechamento || new Date().toISOString()
+
+        await (supabase.from('commissions') as any).insert({
+            tenant_id: venda.tenant_id,
+            store_id: venda.store_id,
+            oftalmologista_id: oftalmoId,
+            venda_id: vendaId,
+            amount: valorComissao,
+            status: 'Pendente',
+            created_at: dataComissao
+        })
+
+    } catch (e: any) {
+        console.error("[calcularComissaoMedico] Erro silencioso:", e)
+    }
+}
+
+export type ResumoComissaoMedico = {
+    oftalmologista_id: number
+    nome_medico: string
+    total_vendas: number
+    comissao_pendente: number
+    comissao_paga: number
+    detalhes: {
+        id: number
+        data: string
+        venda_id: number
+        cliente_nome: string
+        valor_venda: number
+        valor_comissao: number
+        status: string
+    }[]
+}
+
+export async function getRelatorioComissoesMedicos(storeId: number, inicio: string, fim: string) {
+    const supabase = createAdminClient()
+
+    const dataInicio = `${inicio}T00:00:00`
+    const dataFim = `${fim}T23:59:59`
+
+    try {
+        const { data: comissoes, error } = await (supabase
+            .from('commissions') as any)
+            .select(`
+                id, amount, status, created_at, venda_id, oftalmologista_id,
+                oftalmologistas ( id, nome_completo ),
+                vendas ( valor_final, data_fechamento, customer_id, customers ( full_name ) )
+            `)
+            .eq('store_id', storeId)
+            .not('oftalmologista_id', 'is', null)
+            .neq('status', 'Cancelado')
+            .order('created_at', { ascending: false })
+
+        if (error) throw error
+
+        // Filtra pelo período usando data_fechamento da venda
+        const filtradas = (comissoes || []).filter((c: any) => {
+            const dataRef = c.vendas?.data_fechamento || c.created_at
+            return dataRef >= dataInicio && dataRef <= dataFim
+        })
+
+        const mapa = new Map<number, ResumoComissaoMedico>()
+
+        filtradas.forEach((c: any) => {
+            const medId = c.oftalmologista_id
+            const medNome = c.oftalmologistas?.nome_completo || 'Médico Desconhecido'
+            const valor = c.amount
+            const isPago = c.status === 'Pago'
+            const clienteNome = c.vendas?.customers?.full_name || 'Cliente N/A'
+
+            if (!mapa.has(medId)) {
+                mapa.set(medId, {
+                    oftalmologista_id: medId,
+                    nome_medico: medNome,
+                    total_vendas: 0,
+                    comissao_pendente: 0,
+                    comissao_paga: 0,
+                    detalhes: []
+                })
+            }
+
+            const resumo = mapa.get(medId)!
+            if (isPago) resumo.comissao_paga += valor
+            else resumo.comissao_pendente += valor
+
+            resumo.total_vendas += (c.vendas?.valor_final || 0)
+
+            resumo.detalhes.push({
+                id: c.id,
+                data: c.vendas?.data_fechamento || c.created_at,
+                venda_id: c.venda_id,
+                cliente_nome: clienteNome,
+                valor_venda: c.vendas?.valor_final || 0,
+                valor_comissao: valor,
+                status: c.status
+            })
+        })
+
+        return { success: true, data: Array.from(mapa.values()) }
+
+    } catch (e: any) {
+        console.error("[getRelatorioComissoesMedicos] Erro:", e)
+        return { success: false, message: e.message }
+    }
+}
+
+export async function pagarComissoesMedicoEmLote(
+    storeId: number,
+    oftalmoId: number,
+    idsComissoes: number[]
+) {
+    const supabase = createAdminClient()
+
+    try {
+        const { error } = await (supabase
+            .from('commissions') as any)
+            .update({
+                status: 'Pago',
+                updated_at: new Date().toISOString()
+            })
+            .in('id', idsComissoes)
+            .eq('status', 'Pendente')
+
+        if (error) throw error
+
+        revalidatePath(`/dashboard/loja/${storeId}/cadastros`)
+        return { success: true, message: 'Pagamento registrado com sucesso!' }
+
+    } catch (e: any) {
+        return { success: false, message: e.message }
+    }
+}

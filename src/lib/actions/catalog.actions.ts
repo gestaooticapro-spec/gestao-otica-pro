@@ -115,6 +115,7 @@ const OftalmoSchema = z.object({
   telefone: z.string().optional().nullable(),
   email: z.string().email().optional().or(z.literal('')).nullable(),
   clinica: z.string().optional().nullable(),
+  comissao: z.coerce.number().optional().nullable(),
 })
 
 const SupplierSchema = z.object({
@@ -347,11 +348,11 @@ export async function saveOftalmo(prevState: CatalogActionResult, formData: Form
       telefone: nullIfEmpty(formData.get('telefone')),
       email: nullIfEmpty(formData.get('email')),
       clinica: nullIfEmpty(formData.get('clinica')),
+      comissao: nullIfEmpty(formData.get('comissao')),
     })
     if (!validated.success) return { success: false, message: 'Erro validação', errors: validated.error.flatten().fieldErrors }
     const { id, ...data } = validated.data
 
-    // Cast as any aqui também por garantia
     if (id) {
       const { data: saved, error } = await (supabaseAdmin.from('oftalmologistas') as any)
         .update(data)
@@ -364,30 +365,43 @@ export async function saveOftalmo(prevState: CatalogActionResult, formData: Form
       return { success: true, message: 'Oftalmologista salvo!', data: saved }
     }
 
+    const insertPayload = { ...data, tenant_id: profile.tenant_id }
+
     const { data: created, error: insertError } = await (supabaseAdmin.from('oftalmologistas') as any)
-      .insert({ ...data, tenant_id: profile.tenant_id })
+      .insert(insertPayload)
       .select('*')
       .single()
-    if (insertError) {
-      if (insertError.code === '23505' && insertError.constraint === 'oftalmologistas_pkey') {
-        return {
-          success: false,
-          message: 'Conflito no ID automático de médicos. A sequence da tabela oftalmologistas está desalinhada.'
-        }
-      }
-      throw insertError
+
+    if (insertError && insertError.code === '23505') {
+      // Sequence desalinhada após migração de dados — auto-corrige
+      console.warn('[saveOftalmo] Sequence desalinhada detectada. Corrigindo automaticamente...')
+
+      const { data: maxRow } = await (supabaseAdmin.from('oftalmologistas') as any)
+        .select('id')
+        .order('id', { ascending: false })
+        .limit(1)
+        .single()
+
+      const nextId = (maxRow?.id || 0) + 1
+
+      const { data: retried, error: retryError } = await (supabaseAdmin.from('oftalmologistas') as any)
+        .insert({ ...insertPayload, id: nextId })
+        .select('*')
+        .single()
+
+      if (retryError) throw retryError
+
+      revalidatePath(`/dashboard/loja/${profile.store_id}/cadastros`)
+      return { success: true, message: 'Oftalmologista salvo! (ID corrigido automaticamente)', data: retried }
     }
+
+    if (insertError) throw insertError
 
     revalidatePath(`/dashboard/loja/${profile.store_id}/cadastros`)
     return { success: true, message: 'Oftalmologista salvo!', data: created }
   } catch (e: any) {
-    if (e?.code === '23505' && e?.constraint === 'oftalmologistas_pkey') {
-      return {
-        success: false,
-        message: 'Conflito no ID automático de médicos. A sequence da tabela oftalmologistas está desalinhada.'
-      }
-    }
-    return { success: false, message: e.message }
+    console.error('[saveOftalmo] Erro:', e)
+    return { success: false, message: e.message || 'Erro ao salvar oftalmologista' }
   }
 }
 

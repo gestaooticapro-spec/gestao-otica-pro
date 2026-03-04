@@ -10,6 +10,7 @@ export interface VendaRelatorioItem {
   data_fechamento: string | null
   cliente: string
   vendedor: string
+  medico: string
   itens_resumo: string
   status: string
   valor_total: number
@@ -49,7 +50,7 @@ export async function getRelatorioVendas(
 
   const vendaIds = vendas.map((v: any) => v.id)
 
-  const [itensRes, pagamentosRes] = await Promise.all([
+  const [itensRes, pagamentosRes, osRes] = await Promise.all([
     supabase
       .from('venda_itens')
       .select('venda_id, descricao, quantidade')
@@ -58,25 +59,36 @@ export async function getRelatorioVendas(
       .from('pagamentos')
       .select('venda_id, valor_pago')
       .in('venda_id', vendaIds),
+    (supabase.from('service_orders') as any)
+      .select('venda_id, oftalmologista_id, oftalmologistas(nome_completo)')
+      .in('venda_id', vendaIds),
   ])
 
   if (itensRes.error) throw new Error(itensRes.error.message)
   if (pagamentosRes.error) throw new Error(pagamentosRes.error.message)
 
   const itensPorVenda = new Map<number, string[]>()
-  ;(itensRes.data || []).forEach((item: any) => {
-    const atual = itensPorVenda.get(item.venda_id) || []
-    const qtd = Number(item.quantidade || 0)
-    const desc = String(item.descricao || '').trim()
-    if (desc) atual.push(`${qtd > 0 ? `${qtd}x ` : ''}${desc}`)
-    itensPorVenda.set(item.venda_id, atual)
-  })
+    ; (itensRes.data || []).forEach((item: any) => {
+      const atual = itensPorVenda.get(item.venda_id) || []
+      const qtd = Number(item.quantidade || 0)
+      const desc = String(item.descricao || '').trim()
+      if (desc) atual.push(`${qtd > 0 ? `${qtd}x ` : ''}${desc}`)
+      itensPorVenda.set(item.venda_id, atual)
+    })
 
   const pagoPorVenda = new Map<number, number>()
-  ;(pagamentosRes.data || []).forEach((pag: any) => {
-    const atual = pagoPorVenda.get(pag.venda_id) || 0
-    pagoPorVenda.set(pag.venda_id, atual + Number(pag.valor_pago || 0))
-  })
+    ; (pagamentosRes.data || []).forEach((pag: any) => {
+      const atual = pagoPorVenda.get(pag.venda_id) || 0
+      pagoPorVenda.set(pag.venda_id, atual + Number(pag.valor_pago || 0))
+    })
+
+  // Mapa de médico por venda (pega o primeiro OS com oftalmologista)
+  const medicoPorVenda = new Map<number, string>()
+    ; (osRes.data || []).forEach((os: any) => {
+      if (os.oftalmologista_id && os.oftalmologistas?.nome_completo && !medicoPorVenda.has(os.venda_id)) {
+        medicoPorVenda.set(os.venda_id, os.oftalmologistas.nome_completo)
+      }
+    })
 
   return vendas.map((v: any) => {
     const valorPago = pagoPorVenda.get(v.id) || 0
@@ -87,6 +99,7 @@ export async function getRelatorioVendas(
       data_fechamento: v.data_fechamento || null,
       cliente: v.customers?.full_name || 'Consumidor Final',
       vendedor: v.employees?.full_name || '-',
+      medico: medicoPorVenda.get(v.id) || '-',
       itens_resumo: (itensPorVenda.get(v.id) || []).join(' | ') || '-',
       status: v.status,
       valor_total: Number(v.valor_total || 0),
@@ -794,4 +807,83 @@ export async function getPosVendaMetrics(storeId: number, monthStr: string, year
     avaliacoesDistribuidas,
     timelineData
   };
+}
+
+// ================================================================
+// 10. RELATÓRIO: RANKING DE MÉDICOS
+// ================================================================
+
+export interface MedicoRankingItem {
+  oftalmologista_id: number
+  nome: string
+  clinica: string | null
+  total_receitas: number
+  total_vendido: number
+  ticket_medio: number
+}
+
+export async function getRankingMedicos(
+  storeId: number,
+  dataInicio: string,
+  dataFim: string
+): Promise<MedicoRankingItem[]> {
+  const supabase = createAdminClient()
+
+  const inicioIso = startOfDay(new Date(dataInicio)).toISOString()
+  const fimIso = endOfDay(new Date(dataFim)).toISOString()
+
+  const { data: osRaw, error: osErr } = await (supabase.from('service_orders') as any)
+    .select(`
+      id,
+      oftalmologista_id,
+      venda_id,
+      oftalmologistas ( nome_completo, clinica ),
+      vendas ( valor_final, status )
+    `)
+    .eq('store_id', storeId)
+    .not('oftalmologista_id', 'is', null)
+    .gte('created_at', inicioIso)
+    .lte('created_at', fimIso)
+
+  if (osErr) {
+    console.error("[getRankingMedicos] Erro:", osErr)
+    return []
+  }
+
+  const oss = (osRaw || []) as any[]
+
+  const mapa = new Map<number, {
+    nome: string
+    clinica: string | null
+    receitas: number
+    valorVendido: number
+    vendasContadas: Set<number>
+  }>()
+
+  oss.forEach((os: any) => {
+    const medId = os.oftalmologista_id
+    const nome = os.oftalmologistas?.nome_completo || 'Desconhecido'
+    const clinica = os.oftalmologistas?.clinica || null
+
+    if (!mapa.has(medId)) {
+      mapa.set(medId, { nome, clinica, receitas: 0, valorVendido: 0, vendasContadas: new Set() })
+    }
+
+    const entry = mapa.get(medId)!
+    entry.receitas++
+
+    if (os.vendas?.status === 'Fechada' && os.venda_id && !entry.vendasContadas.has(os.venda_id)) {
+      entry.valorVendido += Number(os.vendas.valor_final || 0)
+      entry.vendasContadas.add(os.venda_id)
+    }
+  })
+
+  return Array.from(mapa.entries()).map(([id, entry]) => ({
+    oftalmologista_id: id,
+    nome: entry.nome,
+    clinica: entry.clinica,
+    total_receitas: entry.receitas,
+    total_vendido: entry.valorVendido,
+    ticket_medio: entry.receitas > 0 ? parseFloat((entry.valorVendido / entry.receitas).toFixed(2)) : 0
+  }))
 }

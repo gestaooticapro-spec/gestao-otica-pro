@@ -176,6 +176,18 @@ export async function atualizarMovimento(prevState: any, formData: FormData) {
     return { success: true, message: 'Atualizado.' }
 }
 
+export async function deletarMovimento(movimentoId: number) {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { success: false, message: 'Sessão expirada.' }
+    const profile = await getProfileByAdmin(user.id) as any
+    const supabaseAdmin = createAdminClient()
+    const { error } = await (supabaseAdmin.from('caixa_movimentacoes') as any).delete().eq('id', movimentoId)
+    if (error) return { success: false, message: error.message }
+    revalidatePath(`/dashboard/loja/${profile.store_id}/financeiro/caixa`)
+    return { success: true, message: 'Lançamento excluído.' }
+}
+
 // 4. FECHAR CAIXA
 export async function fecharCaixa(prevState: any, formData: FormData) {
     const supabase = createClient(); const { data: { user } } = await supabase.auth.getUser()

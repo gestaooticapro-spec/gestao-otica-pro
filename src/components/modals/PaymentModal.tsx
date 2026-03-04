@@ -3,13 +3,14 @@
 import { useState, useTransition } from 'react'
 import { X, CheckCircle, Printer, Plus, CreditCard, FileText, Loader2, Search } from 'lucide-react'
 import FinanciamentoBox from '@/components/vendas/FinanciamentoBox'
-import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal' // <--- 1. Importação do Modal de Auth
+import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import {
     finalizarVendaExpress,
     criarVendaParcialCarnê,
     searchCustomersByName,
     type CustomerSearchResult
 } from '@/lib/actions/vendas.actions'
+import { getReceiptPDFBase64 } from '@/lib/actions/print-remote'
 import { type CartItem } from '@/components/vendas/PdvExpressInterface'
 import { Database } from '@/lib/database.types'
 
@@ -160,7 +161,23 @@ export default function PaymentModal({
                                 </div>
                                 <div className="flex flex-col sm:flex-row gap-4 mt-8 w-full max-w-md">
                                     <button
-                                        onClick={() => window.open(`/print/recibo/${vendaIdGerada}`, '_blank')}
+                                        onClick={async () => {
+                                            try {
+                                                const res = await getReceiptPDFBase64([vendaIdGerada!])
+                                                if (!res.success || !res.pdfBase64) {
+                                                    // Fallback: tenta abrir a rota HTML
+                                                    window.open(`/print/recibo/${vendaIdGerada}`, '_blank')
+                                                    return
+                                                }
+                                                const byteChars = atob(res.pdfBase64)
+                                                const byteNums = new Array(byteChars.length)
+                                                for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i)
+                                                const blob = new Blob([new Uint8Array(byteNums)], { type: 'application/pdf' })
+                                                window.open(URL.createObjectURL(blob), '_blank')
+                                            } catch {
+                                                window.open(`/print/recibo/${vendaIdGerada}`, '_blank')
+                                            }
+                                        }}
                                         className="flex-1 py-4 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-white font-bold transition-all flex flex-col items-center gap-2"
                                     >
                                         <Printer className="h-6 w-6 text-cyan-400" /> Imprimir Recibo

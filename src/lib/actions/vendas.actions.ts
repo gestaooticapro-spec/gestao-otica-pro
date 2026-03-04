@@ -7,7 +7,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { useCredit } from './wallet.actions'
-import { calcularERegistrarComissao, cancelarComissao } from './commission.actions'
+import { calcularERegistrarComissao, cancelarComissao, calcularComissaoMedico } from './commission.actions'
 import { confirmReservations, cancelReservations } from './stock.actions'
 
 // ================================================================
@@ -861,6 +861,7 @@ export async function addPagamento(
 
     // 4. Recalcula comissão (caso tenha % por recebimento ou % garantida mudada pelo pagamento)
     await calcularERegistrarComissao(venda_id)
+    await calcularComissaoMedico(venda_id)
 
     revalidatePath(`/dashboard/loja/${store_id}/vendas`)
     revalidatePath(`/dashboard/loja/${store_id}/vendas/${venda_id}`)
@@ -1077,6 +1078,7 @@ export async function updateVendaStatus(
     if (newStatus === 'Fechada') {
       // Calcula comissão nova
       await calcularERegistrarComissao(vendaId)
+      await calcularComissaoMedico(vendaId)
 
       // Confirma reservas de estoque
       await confirmReservations(vendaId)
@@ -1773,7 +1775,6 @@ export async function buscarProdutoExpress(query: string, storeId: number) {
       .from('products')
       .select('*, tem_grade')
       .eq('store_id', storeId)
-      .in('tipo_produto', ['Armacao', 'Outro', 'Lente', 'Solar'])
 
     // Lógica de busca refinada
     const terms = termo.split(/\s+/).filter(t => t.length > 0)
@@ -2195,6 +2196,7 @@ export async function finalizarVendaExpress(formData: FormData) {
   })
 
   await calcularERegistrarComissao(novaVenda.id)
+  await calcularComissaoMedico(novaVenda.id)
 
   // Registra saídas de estoque
   await registrarSaidaVenda(novaVenda.id, storeId, user.id, (profile as any).tenant_id)

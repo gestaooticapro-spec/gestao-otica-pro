@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import {
   Search, Plus, Save, Trash2, Loader2, UploadCloud,
   Glasses, Eye, Sparkles, Stethoscope, ShoppingBag, ScanBarcode,
-  ArrowRightLeft, Lock, Truck, ChevronRight, Grid3X3, Sun
+  ArrowRightLeft, Lock, Truck, ChevronRight, Grid3X3, Sun, Printer
 } from 'lucide-react';
 import {
   fetchCatalogItems,
@@ -18,6 +18,7 @@ import {
   type CatalogActionResult
 } from '@/lib/actions/catalog.actions';
 import LensGridEditor from '@/components/cadastros/LensGridEditor';
+import MedicoComissaoModal from '@/components/modals/MedicoComissaoModal';
 import { toast } from 'sonner';
 
 // --- CONFIGURAÇÃO DE ESTILO (DESIGN SYSTEM) ---
@@ -49,6 +50,10 @@ export default function CatalogPage() {
 
   // --- NOVO: Estado do Modal de Grade ---
   const [showGridModal, setShowGridModal] = useState(false);
+  // --- NOVO: Estado do Modal de Comissão Médico ---
+  const [showComissaoModal, setShowComissaoModal] = useState(false);
+  // --- Estado compartilhado do campo comissão (secreto) ---
+  const [showComissao, setShowComissao] = useState(false);
 
   // --- Carregar Lista ---
   useEffect(() => {
@@ -326,7 +331,7 @@ export default function CatalogPage() {
                 <FormTratamentos data={formData} onChange={handleInputChange} disabled={isSaving} />
               )}
               {activeTab === 'oftalmologistas' && (
-                <FormOftalmos data={formData} onChange={handleInputChange} disabled={isSaving} />
+                <FormOftalmos data={formData} onChange={handleInputChange} disabled={isSaving} showComissao={showComissao} setShowComissao={setShowComissao} />
               )}
               {activeTab === 'fornecedores' && (
                 <FormFornecedores data={formData} onChange={handleInputChange} disabled={isSaving} />
@@ -344,6 +349,18 @@ export default function CatalogPage() {
           >
             <Plus className="h-4 w-4" /> Novo
           </button>
+
+          {/* BOTÃO RELATÓRIO COMISSÃO MÉDICOS */}
+          {activeTab === 'oftalmologistas' && showComissao && (
+            <button
+              type="button"
+              onClick={() => setShowComissaoModal(true)}
+              className="px-4 py-2 text-xs font-bold text-teal-300 bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/30 rounded-lg transition-colors flex items-center gap-2"
+              title="Relatório de Comissões Médicas"
+            >
+              <Printer className="h-4 w-4" /> Comissões
+            </button>
+          )}
 
           {/* TIPO DROP: Apenas se não for oftalmo/fornecedor */}
           {selectedId && activeTab !== 'oftalmologistas' && activeTab !== 'fornecedores' && (
@@ -398,6 +415,13 @@ export default function CatalogPage() {
           productName={formData.nome_lente || 'Lente'}
         />
       )}
+
+      {/* --- MODAL DE COMISSÃO MÉDICOS --- */}
+      <MedicoComissaoModal
+        isOpen={showComissaoModal}
+        onClose={() => setShowComissaoModal(false)}
+        storeId={storeId}
+      />
     </div>
   );
 }
@@ -668,8 +692,8 @@ function FormTratamentos({ data, onChange, disabled }: any) {
   );
 }
 
-function FormOftalmos({ data, onChange, disabled }: any) {
-  const [showComissao, setShowComissao] = useState(false);
+function FormOftalmos({ data, onChange, disabled, showComissao, setShowComissao }: any) {
+
 
   return (
     <div className="grid grid-cols-12 gap-3 gap-y-4">

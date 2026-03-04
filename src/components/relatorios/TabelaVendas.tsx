@@ -78,6 +78,16 @@ export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioIt
       cell: info => <span className="truncate block">{info.getValue()}</span>,
       size: 120,
     }),
+    columnHelper.accessor('medico', {
+      header: 'Médico',
+      cell: info => {
+        const val = info.getValue()
+        return val === '-'
+          ? <span className="text-slate-600">-</span>
+          : <span className="truncate block text-teal-400 font-medium" title={val}>{val}</span>
+      },
+      size: 150,
+    }),
     columnHelper.accessor('itens_resumo', {
       header: 'Produtos (Resumo)',
       cell: info => (
@@ -258,7 +268,7 @@ export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioIt
           <tfoot className="bg-slate-900/80 text-white sticky bottom-0 z-10 font-bold backdrop-blur-xl border-t border-white/10">
             <tr>
               <td className="p-2 border-r border-white/10">Total: {rows.length}</td>
-              <td colSpan={5} className="p-2 border-r border-white/10 text-right">TOTAIS VISÍVEIS:</td>
+              <td colSpan={6} className="p-2 border-r border-white/10 text-right">TOTAIS VISÍVEIS:</td>
               <td className="p-2 border-r border-white/10 text-right">{formatCurrency(totalGeral)}</td>
               <td className="p-2 border-r border-white/10 text-right text-emerald-400">{formatCurrency(totalPago)}</td>
               <td className="p-2 border-r border-white/10 text-right text-red-400">{formatCurrency(totalDevedor)}</td>
