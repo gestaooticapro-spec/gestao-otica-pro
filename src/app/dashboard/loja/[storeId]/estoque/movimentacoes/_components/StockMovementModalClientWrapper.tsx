@@ -11,7 +11,7 @@ export default function StockMovementModalClientWrapper({ storeId, initialSearch
         <>
             <button
                 onClick={() => setIsOpen(true)}
-                className="w-full bg-slate-800/50 hover:bg-slate-700/50 text-slate-300 hover:text-white border border-white/5 hover:border-amber-500/30 h-10 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all"
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500/30 h-10 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-900/20"
             >
                 <Plus className="h-4 w-4" />
                 Nova Movimentação

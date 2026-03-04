@@ -57,11 +57,11 @@ export default function PosVendaReportPage() {
             {/* Cabeçalho */}
             <div className="mb-8 max-w-7xl mx-auto w-full animate-in slide-in-from-top-5 duration-700">
                 <button
-                    onClick={() => router.push(`/dashboard/loja/${storeId}/reports`)}
+                    onClick={() => router.back()}
                     className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors mb-6 text-sm font-bold uppercase tracking-wider group"
                 >
                     <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-                    Voltar para Relatórios
+                    Voltar
                 </button>
 
                 <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">

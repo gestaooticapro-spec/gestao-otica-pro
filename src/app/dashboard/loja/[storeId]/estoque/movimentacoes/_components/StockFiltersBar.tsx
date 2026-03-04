@@ -52,6 +52,11 @@ export default function StockFiltersBar({ storeId }: { storeId: number }) {
     return (
         <div className="h-full flex flex-col bg-slate-900/30 backdrop-blur-md border-r border-white/5">
 
+            {/* Botão Nova Movimentação (Topo) */}
+            <div className="p-5 border-b border-white/5">
+                <StockMovementModalClientWrapper storeId={storeId} initialSearchTerm={busca} />
+            </div>
+
             {/* Header com Gradiente Suave */}
             <div className="bg-gradient-to-br from-amber-500/10 to-orange-600/10 p-5 flex flex-col gap-4 border-b border-white/5 relative overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-b from-transparent to-slate-900/20 pointer-events-none"></div>
@@ -130,11 +135,7 @@ export default function StockFiltersBar({ storeId }: { storeId: number }) {
                         FILTRAR RESULTADOS
                     </button>
 
-                    {/* NOVA POSIÇÃO: Abaixo do botão Filtrar */}
-                    <div className="pt-6 mt-2 border-t border-white/5">
-                        <p className="text-[10px] font-bold text-slate-600 uppercase mb-3 pl-1 tracking-wider">Ações</p>
-                        <StockMovementModalClientWrapper storeId={storeId} initialSearchTerm={busca} />
-                    </div>
+
 
                 </div>
             </div>

@@ -14,7 +14,7 @@ import {
 } from '@/lib/actions/postsales.actions'
 import {
     User, Phone, MessageCircle, Star, CheckCircle,
-    Clock, Send, Eye, Wallet, Loader2, Edit3, Check, X, HeartHandshake, Search
+    Clock, Send, Eye, Wallet, Loader2, Edit3, Check, X, HeartHandshake, Search, BarChart3
 } from 'lucide-react'
 import SaleDetailsModal from '@/components/modals/SaleDetailsModal'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
@@ -191,7 +191,16 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
                         Acompanhamento de Adaptação
                     </p>
                 </div>
-                <div className="ml-auto">
+                <div className="ml-auto flex items-center gap-3">
+                    <button
+                        onClick={() => router.push(`/dashboard/loja/${storeId}/reports/pos-venda`)}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-pink-500/30 bg-white/5 hover:bg-white/10 text-pink-400 hover:text-pink-300 transition-colors text-xs font-bold uppercase tracking-wider backdrop-blur-md"
+                        title="Análise Gerencial"
+                    >
+                        <BarChart3 className="h-4 w-4" />
+                        <span className="hidden sm:inline">Análise Gerencial</span>
+                    </button>
+                    <div className="w-px h-6 bg-white/10" />
                     <BackgroundToggle />
                 </div>
             </div>

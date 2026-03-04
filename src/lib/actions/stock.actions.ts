@@ -9,16 +9,14 @@ import { z } from 'zod'
 // 1. ATUALIZAÇÃO DO SCHEMA (CORRIGIDO)
 const MovimentoSchema = z.object({
     store_id: z.coerce.number(),
-    // CORREÇÃO: Removido o objeto { required_error: ... } que causava o erro
-    employee_id: z.coerce.number(),
+    employee_id: z.coerce.number().optional().nullable(),
     product_id: z.coerce.number(),
     variant_id: z.coerce.number().optional().nullable(),
-    tipo: z.enum(['Entrada', 'Saida', 'Perda', 'Ajuste', 'Devolucao', 'Brinde', 'Reserva']), // Adicionado 'Reserva'
+    tipo: z.enum(['Entrada', 'Saida', 'Perda', 'Ajuste', 'Devolucao', 'Brinde', 'Reserva']),
     quantidade: z.coerce.number().min(1, "A quantidade deve ser maior que zero."),
     motivo: z.string().min(3, "O motivo é obrigatório."),
-    // --- NOVOS CAMPOS PARA FLUXO 2 (PERDA/SOBRA) ---
     related_venda_id: z.coerce.number().optional().nullable(),
-    related_os_id: z.coerce.number().optional().nullable(), // Adicionado related_os_id
+    related_os_id: z.coerce.number().optional().nullable(),
     sobra_detalhes: z.object({
         diametro: z.coerce.number(),
         olho: z.string(),
@@ -71,9 +69,28 @@ export async function registrarMovimentacao(
     }
 
     const {
-        product_id, variant_id, tipo, quantidade, motivo, store_id, employee_id,
+        product_id, variant_id, tipo, quantidade, motivo, store_id,
         related_venda_id, related_os_id, sobra_detalhes
     } = validated.data
+
+    // Resolve employee_id: usa o enviado pelo form ou busca o primeiro ativo da loja
+    let resolvedEmployeeId = validated.data.employee_id
+    if (!resolvedEmployeeId) {
+        const supabaseTemp = createAdminClient()
+        const { data: firstEmployee } = await (supabaseTemp.from('employees') as any)
+            .select('id')
+            .eq('store_id', store_id)
+            .eq('is_active', true)
+            .order('id', { ascending: true })
+            .limit(1)
+            .single()
+        if (firstEmployee) {
+            resolvedEmployeeId = firstEmployee.id
+        } else {
+            return { success: false, message: 'Nenhum funcionário ativo encontrado na loja.' }
+        }
+    }
+    const employee_id = resolvedEmployeeId
 
     // 3. LÓGICA DE SINAL
     let multiplicador = 1

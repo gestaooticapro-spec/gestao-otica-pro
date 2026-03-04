@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
     Search, AlertCircle, Calendar,
     Phone, MessageSquare, Clock, CheckCircle2,
-    FileText, Wallet, Ban, ExternalLink, Trash2, Megaphone
+    FileText, Wallet, Ban, ExternalLink, Trash2, Megaphone, BarChart3
 } from 'lucide-react'
 import {
     DevedorResumo, registrarCobranca,
@@ -223,6 +223,15 @@ export default function CobrancaInterface({
                         <p className="text-xl font-black text-red-500 drop-shadow-sm leading-none">{initialData.length}</p>
                     </div>
                     <div className="h-8 w-px bg-white/10 hidden sm:block"></div>
+                    <button
+                        onClick={() => router.push(`/dashboard/loja/${storeId}/reports/cobranca-acoes`)}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-red-500/30 bg-white/5 hover:bg-white/10 text-red-400 hover:text-red-300 transition-colors text-xs font-bold uppercase tracking-wider backdrop-blur-md"
+                        title="Análise Gerencial"
+                    >
+                        <BarChart3 className="h-4 w-4" />
+                        <span className="hidden sm:inline">Análise Gerencial</span>
+                    </button>
+                    <div className="w-px h-6 bg-white/10" />
                     <BackgroundToggle />
                 </div>
             </div>

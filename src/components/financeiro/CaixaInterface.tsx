@@ -13,10 +13,11 @@ import {
 } from '@/lib/actions/cashflow.actions'
 import {
     Wallet, ArrowUpCircle, ArrowDownCircle, Lock, Unlock,
-    Save, Loader2, DollarSign, AlertTriangle, TrendingUp, TrendingDown, Package, Printer, Pencil, Trash2, HelpCircle, History
+    Save, Loader2, DollarSign, AlertTriangle, TrendingUp, TrendingDown, Package, Printer, Pencil, Trash2, HelpCircle, History, Calculator
 } from 'lucide-react'
 import RelatorioDateModal from '@/components/modals/RelatorioDateModal'
 import HistoricoCaixaModal from './HistoricoCaixaModal'
+import CalculadoraNotasModal from '@/components/modals/CalculadoraNotasModal'
 
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const formatTime = (dateStr: string) => new Date(dateStr).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
@@ -36,6 +37,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
     const [isMovModalOpen, setIsMovModalOpen] = useState(false)
     const [editingMov, setEditingMov] = useState<any>(null)
     const [saldoInicialInput, setSaldoInicialInput] = useState('')
+    const [isCalcOpen, setIsCalcOpen] = useState(false)
 
     // --- AÇÕES ---
     const handleAbrir = async (formData: FormData) => {
@@ -145,11 +147,19 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                     name="saldo_inicial"
                                     step="0.01"
                                     required
-                                    className={`${inputStyle} pl-10 text-lg`}
+                                    className={`${inputStyle} pl-10 pr-10 text-lg`}
                                     placeholder="0,00"
                                     value={saldoInicialInput}
                                     onChange={(e) => setSaldoInicialInput(e.target.value)}
                                 />
+                                <button
+                                    type="button"
+                                    onClick={() => setIsCalcOpen(true)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-emerald-400 transition-colors"
+                                    title="Calculadora de Notas"
+                                >
+                                    <Calculator className="h-5 w-5" />
+                                </button>
                             </div>
                         </div>
 
@@ -182,6 +192,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                         </button>
                     </form>
                 </div>
+                <CalculadoraNotasModal isOpen={isCalcOpen} onClose={() => setIsCalcOpen(false)} />
             </div>
         )
     }
@@ -384,10 +395,18 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                         type="number"
                                         step="0.01"
                                         name="saldo_final"
-                                        className={`${inputStyle} pl-9 focus:ring-red-500/50 focus:border-red-500/50`}
+                                        className={`${inputStyle} pl-9 pr-10 focus:ring-red-500/50 focus:border-red-500/50`}
                                         placeholder="0.00"
                                         required
                                     />
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsCalcOpen(true)}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-emerald-400 transition-colors"
+                                        title="Calculadora de Notas"
+                                    >
+                                        <Calculator className="h-5 w-5" />
+                                    </button>
                                 </div>
                             </div>
 
@@ -582,6 +601,8 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                     </form>
                 </SimpleModal>
             )}
+
+            <CalculadoraNotasModal isOpen={isCalcOpen} onClose={() => setIsCalcOpen(false)} />
         </div>
     )
 }

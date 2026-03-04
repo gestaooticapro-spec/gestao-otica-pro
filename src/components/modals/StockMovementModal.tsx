@@ -14,7 +14,7 @@ interface Props {
 
 // --- ESTILOS DO DESIGN SYSTEM (Dark Glassmorphism) ---
 const modalOverlayStyle = "fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300"
-const modalContentStyle = "bg-slate-950 border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200"
+const modalContentStyle = "bg-slate-950 border border-white/10 rounded-2xl w-full max-w-2xl shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200"
 const inputStyle = "w-full pl-11 pr-4 py-3 rounded-xl border border-white/10 bg-black/20 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 text-sm font-medium transition-all"
 const labelStyle = "block text-[10px] font-bold text-slate-500 uppercase mb-1.5 tracking-wider pl-1"
 
