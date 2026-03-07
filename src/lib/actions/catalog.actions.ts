@@ -220,6 +220,9 @@ export async function saveArmacao(prevState: CatalogActionResult, formData: Form
       haste: data.tamanho_haste
     }
 
+    const tipoProduto = formData.get('tipo_produto') as string || 'Armacao'
+    const categoriaProduto = tipoProduto === 'Solar' ? 'Solar' : 'Armação'
+
     const payload = {
       tenant_id: profile.tenant_id,
       store_id: profile.store_id,
@@ -227,8 +230,8 @@ export async function saveArmacao(prevState: CatalogActionResult, formData: Form
       marca: data.marca,
       referencia: data.referencia,
       codigo_barras: finalBarcode,
-      tipo_produto: 'Armacao',
-      categoria: 'Armação',
+      tipo_produto: tipoProduto,
+      categoria: categoriaProduto,
       preco_custo: data.preco_custo,
       preco_venda: data.preco_venda,
       estoque_atual: data.quantidade_estoque,

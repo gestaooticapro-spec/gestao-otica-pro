@@ -2,8 +2,15 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import { createPortal } from 'react-dom'
-import { Search, X, Loader2, Save, Truck, User, Microscope } from 'lucide-react'
-import { searchOSForLab, updateLabTracking, getEmployees, LabOSResult, EmployeeSimple } from '@/lib/actions/lab.actions'
+import { Search, X, Loader2, Save, Truck, User, Microscope, MessageCircle } from 'lucide-react'
+import {
+    searchOSForLab,
+    updateLabTracking,
+    getEmployees,
+    updateCustomerPhone, // <--- ADICIONADO
+    LabOSResult,
+    EmployeeSimple
+} from '@/lib/actions/lab.actions'
 
 interface Props {
     isOpen: boolean
@@ -21,6 +28,12 @@ export default function LabTrackingModal({ isOpen, onClose, storeId }: Props) {
     const [selectedOS, setSelectedOS] = useState<LabOSResult | null>(null)
     const [employees, setEmployees] = useState<EmployeeSimple[]>([]) // Lista de Funcionários
     const [isPending, startTransition] = useTransition()
+
+    // --- ESTADOS PARA WHATSAPP ---
+    const [isEditingPhone, setIsEditingPhone] = useState(false)
+    const [newPhone, setNewPhone] = useState('')
+    const [updatingPhone, setUpdatingPhone] = useState(false)
+    const [tempPhone, setTempPhone] = useState<string | null>(null)
 
     // Efeito para garantir que rodamos no cliente (Portal requirement)
     useEffect(() => {
@@ -45,7 +58,23 @@ export default function LabTrackingModal({ isOpen, onClose, storeId }: Props) {
 
     const handleSelect = (os: LabOSResult) => {
         setSelectedOS(os)
+        setTempPhone(null) // Reset ao trocar de OS
+        setIsEditingPhone(false)
+        setNewPhone('')
         setStep('edit')
+    }
+
+    const handleUpdatePhone = async () => {
+        if (!selectedOS?.customer_id || !newPhone.trim()) return
+        setUpdatingPhone(true)
+        const res = await updateCustomerPhone(selectedOS.customer_id, storeId, newPhone)
+        if (res.success) {
+            setTempPhone(newPhone)
+            setIsEditingPhone(false)
+        } else {
+            alert("Erro ao atualizar telefone.")
+        }
+        setUpdatingPhone(false)
     }
 
     const handleSave = async (formData: FormData) => {
@@ -71,6 +100,9 @@ export default function LabTrackingModal({ isOpen, onClose, storeId }: Props) {
 
     // Se não estiver montado ou fechado, não renderiza nada
     if (!mounted || !isOpen) return null
+
+    // Telefone atual (do banco ou o que acabou de ser digitado)
+    const currentPhone = tempPhone || selectedOS?.customer_phone
 
     // --- PORTAL APLICADO ---
     return createPortal(
@@ -212,11 +244,60 @@ export default function LabTrackingModal({ isOpen, onClose, storeId }: Props) {
                                     </div>
 
                                     <div className="space-y-1">
-                                        <label className="text-[10px] font-bold uppercase opacity-80 text-orange-200">Montado Em</label>
+                                        <div className="flex justify-between items-center h-4">
+                                            <label className="text-[10px] font-bold uppercase opacity-80 text-orange-200">Montado Em</label>
+
+                                            {/* SEÇÃO WHATSAPP DINÂMICA */}
+                                            {selectedOS.dt_montado_em && (
+                                                <div className="flex items-center gap-1">
+                                                    {currentPhone ? (
+                                                        <a
+                                                            href={`https://wa.me/55${currentPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá ${selectedOS.customer_name.split(' ')[0]}! 👋 Passando para avisar que seus óculos já ficaram prontos! Quando quiser, pode vir fazer a retirada. Ficamos à disposição!`)}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="flex items-center gap-1 text-[9px] font-black uppercase text-emerald-400 hover:text-emerald-300 transition-colors bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20"
+                                                        >
+                                                            <MessageCircle className="h-2.5 w-2.5" />
+                                                            Avisar Cliente
+                                                        </a>
+                                                    ) : isEditingPhone ? (
+                                                        <div className="flex items-center gap-1 animate-in slide-in-from-right-2">
+                                                            <input
+                                                                autoFocus
+                                                                type="text"
+                                                                placeholder="Número WA..."
+                                                                className="w-24 h-5 px-1 bg-emerald-950/50 border border-emerald-500/40 rounded text-[9px] text-emerald-200 placeholder:text-emerald-700 outline-none focus:ring-1 focus:ring-emerald-500"
+                                                                value={newPhone}
+                                                                onChange={e => setNewPhone(e.target.value)}
+                                                                onKeyDown={e => e.key === 'Enter' && handleUpdatePhone()}
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleUpdatePhone}
+                                                                disabled={updatingPhone}
+                                                                className="h-5 px-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[9px] font-bold"
+                                                            >
+                                                                {updatingPhone ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : 'OK'}
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setIsEditingPhone(true)}
+                                                            className="flex items-center gap-1 text-[9px] font-black uppercase text-orange-400 hover:text-orange-300 transition-colors bg-orange-500/10 px-1.5 py-0.5 rounded border border-orange-500/20"
+                                                        >
+                                                            <MessageCircle className="h-2.5 w-2.5" />
+                                                            Cadastrar WA
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
                                         <input
                                             type="datetime-local"
                                             name="dt_montado_em"
-                                            defaultValue={formatForInput(selectedOS.dt_montado_em)}
+                                            value={formatForInput(selectedOS.dt_montado_em)}
+                                            onChange={e => setSelectedOS({ ...selectedOS, dt_montado_em: e.target.value || null })}
                                             className="w-full rounded-lg px-3 py-2 text-xs font-bold bg-black/20 border border-orange-500/20 text-white shadow-inner focus:ring-1 focus:ring-orange-500/50 outline-none"
                                         />
                                     </div>

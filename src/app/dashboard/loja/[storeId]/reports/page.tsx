@@ -13,7 +13,8 @@ import {
     ArrowRight,
     ArrowLeft,
     LineChart,
-    Stethoscope
+    Stethoscope,
+    PackageSearch
 } from 'lucide-react';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 
@@ -103,6 +104,14 @@ export default function ReportsHubPage() {
             route: `/dashboard/loja/${storeId}/reports/medicos`,
             tone: 'from-teal-600/20 via-teal-900/30 to-slate-900/80 hover:border-teal-500/50 hover:shadow-teal-500/20',
             iconTone: 'text-teal-400 bg-teal-500/20 ring-teal-400/30'
+        },
+        {
+            title: 'Estoque Físico Detalhado',
+            description: 'Visão detalhada e filtrável de armações e solares em estoque com somatório de valores.',
+            icon: PackageSearch,
+            route: `/dashboard/loja/${storeId}/reports/estoque-marcas`,
+            tone: 'from-pink-600/20 via-pink-900/30 to-slate-900/80 hover:border-pink-500/50 hover:shadow-pink-500/20',
+            iconTone: 'text-pink-400 bg-pink-500/20 ring-pink-400/30'
         }
     ];
 
@@ -148,23 +157,23 @@ export default function ReportsHubPage() {
                         <button
                             key={index}
                             onClick={() => router.push(category.route)}
-                            className={`group relative text-left rounded-3xl p-6 border border-white/10 bg-gradient-to-br ${category.tone} backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-5`}
+                            className={`group relative text-left rounded-3xl p-5 border border-white/10 bg-gradient-to-br ${category.tone} backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-5`}
                             style={{ animationDelay: `${index * 50}ms`, animationFillMode: 'both' }}
                         >
                             {/* Efeito de brilho de fundo no hover */}
                             <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
                             <div className="relative z-10 flex flex-col h-full">
-                                <div className="flex items-start justify-between mb-4">
-                                    <div className={`p-4 rounded-2xl ring-1 ${category.iconTone} shadow-lg`}>
-                                        <Icon className="w-8 h-8" strokeWidth={1.5} />
+                                <div className="flex items-start justify-between mb-3">
+                                    <div className={`p-3 rounded-2xl ring-1 ${category.iconTone} shadow-lg`}>
+                                        <Icon className="w-6 h-6" strokeWidth={1.5} />
                                     </div>
-                                    <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center border border-white/10 group-hover:bg-white/10 transition-colors">
-                                        <ArrowRight className="w-5 h-5 text-slate-400 group-hover:text-white transition-colors group-hover:translate-x-0.5" />
+                                    <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center border border-white/10 group-hover:bg-white/10 transition-colors">
+                                        <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors group-hover:translate-x-0.5" />
                                     </div>
                                 </div>
-                                <h3 className="text-xl font-bold text-white mb-2 leading-tight">{category.title}</h3>
-                                <p className="text-slate-400 text-sm mt-auto max-w-[90%] leading-relaxed">
+                                <h3 className="text-lg font-bold text-white mb-2 leading-tight">{category.title}</h3>
+                                <p className="text-slate-400 text-xs mt-auto max-w-[95%] leading-relaxed">
                                     {category.description}
                                 </p>
                             </div>

@@ -327,8 +327,8 @@ export default function OperatorMenuLojaVazia({
                                             <ArrowLeftRight className="w-6 h-6" strokeWidth={1.5} />
                                         </div>
                                         <div className="text-left">
-                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Estoque</span>
-                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">Movimentações</span>
+                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Movimentação</span>
+                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">Estoque</span>
                                         </div>
                                     </button>
                                     {/* Produtos */}
@@ -347,8 +347,8 @@ export default function OperatorMenuLojaVazia({
                                             <Search className="w-6 h-6" strokeWidth={1.5} />
                                         </div>
                                         <div className="text-left">
-                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Lentes</span>
-                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">ATUALIZAR RASTREIO</span>
+                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Laboratório</span>
+                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">Passo a passo</span>
                                         </div>
                                     </button>
                                     {/* XML */}

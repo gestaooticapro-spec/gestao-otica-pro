@@ -20,6 +20,7 @@ import {
 import LensGridEditor from '@/components/cadastros/LensGridEditor';
 import MedicoComissaoModal from '@/components/modals/MedicoComissaoModal';
 import { toast } from 'sonner';
+import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/BackgroundToggle';
 
 // --- CONFIGURAÇÃO DE ESTILO (DESIGN SYSTEM) ---
 // --- DESIGN SYSTEM DOCTAS GLASS (Dark Glassmorphism) ---
@@ -38,6 +39,10 @@ export default function CatalogPage() {
   const [items, setItems] = useState<CatalogItemResult[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null); // null = Novo
   const [search, setSearch] = useState('');
+
+  // Controle de fundo com persistencia em localStorage via hook dedicado
+  const { preference: bgPreference } = useBackgroundPreference();
+  const bgEnabled = bgPreference === 'image';
 
   const [loadingList, setLoadingList] = useState(false);
   const [isSaving, startTransition] = useTransition();
@@ -118,7 +123,7 @@ export default function CatalogPage() {
           result = await saveArmacao({ success: false, message: '' }, formPayload);
           break;
         case 'receituario':
-          formPayload.append('tipo_produto', 'Receituario');
+          formPayload.append('tipo_produto', 'Armacao');
           result = await saveArmacao({ success: false, message: '' }, formPayload);
           break;
         case 'tratamentos': result = await saveTratamento({ success: false, message: '' }, formPayload); break;
@@ -190,238 +195,259 @@ export default function CatalogPage() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-transparent">
+    <div className="relative min-h-[calc(100vh-64px)] overflow-hidden bg-slate-950">
+      {/* Imagem de Fundo Estilizada (Estoque) */}
+      <div
+        className={`absolute inset-0 z-0 transition-opacity duration-1000 ${bgEnabled ? 'opacity-100' : 'opacity-0'}`}
+        style={{
+          backgroundImage: 'url("/estoque.jpg")',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          filter: 'grayscale(60%) brightness(0.3) blur(1px)' // Fundo bem escuro e desfocado
+        }}
+      />
 
-      {/* --- COLUNA ESQUERDA (30%) --- */}
-      <div className="w-1/3 flex flex-col border-r border-white/5 bg-slate-900/30 backdrop-blur-md z-10 shadow-sm">
+      {/* Overlay Escuro Adicional / Background Fallback */}
+      <div className={`absolute inset-0 z-0 ${bgEnabled ? 'bg-black/60' : 'bg-slate-950'}`} />
 
-        {/* Header Gradiente */}
-        <div className="bg-gradient-to-br from-indigo-600/20 to-blue-700/20 p-4 flex flex-col gap-3 shadow-md z-20 border-b border-white/5">
-          <div className="flex justify-between items-center text-white">
-            <h2 className="font-black text-sm flex items-center gap-2 uppercase tracking-wide text-indigo-400">
-              <ScanBarcode className="h-4 w-4" /> Catálogo
-            </h2>
-            <div className="flex gap-2">
-              {activeTab === 'lentes' && (
-                <Link
-                  href={`/dashboard/loja/${storeId}/cadastros/importar-lentes`}
-                  className="bg-white/10 hover:bg-white/20 text-indigo-300 px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 transition-colors border border-white/10"
-                  title="Importar Lentes via CSV"
-                >
-                  <UploadCloud className="h-3 w-3" /> Importar
-                </Link>
-              )}
-              <span className="text-[10px] bg-white/10 text-slate-300 px-2 py-1 rounded-full font-medium border border-white/10">
-                {items.length} itens
-              </span>
+      {/* Controle de Background (Mesmo padrão da Cobrança/Vendas) */}
+      <div className="absolute top-4 right-4 z-50">
+        <BackgroundToggle />
+      </div>
+
+      <div className="relative z-10 flex h-[calc(100vh-64px)] bg-transparent">
+
+        {/* --- COLUNA ESQUERDA (30%) --- */}
+        <div className="w-1/3 flex flex-col border-r border-white/5 bg-slate-900/40 backdrop-blur-xl shadow-sm">
+
+          {/* Header Gradiente */}
+          <div className="bg-gradient-to-br from-indigo-900/60 to-blue-900/40 p-4 flex flex-col gap-3 shadow-md z-20 border-b border-white/5 backdrop-blur-md">
+            <div className="flex justify-between items-center text-white">
+              <h2 className="font-black text-sm flex items-center gap-2 uppercase tracking-wide text-indigo-300">
+                <ScanBarcode className="h-4 w-4" /> Catálogo
+              </h2>
+              <div className="flex gap-2">
+                {activeTab === 'lentes' && (
+                  <Link
+                    href={`/dashboard/loja/${storeId}/cadastros/importar-lentes`}
+                    className="bg-white/10 hover:bg-white/20 text-indigo-300 px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 transition-colors border border-white/10"
+                    title="Importar Lentes via CSV"
+                  >
+                    <UploadCloud className="h-3 w-3" /> Importar
+                  </Link>
+                )}
+                <span className="text-[10px] bg-white/10 text-slate-300 px-2 py-1 rounded-full font-medium border border-white/10">
+                  {items.length} itens
+                </span>
+              </div>
+            </div>
+            <div className="relative">
+              <input
+                type="text"
+                className="w-full h-9 pl-9 pr-3 rounded-xl border border-white/10 bg-black/20 text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 font-bold text-xs shadow-inner"
+                placeholder="Buscar item..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-500" />
             </div>
           </div>
-          <div className="relative">
-            <input
-              type="text"
-              className="w-full h-9 pl-9 pr-3 rounded-xl border border-white/10 bg-black/20 text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 font-bold text-xs shadow-inner"
-              placeholder="Buscar item..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-500" />
-          </div>
-        </div>
 
-        {/* Lista */}
-        <div className="flex-1 overflow-y-auto">
-          {loadingList ? (
-            <div className="flex justify-center p-6"><Loader2 className="animate-spin text-indigo-400 h-6 w-6" /></div>
-          ) : items.length === 0 ? (
-            <p className="text-center text-slate-500 text-xs p-6">Nenhum item encontrado.</p>
-          ) : (
-            items.map(item => (
-              <div
-                key={item.id}
-                onClick={() => handleSelect(item)}
-                className={`p-3 border-b border-white/5 cursor-pointer transition-colors flex justify-between items-center group
+          {/* Lista */}
+          <div className="flex-1 overflow-y-auto">
+            {loadingList ? (
+              <div className="flex justify-center p-6"><Loader2 className="animate-spin text-indigo-400 h-6 w-6" /></div>
+            ) : items.length === 0 ? (
+              <p className="text-center text-slate-500 text-xs p-6">Nenhum item encontrado.</p>
+            ) : (
+              items.map(item => (
+                <div
+                  key={item.id}
+                  onClick={() => handleSelect(item)}
+                  className={`p-3 border-b border-white/5 cursor-pointer transition-colors flex justify-between items-center group
                       ${selectedId === item.id ? 'bg-indigo-500/10 border-l-4 border-l-indigo-500' : 'hover:bg-white/5 border-l-4 border-l-transparent'}
                   `}
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex justify-between items-start">
-                    <span className={`font-bold text-xs truncate pr-2 ${selectedId === item.id ? 'text-indigo-300' : 'text-slate-300'}`}>{item.title}</span>
-                    {item.price !== undefined && (
-                      <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 rounded border border-emerald-500/20 whitespace-nowrap">
-                        R$ {item.price?.toFixed(2)}
-                      </span>
-                    )}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex justify-between items-start">
+                      <span className={`font-bold text-xs truncate pr-2 ${selectedId === item.id ? 'text-indigo-300' : 'text-slate-300'}`}>{item.title}</span>
+                      {item.price !== undefined && (
+                        <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 rounded border border-emerald-500/20 whitespace-nowrap">
+                          R$ {item.price?.toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex justify-between items-end mt-1">
+                      <span className="text-[10px] text-slate-500 truncate max-w-[150px]">{item.subtitle || '-'}</span>
+                      {item.stock !== undefined && (
+                        <span className={`text-[9px] font-bold px-1.5 rounded ${item.stock > 0 ? 'bg-white/5 text-slate-400 border border-white/5' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+                          Est: {item.stock}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex justify-between items-end mt-1">
-                    <span className="text-[10px] text-slate-500 truncate max-w-[150px]">{item.subtitle || '-'}</span>
-                    {item.stock !== undefined && (
-                      <span className={`text-[9px] font-bold px-1.5 rounded ${item.stock > 0 ? 'bg-white/5 text-slate-400 border border-white/5' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
-                        Est: {item.stock}
-                      </span>
-                    )}
-                  </div>
+                  <ChevronRight className={`h-3 w-3 ml-2 text-slate-600 group-hover:text-indigo-400 ${selectedId === item.id ? 'text-indigo-400' : ''}`} />
                 </div>
-                <ChevronRight className={`h-3 w-3 ml-2 text-slate-600 group-hover:text-indigo-400 ${selectedId === item.id ? 'text-indigo-400' : ''}`} />
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* --- COLUNA DIREITA (70%) --- */}
-      <div className="flex-1 flex flex-col bg-transparent relative overflow-hidden">
-
-        {/* Abas */}
-        <div className="bg-slate-900/30 backdrop-blur-md border-b border-white/5 px-4 pt-3 flex gap-4 shadow-sm flex-shrink-0 overflow-x-auto">
-          <TabButton
-            label="Solar" icon={Sun}
-            active={activeTab === 'solar'} onClick={() => handleTabChange('solar')}
-          />
-          <TabButton
-            label="Receituário" icon={Eye}
-            active={activeTab === 'receituario'} onClick={() => handleTabChange('receituario')}
-          />
-          <TabButton
-            label="Lentes" icon={Glasses}
-            active={activeTab === 'lentes'} onClick={() => handleTabChange('lentes')}
-          />
-          <TabButton
-            label="Tratamentos" icon={Sparkles}
-            active={activeTab === 'tratamentos'} onClick={() => handleTabChange('tratamentos')}
-          />
-          <TabButton
-            label="Varejo / Outros" icon={ShoppingBag}
-            active={activeTab === 'produtos_gerais'} onClick={() => handleTabChange('produtos_gerais')}
-          />
-          <TabButton
-            label="Fornecedores" icon={Truck}
-            active={activeTab === 'fornecedores'} onClick={() => handleTabChange('fornecedores')}
-          />
-          <TabButton
-            label="Oftalmologistas" icon={Stethoscope}
-            active={activeTab === 'oftalmologistas'} onClick={() => handleTabChange('oftalmologistas')}
-          />
-        </div>
-
-        {/* Formulário */}
-        <form id="catalog-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-          <div className="max-w-4xl mx-auto">
-            <div className={cardStyle}>
-              {activeTab === 'lentes' && (
-                <FormLentes
-                  data={formData}
-                  onChange={handleInputChange}
-                  disabled={isSaving}
-                  onOpenGrid={() => setShowGridModal(true)} // Passando a prop
-                />
-              )}
-              {(activeTab === 'solar' || activeTab === 'receituario') && (
-                <FormArmacoes data={formData} onChange={handleInputChange} disabled={isSaving} storeId={storeId} />
-              )}
-              {activeTab === 'produtos_gerais' && (
-                <FormProdutosGerais
-                  data={formData}
-                  onChange={handleInputChange}
-                  disabled={isSaving}
-                  sugestoes={sugestoesCategorias}
-                  storeId={storeId}
-                />
-              )}
-              {activeTab === 'tratamentos' && (
-                <FormTratamentos data={formData} onChange={handleInputChange} disabled={isSaving} />
-              )}
-              {activeTab === 'oftalmologistas' && (
-                <FormOftalmos data={formData} onChange={handleInputChange} disabled={isSaving} showComissao={showComissao} setShowComissao={setShowComissao} />
-              )}
-              {activeTab === 'fornecedores' && (
-                <FormFornecedores data={formData} onChange={handleInputChange} disabled={isSaving} />
-              )}
-            </div>
+              ))
+            )}
           </div>
-        </form>
-
-        {/* Rodapé Fixo */}
-        <div className="bg-slate-900/60 backdrop-blur-xl border-t border-white/5 p-3 shadow-[0_-5px_20px_rgba(0,0,0,0.2)] flex justify-end gap-2 z-20 shrink-0">
-          <button
-            type="button"
-            onClick={handleNew}
-            className="px-4 py-2 text-xs font-bold text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" /> Novo
-          </button>
-
-          {/* BOTÃO RELATÓRIO COMISSÃO MÉDICOS */}
-          {activeTab === 'oftalmologistas' && showComissao && (
-            <button
-              type="button"
-              onClick={() => setShowComissaoModal(true)}
-              className="px-4 py-2 text-xs font-bold text-teal-300 bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/30 rounded-lg transition-colors flex items-center gap-2"
-              title="Relatório de Comissões Médicas"
-            >
-              <Printer className="h-4 w-4" /> Comissões
-            </button>
-          )}
-
-          {/* TIPO DROP: Apenas se não for oftalmo/fornecedor */}
-          {selectedId && activeTab !== 'oftalmologistas' && activeTab !== 'fornecedores' && (
-            <select
-              className="bg-transparent hover:bg-white/5 border border-white/10 text-slate-300 text-[10px] font-bold rounded-lg px-2 py-2 outline-none transition-colors cursor-pointer"
-              onChange={(e) => {
-                handleChangeType(e.target.value);
-                e.target.value = ""; // Reset
-              }}
-              defaultValue=""
-            >
-              <option value="" disabled className="bg-slate-900 text-slate-500">Mover para...</option>
-              <option value="lentes" className="bg-slate-900 text-slate-200">Lente</option>
-              <option value="receituario" className="bg-slate-900 text-slate-200">Armação</option>
-              <option value="solar" className="bg-slate-900 text-slate-200">Solar</option>
-              <option value="produtos_gerais" className="bg-slate-900 text-slate-200">Varejo / Outros</option>
-              <option value="tratamentos" className="bg-slate-900 text-slate-200">Tratamento</option>
-            </select>
-          )}
-
-          {selectedId && (
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={isSaving}
-              className="px-4 py-2 text-xs font-bold text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg transition-colors flex items-center gap-2"
-            >
-              <Trash2 className="h-4 w-4" /> Excluir
-            </button>
-          )}
-
-          <button
-            type="submit"
-            form="catalog-form"
-            disabled={isSaving}
-            className="px-6 py-2 text-xs font-bold text-emerald-100 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/50 rounded-lg shadow-md backdrop-blur-md transition-transform active:scale-95 flex items-center gap-2"
-          >
-            {isSaving ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="h-4 w-4" />}
-            SALVAR
-          </button>
         </div>
 
-      </div>
+        {/* --- COLUNA DIREITA (70%) --- */}
+        <div className="flex-1 flex flex-col bg-transparent relative overflow-hidden">
 
-      {/* --- MODAL DE GRADE --- */}
-      {selectedId && (
-        <LensGridEditor
-          isOpen={showGridModal}
-          onClose={() => setShowGridModal(false)}
-          productId={selectedId}
+          {/* Abas */}
+          <div className="bg-slate-900/30 backdrop-blur-md border-b border-white/5 px-4 pt-3 flex gap-4 shadow-sm flex-shrink-0 overflow-x-auto">
+            <TabButton
+              label="Solar" icon={Sun}
+              active={activeTab === 'solar'} onClick={() => handleTabChange('solar')}
+            />
+            <TabButton
+              label="Receituário" icon={Eye}
+              active={activeTab === 'receituario'} onClick={() => handleTabChange('receituario')}
+            />
+            <TabButton
+              label="Lentes" icon={Glasses}
+              active={activeTab === 'lentes'} onClick={() => handleTabChange('lentes')}
+            />
+            <TabButton
+              label="Tratamentos" icon={Sparkles}
+              active={activeTab === 'tratamentos'} onClick={() => handleTabChange('tratamentos')}
+            />
+            <TabButton
+              label="Varejo / Outros" icon={ShoppingBag}
+              active={activeTab === 'produtos_gerais'} onClick={() => handleTabChange('produtos_gerais')}
+            />
+            <TabButton
+              label="Fornecedores" icon={Truck}
+              active={activeTab === 'fornecedores'} onClick={() => handleTabChange('fornecedores')}
+            />
+            <TabButton
+              label="Oftalmologistas" icon={Stethoscope}
+              active={activeTab === 'oftalmologistas'} onClick={() => handleTabChange('oftalmologistas')}
+            />
+          </div>
+
+          {/* Formulário */}
+          <form id="catalog-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+            <div className="max-w-4xl mx-auto">
+              <div className={cardStyle}>
+                {activeTab === 'lentes' && (
+                  <FormLentes
+                    data={formData}
+                    onChange={handleInputChange}
+                    disabled={isSaving}
+                    onOpenGrid={() => setShowGridModal(true)} // Passando a prop
+                  />
+                )}
+                {(activeTab === 'solar' || activeTab === 'receituario') && (
+                  <FormArmacoes data={formData} onChange={handleInputChange} disabled={isSaving} storeId={storeId} />
+                )}
+                {activeTab === 'produtos_gerais' && (
+                  <FormProdutosGerais
+                    data={formData}
+                    onChange={handleInputChange}
+                    disabled={isSaving}
+                    sugestoes={sugestoesCategorias}
+                    storeId={storeId}
+                  />
+                )}
+                {activeTab === 'tratamentos' && (
+                  <FormTratamentos data={formData} onChange={handleInputChange} disabled={isSaving} />
+                )}
+                {activeTab === 'oftalmologistas' && (
+                  <FormOftalmos data={formData} onChange={handleInputChange} disabled={isSaving} showComissao={showComissao} setShowComissao={setShowComissao} />
+                )}
+                {activeTab === 'fornecedores' && (
+                  <FormFornecedores data={formData} onChange={handleInputChange} disabled={isSaving} />
+                )}
+              </div>
+            </div>
+          </form>
+
+          {/* Rodapé Fixo */}
+          <div className="bg-slate-900/60 backdrop-blur-xl border-t border-white/5 p-3 shadow-[0_-5px_20px_rgba(0,0,0,0.2)] flex justify-end gap-2 z-20 shrink-0">
+            <button
+              type="button"
+              onClick={handleNew}
+              className="px-4 py-2 text-xs font-bold text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" /> Novo
+            </button>
+
+            {/* BOTÃO RELATÓRIO COMISSÃO MÉDICOS */}
+            {activeTab === 'oftalmologistas' && showComissao && (
+              <button
+                type="button"
+                onClick={() => setShowComissaoModal(true)}
+                className="px-4 py-2 text-xs font-bold text-teal-300 bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/30 rounded-lg transition-colors flex items-center gap-2"
+                title="Relatório de Comissões Médicas"
+              >
+                <Printer className="h-4 w-4" /> Comissões
+              </button>
+            )}
+
+            {/* TIPO DROP: Apenas se não for oftalmo/fornecedor */}
+            {selectedId && activeTab !== 'oftalmologistas' && activeTab !== 'fornecedores' && (
+              <select
+                className="bg-transparent hover:bg-white/5 border border-white/10 text-slate-300 text-[10px] font-bold rounded-lg px-2 py-2 outline-none transition-colors cursor-pointer"
+                onChange={(e) => {
+                  handleChangeType(e.target.value);
+                  e.target.value = ""; // Reset
+                }}
+                defaultValue=""
+              >
+                <option value="" disabled className="bg-slate-900 text-slate-500">Mover para...</option>
+                <option value="lentes" className="bg-slate-900 text-slate-200">Lente</option>
+                <option value="receituario" className="bg-slate-900 text-slate-200">Armação</option>
+                <option value="solar" className="bg-slate-900 text-slate-200">Solar</option>
+                <option value="produtos_gerais" className="bg-slate-900 text-slate-200">Varejo / Outros</option>
+                <option value="tratamentos" className="bg-slate-900 text-slate-200">Tratamento</option>
+              </select>
+            )}
+
+            {selectedId && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={isSaving}
+                className="px-4 py-2 text-xs font-bold text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg transition-colors flex items-center gap-2"
+              >
+                <Trash2 className="h-4 w-4" /> Excluir
+              </button>
+            )}
+
+            <button
+              type="submit"
+              form="catalog-form"
+              disabled={isSaving}
+              className="px-6 py-2 text-xs font-bold text-emerald-100 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/50 rounded-lg shadow-md backdrop-blur-md transition-transform active:scale-95 flex items-center gap-2"
+            >
+              {isSaving ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="h-4 w-4" />}
+              SALVAR
+            </button>
+          </div>
+
+        </div>
+
+        {/* --- MODAL DE GRADE --- */}
+        {selectedId && (
+          <LensGridEditor
+            isOpen={showGridModal}
+            onClose={() => setShowGridModal(false)}
+            productId={selectedId}
+            storeId={storeId}
+            productName={formData.nome_lente || 'Lente'}
+          />
+        )}
+
+        {/* --- MODAL DE COMISSÃO MÉDICOS --- */}
+        <MedicoComissaoModal
+          isOpen={showComissaoModal}
+          onClose={() => setShowComissaoModal(false)}
           storeId={storeId}
-          productName={formData.nome_lente || 'Lente'}
         />
-      )}
-
-      {/* --- MODAL DE COMISSÃO MÉDICOS --- */}
-      <MedicoComissaoModal
-        isOpen={showComissaoModal}
-        onClose={() => setShowComissaoModal(false)}
-        storeId={storeId}
-      />
+      </div>
     </div>
   );
 }
@@ -444,7 +470,6 @@ function TabButton({ label, icon: Icon, active, onClick }: any) {
 }
 
 // --- CAMPO DE ESTOQUE INTELIGENTE (ATUALIZADO PARA REDIRECIONAR) ---
-// --- CAMPO DE ESTOQUE INTELIGENTE (ATUALIZADO PARA REDIRECIONAR) ---
 function EstoqueInput({ value, onChange, disabled, isEditing, storeId, productId, productName }: any) {
   if (!isEditing) {
     // Modo Criação: Permite digitar
@@ -456,7 +481,7 @@ function EstoqueInput({ value, onChange, disabled, isEditing, storeId, productId
         className={inputStyle}
         disabled={disabled}
       />
-    )
+    );
   }
 
   // Modo Edição: Botão de Redirecionamento
@@ -465,8 +490,8 @@ function EstoqueInput({ value, onChange, disabled, isEditing, storeId, productId
       <input
         type="number"
         value={value || 0}
-        readOnly
-        className={`${inputStyle} bg-slate-800/50 text-slate-500 cursor-not-allowed border-white/5`}
+        onChange={onChange}
+        className={inputStyle}
         disabled={true}
       />
 
@@ -480,7 +505,7 @@ function EstoqueInput({ value, onChange, disabled, isEditing, storeId, productId
         </Link>
       </div>
     </div>
-  )
+  );
 }
 
 // --- FORMULÁRIOS ESPECÍFICOS ---

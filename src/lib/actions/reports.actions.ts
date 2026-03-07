@@ -565,6 +565,11 @@ export async function getMovimentoMetrics(storeId: number, monthStr: string, yea
     } else if (m.tipo === 'Saida') {
       saidasGerais += qty;
       if (isSobra) sobrasVendidas += qty;
+    } else if (m.tipo === 'Devolucao') {
+      // Compensação: se o item foi devolvido/venda cancelada,
+      // ele anula a saída que havia sido registrada.
+      saidasGerais -= qty;
+      if (isSobra) sobrasVendidas -= qty;
     }
   });
 
@@ -574,9 +579,9 @@ export async function getMovimentoMetrics(storeId: number, monthStr: string, yea
 
   return {
     entradasGerais,
-    saidasGerais,
+    saidasGerais: Math.max(0, saidasGerais),
     sobrasEntraram,
-    sobrasVendidas
+    sobrasVendidas: Math.max(0, sobrasVendidas)
   };
 }
 
@@ -886,4 +891,239 @@ export async function getRankingMedicos(
     total_vendido: entry.valorVendido,
     ticket_medio: entry.receitas > 0 ? parseFloat((entry.valorVendido / entry.receitas).toFixed(2)) : 0
   }))
+}
+
+// ================================================================
+// 11. RELATÓRIO: ANÁLISE DE MARCAS (Solares e Armações)
+// ================================================================
+
+export interface BrandMetricsItem {
+  marca: string;
+  estoqueAtual: number;
+  vendidosPeriodo: number;
+  receitaPeriodo: number;
+  ultimaVenda: Date | null;
+}
+
+export async function getBrandMovementMetrics(storeId: number, monthStr: string, yearStr: string): Promise<BrandMetricsItem[]> {
+  const supabase = createAdminClient();
+  const month = parseInt(monthStr) - 1;
+  const year = parseInt(yearStr);
+
+  const startDate = startOfMonth(new Date(year, month)).toISOString();
+  const endDate = endOfMonth(new Date(year, month)).toISOString();
+
+  // 1. Fetch current stock for Armacao and Solar grouped by brand
+  const { data: productsRaw, error: err1 } = await (supabase.from('products') as any)
+    .select('marca, estoque_atual, id')
+    .eq('store_id', storeId)
+    .in('tipo_produto', ['Armacao', 'Solar']);
+
+  if (err1) {
+    console.error("Erro consultando estoque por marca", err1);
+    return [];
+  }
+
+  const inventoryMap = new Map<string, { estoque: number; productIds: Set<number> }>();
+  (productsRaw || []).forEach((p: any) => {
+    const marca = (p.marca || 'Sem Marca').trim().toUpperCase();
+    if (!inventoryMap.has(marca)) {
+      inventoryMap.set(marca, { estoque: 0, productIds: new Set() });
+    }
+    const entry = inventoryMap.get(marca)!;
+    entry.estoque += (p.estoque_atual || 0);
+    entry.productIds.add(p.id);
+  });
+
+  // 2. Fetch sales for these products in the period
+  const { data: vendasPeriodoRaw, error: err2 } = await (supabase.from('venda_itens') as any)
+    .select(`
+      quantidade,
+      valor_total_item,
+      product_id,
+      vendas!inner ( status, created_at )
+    `)
+    .eq('store_id', storeId)
+    .gte('vendas.created_at', startDate)
+    .lte('vendas.created_at', endDate)
+    .neq('vendas.status', 'Cancelada');
+
+  if (err2) {
+    console.error("Erro consultando vendas por marca no período", err2);
+  }
+
+  const salesMap = new Map<number, { qty: number, revenue: number }>();
+  (vendasPeriodoRaw || []).forEach((item: any) => {
+    if (!item.product_id) return;
+    if (!salesMap.has(item.product_id)) {
+      salesMap.set(item.product_id, { qty: 0, revenue: 0 });
+    }
+    const entry = salesMap.get(item.product_id)!;
+    entry.qty += (item.quantidade || 0);
+    entry.revenue += (item.valor_total_item || 0);
+  });
+
+  // 3. Fetch last sale date for these products (all time)
+  const { data: allSalesRaw, error: err3 } = await (supabase.from('venda_itens') as any)
+    .select(`
+      product_id,
+      vendas!inner ( status, created_at )
+    `)
+    .eq('store_id', storeId)
+    .neq('vendas.status', 'Cancelada');
+
+  if (err3) {
+    console.error("Erro consultando histórico de vendas para marcas", err3);
+  }
+
+  const lastSaleMap = new Map<number, Date>();
+  (allSalesRaw || []).forEach((item: any) => {
+    if (!item.product_id || !item.vendas?.created_at) return;
+    const saleDate = new Date(item.vendas.created_at);
+    const existingDate = lastSaleMap.get(item.product_id);
+    if (!existingDate || saleDate > existingDate) {
+      lastSaleMap.set(item.product_id, saleDate);
+    }
+  });
+
+  // 4. Compile final results
+  const results: BrandMetricsItem[] = [];
+
+  for (const [marca, data] of inventoryMap.entries()) {
+    if (marca === 'SEM MARCA') continue; // Skip empty/unbranded if desired, but maybe user wants it. Let's keep it but group properly.
+
+    let vendP = 0;
+    let recP = 0;
+    let currLastSale: Date | null = null;
+
+    for (const pid of data.productIds) {
+      // Add period sales
+      if (salesMap.has(pid)) {
+        const sm = salesMap.get(pid)!;
+        vendP += sm.qty;
+        recP += sm.revenue;
+      }
+
+      // Check last sale
+      if (lastSaleMap.has(pid)) {
+        const lsDate = lastSaleMap.get(pid)!;
+        if (!currLastSale || lsDate > currLastSale) {
+          currLastSale = lsDate;
+        }
+      }
+    }
+
+    // Incluir se houver estoque OU tiver vendido no periodo
+    if (data.estoque > 0 || vendP > 0) {
+      results.push({
+        marca: marca,
+        estoqueAtual: data.estoque,
+        vendidosPeriodo: vendP,
+        receitaPeriodo: recP,
+        ultimaVenda: currLastSale
+      });
+    }
+  }
+
+  // Ordenar por receita (desc) e vendidos (desc)
+  return results.sort((a, b) => b.receitaPeriodo - a.receitaPeriodo || b.vendidosPeriodo - a.vendidosPeriodo);
+}
+
+// ================================================================
+// 12. RELATÓRIO: ESTOQUE FÍSICO DETALHADO (Solares e Armações)
+// ================================================================
+
+export interface EstoqueReportItem {
+  id: number;
+  tipo_produto: string;
+  categoria: string;
+  marca: string;
+  nome: string;
+  preco_custo: number;
+  preco_venda: number;
+  estoque_atual: number;
+  valor_total_venda_estimado: number;
+}
+
+export async function getEstoqueSolaresArmacoes(storeId: number, marca?: string): Promise<EstoqueReportItem[]> {
+  const supabase = createAdminClient();
+
+  // Building query
+  let query = (supabase.from('products') as any)
+    .select('id, tipo_produto, categoria, marca, nome, preco_custo, preco_venda, estoque_atual')
+    .eq('store_id', storeId)
+    .in('tipo_produto', ['Armacao', 'Solar']);
+
+  // Apply brand filter if provided
+  if (marca) {
+    if (marca === 'SEM MARCA') {
+      query = query.or('marca.is.null,marca.eq.""');
+    } else {
+      query = query.ilike('marca', `%${marca}%`);
+    }
+  }
+
+  const { data: productsRaw, error } = await query;
+
+  if (error) {
+    console.error("Erro consultando estoque detalhado", error);
+    return [];
+  }
+
+  const result: EstoqueReportItem[] = (productsRaw || []).map((p: any) => {
+    const estoque = Number(p.estoque_atual || 0);
+    const precoVenda = Number(p.preco_venda || 0);
+
+    return {
+      id: p.id,
+      tipo_produto: p.tipo_produto || '',
+      categoria: p.categoria || '',
+      marca: (p.marca || 'Sem Marca').toUpperCase(),
+      nome: p.nome || '',
+      preco_custo: Number(p.preco_custo || 0),
+      preco_venda: precoVenda,
+      estoque_atual: estoque,
+      valor_total_venda_estimado: estoque > 0 ? (estoque * precoVenda) : 0
+    };
+  });
+
+  // Ordenar por estoque atual (descrescente)
+  return result.sort((a, b) => b.estoque_atual - a.estoque_atual);
+}
+
+/**
+ * Retorna lista de marcas únicas para o filtro de Estoque
+ */
+export async function getMarcasFiltroEstoque(storeId: number): Promise<string[]> {
+  const supabase = createAdminClient();
+  const PAGE_SIZE = 1000;
+  const marcasSet = new Set<string>();
+  let from = 0;
+  let keepGoing = true;
+
+  while (keepGoing) {
+    const { data, error } = await (supabase.from('products') as any)
+      .select('marca')
+      .eq('store_id', storeId)
+      .in('tipo_produto', ['Armacao', 'Solar'])
+      .range(from, from + PAGE_SIZE - 1);
+
+    if (error || !data || data.length === 0) {
+      keepGoing = false;
+      break;
+    }
+
+    data.forEach((p: any) => {
+      const m = (p.marca || 'SEM MARCA').trim().toUpperCase();
+      if (m) marcasSet.add(m);
+    });
+
+    if (data.length < PAGE_SIZE) {
+      keepGoing = false;
+    } else {
+      from += PAGE_SIZE;
+    }
+  }
+
+  return Array.from(marcasSet).sort();
 }

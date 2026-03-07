@@ -6,9 +6,11 @@ import { revalidatePath } from "next/cache"
 
 export type LabOSResult = {
     id: number
-    venda_id: number | null // <--- IMPORTANTE: Esse campo garante o redirecionamento
+    venda_id: number | null
+    customer_id?: number | null
     created_at: string
     customer_name: string
+    customer_phone?: string | null
     dependente_name?: string | null
     protocolo_fisico?: string | null
     status: string
@@ -54,9 +56,9 @@ export async function searchOSForLab(storeId: number, query: string): Promise<La
         const { data: byId } = await supabase
             .from('service_orders')
             .select(`
-                id, venda_id, created_at, protocolo_fisico,
+                id, venda_id, customer_id, created_at, protocolo_fisico,
                 dt_pedido_em, dt_lente_chegou, dt_montado_em, dt_entregue_em, lab_nome, lab_pedido_por_id,
-                customers ( full_name ),
+                customers ( full_name, fone_movel, phone ),
                 dependentes ( full_name ),
                 vendas ( status )
             `)
@@ -71,9 +73,9 @@ export async function searchOSForLab(storeId: number, query: string): Promise<La
         const { data: byProtocolo } = await supabase
             .from('service_orders')
             .select(`
-                id, venda_id, created_at, protocolo_fisico,
+                id, venda_id, customer_id, created_at, protocolo_fisico,
                 dt_pedido_em, dt_lente_chegou, dt_montado_em, dt_entregue_em, lab_nome, lab_pedido_por_id,
-                customers ( full_name ),
+                customers ( full_name, fone_movel, phone ),
                 dependentes ( full_name ),
                 vendas ( status )
             `)
@@ -89,9 +91,9 @@ export async function searchOSForLab(storeId: number, query: string): Promise<La
     const { data: byCustomer } = await supabase
         .from('service_orders')
         .select(`
-            id, venda_id, created_at,
+            id, venda_id, customer_id, created_at,
             dt_pedido_em, dt_lente_chegou, dt_montado_em, dt_entregue_em, lab_nome, lab_pedido_por_id,
-            customers!inner ( full_name ),
+            customers!inner ( full_name, fone_movel, phone ),
             dependentes ( full_name ),
             vendas ( status )
         `)
@@ -107,9 +109,9 @@ export async function searchOSForLab(storeId: number, query: string): Promise<La
         const { data: byDependente } = await supabase
             .from('service_orders')
             .select(`
-                id, venda_id, created_at,
+                id, venda_id, customer_id, created_at,
                 dt_pedido_em, dt_lente_chegou, dt_montado_em, dt_entregue_em, lab_nome, lab_pedido_por_id,
-                customers ( full_name ),
+                customers ( full_name, fone_movel, phone ),
                 dependentes!inner ( full_name ),
                 vendas ( status )
             `)
@@ -130,9 +132,11 @@ export async function searchOSForLab(storeId: number, query: string): Promise<La
 
     return uniqueResults.map((os: any) => ({
         id: os.id,
-        venda_id: os.venda_id, // <--- O SEGREDO ESTÁ AQUI
+        venda_id: os.venda_id,
+        customer_id: os.customer_id,
         created_at: os.created_at,
         customer_name: os.customers?.full_name || 'Consumidor',
+        customer_phone: os.customers?.fone_movel || os.customers?.phone || null,
         dependente_name: os.dependentes?.full_name || null,
         protocolo_fisico: os.protocolo_fisico || null,
         status: os.vendas?.status || 'Indefinido',
@@ -168,6 +172,25 @@ export async function updateLabTracking(osId: number, storeId: number, formData:
         return { success: false, message: 'Erro ao salvar rastreio.' }
     }
 
+    revalidatePath(`/dashboard/loja/${storeId}`)
+    return { success: true }
+}
+
+// 3. ATUALIZAR TELEFONE DO CLIENTE
+export async function updateCustomerPhone(customerId: number, storeId: number, phone: string) {
+    const supabase = createAdminClient()
+
+    const { error } = await (supabase.from('customers') as any)
+        .update({ fone_movel: phone })
+        .eq('id', customerId)
+        .eq('store_id', storeId)
+
+    if (error) {
+        console.error("Erro update phone:", error)
+        return { success: false, message: 'Erro ao atualizar telefone.' }
+    }
+
+    // Revalidação para garantir dados novos na busca subsequente
     revalidatePath(`/dashboard/loja/${storeId}`)
     return { success: true }
 }
