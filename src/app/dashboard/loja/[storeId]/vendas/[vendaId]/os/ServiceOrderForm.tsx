@@ -567,8 +567,11 @@ Obs.: ${obsOs}
                             {/* CARD AZUL (DADOS) */}
                             {/* CARD DADOS */}
                             <div className={cardBlue}>
-                                <h3 className="text-cyan-400 font-bold text-xs mb-3 flex items-center gap-2 border-b border-white/5 pb-2 tracking-wide uppercase">
-                                    <User className="h-3 w-3" /> DADOS E VÍNCULOS
+                                <h3 className="text-cyan-400 font-black text-lg mb-4 flex items-center gap-3 border-b border-white/10 pb-3 tracking-[0.15em] uppercase drop-shadow-sm">
+                                    <div className="p-1.5 bg-cyan-500/10 rounded-lg border border-cyan-500/20 shadow-inner">
+                                        <User className="h-5 w-5" />
+                                    </div>
+                                    DADOS E VÍNCULOS
                                 </h3>
                                 <div className="space-y-2 flex-1">
                                     <div>
@@ -624,8 +627,11 @@ Obs.: ${obsOs}
 
                             {/* CARD MEDIDAS */}
                             <div className={cardSlate}>
-                                <h3 className="text-cyan-400 font-bold text-xs mb-3 flex items-center gap-2 border-b border-white/5 pb-2 tracking-wide uppercase">
-                                    <Ruler className="h-3 w-3" /> MEDIDAS TÉCNICAS
+                                <h3 className="text-cyan-400 font-black text-lg mb-4 flex items-center gap-3 border-b border-white/10 pb-3 tracking-[0.15em] uppercase drop-shadow-sm">
+                                    <div className="p-1.5 bg-cyan-500/10 rounded-lg border border-cyan-500/20 shadow-inner">
+                                        <Ruler className="h-5 w-5" />
+                                    </div>
+                                    MEDIDAS TÉCNICAS
                                 </h3>
                                 <div className="grid grid-cols-3 gap-2 mb-3 items-end">
                                     <div className="col-span-1"></div>
@@ -671,9 +677,12 @@ Obs.: ${obsOs}
 
                             {/* CARD RECEITA */}
                             <div className={cardViolet}>
-                                <div className="flex justify-between border-b border-white/5 pb-2 mb-3 items-center">
-                                    <h3 className="font-bold text-cyan-400 flex items-center gap-2 text-xs tracking-wide uppercase">
-                                        <Glasses className="h-3 w-3" /> RECEITA
+                                <div className="flex justify-between border-b border-white/10 pb-3 mb-4 items-center">
+                                    <h3 className="font-black text-cyan-400 flex items-center gap-3 text-lg tracking-[0.15em] uppercase drop-shadow-sm">
+                                        <div className="p-1.5 bg-cyan-500/10 rounded-lg border border-cyan-500/20 shadow-inner">
+                                            <Glasses className="h-5 w-5" />
+                                        </div>
+                                        RECEITA
                                     </h3>
                                     <div className="flex gap-1">
                                         <button
@@ -727,8 +736,11 @@ Obs.: ${obsOs}
 
                             {/* CARD PRAZOS */}
                             <div className={cardTeal}>
-                                <h3 className="text-cyan-400 font-bold text-xs mb-3 flex items-center gap-2 border-b border-white/5 pb-2 tracking-wide uppercase">
-                                    <CalendarClock className="h-3 w-3" /> PRAZOS E OBS
+                                <h3 className="text-cyan-400 font-black text-lg mb-4 flex items-center gap-3 border-b border-white/10 pb-3 tracking-[0.15em] uppercase drop-shadow-sm">
+                                    <div className="p-1.5 bg-cyan-500/10 rounded-lg border border-cyan-500/20 shadow-inner">
+                                        <CalendarClock className="h-5 w-5" />
+                                    </div>
+                                    PRAZOS E OBS
                                 </h3>
                                 <div className="flex gap-2 items-start">
                                     <div className="w-1/3">
@@ -756,8 +768,11 @@ Obs.: ${obsOs}
 
                             {/* CARD LAB */}
                             <div className={cardAmber}>
-                                <h3 className="text-cyan-400 font-bold text-xs mb-3 flex items-center gap-2 border-b border-white/5 pb-2 tracking-wide uppercase">
-                                    <Truck className="h-3 w-3" /> LABORATÓRIO
+                                <h3 className="text-cyan-400 font-black text-lg mb-4 flex items-center gap-3 border-b border-white/10 pb-3 tracking-[0.15em] uppercase drop-shadow-sm">
+                                    <div className="p-1.5 bg-cyan-500/10 rounded-lg border border-cyan-500/20 shadow-inner">
+                                        <Truck className="h-5 w-5" />
+                                    </div>
+                                    LABORATÓRIO
                                 </h3>
                                 <div className="grid grid-cols-3 gap-2">
                                     <div><label className={labelStyle}>Pedido Em</label><input type="datetime-local" name="dt_pedido_em" value={dtPedido} onChange={e => setDtPedido(e.target.value)} className={inputStyle} /></div>

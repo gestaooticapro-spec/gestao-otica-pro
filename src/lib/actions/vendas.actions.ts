@@ -618,6 +618,17 @@ export async function addVendaItem(
   }
 
   const data = validatedFields.data
+
+  // Validação: Exigir Produto do Banco para tipos específicos
+  const requiresProductId = ['Lente', 'Armacao', 'Solar', 'Tratamento'].includes(data.item_tipo);
+  if (requiresProductId && !data.lente_id && !data.armacao_id && !data.tratamento_id) {
+    return {
+      success: false,
+      message: 'Você precisa selecionar um produto válido do catálogo para este tipo de item.',
+      timestamp: Date.now()
+    }
+  }
+
   const valor_total_item = data.quantidade * data.valor_unitario
 
   // Definimos o ID do produto unificado
@@ -1937,16 +1948,17 @@ export async function receberParcela(prevState: any, formData: FormData) {
     if (errorPagto) throw new Error(`Erro ao registrar pagamento: ${errorPagto.message}`)
 
     // Baixa a parcela
-    await (supabaseAdmin.from('financiamento_parcelas') as any).update({
+    const { error: errBaixa } = await (supabaseAdmin.from('financiamento_parcelas') as any).update({
       status: 'Pago',
       data_pagamento: new Date().toISOString(),
       valor_parcela: principalAbatido
     }).eq('id', parcela_id)
+    if (errBaixa) throw new Error(`Erro ao baixar a parcela original: ${errBaixa.message}`)
 
     // Lógica de Diferença (Exatamente igual ao seu original)
     if (diferencaDivida > 0.01) {
       if (estrategia === 'criar_pendencia') {
-        await (supabaseAdmin.from('financiamento_parcelas') as any).insert({
+        const { error: errPendencia } = await (supabaseAdmin.from('financiamento_parcelas') as any).insert({
           tenant_id: (profile as any).tenant_id,
           store_id: store_id,
           financiamento_id: parcelaAtual.financiamento_id,
@@ -1956,6 +1968,7 @@ export async function receberParcela(prevState: any, formData: FormData) {
           valor_parcela: diferencaDivida,
           status: 'Pendente'
         })
+        if (errPendencia) throw new Error(`Erro criar pendencia: ${errPendencia.message}`)
       } else if (estrategia === 'somar_proxima') {
         const { data: proxParcela } = await supabaseAdmin
           .from('financiamento_parcelas')
@@ -1969,13 +1982,15 @@ export async function receberParcela(prevState: any, formData: FormData) {
 
         if (proxParcela) {
           const prox = proxParcela as any;
-          await (supabaseAdmin.from('financiamento_parcelas') as any)
+          const { error: errUpdateProx } = await (supabaseAdmin.from('financiamento_parcelas') as any)
             .update({ valor_parcela: prox.valor_parcela + diferencaDivida })
             .eq('id', prox.id)
+
+          if (errUpdateProx) throw new Error(`Erro ao somar na próxima parcela: ${errUpdateProx.message}`)
         } else {
           const novaData = new Date(parcelaAtual.data_vencimento)
           novaData.setDate(novaData.getDate() + 30)
-          await (supabaseAdmin.from('financiamento_parcelas') as any).insert({
+          const { error: errNewProx } = await (supabaseAdmin.from('financiamento_parcelas') as any).insert({
             tenant_id: (profile as any).tenant_id,
             store_id: store_id,
             financiamento_id: parcelaAtual.financiamento_id,
@@ -1985,6 +2000,7 @@ export async function receberParcela(prevState: any, formData: FormData) {
             valor_parcela: diferencaDivida,
             status: 'Pendente'
           })
+          if (errNewProx) throw new Error(`Erro criar nova parcela: ${errNewProx.message}`)
         }
       }
     } else if (diferencaDivida < -0.01) {
@@ -2001,9 +2017,10 @@ export async function receberParcela(prevState: any, formData: FormData) {
 
       if (proxParcela) {
         const prox = proxParcela as any;
-        await (supabaseAdmin.from('financiamento_parcelas') as any)
+        const { error: errSubProx } = await (supabaseAdmin.from('financiamento_parcelas') as any)
           .update({ valor_parcela: prox.valor_parcela - excedente })
           .eq('id', prox.id)
+        if (errSubProx) throw new Error(`Erro subtrair excedente: ${errSubProx.message}`)
       }
     }
 

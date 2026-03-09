@@ -32,7 +32,7 @@ const formatDate = (d: string) => {
 }
 
 // --- ESTILOS DO DESIGN SYSTEM (Refatorado para Dark Glassmorphism) ---
-const cardBase = "rounded-xl shadow-xl border backdrop-blur-xl p-3 flex flex-col relative overflow-hidden transition-all"
+const cardBase = "rounded-xl shadow-xl border backdrop-blur-md p-3 flex flex-col relative overflow-hidden transition-all"
 const cardBlue = `${cardBase} bg-cyan-950/20 border-cyan-500/10 hover:bg-cyan-900/20`
 const cardSlate = `${cardBase} bg-slate-950/20 border-slate-500/10 hover:bg-slate-900/20`
 const cardViolet = `${cardBase} bg-purple-950/20 border-purple-500/10 hover:bg-purple-900/20`
@@ -607,10 +607,6 @@ ${addIf('Obs.', obsOs) || ''}
                                 <FileText className="h-3 w-3 text-cyan-400" />
                                 <span className="hidden sm:inline">Ver Venda</span>
                             </button>
-
-                            <button type="button" onClick={() => handleNavigate('new')} className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-500/20 shadow-sm transition-all uppercase tracking-wide flex items-center gap-2">
-                                <Plus className="h-3 w-3" /> NOVA
-                            </button>
                         </div>
                     </div>
 
@@ -621,9 +617,14 @@ ${addIf('Obs.', obsOs) || ''}
 
                             {/* CARD AZUL (DADOS) */}
                             <div className={cardBlue}>
-                                <h3 className="text-cyan-400 font-bold text-xs mb-3 flex items-center gap-2 border-b border-white/5 pb-2 tracking-wide uppercase">
-                                    <User className="h-3 w-3" /> DADOS E VÍNCULOS
-                                </h3>
+                                <div className="flex justify-between border-b border-white/10 pb-3 mb-4 items-center">
+                                    <h3 className="text-cyan-400 font-black flex items-center gap-3 text-lg tracking-[0.15em] uppercase drop-shadow-sm">
+                                        <div className="p-1.5 bg-cyan-500/10 rounded-lg border border-cyan-500/20 shadow-inner">
+                                            <User className="h-5 w-5" />
+                                        </div>
+                                        DADOS E VÍNCULOS
+                                    </h3>
+                                </div>
                                 <div className="space-y-2 flex-1">
                                     <div className="flex items-center gap-2 mb-2">
                                         <label className={`w-16 ${labelBlue} text-right shrink-0 mb-0`}>Paciente</label>
@@ -688,9 +689,14 @@ ${addIf('Obs.', obsOs) || ''}
 
                             {/* CARD SLATE (MEDIDAS) */}
                             <div className={cardSlate}>
-                                <h3 className="text-slate-200 font-bold text-xs mb-3 flex items-center gap-2 border-b border-white/5 pb-2 tracking-wide uppercase">
-                                    <Ruler className="h-3 w-3" /> MEDIDAS TÉCNICAS
-                                </h3>
+                                <div className="flex justify-between border-b border-white/10 pb-3 mb-4 items-center">
+                                    <h3 className="text-slate-200 font-black flex items-center gap-3 text-lg tracking-[0.15em] uppercase drop-shadow-sm">
+                                        <div className="p-1.5 bg-slate-500/10 rounded-lg border border-slate-500/20 shadow-inner">
+                                            <Ruler className="h-5 w-5" />
+                                        </div>
+                                        MEDIDAS TÉCNICAS
+                                    </h3>
+                                </div>
                                 <div className="space-y-2 mb-3">
                                     {/* OD / OE Headers */}
                                     <div className="flex items-center gap-2">
@@ -741,10 +747,13 @@ ${addIf('Obs.', obsOs) || ''}
                         <div className="lg:col-span-8 space-y-2 flex flex-col">
 
                             {/* CARD VIOLETA (RECEITA) */}
-                            <div className={`${cardViolet} flex-1 flex flex-col justify-center`}>
-                                <div className="flex justify-between border-b border-white/5 pb-2 mb-3 items-center">
-                                    <h3 className="font-bold text-purple-300 flex items-center gap-2 text-xs tracking-wide uppercase">
-                                        <Glasses className="h-3 w-3" /> RECEITA
+                            <div className={`${cardViolet} flex-1 flex flex-col`}>
+                                <div className="flex justify-between border-b border-white/10 pb-3 mb-4 items-center">
+                                    <h3 className="font-black text-purple-300 flex items-center gap-3 text-lg tracking-[0.15em] uppercase drop-shadow-sm">
+                                        <div className="p-1.5 bg-purple-500/10 rounded-lg border border-purple-500/20 shadow-inner">
+                                            <Glasses className="h-5 w-5" />
+                                        </div>
+                                        RECEITA
                                     </h3>
                                     <div className="flex gap-1">
                                         <button
@@ -809,9 +818,14 @@ ${addIf('Obs.', obsOs) || ''}
                             </div>
                             {/* CARD TEAL (PRAZOS) */}
                             <div className={cardTeal}>
-                                <h3 className="text-emerald-300 font-bold text-xs mb-3 flex items-center gap-2 border-b border-white/5 pb-2 tracking-wide uppercase">
-                                    <CalendarClock className="h-3 w-3" /> PRAZOS E OBS
-                                </h3>
+                                <div className="flex justify-between border-b border-white/10 pb-3 mb-4 items-center">
+                                    <h3 className="text-emerald-300 font-black flex items-center gap-3 text-lg tracking-[0.15em] uppercase drop-shadow-sm">
+                                        <div className="p-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20 shadow-inner">
+                                            <CalendarClock className="h-5 w-5" />
+                                        </div>
+                                        PRAZOS E OBS
+                                    </h3>
+                                </div>
                                 <div className="flex gap-2 items-start">
                                     <div className="w-1/3">
                                         <label className={labelTeal}>Prometido Para</label>
@@ -839,9 +853,14 @@ ${addIf('Obs.', obsOs) || ''}
 
                             {/* CARD AMBER (LAB) */}
                             <div className={cardAmber}>
-                                <h3 className="text-amber-300 font-bold text-xs mb-3 flex items-center gap-2 border-b border-white/5 pb-2 tracking-wide uppercase">
-                                    <Truck className="h-3 w-3" /> LABORATÓRIO
-                                </h3>
+                                <div className="flex justify-between border-b border-white/10 pb-3 mb-4 items-center">
+                                    <h3 className="text-amber-300 font-black flex items-center gap-3 text-lg tracking-[0.15em] uppercase drop-shadow-sm">
+                                        <div className="p-1.5 bg-amber-500/10 rounded-lg border border-amber-500/20 shadow-inner">
+                                            <Truck className="h-5 w-5" />
+                                        </div>
+                                        LABORATÓRIO
+                                    </h3>
+                                </div>
                                 <div className="grid grid-cols-3 gap-2">
                                     <div><label className={labelAmber}>Pedido Em</label><input type="datetime-local" name="dt_pedido_em" value={dtPedido} onChange={e => setDtPedido(e.target.value)} className={inputStyle} /></div>
                                     <div><label className={labelAmber}>Pedido Por</label>
@@ -882,6 +901,10 @@ ${addIf('Obs.', obsOs) || ''}
                         title="Imprimir Protocolo"
                     >
                         <Printer className="h-4 w-4" /> <span className="hidden sm:inline">IMPRIMIR</span>
+                    </button>
+
+                    <button type="button" onClick={() => handleNavigate('new')} className="px-4 py-2 text-xs font-bold rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-all flex items-center gap-2">
+                        <Plus className="h-4 w-4" /> NOVA
                     </button>
 
                     {activeId && (

@@ -119,8 +119,8 @@ export default function ReportsHubPage() {
         <div className="min-h-full relative flex flex-col p-6 lg:p-10 z-0">
             {/* Background Manager Layout Style */}
             <div className={`fixed inset-0 z-[-1] transition-opacity duration-1000 ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
-                <div className="absolute inset-0 bg-[url('/tela1.jpg')] bg-cover bg-center" />
-                <div className="absolute inset-0 bg-black/60 backdrop-blur-xl" />
+                <div className="absolute inset-0 bg-[url('/relatorios.jpg')] bg-cover bg-center" />
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-md" />
             </div>
 
             <div className="absolute top-6 right-6 z-50">

@@ -148,7 +148,10 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
             </div>
 
             <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
-                <div className="absolute inset-0 bg-[url('/dashgerencial.jpg')] bg-cover bg-center" />
+                <div
+                    className="absolute inset-0 bg-cover bg-center transition-all duration-700"
+                    style={{ backgroundImage: manualState === 'gerencia' ? "url('/gerente.jpg')" : "url('/dashgerencial.jpg')" }}
+                />
                 <div className="absolute inset-0 bg-black/45 backdrop-blur-md" />
             </div>
 

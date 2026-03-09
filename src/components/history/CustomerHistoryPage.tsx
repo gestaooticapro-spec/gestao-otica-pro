@@ -4,7 +4,8 @@ import { useState, useMemo } from 'react'
 import { CustomerXRayData } from '@/lib/actions/history.actions'
 import {
     User, ShoppingBag, TrendingUp, Calendar,
-    ArrowUpRight, Clock, Star, Search, Users, Wallet, FileText, Eye, EyeOff, ChevronDown, AlertTriangle, X
+    ArrowUpRight, Clock, Star, Search, Users, Wallet, FileText, Eye, EyeOff, ChevronDown, AlertTriangle, X,
+    Stethoscope
 } from 'lucide-react'
 
 interface CustomerHistoryPageProps {
@@ -121,18 +122,31 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                             ))}
                         </ul>
                     </div>
-                    <div className="flex-1 bg-purple-950/20 border border-purple-500/10 rounded-2xl p-4 hover:bg-purple-900/10 transition-colors shadow-lg">
+                    <div className="flex-1 bg-purple-950/20 border border-purple-500/10 rounded-2xl p-4 hover:bg-purple-900/10 transition-colors shadow-lg flex flex-col justify-between">
                         <h5 className="text-[9px] font-black text-purple-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
                             <Users className="w-3 h-3" /> Perfil de Consumo
                         </h5>
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-full bg-purple-500/10 ring-1 ring-purple-500/20">
-                                <Users className="w-4 h-4 text-purple-400" />
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-full bg-purple-500/10 ring-1 ring-purple-500/20 shrink-0">
+                                    <Users className="w-4 h-4 text-purple-400" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-[10px] text-slate-500 font-medium">Compra para:</p>
+                                    <p className="text-sm font-black text-white truncate">{habits.compraMaisPara}</p>
+                                </div>
                             </div>
-                            <div>
-                                <p className="text-[10px] text-slate-500 font-medium">Compra para:</p>
-                                <p className="text-sm font-black text-white">{habits.compraMaisPara}</p>
-                            </div>
+                            {habits.topMedico && (
+                                <div className="flex items-center gap-3 border-t border-purple-500/10 pt-2">
+                                    <div className="p-1.5 rounded-full bg-purple-500/10 ring-1 ring-purple-500/20 shrink-0">
+                                        <Stethoscope className="w-3.5 h-3.5 text-purple-400" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-[10px] text-slate-500 font-medium">Médico Favorito:</p>
+                                        <p className="text-xs font-bold text-white truncate" title={habits.topMedico}>{habits.topMedico}</p>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

@@ -80,20 +80,28 @@ export default function AddItemFormExperimental({
     const [isDropdownOpen, setIsDropdownOpen] = useState(false)
     const [isSearching, setIsSearching] = useState(false)
 
+    // NOVO ESTADO: Validação Visual
+    const [validationError, setValidationError] = useState<string | null>(null)
+
     const initialState: SaveVendaItemResult = { success: false, message: '' }
     const [saveState, dispatchSave] = useFormState(addVendaItem, initialState)
 
     const lastStateRef = useRef(initialState);
 
     useEffect(() => {
-        if (saveState !== lastStateRef.current && saveState.success) {
-            formRef.current?.reset()
-            setDescricao('')
-            setQuantidade(1)
-            setUnidade('Unidade')
-            setValorUnitario('0,00')
-            setSelectedIds({ lente_id: null, armacao_id: null, tratamento_id: null })
-            onItemAdded()
+        if (saveState !== lastStateRef.current) {
+            if (saveState.success) {
+                formRef.current?.reset()
+                setDescricao('')
+                setQuantidade(1)
+                setUnidade('Unidade')
+                setValorUnitario('0,00')
+                setSelectedIds({ lente_id: null, armacao_id: null, tratamento_id: null })
+                setValidationError(null)
+                onItemAdded()
+            } else if (saveState.message) {
+                setValidationError(saveState.message)
+            }
         }
         lastStateRef.current = saveState;
     }, [saveState, onItemAdded])
@@ -128,7 +136,9 @@ export default function AddItemFormExperimental({
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setDescricao(e.target.value)
+        // Se o usuário voltar a digitar, apagamos a seleção anterior e tiramos o erro
         setSelectedIds({ lente_id: null, armacao_id: null, tratamento_id: null })
+        setValidationError(null)
     }
 
     const handleSuggestionClick = (item: ProductSearchResult) => {
@@ -136,6 +146,7 @@ export default function AddItemFormExperimental({
         const descricaoCompleta = item.marca ? `${item.marca} ${item.descricao}` : item.descricao
         setDescricao(descricaoCompleta)
         setValorUnitario(formatCurrency(item.preco_venda))
+        setValidationError(null)
 
         setItemTipo(item.tipo)
 
@@ -174,7 +185,19 @@ export default function AddItemFormExperimental({
     const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         setItemTipo(e.target.value as any);
         setSelectedIds({ lente_id: null, armacao_id: null, tratamento_id: null });
+        setValidationError(null)
     }
+
+    // Lógica para saber se um produto válido do banco foi selecionado
+    // 'Outro' e 'Servico' podem não ter ID no banco dependendo da regra de negócio,
+    // mas Lente, Armacao, Solar e Tratamento OBRIGATORIAMENTE precisam de ID.
+    const isProductSelected =
+        (itemTipo === 'Lente' && selectedIds.lente_id !== null) ||
+        (itemTipo === 'Armacao' && selectedIds.armacao_id !== null) ||
+        (itemTipo === 'Solar' && selectedIds.armacao_id !== null) ||
+        (itemTipo === 'Tratamento' && selectedIds.tratamento_id !== null) ||
+        (itemTipo === 'Outro') ||
+        (itemTipo === 'Servico')
 
     // ESTILOS ADAPTADOS PARA DARK MODE (MODAL)
     const labelStyle = 'block text-[10px] font-bold text-slate-400 mb-0.5 uppercase tracking-wider'
@@ -184,7 +207,13 @@ export default function AddItemFormExperimental({
         <div className="bg-transparent p-1 h-full flex flex-col">
             {/* REMOVIDO CABEÇALHO INTERNO POIS O MODAL JÁ TEM */}
 
-            <form ref={formRef} action={dispatchSave} className="space-y-3">
+            <form ref={formRef} action={(formData) => {
+                if (!isProductSelected) {
+                    setValidationError('Você precisa selecionar um produto da lista de sugestões.')
+                    return
+                }
+                dispatchSave(formData)
+            }} className="space-y-3">
                 <input type="hidden" name="venda_id" value={vendaId} />
                 <input type="hidden" name="lente_id" value={selectedIds.lente_id ?? ''} />
                 <input type="hidden" name="armacao_id" value={selectedIds.armacao_id ?? ''} />
@@ -206,7 +235,7 @@ export default function AddItemFormExperimental({
                                 onKeyDown={handleKeyDown}
                                 disabled={disabled}
                                 placeholder="Digite nome ou código..."
-                                className={`${inputStyle} pr-7 font-medium text-sm`}
+                                className={`${inputStyle} pr-7 font-medium text-sm ${validationError && !isProductSelected ? 'border-red-500/50 ring-1 ring-red-500/50 bg-red-500/5' : ''}`}
                                 autoComplete="off"
                                 autoFocus
                             />
@@ -214,6 +243,11 @@ export default function AddItemFormExperimental({
                                 {isSearching ? <Loader2 className="h-4 w-4 animate-spin text-blue-500" /> : <Search className="h-4 w-4" />}
                             </div>
                         </div>
+                        {validationError && !isProductSelected && (
+                            <div className="absolute -bottom-5 left-1 text-[10px] text-red-400 font-bold tracking-wide">
+                                * {validationError}
+                            </div>
+                        )}
 
                         {isDropdownOpen && suggestions.length > 0 && (
                             <div className="absolute z-50 w-full mt-1 bg-slate-900 rounded-lg shadow-xl max-h-60 overflow-y-auto border border-white/10 ring-1 ring-black ring-opacity-5 animate-in fade-in slide-in-from-top-2 custom-scrollbar">

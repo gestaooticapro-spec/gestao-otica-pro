@@ -336,7 +336,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                 <>
 
                     {/* --- TOPO: INDICADORES (KPIs) --- */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 shrink-0">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 gap-3 shrink-0">
 
                         {/* Card 0: FATURAMENTO MENSAL */}
                         <div className="bg-indigo-500/15 backdrop-blur-md text-white p-3 rounded-xl shadow-lg border border-indigo-500/20 group relative">
@@ -429,6 +429,22 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                     <span className="text-[8px] bg-sky-500/10 px-1 py-0.5 rounded text-sky-300 font-bold border border-sky-500/10">Pix: {formatCurrency(vendas.total_pix)}</span>
                                     <span className="text-[8px] bg-sky-500/10 px-1 py-0.5 rounded text-sky-300 font-bold border border-sky-500/10">Cartão: {formatCurrency(vendas.total_cartao)}</span>
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* Card 4: Total Entradas (Hoje) */}
+                        <div className="bg-white/5 backdrop-blur-md p-3 rounded-xl border border-teal-500/20 shadow-lg relative">
+                            <div className="absolute inset-0 overflow-hidden rounded-xl pointer-events-none">
+                                <div className="absolute right-3 top-3 p-2 bg-teal-500/10 text-teal-400 rounded-lg"><ArrowUpCircle className="h-5 w-5" /></div>
+                            </div>
+                            <div className="relative z-10 w-full pr-12">
+                                <div className="flex items-center gap-1 mb-1">
+                                    <p className="text-[9px] font-bold text-teal-400 uppercase tracking-wider">Total Entradas</p>
+                                    <HelpTooltip text="Soma de tudo o que ENTROU hoje (Dinheiro + Pix + Cartão + Suprimentos)." />
+                                </div>
+                                <p className="text-xl font-black text-teal-400">
+                                    {formatCurrency((vendas.total_dinheiro + totais.entradas_manuais) + vendas.total_pix + vendas.total_cartao)}
+                                </p>
                             </div>
                         </div>
 

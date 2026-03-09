@@ -20,6 +20,7 @@ export interface CustomerXRayData {
     habits: {
         compraMaisPara: 'Si mesmo' | 'Dependentes' | 'Equilibrado'
         topProdutos: { nome: string, qtd: number }[]
+        topMedico: string | null
     }
     sales: {
         id: number
@@ -112,7 +113,9 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
                     forma_pagamento, valor_pago, parcelas, created_at
                 ),
                 os:service_orders(
-                    *
+                    *,
+                    dependente:dependentes(full_name),
+                    medico:oftalmologistas(nome_completo)
                 )
             `)
             .eq('store_id', storeId)
@@ -243,6 +246,7 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
         const totalCompras = vendas.length
         let totalGasto = 0
         const itemCounts: Record<string, number> = {}
+        const medicoCounts: Record<string, number> = {}
         let paraSi = 0
         let paraDependentes = 0
 
@@ -256,17 +260,44 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
         const formattedSales = vendas.map((venda: any) => {
             totalGasto += venda.valor_total || 0
 
+            // Process OS
+            const os = (venda.os || []).map((osItem: any) => {
+                const medicoNome = osItem.medico?.nome_completo || null;
+                if (medicoNome) {
+                    medicoCounts[medicoNome] = (medicoCounts[medicoNome] || 0) + 1;
+                }
+
+                return {
+                    id: osItem.id,
+                    codigo: osItem.protocolo_fisico || `OS-${osItem.id}`,
+                    data_entrega: osItem.data_entrega_prevista || osItem.prazo_entrega || osItem.data_entrega || null,
+                    situacao: osItem.situacao || 'Pendente',
+                    medico: medicoNome,
+                    olho_direito: osItem,
+                    olho_esquerdo: osItem,
+                    dependentName: osItem.dependente?.full_name || null
+                };
+            })
+
+            const dependentesNaVenda = os.map((o: any) => o.dependentName).filter(Boolean);
+            const pacienteNome = dependentesNaVenda.length > 0 ? dependentesNaVenda[0] : null;
+
             // Process Items
             const itens = (venda.itens || []).map((item: any) => {
                 const prodName = (item.product_id && productMap[item.product_id]) || 'Produto Avulso'
                 itemCounts[prodName] = (itemCounts[prodName] || 0) + (item.quantidade || 1)
-                paraSi++
+
+                if (pacienteNome) {
+                    paraDependentes++
+                } else {
+                    paraSi++
+                }
 
                 return {
                     produto: prodName,
                     valor: item.valor_unitario,
                     qtd: item.quantidade,
-                    paraQuem: 'Próprio'
+                    paraQuem: pacienteNome || 'Próprio'
                 }
             })
 
@@ -276,17 +307,6 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
                 valor: pg.valor_pago,
                 parcelas: pg.parcelas > 1 ? `${pg.parcelas}x` : 'À vista',
                 data: pg.created_at
-            }))
-
-            // Process OS
-            const os = (venda.os || []).map((osItem: any) => ({
-                id: osItem.id,
-                codigo: osItem.protocolo_fisico || `OS-${osItem.id}`,
-                data_entrega: osItem.data_entrega_prevista || osItem.prazo_entrega || osItem.data_entrega || null,
-                situacao: osItem.situacao || 'Pendente',
-                medico: osItem.medico_nome || osItem.medico || null,
-                olho_direito: osItem,
-                olho_esquerdo: osItem
             }))
 
             return {
@@ -326,6 +346,16 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
         if (paraDependentes > paraSi * 1.5) compraMaisPara = 'Dependentes'
         else if (paraDependentes > 0 && paraSi > 0) compraMaisPara = 'Equilibrado'
 
+        // Top Medico
+        let topMedico: string | null = null
+        let maxMedicoCount = 0
+        for (const [medico, count] of Object.entries(medicoCounts)) {
+            if (count > maxMedicoCount) {
+                maxMedicoCount = count
+                topMedico = medico
+            }
+        }
+
         // Level Calculation
         let nivel: 'Bronze' | 'Prata' | 'Ouro' | 'Diamante' = 'Bronze'
         if (totalGasto > 5000) nivel = 'Diamante'
@@ -351,7 +381,8 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
                 },
                 habits: {
                     compraMaisPara,
-                    topProdutos
+                    topProdutos,
+                    topMedico
                 },
                 sales: formattedSales,
                 postSales: {

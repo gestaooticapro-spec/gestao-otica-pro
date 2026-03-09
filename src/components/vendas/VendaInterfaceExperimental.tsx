@@ -132,23 +132,38 @@ function SectionCard({
 
     return (
         <div className={`bg-black/20 backdrop-blur-md rounded-2xl shadow-xl border ${styles.borderColor} overflow-hidden flex flex-col transition-all hover:bg-black/30 hover:shadow-2xl hover:border-white/10`}>
-            <div className={`${styles.headerBg} px-4 py-3 border-b ${styles.borderColor} flex justify-between items-center h-16 shrink-0`}>
-                <div className="flex items-center gap-4">
-                    <div className={`p-2 rounded-xl ${styles.iconBg}`}>
-                        <Icon className={`h-6 w-6 ${styles.iconColor}`} strokeWidth={2} />
+            <div className={`${styles.headerBg} px-6 py-3 border-b ${styles.borderColor} relative flex items-center justify-center h-20 shrink-0`}>
+                {/* ICON (LEFT) */}
+                <div className="absolute left-6 top-1/2 -translate-y-1/2">
+                    <div className={`p-2.5 rounded-xl ${styles.iconBg} shadow-lg ring-1 ring-white/10`}>
+                        <Icon className={`h-8 w-8 ${styles.iconColor}`} strokeWidth={2.5} />
                     </div>
-                    <span className={`text-base font-black ${styles.titleColor} uppercase tracking-widest leading-none`}>{title} {count !== undefined && <span className="text-white/40 ml-1">({count})</span>}</span>
                 </div>
-                {onAdd && (
-                    <button onClick={onAdd} className={`flex items-center justify-center gap-2 text-white px-4 h-9 rounded-xl text-xs font-bold uppercase transition-all shadow-lg active:scale-95 hover:brightness-110 w-48 shrink-0
-                        ${theme === 'blue' ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/20' :
-                            theme === 'orange' ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-900/20' :
-                                theme === 'green' ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/20' :
-                                    'bg-slate-700 hover:bg-slate-600 shadow-slate-900/20'
-                        }`}>
-                        <Plus className="h-4 w-4 shrink-0" strokeWidth={3} /> <span className="truncate">{actionLabel}</span>
-                    </button>
-                )}
+
+                {/* TITLE (CENTERED) */}
+                <span className={`text-2xl font-black ${styles.titleColor} uppercase tracking-[0.25em] leading-none drop-shadow-sm pointer-events-none`}>
+                    {title}
+                </span>
+
+                {/* QUANTITY AND BUTTON (RIGHT) */}
+                <div className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center gap-8">
+                    {count !== undefined && (
+                        <div className="flex flex-col items-end">
+                            <span className="text-[10px] text-white/20 font-black uppercase tracking-widest mb-0.5">Qtd</span>
+                            <span className="text-2xl font-black text-white/20 leading-none">{count}</span>
+                        </div>
+                    )}
+                    {onAdd && (
+                        <button onClick={onAdd} className={`flex items-center justify-center gap-2 text-white px-4 h-11 rounded-xl text-[10px] font-black uppercase transition-all shadow-xl active:scale-95 hover:brightness-110 w-48 shrink-0 border border-white/10
+                            ${theme === 'blue' ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/40' :
+                                theme === 'orange' ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-900/40' :
+                                    theme === 'green' ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/40' :
+                                        'bg-slate-700 hover:bg-slate-600 shadow-slate-900/40'
+                            }`}>
+                            <Plus className="h-5 w-5 shrink-0" strokeWidth={4} /> <span className="truncate">{actionLabel}</span>
+                        </button>
+                    )}
+                </div>
             </div>
             <div className="p-0 flex-1 min-h-0 overflow-hidden flex flex-col">
                 {children}

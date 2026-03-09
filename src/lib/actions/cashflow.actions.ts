@@ -713,10 +713,13 @@ export async function getResumoCaixa(storeId: number): Promise<ResumoCaixa | nul
 export async function getResumoCaixaPorData(storeId: number, dataISO: string): Promise<ResumoCaixa | null> {
     const supabaseAdmin = createAdminClient()
 
-    const dataRef = new Date(dataISO)
-    dataRef.setHours(0, 0, 0, 0)
-    const dataFim = new Date(dataRef)
-    dataFim.setHours(23, 59, 59, 999)
+    // dataISO comes as "YYYY-MM-DD". We must force it to local midnight
+    // otherwise new Date("YYYY-MM-DD") parses as UTC midnight (-3 hours local = 21:00 of previous day)
+    const localStartStr = `${dataISO}T00:00:00-03:00`
+    const localEndStr = `${dataISO}T23:59:59-03:00`
+
+    const dataRef = new Date(localStartStr)
+    const dataFim = new Date(localEndStr)
 
     // 1. Buscar Caixa do dia (aberto OU fechado)
     const { data: caixa } = await (supabaseAdmin
