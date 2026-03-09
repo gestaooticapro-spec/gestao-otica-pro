@@ -28,6 +28,10 @@ export type ResumoCaixa = {
         saidas_manuais: number
         saldo_esperado_dinheiro: number
         saldo_geral_acumulado: number
+        divergencias?: {
+            positiva: number
+            negativa: number
+        }
     }
     comparativo?: {
         faturamento_mensal_atual: number
@@ -85,12 +89,30 @@ export async function abrirCaixa(prevState: any, formData: FormData) {
     const hoje = new Date()
     const dataInicioHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 0, 0, 0, 0).toISOString()
     const { data: caixasAnteriores } = await (supabaseAdmin.from('caixa_diario') as any)
-        .select('id, saldo_inicial').eq('store_id', profile.store_id).eq('status', 'Aberto').lt('created_at', dataInicioHoje)
+        .select('id, saldo_inicial, created_at').eq('store_id', profile.store_id).eq('status', 'Aberto').lt('created_at', dataInicioHoje)
 
     if (caixasAnteriores?.length) {
         for (const cx of caixasAnteriores) {
+            // Calcular o saldo esperado do dia que ficou aberto pra achar a quebra
+            const dataCx = new Date(cx.created_at).toISOString().split('T')[0]
+            const resumoAntigo = await getResumoCaixaPorData(profile.store_id, dataCx)
+
+            let saldoEsperado = Number(cx.saldo_inicial)
+            if (resumoAntigo) {
+                saldoEsperado = resumoAntigo.totais.saldo_esperado_dinheiro
+            }
+
+            // O fechamento automático usa o novo "saldo_inicial" do dia ATUAL
+            // Isso garante que a gaveta abra certa hoje e a quebra inteira fique registrada no dia não fechado
+            const saldoFinalInformado = Number(val.data.saldo_inicial)
+            const quebra = saldoFinalInformado - saldoEsperado
+
             await (supabaseAdmin.from('caixa_diario') as any).update({
-                status: 'Fechado', data_fechamento: new Date().toISOString(), closed_by: user.id, saldo_final: cx.saldo_inicial, quebra_caixa: 0
+                status: 'Fechado',
+                data_fechamento: new Date().toISOString(),
+                fechado_por_id: user.id,
+                saldo_final: saldoFinalInformado,
+                quebra_caixa: quebra
             }).eq('id', cx.id)
         }
     }
@@ -642,6 +664,26 @@ export async function getResumoCaixa(storeId: number): Promise<ResumoCaixa | nul
     const totalMesAtual = (vendasMesAtual as any[])?.reduce((acc, curr) => acc + Number(curr.valor_pago), 0) || 0
     const totalMesAnterior = (vendasMesAnterior as any[])?.reduce((acc, curr) => acc + Number(curr.valor_pago), 0) || 0
 
+    // --- DIVERGÊNCIAS (ÚLTIMOS 30 DIAS) ---
+    const trintaDiasAtras = new Date()
+    trintaDiasAtras.setDate(trintaDiasAtras.getDate() - 30)
+
+    const { data: fechamentos30d } = await supabaseAdmin
+        .from('caixa_diario')
+        .select('quebra_caixa')
+        .eq('store_id', storeId)
+        .eq('status', 'Fechado')
+        .gte('created_at', trintaDiasAtras.toISOString())
+
+    let total_quebra_positiva = 0
+    let total_quebra_negativa = 0
+
+    fechamentos30d?.forEach((f: any) => {
+        const q = Number(f.quebra_caixa || 0)
+        if (q > 0) total_quebra_positiva += q
+        else if (q < 0) total_quebra_negativa += q
+    })
+
     return {
         caixa,
         movimentacoes: listaMov,
@@ -652,11 +694,165 @@ export async function getResumoCaixa(storeId: number): Promise<ResumoCaixa | nul
             entradas_manuais: manuais.entradas,
             saidas_manuais: manuais.saidas,
             saldo_esperado_dinheiro: saldoGaveta,
-            saldo_geral_acumulado: saldoGeral
+            saldo_geral_acumulado: saldoGeral,
+            divergencias: {
+                positiva: total_quebra_positiva,
+                negativa: total_quebra_negativa
+            }
         },
         comparativo: {
             faturamento_mensal_atual: totalMesAtual,
             faturamento_mensal_anterior: totalMesAnterior
+        }
+    }
+}
+
+// ============================================================================
+// 7. AUDITORIA: RESUMO POR DATA ESPECÍFICA (READ-ONLY)
+// ============================================================================
+export async function getResumoCaixaPorData(storeId: number, dataISO: string): Promise<ResumoCaixa | null> {
+    const supabaseAdmin = createAdminClient()
+
+    const dataRef = new Date(dataISO)
+    dataRef.setHours(0, 0, 0, 0)
+    const dataFim = new Date(dataRef)
+    dataFim.setHours(23, 59, 59, 999)
+
+    // 1. Buscar Caixa do dia (aberto OU fechado)
+    const { data: caixa } = await (supabaseAdmin
+        .from('caixa_diario')
+        .select('*')
+        .eq('store_id', storeId)
+        .gte('created_at', dataRef.toISOString())
+        .lte('created_at', dataFim.toISOString())
+        .order('created_at', { ascending: false })
+        .maybeSingle() as any)
+
+    if (!caixa) return null
+
+    // 2. Movimentos Manuais
+    const { data: movimentos } = await supabaseAdmin
+        .from('caixa_movimentacoes')
+        .select('*')
+        .eq('caixa_id', caixa.id)
+        .order('created_at', { ascending: false })
+    const listaMov = (movimentos || []) as Movimentacao[]
+
+    // 3. Categorias (Autocomplete - reutiliza da loja)
+    const categoriasUnicas: string[] = []
+
+    // 4. PAGAMENTOS do dia
+    const { data: pagamentosVendas } = await supabaseAdmin
+        .from('pagamentos')
+        .select(`id, valor_pago, forma_pagamento, created_at, venda_id, obs, vendas (customer_id, customers (full_name))`)
+        .eq('store_id', storeId)
+        .gte('created_at', dataRef.toISOString())
+        .lte('created_at', dataFim.toISOString())
+    const listaPagamentos = pagamentosVendas || []
+
+    // 5. PARCELAS do dia
+    const { data: parcelasPagas } = await supabaseAdmin
+        .from('financiamento_parcelas')
+        .select(`id, valor_parcela, data_pagamento, customer_id, customers (full_name), financiamento_loja(venda_id)`)
+        .eq('store_id', storeId)
+        .eq('status', 'Pago')
+        .gte('data_pagamento', dataRef.toISOString())
+        .lte('data_pagamento', dataFim.toISOString())
+    const listaParcelas = parcelasPagas || []
+
+    // --- HISTÓRICO UNIFICADO (mesma lógica de getResumoCaixa) ---
+    const historicoUnificado: any[] = []
+
+    listaMov.forEach(m => {
+        historicoUnificado.push({
+            id: `mov-${m.id}`, tipo: m.tipo, descricao: m.descricao, categoria: m.categoria, valor: Number(m.valor), horario: m.created_at, forma_pagamento: m.forma_pagamento || 'Dinheiro', origem: 'Caixa'
+        })
+    })
+
+    listaPagamentos.forEach((pg: any) => {
+        let clienteNome = pg.vendas?.customers?.full_name
+        let tipo = 'Venda'
+        let categoria = 'Venda'
+        let ehParcela = false
+        let vendaIdRef = pg.venda_id
+        let numParcRef = null
+
+        if (pg.obs && pg.obs.includes('Parc.')) {
+            tipo = 'Recebimento'
+            categoria = 'Recebimento'
+            ehParcela = true
+            const matchRef = pg.obs.match(/Venda #(\d+)/)
+            if (matchRef) vendaIdRef = matchRef[1]
+            const matchParc = pg.obs.match(/Parc\. (\d+)/)
+            numParcRef = matchParc ? matchParc[1] : null
+            if (pg.obs.includes('Cliente:')) {
+                const parts = pg.obs.split('Cliente:')
+                if (parts.length > 1) clienteNome = parts[1].trim()
+            }
+            clienteNome = `Carnê ${numParcRef || '?'}x - ${clienteNome || 'Cliente'}`
+        }
+
+        if (!clienteNome) clienteNome = 'Consumidor / Avulso'
+        const formaNormalizada = (pg.forma_pagamento || '').toLowerCase()
+        const origemCalculada = formaNormalizada.includes('dinheiro') ? 'Caixa' : 'Banco'
+
+        historicoUnificado.push({
+            id: `pg-${pg.id}`, tipo, descricao: clienteNome, categoria, valor: Number(pg.valor_pago), horario: pg.created_at, forma_pagamento: pg.forma_pagamento, origem: origemCalculada
+        })
+    })
+
+    listaParcelas.forEach((pc: any) => {
+        const vendaId = pc.financiamento_loja?.venda_id
+        const clienteNome = pc.customers?.full_name || 'Cliente'
+        let duplicado = false
+        if (vendaId) {
+            const match = listaPagamentos.find((p: any) =>
+                p.valor_pago === pc.valor_parcela &&
+                p.obs && p.obs.includes(`Venda #${vendaId}`)
+            )
+            if (match) duplicado = true
+        }
+        if (!duplicado) {
+            historicoUnificado.push({
+                id: `parc-${pc.id}`, tipo: 'Recebimento', descricao: `Carnê - ${clienteNome}`, categoria: 'Recebimento', valor: Number(pc.valor_parcela), horario: pc.data_pagamento, forma_pagamento: 'Dinheiro', origem: 'Caixa'
+            })
+        }
+    })
+
+    historicoUnificado.sort((a, b) => new Date(b.horario).getTime() - new Date(a.horario).getTime())
+
+    // --- TOTAIS ---
+    const vendas = { total_dinheiro: 0, total_pix: 0, total_cartao: 0, total_outros: 0, detalhes: listaPagamentos }
+    historicoUnificado.forEach((item: any) => {
+        if (item.tipo === 'Venda' || item.tipo === 'Recebimento') {
+            const forma = (item.forma_pagamento || '').toLowerCase()
+            if (forma.includes('dinheiro')) vendas.total_dinheiro += item.valor
+            else if (forma.includes('pix')) vendas.total_pix += item.valor
+            else if (forma.includes('cart')) vendas.total_cartao += item.valor
+            else vendas.total_outros += item.valor
+        }
+    })
+
+    const manuais = { entradas: 0, saidas: 0 }
+    listaMov.forEach((m: any) => {
+        if (m.tipo === 'Entrada') manuais.entradas += Number(m.valor)
+        else manuais.saidas += Number(m.valor)
+    })
+
+    const saldoGaveta = Number(caixa.saldo_inicial) + vendas.total_dinheiro + manuais.entradas - manuais.saidas
+    const saldoGeral = saldoGaveta + vendas.total_pix + vendas.total_cartao + vendas.total_outros
+
+    return {
+        caixa,
+        movimentacoes: listaMov,
+        movimentacoes_detalhadas: historicoUnificado,
+        categoriasUsadas: categoriasUnicas,
+        vendas,
+        totais: {
+            entradas_manuais: manuais.entradas,
+            saidas_manuais: manuais.saidas,
+            saldo_esperado_dinheiro: saldoGaveta,
+            saldo_geral_acumulado: saldoGeral
         }
     }
 }

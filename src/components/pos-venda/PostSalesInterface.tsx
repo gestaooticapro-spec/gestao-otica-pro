@@ -289,11 +289,9 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
                                                 <User className="h-4 w-4" />
                                                 <span>Titular: <strong className="text-slate-200">{selectedItem.titular_nome}</strong></span>
                                             </div>
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 group">
                                                 <Phone className="h-4 w-4" />
-                                                {selectedItem.titular_tel ? (
-                                                    <span className="text-slate-300">{selectedItem.titular_tel}</span>
-                                                ) : isEditingPhone ? (
+                                                {isEditingPhone ? (
                                                     <div className="flex items-center gap-2">
                                                         <input
                                                             type="tel"
@@ -317,9 +315,26 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
                                                             <X className="h-4 w-4" />
                                                         </button>
                                                     </div>
+                                                ) : selectedItem.titular_tel ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-slate-300">{selectedItem.titular_tel}</span>
+                                                        <button
+                                                            onClick={() => {
+                                                                setNewPhoneValue(selectedItem.titular_tel || '')
+                                                                setIsEditingPhone(true)
+                                                            }}
+                                                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-white/10 rounded-lg text-slate-400"
+                                                            title="Editar Telefone"
+                                                        >
+                                                            <Edit3 className="h-3 w-3" />
+                                                        </button>
+                                                    </div>
                                                 ) : (
                                                     <button
-                                                        onClick={() => setIsEditingPhone(true)}
+                                                        onClick={() => {
+                                                            setNewPhoneValue('')
+                                                            setIsEditingPhone(true)
+                                                        }}
                                                         className="flex items-center gap-1 text-amber-400 hover:text-amber-300 font-medium"
                                                     >
                                                         <span>Sem fone</span>

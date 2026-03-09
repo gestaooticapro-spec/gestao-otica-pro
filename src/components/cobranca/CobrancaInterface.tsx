@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import {
     Search, AlertCircle, Calendar,
     Phone, MessageSquare, Clock, CheckCircle2,
-    FileText, Wallet, Ban, ExternalLink, Trash2, Megaphone, BarChart3
+    FileText, Wallet, Ban, ExternalLink, Trash2, Megaphone, BarChart3,
+    Loader2, Edit3, X
 } from 'lucide-react'
 import {
     DevedorResumo, registrarCobranca,
@@ -13,6 +14,7 @@ import {
     getDetalhesDivida, updateCobrancaStatus
 } from '@/lib/actions/collection.actions'
 import { getEmployees } from '@/lib/actions/employee.actions'
+import { updateCustomerPhone } from '@/lib/actions/lab.actions'
 import { toast } from 'sonner'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
 
@@ -69,6 +71,11 @@ export default function CobrancaInterface({
     const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('')
     const [employees, setEmployees] = useState<any[]>([])
     const [isPending, startTransition] = useTransition()
+
+    // ESTADOS PARA EDIÇÃO DE TELEFONE
+    const [isEditingPhone, setIsEditingPhone] = useState(false)
+    const [newPhoneValue, setNewPhoneValue] = useState('')
+    const [savingPhone, setSavingPhone] = useState(false)
 
     // CARREGAR LISTA DE FUNCIONÁRIOS DA LOJA
     useEffect(() => {
@@ -181,6 +188,21 @@ export default function CobrancaInterface({
                 toast.error(res.message)
             }
         })
+    }
+
+    const handleSavePhone = async () => {
+        if (!selectedCustomer || !newPhoneValue.trim()) return
+        setSavingPhone(true)
+        const result = await updateCustomerPhone(selectedCustomer.customer_id, storeId, newPhoneValue.trim())
+        if (result.success) {
+            setIsEditingPhone(false)
+            setNewPhoneValue('')
+            setSelectedCustomer(prev => prev ? { ...prev, fone_movel: newPhoneValue.trim() } : null)
+            toast.success("Telefone atualizado!")
+        } else {
+            toast.error(result.message)
+        }
+        setSavingPhone(false)
     }
 
     const formatMoney = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -379,10 +401,59 @@ export default function CobrancaInterface({
                                                     </span>
                                                 )}
                                             </div>
-                                            <p className="text-slate-400 text-sm font-medium flex items-center gap-2">
+                                            <div className="text-slate-400 text-sm font-medium flex items-center gap-2 group">
                                                 <Phone className="w-4 h-4 text-emerald-500" />
-                                                {selectedCustomer.fone_movel || 'Sem telefone móvel'}
-                                            </p>
+                                                {isEditingPhone ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="tel"
+                                                            value={newPhoneValue}
+                                                            onChange={(e) => setNewPhoneValue(e.target.value)}
+                                                            placeholder="(99) 99999-9999"
+                                                            className="w-36 px-2 py-1 text-sm bg-slate-900/50 border border-white/10 rounded-lg text-white placeholder:text-slate-600 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50"
+                                                            autoFocus
+                                                        />
+                                                        <button
+                                                            onClick={handleSavePhone}
+                                                            disabled={savingPhone}
+                                                            className="p-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 rounded-lg hover:bg-emerald-600/40 disabled:opacity-50"
+                                                        >
+                                                            {savingPhone ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => { setIsEditingPhone(false); setNewPhoneValue('') }}
+                                                            className="p-1 bg-white/5 text-slate-400 rounded-lg hover:bg-white/10"
+                                                        >
+                                                            <X className="h-4 w-4" />
+                                                        </button>
+                                                    </div>
+                                                ) : selectedCustomer.fone_movel ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <span>{selectedCustomer.fone_movel}</span>
+                                                        <button
+                                                            onClick={() => {
+                                                                setNewPhoneValue(selectedCustomer.fone_movel || '')
+                                                                setIsEditingPhone(true)
+                                                            }}
+                                                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-white/10 rounded-lg text-slate-400"
+                                                            title="Editar Telefone"
+                                                        >
+                                                            <Edit3 className="h-3 w-3" />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => {
+                                                            setNewPhoneValue('')
+                                                            setIsEditingPhone(true)
+                                                        }}
+                                                        className="flex items-center gap-1 text-amber-400 hover:text-amber-300 font-medium"
+                                                    >
+                                                        <span>Sem fone</span>
+                                                        <Edit3 className="h-3 w-3" />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                         <div className="text-right">
                                             <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Dívida Total</p>

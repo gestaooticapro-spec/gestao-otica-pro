@@ -1,33 +1,41 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { getExtratoDiario } from '@/lib/actions/cashflow.actions'
-import { Loader2, X, AlertTriangle, ArrowUpRight, ArrowDownLeft, DollarSign } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { getHistoricoCaixa } from '@/lib/actions/cashflow.actions'
+import { Loader2, X, AlertTriangle, ArrowUpRight, ArrowDownLeft, DollarSign, Eye } from 'lucide-react'
 
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const formatDate = (dateStr: string) => {
     return new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
 }
 
-export default function HistoricoCaixaModal({ storeId, onClose }: { storeId: number, onClose: () => void }) {
+export default function HistoricoCaixaModal({ storeId, onClose, onAuditDate }: { storeId: number, onClose: () => void, onAuditDate?: (dateStr: string) => void }) {
     const [loading, setLoading] = useState(true)
     const [extrato, setExtrato] = useState<any[]>([])
-    const [saldoAnterior, setSaldoAnterior] = useState(0)
+    const [showOnlyDivergences, setShowOnlyDivergences] = useState(false)
 
     useEffect(() => {
-        getExtratoDiario(storeId).then(res => {
-            // @ts-ignore
-            if (res.extrato) {
-                // @ts-ignore
-                setExtrato(res.extrato)
-                // @ts-ignore
-                setSaldoAnterior(res.saldo_anterior)
-            } else {
-                setExtrato(res as any)
-            }
+        getHistoricoCaixa(storeId).then(res => {
+            setExtrato(res || [])
             setLoading(false)
         })
     }, [storeId])
+
+    const filteredExtrato = useMemo(() => {
+        if (!showOnlyDivergences) return extrato;
+        return extrato.filter(item => Number(item.quebra) !== 0)
+    }, [extrato, showOnlyDivergences])
+
+    const { totalFaltas, totalSobras } = useMemo(() => {
+        let faltas = 0;
+        let sobras = 0;
+        extrato.forEach(item => {
+            const q = Number(item.quebra || 0);
+            if (q < 0) faltas += q;
+            else if (q > 0) sobras += q;
+        })
+        return { totalFaltas: faltas, totalSobras: sobras }
+    }, [extrato])
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-in fade-in duration-200" onClick={onClose}>
@@ -35,16 +43,36 @@ export default function HistoricoCaixaModal({ storeId, onClose }: { storeId: num
 
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between bg-slate-800/60 backdrop-blur-md">
-                    <div>
+                    <div className="flex-1">
                         <h3 className="text-lg font-bold text-white flex items-center gap-2">
                             <DollarSign className="h-5 w-5 text-emerald-400" />
-                            Extrato de Fluxo de Caixa (Últimos 30 dias)
+                            Histórico de Fechamentos (Auditoria)
                         </h3>
-                        <p className="text-xs text-slate-500">Saldo Anterior ao período: <strong className="text-slate-300">{formatCurrency(saldoAnterior)}</strong></p>
+                        {/* Summary Totals */}
+                        <div className="flex gap-4 mt-2">
+                            <div className="bg-red-500/10 border border-red-500/20 px-3 py-1 rounded text-xs font-bold text-red-400">
+                                Faltas Totais: {formatCurrency(totalFaltas)}
+                            </div>
+                            <div className="bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded text-xs font-bold text-emerald-400">
+                                Sobras Totais: {formatCurrency(totalSobras)}
+                            </div>
+                        </div>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-                        <X className="h-5 w-5 text-slate-500 hover:text-red-400" />
-                    </button>
+
+                    <div className="flex items-center gap-6">
+                        <label className="flex items-center gap-2 cursor-pointer bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-lg border border-white/10 transition-colors">
+                            <input
+                                type="checkbox"
+                                className="accent-amber-500 w-4 h-4"
+                                checked={showOnlyDivergences}
+                                onChange={(e) => setShowOnlyDivergences(e.target.checked)}
+                            />
+                            <span className="text-xs font-bold text-amber-400">Mostrar apenas divergências</span>
+                        </label>
+                        <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+                            <X className="h-5 w-5 text-slate-500 hover:text-red-400" />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Content */}
@@ -53,40 +81,55 @@ export default function HistoricoCaixaModal({ storeId, onClose }: { storeId: num
                         <div className="flex items-center justify-center h-64">
                             <Loader2 className="h-8 w-8 animate-spin text-emerald-400" />
                         </div>
-                    ) : extrato.length === 0 ? (
+                    ) : filteredExtrato.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-64 text-slate-500">
                             <AlertTriangle className="h-10 w-10 mb-2 opacity-50" />
-                            <p>Nenhuma movimentação registrada no período.</p>
+                            <p>Nenhuma movimentação para mostrar.</p>
                         </div>
                     ) : (
                         <table className="w-full text-sm text-left">
                             <thead className="bg-white/5 text-slate-500 font-bold text-xs uppercase sticky top-0 z-10 border-b border-white/10">
                                 <tr>
-                                    <th className="px-6 py-3">Data</th>
-                                    <th className="px-6 py-3 text-right text-indigo-400">Vendas (Dinheiro)</th>
+                                    <th className="px-6 py-3">Fechamento</th>
                                     <th className="px-6 py-3 text-right text-emerald-400">Entradas</th>
                                     <th className="px-6 py-3 text-right text-red-400">Saídas</th>
-                                    <th className="px-6 py-3 text-right font-black bg-white/5">Res. Dia</th>
-                                    <th className="px-6 py-3 text-right font-black text-slate-300 bg-white/10">Saldo Acumulado</th>
+                                    <th className="px-6 py-3 text-right font-black bg-white/5">Esperado</th>
+                                    <th className="px-6 py-3 text-right font-black text-slate-300 bg-white/10">Físico (Realizado)</th>
+                                    <th className="px-6 py-3 text-right font-black text-amber-400 bg-amber-500/10">Diferença (Quebra)</th>
+                                    {onAuditDate && <th className="px-4 py-3 text-center">Ações</th>}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-white/5">
-                                {extrato.map((item, idx) => (
+                                {filteredExtrato.map((item: any, idx: number) => (
                                     <tr key={idx} className="hover:bg-white/5 transition-colors">
-                                        <td className="px-6 py-3 font-mono text-xs font-bold text-slate-400">{formatDate(item.data)}</td>
-                                        <td className="px-6 py-3 text-right font-medium text-slate-400">{formatCurrency(item.vendas)}</td>
+                                        <td className="px-6 py-3 font-mono text-xs font-bold text-slate-400">{formatDate(item.data?.split('T')[0] || '')}</td>
                                         <td className="px-6 py-3 text-right font-medium text-emerald-400 bg-emerald-500/5">
                                             {item.entradas > 0 ? `+ ${formatCurrency(item.entradas)}` : '-'}
                                         </td>
                                         <td className="px-6 py-3 text-right font-medium text-red-400 bg-red-500/5">
                                             {item.saidas > 0 ? `- ${formatCurrency(item.saidas)}` : '-'}
                                         </td>
-                                        <td className={`px-6 py-3 text-right font-black border-l border-white/10 bg-white/5 ${item.saldo_dia >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                            {formatCurrency(item.saldo_dia)}
+                                        <td className="px-6 py-3 text-right font-medium text-slate-300 bg-white/5 border-l border-white/10">
+                                            {formatCurrency(item.saldo_esperado)}
                                         </td>
                                         <td className="px-6 py-3 text-right font-black text-white bg-white/10 border-l border-white/10">
-                                            {formatCurrency(item.saldo_acumulado)}
+                                            {formatCurrency(item.saldo_final)}
                                         </td>
+                                        <td className={`px-6 py-3 text-right font-black border-l border-amber-500/20 bg-amber-500/5 ${Number(item.quebra) === 0 ? 'text-slate-500 opacity-50' : Number(item.quebra) > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                            {formatCurrency(item.quebra)}
+                                        </td>
+                                        {onAuditDate && (
+                                            <td className="px-4 py-3 text-center">
+                                                <button
+                                                    onClick={() => onAuditDate(item.data?.split('T')[0])}
+                                                    className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 px-2.5 py-1 rounded-lg flex items-center gap-1.5 text-[10px] font-bold transition-all mx-auto"
+                                                    title="Ver detalhes deste dia"
+                                                >
+                                                    <Eye className="h-3 w-3" />
+                                                    Detalhes
+                                                </button>
+                                            </td>
+                                        )}
                                     </tr>
                                 ))}
                             </tbody>
