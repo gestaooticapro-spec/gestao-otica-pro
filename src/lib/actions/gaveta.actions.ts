@@ -1,9 +1,11 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { unstable_noStore as noStore } from 'next/cache'
 
 export async function getGavetaItems(storeId: number) {
-  const supabase = createClient()
+  noStore()
+  const supabase = createAdminClient()
 
   try {
     const { data, error } = await supabase
@@ -14,7 +16,6 @@ export async function getGavetaItems(storeId: number) {
           id,
           full_name,
           fone_movel, 
-          fone_movel, 
           phone 
         ),
         vendas (
@@ -23,7 +24,7 @@ export async function getGavetaItems(storeId: number) {
         ),
         dependente:dependentes (
           id,
-          nome_completo
+          full_name
         )
       `)
       .eq('store_id', storeId)

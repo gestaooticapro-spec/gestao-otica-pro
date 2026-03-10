@@ -350,12 +350,24 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                     <p className="text-[9px] font-bold uppercase tracking-wider text-indigo-300">Vendas (Mês)</p>
                                     <HelpTooltip text="Total acumulado de vendas neste mês (1º dia até hoje) comparado com o mesmo período do mês anterior." />
                                 </div>
-                                <p className="text-xl font-black">
-                                    {formatCurrency(initialData.comparativo?.faturamento_mensal_atual || 0)}
-                                </p>
+                                <div className="space-y-1">
+                                    <p className="text-xl font-black">
+                                        {formatCurrency(initialData.comparativo?.faturamento_mensal_atual || 0)}
+                                    </p>
+                                    <div className="flex flex-col gap-0.5 border-t border-white/5 pt-1 mt-1 font-medium">
+                                        <div className="flex justify-between items-center text-[10px] text-emerald-400">
+                                            <span>À Vista:</span>
+                                            <span>{formatCurrency(initialData.comparativo?.faturamento_avista || 0)}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-[10px] text-amber-400">
+                                            <span>À Prazo:</span>
+                                            <span>{formatCurrency(initialData.comparativo?.faturamento_aprazo || 0)}</span>
+                                        </div>
+                                    </div>
+                                </div>
 
                                 {initialData.comparativo && (
-                                    <div className="flex items-center gap-1 mt-1">
+                                    <div className="flex items-center gap-1 mt-2">
                                         {(() => {
                                             const atual = initialData.comparativo.faturamento_mensal_atual || 0
                                             const anterior = initialData.comparativo.faturamento_mensal_anterior || 0

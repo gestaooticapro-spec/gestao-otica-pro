@@ -131,7 +131,7 @@ export default function GavetaPage({
                     {/* Ações */}
                     <div className="grid grid-cols-2 gap-3">
                       <Link
-                        href={`/dashboard/loja/${storeId}/vendas/${item.venda_id || ''}`}
+                        href={`/dashboard/loja/${storeId}/vendas/${item.venda_id || ''}/experimental`}
                         className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold bg-white/5 text-slate-300 hover:bg-white/10 border border-white/5 hover:border-white/20 transition-all"
                       >
                         <DollarSign className="h-4 w-4" />

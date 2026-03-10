@@ -36,6 +36,8 @@ export type ResumoCaixa = {
     comparativo?: {
         faturamento_mensal_atual: number
         faturamento_mensal_anterior: number
+        faturamento_avista: number
+        faturamento_aprazo: number
     }
 }
 
@@ -645,24 +647,35 @@ export async function getResumoCaixa(storeId: number): Promise<ResumoCaixa | nul
     // Data final do mês anterior compatível (ex: se hoje é dia 10, pega até dia 10 do mês passado)
     const endOfLastMonthRef = new Date(hojeInicio.getFullYear(), hojeInicio.getMonth() - 1, hojeInicio.getDate(), 23, 59, 59).toISOString()
 
-    // Query Mês Atual
+    // Query Mês Atual (VENDAS REAIS)
     const { data: vendasMesAtual } = await supabaseAdmin
-        .from('pagamentos')
-        .select('valor_pago')
+        .from('vendas')
+        .select('valor_final')
         .eq('store_id', storeId)
+        .neq('status', 'Cancelada')
         .gte('created_at', startOfMonth)
         .lte('created_at', now)
 
-    // Query Mês Anterior
+    // Query Mês Anterior (VENDAS REAIS)
     const { data: vendasMesAnterior } = await supabaseAdmin
-        .from('pagamentos')
-        .select('valor_pago')
+        .from('vendas')
+        .select('valor_final')
         .eq('store_id', storeId)
+        .neq('status', 'Cancelada')
         .gte('created_at', startOfLastMonth)
         .lte('created_at', endOfLastMonthRef)
 
-    const totalMesAtual = (vendasMesAtual as any[])?.reduce((acc, curr) => acc + Number(curr.valor_pago), 0) || 0
-    const totalMesAnterior = (vendasMesAnterior as any[])?.reduce((acc, curr) => acc + Number(curr.valor_pago), 0) || 0
+    const totalMesAtual = (vendasMesAtual as any[])?.reduce((acc, curr) => acc + Number(curr.valor_final), 0) || 0
+    const totalMesAnterior = (vendasMesAnterior as any[])?.reduce((acc, curr) => acc + Number(curr.valor_final), 0) || 0
+
+    // Cálculo Vista vs Prazo (Somente Mês Atual)
+    const faturamentoAvista = (vendasMesAtual as any[])?.reduce((acc, curr) => {
+        const valorFinal = Number(curr.valor_final)
+        const valorRestante = Number(curr.valor_restante || 0)
+        return acc + (valorFinal - valorRestante)
+    }, 0) || 0
+
+    const faturamentoAprazo = (vendasMesAtual as any[])?.reduce((acc, curr) => acc + Number(curr.valor_restante || 0), 0) || 0
 
     // --- DIVERGÊNCIAS (ÚLTIMOS 30 DIAS) ---
     const trintaDiasAtras = new Date()
@@ -702,7 +715,9 @@ export async function getResumoCaixa(storeId: number): Promise<ResumoCaixa | nul
         },
         comparativo: {
             faturamento_mensal_atual: totalMesAtual,
-            faturamento_mensal_anterior: totalMesAnterior
+            faturamento_mensal_anterior: totalMesAnterior,
+            faturamento_avista: faturamentoAvista,
+            faturamento_aprazo: faturamentoAprazo
         }
     }
 }
