@@ -478,12 +478,12 @@ export default function FinanciamentoBox({
                             if (resultado.success) {
                                 setParcelasGrid([]);
                                 setIsDeletedLocally(false); // Garante que a UI atualize
-                                await onFinanceAdded();
-
                                 // AUTO-PRINT: Abre a impressão automaticamente
                                 if (resultado.data?.id) {
                                     window.open(`/print/promissoria/${resultado.data.id}`, '_blank');
                                 }
+
+                                await onFinanceAdded();
                             } else {
                                 alert(resultado.message || "Erro desconhecido ao criar carnê.");
                             }
@@ -623,7 +623,10 @@ export default function FinanciamentoBox({
                     <UpdateCpfModal
                         isOpen={isCpfModalOpen}
                         onClose={() => setIsCpfModalOpen(false)}
-                        onSuccess={() => { setIsCpfModalOpen(false); onFinanceAdded(); }}
+                        onSuccess={() => {
+                            setIsCpfModalOpen(false);
+                            setIsConfigModalOpen(true);
+                        }}
                         customerId={customer.id}
                         customerName={customer.full_name}
                         currentCpf={customer.cpf || ''}
@@ -674,7 +677,10 @@ export default function FinanciamentoBox({
                 <UpdateCpfModal
                     isOpen={isCpfModalOpen}
                     onClose={() => setIsCpfModalOpen(false)}
-                    onSuccess={() => { setIsCpfModalOpen(false); onFinanceAdded(); }}
+                    onSuccess={() => {
+                        setIsCpfModalOpen(false);
+                        setIsConfigModalOpen(true);
+                    }}
                     customerId={customer.id}
                     customerName={customer.full_name}
                     currentCpf={customer.cpf || ''}
