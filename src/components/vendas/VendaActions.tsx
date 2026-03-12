@@ -40,7 +40,10 @@ export default function VendaActions({
 
     const [isPending, startTransition] = useTransition()
 
-    const isSameDay = new Date(venda.created_at).toDateString() === new Date().toDateString()
+    const today = new Date().toDateString()
+    const isSameDayCreated = new Date(venda.created_at).toDateString() === today
+    const isSameDayClosed = (venda as any).data_fechamento ? new Date((venda as any).data_fechamento).toDateString() === today : false
+    const canReopen = isSameDayCreated || isSameDayClosed
 
     const hasRemaining = (venda.valor_restante ?? 0) > 0.01
     const hasFinance = !!venda.financiamento_id
@@ -132,11 +135,17 @@ export default function VendaActions({
             {isVendaFechada && (
                 <div className="flex gap-3 items-center">
 
-                    <div className="flex items-center gap-2 text-emerald-400 bg-emerald-500/10 px-3 h-9 rounded-lg text-sm font-bold border border-emerald-500/20 cursor-default uppercase tracking-wide">
-                        <CheckCircle2 className="h-4 w-4" /> Finalizada
-                    </div>
+                    {venda.status === 'Fechada' ? (
+                        <div className="flex items-center gap-2 text-emerald-400 bg-emerald-500/10 px-3 h-9 rounded-lg text-sm font-bold border border-emerald-500/20 cursor-default uppercase tracking-wide">
+                            <CheckCircle2 className="h-4 w-4" /> Finalizada
+                        </div>
+                    ) : venda.status === 'Cancelada' ? (
+                        <div className="flex items-center gap-2 text-red-400 bg-red-500/10 px-3 h-9 rounded-lg text-sm font-bold border border-red-500/20 cursor-default uppercase tracking-wide">
+                            <X className="h-4 w-4" /> Cancelada
+                        </div>
+                    ) : null}
 
-                    {isSameDay && (
+                    {canReopen && (
                         <button
                             type="button"
                             disabled={isPending}

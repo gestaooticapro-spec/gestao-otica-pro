@@ -15,7 +15,6 @@ import RetornosCobrancaWidget from '@/components/consultas/RetornosCobrancaWidge
 import { AlertaEntrega, AlertaLaboratorio, Aniversariante, VencimentoProximo } from '@/lib/actions/consultas.actions'
 import { RetornoCobranca } from '@/lib/actions/collection.actions'
 import ParcelaSearchModal from '@/components/modals/ParcelaSearchModal'
-import EntregaModal from '@/components/modals/EntregaModal'
 
 interface Props {
   storeId: number
@@ -32,7 +31,6 @@ interface Props {
 
 export default function ActionMenuDashboard({ storeId, storeName, alerts, birthdays, vencimentos, retornos }: Props) {
   const [isParcelaModalOpen, setIsParcelaModalOpen] = useState(false)
-  const [isEntregaModalOpen, setIsEntregaModalOpen] = useState(false)
 
   // LINHA 1: ATENDIMENTO (Frente de Loja)
   const topRow = [
@@ -59,7 +57,7 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
       title: "Entrega / Baixa",
       desc: "Finalizar OS",
       icon: CheckCircle2,
-      action: () => setIsEntregaModalOpen(true),
+      href: `/dashboard/loja/${storeId}/entrega`,
       gradient: "from-amber-500/80 to-amber-800/80",
       border: "border-amber-400/30",
       image: null
@@ -98,7 +96,7 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
     {
       title: "Rastrear Lentes",
       icon: Search,
-      href: `/dashboard/loja/${storeId}/consultas`,
+      href: `/dashboard/loja/${storeId}/laboratorio`,
       color: "hover:bg-blue-500/20 hover:border-blue-500/50 hover:text-blue-200"
     }
   ]
@@ -283,13 +281,6 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
         onClose={() => setIsParcelaModalOpen(false)}
         storeId={storeId}
       />
-
-      <EntregaModal
-        isOpen={isEntregaModalOpen}
-        onClose={() => setIsEntregaModalOpen(false)}
-        storeId={storeId}
-      />
-
     </div>
   )
 }

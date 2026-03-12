@@ -122,7 +122,7 @@ export default function OperatorMenuAtendimento({
     onBack,
     onNavigate
 }: OperatorMenuAtendimentoProps) {
-    const { openParcelaModal, openEntregaModal, openCustomerHistoryModal } = useModals();
+    const { openParcelaModal, openCustomerHistoryModal } = useModals();
     const { preference } = useBackgroundPreference();
     const [isSearchOpen, setIsSearchOpen] = useState(false);
 
@@ -255,7 +255,7 @@ export default function OperatorMenuAtendimento({
                         <div className="flex flex-col gap-4 w-full max-w-sm">
                             {/* Entrega Óculos */}
                             <button
-                                onClick={() => openEntregaModal()}
+                                onClick={() => onNavigate(`/dashboard/loja/${storeId}/entrega`)}
                                 className="group w-full bg-gradient-to-br from-amber-600/20 via-orange-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-4 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-amber-500/20 hover:border-amber-500/30"
                             >
                                 <div className="p-2.5 rounded-full bg-amber-500/20 ring-1 ring-amber-400/30 group-hover:bg-amber-500/40 transition-colors shadow-[0_0_15px_rgba(245,158,11,0.3)]">

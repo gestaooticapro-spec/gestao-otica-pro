@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
     Search, AlertCircle, Calendar,
     Phone, MessageSquare, Clock, CheckCircle2,
@@ -35,18 +35,23 @@ export default function CobrancaInterface({
     defaultTab?: 'cobrar' | 'ja_cobrados'
 }) {
     const router = useRouter()
+    const searchParams = useSearchParams()
     const { preference } = useBackgroundPreference()
 
     // ESTADOS DE FILTRO E SELEÇÃO
     const [activeTab, setActiveTab] = useState<'cobrar' | 'ja_cobrados'>(defaultTab)
     const [spcFilter, setSpcFilter] = useState<'com_spc' | 'sem_spc'>('sem_spc')
-    const [searchTerm, setSearchTerm] = useState('')
+    const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '')
     const [selectedCustomer, setSelectedCustomer] = useState<DevedorResumo | null>(null)
 
     // Sincroniza a aba ativa com a prop (URL) para navegação via browser
     useEffect(() => {
         setActiveTab(defaultTab)
     }, [defaultTab])
+
+    useEffect(() => {
+        setSearchTerm(searchParams.get('search') || '')
+    }, [searchParams])
 
     // Se o initialData atualizar (ex: revalidatePath) e o cliente não estiver mais na lista (ex: foi agendado pro futuro), fecha o painel.
     useEffect(() => {

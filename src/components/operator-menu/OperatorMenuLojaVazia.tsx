@@ -7,7 +7,6 @@ import {
     AlertCircle, Gift, Calendar, Package, ChevronRight, ChevronDown, ChevronUp,
     MessageCircle, CalendarClock, CalendarCheck, ArrowRight, Send, Users2, UserMinus
 } from 'lucide-react';
-import { useModals } from '@/lib/contexts/ModalsContext';
 import { openWhatsApp } from '@/lib/utils/whatsapp';
 import Link from 'next/link';
 
@@ -90,7 +89,6 @@ export default function OperatorMenuLojaVazia({
     onBack,
     onNavigate
 }: OperatorMenuLojaVaziaProps) {
-    const { openLabModal } = useModals();
     const { preference } = useBackgroundPreference();
 
     const [radar, setRadar] = useState<RadarData>({
@@ -342,7 +340,7 @@ export default function OperatorMenuLojaVazia({
                                         </div>
                                     </button>
                                     {/* Lentes */}
-                                    <button onClick={() => openLabModal()} className="group bg-gradient-to-br from-blue-600/12 via-blue-900/25 to-slate-900/60 hover:from-blue-500/22 hover:via-blue-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-blue-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(59,130,246,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40">
+                                    <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/laboratorio`)} className="group bg-gradient-to-br from-blue-600/12 via-blue-900/25 to-slate-900/60 hover:from-blue-500/22 hover:via-blue-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-blue-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(59,130,246,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40">
                                         <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
                                             <Search className="w-6 h-6" strokeWidth={1.5} />
                                         </div>

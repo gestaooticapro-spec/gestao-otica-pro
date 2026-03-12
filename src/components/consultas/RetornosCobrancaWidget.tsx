@@ -1,17 +1,29 @@
 'use client'
 
-import { useState } from 'react'
-import { MessageCircle, Send, ChevronDown, ChevronUp } from 'lucide-react'
-import { RetornoCobranca } from '@/lib/actions/collection.actions'
+import { useState, useTransition } from 'react'
+import { MessageCircle, Check, ExternalLink, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
+import { RetornoCobranca, concluirRetornoCobranca } from '@/lib/actions/collection.actions'
+import { useParams } from 'next/navigation'
+import { toast } from 'sonner'
+import Link from 'next/link'
 
 export default function RetornosCobrancaWidget({ retornos }: { retornos: RetornoCobranca[] }) {
     const [isOpen, setIsOpen] = useState(false)
+    const [isPending, startTransition] = useTransition()
+    const params = useParams()
+    const storeId = Number(params.storeId)
 
-    const handleZap = (item: RetornoCobranca) => {
-        if (!item.fone_movel) return alert("Cliente sem celular cadastrado.")
-        const num = item.fone_movel.replace(/\D/g, '')
-        const msg = `Olá ${item.customer_name.split(' ')[0]}, tudo bem? Aqui é da Ótica. Estou entrando em contato conforme combinamos anteriormente sobre sua pendência. Podemos conversar?`
-        window.open(`https://wa.me/55${num}?text=${encodeURIComponent(msg)}`, '_blank')
+    const handleConcluir = (id: number) => {
+        if (!confirm("Deseja marcar este retorno como concluído? Isso removerá o agendamento.")) return
+
+        startTransition(async () => {
+            const res = await concluirRetornoCobranca(id, storeId)
+            if (res.success) {
+                toast.success(res.message)
+            } else {
+                toast.error(res.message)
+            }
+        })
     }
 
     return (
@@ -60,13 +72,23 @@ export default function RetornosCobrancaWidget({ retornos }: { retornos: Retorno
                                         <span className="font-bold text-orange-500/70">{item.tipo_contato}:</span> {item.resumo_conversa}
                                     </p>
                                 </div>
-                                <button
-                                    onClick={() => handleZap(item)}
-                                    className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white transition-all shadow-sm border border-emerald-500/20 shrink-0"
-                                    title="Enviar WhatsApp"
-                                >
-                                    <Send className="h-4 w-4" />
-                                </button>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <Link
+                                        href={`/dashboard/loja/${storeId}/cobranca?filtro=ja_cobrados&search=${encodeURIComponent(item.customer_name)}`}
+                                        className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 hover:bg-blue-500 hover:text-white transition-all shadow-sm border border-blue-500/20"
+                                        title="Ver na Central de Cobrança"
+                                    >
+                                        <ExternalLink className="h-4 w-4" />
+                                    </Link>
+                                    <button
+                                        onClick={() => handleConcluir(item.id)}
+                                        disabled={isPending}
+                                        className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white transition-all shadow-sm border border-emerald-500/20"
+                                        title="Concluir Retorno"
+                                    >
+                                        {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                                    </button>
+                                </div>
                             </div>
                         ))
                     )}

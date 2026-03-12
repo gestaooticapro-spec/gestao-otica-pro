@@ -295,7 +295,7 @@ export async function getHistoricoCaixa(storeId: number) {
 
         return {
             id: cx.id,
-            data: cx.data_fechamento, // Usar fechamento como referência do dia
+            data: cx.data_abertura, // IMPORTANTE: Usar data de ABERTURA, pois auto-close define fechamento de vários dias presos para hoje.
             saldo_inicial: saldoInicial,
             entradas: entradasTotais,
             saidas: saidasManuais,
@@ -650,20 +650,20 @@ export async function getResumoCaixa(storeId: number): Promise<ResumoCaixa | nul
     // Query Mês Atual (VENDAS REAIS)
     const { data: vendasMesAtual } = await supabaseAdmin
         .from('vendas')
-        .select('valor_final')
+        .select('valor_final, valor_restante')
         .eq('store_id', storeId)
-        .neq('status', 'Cancelada')
-        .gte('created_at', startOfMonth)
-        .lte('created_at', now)
+        .eq('status', 'Fechada')
+        .gte('data_fechamento', startOfMonth)
+        .lte('data_fechamento', now)
 
     // Query Mês Anterior (VENDAS REAIS)
     const { data: vendasMesAnterior } = await supabaseAdmin
         .from('vendas')
-        .select('valor_final')
+        .select('valor_final, valor_restante')
         .eq('store_id', storeId)
-        .neq('status', 'Cancelada')
-        .gte('created_at', startOfLastMonth)
-        .lte('created_at', endOfLastMonthRef)
+        .eq('status', 'Fechada')
+        .gte('data_fechamento', startOfLastMonth)
+        .lte('data_fechamento', endOfLastMonthRef)
 
     const totalMesAtual = (vendasMesAtual as any[])?.reduce((acc, curr) => acc + Number(curr.valor_final), 0) || 0
     const totalMesAnterior = (vendasMesAnterior as any[])?.reduce((acc, curr) => acc + Number(curr.valor_final), 0) || 0

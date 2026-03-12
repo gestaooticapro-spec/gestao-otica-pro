@@ -334,7 +334,7 @@ export async function getDetalhesDivida(customerId: number, storeId: number) {
 // --- 6. BUSCAR RETORNOS AGENDADOS (PARA O RADAR) ---
 export async function getRetornosDeHoje(storeId: number): Promise<RetornoCobranca[]> {
     const supabaseAdmin = createAdminClient()
-    const hoje = new Date().toISOString().split('T')[0]
+    const hoje = new Intl.DateTimeFormat('fr-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
 
     try {
         const { data, error } = await (supabaseAdmin.from('cobranca_historico') as any)
@@ -344,15 +344,27 @@ export async function getRetornosDeHoje(storeId: number): Promise<RetornoCobranc
                 tipo_contato,
                 resumo_conversa,
                 proxima_acao,
+                created_at,
                 customers ( full_name, fone_movel )
             `)
             .eq('store_id', storeId)
-            .lte('proxima_acao', hoje) // Pega hoje ou atrasados
-            .order('proxima_acao', { ascending: true })
+            .not('proxima_acao', 'is', null)
+            .order('created_at', { ascending: false })
 
         if (error) throw error
 
-        return (data || []).map((item: any) => ({
+        const ultimosRetornosPorCliente = new Map<number, any>()
+
+        for (const item of data || []) {
+            if (!ultimosRetornosPorCliente.has(item.customer_id)) {
+                ultimosRetornosPorCliente.set(item.customer_id, item)
+            }
+        }
+
+        return Array.from(ultimosRetornosPorCliente.values())
+            .filter((item: any) => item.proxima_acao <= hoje)
+            .sort((a: any, b: any) => a.proxima_acao.localeCompare(b.proxima_acao))
+            .map((item: any) => ({
             id: item.id,
             customer_id: item.customer_id,
             customer_name: item.customers?.full_name || 'Desconhecido',
@@ -360,7 +372,7 @@ export async function getRetornosDeHoje(storeId: number): Promise<RetornoCobranc
             tipo_contato: item.tipo_contato,
             resumo_conversa: item.resumo_conversa,
             proxima_acao: item.proxima_acao
-        }))
+            }))
     } catch (e) {
         console.error("Erro ao buscar retornos:", e)
         return []
@@ -376,6 +388,63 @@ export async function updateCobrancaStatus(customerId: number, status: 'Normal' 
 
         revalidatePath(`/dashboard/loja/${storeId}/cobranca`)
         return { success: true, message: `Status atualizado para ${status}.` }
+    } catch (e: any) {
+        return { success: false, message: e.message }
+    }
+}
+
+// --- 8. CONCLUIR RETORNO AGENDADO ---
+export async function concluirRetornoCobranca(historyId: number, storeId: number) {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { success: false, message: 'Usuário não logado' }
+
+    type SimpleProfile = {
+        store_id: number
+        tenant_id: string | null
+    }
+
+    const profile = (await getProfileByAdmin(user.id)) as SimpleProfile | null
+    if (!profile || profile.store_id !== storeId) {
+        return { success: false, message: 'Acesso negado para concluir este retorno' }
+    }
+
+    const supabaseAdmin = createAdminClient()
+    try {
+        const { data: historyItem, error: historyError } = await (supabaseAdmin.from('cobranca_historico') as any)
+            .select('id, customer_id, store_id, proxima_acao')
+            .eq('id', historyId)
+            .eq('store_id', profile.store_id)
+            .maybeSingle()
+
+        if (historyError) throw historyError
+        if (!historyItem) return { success: false, message: 'Retorno não encontrado' }
+        if (!historyItem.proxima_acao) return { success: false, message: 'Este retorno já foi concluído' }
+
+        const { data: latestHistory, error: latestError } = await (supabaseAdmin.from('cobranca_historico') as any)
+            .select('id')
+            .eq('customer_id', historyItem.customer_id)
+            .eq('store_id', profile.store_id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+        if (latestError) throw latestError
+        if (!latestHistory || latestHistory.id !== historyId) {
+            return { success: false, message: 'Este retorno foi substituído por uma ação mais recente' }
+        }
+
+        const { error: updateError } = await (supabaseAdmin.from('cobranca_historico') as any)
+            .update({ proxima_acao: null })
+            .eq('id', historyId)
+            .eq('store_id', profile.store_id)
+
+        if (updateError) throw updateError
+
+        revalidatePath(`/dashboard/loja/${profile.store_id}/cobranca`)
+        revalidatePath(`/dashboard/loja/${profile.store_id}/consultas`)
+        revalidatePath(`/dashboard/loja/${profile.store_id}`) // Revalida o Dashboard para atualizar o Radar
+        return { success: true, message: 'Retorno concluído!' }
     } catch (e: any) {
         return { success: false, message: e.message }
     }

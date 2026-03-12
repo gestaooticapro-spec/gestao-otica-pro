@@ -65,8 +65,7 @@ const MENU_STRUCTURE: MenuGroup[] = [
             {
                 label: 'Entrega Óculos',
                 icon: CheckCircle2,
-                route: '#',
-                action: 'openEntregaModal',
+                route: '/dashboard/loja/[id]/entrega',
                 allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico'],
                 withSeparator: true
             },
@@ -122,8 +121,7 @@ const MENU_STRUCTURE: MenuGroup[] = [
             {
                 label: 'Rastrear Lentes',
                 icon: Search,
-                route: '#',
-                action: 'openLabModal',
+                route: '/dashboard/loja/[id]/laboratorio',
                 allowedRoles: ['admin', 'manager', 'store_operator', 'tecnico']
             },
 
@@ -165,7 +163,7 @@ export default function SideNav({ userRole, storeId, storeName, logoUrl }: SideN
     const [isSubCollapsed, setIsSubCollapsed] = useState(false);
 
     // Modais (agora via contexto global)
-    const { openParcelaModal, openLabModal, openEntregaModal, openCustomerHistoryModal } = useModals();
+    const { openParcelaModal, openCustomerHistoryModal } = useModals();
 
     useEffect(() => {
         // Opcional: Fecha o painel ao navegar
@@ -251,8 +249,6 @@ export default function SideNav({ userRole, storeId, storeName, logoUrl }: SideN
                             <button
                                 onClick={() => {
                                     if (sub.action === 'openParcelaModal') openParcelaModal();
-                                    if (sub.action === 'openLabModal') openLabModal();
-                                    if (sub.action === 'openEntregaModal') openEntregaModal();
                                     if (sub.action === 'openCustomerHistoryModal') openCustomerHistoryModal();
                                 }}
                                 className={`${baseClass} ${isActive ? activeClass : 'hover:bg-white/5 hover:border-white/10 hover:shadow-md text-slate-400 hover:text-white'}`}

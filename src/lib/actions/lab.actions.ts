@@ -149,7 +149,131 @@ export async function searchOSForLab(storeId: number, query: string): Promise<La
     }))
 }
 
-// 2. SALVAR ATUALIZAÇÃO DO LABORATÓRIO
+// 2. LISTAR OS PRONTAS PARA ENTREGA
+export async function getReadyOSForDelivery(storeId: number): Promise<LabOSResult[]> {
+    const supabase = createAdminClient()
+
+    const { data, error } = await (supabase.from('service_orders') as any)
+        .select(`
+            id,
+            venda_id,
+            customer_id,
+            created_at,
+            protocolo_fisico,
+            dt_pedido_em,
+            dt_lente_chegou,
+            dt_montado_em,
+            dt_entregue_em,
+            lab_nome,
+            lab_pedido_por_id,
+            customers ( full_name, fone_movel, phone ),
+            dependentes ( full_name ),
+            vendas ( status )
+        `)
+        .eq('store_id', storeId)
+        .not('dt_montado_em', 'is', null)
+        .is('dt_entregue_em', null)
+        .order('dt_montado_em', { ascending: true })
+
+    if (error) {
+        console.error("Erro ao buscar OS prontas para entrega:", error)
+        return []
+    }
+
+    return (data || []).map((os: any) => ({
+        id: os.id,
+        venda_id: os.venda_id,
+        customer_id: os.customer_id,
+        created_at: os.created_at,
+        customer_name: os.customers?.full_name || 'Consumidor',
+        customer_phone: os.customers?.fone_movel || os.customers?.phone || null,
+        dependente_name: os.dependentes?.full_name || null,
+        protocolo_fisico: os.protocolo_fisico || null,
+        status: os.vendas?.status || 'Indefinido',
+        dt_pedido_em: os.dt_pedido_em,
+        dt_lente_chegou: os.dt_lente_chegou,
+        dt_montado_em: os.dt_montado_em,
+        dt_entregue_em: os.dt_entregue_em,
+        lab_nome: os.lab_nome,
+        lab_pedido_por_id: os.lab_pedido_por_id
+    }))
+}
+
+// 3. LISTAR TODAS AS OS ABERTAS DO LABORATORIO
+export async function getOpenLabOS(storeId: number): Promise<LabOSResult[]> {
+    const supabase = createAdminClient()
+
+    const { data, error } = await (supabase.from('service_orders') as any)
+        .select(`
+            id,
+            venda_id,
+            customer_id,
+            created_at,
+            protocolo_fisico,
+            dt_pedido_em,
+            dt_lente_chegou,
+            dt_montado_em,
+            dt_entregue_em,
+            lab_nome,
+            lab_pedido_por_id,
+            customers ( full_name, fone_movel, phone ),
+            dependentes ( full_name ),
+            vendas ( status )
+        `)
+        .eq('store_id', storeId)
+        .is('dt_entregue_em', null)
+        .order('created_at', { ascending: true })
+
+    if (error) {
+        console.error("Erro ao buscar OS abertas do laboratório:", error)
+        return []
+    }
+
+    return (data || []).map((os: any) => ({
+        id: os.id,
+        venda_id: os.venda_id,
+        customer_id: os.customer_id,
+        created_at: os.created_at,
+        customer_name: os.customers?.full_name || 'Consumidor',
+        customer_phone: os.customers?.fone_movel || os.customers?.phone || null,
+        dependente_name: os.dependentes?.full_name || null,
+        protocolo_fisico: os.protocolo_fisico || null,
+        status: os.vendas?.status || 'Indefinido',
+        dt_pedido_em: os.dt_pedido_em,
+        dt_lente_chegou: os.dt_lente_chegou,
+        dt_montado_em: os.dt_montado_em,
+        dt_entregue_em: os.dt_entregue_em,
+        lab_nome: os.lab_nome,
+        lab_pedido_por_id: os.lab_pedido_por_id
+    }))
+}
+
+// 4. AVANÇAR ETAPA DO LABORATÓRIO
+export async function advanceLabStage(
+    osId: number,
+    storeId: number,
+    stage: 'dt_pedido_em' | 'dt_lente_chegou' | 'dt_montado_em'
+) {
+    const supabase = createAdminClient()
+    const now = new Date().toISOString()
+
+    const { error } = await (supabase.from('service_orders') as any)
+        .update({ [stage]: now })
+        .eq('id', osId)
+        .eq('store_id', storeId)
+
+    if (error) {
+        console.error("Erro ao avançar etapa do laboratório:", error)
+        return { success: false, message: 'Erro ao mover etapa do laboratório.' }
+    }
+
+    revalidatePath(`/dashboard/loja/${storeId}`)
+    revalidatePath(`/dashboard/loja/${storeId}/laboratorio`)
+    revalidatePath(`/dashboard/loja/${storeId}/entrega`)
+    return { success: true, message: 'Etapa atualizada.' }
+}
+
+// 5. SALVAR ATUALIZAÇÃO DO LABORATÓRIO
 export async function updateLabTracking(osId: number, storeId: number, formData: FormData) {
     const supabase = createAdminClient()
 
@@ -176,7 +300,7 @@ export async function updateLabTracking(osId: number, storeId: number, formData:
     return { success: true }
 }
 
-// 3. ATUALIZAR TELEFONE DO CLIENTE
+// 6. ATUALIZAR TELEFONE DO CLIENTE
 export async function updateCustomerPhone(customerId: number, storeId: number, phone: string) {
     const supabase = createAdminClient()
 
