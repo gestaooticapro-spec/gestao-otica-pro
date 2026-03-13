@@ -4,10 +4,11 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
     Search, Save, Loader2, PackageX, ArrowRightLeft,
-    ArrowDownCircle, ArrowDownUp, PackageOpen, Receipt, AlertTriangle
+    ArrowDownUp, PackageOpen, Receipt
 } from 'lucide-react'
 import { buscarProdutoExpress, ProdutoExpressResult } from '@/lib/actions/vendas.actions'
 import { registrarMovimentacao, getProductVariants } from '@/lib/actions/stock.actions'
+import { DegreeInput } from '@/components/ui/DegreeInput'
 
 interface Props {
     storeId: number
@@ -51,6 +52,7 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
     const [sobraOlho, setSobraOlho] = useState<'OD' | 'OE'>('OD')
     const [sobraEsferico, setSobraEsferico] = useState('')
     const [sobraCilindrico, setSobraCilindrico] = useState('')
+    const [sobraAdicao, setSobraAdicao] = useState('')
     const [sobraDiametro, setSobraDiametro] = useState('')
 
     // Variant Selection
@@ -132,11 +134,14 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
         if (relatedVendaId) formData.append('related_venda_id', relatedVendaId)
 
         // Sobra de Lente (send if filled regardless of type)
+        const parseDeg = (val: string) => val ? parseFloat(val.replace(',', '.').replace('+', '')) : null
+
         if (sobraDiametro) {
             const sobraObj = {
                 olho: sobraOlho,
-                esferico: sobraEsferico ? Number(sobraEsferico) : null,
-                cilindrico: sobraCilindrico ? Number(sobraCilindrico) : null,
+                esferico: parseDeg(sobraEsferico),
+                cilindrico: parseDeg(sobraCilindrico),
+                adicao: parseDeg(sobraAdicao),
                 diametro: sobraDiametro ? Number(sobraDiametro) : null
             }
             formData.append('sobra_detalhes', JSON.stringify(sobraObj))
@@ -155,6 +160,7 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
             setSobraDiametro('')
             setSobraEsferico('')
             setSobraCilindrico('')
+            setSobraAdicao('')
             router.refresh()
         } else {
             alert('Erro: ' + res.message)
@@ -166,6 +172,10 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
         selectedProduct.tem_grade ||
         selectedProduct.descricao?.toLowerCase().includes('lente')
     )
+
+    const isPG = selectedProduct?.descricao?.toLowerCase().includes('pg') ||
+        selectedProduct?.descricao?.toLowerCase().includes('progress') ||
+        selectedProduct?.descricao?.toLowerCase().includes('multi')
 
     return (
         <div className="flex flex-col h-full">
@@ -365,7 +375,7 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
                                 Preencha o grau da sobra do bloco para registrar e reaproveitar posteriormente. Opcional.
                             </p>
 
-                            <div className="grid grid-cols-4 gap-3">
+                            <div className={`grid ${isPG ? 'grid-cols-5' : 'grid-cols-4'} gap-3`}>
                                 <div>
                                     <label className={labelStyle}>Olho</label>
                                     <select value={sobraOlho} onChange={e => setSobraOlho(e.target.value as any)} className={`${inputStyle} cursor-pointer`}>
@@ -377,14 +387,20 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
                                     <label className={labelStyle}>Diâmetro</label>
                                     <input type="text" value={sobraDiametro} onChange={e => setSobraDiametro(e.target.value)} placeholder="Ex: 70" className={inputStyle} />
                                 </div>
-                                <div>
+                                <div className="flex flex-col">
                                     <label className={labelStyle}>Esférico</label>
-                                    <input type="text" value={sobraEsferico} onChange={e => setSobraEsferico(e.target.value)} placeholder="-2.00" className={inputStyle} />
+                                    <DegreeInput value={sobraEsferico} onChange={setSobraEsferico} className={`${inputStyle} text-center`} />
                                 </div>
-                                <div>
+                                <div className="flex flex-col">
                                     <label className={labelStyle}>Cilíndrico</label>
-                                    <input type="text" value={sobraCilindrico} onChange={e => setSobraCilindrico(e.target.value)} placeholder="-1.00" className={inputStyle} />
+                                    <DegreeInput value={sobraCilindrico} onChange={setSobraCilindrico} className={`${inputStyle} text-center`} />
                                 </div>
+                                {isPG && (
+                                    <div className="flex flex-col">
+                                        <label className={labelStyle}>Adição</label>
+                                        <DegreeInput value={sobraAdicao} onChange={setSobraAdicao} className={`${inputStyle} text-center`} />
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

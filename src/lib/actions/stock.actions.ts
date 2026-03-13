@@ -21,7 +21,8 @@ const MovimentoSchema = z.object({
         diametro: z.coerce.number(),
         olho: z.string(),
         esferico: z.coerce.number().optional().nullable(),
-        cilindrico: z.coerce.number().optional().nullable()
+        cilindrico: z.coerce.number().optional().nullable(),
+        adicao: z.coerce.number().optional().nullable()
     }).optional().nullable()
 })
 
@@ -115,97 +116,121 @@ export async function registrarMovimentacao(
 
         let estoqueAtual = produto.estoque_atual
         let variantData: any = null // Para guardar dados da variante (esférico/cilíndrico)
+        let effectiveVariantId = variant_id || null
 
-        // Atualiza Estoque
-        if (variant_id) {
+        // --- LÓGICA PRÉ-MOVIMENTAÇÃO: CRIAÇÃO DE VARIANTE DE SOBRA ---
+        let novaSobraId: number | null = null
+        if (sobra_detalhes && sobra_detalhes.diametro) {
+            // Se já temos a variante original (ex: perdendo uma lente da grade), pegamos os graus de lá
+            if (variant_id) {
+                const { data: v } = await (supabaseAdmin.from('product_variants') as any).select('esferico, cilindrico, adicao').eq('id', variant_id).single()
+                if (v) variantData = v
+            }
+
+            const insertPayload = {
+                product_id: product_id,
+                store_id: store_id,
+                tenant_id: profile.tenant_id,
+                nome_variante: `Sobra ${sobra_detalhes.olho} Ø${sobra_detalhes.diametro}`,
+                esferico: variantData?.esferico ?? sobra_detalhes.esferico ?? 0,
+                cilindrico: variantData?.cilindrico ?? sobra_detalhes.cilindrico ?? 0,
+                adicao: variantData?.adicao ?? sobra_detalhes.adicao ?? null,
+                is_sobra: true,
+                diametro: sobra_detalhes.diametro,
+                olho: sobra_detalhes.olho,
+                estoque_atual: 0, // Começamos com zero para a movimentação posterior alimentar
+            }
+
+            const { data: novaSobra } = await (supabaseAdmin.from('product_variants') as any).insert(insertPayload).select().single()
+
+            if (novaSobra) {
+                novaSobraId = novaSobra.id
+                // Se for ENTRADA, a própria movimentação principal já deve ser para esta nova variante
+                if (tipo === 'Entrada') {
+                    effectiveVariantId = novaSobra.id
+                }
+            }
+        }
+
+        // Atualiza Estoque (Utilizando effectiveVariantId)
+        if (effectiveVariantId) {
             // Cast 'as any' para select em product_variants
             const { data: variant } = await (supabaseAdmin
                 .from('product_variants') as any)
-                .select('estoque_atual, esferico, cilindrico')
-                .eq('id', variant_id)
+                .select('estoque_atual')
+                .eq('id', effectiveVariantId)
                 .single()
 
             if (variant) {
                 estoqueAtual = variant.estoque_atual
-                variantData = variant
             }
 
             // Cast 'as any' para update em product_variants
             await (supabaseAdmin.from('product_variants') as any)
                 .update({ estoque_atual: estoqueAtual + deltaEstoque })
-                .eq('id', variant_id)
+                .eq('id', effectiveVariantId)
 
-            // Cast 'as any' para RPC
+            // Cast 'as any' para RPC (Sincroniza estoque total do produto)
             await (supabaseAdmin as any).rpc('increment_stock', {
                 p_product_id: product_id,
                 p_quantity: deltaEstoque,
                 p_new_cost: null
             })
         } else {
-            // Cast 'as any' para update em products
+            // Cast 'as any' para update em products (Produto sem variante)
             await (supabaseAdmin.from('products') as any)
                 .update({ estoque_atual: estoqueAtual + deltaEstoque })
                 .eq('id', product_id)
         }
 
         // 4. GRAVAÇÃO DA MOVIMENTAÇÃO PRINCIPAL
-        // Cast 'as any' para insert em stock_movements
         const { error: insertError } = await (supabaseAdmin.from('stock_movements') as any).insert({
             tenant_id: profile.tenant_id,
             store_id: store_id,
             product_id: product_id,
-            variant_id: variant_id || null,
+            variant_id: effectiveVariantId,
             tipo: tipo,
             quantidade: quantidade,
             motivo: motivo,
             custo_unitario_momento: produto.preco_custo,
-
-            registrado_por_id: user.id,   // Usuário do Sistema
-            employee_id: employee_id,     // Quem autorizou (PIN)
+            registrado_por_id: user.id,
+            employee_id: employee_id,
             related_venda_id: related_venda_id || null,
             related_os_id: related_os_id || null,
-
             created_at: new Date().toISOString()
         })
 
         if (insertError) throw insertError
 
-        // --- LÓGICA NOVA: SE FOR PERDA E GEROU SOBRA ---
-        if (tipo === 'Perda' && sobra_detalhes && sobra_detalhes.diametro) {
-            // A. Cria a Variante de Sobra (Custo Zero)
-            // Cast 'as any' para insert em product_variants com campos novos
-            const { data: novaSobra } = await (supabaseAdmin.from('product_variants') as any).insert({
-                product_id: product_id,
-                store_id: store_id,
+        // --- LÓGICA PÓS-MOVIMENTAÇÃO: APENAS PARA RECUPERAÇÃO DE QUEBRA (PERDA) ---
+        // Se foi uma PERDA (-1), precisamos de uma segunda movimentação de ENTRADA (+1) para a sobra
+        if (tipo === 'Perda' && novaSobraId) {
+            // Aumenta o estoque da sobra em 1 (já que a movimentação principal foi de Perda do original)
+            await (supabaseAdmin.from('product_variants') as any)
+                .update({ estoque_atual: 1 })
+                .eq('id', novaSobraId)
+
+            // Incrementa o produto global também para a recuperação
+            await (supabaseAdmin as any).rpc('increment_stock', {
+                p_product_id: product_id,
+                p_quantity: 1,
+                p_new_cost: null
+            })
+
+            // Registra o histórico da recuperação
+            await (supabaseAdmin.from('stock_movements') as any).insert({
                 tenant_id: profile.tenant_id,
-                nome_variante: `Sobra ${sobra_detalhes.olho} Ø${sobra_detalhes.diametro} (Recup. Quebra)`,
-
-                esferico: variantData ? variantData.esferico : (sobra_detalhes.esferico || null),
-                cilindrico: variantData ? variantData.cilindrico : (sobra_detalhes.cilindrico || null),
-
-                is_sobra: true,
-                diametro: sobra_detalhes.diametro,
-                olho: sobra_detalhes.olho,
-                estoque_atual: 1,
-            }).select().single()
-
-            if (novaSobra) {
-                // B. Registra a Entrada da Sobra no Histórico
-                // Cast 'as any' para insert em stock_movements
-                await (supabaseAdmin.from('stock_movements') as any).insert({
-                    tenant_id: profile.tenant_id,
-                    store_id: store_id,
-                    product_id: product_id,
-                    variant_id: novaSobra.id,
-                    tipo: 'Entrada',
-                    quantidade: 1,
-                    motivo: `Sobra gerada da quebra/perda (Origem: Venda #${related_venda_id || 'N/A'})`,
-                    custo_unitario_momento: 0,
-                    registrado_por_id: user.id,
-                    employee_id: employee_id,
-                    related_venda_id: related_venda_id || null
-                })
-            }
+                store_id: store_id,
+                product_id: product_id,
+                variant_id: novaSobraId,
+                tipo: 'Entrada',
+                quantidade: 1,
+                motivo: `Sobra recuperada da quebra (Origem: Venda #${related_venda_id || 'N/A'})`,
+                custo_unitario_momento: 0,
+                registrado_por_id: user.id,
+                employee_id: employee_id,
+                related_venda_id: related_venda_id || null
+            })
         }
         // -----------------------------------------------
 
@@ -391,9 +416,16 @@ export async function checkLensStock(
         // Range Esférico
         .gte('esferico', esferico - range)
         .lte('esferico', esferico + range)
-        // Range Cilíndrico
-        .gte('cilindrico', cilindrico - range)
-        .lte('cilindrico', cilindrico + range)
+
+    // Range Cilíndrico: precisa incluir null (sobras podem ter cilindrico null)
+    if (cilindrico === 0) {
+        // Se buscando cilíndrico 0, aceita null OU range de -0.25 a 0.25
+        query = query.or(`cilindrico.is.null,and(cilindrico.gte.${cilindrico - range},cilindrico.lte.${cilindrico + range})`)
+    } else {
+        query = query
+            .gte('cilindrico', cilindrico - range)
+            .lte('cilindrico', cilindrico + range)
+    }
 
     // Filtro por Adição (se fornecida)
     if (adicao !== null && adicao !== undefined) {

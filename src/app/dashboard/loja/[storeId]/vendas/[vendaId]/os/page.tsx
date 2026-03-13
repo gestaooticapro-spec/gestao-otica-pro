@@ -17,6 +17,7 @@ import { Database } from '@/lib/database.types'
 import AddDependenteModal from '@/components/modals/AddDependenteModal'
 import AddOftalmoModal from '@/components/modals/AddOftalmoModal'
 import PrescriptionHistoryModal from '@/components/modals/PrescriptionHistoryModal'
+import { DegreeInput } from '@/components/ui/DegreeInput'
 
 type ServiceOrderWithLinks = any
 type Dependente = Database['public']['Tables']['dependentes']['Row']
@@ -52,46 +53,7 @@ const gridInput = `${inputStyle} text-center`
 
 const baseButtonStyle = 'px-3 py-1.5 text-xs rounded-lg shadow-sm disabled:opacity-50 focus:outline-none transition-all duration-200 font-bold flex items-center gap-2'
 
-// --- COMPONENTE: INPUT DE GRAU ---
-function DegreeInput({ name, value, onChange, placeholder, className }: { name: string, value: string, onChange: (val: string) => void, placeholder?: string, className?: string }) {
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        let raw = e.target.value.replace(/\D/g, '')
-        if (!raw) { onChange(''); return }
-        const val = parseInt(raw, 10) / 100
-        const isNegative = value.includes('-')
-        const formatted = val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-        const finalValue = isNegative ? `-${formatted}` : `+${formatted}`
-        onChange(finalValue)
-    }
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === '-') {
-            e.preventDefault()
-            if (!value.includes('-')) onChange(value.replace('+', '').replace('-', '') ? `-${value.replace('+', '')}` : '-')
-        }
-        if (e.key === '+') {
-            e.preventDefault()
-            if (value.includes('-')) onChange(value.replace('-', '+'))
-            else if (!value.includes('+')) onChange(`+${value}`)
-        }
-    }
-
-    const isNegative = value.includes('-')
-    const isPositive = value.includes('+')
-    const textColor = isNegative ? 'text-rose-400' : isPositive ? 'text-emerald-400' : 'text-slate-200'
-
-    return (
-        <input
-            name={name}
-            value={value}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            className={`${className} ${textColor}`}
-            placeholder={placeholder || "0,00"}
-            autoComplete="off"
-        />
-    )
-}
 
 // --- BADGE DE ESTOQUE (SMART CHECK) ---
 const StockBadge = ({
@@ -317,11 +279,33 @@ function ServiceOrderFormContent({
                     const matches = await checkLensStock(storeId, esf, cil, pid, isNaN(add!) ? null : add)
                     setOdMatches(matches)
                 }
-
-            }
+            } else setOdMatches({ exact: [], similar: [] })
         }, 500)
         return () => clearTimeout(timer)
     }, [longeOdEsf, longeOdCil, adicao, lenteOdItemId, storeId, vendaItens])
+
+    // Monitora OE para sobras e estoque
+    useEffect(() => {
+        const timer = setTimeout(async () => {
+            if (longeOeEsf && longeOeCil) {
+                const esf = parseFloat(longeOeEsf.replace(',', '.').replace('+', ''))
+                const cil = parseFloat(longeOeCil.replace(',', '.').replace('+', ''))
+
+                // Busca Produto ID
+                const item = vendaItens.find(i => i.id.toString() === lenteOeItemId)
+                const pid = item ? item.product_id : null
+
+                // Busca Adição
+                const add = adicao ? parseFloat(adicao.replace(',', '.').replace('+', '')) : null
+
+                if (!isNaN(esf) && !isNaN(cil)) {
+                    const matches = await checkLensStock(storeId, esf, cil, pid, isNaN(add!) ? null : add)
+                    setOeMatches(matches)
+                }
+            } else setOeMatches({ exact: [], similar: [] })
+        }, 500)
+        return () => clearTimeout(timer)
+    }, [longeOeEsf, longeOeCil, adicao, lenteOeItemId, storeId, vendaItens])
 
     // Helper para disponibilidade
     const isLenteDisponivel = (item: any, olho: 'OD' | 'OE') => {

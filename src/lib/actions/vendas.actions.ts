@@ -1790,33 +1790,38 @@ export async function buscarProdutoExpress(query: string, storeId: number) {
   const termo = query.trim()
   const resultados: ProdutoExpressResult[] = []
 
+  if (!termo) return []
+
   try {
     let queryBuilder = supabaseAdmin
       .from('products')
       .select('*, tem_grade')
       .eq('store_id', storeId)
 
-    // Lógica de busca refinada
+    // Lógica de busca refinada: quebra em palavras para busca AND
     const terms = termo.split(/\s+/).filter(t => t.length > 0)
 
-    if (terms.length === 1) {
-      // Se for um termo só, pode ser qualquer campo, incluindo JSON
-      queryBuilder = queryBuilder.or(`codigo_barras.eq.${termo},nome.ilike.%${termo}%,marca.ilike.%${termo}%,referencia.ilike.%${termo}%,detalhes->>modelo.ilike.%${termo}%,detalhes->>cor.ilike.%${termo}%`)
-    } else {
-      // Se forem vários termos (ex: "Prada SPR 65Z"), assumimos que é busca por NOME/MARCA/REF/MODELO(JSON)
-      // e TODOS os termos devem estar presentes em ALGUM dos campos (AND lógico de ORs)
+    if (terms.length > 0) {
       terms.forEach(t => {
-        queryBuilder = queryBuilder.or(`nome.ilike.%${t}%,marca.ilike.%${t}%,codigo_barras.eq.${t},referencia.ilike.%${t}%,detalhes->>modelo.ilike.%${t}%,detalhes->>cor.ilike.%${t}%`)
+        // PostgREST exige aspas para valores com espaços ou caracteres especiais dentro do .or()
+        // O Supabase escapa automaticamente se usarmos filtros separados, mas no .or() é manual.
+        // Usamos ilike em vários campos por termo (Lógica: (Campo1 ~ t OR Campo2 ~ t) AND (Campo1 ~ t2 OR ...))
+        const escaped = `"%${t}%"`
+        const eqEscaped = `"${t}"`
+        queryBuilder = queryBuilder.or(`codigo_barras.eq.${eqEscaped},nome.ilike.${escaped},marca.ilike.${escaped},referencia.ilike.${escaped},detalhes->>modelo.ilike.${escaped},detalhes->>cor.ilike.${escaped}`)
       })
     }
 
-    const { data } = await queryBuilder.limit(10)
+    const { data, error } = await queryBuilder.limit(15)
 
-    // CORREÃ‡ÃƒO: Adicionado (p: any) para o TypeScript aceitar as propriedades
+    if (error) {
+      console.error("❌ [SUPABASE SEARCH ERROR]:", error.message, error.details)
+      return []
+    }
+
     data?.forEach((p: any) => {
       resultados.push({
         id: p.id,
-        // Mapeia para compatibilidade com o front antigo
         tipo_origem: p.tipo_produto === 'Armacao' ? 'armacoes' : 'produtos_gerais',
         descricao: p.nome,
         preco: p.preco_venda,
@@ -1828,8 +1833,8 @@ export async function buscarProdutoExpress(query: string, storeId: number) {
 
     return resultados
 
-  } catch (e) {
-    console.error("Erro busca express:", e)
+  } catch (e: any) {
+    console.error("🔥 [CRITICAL SEARCH EXCEPTION]:", e.message)
     return []
   }
 }

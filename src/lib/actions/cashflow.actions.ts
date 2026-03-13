@@ -647,10 +647,10 @@ export async function getResumoCaixa(storeId: number): Promise<ResumoCaixa | nul
     // Data final do mês anterior compatível (ex: se hoje é dia 10, pega até dia 10 do mês passado)
     const endOfLastMonthRef = new Date(hojeInicio.getFullYear(), hojeInicio.getMonth() - 1, hojeInicio.getDate(), 23, 59, 59).toISOString()
 
-    // Query Mês Atual (VENDAS REAIS)
+    // Query Mês Atual (VENDAS REAIS + FINANCIAMENTO)
     const { data: vendasMesAtual } = await supabaseAdmin
         .from('vendas')
-        .select('valor_final, valor_restante')
+        .select('valor_final, valor_restante, financiamento_loja!financiamento_loja_venda_id_fkey(valor_total_financiado)')
         .eq('store_id', storeId)
         .eq('status', 'Fechada')
         .gte('data_fechamento', startOfMonth)
@@ -669,13 +669,18 @@ export async function getResumoCaixa(storeId: number): Promise<ResumoCaixa | nul
     const totalMesAnterior = (vendasMesAnterior as any[])?.reduce((acc, curr) => acc + Number(curr.valor_final), 0) || 0
 
     // Cálculo Vista vs Prazo (Somente Mês Atual)
-    const faturamentoAvista = (vendasMesAtual as any[])?.reduce((acc, curr) => {
-        const valorFinal = Number(curr.valor_final)
+    // À Prazo = valor_restante (ainda em aberto) + valor financiado via carnê
+    // À Vista = valor_final - À Prazo
+    const faturamentoAprazo = (vendasMesAtual as any[])?.reduce((acc, curr) => {
         const valorRestante = Number(curr.valor_restante || 0)
-        return acc + (valorFinal - valorRestante)
+        const financiamentos = curr.financiamento_loja
+        const valorFinanciado = Array.isArray(financiamentos)
+            ? financiamentos.reduce((sum: number, f: any) => sum + Number(f.valor_total_financiado || 0), 0)
+            : Number(financiamentos?.valor_total_financiado || 0)
+        return acc + valorRestante + valorFinanciado
     }, 0) || 0
 
-    const faturamentoAprazo = (vendasMesAtual as any[])?.reduce((acc, curr) => acc + Number(curr.valor_restante || 0), 0) || 0
+    const faturamentoAvista = totalMesAtual - faturamentoAprazo
 
     // --- DIVERGÊNCIAS (ÚLTIMOS 30 DIAS) ---
     const trintaDiasAtras = new Date()

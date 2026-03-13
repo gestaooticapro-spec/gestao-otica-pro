@@ -262,28 +262,30 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
 
             {/* --- TOOLBAR --- */}
             <div className="flex items-center justify-between shrink-0 gap-3">
-                {/* Date Picker for Audit */}
                 <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-lg px-3 py-1.5">
-                        <CalendarDays className="h-4 w-4 text-amber-400" />
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Auditar dia:</label>
-                        <input
-                            type="date"
-                            value={auditDate}
-                            max={new Date().toISOString().split('T')[0]}
-                            onChange={(e) => handleAuditDateChange(e.target.value)}
-                            className="bg-transparent border-none text-slate-200 text-xs font-bold focus:outline-none cursor-pointer [color-scheme:dark]"
-                        />
+                    {/* Date Picker for Audit */}
+                    <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-lg px-3 py-1.5">
+                            <CalendarDays className="h-4 w-4 text-amber-400" />
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Auditar dia:</label>
+                            <input
+                                type="date"
+                                value={auditDate}
+                                max={new Date().toISOString().split('T')[0]}
+                                onChange={(e) => handleAuditDateChange(e.target.value)}
+                                className="bg-transparent border-none text-slate-200 text-xs font-bold focus:outline-none cursor-pointer [color-scheme:dark]"
+                            />
+                        </div>
+                        {auditMode && (
+                            <button
+                                onClick={exitAuditMode}
+                                className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/20 px-3 py-1.5 rounded-lg flex items-center gap-2 text-xs font-bold transition-all"
+                            >
+                                <ArrowLeft className="h-3.5 w-3.5" />
+                                Voltar ao Hoje
+                            </button>
+                        )}
                     </div>
-                    {auditMode && (
-                        <button
-                            onClick={exitAuditMode}
-                            className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/20 px-3 py-1.5 rounded-lg flex items-center gap-2 text-xs font-bold transition-all"
-                        >
-                            <ArrowLeft className="h-3.5 w-3.5" />
-                            Voltar ao Hoje
-                        </button>
-                    )}
                 </div>
 
                 <button
@@ -336,175 +338,113 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                 <>
 
                     {/* --- TOPO: INDICADORES (KPIs) --- */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 gap-3 shrink-0">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 shrink-0">
 
                         {/* Card 0: FATURAMENTO MENSAL */}
-                        <div className="bg-indigo-500/15 backdrop-blur-md text-white p-3 rounded-xl shadow-lg border border-indigo-500/20 group relative">
-                            <div className="absolute inset-0 overflow-hidden rounded-xl">
-                                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-                                    <TrendingUp className="h-12 w-12" />
+                        <div className="bg-indigo-500/10 backdrop-blur-xl p-3 rounded-xl border border-white/5 transition-all hover:bg-indigo-500/20">
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-1.5 text-indigo-300/80">
+                                    <TrendingUp className="h-3 w-3" />
+                                    <p className="text-[10px] font-black uppercase tracking-wider">Vendas (Mês)</p>
                                 </div>
+                                <HelpTooltip text="Total acumulado de vendas neste mês (1º dia até hoje)." />
                             </div>
-                            <div className="relative z-10 w-full">
-                                <div className="flex items-center gap-1 mb-1">
-                                    <p className="text-[9px] font-bold uppercase tracking-wider text-indigo-300">Vendas (Mês)</p>
-                                    <HelpTooltip text="Total acumulado de vendas neste mês (1º dia até hoje) comparado com o mesmo período do mês anterior." />
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-xl font-black">
-                                        {formatCurrency(initialData.comparativo?.faturamento_mensal_atual || 0)}
-                                    </p>
-                                    <div className="flex flex-col gap-0.5 border-t border-white/5 pt-1 mt-1 font-medium">
-                                        <div className="flex justify-between items-center text-[10px] text-emerald-400">
-                                            <span>À Vista:</span>
-                                            <span>{formatCurrency(initialData.comparativo?.faturamento_avista || 0)}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center text-[10px] text-amber-400">
-                                            <span>À Prazo:</span>
-                                            <span>{formatCurrency(initialData.comparativo?.faturamento_aprazo || 0)}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {initialData.comparativo && (
-                                    <div className="flex items-center gap-1 mt-2">
-                                        {(() => {
-                                            const atual = initialData.comparativo.faturamento_mensal_atual || 0
-                                            const anterior = initialData.comparativo.faturamento_mensal_anterior || 0
-                                            const diff = atual - anterior
-                                            const pct = anterior > 0 ? (diff / anterior) * 100 : 0
-                                            const isPositive = diff >= 0
-
-                                            return (
-                                                <div className={`px-1.5 py-0.5 rounded text-[9px] font-bold flex items-center gap-1 ${isPositive ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'}`}>
-                                                    {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                                                    {Math.abs(pct).toFixed(1)}% vs. Mês Anterior
-                                                </div>
-                                            )
-                                        })()}
-                                    </div>
-                                )}
+                            <div className="flex items-baseline gap-2">
+                                <p className="text-xl font-black font-mono tabular-nums text-white">
+                                    {formatCurrency(initialData.comparativo?.faturamento_mensal_atual || 0)}
+                                </p>
+                            </div>
+                            <div className="flex gap-3 mt-1.5 border-t border-white/5 pt-1.5 text-[9px] font-bold">
+                                <span className="text-emerald-400">V: {formatCurrency(initialData.comparativo?.faturamento_avista || 0)}</span>
+                                <span className="text-amber-400 pl-2 border-l border-white/10">P: {formatCurrency(initialData.comparativo?.faturamento_aprazo || 0)}</span>
                             </div>
                         </div>
-
                         {/* Card 1: Saldo Gaveta */}
-                        <div className="bg-emerald-500/15 backdrop-blur-md text-white p-3 rounded-xl shadow-lg border border-emerald-500/20 relative">
-                            <div className="absolute inset-0 overflow-hidden rounded-xl">
-                                <div className="p-2 bg-emerald-500/20 rounded-lg absolute right-3 top-3"><Wallet className="h-5 w-5 text-emerald-300" /></div>
-                            </div>
-                            <div className="relative z-10 w-full">
-                                <div className="flex items-center gap-1 mb-1">
-                                    <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-300">Saldo Gaveta</p>
-                                    <HelpTooltip text="Dinheiro físico que deve estar na gaveta AGORA. (Saldo Inicial + Entradas Dinheiro - Saídas Dinheiro)" />
+                        <div className="bg-emerald-500/10 backdrop-blur-xl p-3 rounded-xl border border-white/5 transition-all hover:bg-emerald-500/20">
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-1.5 text-emerald-300/80">
+                                    <Wallet className="h-3 w-3" />
+                                    <p className="text-[10px] font-black uppercase tracking-wider">Saldo Gaveta</p>
                                 </div>
-                                <p className="text-xl font-black">{formatCurrency(totais.saldo_esperado_dinheiro)}</p>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <p className="text-[9px] text-slate-400">Fundo: {formatCurrency(initialData.caixa?.saldo_inicial || 0)}</p>
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsSaldoModalOpen(true)}
-                                        className="text-[9px] bg-white/10 hover:bg-white/20 px-2 py-0.5 rounded font-bold uppercase transition-colors text-slate-300"
-                                        title="Editar fundo de caixa"
-                                    >
-                                        Editar
-                                    </button>
+                                <HelpTooltip text="Dinheiro físico na gaveta AGORA." />
+                            </div>
+                            <p className="text-xl font-black font-mono tabular-nums text-white mb-1.5">
+                                {formatCurrency(totais.saldo_esperado_dinheiro)}
+                            </p>
+                            <div className="flex items-center justify-between border-t border-white/5 pt-1.5">
+                                <p className="text-[9px] text-slate-400">Fundo: <span className="text-white font-mono">{formatCurrency(initialData.caixa?.saldo_inicial || 0)}</span></p>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsSaldoModalOpen(true)}
+                                    className="text-[8px] bg-white/5 hover:bg-white/10 px-1.5 py-0.5 rounded font-black uppercase tracking-tight text-slate-300"
+                                >
+                                    Alt
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Card 2: Movimentação Dinheiro */}
+                        <div className="bg-white/5 backdrop-blur-xl p-3 rounded-xl border border-white/5 hover:bg-white/10 transition-all">
+                            <div className="flex items-center gap-1.5 text-slate-400 mb-2">
+                                <Package className="h-3 w-3" />
+                                <p className="text-[10px] font-black uppercase tracking-wider">No Caixa (Hoje)</p>
+                            </div>
+                            <p className="text-lg font-black font-mono tabular-nums text-emerald-400">
+                                {formatCurrency(vendas.total_dinheiro + totais.entradas_manuais - totais.saidas_manuais)}
+                            </p>
+                        </div>
+
+                        {/* Card 3: Movimentação Banco */}
+                        <div className="bg-white/5 backdrop-blur-xl p-3 rounded-xl border border-white/5 hover:bg-white/10 transition-all">
+                            <div className="flex items-center gap-1.5 text-slate-400 mb-2">
+                                <TrendingUp className="h-3 w-3" />
+                                <p className="text-[10px] font-black uppercase tracking-wider">No Banco (Hoje)</p>
+                            </div>
+                            <p className="text-lg font-black font-mono tabular-nums text-sky-400">
+                                {formatCurrency(vendas.total_pix + vendas.total_cartao)}
+                            </p>
+                            <div className="flex gap-2 mt-1 text-[8px] font-bold text-sky-300/60 uppercase">
+                                <span>Pix: {formatCurrency(vendas.total_pix)}</span>
+                                <span>C: {formatCurrency(vendas.total_cartao)}</span>
+                            </div>
+                        </div>
+
+                        {/* Card 4: Total Geral */}
+                        <div className="bg-white/5 backdrop-blur-xl p-3 rounded-xl border border-white/5 hover:bg-white/10 transition-all">
+                            <div className="flex items-center gap-1.5 text-slate-400 mb-2">
+                                <ArrowUpCircle className="h-3 w-3" />
+                                <p className="text-[10px] font-black uppercase tracking-wider">Recebido Geral</p>
+                            </div>
+                            <p className="text-lg font-black font-mono tabular-nums text-white">
+                                {formatCurrency((vendas.total_dinheiro + totais.entradas_manuais) + vendas.total_pix + vendas.total_cartao)}
+                            </p>
+                        </div>
+
+                        {/* Card 5: Sangrias e Divergências */}
+                        <div className="bg-white/5 backdrop-blur-xl p-3 rounded-xl border border-white/5 hover:bg-white/10 transition-all">
+                            <div className="flex justify-between items-center mb-2">
+                                <div className="flex items-center gap-1.5 text-slate-400">
+                                    <TrendingDown className="h-3 w-3" />
+                                    <p className="text-[10px] font-black uppercase tracking-wider">Sangria / Quebra</p>
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                    <TrendingDown className="h-2.5 w-2.5 text-red-500" />
+                                    <p className="text-xs font-black text-red-500 font-mono italic leading-none">{formatCurrency(totais.saidas_manuais)}</p>
+                                </div>
+                                <div
+                                    onClick={() => setIsHistoricoModalOpen(true)}
+                                    className="cursor-pointer hover:text-amber-400 transition-colors flex items-center gap-2"
+                                >
+                                    <AlertTriangle className="h-2.5 w-2.5 text-amber-500" />
+                                    <p className="text-xs font-black text-white font-mono leading-none">
+                                        {formatCurrency(Math.abs(totais.divergencias?.negativa || 0))}
+                                    </p>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Card 2: Mov. Caixa (Hoje) */}
-                        <div className="bg-white/5 backdrop-blur-md p-3 rounded-xl border border-emerald-500/20 shadow-lg relative">
-                            <div className="absolute inset-0 overflow-hidden rounded-xl pointer-events-none">
-                                <div className="absolute right-3 top-3 p-2 bg-emerald-500/10 text-emerald-400 rounded-lg"><Package className="h-5 w-5" /></div>
-                            </div>
-                            <div className="relative z-10 w-full pr-12">
-                                <div className="flex items-center gap-1 mb-1">
-                                    <p className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider">Mov. Caixa (Hoje)</p>
-                                    <HelpTooltip text="Total de dinheiro que entrou hoje (Vendas em Dinheiro + Suprimentos - Sangrias/Retiradas)." />
-                                </div>
-                                <p className="text-xl font-black text-emerald-400">{formatCurrency(vendas.total_dinheiro + totais.entradas_manuais - totais.saidas_manuais)}</p>
-                            </div>
-                        </div>
-
-                        {/* Card 3: Mov. Banco (Hoje) */}
-                        <div className="bg-white/5 backdrop-blur-md p-3 rounded-xl border border-sky-500/20 shadow-lg relative">
-                            <div className="absolute inset-0 overflow-hidden rounded-xl pointer-events-none">
-                                <div className="absolute right-3 top-3 p-2 bg-sky-500/10 text-sky-400 rounded-lg"><TrendingUp className="h-5 w-5" /></div>
-                            </div>
-                            <div className="relative z-10 w-full pr-12">
-                                <div className="flex items-center gap-1 mb-1">
-                                    <p className="text-[9px] font-bold text-sky-400 uppercase tracking-wider">Mov. Banco (Hoje)</p>
-                                    <HelpTooltip text="Total de recebimentos digitais HOJE (Pix + Cartões). Não entra na gaveta." />
-                                </div>
-                                <p className="text-xl font-black text-sky-400">{formatCurrency(vendas.total_pix + vendas.total_cartao)}</p>
-                                <div className="flex gap-1 mt-1">
-                                    <span className="text-[8px] bg-sky-500/10 px-1 py-0.5 rounded text-sky-300 font-bold border border-sky-500/10">Pix: {formatCurrency(vendas.total_pix)}</span>
-                                    <span className="text-[8px] bg-sky-500/10 px-1 py-0.5 rounded text-sky-300 font-bold border border-sky-500/10">Cartão: {formatCurrency(vendas.total_cartao)}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Card 4: Total Entradas (Hoje) */}
-                        <div className="bg-white/5 backdrop-blur-md p-3 rounded-xl border border-teal-500/20 shadow-lg relative">
-                            <div className="absolute inset-0 overflow-hidden rounded-xl pointer-events-none">
-                                <div className="absolute right-3 top-3 p-2 bg-teal-500/10 text-teal-400 rounded-lg"><ArrowUpCircle className="h-5 w-5" /></div>
-                            </div>
-                            <div className="relative z-10 w-full pr-12">
-                                <div className="flex items-center gap-1 mb-1">
-                                    <p className="text-[9px] font-bold text-teal-400 uppercase tracking-wider">Total Entradas</p>
-                                    <HelpTooltip text="Soma de tudo o que ENTROU hoje (Dinheiro + Pix + Cartão + Suprimentos)." />
-                                </div>
-                                <p className="text-xl font-black text-teal-400">
-                                    {formatCurrency((vendas.total_dinheiro + totais.entradas_manuais) + vendas.total_pix + vendas.total_cartao)}
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* Card 4: Sangrias */}
-                        <div className="bg-white/5 backdrop-blur-md p-3 rounded-xl border border-red-500/20 shadow-lg relative">
-                            <div className="absolute inset-0 overflow-hidden rounded-xl pointer-events-none">
-                                <div className="absolute right-3 top-3 p-2 bg-red-500/10 text-red-400 rounded-lg"><TrendingDown className="h-5 w-5" /></div>
-                            </div>
-                            <div className="relative z-10 w-full pr-12">
-                                <div className="flex items-center gap-1 mb-1">
-                                    <p className="text-[9px] font-bold text-red-400 uppercase tracking-wider">Sangrias</p>
-                                    <HelpTooltip text="Total de retiradas de dinheiro da gaveta hoje (pagamentos, vales, depósitos)." />
-                                </div>
-                                <p className="text-xl font-black text-red-400">{formatCurrency(totais.saidas_manuais)}</p>
-                                <p className="text-[9px] text-slate-500">{movimentacoes.filter(m => m.tipo === 'Saida').length} lançamentos</p>
-                            </div>
-                        </div>
-
-                        {/* Card 5: Divergências Pendentes */}
-                        <div
-                            onClick={() => {
-                                setIsHistoricoModalOpen(true)
-                                // This will just open the modal. A prop will be added later for default filtering if needed.
-                            }}
-                            className="bg-white/5 backdrop-blur-md p-3 rounded-xl border border-amber-500/20 shadow-lg relative cursor-pointer hover:bg-white/10 transition-colors group"
-                        >
-                            <div className="absolute inset-0 overflow-hidden rounded-xl pointer-events-none">
-                                <div className="absolute right-3 top-3 p-2 bg-amber-500/10 text-amber-400 rounded-lg group-hover:bg-amber-500/20 transition-colors"><AlertTriangle className="h-5 w-5" /></div>
-                            </div>
-                            <div className="relative z-10 w-full pr-12">
-                                <div className="flex items-center gap-1 mb-1">
-                                    <p className="text-[9px] font-bold text-amber-400 uppercase tracking-wider">Divergências (30d)</p>
-                                    <HelpTooltip text="Soma das quebras de caixa (positivas e negativas) dos últimos 30 dias." />
-                                </div>
-                                <p className="text-xl font-black text-white cursor-pointer">
-                                    {(totais.divergencias?.negativa || 0) < 0 ? (
-                                        <span className="text-red-400">{formatCurrency(totais.divergencias?.negativa || 0)}</span>
-                                    ) : (
-                                        <span className="text-slate-400">{formatCurrency(0)}</span>
-                                    )}
-                                </p>
-                                <div className="flex gap-1 mt-1">
-                                    <span className="text-[8px] bg-emerald-500/10 px-1 py-0.5 rounded text-emerald-300 font-bold border border-emerald-500/10" title="Sobras no caixa">
-                                        Sobras: {formatCurrency(totais.divergencias?.positiva || 0)}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                     {/* --- CORPO: SPLIT VIEW --- */}
                     <div className="flex-1 flex gap-6 overflow-hidden">
