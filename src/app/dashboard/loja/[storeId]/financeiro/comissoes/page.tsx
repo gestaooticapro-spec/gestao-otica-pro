@@ -37,8 +37,8 @@ export default async function ComissoesPage({
                         <Percent className="h-6 w-6" />
                     </div>
                     <div>
-                        <h1 className="text-xl font-bold text-gray-800">Gestão de Comissões</h1>
-                        <p className="text-xs text-gray-500">Acompanhe e realize o pagamento de bonificações.</p>
+                        <h1 className="text-xl font-black text-gray-800 tracking-tight uppercase">Gestão de Comissões</h1>
+                        <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.2em]">Acompanhe e realize o pagamento de bonificações.</p>
                     </div>
                 </div>
             </div>

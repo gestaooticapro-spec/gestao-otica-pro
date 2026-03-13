@@ -135,8 +135,8 @@ export default function ReportsHubPage() {
                             <BarChart3 className="w-8 h-8 text-blue-400" />
                         </div>
                         <div>
-                            <h1 className="text-4xl font-black text-white tracking-tight drop-shadow-md">Central de Relatórios</h1>
-                            <p className="text-slate-400 text-sm font-medium uppercase tracking-widest mt-1">Inteligência e Análise de Dados</p>
+                            <h1 className="text-4xl font-black text-white tracking-tight drop-shadow-md uppercase">Central de Relatórios</h1>
+                            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em] mt-1">Inteligência e Análise de Dados</p>
                         </div>
                     </div>
                     <button

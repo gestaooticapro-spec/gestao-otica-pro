@@ -125,7 +125,7 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
                         <ArrowLeft className="w-4 h-4" />
                         Hub Gerencial
                     </button>
-                    <span className="text-slate-500 text-xs font-bold uppercase tracking-widest">{storeName}</span>
+                    <span className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em]">{storeName}</span>
                     <button
                         onClick={handleLogout}
                         className="text-slate-500 hover:text-red-400 transition-colors text-sm font-medium"
@@ -158,7 +158,7 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
             <div className="relative z-10 w-full max-w-6xl flex flex-col items-center">
                 <div className="text-center mb-10 animate-in slide-in-from-top-5 duration-700">
                     <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white drop-shadow-lg mb-2">{storeName}</h1>
-                    <p className="text-slate-300 text-sm font-medium uppercase tracking-[0.2em] bg-white/5 px-4 py-1 rounded-full border border-white/10">
+                    <p className="text-slate-400 text-xs font-black uppercase tracking-[0.3em] bg-white/5 px-4 py-1 rounded-full border border-white/10">
                         Hub Gerencial
                     </p>
                 </div>
@@ -175,8 +175,8 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
                                 <div className="mb-auto mt-3 p-5 rounded-2xl bg-blue-500/20 ring-1 ring-blue-400/30">
                                     <Building2 className="w-10 h-10 text-blue-200" strokeWidth={1.7} />
                                 </div>
-                                <h2 className="text-3xl font-black text-white mb-2">Operação da Loja</h2>
-                                <p className="text-blue-200/75 text-xs font-semibold uppercase tracking-[0.2em] mb-5">Fluxo de atendimento e loja vazia</p>
+                                <h2 className="text-3xl font-black text-white tracking-tight mb-2">Operação da Loja</h2>
+                                <p className="text-blue-200/70 text-[10px] font-black uppercase tracking-[0.2em] mb-5">Fluxo de atendimento e loja vazia</p>
                                 <div className="flex items-center gap-2 text-blue-200/90 text-sm font-bold uppercase tracking-wider">
                                     Abrir
                                     <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
@@ -194,8 +194,8 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
                                 <div className="mb-auto mt-3 p-5 rounded-2xl bg-emerald-500/20 ring-1 ring-emerald-400/30">
                                     <Briefcase className="w-10 h-10 text-emerald-200" strokeWidth={1.7} />
                                 </div>
-                                <h2 className="text-3xl font-black text-white mb-2">Opções de Gerência</h2>
-                                <p className="text-emerald-200/75 text-xs font-semibold uppercase tracking-[0.2em] mb-5">Financeiro, relatórios e configurações</p>
+                                <h2 className="text-3xl font-black text-white tracking-tight mb-2">Opções de Gerência</h2>
+                                <p className="text-emerald-200/70 text-[10px] font-black uppercase tracking-[0.2em] mb-5">Financeiro, relatórios e configurações</p>
                                 <div className="flex items-center gap-2 text-emerald-200/90 text-sm font-bold uppercase tracking-wider">
                                     Abrir
                                     <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />

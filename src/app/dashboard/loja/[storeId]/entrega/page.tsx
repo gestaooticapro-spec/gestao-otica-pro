@@ -139,16 +139,16 @@ export default function EntregaPage() {
             <div className="relative z-10 p-6 max-w-7xl mx-auto w-full flex-1 flex flex-col gap-6">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                     <div className="space-y-3">
-                        <Link
-                            href={`/dashboard/loja/${storeId}/atendimento`}
+                        <button
+                            onClick={() => router.back()}
                             className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-white transition-colors"
                         >
                             <ArrowLeft className="h-4 w-4" />
-                            Voltar para Atendimento
-                        </Link>
+                            Voltar
+                        </button>
 
                         <div>
-                            <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-orange-400 flex items-center gap-3 tracking-tight">
+                            <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-orange-400 flex items-center gap-3 tracking-wider">
                                 <Truck className="h-8 w-8 text-amber-400" />
                                 Entrega de Óculos
                             </h1>

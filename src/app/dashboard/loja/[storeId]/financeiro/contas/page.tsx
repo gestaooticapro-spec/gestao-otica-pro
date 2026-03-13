@@ -2,18 +2,18 @@ import { getBills } from '@/lib/actions/payable.actions'
 import ContasInterface from '@/components/financeiro/ContasInterface'
 import { CalendarRange } from 'lucide-react'
 
-export default async function ContasPage({ 
+export default async function ContasPage({
     params,
-    searchParams 
-}: { 
+    searchParams
+}: {
     params: { storeId: string },
-    searchParams: { mes?: string } 
+    searchParams: { mes?: string }
 }) {
     const storeId = parseInt(params.storeId, 10)
-    
+
     // Padrão: Mês Atual se não vier na URL
     const dateRef = searchParams.mes || new Date().toISOString()
-    
+
     const { data: bills } = await getBills(storeId, dateRef)
 
     // Formatação do Mês para Exibição
@@ -27,8 +27,8 @@ export default async function ContasPage({
                         <CalendarRange className="h-6 w-6" />
                     </div>
                     <div>
-                        <h1 className="text-xl font-bold text-gray-800">Contas a Pagar</h1>
-                        <p className="text-xs text-gray-500 capitalize">Referência: {mesExtenso}</p>
+                        <h1 className="text-xl font-black text-gray-800 tracking-tight uppercase">Contas a Pagar</h1>
+                        <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.2em]">Referência: {mesExtenso}</p>
                     </div>
                 </div>
             </div>

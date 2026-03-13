@@ -17,7 +17,7 @@ type Employee = Database['public']['Tables']['employees']['Row'];
 // ═══════════════════════════════════════════════
 // 🎨 DESIGN SYSTEM: Dark Glassmorphism + Indigo
 // ═══════════════════════════════════════════════
-const labelStyle = "block text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-wider";
+const labelStyle = "block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-[0.2em]";
 const inputStyle = "block w-full rounded-lg border border-white/10 bg-black/20 shadow-inner text-slate-200 h-9 text-sm px-3 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 font-bold placeholder:font-normal placeholder:text-slate-500 disabled:bg-black/10 disabled:text-slate-500 transition-all outline-none backdrop-blur-sm";
 const cardStyle = "bg-white/5 backdrop-blur-xl border border-white/10 p-5 rounded-xl shadow-xl mb-4 relative overflow-hidden";
 
@@ -526,7 +526,7 @@ export default function ConfigInterface({ storeId }: { storeId: number }) {
                 <button
                     type="button"
                     onClick={() => router.back()}
-                    className="py-3 text-xs font-bold text-slate-400 hover:text-white transition-colors flex items-center gap-1.5 mr-2"
+                    className="py-3 text-[10px] font-black text-slate-400 hover:text-white transition-colors flex items-center gap-1.5 mr-2 uppercase tracking-[0.2em]"
                 >
                     <ArrowLeftToLine className="h-4 w-4" /> Voltar
                 </button>
@@ -535,13 +535,13 @@ export default function ConfigInterface({ storeId }: { storeId: number }) {
 
                 <button
                     onClick={() => setActiveTab('loja')}
-                    className={`py-4 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'loja' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
+                    className={`py-4 text-[10px] font-black border-b-2 transition-colors flex items-center gap-2 uppercase tracking-[0.2em] ${activeTab === 'loja' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
                 >
                     <Store className="h-4 w-4" /> Dados da Loja
                 </button>
                 <button
                     onClick={() => setActiveTab('equipe')}
-                    className={`py-4 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'equipe' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
+                    className={`py-4 text-[10px] font-black border-b-2 transition-colors flex items-center gap-2 uppercase tracking-[0.2em] ${activeTab === 'equipe' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
                 >
                     <Users className="h-4 w-4" /> Equipe & Acesso
                 </button>

@@ -26,7 +26,7 @@ export default async function ConfigPage({ params }: { params: { storeId: string
             <div className="flex flex-col items-center justify-center h-[calc(100vh-64px)] bg-slate-950 p-6">
                 <div className="bg-slate-900 p-8 rounded-2xl shadow-xl text-center max-w-md border-t-4 border-red-500 border-b border-x border-b-white/10 border-x-white/10">
                     <ShieldAlert className="h-16 w-16 text-red-500 mx-auto mb-4" />
-                    <h1 className="text-2xl font-black text-white mb-2">Acesso Negado</h1>
+                    <h1 className="text-2xl font-black text-white mb-2 tracking-tight uppercase">Acesso Negado</h1>
                     <p className="text-slate-400 mb-6">
                         Esta área é restrita a Gerentes e Administradores.
                         <br />Seu perfil atual é: <strong className="uppercase text-slate-200">{profile?.role || 'Desconhecido'}</strong>

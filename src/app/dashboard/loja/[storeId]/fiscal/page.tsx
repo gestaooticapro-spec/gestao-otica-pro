@@ -165,8 +165,8 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
             {/* CABEÇALHO */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-[#1A1A1A]">Fiscal (NFC-e)</h1>
-                    <p className="text-stone-500">Gerencie suas notas fiscais de consumidor.</p>
+                    <h1 className="text-3xl font-black text-[#1A1A1A] tracking-tight uppercase">Fiscal (NFC-e)</h1>
+                    <p className="text-stone-500 text-[10px] font-black uppercase tracking-[0.2em]">Gerencie suas notas fiscais de consumidor.</p>
                 </div>
 
                 <div className="flex items-center gap-3 bg-white p-1 rounded-xl border border-stone-200 shadow-sm">

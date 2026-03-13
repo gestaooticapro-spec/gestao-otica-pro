@@ -264,11 +264,20 @@ export default function AddItemFormExperimental({
                                                     {item.marca && <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded border border-blue-500/30 font-bold uppercase">{item.marca}</span>}
                                                     <span className="text-[9px] bg-white/10 text-slate-400 px-1.5 py-0.5 rounded border border-white/10 uppercase font-bold">{item.tipo}</span>
                                                 </div>
-                                                {item.detalhes && <span className="text-[11px] text-slate-500 mt-0.5">{item.detalhes}</span>}
+                                                <div className="flex items-center gap-2 mt-0.5">
+                                                    {item.detalhes && <span className="text-[11px] text-slate-500">{item.detalhes}</span>}
+                                                    {item.estoque !== undefined && (
+                                                        <span className={`text-[10px] font-bold ${item.estoque > 0 ? 'text-emerald-400/80' : 'text-rose-400/80'}`}>
+                                                            • Estoque: {item.estoque}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
-                                            <span className="text-blue-400 font-bold bg-blue-500/10 px-2 py-1 rounded text-xs group-hover:bg-blue-500/20 border border-blue-500/20">
-                                                {formatCurrency(item.preco_venda)}
-                                            </span>
+                                            <div className="flex flex-col items-end">
+                                                <span className="text-blue-400 font-bold bg-blue-500/10 px-2 py-1 rounded text-xs group-hover:bg-blue-500/20 border border-blue-500/20">
+                                                    {formatCurrency(item.preco_venda)}
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
                                 ))}

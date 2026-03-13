@@ -1752,6 +1752,15 @@ export async function searchProductCatalog(
           estoque: p.estoque_atual
         }
       })
+
+      // Ordenação: Produtos com estoque > 0 primeiro.
+      results.sort((a, b) => {
+        const temEstoqueA = (a.estoque || 0) > 0;
+        const temEstoqueB = (b.estoque || 0) > 0;
+        if (temEstoqueA && !temEstoqueB) return -1;
+        if (!temEstoqueA && temEstoqueB) return 1;
+        return 0; // Mantém a ordenação original (por nome) entre itens do mesmo status de estoque
+      })
     }
 
     return { success: true, data: results }
