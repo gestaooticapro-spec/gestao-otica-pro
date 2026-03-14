@@ -3,6 +3,7 @@
 import { useState, useEffect, useTransition } from 'react'
 import { createPortal } from 'react-dom'
 import { Search, X, Loader2, Save, Truck, User, Microscope, MessageCircle } from 'lucide-react'
+import { getWhatsAppLink } from '@/lib/utils'
 import {
     searchOSForLab,
     updateLabTracking,
@@ -252,7 +253,7 @@ export default function LabTrackingModal({ isOpen, onClose, storeId }: Props) {
                                                 <div className="flex items-center gap-1">
                                                     {currentPhone ? (
                                                         <a
-                                                            href={`https://wa.me/55${currentPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá ${selectedOS.customer_name.split(' ')[0]}! 👋 Passando para avisar que seus óculos já ficaram prontos! Quando quiser, pode vir fazer a retirada. Ficamos à disposição!`)}`}
+                                                            href={getWhatsAppLink(currentPhone, `Olá ${selectedOS.customer_name.split(' ')[0]}! 👋 Passando para avisar que seus óculos já ficaram prontos! Quando quiser, pode vir fazer a retirada. Ficamos à disposição!`)}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
                                                             className="flex items-center gap-1 text-[9px] font-black uppercase text-emerald-400 hover:text-emerald-300 transition-colors bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20"

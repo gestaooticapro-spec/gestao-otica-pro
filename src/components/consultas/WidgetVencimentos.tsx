@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { CalendarClock, MessageCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import { VencimentoProximo } from '@/lib/actions/consultas.actions'
+import { getWhatsAppLink } from '@/lib/utils'
 
 const formatMoney = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -18,7 +19,6 @@ export default function WidgetVencimentos({
     const handleZap = (item: VencimentoProximo) => {
         if (!item.fone_movel) return alert("Cliente sem celular cadastrado.")
 
-        const num = item.fone_movel.replace(/\D/g, '')
         const primeiroNome = item.customer_name.split(' ')[0]
         const hoje = new Date().toISOString().split('T')[0]
         const venceHoje = item.data_vencimento === hoje
@@ -27,7 +27,7 @@ export default function WidgetVencimentos({
         // MENSAGEM PERSONALIZADA COM NOME DA LOJA
         const msg = `Olá ${primeiroNome}, tudo bem? Aqui é da ${storeName}. Passando apenas para lembrar que sua parcela (${item.numero_parcela}ª) vence ${textoDia}. Se precisar da chave Pix, é só pedir!`
 
-        window.open(`https://wa.me/55${num}?text=${encodeURIComponent(msg)}`, '_blank')
+        window.open(getWhatsAppLink(item.fone_movel, msg), '_blank')
     }
 
     return (

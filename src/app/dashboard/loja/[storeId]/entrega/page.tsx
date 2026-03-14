@@ -22,6 +22,7 @@ import {
     Wrench
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { getWhatsAppLink } from '@/lib/utils'
 import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/BackgroundToggle'
 import {
     EmployeeSimple,
@@ -31,9 +32,6 @@ import {
     updateLabTracking
 } from '@/lib/actions/lab.actions'
 
-function formatPhoneForWhatsapp(phone: string) {
-    return phone.replace(/\D/g, '')
-}
 
 function formatForInput(isoString: string | null) {
     if (!isoString) return ''
@@ -214,7 +212,7 @@ export default function EntregaPage() {
                                     const customerName = item.customer_name || 'Cliente'
                                     const phone = item.customer_phone || ''
                                     const whatsappMessage = `Olá ${customerName.split(' ')[0]}! Tudo bem? Aqui é da Ótica. Os óculos de *${patientName}* ficaram prontos e estão aguardando retirada.`
-                                    const whatsappLink = `https://wa.me/55${formatPhoneForWhatsapp(phone)}?text=${encodeURIComponent(whatsappMessage)}`
+                                    const whatsappLink = getWhatsAppLink(phone, whatsappMessage)
 
                                     return (
                                         <div

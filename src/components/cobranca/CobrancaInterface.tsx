@@ -16,6 +16,7 @@ import {
 import { getEmployees } from '@/lib/actions/employee.actions'
 import { updateCustomerPhone } from '@/lib/actions/lab.actions'
 import { toast } from 'sonner'
+import { getWhatsAppLink } from '@/lib/utils'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
 
 // --- COMPONENTES UI SIMPLES ---
@@ -471,9 +472,8 @@ export default function CobrancaInterface({
                                         <button
                                             onClick={() => {
                                                 if (selectedCustomer.fone_movel) {
-                                                    const num = selectedCustomer.fone_movel.replace(/\D/g, '')
                                                     const msg = `Olá ${selectedCustomer.full_name.split(' ')[0]}, estamos entrando em contato referente à sua pendência na Ótica.`
-                                                    window.open(`https://wa.me/55${num}?text=${encodeURIComponent(msg)}`, '_blank')
+                                                    window.open(getWhatsAppLink(selectedCustomer.fone_movel, msg), '_blank')
                                                 } else {
                                                     toast.error("Sem telefone cadastrado")
                                                 }

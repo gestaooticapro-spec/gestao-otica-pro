@@ -8,6 +8,7 @@ import {
     MessageCircle, CalendarClock, CalendarCheck, ArrowRight, Send, Users2, UserMinus
 } from 'lucide-react';
 import { openWhatsApp } from '@/lib/utils/whatsapp';
+import { getWhatsAppLink } from '@/lib/utils';
 import Link from 'next/link';
 
 // Tipos importados (ou definidos localmente se preferir não importar do server action em client component)
@@ -135,7 +136,6 @@ export default function OperatorMenuLojaVazia({
 
     const handleZapVencimento = (item: VencimentoProximo) => {
         if (!item.fone_movel) return alert("Cliente sem celular cadastrado.");
-        const num = item.fone_movel.replace(/\D/g, '');
         const primeiroNome = item.customer_name.split(' ')[0];
         const hoje = new Date().toISOString().split('T')[0];
         // Lógica simples: se for hoje "hoje", senão "em breve" ou a data específica
@@ -143,7 +143,7 @@ export default function OperatorMenuLojaVazia({
         const dataFormatada = new Date(item.data_vencimento).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
         const textoDia = venceHoje ? "hoje" : `dia ${dataFormatada}`;
         const msg = `Olá ${primeiroNome}, tudo bem? Aqui é da ${storeName}. Passando apenas para lembrar que sua parcela (${item.numero_parcela}ª) vence ${textoDia}. Se precisar da chave Pix, é só pedir!`;
-        window.open(`https://wa.me/55${num}?text=${encodeURIComponent(msg)}`, '_blank');
+        window.open(getWhatsAppLink(item.fone_movel, msg), '_blank');
     };
 
     const handleZapClienteInativo = (cliente: ClienteInativo) => {
@@ -522,7 +522,7 @@ export default function OperatorMenuLojaVazia({
                                                     </p>
                                                 </div>
                                                 <button
-                                                    onClick={() => window.open(`https://wa.me/55${item.fone_movel?.replace(/\D/g, '')}`, '_blank')}
+                                                    onClick={() => item.fone_movel && window.open(getWhatsAppLink(item.fone_movel), '_blank')}
                                                     className="w-8 h-8 shrink-0 rounded-full bg-orange-500/20 text-orange-400 hover:bg-orange-500 hover:text-white flex items-center justify-center transition-all"
                                                 >
                                                     <Send className="w-4 h-4" />

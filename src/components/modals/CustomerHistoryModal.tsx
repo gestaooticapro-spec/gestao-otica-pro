@@ -1,6 +1,8 @@
 // ARQUIVO: src/components/modals/CustomerHistoryModal.tsx
 'use client'
 
+import { getWhatsAppLink } from '@/lib/utils'
+
 import { useState, useEffect, useCallback } from 'react'
 import { X, Loader2, Search, User, Wallet, Glasses, MessageCircle, Calendar, CreditCard, AlertCircle, ChevronRight } from 'lucide-react'
 import {
@@ -195,11 +197,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
             return
         }
 
-        // Remove caracteres não numéricos
-        const phone = selectedCustomer.fone.replace(/\D/g, '')
-        // Adiciona código do país se necessário
-        const phoneWithCountry = phone.startsWith('55') ? phone : `55${phone}`
-        const url = `https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(message)}`
+        const url = getWhatsAppLink(selectedCustomer.fone, message)
         window.open(url, '_blank')
     }
 

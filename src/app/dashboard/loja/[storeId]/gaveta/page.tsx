@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Archive, User, DollarSign, MessageCircle, Clock, AlertTriangle, ArrowLeft } from 'lucide-react'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
 import { useEffect, useState } from 'react'
+import { getWhatsAppLink } from '@/lib/utils'
 
 export default function GavetaPage({
   params
@@ -23,10 +24,6 @@ export default function GavetaPage({
     })
   }, [storeId])
 
-  // Função auxiliar para limpar telefone
-  const formatPhoneForWhatsapp = (phone: string) => {
-    return phone.replace(/\D/g, '')
-  }
 
   // Calcula dias na gaveta
   const getDaysWaiting = (dateString: string) => {
@@ -96,7 +93,7 @@ export default function GavetaPage({
 
               // Mensagem Personalizada
               const whatsappMessage = `Olá ${nomeCliente.split(' ')[0]}! Tudo bem? Aqui é da Ótica. Os óculos de *${nomePaciente}* ficaram prontos! Quando puder, passe aqui para retirar e ajustar. 😎`
-              const whatsappLink = `https://wa.me/55${formatPhoneForWhatsapp(telefoneRaw)}?text=${encodeURIComponent(whatsappMessage)}`
+              const whatsappLink = getWhatsAppLink(telefoneRaw, whatsappMessage)
 
               return (
                 <div key={item.id} className={`bg-white/5 backdrop-blur-md rounded-2xl shadow-lg border overflow-hidden hover:shadow-xl hover:bg-white/10 transition-all group ${isAtrasado ? 'border-red-500/30' : 'border-white/10'}`}>

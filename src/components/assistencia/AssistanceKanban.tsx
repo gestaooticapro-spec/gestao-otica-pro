@@ -8,6 +8,7 @@ import {
   Plus, ArrowRight, Clock, CheckCircle,
   Package, MessageCircle, RefreshCw, MessageSquare
 } from 'lucide-react'
+import { getWhatsAppLink } from '@/lib/utils'
 
 const COLUMNS = {
   'Triagem': { label: 'Triagem / Análise', color: 'bg-slate-500/5 border-white/10', accent: 'text-slate-400' },
@@ -43,10 +44,9 @@ export default function AssistanceKanban({ initialData, storeId }: { initialData
 
   const sendTrackingLink = (ticket: any) => {
     if (!ticket.customers?.fone_movel) return alert('Cliente sem telefone.')
-    const num = ticket.customers.fone_movel.replace(/\D/g, '')
     const link = `${window.location.origin}/rastreio/${ticket.tracking_token}`
     const msg = `Olá ${ticket.customers.full_name.split(' ')[0]}, acompanhe sua garantia aqui: ${link}`
-    window.open(`https://wa.me/55${num}?text=${encodeURIComponent(msg)}`, '_blank')
+    window.open(getWhatsAppLink(ticket.customers.fone_movel, msg), '_blank')
   }
 
   const openTimeline = (ticket: any) => {
