@@ -164,7 +164,11 @@ export async function getInadimplentes(storeId: number, filtro: 'cobrar' | 'ja_c
 const CobrancaSchema = z.object({
     customer_id: z.coerce.number(),
     store_id: z.coerce.number(),
-    venda_id: z.coerce.number().optional().nullable(),
+    venda_id: z.preprocess((val) => {
+        if (val === '' || val === null || val === undefined) return null
+        const num = Number(val)
+        return isNaN(num) ? null : num
+    }, z.number().nullable().optional()),
     tipo_contato: z.string().min(1),
     resumo: z.string().min(3),
     proxima_acao: z.string().optional().nullable()
@@ -200,19 +204,22 @@ export async function registrarCobranca(prevState: any, formData: FormData) {
     const supabaseAdmin = createAdminClient()
 
     try {
-        // Se houver operador selecionado no dropdown, usa esse ID; caso contrário, usa o UUID do usuário logado
-        const employeeId = formData.get('registrado_por_id') as string | null
-
-        await (supabaseAdmin.from('cobranca_historico') as any).insert({
+        // registrado_por_id é UUID no banco — sempre usar o UUID do usuário logado
+        const { error: insertError } = await (supabaseAdmin.from('cobranca_historico') as any).insert({
             tenant_id: profile.tenant_id,
             store_id: profile.store_id,
-            registrado_por_id: employeeId || user.id,
+            registrado_por_id: user.id,
             customer_id: validated.data.customer_id,
-            venda_id: validated.data.venda_id,
+            venda_id: validated.data.venda_id || null,
             tipo_contato: validated.data.tipo_contato,
             resumo_conversa: validated.data.resumo,
             proxima_acao: validated.data.proxima_acao
         })
+
+        if (insertError) {
+            console.error('Erro ao registrar cobrança:', insertError)
+            return { success: false, message: insertError.message || 'Erro ao salvar no banco de dados' }
+        }
 
         revalidatePath(`/dashboard/loja/${profile.store_id}/cobranca`)
         return { success: true, message: 'Contato registrado!' }
@@ -361,8 +368,28 @@ export async function getRetornosDeHoje(storeId: number): Promise<RetornoCobranc
             }
         }
 
-        return Array.from(ultimosRetornosPorCliente.values())
+        // Filtrar apenas retornos com data <= hoje
+        const retornosFiltrados = Array.from(ultimosRetornosPorCliente.values())
             .filter((item: any) => item.proxima_acao <= hoje)
+
+        if (retornosFiltrados.length === 0) return []
+
+        // CRUZAMENTO: Verificar quais clientes ainda possuem parcelas pendentes
+        const customerIds = retornosFiltrados.map((item: any) => item.customer_id)
+
+        const { data: parcelasPendentes } = await (supabaseAdmin.from('financiamento_parcelas') as any)
+            .select('customer_id')
+            .eq('store_id', storeId)
+            .eq('status', 'Pendente')
+            .in('customer_id', customerIds)
+
+        // Set com IDs de clientes que AINDA devem
+        const clientesDevedores = new Set(
+            (parcelasPendentes || []).map((p: any) => p.customer_id)
+        )
+
+        return retornosFiltrados
+            .filter((item: any) => clientesDevedores.has(item.customer_id))
             .sort((a: any, b: any) => a.proxima_acao.localeCompare(b.proxima_acao))
             .map((item: any) => ({
             id: item.id,
@@ -378,6 +405,7 @@ export async function getRetornosDeHoje(storeId: number): Promise<RetornoCobranc
         return []
     }
 }
+
 // --- 7. ATUALIZAR STATUS DA COBRANÇA ---
 export async function updateCobrancaStatus(customerId: number, status: 'Normal' | 'Perdido' | 'Externa', storeId: number) {
     const supabaseAdmin = createAdminClient()
