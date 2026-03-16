@@ -1,5 +1,5 @@
-import { getWhatsAppLink } from '../src/lib/utils.ts';
-import { openWhatsApp } from '../src/lib/utils/whatsapp.ts';
+import { getWhatsAppLink } from '../src/lib/utils';
+import { openWhatsApp } from '../src/lib/utils/whatsapp';
 
 console.log("=== Testing getWhatsAppLink ===");
 
