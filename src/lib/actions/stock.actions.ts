@@ -19,7 +19,7 @@ const MovimentoSchema = z.object({
     related_os_id: z.coerce.number().optional().nullable(),
     sobra_detalhes: z.object({
         diametro: z.coerce.number(),
-        olho: z.string(),
+        olho: z.enum(['OD', 'OE', 'AMBOS']),
         esferico: z.coerce.number().optional().nullable(),
         cilindrico: z.coerce.number().optional().nullable(),
         adicao: z.coerce.number().optional().nullable()
@@ -29,6 +29,13 @@ const MovimentoSchema = z.object({
 export type StockActionResult = {
     success: boolean
     message: string
+}
+
+type LensEye = 'OD' | 'OE' | 'AMBOS'
+
+const normalizeLensEye = (value: string | null | undefined): LensEye | null => {
+    if (value === 'OD' || value === 'OE' || value === 'AMBOS') return value
+    return null
 }
 
 export async function registrarMovimentacao(
@@ -46,7 +53,7 @@ export async function registrarMovimentacao(
 
     // 2. CAPTURA DOS DADOS
     const rawData = {
-        store_id: profile.store_id,
+        store_id: formData.get('store_id') || profile.store_id,
         employee_id: formData.get('employee_id'),
         product_id: formData.get('product_id'),
         variant_id: formData.get('variant_id'),
@@ -120,34 +127,69 @@ export async function registrarMovimentacao(
 
         // --- LÓGICA PRÉ-MOVIMENTAÇÃO: CRIAÇÃO DE VARIANTE DE SOBRA ---
         let novaSobraId: number | null = null
+        let novaSobraEstoqueAtual = 0
         if (sobra_detalhes && sobra_detalhes.diametro) {
-            // Se já temos a variante original (ex: perdendo uma lente da grade), pegamos os graus de lá
+            // Se j? temos a variante original (ex: perdendo uma lente da grade), pegamos os graus de l?
             if (variant_id) {
                 const { data: v } = await (supabaseAdmin.from('product_variants') as any).select('esferico, cilindrico, adicao').eq('id', variant_id).single()
                 if (v) variantData = v
             }
 
-            const insertPayload = {
-                product_id: product_id,
-                store_id: store_id,
-                tenant_id: profile.tenant_id,
-                nome_variante: `Sobra ${sobra_detalhes.olho} Ø${sobra_detalhes.diametro}`,
-                esferico: variantData?.esferico ?? sobra_detalhes.esferico ?? 0,
-                cilindrico: variantData?.cilindrico ?? sobra_detalhes.cilindrico ?? 0,
-                adicao: variantData?.adicao ?? sobra_detalhes.adicao ?? null,
-                is_sobra: true,
-                diametro: sobra_detalhes.diametro,
-                olho: sobra_detalhes.olho,
-                estoque_atual: 0, // Começamos com zero para a movimentação posterior alimentar
+            const sobraEsferico = variantData?.esferico ?? sobra_detalhes.esferico ?? 0
+            const sobraCilindrico = variantData?.cilindrico ?? sobra_detalhes.cilindrico ?? 0
+            const sobraAdicao = variantData?.adicao ?? sobra_detalhes.adicao ?? null
+            const sobraOlho = sobra_detalhes.olho
+
+            let sobraExistenteQuery = (supabaseAdmin.from('product_variants') as any)
+                .select('id, estoque_atual')
+                .eq('product_id', product_id)
+                .eq('store_id', store_id)
+                .eq('tenant_id', profile.tenant_id)
+                .eq('is_sobra', true)
+                .eq('diametro', sobra_detalhes.diametro)
+                .eq('olho', sobraOlho)
+                .eq('esferico', sobraEsferico)
+                .eq('cilindrico', sobraCilindrico)
+                .order('id', { ascending: true })
+                .limit(1)
+
+            if (sobraAdicao === null) {
+                sobraExistenteQuery = sobraExistenteQuery.is('adicao', null)
+            } else {
+                sobraExistenteQuery = sobraExistenteQuery.eq('adicao', sobraAdicao)
             }
 
-            const { data: novaSobra } = await (supabaseAdmin.from('product_variants') as any).insert(insertPayload).select().single()
+            const { data: sobraExistente } = await sobraExistenteQuery.maybeSingle()
 
-            if (novaSobra) {
-                novaSobraId = novaSobra.id
-                // Se for ENTRADA, a própria movimentação principal já deve ser para esta nova variante
+            if (sobraExistente) {
+                novaSobraId = sobraExistente.id
+                novaSobraEstoqueAtual = sobraExistente.estoque_atual || 0
                 if (tipo === 'Entrada') {
-                    effectiveVariantId = novaSobra.id
+                    effectiveVariantId = sobraExistente.id
+                }
+            } else {
+                const insertPayload = {
+                    product_id: product_id,
+                    store_id: store_id,
+                    tenant_id: profile.tenant_id,
+                    nome_variante: `Sobra ${sobraOlho} Ø${sobra_detalhes.diametro}`,
+                    esferico: sobraEsferico,
+                    cilindrico: sobraCilindrico,
+                    adicao: sobraAdicao,
+                    is_sobra: true,
+                    diametro: sobra_detalhes.diametro,
+                    olho: sobraOlho,
+                    estoque_atual: 0,
+                }
+
+                const { data: novaSobra } = await (supabaseAdmin.from('product_variants') as any).insert(insertPayload).select().single()
+
+                if (novaSobra) {
+                    novaSobraId = novaSobra.id
+                    novaSobraEstoqueAtual = novaSobra.estoque_atual || 0
+                    if (tipo === 'Entrada') {
+                        effectiveVariantId = novaSobra.id
+                    }
                 }
             }
         }
@@ -207,7 +249,7 @@ export async function registrarMovimentacao(
         if (tipo === 'Perda' && novaSobraId) {
             // Aumenta o estoque da sobra em 1 (já que a movimentação principal foi de Perda do original)
             await (supabaseAdmin.from('product_variants') as any)
-                .update({ estoque_atual: 1 })
+                .update({ estoque_atual: novaSobraEstoqueAtual + 1 })
                 .eq('id', novaSobraId)
 
             // Incrementa o produto global também para a recuperação
@@ -388,6 +430,7 @@ export type LensStockMatch = {
     esferico: number
     cilindrico: number
     adicao?: number | null
+    olho?: LensEye | null
     estoque: number
     is_sobra: boolean
     preco_venda: number
@@ -399,16 +442,23 @@ export async function checkLensStock(
     esferico: number,
     cilindrico: number,
     targetProductId: number | null,
-    adicao: number | null
+    adicao: number | null,
+    targetEye: 'OD' | 'OE'
 ): Promise<{ exact: LensStockMatch[], similar: LensStockMatch[] }> {
     const supabase = createAdminClient()
 
     // Busca variantes com grau exato ou próximo (+/- 0.25)
     const range = 0.25
+    const adicaoRange = 0.01
+    const normalizedCilindrico = cilindrico === 0 ? 0 : cilindrico
+    const normalizedAdicao =
+        adicao === null || adicao === undefined || Math.abs(adicao) < adicaoRange
+            ? null
+            : adicao
 
     let query = (supabase.from('product_variants') as any)
         .select(`
-            id, product_id, nome_variante, esferico, cilindrico, adicao, estoque_atual, is_sobra,
+            id, product_id, nome_variante, esferico, cilindrico, adicao, olho, estoque_atual, is_sobra,
             products ( nome, preco_venda )
         `)
         .eq('store_id', storeId)
@@ -418,18 +468,20 @@ export async function checkLensStock(
         .lte('esferico', esferico + range)
 
     // Range Cilíndrico: precisa incluir null (sobras podem ter cilindrico null)
-    if (cilindrico === 0) {
+    if (normalizedCilindrico === 0) {
         // Se buscando cilíndrico 0, aceita null OU range de -0.25 a 0.25
-        query = query.or(`cilindrico.is.null,and(cilindrico.gte.${cilindrico - range},cilindrico.lte.${cilindrico + range})`)
+        query = query.or(`cilindrico.is.null,and(cilindrico.gte.${normalizedCilindrico - range},cilindrico.lte.${normalizedCilindrico + range})`)
     } else {
         query = query
-            .gte('cilindrico', cilindrico - range)
-            .lte('cilindrico', cilindrico + range)
+            .gte('cilindrico', normalizedCilindrico - range)
+            .lte('cilindrico', normalizedCilindrico + range)
     }
 
     // Filtro por Adição (se fornecida)
-    if (adicao !== null && adicao !== undefined) {
-        query = query.eq('adicao', adicao)
+    if (normalizedAdicao !== null) {
+        query = query
+            .gte('adicao', normalizedAdicao - adicaoRange)
+            .lte('adicao', normalizedAdicao + adicaoRange)
     }
 
     const { data, error } = await query
@@ -444,10 +496,27 @@ export async function checkLensStock(
 
     data.forEach((item: any) => {
         let type: 'gold' | 'silver' | 'bronze' = 'bronze'
-        const isDegreeExact = item.esferico === esferico && item.cilindrico === cilindrico
+        const itemCilindrico = item.cilindrico ?? 0
+        const itemAdicao =
+            item.adicao === null || item.adicao === undefined || Math.abs(item.adicao) < adicaoRange
+                ? null
+                : item.adicao
+        const itemEye = normalizeLensEye(item.olho)
+        const isEyeCompatible =
+            itemEye === null ||
+            itemEye === 'AMBOS' ||
+            itemEye === targetEye
+
+        if (!isEyeCompatible) return
+
+        const isDegreeExact = item.esferico === esferico && itemCilindrico === normalizedCilindrico
+        const isAdicaoExact =
+            normalizedAdicao === null
+                ? true
+                : itemAdicao !== null && Math.abs(itemAdicao - normalizedAdicao) <= adicaoRange
         const isProductExact = targetProductId ? item.product_id === targetProductId : false
 
-        if (isDegreeExact) {
+        if (isDegreeExact && isAdicaoExact) {
             if (isProductExact) {
                 type = 'gold'
             } else {
@@ -463,8 +532,9 @@ export async function checkLensStock(
             product_name: item.products?.nome || 'Produto Desconhecido',
             variant_name: item.nome_variante,
             esferico: item.esferico,
-            cilindrico: item.cilindrico,
-            adicao: item.adicao,
+            cilindrico: itemCilindrico,
+            adicao: itemAdicao,
+            olho: itemEye,
             estoque: item.estoque_atual,
             is_sobra: !!item.is_sobra,
             preco_venda: item.products?.preco_venda || 0,
@@ -479,7 +549,10 @@ export async function checkLensStock(
     })
 
     // Ordenar exatos: Gold primeiro
-    exact.sort((a, b) => (a.match_type === 'gold' ? -1 : 1))
+    exact.sort((a, b) => {
+        const score = (item: LensStockMatch) => (item.match_type === 'gold' ? 2 : item.match_type === 'silver' ? 1 : 0)
+        return score(b) - score(a)
+    })
 
     return { exact, similar }
 }

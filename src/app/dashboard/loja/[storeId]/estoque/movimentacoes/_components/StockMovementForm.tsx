@@ -15,6 +15,8 @@ interface Props {
     initialSearchTerm?: string
 }
 
+type LensEye = 'OD' | 'OE' | 'AMBOS'
+
 const labelStyle = "block text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-wider"
 const inputStyle = "block w-full rounded-xl border border-white/10 bg-black/20 shadow-sm text-slate-200 h-9 text-xs px-3 focus:ring-1 focus:ring-amber-500/50 focus:border-amber-500/50 font-bold placeholder:font-normal placeholder:text-slate-600 disabled:opacity-50 transition-all outline-none"
 const cardStyle = "bg-white/5 p-5 rounded-2xl shadow-lg border border-white/10 backdrop-blur-md mb-3"
@@ -49,7 +51,7 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
     const [relatedVendaId, setRelatedVendaId] = useState('')
 
     // Lens Leftover Fields
-    const [sobraOlho, setSobraOlho] = useState<'OD' | 'OE'>('OD')
+    const [sobraOlho, setSobraOlho] = useState<LensEye>('AMBOS')
     const [sobraEsferico, setSobraEsferico] = useState('')
     const [sobraCilindrico, setSobraCilindrico] = useState('')
     const [sobraAdicao, setSobraAdicao] = useState('')
@@ -157,6 +159,7 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
             setQuantidade(1)
             setMotivo('')
             setRelatedVendaId('')
+            setSobraOlho('AMBOS')
             setSobraDiametro('')
             setSobraEsferico('')
             setSobraCilindrico('')
@@ -378,7 +381,8 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
                             <div className={`grid ${isPG ? 'grid-cols-5' : 'grid-cols-4'} gap-3`}>
                                 <div>
                                     <label className={labelStyle}>Olho</label>
-                                    <select value={sobraOlho} onChange={e => setSobraOlho(e.target.value as any)} className={`${inputStyle} cursor-pointer`}>
+                                    <select value={sobraOlho} onChange={e => setSobraOlho(e.target.value as LensEye)} className={`${inputStyle} cursor-pointer`}>
+                                        <option value="AMBOS" className="bg-slate-900">Ambos os olhos</option>
                                         <option value="OD" className="bg-slate-900">OD (Direito)</option>
                                         <option value="OE" className="bg-slate-900">OE (Esquerdo)</option>
                                     </select>

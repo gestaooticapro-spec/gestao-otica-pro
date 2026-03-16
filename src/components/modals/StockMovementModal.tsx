@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { X, Search, Check, AlertTriangle, ArrowRightLeft, ArrowDownCircle, ArrowDownUp, Save, Loader2, PackageX, Receipt, PackageOpen } from 'lucide-react'
 import { buscarProdutoExpress, ProdutoExpressResult } from '@/lib/actions/vendas.actions'
 import { registrarMovimentacao, getProductVariants } from '@/lib/actions/stock.actions'
+import { DegreeInput } from '@/components/ui/DegreeInput'
 
 interface Props {
     isOpen: boolean
@@ -11,6 +12,8 @@ interface Props {
     storeId: number
     initialSearchTerm?: string
 }
+
+type LensEye = 'OD' | 'OE' | 'AMBOS'
 
 // --- ESTILOS DO DESIGN SYSTEM (Dark Glassmorphism) ---
 const modalOverlayStyle = "fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300"
@@ -39,9 +42,10 @@ export default function StockMovementModal({ isOpen, onClose, storeId, initialSe
 
     // Sobras de Lentes
     const [gerouSobra, setGerouSobra] = useState(false)
-    const [sobraOlho, setSobraOlho] = useState<'OD' | 'OE'>('OD')
+    const [sobraOlho, setSobraOlho] = useState<LensEye>('AMBOS')
     const [sobraEsferico, setSobraEsferico] = useState('')
     const [sobraCilindrico, setSobraCilindrico] = useState('')
+    const [sobraAdicao, setSobraAdicao] = useState('')
     const [sobraDiametro, setSobraDiametro] = useState('')
 
     // Variações (Grade)
@@ -63,9 +67,10 @@ export default function StockMovementModal({ isOpen, onClose, storeId, initialSe
             setRelatedVendaId('')
             setGerouSobra(false)
             setSobraDiametro('')
-            setSobraOlho('OD')
+            setSobraOlho('AMBOS')
             setSobraEsferico('')
             setSobraCilindrico('')
+            setSobraAdicao('')
 
             setVariants([])
             setSelectedVariantId(null)
@@ -142,11 +147,14 @@ export default function StockMovementModal({ isOpen, onClose, storeId, initialSe
         // Novos campos opcionais
         if (relatedVendaId) formData.append('related_venda_id', relatedVendaId)
 
+        const parseDeg = (val: string) => val ? parseFloat(val.replace(',', '.').replace('+', '')) : null
+
         if (gerouSobra) {
             const sobraObj = {
                 olho: sobraOlho,
-                esferico: sobraEsferico ? Number(sobraEsferico) : null,
-                cilindrico: sobraCilindrico ? Number(sobraCilindrico) : null,
+                esferico: parseDeg(sobraEsferico),
+                cilindrico: parseDeg(sobraCilindrico),
+                adicao: parseDeg(sobraAdicao),
                 diametro: sobraDiametro ? Number(sobraDiametro) : null
             }
             formData.append('sobra_detalhes', JSON.stringify(sobraObj))
@@ -170,6 +178,10 @@ export default function StockMovementModal({ isOpen, onClose, storeId, initialSe
         'Brinde': 'Brinde / Cortesia',
         'Ajuste': 'Ajuste de Inventário'
     }
+
+    const isPG = selectedProduct?.descricao?.toLowerCase().includes('pg') ||
+        selectedProduct?.descricao?.toLowerCase().includes('progress') ||
+        selectedProduct?.descricao?.toLowerCase().includes('multi')
 
     if (!isOpen) return null
 
@@ -395,26 +407,33 @@ export default function StockMovementModal({ isOpen, onClose, storeId, initialSe
                                                 </label>
 
                                                 {gerouSobra && (
-                                                    <div className="grid grid-cols-2 gap-2 animate-in slide-in-from-top-2">
+                                                    <div className={`grid ${isPG ? 'grid-cols-3' : 'grid-cols-2'} gap-2 animate-in slide-in-from-top-2`}>
                                                         <div>
                                                             <label className={labelStyle}>Olho</label>
-                                                            <select value={sobraOlho} onChange={e => setSobraOlho(e.target.value as any)} className={inputStyle}>
+                                                            <select value={sobraOlho} onChange={e => setSobraOlho(e.target.value as LensEye)} className={inputStyle}>
+                                                                <option value="AMBOS">Ambos os olhos</option>
                                                                 <option value="OD">OD (Direito)</option>
                                                                 <option value="OE">OE (Esquerdo)</option>
                                                             </select>
                                                         </div>
                                                         <div>
-                                                            <label className={labelStyle}>Diâmetro</label>
+                                                            <label className={labelStyle}>Diametro</label>
                                                             <input type="text" value={sobraDiametro} onChange={e => setSobraDiametro(e.target.value)} placeholder="Ex: 70mm" className={inputStyle} />
                                                         </div>
                                                         <div>
-                                                            <label className={labelStyle}>Esférico</label>
-                                                            <input type="text" value={sobraEsferico} onChange={e => setSobraEsferico(e.target.value)} placeholder="-2.00" className={inputStyle} />
+                                                            <label className={labelStyle}>Esferico</label>
+                                                            <DegreeInput value={sobraEsferico} onChange={setSobraEsferico} className={inputStyle} />
                                                         </div>
                                                         <div>
-                                                            <label className={labelStyle}>Cilíndrico</label>
-                                                            <input type="text" value={sobraCilindrico} onChange={e => setSobraCilindrico(e.target.value)} placeholder="-1.00" className={inputStyle} />
+                                                            <label className={labelStyle}>Cilindrico</label>
+                                                            <DegreeInput value={sobraCilindrico} onChange={setSobraCilindrico} className={inputStyle} />
                                                         </div>
+                                                        {isPG && (
+                                                            <div>
+                                                                <label className={labelStyle}>Adicao</label>
+                                                                <DegreeInput value={sobraAdicao} onChange={setSobraAdicao} className={inputStyle} />
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>

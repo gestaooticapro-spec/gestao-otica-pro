@@ -21,6 +21,7 @@ import { DegreeInput } from '@/components/ui/DegreeInput'
 
 type ServiceOrderWithLinks = any
 type Dependente = Database['public']['Tables']['dependentes']['Row']
+type LensEye = 'OD' | 'OE' | 'AMBOS'
 
 const toDateTimeInput = (isoString: string | null | undefined) => {
     if (!isoString) return '';
@@ -30,6 +31,23 @@ const toDateTimeInput = (isoString: string | null | undefined) => {
 const formatDate = (d: string) => {
     if (!d) return ''
     return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+const parseDegreeValue = (value: string, fallback?: number) => {
+    if (!value || !value.trim()) return fallback ?? null
+    const parsed = parseFloat(value.replace(',', '.').replace('+', ''))
+    return Number.isNaN(parsed) ? fallback ?? null : parsed
+}
+
+const formatDegreeValue = (value: number | null | undefined) => {
+    if (value === null || value === undefined) return '-'
+    return `${value > 0 ? '+' : ''}${value.toFixed(2)}`
+}
+
+const formatLensEye = (eye: LensEye | null | undefined) => {
+    if (eye === 'OD') return 'OD'
+    if (eye === 'OE') return 'OE'
+    return 'Ambos'
 }
 
 // --- ESTILOS DO DESIGN SYSTEM (Refatorado para Dark Glassmorphism) ---
@@ -128,7 +146,10 @@ function StockReservationModal({
                                             <p className="font-bold text-xs text-white">{m.product_name}</p>
                                             <p className="text-[10px] text-slate-400">{m.variant_name} • {m.is_sobra ? 'SOBRA/RECUP.' : 'NOVO'}</p>
                                             <p className="text-[10px] font-mono text-slate-500">
-                                                Sph {m.esferico > 0 ? '+' : ''}{m.esferico.toFixed(2)} Cyl {m.cilindrico > 0 ? '+' : ''}{m.cilindrico.toFixed(2)}
+                                                Sph {formatDegreeValue(m.esferico)} Cyl {formatDegreeValue(m.cilindrico)}
+                                            </p>
+                                            <p className="text-[10px] font-mono text-slate-500">
+                                                Olho {formatLensEye(m.olho)} Add {formatDegreeValue(m.adicao)}
                                             </p>
                                         </div>
                                         <button
@@ -155,7 +176,10 @@ function StockReservationModal({
                                             <p className="font-bold text-xs text-white">{m.product_name}</p>
                                             <p className="text-[10px] text-slate-400">{m.variant_name} • {m.is_sobra ? 'SOBRA' : 'NOVO'}</p>
                                             <p className="text-[10px] font-mono text-slate-500">
-                                                Sph {m.esferico > 0 ? '+' : ''}{m.esferico.toFixed(2)} Cyl {m.cilindrico > 0 ? '+' : ''}{m.cilindrico.toFixed(2)}
+                                                Sph {formatDegreeValue(m.esferico)} Cyl {formatDegreeValue(m.cilindrico)}
+                                            </p>
+                                            <p className="text-[10px] font-mono text-slate-500">
+                                                Olho {formatLensEye(m.olho)} Add {formatDegreeValue(m.adicao)}
                                             </p>
                                         </div>
                                         <button
@@ -264,19 +288,19 @@ function ServiceOrderFormContent({
     // Monitora OD para sobras e estoque
     useEffect(() => {
         const timer = setTimeout(async () => {
-            if (longeOdEsf && longeOdCil) {
-                const esf = parseFloat(longeOdEsf.replace(',', '.').replace('+', ''))
-                const cil = parseFloat(longeOdCil.replace(',', '.').replace('+', ''))
+            if (longeOdEsf) {
+                const esf = parseDegreeValue(longeOdEsf)
+                const cil = parseDegreeValue(longeOdCil, 0)
 
                 // Busca Produto ID
                 const item = vendaItens.find(i => i.id.toString() === lenteOdItemId)
                 const pid = item ? item.product_id : null
 
                 // Busca Adição
-                const add = adicao ? parseFloat(adicao.replace(',', '.').replace('+', '')) : null
+                const add = parseDegreeValue(adicao)
 
-                if (!isNaN(esf) && !isNaN(cil)) {
-                    const matches = await checkLensStock(storeId, esf, cil, pid, isNaN(add!) ? null : add)
+                if (esf !== null && cil !== null) {
+                    const matches = await checkLensStock(storeId, esf, cil, pid, add, 'OD')
                     setOdMatches(matches)
                 }
             } else setOdMatches({ exact: [], similar: [] })
@@ -287,19 +311,19 @@ function ServiceOrderFormContent({
     // Monitora OE para sobras e estoque
     useEffect(() => {
         const timer = setTimeout(async () => {
-            if (longeOeEsf && longeOeCil) {
-                const esf = parseFloat(longeOeEsf.replace(',', '.').replace('+', ''))
-                const cil = parseFloat(longeOeCil.replace(',', '.').replace('+', ''))
+            if (longeOeEsf) {
+                const esf = parseDegreeValue(longeOeEsf)
+                const cil = parseDegreeValue(longeOeCil, 0)
 
                 // Busca Produto ID
                 const item = vendaItens.find(i => i.id.toString() === lenteOeItemId)
                 const pid = item ? item.product_id : null
 
                 // Busca Adição
-                const add = adicao ? parseFloat(adicao.replace(',', '.').replace('+', '')) : null
+                const add = parseDegreeValue(adicao)
 
-                if (!isNaN(esf) && !isNaN(cil)) {
-                    const matches = await checkLensStock(storeId, esf, cil, pid, isNaN(add!) ? null : add)
+                if (esf !== null && cil !== null) {
+                    const matches = await checkLensStock(storeId, esf, cil, pid, add, 'OE')
                     setOeMatches(matches)
                 }
             } else setOeMatches({ exact: [], similar: [] })

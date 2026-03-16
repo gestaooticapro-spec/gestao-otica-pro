@@ -10,6 +10,7 @@ import {
     Clock3,
     GripVertical,
     Loader2,
+    MessageCircle,
     Microscope,
     PackageCheck,
     Save,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/BackgroundToggle'
+import { getWhatsAppLink } from '@/lib/utils'
 import {
     EmployeeSimple,
     LabOSResult,
@@ -66,7 +68,9 @@ const STAGE_ORDER: LabStage[] = ['falta_pedir', 'lentes_pedidas', 'lentes_chegar
 
 function formatForInput(isoString: string | null) {
     if (!isoString) return ''
-    return new Date(isoString).toISOString().slice(0, 16)
+    const date = new Date(isoString)
+    const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+    return localDate.toISOString().slice(0, 16)
 }
 
 function getLabStage(item: LabOSResult): LabStage {
@@ -76,11 +80,23 @@ function getLabStage(item: LabOSResult): LabStage {
     return 'oculos_montado'
 }
 
-function getDaysSince(dateString: string | null) {
-    if (!dateString) return 0
+function formatStageElapsed(dateString: string | null) {
+    if (!dateString) return 'Agora'
+
     const date = new Date(dateString)
     const now = new Date()
-    return Math.ceil(Math.abs(now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
+    const diffMs = Math.max(0, now.getTime() - date.getTime())
+    const isSameLocalDay = date.toLocaleDateString('pt-BR') === now.toLocaleDateString('pt-BR')
+
+    if (isSameLocalDay) {
+        const totalMinutes = Math.floor(diffMs / (1000 * 60))
+        const hours = Math.floor(totalMinutes / 60)
+        const minutes = totalMinutes % 60
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+    }
+
+    const days = Math.max(1, Math.floor(diffMs / (1000 * 60 * 60 * 24)))
+    return `${days} dia${days !== 1 ? 's' : ''}`
 }
 
 function getNextStage(currentStage: LabStage): LabStage | null {
@@ -323,6 +339,8 @@ export default function LaboratorioPage() {
                                             ) : (
                                                 stageItems.map((item) => {
                                                     const patientName = item.dependente_name || item.customer_name || 'Consumidor'
+                                                    const customerName = item.customer_name || patientName
+                                                    const customerPhone = item.customer_phone || ''
                                                     const currentStage = getLabStage(item)
                                                     const canDrag = currentStage !== 'oculos_montado'
                                                     const isSelected = selectedOS?.id === item.id
@@ -334,7 +352,9 @@ export default function LaboratorioPage() {
                                                                 : currentStage === 'lentes_chegaram'
                                                                     ? item.dt_lente_chegou
                                                                     : item.dt_montado_em
-                                                    const waitingDays = getDaysSince(waitDate)
+                                                    const waitingLabel = formatStageElapsed(waitDate)
+                                                    const whatsappMessage = `Olá ${customerName.split(' ')[0]}! Tudo bem? Aqui é da Ótica. Os óculos de *${patientName}* ficaram prontos! Quando puder, passe aqui para retirar e ajustar. 😎`
+                                                    const whatsappLink = customerPhone ? getWhatsAppLink(customerPhone, whatsappMessage) : ''
 
                                                     return (
                                                         <div
@@ -381,8 +401,20 @@ export default function LaboratorioPage() {
                                                                 )}
                                                                 <div className="flex items-center gap-2">
                                                                     <Clock3 className="h-3.5 w-3.5 text-slate-500" />
-                                                                    <span>Há {waitingDays} dia{waitingDays !== 1 && 's'} nesta etapa</span>
+                                                                    <span>Há {waitingLabel} nesta etapa</span>
                                                                 </div>
+                                                                {currentStage === 'oculos_montado' && customerPhone && (
+                                                                    <a
+                                                                        href={whatsappLink}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        onClick={(event) => event.stopPropagation()}
+                                                                        className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] font-bold text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                                                                    >
+                                                                        <MessageCircle className="h-3.5 w-3.5" />
+                                                                        Avisar no WhatsApp
+                                                                    </a>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     )

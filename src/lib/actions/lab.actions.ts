@@ -276,13 +276,22 @@ export async function advanceLabStage(
 // 5. SALVAR ATUALIZAÇÃO DO LABORATÓRIO
 export async function updateLabTracking(osId: number, storeId: number, formData: FormData) {
     const supabase = createAdminClient()
+    const toIsoOrNull = (fieldName: string) => {
+        const rawValue = formData.get(fieldName)?.toString()
+        if (!rawValue) return null
+
+        const parsedDate = new Date(rawValue)
+        if (Number.isNaN(parsedDate.getTime())) return null
+
+        return parsedDate.toISOString()
+    }
 
     const updates = {
-        dt_pedido_em: formData.get('dt_pedido_em')?.toString() || null,
+        dt_pedido_em: toIsoOrNull('dt_pedido_em'),
         lab_nome: formData.get('lab_nome')?.toString() || null,
-        dt_lente_chegou: formData.get('dt_lente_chegou')?.toString() || null,
-        dt_montado_em: formData.get('dt_montado_em')?.toString() || null,
-        dt_entregue_em: formData.get('dt_entregue_em')?.toString() || null,
+        dt_lente_chegou: toIsoOrNull('dt_lente_chegou'),
+        dt_montado_em: toIsoOrNull('dt_montado_em'),
+        dt_entregue_em: toIsoOrNull('dt_entregue_em'),
         lab_pedido_por_id: formData.get('lab_pedido_por_id') ? Number(formData.get('lab_pedido_por_id')) : null
     }
 
