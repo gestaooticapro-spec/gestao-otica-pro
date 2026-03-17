@@ -16,6 +16,8 @@ import ListaPagamentos from '@/components/vendas/ListaPagamentos'
 import ResumoFinanceiro from '@/components/vendas/ResumoFinanceiro'
 import VendaActions from '@/components/vendas/VendaActions'
 import ListaOS from '@/components/vendas/ListaOS'
+import { updateVendaExperimentalFields } from '@/lib/actions/vendas.actions'
+import { toast } from 'sonner'
 import ReceiptSelectionModal from '@/components/modals/ReceiptSelectionModal'
 import UpdateCpfModal from '@/components/modals/UpdateCpfModal'
 
@@ -185,6 +187,12 @@ export default function VendaInterfaceExperimental({
     const [activeModal, setActiveModal] = useState<'none' | 'produto' | 'pagamento' | 'parcelamento'>('none')
     const [isCpfModalOpen, setIsCpfModalOpen] = useState(false)
 
+    // Novos campos experimentais
+    const [obsGeral, setObsGeral] = useState(venda.obs_geral || '')
+    const [nfEmitida, setNfEmitida] = useState(venda.nf_emitida || false)
+    const [isSavingObs, setIsSavingObs] = useState(false)
+    const [isSavingNF, setIsSavingNF] = useState(false)
+
     const vendedorNome = employee?.full_name || 'N/A'
     const employeeIdFinanceiro = employee?.id || 0
 
@@ -199,6 +207,33 @@ export default function VendaInterfaceExperimental({
             return
         }
         setActiveModal('parcelamento')
+    }
+
+    const handleSaveObs = async () => {
+        if (obsGeral === venda.obs_geral) return
+        setIsSavingObs(true)
+        const res = await updateVendaExperimentalFields(venda.id, venda.store_id, { obs_geral: obsGeral })
+        if (res.success) {
+            toast.success("Observação salva")
+            await onDataReload()
+        } else {
+            toast.error("Erro ao salvar observação")
+        }
+        setIsSavingObs(false)
+    }
+
+    const handleToggleNF = async (checked: boolean) => {
+        setNfEmitida(checked)
+        setIsSavingNF(true)
+        const res = await updateVendaExperimentalFields(venda.id, venda.store_id, { nf_emitida: checked })
+        if (res.success) {
+            toast.success(checked ? "Nota marcada como emitida" : "Nota desmarcada")
+            await onDataReload()
+        } else {
+            toast.error("Erro ao atualizar status da nota")
+            setNfEmitida(!checked)
+        }
+        setIsSavingNF(false)
     }
 
     return (
@@ -334,6 +369,29 @@ export default function VendaInterfaceExperimental({
                         </div>
                     </SectionCard>
 
+                    {/* QUADRO 5: OBSERVAÇÕES GERAIS (NOVO) */}
+                    <SectionCard
+                        title="Observações"
+                        icon={FileText}
+                        theme="slate"
+                    >
+                        <div className="p-4">
+                            <textarea
+                                value={obsGeral}
+                                onChange={(e) => setObsGeral(e.target.value)}
+                                onBlur={handleSaveObs}
+                                disabled={isVendaFechadaOuCancelada || isSavingObs}
+                                placeholder="Digite observações gerais sobre esta venda..."
+                                className="w-full h-24 bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-slate-600 resize-none"
+                            />
+                            {isSavingObs && (
+                                <div className="flex justify-end mt-1">
+                                    <span className="text-[10px] text-blue-400 animate-pulse font-bold uppercase tracking-widest">Salvando...</span>
+                                </div>
+                            )}
+                        </div>
+                    </SectionCard>
+
                 </div>
             </div>
 
@@ -346,6 +404,30 @@ export default function VendaInterfaceExperimental({
                         onUpdate={onDataReload}
                         disabled={isVendaFechadaOuCancelada}
                     />
+                    {/* Checkbox NF Experimental */}
+                    <div className="flex items-center gap-3 ml-6 pl-6 border-l border-white/10">
+                        <label className="flex items-center gap-3 cursor-pointer group">
+                            <div className="relative">
+                                <input
+                                    type="checkbox"
+                                    checked={nfEmitida}
+                                    onChange={(e) => handleToggleNF(e.target.checked)}
+                                    disabled={isVendaFechadaOuCancelada || isSavingNF}
+                                    className="peer sr-only"
+                                />
+                                <div className={`w-10 h-5 rounded-full border border-white/20 transition-all duration-300 ${nfEmitida ? 'bg-blue-600 border-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]' : 'bg-white/5'}`}></div>
+                                <div className={`absolute left-1 top-1 w-3 h-3 rounded-full bg-white transition-all duration-300 ${nfEmitida ? 'translate-x-5 shadow-lg' : 'translate-x-0 opacity-40'}`}></div>
+                            </div>
+                            <div className="flex flex-col leading-none">
+                                <span className={`text-[10px] font-black uppercase tracking-widest transition-colors ${nfEmitida ? 'text-blue-400' : 'text-slate-500 group-hover:text-slate-300'}`}>
+                                    Nota Fiscal
+                                </span>
+                                <span className="text-[8px] text-slate-600 font-bold uppercase mt-0.5">
+                                    Controle Interno
+                                </span>
+                            </div>
+                        </label>
+                    </div>
                 </div>
                 <div className="pl-6 border-l border-white/10 ml-6">
                     <VendaActions

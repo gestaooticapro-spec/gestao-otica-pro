@@ -2807,3 +2807,29 @@ async function atualizarRankingCliente(clienteId: string) {
     .eq('id', clienteId)
 }
 
+// ================================================================
+// 30. ACTION: ATUALIZAR CAMPOS EXPERIMENTAIS (OBS E NF)
+// ================================================================
+export async function updateVendaExperimentalFields(
+  vendaId: number,
+  storeId: number,
+  fields: { obs_geral?: string | null; nf_emitida?: boolean }
+): Promise<{ success: boolean; message: string }> {
+  const supabaseAdmin = createAdminClient()
+  try {
+    const { error } = await (supabaseAdmin.from('vendas') as any)
+      .update(fields)
+      .eq('id', vendaId)
+      .eq('store_id', storeId)
+
+    if (error) throw error
+
+    revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`)
+    
+    return { success: true, message: 'Dados atualizados com sucesso.' }
+  } catch (e: any) {
+    console.error("Erro ao atualizar campos experimentais:", e)
+    return { success: false, message: e.message }
+  }
+}
+

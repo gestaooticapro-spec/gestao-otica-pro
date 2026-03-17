@@ -688,6 +688,8 @@ export interface Database {
           valor_final: number
           valor_restante: number
           financiamento_id: number | null
+          obs_geral: string | null
+          nf_emitida: boolean
           created_at: string
         }
         Insert: {
@@ -700,6 +702,8 @@ export interface Database {
           valor_desconto?: number
           valor_final?: number
           financiamento_id?: number | null
+          obs_geral?: string | null
+          nf_emitida?: boolean
           tenant_id?: string
           created_by_user_id?: string
         }
