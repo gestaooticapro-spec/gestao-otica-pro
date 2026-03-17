@@ -380,7 +380,7 @@ export default function VendaInterfaceExperimental({
                                 value={obsGeral}
                                 onChange={(e) => setObsGeral(e.target.value)}
                                 onBlur={handleSaveObs}
-                                disabled={isVendaFechadaOuCancelada || isSavingObs}
+                                disabled={venda.status === 'Cancelada' || isSavingObs}
                                 placeholder="Digite observações gerais sobre esta venda..."
                                 className="w-full h-24 bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-slate-600 resize-none"
                             />
@@ -412,7 +412,7 @@ export default function VendaInterfaceExperimental({
                                     type="checkbox"
                                     checked={nfEmitida}
                                     onChange={(e) => handleToggleNF(e.target.checked)}
-                                    disabled={isVendaFechadaOuCancelada || isSavingNF}
+                                    disabled={venda.status === 'Cancelada' || isSavingNF}
                                     className="peer sr-only"
                                 />
                                 <div className={`w-10 h-5 rounded-full border border-white/20 transition-all duration-300 ${nfEmitida ? 'bg-blue-600 border-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]' : 'bg-white/5'}`}></div>
