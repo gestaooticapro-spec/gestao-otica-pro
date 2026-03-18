@@ -223,6 +223,9 @@ export default function VendaInterface({
                         onStatusChange={onDataReload}
                         isVendaFechada={isVendaFechadaOuCancelada}
                         onPrint={() => setIsPrintModalOpen(true)}
+                        nfEmitida={(venda as any).nf_emitida ?? false}
+                        isSavingNF={false}
+                        onToggleNF={() => {}}
                     />
                 </div>
             </div>

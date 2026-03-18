@@ -177,7 +177,7 @@ export default function MovementHistoryList({ movimentos }: Props) {
                                         <div>
                                             <p className="text-[9px] font-bold text-slate-500 uppercase">Esférico</p>
                                             <p className="text-sm font-bold text-slate-200">
-                                                {selectedMovement.product_variants.esferico > 0 ? '+' : ''}
+                                                {(selectedMovement.product_variants.esferico ?? 0) > 0 ? '+' : ''}
                                                 {selectedMovement.product_variants.esferico?.toFixed(2)}
                                             </p>
                                         </div>
