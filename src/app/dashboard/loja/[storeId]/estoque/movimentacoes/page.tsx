@@ -1,16 +1,14 @@
 import { getStockMovements } from '@/lib/actions/stock.actions'
 import {
-    ArrowUpCircle, ArrowDownCircle, AlertTriangle,
-    Calendar, Package, User, ArrowRightLeft
+    ArrowRightLeft, Package
 } from 'lucide-react'
 import StockMovementForm from './_components/StockMovementForm'
 import HistoryFilters from './_components/HistoryFilters'
 import MovimentacoesBackground from './_components/MovimentacoesBackground'
+import MovementHistoryList from './_components/MovementHistoryList'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
-
-const formatDate = (date: string) => new Date(date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 
 export default async function MovimentacoesPage({
     params,
@@ -74,54 +72,9 @@ export default async function MovimentacoesPage({
                     {/* Filtros de Data */}
                     <HistoryFilters storeId={storeId} inicio={inicio} fim={fim} tipo={searchParams.tipo} />
 
-                    {/* Lista de Histórico */}
-                    <div className="flex-1 overflow-y-auto custom-scrollbar">
-                        {movimentos.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center h-full text-slate-500 p-6">
-                                <Package className="h-10 w-10 mb-3 opacity-20" />
-                                <p className="text-xs font-bold">Nenhuma movimentação hoje</p>
-                                <p className="text-[10px] text-slate-600 mt-1">Registre uma na coluna ao lado.</p>
-                            </div>
-                        ) : (
-                            <div className="divide-y divide-white/5">
-                                {movimentos.map((mov: any) => {
-                                    const isEntrada = mov.tipo === 'Entrada' || mov.tipo === 'Ajuste'
-                                    const isPerda = mov.tipo === 'Perda'
-                                    return (
-                                        <div key={mov.id} className="p-3 hover:bg-white/[0.02] transition-colors group">
-                                            <div className="flex justify-between items-start">
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <BadgeTipo tipo={mov.tipo} />
-                                                        <span className="font-bold text-slate-300 text-xs truncate">
-                                                            {mov.products?.nome || 'Produto Removido'}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex items-center gap-2 mt-1">
-                                                        <span className="text-[10px] text-slate-600 flex items-center gap-1">
-                                                            <Calendar className="h-3 w-3 opacity-40" />
-                                                            {formatDate(mov.created_at)}
-                                                        </span>
-                                                        <span className="text-[10px] text-slate-600 truncate max-w-[120px]" title={mov.motivo}>
-                                                            {mov.motivo}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <div className="text-right ml-2 flex-shrink-0">
-                                                    <span className={`text-sm font-black ${isEntrada ? 'text-emerald-400' : isPerda ? 'text-rose-400' : 'text-indigo-400'}`}>
-                                                        {isEntrada ? '+' : '-'}{mov.quantidade}
-                                                    </span>
-                                                    <p className="text-[9px] text-slate-600 flex items-center justify-end gap-1 mt-0.5">
-                                                        <User className="h-2.5 w-2.5 opacity-30" />
-                                                        {mov.employees?.full_name?.split(' ')[0] || 'Sistema'}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )
-                                })}
-                            </div>
-                        )}
+                    {/* Lista de Histórico (Componente Client) */}
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+                        <MovementHistoryList movimentos={movimentos as any} />
                     </div>
                 </div>
 
@@ -132,22 +85,5 @@ export default async function MovimentacoesPage({
 
             </div>
         </MovimentacoesBackground>
-    )
-}
-
-function BadgeTipo({ tipo }: { tipo: string }) {
-    let style = 'bg-slate-800 text-slate-400 border-slate-700'
-
-    if (tipo === 'Entrada') style = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-    if (tipo === 'Saida') style = 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
-    if (tipo === 'Perda') style = 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-    if (tipo === 'Brinde') style = 'bg-purple-500/10 text-purple-400 border-purple-500/20'
-    if (tipo === 'Ajuste') style = 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-    if (tipo === 'Devolucao') style = 'bg-sky-500/10 text-sky-400 border-sky-500/20'
-
-    return (
-        <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wide border inline-flex items-center flex-shrink-0 ${style}`}>
-            {tipo}
-        </span>
     )
 }

@@ -10,7 +10,7 @@ import {
     Settings, BarChart3, Megaphone, Wallet, Zap, Search,
     LogOut, HeartHandshake, FileText, Bot,
     FileInput, ArrowLeftRight, FileSpreadsheet, CalendarRange, Percent, Home, LifeBuoy,
-    CheckCircle2, Tag, ChevronRight, ChevronLeft, PanelLeftClose, PanelLeftOpen, X, Globe
+    CheckCircle2, Tag, ChevronRight, ChevronLeft, PanelLeftClose, PanelLeftOpen, X, Globe, Printer
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useModals } from '@/lib/contexts/ModalsContext';
@@ -126,6 +126,7 @@ const MENU_STRUCTURE: MenuGroup[] = [
             },
 
             { label: 'Movimentações', icon: ArrowLeftRight, route: '/dashboard/loja/[id]/estoque/movimentacoes', allowedRoles: ['admin', 'manager', 'store_operator', 'tecnico'] },
+            { label: 'Etiquetas', icon: Printer, route: '/dashboard/loja/[id]/estoque/etiquetas', allowedRoles: ['admin', 'manager', 'store_operator', 'tecnico'] },
 
             // Separador após Importar XML
             { label: 'Importar XML', icon: FileInput, route: '/dashboard/loja/[id]/importacao', allowedRoles: ['admin', 'manager', 'store_operator', 'tecnico'], withSeparator: true },

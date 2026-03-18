@@ -45,7 +45,14 @@ export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioIt
   const columns = useMemo(() => [
     columnHelper.accessor('id', {
       header: 'ID',
-      cell: info => <span className="font-bold text-slate-200">#{info.getValue()}</span>,
+      cell: info => (
+        <div className="flex items-center gap-1.5">
+          <span className="font-bold text-slate-200">#{info.getValue()}</span>
+          {info.row.original.nf_emitida && (
+            <span className="text-[9px] font-black bg-blue-500/20 text-blue-400 px-1 rounded border border-blue-500/30" title="Nota Fiscal Emitida">NF</span>
+          )}
+        </div>
+      ),
       size: 70,
     }),
 

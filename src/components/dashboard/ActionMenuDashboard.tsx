@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import {
   ShoppingCart, Zap, DollarSign,
-  HeartHandshake, Megaphone, Search,
+  HeartHandshake, Megaphone, Search, Printer,
   ArrowRight, BellRing, AlertCircle, FileText, CheckCircle, Wallet, CheckCircle2,
   LogOut
 } from 'lucide-react'
@@ -98,6 +98,12 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
       icon: Search,
       href: `/dashboard/loja/${storeId}/laboratorio`,
       color: "hover:bg-blue-500/20 hover:border-blue-500/50 hover:text-blue-200"
+    },
+    {
+      title: "Etiquetas",
+      icon: Printer,
+      href: `/dashboard/loja/${storeId}/estoque/etiquetas`,
+      color: "hover:bg-teal-500/20 hover:border-teal-500/50 hover:text-teal-200"
     }
   ]
 

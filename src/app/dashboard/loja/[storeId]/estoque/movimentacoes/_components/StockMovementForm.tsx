@@ -64,7 +64,7 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
 
     // Initial search if term provided
     useEffect(() => {
-        if (initialSearchTerm && initialSearchTerm.length >= 3) {
+        if (initialSearchTerm && initialSearchTerm.length >= 2) {
             performSearch(initialSearchTerm)
         }
     }, [initialSearchTerm])
@@ -83,7 +83,7 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
     const handleSearchInput = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value
         setQuery(val)
-        if (val.length >= 3) {
+        if (val.length >= 2) {
             performSearch(val)
         } else {
             setResults([])
@@ -213,7 +213,7 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
                                     )}
                                 </div>
 
-                                {results.length === 0 && query.length > 2 && !isSearching && (
+                                {results.length === 0 && query.length > 1 && !isSearching && (
                                     <div className="text-center py-6 text-slate-500">
                                         <PackageX className="h-8 w-8 mx-auto mb-2 opacity-50" />
                                         <p className="text-xs">Nenhum produto encontrado.</p>
@@ -368,7 +368,7 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
                         </div>
                     )}
 
-                    {/* CARD 4: Sobra de Lente — Sempre visível quando produto selecionado (campos opcionais) */}
+                    {/* CARD 4: Sobra de Lente — Sempre visível when product selected (campos opcionais) */}
                     {selectedProduct && (
                         <div className={`${cardStyle} border-sky-500/20 bg-sky-500/5`}>
                             <h3 className="text-xs font-bold text-sky-400 uppercase tracking-wider mb-3 flex items-center gap-2">

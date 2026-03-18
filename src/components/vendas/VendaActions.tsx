@@ -22,6 +22,9 @@ interface VendaActionsProps {
     onStatusChange: () => Promise<void>
     isVendaFechada: boolean
     onPrint: () => void
+    nfEmitida: boolean
+    isSavingNF: boolean
+    onToggleNF: (checked: boolean) => void
 }
 
 export default function VendaActions({
@@ -31,6 +34,9 @@ export default function VendaActions({
     onStatusChange,
     isVendaFechada,
     onPrint,
+    nfEmitida,
+    isSavingNF,
+    onToggleNF,
 }: VendaActionsProps) {
 
     const [isReturnModalOpen, setIsReturnModalOpen] = useState(false)
@@ -91,7 +97,35 @@ export default function VendaActions({
     }
 
     return (
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
+
+            {/* Botão Nota Fiscal Experimental (Redesenhado para maior visibilidade) */}
+            <div className="flex items-center pr-4 border-r border-white/10">
+                <button
+                    type="button"
+                    disabled={venda.status === 'Cancelada' || isSavingNF}
+                    onClick={() => onToggleNF(!nfEmitida)}
+                    className={`flex items-center gap-2.5 px-3 h-9 text-sm rounded-lg border transition-all duration-300 font-bold uppercase tracking-wider
+                        ${nfEmitida 
+                            ? 'bg-blue-600/20 border-blue-500/50 text-blue-400 shadow-[0_0_20px_rgba(37,99,235,0.2)]' 
+                            : 'bg-white/5 border-white/10 text-slate-500 hover:text-slate-300 hover:bg-white/10'
+                        }
+                    `}
+                    title={nfEmitida ? "Clique para desmarcar Nota Fiscal" : "Clique para marcar Nota Fiscal"}
+                >
+                    {isSavingNF ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-blue-400" />
+                    ) : (
+                        <FileText className={`h-4 w-4 transition-transform duration-300 ${nfEmitida ? 'scale-110' : 'opacity-40'}`} />
+                    )}
+                    <div className="flex flex-col items-start leading-none justify-center h-full">
+                        <span className="text-[10px]">Nota Fiscal</span>
+                        <span className={`text-[7px] font-black tracking-widest mt-0.5 ${nfEmitida ? 'text-blue-500' : 'text-slate-700'}`}>
+                            {nfEmitida ? 'EMITIDA' : 'PENDENTE'}
+                        </span>
+                    </div>
+                </button>
+            </div>
 
             {/* GRUPO 1: BOTÕES DE AÇÃO DE STATUS */}
 

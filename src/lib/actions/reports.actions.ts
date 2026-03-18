@@ -17,6 +17,7 @@ export interface VendaRelatorioItem {
   valor_final: number
   valor_pago: number
   saldo_devedor: number
+  nf_emitida: boolean
 }
 
 export async function getRelatorioVendas(
@@ -37,6 +38,7 @@ export async function getRelatorioVendas(
       valor_total,
       valor_final,
       valor_restante,
+      nf_emitida,
       customers(full_name),
       employees(full_name)
     `)
@@ -106,6 +108,7 @@ export async function getRelatorioVendas(
       valor_final: Number(v.valor_final || 0),
       valor_pago: valorPago,
       saldo_devedor: saldoDevedor,
+      nf_emitida: v.nf_emitida || false,
     }
   })
 }

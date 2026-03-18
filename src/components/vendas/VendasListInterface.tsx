@@ -129,7 +129,12 @@ export default function VendasListInterface({ vendas, storeId, mode, startDate, 
                                     vendas.map((venda: any) => (
                                         <tr key={venda.id} className="hover:bg-white/5 transition-colors group">
                                             <td className="p-3">
-                                                <div className="font-black text-sm text-white">#{venda.id}</div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="font-black text-sm text-white">#{venda.id}</div>
+                                                    {venda.nf_emitida && (
+                                                        <span className="text-[9px] font-black bg-blue-500/20 text-blue-400 px-1 rounded border border-blue-500/30" title="Nota Fiscal Emitida">NF</span>
+                                                    )}
+                                                </div>
                                                 <div className="text-[10px] text-slate-500 flex items-center gap-1 mt-1 font-medium">
                                                     <Calendar className="h-3 w-3" />
                                                     {formatDate(venda.created_at)}

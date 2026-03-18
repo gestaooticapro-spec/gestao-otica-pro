@@ -24,7 +24,7 @@ export default function VendasFilter() {
 
     const [isPending, startTransition] = useTransition()
 
-    // CORREÇÃO: Sincroniza o estado com a URL quando ela muda (navegação externa)
+    // Sincroniza o estado com a URL quando ela muda (navegação externa)
     useEffect(() => {
         const urlMode = searchParams.get('mode') as 'pendencias' | 'historico'
         if (urlMode && urlMode !== mode) {
@@ -57,6 +57,23 @@ export default function VendasFilter() {
             router.push(`?${params.toString()}`)
         })
     }
+
+    // EFEITO REATIVO (DEBOUNCE) PARA A BUSCA
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            // Só aplica o filtro automaticamente se limpar o campo ou digitar >= 3 letras
+            if (search.length >= 3 || search.length === 0) {
+                // Verifica se a URL já está com esse valor de busca para não rodar à toa
+                const urlSearch = searchParams.get('search') || '';
+                if (search !== urlSearch) {
+                    applyFilter(mode, search);
+                }
+            }
+        }, 500)
+
+        return () => clearTimeout(timer)
+    }, [search, mode]) // eslint-disable-line react-hooks/exhaustive-deps
+
     const handleSearchSubmit = (e?: React.FormEvent) => {
         e?.preventDefault()
         applyFilter(mode, search)
@@ -69,33 +86,10 @@ export default function VendasFilter() {
     }
 
     return (
-        <div className={`bg-white/5 backdrop-blur-md p-4 rounded-xl border border-white/10 shadow-lg mb-6 space-y-4 transition-opacity duration-300 ${isPending ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
-// ...
-
-
-            {/* BARRA DE BUSCA GLOBAL */}
-            <form onSubmit={handleSearchSubmit} className="relative flex items-center gap-2">
-                <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                    <input
-                        type="text"
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        placeholder="Buscar por nome do cliente..."
-                        className="w-full h-10 pl-9 pr-4 rounded-lg bg-slate-900/50 border border-white/10 text-white text-sm focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50 placeholder:text-slate-600 transition-all font-medium"
-                    />
-                    {search && (
-                        <button type="button" onClick={handleClearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors text-[10px] uppercase font-bold">
-                            Limpar
-                        </button>
-                    )}
-                </div>
-            </form>
-
-            <div className="h-px bg-white/5" />
-
-            {/* Abas Superiores */}
-            <div className="flex p-1 bg-black/20 rounded-lg w-fit border border-white/5">
+        <div className={`bg-white/5 backdrop-blur-md p-4 rounded-xl border border-white/10 shadow-lg mb-6 flex flex-col xl:flex-row items-start xl:items-center gap-4 transition-opacity duration-300 ${isPending ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+            
+            {/* 1ª COLUNA: Abas Superiores */}
+            <div className="flex p-1 bg-black/20 rounded-lg w-fit border border-white/5 flex-shrink-0">
                 <button
                     onClick={() => applyFilter('pendencias')}
                     className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all ${mode === 'pendencias'
@@ -118,35 +112,58 @@ export default function VendasFilter() {
                 </button>
             </div>
 
-            {/* Controles de Data (Só aparecem no modo Histórico) */}
+            {/* 2ª COLUNA: Controles de Data (Só aparecem no modo Histórico) */}
             {mode === 'historico' && (
-                <div className="flex flex-wrap items-end gap-3 animate-in slide-in-from-top-2">
-                    <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">De</label>
-                        <input
-                            type="date"
-                            value={dataInicio}
-                            onChange={e => setDataInicio(e.target.value)}
-                            className="h-10 rounded-lg bg-slate-900/50 border-white/10 text-white text-sm font-bold focus:ring-purple-500/50 focus:border-purple-500/50 block w-full"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Até</label>
-                        <input
-                            type="date"
-                            value={dataFim}
-                            onChange={e => setDataFim(e.target.value)}
-                            className="h-10 rounded-lg bg-slate-900/50 border-white/10 text-white text-sm font-bold focus:ring-purple-500/50 focus:border-purple-500/50 block w-full"
-                        />
+                <div className="flex flex-wrap items-center gap-3 animate-in slide-in-from-left-2 flex-shrink-0">
+                    <div className="flex items-center gap-2 bg-slate-900/50 p-1 rounded-lg border border-white/10 h-10">
+                        <div className="flex items-center gap-2 pl-2 pr-1">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">De</span>
+                            <input
+                                type="date"
+                                value={dataInicio}
+                                onChange={e => setDataInicio(e.target.value)}
+                                className="h-8 rounded bg-transparent border-none text-white text-sm font-bold focus:ring-0 cursor-pointer p-0"
+                            />
+                        </div>
+                        <div className="w-px h-6 bg-white/10" />
+                        <div className="flex items-center gap-2 pl-2 pr-1">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Até</span>
+                            <input
+                                type="date"
+                                value={dataFim}
+                                onChange={e => setDataFim(e.target.value)}
+                                className="h-8 rounded bg-transparent border-none text-white text-sm font-bold focus:ring-0 cursor-pointer p-0"
+                            />
+                        </div>
                     </div>
                     <button
                         onClick={() => applyFilter('historico')}
-                        className="h-10 px-6 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-sm flex items-center gap-2 shadow-[0_0_15px_rgba(147,51,234,0.3)] transition-transform active:scale-95 border border-purple-500/50"
+                        className="h-10 px-4 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-sm flex items-center gap-2 shadow-[0_0_15px_rgba(147,51,234,0.3)] transition-transform active:scale-95 border border-purple-500/50"
                     >
-                        Filtros de Data
+                        Filtrar
                     </button>
                 </div>
             )}
+
+            {/* 3ª COLUNA: Barra de Busca Global */}
+            <form onSubmit={handleSearchSubmit} className="relative flex-1 w-full min-w-[250px]">
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                    <input
+                        type="text"
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        placeholder="Buscar por nome do cliente (mín. 3 letras)..."
+                        className="w-full h-10 pl-9 pr-14 rounded-lg bg-slate-900/50 border border-white/10 text-white text-sm focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50 placeholder:text-slate-600 transition-all font-medium"
+                    />
+                    {search && (
+                        <button type="button" onClick={handleClearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors text-[10px] uppercase font-bold">
+                            Limpar
+                        </button>
+                    )}
+                </div>
+            </form>
+
         </div>
     )
 }

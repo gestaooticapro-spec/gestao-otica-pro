@@ -326,7 +326,10 @@ export async function getStockMovements(storeId: number, filters?: StockFilters)
         .select(`
             id, created_at, tipo, quantidade, motivo,
             products ( nome, codigo_barras ),
-            product_variants ( nome_variante ),
+            product_variants ( 
+                nome_variante, esferico, cilindrico, eixo, 
+                adicao, olho, diametro, is_sobra 
+            ),
             employees ( full_name )
         `)
         .eq('store_id', storeId)
@@ -674,7 +677,7 @@ export async function cancelReservations(vendaId: number) {
         if (p) {
             await (supabase.from('products') as any)
                 .update({ estoque_atual: p.estoque_atual + res.quantidade })
-                .eq('id', res.product_id)
+                .eq('id', p.id)
         }
 
         // 4. Marca a reserva original como 'Cancelada'

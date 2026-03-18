@@ -2824,6 +2824,8 @@ export async function updateVendaExperimentalFields(
 
     if (error) throw error
 
+    revalidatePath(`/dashboard/loja/${storeId}/vendas`)
+    revalidatePath(`/dashboard/loja/${storeId}/financeiro/relatorios`, 'layout')
     revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`)
     
     return { success: true, message: 'Dados atualizados com sucesso.' }

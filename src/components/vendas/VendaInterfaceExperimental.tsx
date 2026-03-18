@@ -404,30 +404,6 @@ export default function VendaInterfaceExperimental({
                         onUpdate={onDataReload}
                         disabled={isVendaFechadaOuCancelada}
                     />
-                    {/* Checkbox NF Experimental */}
-                    <div className="flex items-center gap-3 ml-6 pl-6 border-l border-white/10">
-                        <label className="flex items-center gap-3 cursor-pointer group">
-                            <div className="relative">
-                                <input
-                                    type="checkbox"
-                                    checked={nfEmitida}
-                                    onChange={(e) => handleToggleNF(e.target.checked)}
-                                    disabled={venda.status === 'Cancelada' || isSavingNF}
-                                    className="peer sr-only"
-                                />
-                                <div className={`w-10 h-5 rounded-full border border-white/20 transition-all duration-300 ${nfEmitida ? 'bg-blue-600 border-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]' : 'bg-white/5'}`}></div>
-                                <div className={`absolute left-1 top-1 w-3 h-3 rounded-full bg-white transition-all duration-300 ${nfEmitida ? 'translate-x-5 shadow-lg' : 'translate-x-0 opacity-40'}`}></div>
-                            </div>
-                            <div className="flex flex-col leading-none">
-                                <span className={`text-[10px] font-black uppercase tracking-widest transition-colors ${nfEmitida ? 'text-blue-400' : 'text-slate-500 group-hover:text-slate-300'}`}>
-                                    Nota Fiscal
-                                </span>
-                                <span className="text-[8px] text-slate-600 font-bold uppercase mt-0.5">
-                                    Controle Interno
-                                </span>
-                            </div>
-                        </label>
-                    </div>
                 </div>
                 <div className="pl-6 border-l border-white/10 ml-6">
                     <VendaActions
@@ -437,6 +413,9 @@ export default function VendaInterfaceExperimental({
                         onStatusChange={onDataReload}
                         isVendaFechada={isVendaFechadaOuCancelada}
                         onPrint={() => setIsPrintModalOpen(true)}
+                        nfEmitida={nfEmitida}
+                        isSavingNF={isSavingNF}
+                        onToggleNF={handleToggleNF}
                     />
                 </div>
             </div>
