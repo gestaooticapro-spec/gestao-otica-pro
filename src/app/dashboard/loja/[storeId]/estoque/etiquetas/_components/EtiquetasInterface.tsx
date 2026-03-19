@@ -28,7 +28,7 @@ interface EtiquetasInterfaceProps {
 export default function EtiquetasInterface({ storeId, initialQueue, suggestions }: EtiquetasInterfaceProps) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
-    const [queue, setQueue] = useState<LabelQueueItem[]>(initialQueue)
+    const queue = initialQueue
     const [templateCode, setTemplateCode] = useState(LABEL_TEMPLATES[0].code)
     const [startPosition, setStartPosition] = useState(1)
     const [generating, setGenerating] = useState(false)

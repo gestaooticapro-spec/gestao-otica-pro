@@ -129,8 +129,13 @@ export default function VendasListInterface({ vendas, storeId, mode, startDate, 
                                     vendas.map((venda: any) => (
                                         <tr key={venda.id} className="hover:bg-white/5 transition-colors group">
                                             <td className="p-3">
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex flex-wrap items-center gap-1.5">
                                                     <div className="font-black text-sm text-white">#{venda.id}</div>
+                                                    {venda.service_orders?.map((os: any) => (
+                                                        <div key={os.id} className="text-[9px] font-black bg-amber-500/20 text-amber-500 px-1 rounded border border-amber-500/30 whitespace-nowrap" title={`OS Protocolo: ${os.protocolo_fisico || 'N/A'}`}>
+                                                            OS #{os.id}
+                                                        </div>
+                                                    ))}
                                                     {venda.nf_emitida && (
                                                         <span className="text-[9px] font-black bg-blue-500/20 text-blue-400 px-1 rounded border border-blue-500/30" title="Nota Fiscal Emitida">NF</span>
                                                     )}

@@ -1621,17 +1621,26 @@ export async function getSalesList(storeId: number, options?: SalesFilterOptions
   const search = options?.search
 
   try {
-    // Se tem busca, precisamos do !inner para filtrar pelo none do cliente
+    // Se tem busca, precisamos do !inner para filtrar pelo nome do cliente ou IDs
     let query = supabaseAdmin
       .from('vendas')
       .select(`
         *,
-        customers${search ? '!inner' : ''} ( full_name )
+        customers${search ? '!inner' : ''} ( full_name ),
+        service_orders ( id, protocolo_fisico )
       `)
       .eq('store_id', storeId)
 
     if (search) {
-      query = query.ilike('customers.full_name', `%${search}%`)
+      const isNumeric = /^\d+$/.test(search)
+      
+      if (isNumeric) {
+        // Se for número, busca por ID da Venda, ID da OS, Protocolo Físico ou Nome do Cliente
+        query = query.or(`id.eq.${search},service_orders.id.eq.${search},service_orders.protocolo_fisico.ilike.%${search}%,customers.full_name.ilike.%${search}%`)
+      } else {
+        // Se não for número, busca por Nome do Cliente ou Protocolo Físico
+        query = query.or(`customers.full_name.ilike.%${search}%,service_orders.protocolo_fisico.ilike.%${search}%`)
+      }
     }
 
     if (mode === 'pendencias') {
