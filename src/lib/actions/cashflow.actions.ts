@@ -49,6 +49,101 @@ function formatarCategoria(texto: string | null | undefined) {
     return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
 }
 
+const STORE_TIMEZONE = 'America/Sao_Paulo'
+const STORE_UTC_OFFSET = '-03:00'
+
+function getStoreDateKey(dateInput: string | Date) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: STORE_TIMEZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(new Date(dateInput))
+
+    const year = parts.find(part => part.type === 'year')?.value || '0000'
+    const month = parts.find(part => part.type === 'month')?.value || '00'
+    const day = parts.find(part => part.type === 'day')?.value || '00'
+
+    return `${year}-${month}-${day}`
+}
+
+function getStoreDayRange(dateKey: string) {
+    return {
+        startIso: new Date(`${dateKey}T00:00:00${STORE_UTC_OFFSET}`).toISOString(),
+        endIso: new Date(`${dateKey}T23:59:59${STORE_UTC_OFFSET}`).toISOString()
+    }
+}
+
+async function getCashReceiptsByDateKeys(storeId: number, dateKeys: string[]) {
+    const uniqueDateKeys = Array.from(new Set(dateKeys)).sort()
+    const totalsByDate = new Map<string, number>()
+
+    if (uniqueDateKeys.length === 0) return totalsByDate
+
+    const allowedDateKeys = new Set(uniqueDateKeys)
+    const { startIso } = getStoreDayRange(uniqueDateKeys[0])
+    const { endIso } = getStoreDayRange(uniqueDateKeys[uniqueDateKeys.length - 1])
+
+    const supabaseAdmin = createAdminClient()
+
+    const { data: pagamentosVendas } = await supabaseAdmin
+        .from('pagamentos')
+        .select('id, valor_pago, forma_pagamento, created_at, venda_id, obs')
+        .eq('store_id', storeId)
+        .gte('created_at', startIso)
+        .lte('created_at', endIso)
+
+    const { data: parcelasPagas } = await supabaseAdmin
+        .from('financiamento_parcelas')
+        .select('id, valor_parcela, data_pagamento, financiamento_loja(venda_id)')
+        .eq('store_id', storeId)
+        .eq('status', 'Pago')
+        .gte('data_pagamento', startIso)
+        .lte('data_pagamento', endIso)
+
+    const listaPagamentos = pagamentosVendas || []
+    const listaParcelas = parcelasPagas || []
+    const pagamentosPorDia = new Map<string, any[]>()
+
+    const adicionarAoTotal = (dateKey: string, valor: number) => {
+        totalsByDate.set(dateKey, (totalsByDate.get(dateKey) || 0) + valor)
+    }
+
+    listaPagamentos.forEach((pg: any) => {
+        const dateKey = getStoreDateKey(pg.created_at)
+        if (!allowedDateKeys.has(dateKey)) return
+
+        const pagamentosDia = pagamentosPorDia.get(dateKey) || []
+        pagamentosDia.push(pg)
+        pagamentosPorDia.set(dateKey, pagamentosDia)
+
+        const formaNormalizada = (pg.forma_pagamento || '').toLowerCase()
+        if (formaNormalizada.includes('dinheiro')) {
+            adicionarAoTotal(dateKey, Number(pg.valor_pago) || 0)
+        }
+    })
+
+    listaParcelas.forEach((pc: any) => {
+        const dateKey = getStoreDateKey(pc.data_pagamento)
+        if (!allowedDateKeys.has(dateKey)) return
+
+        const vendaId = pc.financiamento_loja?.venda_id
+        const pagamentosDia = pagamentosPorDia.get(dateKey) || []
+
+        const duplicado = Boolean(vendaId && pagamentosDia.some((pagamento: any) =>
+            Number(pagamento.valor_pago) === Number(pc.valor_parcela) &&
+            pagamento.obs &&
+            pagamento.obs.includes(`Venda #${vendaId}`)
+        ))
+
+        if (!duplicado) {
+            adicionarAoTotal(dateKey, Number(pc.valor_parcela) || 0)
+        }
+    })
+
+    return totalsByDate
+}
+
 // ... (AbrirCaixa, AdicionarMovimento, etc. mantidos iguais)
 // ...
 // ... REPETIR CÓDIGO ANTERIOR PARA NÃO PERDER ...
@@ -114,7 +209,8 @@ export async function abrirCaixa(prevState: any, formData: FormData) {
                 data_fechamento: new Date().toISOString(),
                 fechado_por_id: user.id,
                 saldo_final: saldoFinalInformado,
-                quebra_caixa: quebra
+                quebra_caixa: quebra,
+                obs: 'AUTO_CLOSED_ON_OPENING'
             }).eq('id', cx.id)
         }
     }
@@ -179,7 +275,41 @@ export async function atualizarSaldoInicial(prevState: any, formData: FormData) 
     if (!val.success) return { success: false, message: 'Inválido' }
 
     const supabaseAdmin = createAdminClient()
-    await (supabaseAdmin.from('caixa_diario') as any).update({ saldo_inicial: val.data.saldo_inicial }).eq('id', val.data.caixa_id)
+    const { data: caixaAtual } = await (supabaseAdmin.from('caixa_diario') as any)
+        .select('id, store_id, data_abertura')
+        .eq('id', val.data.caixa_id)
+        .maybeSingle()
+
+    if (!caixaAtual) return { success: false, message: 'Caixa nÃ£o encontrado.' }
+
+    await (supabaseAdmin.from('caixa_diario') as any)
+        .update({ saldo_inicial: val.data.saldo_inicial })
+        .eq('id', val.data.caixa_id)
+
+    const dataAtualKey = getStoreDateKey(caixaAtual.data_abertura)
+    const { startIso: inicioDiaAtual } = getStoreDayRange(dataAtualKey)
+
+    const { data: caixasAutoFechadosHoje } = await (supabaseAdmin.from('caixa_diario') as any)
+        .select('id, data_abertura, saldo_inicial, obs')
+        .eq('store_id', caixaAtual.store_id)
+        .eq('status', 'Fechado')
+        .lt('data_abertura', inicioDiaAtual)
+        .gte('data_fechamento', inicioDiaAtual)
+        .lte('data_fechamento', caixaAtual.data_abertura)
+        .order('data_abertura', { ascending: false })
+
+    for (const cx of caixasAutoFechadosHoje || []) {
+        const dataCx = getStoreDateKey(cx.data_abertura)
+        const resumoAntigo = await getResumoCaixaPorData(caixaAtual.store_id, dataCx)
+        const saldoEsperado = resumoAntigo?.totais.saldo_esperado_dinheiro ?? Number(cx.saldo_inicial || 0)
+        const quebra = Number(val.data.saldo_inicial) - saldoEsperado
+
+        await (supabaseAdmin.from('caixa_diario') as any).update({
+            saldo_final: Number(val.data.saldo_inicial),
+            quebra_caixa: quebra,
+            obs: cx.obs || 'AUTO_CLOSED_ON_OPENING'
+        }).eq('id', cx.id)
+    }
     revalidatePath(`/dashboard/loja/${profile.store_id}/financeiro/caixa`)
     return { success: true, message: 'Atualizado.' }
 }
@@ -214,11 +344,37 @@ export async function deletarMovimento(movimentoId: number) {
 
 // 4. FECHAR CAIXA
 export async function fecharCaixa(prevState: any, formData: FormData) {
-    const supabase = createClient(); const { data: { user } } = await supabase.auth.getUser()
-    const caixaId = formData.get('caixa_id'); const saldoFinal = formData.get('saldo_final'); const saldoEsperado = formData.get('saldo_esperado')
-    const diff = Number(saldoFinal) - Number(saldoEsperado)
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { success: false, message: 'Sessão expirada.' }
+
+    const caixaId = Number(formData.get('caixa_id'))
+    const saldoFinal = Number(formData.get('saldo_final'))
+    if (!caixaId || Number.isNaN(saldoFinal)) return { success: false, message: 'Dados inválidos.' }
+
     const supabaseAdmin = createAdminClient()
-    await (supabaseAdmin.from('caixa_diario') as any).update({ saldo_final: Number(saldoFinal), quebra_caixa: diff, data_fechamento: new Date().toISOString(), fechado_por_id: user?.id, status: 'Fechado' }).eq('id', caixaId)
+
+    const { data: caixa } = await (supabaseAdmin.from('caixa_diario') as any)
+        .select('id, store_id, data_abertura, saldo_inicial')
+        .eq('id', caixaId)
+        .maybeSingle()
+
+    if (!caixa) return { success: false, message: 'Caixa não encontrado.' }
+
+    const dataCaixa = getStoreDateKey(caixa.data_abertura)
+    const resumoAtual = await getResumoCaixaPorData(caixa.store_id, dataCaixa)
+    const saldoEsperadoAtual = resumoAtual?.totais.saldo_esperado_dinheiro ?? Number(caixa.saldo_inicial || 0)
+    const diff = saldoFinal - saldoEsperadoAtual
+
+    await (supabaseAdmin.from('caixa_diario') as any).update({
+        saldo_final: saldoFinal,
+        quebra_caixa: diff,
+        data_fechamento: new Date().toISOString(),
+        fechado_por_id: user.id,
+        status: 'Fechado'
+    }).eq('id', caixaId)
+
+    revalidatePath(`/dashboard/loja/${caixa.store_id}/financeiro/caixa`)
     return { success: true, message: 'Fechado.' }
 }
 
@@ -270,6 +426,7 @@ export async function getHistoricoCaixa(storeId: number) {
     if (caixas.length === 0) return []
 
     const caixaIds = caixas.map((c: any) => c.id)
+    const dateKeys = caixas.map((c: any) => getStoreDateKey(c.data_abertura))
 
     // 2. Busca movimentos manuais (para calcular Saídas)
     const { data: movs } = await (sb.from('caixa_movimentacoes') as any)
@@ -278,6 +435,49 @@ export async function getHistoricoCaixa(storeId: number) {
         .eq('tipo', 'Saida') // Só preciso das saídas para reverter a conta
 
     const movimentos = movs || []
+
+    const { data: movsTodos } = await (sb.from('caixa_movimentacoes') as any)
+        .select('caixa_id, tipo, valor')
+        .in('caixa_id', caixaIds)
+
+    const movimentosCompletos = movsTodos || movimentos
+    const movimentosPorCaixa = new Map<number, { entradas: number, saidas: number }>()
+
+    movimentosCompletos.forEach((mov: any) => {
+        const atual = movimentosPorCaixa.get(mov.caixa_id) || { entradas: 0, saidas: 0 }
+        const valor = Number(mov.valor) || 0
+
+        if (mov.tipo === 'Entrada') atual.entradas += valor
+        else atual.saidas += valor
+
+        movimentosPorCaixa.set(mov.caixa_id, atual)
+    })
+
+    const recebimentosEmDinheiroPorDia = await getCashReceiptsByDateKeys(storeId, dateKeys)
+
+    const historicoRecalculado = caixas.map((cx: any) => {
+        const dateKey = getStoreDateKey(cx.data_abertura)
+        const movimentoManual = movimentosPorCaixa.get(cx.id) || { entradas: 0, saidas: 0 }
+        const entradasEmDinheiro = recebimentosEmDinheiroPorDia.get(dateKey) || 0
+        const saldoInicial = Number(cx.saldo_inicial)
+        const saldoEsperado = saldoInicial + entradasEmDinheiro + movimentoManual.entradas - movimentoManual.saidas
+        const saldoFinal = cx.saldo_final === null ? null : Number(cx.saldo_final)
+        const quebra = saldoFinal === null ? Number(cx.quebra_caixa) || 0 : saldoFinal - saldoEsperado
+
+        return {
+            id: cx.id,
+            data: cx.data_abertura,
+            saldo_inicial: saldoInicial,
+            entradas: entradasEmDinheiro + movimentoManual.entradas,
+            saidas: movimentoManual.saidas,
+            saldo_esperado: saldoEsperado,
+            saldo_final: saldoFinal ?? 0,
+            quebra
+        }
+    })
+
+    return historicoRecalculado
+/*
 
     // 3. Processa
     const historico = caixas.map((cx: any) => {
@@ -306,6 +506,7 @@ export async function getHistoricoCaixa(storeId: number) {
     })
 
     return historico
+*/
 }
 export async function getExtratoDiario(storeId: number) {
     const sb = createAdminClient()
@@ -733,13 +934,9 @@ export async function getResumoCaixa(storeId: number): Promise<ResumoCaixa | nul
 export async function getResumoCaixaPorData(storeId: number, dataISO: string): Promise<ResumoCaixa | null> {
     const supabaseAdmin = createAdminClient()
 
-    // dataISO comes as "YYYY-MM-DD". We must force it to local midnight
-    // otherwise new Date("YYYY-MM-DD") parses as UTC midnight (-3 hours local = 21:00 of previous day)
-    const localStartStr = `${dataISO}T00:00:00-03:00`
-    const localEndStr = `${dataISO}T23:59:59-03:00`
-
-    const dataRef = new Date(localStartStr)
-    const dataFim = new Date(localEndStr)
+    const { startIso, endIso } = getStoreDayRange(dataISO)
+    const dataRef = new Date(startIso)
+    const dataFim = new Date(endIso)
 
     // 1. Buscar Caixa do dia (aberto OU fechado)
     const { data: caixa } = await (supabaseAdmin
@@ -864,9 +1061,15 @@ export async function getResumoCaixaPorData(storeId: number, dataISO: string): P
 
     const saldoGaveta = Number(caixa.saldo_inicial) + vendas.total_dinheiro + manuais.entradas - manuais.saidas
     const saldoGeral = saldoGaveta + vendas.total_pix + vendas.total_cartao + vendas.total_outros
+    const quebraRecalculada = caixa.status === 'Fechado' && caixa.saldo_final !== null
+        ? Number(caixa.saldo_final) - saldoGaveta
+        : Number(caixa.quebra_caixa || 0)
 
     return {
-        caixa,
+        caixa: {
+            ...caixa,
+            quebra_caixa: quebraRecalculada
+        },
         movimentacoes: listaMov,
         movimentacoes_detalhadas: historicoUnificado,
         categoriasUsadas: categoriasUnicas,

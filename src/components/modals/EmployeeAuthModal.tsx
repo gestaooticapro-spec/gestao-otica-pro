@@ -3,6 +3,7 @@
 import {
   useState,
   useEffect,
+  useRef,
 } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
 import { Loader2, X } from 'lucide-react'
@@ -56,9 +57,17 @@ export default function EmployeeAuthModal({
   const [state, dispatch] = useFormState(autenticarFuncionarioPorPin, initialState)
 
   const [pin, setPin] = useState('')
+  const handledSuccessRef = useRef(false)
 
   useEffect(() => {
-    if (state.success && state.employee) {
+    if (!isOpen) {
+      handledSuccessRef.current = false
+    }
+  }, [isOpen])
+
+  useEffect(() => {
+    if (state.success && state.employee && !handledSuccessRef.current) {
+      handledSuccessRef.current = true
       onSuccess(state.employee)
       onClose()
       setPin('')

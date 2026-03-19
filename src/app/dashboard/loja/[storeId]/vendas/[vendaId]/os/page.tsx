@@ -39,6 +39,12 @@ const parseDegreeValue = (value: string, fallback?: number) => {
     return Number.isNaN(parsed) ? fallback ?? null : parsed
 }
 
+const parseAxisValue = (value: string) => {
+    if (!value || !value.trim()) return null
+    const parsed = parseInt(value.replace(/\D/g, ''), 10)
+    return Number.isNaN(parsed) ? null : parsed
+}
+
 const formatDegreeValue = (value: number | null | undefined) => {
     if (value === null || value === undefined) return '-'
     return `${value > 0 ? '+' : ''}${value.toFixed(2)}`
@@ -149,7 +155,7 @@ function StockReservationModal({
                                                 Sph {formatDegreeValue(m.esferico)} Cyl {formatDegreeValue(m.cilindrico)}
                                             </p>
                                             <p className="text-[10px] font-mono text-slate-500">
-                                                Olho {formatLensEye(m.olho)} Add {formatDegreeValue(m.adicao)}
+                                                Olho {formatLensEye(m.olho)} Add {formatDegreeValue(m.adicao)} Eixo {m.eixo ?? '-'}
                                             </p>
                                         </div>
                                         <button
@@ -179,7 +185,7 @@ function StockReservationModal({
                                                 Sph {formatDegreeValue(m.esferico)} Cyl {formatDegreeValue(m.cilindrico)}
                                             </p>
                                             <p className="text-[10px] font-mono text-slate-500">
-                                                Olho {formatLensEye(m.olho)} Add {formatDegreeValue(m.adicao)}
+                                                Olho {formatLensEye(m.olho)} Add {formatDegreeValue(m.adicao)} Eixo {m.eixo ?? '-'}
                                             </p>
                                         </div>
                                         <button
@@ -298,15 +304,16 @@ function ServiceOrderFormContent({
 
                 // Busca Adição
                 const add = parseDegreeValue(adicao)
+                const axis = parseAxisValue(longeOdEixo)
 
                 if (esf !== null && cil !== null) {
-                    const matches = await checkLensStock(storeId, esf, cil, pid, add, 'OD')
+                    const matches = await checkLensStock(storeId, esf, cil, pid, add, 'OD', axis)
                     setOdMatches(matches)
                 }
             } else setOdMatches({ exact: [], similar: [] })
         }, 500)
         return () => clearTimeout(timer)
-    }, [longeOdEsf, longeOdCil, adicao, lenteOdItemId, storeId, vendaItens])
+    }, [longeOdEsf, longeOdCil, longeOdEixo, adicao, lenteOdItemId, storeId, vendaItens])
 
     // Monitora OE para sobras e estoque
     useEffect(() => {
@@ -321,15 +328,16 @@ function ServiceOrderFormContent({
 
                 // Busca Adição
                 const add = parseDegreeValue(adicao)
+                const axis = parseAxisValue(longeOeEixo)
 
                 if (esf !== null && cil !== null) {
-                    const matches = await checkLensStock(storeId, esf, cil, pid, add, 'OE')
+                    const matches = await checkLensStock(storeId, esf, cil, pid, add, 'OE', axis)
                     setOeMatches(matches)
                 }
             } else setOeMatches({ exact: [], similar: [] })
         }, 500)
         return () => clearTimeout(timer)
-    }, [longeOeEsf, longeOeCil, adicao, lenteOeItemId, storeId, vendaItens])
+    }, [longeOeEsf, longeOeCil, longeOeEixo, adicao, lenteOeItemId, storeId, vendaItens])
 
     // Helper para disponibilidade
     const isLenteDisponivel = (item: any, olho: 'OD' | 'OE') => {

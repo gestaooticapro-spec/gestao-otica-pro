@@ -122,7 +122,6 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
         if (!confirm("Tem certeza que deseja fechar o caixa agora?")) return
 
         formData.append('caixa_id', initialData.caixa.id.toString())
-        formData.append('saldo_esperado', initialData.totais.saldo_esperado_dinheiro.toString())
 
         startTransition(async () => {
             const res = await fecharCaixa(null, formData)
@@ -372,14 +371,18 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                 {formatCurrency(totais.saldo_esperado_dinheiro)}
                             </p>
                             <div className="flex items-center justify-between border-t border-white/5 pt-1.5">
-                                <p className="text-[9px] text-slate-400">Fundo: <span className="text-white font-mono">{formatCurrency(initialData.caixa?.saldo_inicial || 0)}</span></p>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsSaldoModalOpen(true)}
-                                    className="text-[8px] bg-white/5 hover:bg-white/10 px-1.5 py-0.5 rounded font-black uppercase tracking-tight text-slate-300"
-                                >
-                                    Alt
-                                </button>
+                                <p className="text-[9px] text-slate-400">
+                                    {isReadOnly ? 'Fundo no dia:' : 'Fundo:'} <span className="text-white font-mono">{formatCurrency(activeData.caixa?.saldo_inicial || 0)}</span>
+                                </p>
+                                {!isReadOnly && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsSaldoModalOpen(true)}
+                                        className="text-[8px] bg-white/5 hover:bg-white/10 px-1.5 py-0.5 rounded font-black uppercase tracking-tight text-slate-300"
+                                    >
+                                        Alt
+                                    </button>
+                                )}
                             </div>
                         </div>
 

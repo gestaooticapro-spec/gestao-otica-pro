@@ -22,7 +22,8 @@ const MovimentoSchema = z.object({
         olho: z.enum(['OD', 'OE', 'AMBOS']),
         esferico: z.coerce.number().optional().nullable(),
         cilindrico: z.coerce.number().optional().nullable(),
-        adicao: z.coerce.number().optional().nullable()
+        adicao: z.coerce.number().optional().nullable(),
+        eixo: z.coerce.number().optional().nullable()
     }).optional().nullable()
 })
 
@@ -38,14 +39,24 @@ const normalizeLensEye = (value: string | null | undefined): LensEye | null => {
     return null
 }
 
+const normalizeAxisValue = (value: number | null | undefined): number | null => {
+    if (value === null || value === undefined || Number.isNaN(value)) return null
+    return value
+}
+
 export async function registrarMovimentacao(
     prevState: StockActionResult,
     formData: FormData
 ): Promise<StockActionResult> {
     const supabase = createClient()
-
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { success: false, message: 'Usuário não autenticado.' }
+    const accessToken = formData.get('access_token')?.toString() || null
+    let { data: { user } } = await supabase.auth.getUser()
+    if (!user && accessToken) {
+        const supabaseAdmin = createAdminClient()
+        const { data } = await supabaseAdmin.auth.getUser(accessToken)
+        user = data.user
+    }
+    if (!user) return { success: false, message: 'Usuario nao autenticado.' }
 
     // Cast 'as any' para garantir acesso a props do perfil
     const profile = await getProfileByAdmin(user.id) as any
@@ -138,6 +149,7 @@ export async function registrarMovimentacao(
             const sobraEsferico = variantData?.esferico ?? sobra_detalhes.esferico ?? 0
             const sobraCilindrico = variantData?.cilindrico ?? sobra_detalhes.cilindrico ?? 0
             const sobraAdicao = variantData?.adicao ?? sobra_detalhes.adicao ?? null
+            const sobraEixo = normalizeAxisValue(sobra_detalhes.eixo)
             const sobraOlho = sobra_detalhes.olho
 
             let sobraExistenteQuery = (supabaseAdmin.from('product_variants') as any)
@@ -159,6 +171,12 @@ export async function registrarMovimentacao(
                 sobraExistenteQuery = sobraExistenteQuery.eq('adicao', sobraAdicao)
             }
 
+            if (sobraEixo === null) {
+                sobraExistenteQuery = sobraExistenteQuery.is('eixo', null)
+            } else {
+                sobraExistenteQuery = sobraExistenteQuery.eq('eixo', sobraEixo)
+            }
+
             const { data: sobraExistente } = await sobraExistenteQuery.maybeSingle()
 
             if (sobraExistente) {
@@ -175,12 +193,15 @@ export async function registrarMovimentacao(
                     nome_variante: `Sobra ${sobraOlho} Ø${sobra_detalhes.diametro}`,
                     esferico: sobraEsferico,
                     cilindrico: sobraCilindrico,
+                    eixo: sobraEixo,
                     adicao: sobraAdicao,
                     is_sobra: true,
                     diametro: sobra_detalhes.diametro,
                     olho: sobraOlho,
                     estoque_atual: 0,
                 }
+
+                insertPayload.nome_variante = `Aproveitamento ${sobraOlho} Ø${sobra_detalhes.diametro}${sobraEixo !== null ? ` Eixo ${sobraEixo}` : ''}`
 
                 const { data: novaSobra } = await (supabaseAdmin.from('product_variants') as any).insert(insertPayload).select().single()
 
@@ -267,7 +288,7 @@ export async function registrarMovimentacao(
                 variant_id: novaSobraId,
                 tipo: 'Entrada',
                 quantidade: 1,
-                motivo: `Sobra recuperada da quebra (Origem: Venda #${related_venda_id || 'N/A'})`,
+                motivo: `Lente de aproveitamento recuperada da quebra (Origem: Venda #${related_venda_id || 'N/A'})`,
                 custo_unitario_momento: 0,
                 registrado_por_id: user.id,
                 employee_id: employee_id,
@@ -432,6 +453,7 @@ export type LensStockMatch = {
     variant_name: string
     esferico: number
     cilindrico: number
+    eixo?: number | null
     adicao?: number | null
     olho?: LensEye | null
     estoque: number
@@ -446,7 +468,8 @@ export async function checkLensStock(
     cilindrico: number,
     targetProductId: number | null,
     adicao: number | null,
-    targetEye: 'OD' | 'OE'
+    targetEye: 'OD' | 'OE',
+    targetAxis: number | null
 ): Promise<{ exact: LensStockMatch[], similar: LensStockMatch[] }> {
     const supabase = createAdminClient()
 
@@ -461,7 +484,7 @@ export async function checkLensStock(
 
     let query = (supabase.from('product_variants') as any)
         .select(`
-            id, product_id, nome_variante, esferico, cilindrico, adicao, olho, estoque_atual, is_sobra,
+            id, product_id, nome_variante, esferico, cilindrico, eixo, adicao, olho, estoque_atual, is_sobra,
             products ( nome, preco_venda )
         `)
         .eq('store_id', storeId)
@@ -504,6 +527,7 @@ export async function checkLensStock(
             item.adicao === null || item.adicao === undefined || Math.abs(item.adicao) < adicaoRange
                 ? null
                 : item.adicao
+        const itemAxis = normalizeAxisValue(item.eixo)
         const itemEye = normalizeLensEye(item.olho)
         const isEyeCompatible =
             itemEye === null ||
@@ -511,6 +535,12 @@ export async function checkLensStock(
             itemEye === targetEye
 
         if (!isEyeCompatible) return
+
+        const isAxisCompatible =
+            itemAxis === null ||
+            (targetAxis !== null && itemAxis === targetAxis)
+
+        if (!isAxisCompatible) return
 
         const isDegreeExact = item.esferico === esferico && itemCilindrico === normalizedCilindrico
         const isAdicaoExact =
@@ -536,6 +566,7 @@ export async function checkLensStock(
             variant_name: item.nome_variante,
             esferico: item.esferico,
             cilindrico: itemCilindrico,
+            eixo: itemAxis,
             adicao: itemAdicao,
             olho: itemEye,
             estoque: item.estoque_atual,
@@ -552,10 +583,14 @@ export async function checkLensStock(
     })
 
     // Ordenar exatos: Gold primeiro
-    exact.sort((a, b) => {
-        const score = (item: LensStockMatch) => (item.match_type === 'gold' ? 2 : item.match_type === 'silver' ? 1 : 0)
-        return score(b) - score(a)
-    })
+    const rankMatch = (item: LensStockMatch) => {
+        const typeScore = item.match_type === 'gold' ? 2 : item.match_type === 'silver' ? 1 : 0
+        const axisScore = targetAxis !== null && item.eixo === targetAxis ? 1 : 0
+        return (typeScore * 10) + axisScore
+    }
+
+    exact.sort((a, b) => rankMatch(b) - rankMatch(a))
+    similar.sort((a, b) => rankMatch(b) - rankMatch(a))
 
     return { exact, similar }
 }

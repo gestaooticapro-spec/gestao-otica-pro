@@ -359,7 +359,7 @@ function ServiceOrderFormContent({
                 const add = adicao ? parseFloat(adicao.replace(',', '.').replace('+', '')) : null
 
                 if (!isNaN(esf) && !isNaN(cil)) {
-                    const matches = await checkLensStock(storeId, esf, cil, pid, isNaN(add!) ? null : add, 'OD')
+                    const matches = await checkLensStock(storeId, esf, cil, pid, isNaN(add!) ? null : add, 'OD', null)
                     setOdMatches(matches)
                 }
 

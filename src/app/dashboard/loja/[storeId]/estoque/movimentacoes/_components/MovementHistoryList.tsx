@@ -48,10 +48,16 @@ const typeConfig = {
     'Reserva': { color: 'text-indigo-400', bg: 'bg-indigo-500/10', border: 'border-indigo-500/20', icon: Package }
 }
 
+const negativeTypes = new Set<Movement['tipo']>(['Saida', 'Perda', 'Brinde', 'Reserva'])
+
 export default function MovementHistoryList({ movimentos }: Props) {
     const [selectedMovement, setSelectedMovement] = useState<Movement | null>(null)
 
     const handleClose = () => setSelectedMovement(null)
+    const formatSignedQuantity = (movement: Movement) => {
+        const sign = negativeTypes.has(movement.tipo) ? '-' : '+'
+        return `${sign}${Math.abs(movement.quantidade)}`
+    }
 
     return (
         <div className="space-y-3 relative">
@@ -95,7 +101,7 @@ export default function MovementHistoryList({ movimentos }: Props) {
                                 </div>
                                 <div className="text-right shrink-0">
                                     <p className={`text-sm font-black ${config.color}`}>
-                                        {m.quantidade > 0 ? `+${m.quantidade}` : m.quantidade}
+                                        {formatSignedQuantity(m)}
                                     </p>
                                     <p className="text-[10px] text-slate-500 font-medium">un</p>
                                 </div>
@@ -160,7 +166,7 @@ export default function MovementHistoryList({ movimentos }: Props) {
                                 <div className="p-3 rounded-2xl bg-white/5 border border-white/5">
                                     <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Quantidade</p>
                                     <p className="text-sm font-bold text-white">
-                                        {selectedMovement.quantidade} unidades
+                                        {formatSignedQuantity(selectedMovement)} unidades
                                     </p>
                                 </div>
                             </div>
@@ -220,7 +226,7 @@ export default function MovementHistoryList({ movimentos }: Props) {
                                     </div>
                                     {selectedMovement.product_variants.is_sobra && (
                                         <div className="mt-2 px-2 py-1 rounded bg-sky-500/10 border border-sky-500/20 inline-block">
-                                            <span className="text-[9px] font-black text-sky-400 uppercase">LENTE DE SOBRA (REAPROVEITADA)</span>
+                                            <span className="text-[9px] font-black text-sky-400 uppercase">LENTE DE APROVEITAMENTO</span>
                                         </div>
                                     )}
                                 </div>

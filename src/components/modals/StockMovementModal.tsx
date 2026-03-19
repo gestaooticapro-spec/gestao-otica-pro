@@ -5,6 +5,9 @@ import { X, Search, Check, AlertTriangle, ArrowRightLeft, ArrowDownCircle, Arrow
 import { buscarProdutoExpress, ProdutoExpressResult } from '@/lib/actions/vendas.actions'
 import { registrarMovimentacao, getProductVariants } from '@/lib/actions/stock.actions'
 import { DegreeInput } from '@/components/ui/DegreeInput'
+import { createClient as createSupabaseBrowserClient } from '@/lib/supabase/client'
+import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
+import { Database } from '@/lib/database.types'
 
 interface Props {
     isOpen: boolean
@@ -14,6 +17,7 @@ interface Props {
 }
 
 type LensEye = 'OD' | 'OE' | 'AMBOS'
+type AuthedEmployee = Pick<Database['public']['Tables']['employees']['Row'], 'id' | 'full_name' | 'role'>
 
 // --- ESTILOS DO DESIGN SYSTEM (Dark Glassmorphism) ---
 const modalOverlayStyle = "fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300"
@@ -24,6 +28,7 @@ const labelStyle = "block text-[10px] font-bold text-slate-500 uppercase mb-1.5 
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 export default function StockMovementModal({ isOpen, onClose, storeId, initialSearchTerm }: Props) {
+    const supabase = createSupabaseBrowserClient()
     const [step, setStep] = useState<'search' | 'form'>('search')
     const [query, setQuery] = useState('')
     const [results, setResults] = useState<ProdutoExpressResult[]>([])
@@ -36,6 +41,7 @@ export default function StockMovementModal({ isOpen, onClose, storeId, initialSe
     const [tipo, setTipo] = useState<'Entrada' | 'Saida' | 'Perda' | 'Brinde' | 'Ajuste'>('Entrada')
     const [motivo, setMotivo] = useState('')
     const [isSaving, setIsSaving] = useState(false)
+    const [isAuthOpen, setIsAuthOpen] = useState(false)
 
     // Novos Campos
     const [relatedVendaId, setRelatedVendaId] = useState('')
@@ -46,6 +52,7 @@ export default function StockMovementModal({ isOpen, onClose, storeId, initialSe
     const [sobraEsferico, setSobraEsferico] = useState('')
     const [sobraCilindrico, setSobraCilindrico] = useState('')
     const [sobraAdicao, setSobraAdicao] = useState('')
+    const [sobraEixo, setSobraEixo] = useState('')
     const [sobraDiametro, setSobraDiametro] = useState('')
 
     // Variações (Grade)
@@ -71,6 +78,7 @@ export default function StockMovementModal({ isOpen, onClose, storeId, initialSe
             setSobraEsferico('')
             setSobraCilindrico('')
             setSobraAdicao('')
+            setSobraEixo('')
 
             setVariants([])
             setSelectedVariantId(null)
@@ -124,6 +132,59 @@ export default function StockMovementModal({ isOpen, onClose, storeId, initialSe
 
     }
 
+    const handleAuthSuccess = async (authedEmployee: AuthedEmployee) => {
+        if (!selectedProduct) return
+        setIsAuthOpen(false)
+
+        setIsAuthOpen(true)
+        return
+
+        const formData = new FormData()
+        formData.append('store_id', storeId.toString())
+        formData.append('employee_id', authedEmployee.id.toString())
+        formData.append('product_id', selectedProduct!.id.toString())
+        formData.append('product_name', selectedProduct!.descricao)
+        if (selectedVariantId) formData.append('variant_id', selectedVariantId!.toString())
+        formData.append('quantidade', quantidade.toString())
+        formData.append('tipo', tipo)
+        formData.append('motivo', motivo || (tipo === 'Entrada' ? 'Entrada Avulsa' : typeLabels[tipo]))
+
+        if (relatedVendaId) formData.append('related_venda_id', relatedVendaId)
+
+        const { data: { session } } = await supabase.auth.getSession()
+        const accessToken = session?.access_token
+        if (accessToken) {
+            formData.append('access_token', accessToken as string)
+        }
+
+        const parseDeg = (val: string) => val ? parseFloat(val.replace(',', '.').replace('+', '')) : null
+        const parseAxis = (val: string) => {
+            const normalized = val.replace(/\D/g, '')
+            return normalized ? Number(normalized) : null
+        }
+
+        if (gerouSobra) {
+            const sobraObj = {
+                olho: sobraOlho,
+                esferico: parseDeg(sobraEsferico),
+                cilindrico: parseDeg(sobraCilindrico),
+                adicao: parseDeg(sobraAdicao),
+                eixo: parseAxis(sobraEixo),
+                diametro: sobraDiametro ? Number(sobraDiametro) : null
+            }
+            formData.append('sobra_detalhes', JSON.stringify(sobraObj))
+        }
+
+        const res = await registrarMovimentacao({ success: false, message: '' }, formData)
+
+        if (res.success) {
+            onClose()
+        } else {
+            alert('Erro: ' + res.message)
+        }
+        setIsSaving(false)
+    }
+
     const handleSave = async () => {
         if (!selectedProduct) return
         setIsSaving(true)
@@ -131,7 +192,6 @@ export default function StockMovementModal({ isOpen, onClose, storeId, initialSe
         // Se tem grade e não selecionou variante, erro
         if (selectedProduct.tem_grade && !selectedVariantId) {
             alert('Selecione a variação (grau/cor) do produto.')
-            setIsSaving(false)
             return
         }
 
@@ -147,7 +207,16 @@ export default function StockMovementModal({ isOpen, onClose, storeId, initialSe
         // Novos campos opcionais
         if (relatedVendaId) formData.append('related_venda_id', relatedVendaId)
 
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.access_token) {
+            formData.append('access_token', session.access_token)
+        }
+
         const parseDeg = (val: string) => val ? parseFloat(val.replace(',', '.').replace('+', '')) : null
+        const parseAxis = (val: string) => {
+            const normalized = val.replace(/\D/g, '')
+            return normalized ? Number(normalized) : null
+        }
 
         if (gerouSobra) {
             const sobraObj = {
@@ -155,6 +224,7 @@ export default function StockMovementModal({ isOpen, onClose, storeId, initialSe
                 esferico: parseDeg(sobraEsferico),
                 cilindrico: parseDeg(sobraCilindrico),
                 adicao: parseDeg(sobraAdicao),
+                eixo: parseAxis(sobraEixo),
                 diametro: sobraDiametro ? Number(sobraDiametro) : null
             }
             formData.append('sobra_detalhes', JSON.stringify(sobraObj))
@@ -182,6 +252,7 @@ export default function StockMovementModal({ isOpen, onClose, storeId, initialSe
     const isPG = selectedProduct?.descricao?.toLowerCase().includes('pg') ||
         selectedProduct?.descricao?.toLowerCase().includes('progress') ||
         selectedProduct?.descricao?.toLowerCase().includes('multi')
+    const shouldWarnAboutAxis = Boolean(gerouSobra && sobraAdicao && !sobraEixo.trim())
 
     if (!isOpen) return null
 
@@ -403,10 +474,11 @@ export default function StockMovementModal({ isOpen, onClose, storeId, initialSe
                                                         onChange={e => setGerouSobra(e.target.checked)}
                                                         className="rounded border-slate-600 bg-slate-800 text-amber-600 focus:ring-amber-500/50"
                                                     />
-                                                    <span className="text-xs font-bold text-slate-300">Registrar Sobra de Lente (Bloco)</span>
+                                                    <span className="text-xs font-bold text-slate-300">Registrar Lente de Aproveitamento</span>
                                                 </label>
 
                                                 {gerouSobra && (
+                                                    <>
                                                     <div className={`grid ${isPG ? 'grid-cols-3' : 'grid-cols-2'} gap-2 animate-in slide-in-from-top-2`}>
                                                         <div>
                                                             <label className={labelStyle}>Olho</label>
@@ -428,6 +500,18 @@ export default function StockMovementModal({ isOpen, onClose, storeId, initialSe
                                                             <label className={labelStyle}>Cilindrico</label>
                                                             <DegreeInput value={sobraCilindrico} onChange={setSobraCilindrico} className={inputStyle} />
                                                         </div>
+                                                        <div>
+                                                            <label className={labelStyle}>Eixo</label>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                max="180"
+                                                                value={sobraEixo}
+                                                                onChange={e => setSobraEixo(e.target.value)}
+                                                                placeholder="Ex: 90"
+                                                                className={inputStyle}
+                                                            />
+                                                        </div>
                                                         {isPG && (
                                                             <div>
                                                                 <label className={labelStyle}>Adicao</label>
@@ -435,6 +519,15 @@ export default function StockMovementModal({ isOpen, onClose, storeId, initialSe
                                                             </div>
                                                         )}
                                                     </div>
+                                                    <p className="text-[10px] text-slate-500 mt-2">
+                                                            Se o eixo estiver preenchido, a OS so vai sugerir esta lente quando o eixo da receita for igual.
+                                                    </p>
+                                                    {shouldWarnAboutAxis && (
+                                                        <p className="text-[10px] text-amber-300 mt-1">
+                                                            Esta lente tem adicao, mas esta sem eixo. Ela continuara aparecendo como opcao generica na busca.
+                                                        </p>
+                                                    )}
+                                                    </>
                                                 )}
                                             </div>
                                         )}
@@ -457,6 +550,14 @@ export default function StockMovementModal({ isOpen, onClose, storeId, initialSe
                     )}
                 </div>
             </div>
+            <EmployeeAuthModal
+                storeId={storeId}
+                isOpen={isAuthOpen}
+                onClose={() => setIsAuthOpen(false)}
+                onSuccess={handleAuthSuccess}
+                title="Autorizar Movimentacao"
+                description="Insira seu PIN para confirmar o lancamento no estoque."
+            />
         </div>
     )
 }

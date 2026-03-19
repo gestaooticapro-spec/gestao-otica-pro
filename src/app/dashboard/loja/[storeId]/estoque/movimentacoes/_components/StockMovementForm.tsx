@@ -9,6 +9,9 @@ import {
 import { buscarProdutoExpress, ProdutoExpressResult } from '@/lib/actions/vendas.actions'
 import { registrarMovimentacao, getProductVariants } from '@/lib/actions/stock.actions'
 import { DegreeInput } from '@/components/ui/DegreeInput'
+import { createClient as createSupabaseBrowserClient } from '@/lib/supabase/client'
+import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
+import { Database } from '@/lib/database.types'
 
 interface Props {
     storeId: number
@@ -16,6 +19,7 @@ interface Props {
 }
 
 type LensEye = 'OD' | 'OE' | 'AMBOS'
+type AuthedEmployee = Pick<Database['public']['Tables']['employees']['Row'], 'id' | 'full_name' | 'role'>
 
 const labelStyle = "block text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-wider"
 const inputStyle = "block w-full rounded-xl border border-white/10 bg-black/20 shadow-sm text-slate-200 h-9 text-xs px-3 focus:ring-1 focus:ring-amber-500/50 focus:border-amber-500/50 font-bold placeholder:font-normal placeholder:text-slate-600 disabled:opacity-50 transition-all outline-none"
@@ -34,6 +38,7 @@ const typeLabels: Record<string, string> = {
 export default function StockMovementForm({ storeId, initialSearchTerm }: Props) {
     const router = useRouter()
     const searchInputRef = useRef<HTMLInputElement>(null)
+    const supabase = createSupabaseBrowserClient()
 
     // Search States
     const [query, setQuery] = useState(initialSearchTerm || '')
@@ -46,6 +51,7 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
     const [tipo, setTipo] = useState<'Entrada' | 'Saida' | 'Perda' | 'Brinde' | 'Ajuste'>('Ajuste')
     const [motivo, setMotivo] = useState('')
     const [isSaving, setIsSaving] = useState(false)
+    const [isAuthOpen, setIsAuthOpen] = useState(false)
 
     // Optional Fields
     const [relatedVendaId, setRelatedVendaId] = useState('')
@@ -55,6 +61,7 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
     const [sobraEsferico, setSobraEsferico] = useState('')
     const [sobraCilindrico, setSobraCilindrico] = useState('')
     const [sobraAdicao, setSobraAdicao] = useState('')
+    const [sobraEixo, setSobraEixo] = useState('')
     const [sobraDiametro, setSobraDiametro] = useState('')
 
     // Variant Selection
@@ -114,29 +121,34 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
         setTimeout(() => searchInputRef.current?.focus(), 100)
     }
 
-    const handleSave = async () => {
+    const handleAuthSuccess = async (authedEmployee: AuthedEmployee) => {
         if (!selectedProduct) return
+        setIsAuthOpen(false)
         setIsSaving(true)
-
-        if (selectedProduct.tem_grade && !selectedVariantId) {
-            alert('Selecione a variação (grau/cor) do produto.')
-            setIsSaving(false)
-            return
-        }
 
         const formData = new FormData()
         formData.append('store_id', storeId.toString())
-        formData.append('product_id', selectedProduct.id.toString())
-        formData.append('product_name', selectedProduct.descricao)
-        if (selectedVariantId) formData.append('variant_id', selectedVariantId.toString())
+        formData.append('employee_id', authedEmployee.id.toString())
+        formData.append('product_id', selectedProduct!.id.toString())
+        formData.append('product_name', selectedProduct!.descricao)
+        if (selectedVariantId) formData.append('variant_id', selectedVariantId!.toString())
         formData.append('quantidade', quantidade.toString())
         formData.append('tipo', tipo)
         formData.append('motivo', motivo || (tipo === 'Entrada' ? 'Entrada Avulsa' : typeLabels[tipo]))
 
         if (relatedVendaId) formData.append('related_venda_id', relatedVendaId)
 
-        // Sobra de Lente (send if filled regardless of type)
+        const { data: { session } } = await supabase.auth.getSession()
+        const accessToken = session?.access_token
+        if (accessToken) {
+            formData.append('access_token', accessToken as string)
+        }
+
         const parseDeg = (val: string) => val ? parseFloat(val.replace(',', '.').replace('+', '')) : null
+        const parseAxis = (val: string) => {
+            const normalized = val.replace(/\D/g, '')
+            return normalized ? Number(normalized) : null
+        }
 
         if (sobraDiametro) {
             const sobraObj = {
@@ -144,6 +156,76 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
                 esferico: parseDeg(sobraEsferico),
                 cilindrico: parseDeg(sobraCilindrico),
                 adicao: parseDeg(sobraAdicao),
+                eixo: parseAxis(sobraEixo),
+                diametro: sobraDiametro ? Number(sobraDiametro) : null
+            }
+            formData.append('sobra_detalhes', JSON.stringify(sobraObj))
+        }
+
+        const res = await registrarMovimentacao({ success: false, message: '' }, formData)
+
+        if (res.success) {
+            setSelectedProduct(null)
+            setVariants([])
+            setSelectedVariantId(null)
+            setQuantidade(1)
+            setMotivo('')
+            setRelatedVendaId('')
+            setSobraOlho('AMBOS')
+            setSobraDiametro('')
+            setSobraEsferico('')
+            setSobraCilindrico('')
+            setSobraAdicao('')
+            setSobraEixo('')
+            router.refresh()
+        } else {
+            alert('Erro: ' + res.message)
+        }
+        setIsSaving(false)
+    }
+
+    const handleSave = async () => {
+        if (!selectedProduct) return
+
+        if (selectedProduct.tem_grade && !selectedVariantId) {
+            alert('Selecione a variação (grau/cor) do produto.')
+            return
+        }
+
+        setIsAuthOpen(true)
+        return
+
+        const formData = new FormData()
+        formData.append('store_id', storeId.toString())
+        formData.append('product_id', selectedProduct!.id.toString())
+        formData.append('product_name', selectedProduct!.descricao)
+        if (selectedVariantId) formData.append('variant_id', selectedVariantId!.toString())
+        formData.append('quantidade', quantidade.toString())
+        formData.append('tipo', tipo)
+        formData.append('motivo', motivo || (tipo === 'Entrada' ? 'Entrada Avulsa' : typeLabels[tipo]))
+
+        if (relatedVendaId) formData.append('related_venda_id', relatedVendaId)
+
+        const { data: { session } } = await supabase.auth.getSession()
+        const accessToken = session?.access_token
+        if (accessToken) {
+            formData.append('access_token', accessToken as string)
+        }
+
+        // Lente de aproveitamento (send if filled regardless of type)
+        const parseDeg = (val: string) => val ? parseFloat(val.replace(',', '.').replace('+', '')) : null
+        const parseAxis = (val: string) => {
+            const normalized = val.replace(/\D/g, '')
+            return normalized ? Number(normalized) : null
+        }
+
+        if (sobraDiametro) {
+            const sobraObj = {
+                olho: sobraOlho,
+                esferico: parseDeg(sobraEsferico),
+                cilindrico: parseDeg(sobraCilindrico),
+                adicao: parseDeg(sobraAdicao),
+                eixo: parseAxis(sobraEixo),
                 diametro: sobraDiametro ? Number(sobraDiametro) : null
             }
             formData.append('sobra_detalhes', JSON.stringify(sobraObj))
@@ -164,6 +246,7 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
             setSobraEsferico('')
             setSobraCilindrico('')
             setSobraAdicao('')
+            setSobraEixo('')
             router.refresh()
         } else {
             alert('Erro: ' + res.message)
@@ -179,6 +262,7 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
     const isPG = selectedProduct?.descricao?.toLowerCase().includes('pg') ||
         selectedProduct?.descricao?.toLowerCase().includes('progress') ||
         selectedProduct?.descricao?.toLowerCase().includes('multi')
+    const shouldWarnAboutAxis = Boolean(sobraAdicao && !sobraEixo.trim())
 
     return (
         <div className="flex flex-col h-full">
@@ -372,13 +456,13 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
                     {selectedProduct && (
                         <div className={`${cardStyle} border-sky-500/20 bg-sky-500/5`}>
                             <h3 className="text-xs font-bold text-sky-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                                <PackageOpen className="h-4 w-4" /> Sobra de Lente (Reaproveitamento)
+                                <PackageOpen className="h-4 w-4" /> Lente de Aproveitamento
                             </h3>
                             <p className="text-[10px] text-slate-500 mb-3">
-                                Preencha o grau da sobra do bloco para registrar e reaproveitar posteriormente. Opcional.
+                                Preencha os dados da lente reaproveitada para que a OS consiga sugeri-la depois. Opcional.
                             </p>
 
-                            <div className={`grid ${isPG ? 'grid-cols-5' : 'grid-cols-4'} gap-3`}>
+                            <div className={`grid ${isPG ? 'grid-cols-6' : 'grid-cols-5'} gap-3`}>
                                 <div>
                                     <label className={labelStyle}>Olho</label>
                                     <select value={sobraOlho} onChange={e => setSobraOlho(e.target.value as LensEye)} className={`${inputStyle} cursor-pointer`}>
@@ -399,6 +483,18 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
                                     <label className={labelStyle}>Cilíndrico</label>
                                     <DegreeInput value={sobraCilindrico} onChange={setSobraCilindrico} className={`${inputStyle} text-center`} />
                                 </div>
+                                <div>
+                                    <label className={labelStyle}>Eixo</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max="180"
+                                        value={sobraEixo}
+                                        onChange={e => setSobraEixo(e.target.value)}
+                                        placeholder="Ex: 90"
+                                        className={`${inputStyle} text-center`}
+                                    />
+                                </div>
                                 {isPG && (
                                     <div className="flex flex-col">
                                         <label className={labelStyle}>Adição</label>
@@ -406,6 +502,14 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
                                     </div>
                                 )}
                             </div>
+                            <p className="text-[10px] text-slate-500 mt-3">
+                                Se o eixo estiver preenchido, a OS so vai sugerir esta lente quando o eixo da receita for igual.
+                            </p>
+                            {shouldWarnAboutAxis && (
+                                <p className="text-[10px] text-amber-300 mt-1">
+                                    Esta lente tem adicao, mas esta sem eixo. Ela continuara aparecendo como opcao generica na busca.
+                                </p>
+                            )}
                         </div>
                     )}
                 </div>
@@ -431,6 +535,14 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
                     </button>
                 </div>
             )}
+            <EmployeeAuthModal
+                storeId={storeId}
+                isOpen={isAuthOpen}
+                onClose={() => setIsAuthOpen(false)}
+                onSuccess={handleAuthSuccess}
+                title="Autorizar Movimentacao"
+                description="Insira seu PIN para confirmar o lancamento no estoque."
+            />
         </div>
     )
 }
