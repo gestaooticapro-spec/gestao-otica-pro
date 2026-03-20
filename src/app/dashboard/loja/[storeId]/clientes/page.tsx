@@ -693,11 +693,11 @@ function AbaReferencias({ state, handlers, isSaving, inputStyle }: any) {
             </h3>
             <div className="col-span-6">
                 <label className={lbl}>Ref. Pessoal 1</label>
-                <input name="ref_pessoal_1" type="text" value={state.refPessoal1} onChange={handlers.setRefPessoal1} className={inputStyle} disabled={isSaving} placeholder="Nome e Telefone" />
+                <input name="ref_pessoal_1" type="text" value={state.refPessoal1} onChange={e => handlers.setRefPessoal1(e.target.value)} className={inputStyle} disabled={isSaving} placeholder="Nome e Telefone" />
             </div>
             <div className="col-span-6">
                 <label className={lbl}>Ref. Pessoal 2</label>
-                <input name="ref_pessoal_2" type="text" value={state.refPessoal2} onChange={handlers.setRefPessoal2} className={inputStyle} disabled={isSaving} placeholder="Nome e Telefone" />
+                <input name="ref_pessoal_2" type="text" value={state.refPessoal2} onChange={e => handlers.setRefPessoal2(e.target.value)} className={inputStyle} disabled={isSaving} placeholder="Nome e Telefone" />
             </div>
 
             <h3 className="col-span-full font-bold text-[10px] text-indigo-400 border-b border-white/5 pb-1 mb-1 mt-3 uppercase tracking-widest flex items-center gap-2 opacity-80">
@@ -705,11 +705,11 @@ function AbaReferencias({ state, handlers, isSaving, inputStyle }: any) {
             </h3>
             <div className="col-span-6">
                 <label className={lbl}>Ref. Comercial 1</label>
-                <input name="ref_comercio_1" type="text" value={state.refComercio1} onChange={handlers.setRefComercio1} className={inputStyle} disabled={isSaving} placeholder="Empresa e Telefone" />
+                <input name="ref_comercio_1" type="text" value={state.refComercio1} onChange={e => handlers.setRefComercio1(e.target.value)} className={inputStyle} disabled={isSaving} placeholder="Empresa e Telefone" />
             </div>
             <div className="col-span-6">
                 <label className={lbl}>Ref. Comercial 2</label>
-                <input name="ref_comercio_2" type="text" value={state.refComercio2} onChange={handlers.setRefComercio2} className={inputStyle} disabled={isSaving} placeholder="Empresa e Telefone" />
+                <input name="ref_comercio_2" type="text" value={state.refComercio2} onChange={e => handlers.setRefComercio2(e.target.value)} className={inputStyle} disabled={isSaving} placeholder="Empresa e Telefone" />
             </div>
         </div>
     );

@@ -259,9 +259,6 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
         selectedProduct.descricao?.toLowerCase().includes('lente')
     )
 
-    const isPG = selectedProduct?.descricao?.toLowerCase().includes('pg') ||
-        selectedProduct?.descricao?.toLowerCase().includes('progress') ||
-        selectedProduct?.descricao?.toLowerCase().includes('multi')
     const shouldWarnAboutAxis = Boolean(sobraAdicao && !sobraEixo.trim())
 
     return (
@@ -462,7 +459,7 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
                                 Preencha os dados da lente reaproveitada para que a OS consiga sugeri-la depois. Opcional.
                             </p>
 
-                            <div className={`grid ${isPG ? 'grid-cols-6' : 'grid-cols-5'} gap-3`}>
+                            <div className="grid grid-cols-6 gap-3">
                                 <div>
                                     <label className={labelStyle}>Olho</label>
                                     <select value={sobraOlho} onChange={e => setSobraOlho(e.target.value as LensEye)} className={`${inputStyle} cursor-pointer`}>
@@ -495,12 +492,10 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
                                         className={`${inputStyle} text-center`}
                                     />
                                 </div>
-                                {isPG && (
-                                    <div className="flex flex-col">
-                                        <label className={labelStyle}>Adição</label>
-                                        <DegreeInput value={sobraAdicao} onChange={setSobraAdicao} className={`${inputStyle} text-center`} />
-                                    </div>
-                                )}
+                                <div className="flex flex-col">
+                                    <label className={labelStyle}>Adição</label>
+                                    <DegreeInput value={sobraAdicao} onChange={setSobraAdicao} className={`${inputStyle} text-center`} />
+                                </div>
                             </div>
                             <p className="text-[10px] text-slate-500 mt-3">
                                 Se o eixo estiver preenchido, a OS so vai sugerir esta lente quando o eixo da receita for igual.

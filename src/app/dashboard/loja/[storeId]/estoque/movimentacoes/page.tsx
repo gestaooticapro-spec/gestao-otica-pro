@@ -74,7 +74,7 @@ export default async function MovimentacoesPage({
 
                     {/* Lista de Histórico (Componente Client) */}
                     <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
-                        <MovementHistoryList movimentos={movimentos as any} />
+                        <MovementHistoryList movimentos={movimentos as any} storeId={storeId} />
                     </div>
                 </div>
 

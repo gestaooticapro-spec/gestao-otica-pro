@@ -1621,12 +1621,11 @@ export async function getSalesList(storeId: number, options?: SalesFilterOptions
   const search = options?.search
 
   try {
-    // Se tem busca, precisamos do !inner para filtrar pelo nome do cliente ou IDs
     let query = supabaseAdmin
       .from('vendas')
       .select(`
         *,
-        customers${search ? '!inner' : ''} ( full_name ),
+        customers ( full_name ),
         service_orders ( id, protocolo_fisico )
       `)
       .eq('store_id', storeId)
@@ -1634,13 +1633,53 @@ export async function getSalesList(storeId: number, options?: SalesFilterOptions
     if (search) {
       const isNumeric = /^\d+$/.test(search)
       
+      // 1. Buscar IDs de clientes que batem com a busca
+      const { data: customersData } = await supabaseAdmin
+        .from('customers')
+        .select('id')
+        .eq('store_id', storeId)
+        .ilike('full_name', `%${search}%`)
+      
+      const customerIds = customersData?.map((c: any) => c.id) || []
+
+      // 2. Buscar IDs de vendas baseados nas ordens de serviço (protocolo ou ID)
+      let osQuery = supabaseAdmin
+        .from('service_orders')
+        .select('venda_id')
+        .eq('store_id', storeId)
+      
       if (isNumeric) {
-        // Se for número, busca por ID da Venda, ID da OS, Protocolo Físico ou Nome do Cliente
-        query = query.or(`id.eq.${search},service_orders.id.eq.${search},service_orders.protocolo_fisico.ilike.%${search}%,customers.full_name.ilike.%${search}%`)
+        osQuery = osQuery.or(`id.eq.${search},protocolo_fisico.ilike.%${search}%`)
       } else {
-        // Se não for número, busca por Nome do Cliente ou Protocolo Físico
-        query = query.or(`customers.full_name.ilike.%${search}%,service_orders.protocolo_fisico.ilike.%${search}%`)
+        osQuery = osQuery.ilike('protocolo_fisico', `%${search}%`)
       }
+
+      const { data: osData } = await osQuery
+      const vendaIdsFromOS = osData?.map((os: any) => os.venda_id).filter((id: any) => id != null) || []
+
+      // 3. Montar a query principal usando os IDs encontrados
+      const conditions = []
+      
+      if (isNumeric) {
+        conditions.push(`id.eq.${search}`)
+      }
+      
+      if (customerIds.length > 0) {
+        conditions.push(`customer_id.in.(${customerIds.join(',')})`)
+      }
+      
+      if (vendaIdsFromOS.length > 0) {
+        // Usar um Set para remover duplicatas e evitar string muito grande se houver muitos
+        const uniqueVendaIds = Array.from(new Set(vendaIdsFromOS))
+        conditions.push(`id.in.(${uniqueVendaIds.join(',')})`)
+      }
+
+      // Se não encontrou nada na busca prévia e não é numérico, retorna array vazio
+      if (conditions.length === 0) {
+         return { success: true, data: [] }
+      }
+
+      query = query.or(conditions.join(','))
     }
 
     if (mode === 'pendencias') {

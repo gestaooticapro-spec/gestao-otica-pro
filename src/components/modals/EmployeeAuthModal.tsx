@@ -13,6 +13,7 @@ import {
 } from '@/lib/actions/vendas.actions'
 import { Database } from '@/lib/database.types'
 
+
 type AuthedEmployee = Pick<
   Database['public']['Tables']['employees']['Row'],
   'id' | 'full_name' | 'role'
@@ -44,6 +45,69 @@ function SubmitButton() {
   )
 }
 
+function EmployeeAuthForm({
+  storeId,
+  onClose,
+  onSuccess,
+  title,
+  description,
+}: Omit<EmployeeAuthModalProps, 'isOpen'>) {
+  const initialState: AuthEmployeeResult = { success: false, message: '' }
+  const [state, dispatch] = useFormState(autenticarFuncionarioPorPin, initialState)
+
+  const [pin, setPin] = useState('')
+  const handledSuccessRef = useRef(false)
+
+  useEffect(() => {
+    if (state.success && state.employee && !handledSuccessRef.current) {
+      handledSuccessRef.current = true
+      onSuccess(state.employee)
+      onClose()
+    }
+  }, [state, onSuccess, onClose])
+
+  const inputStyle = 'block w-full rounded-xl border border-white/10 bg-white/5 text-white h-11 text-center text-xl tracking-[0.2em] focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:outline-none font-bold transition-all placeholder:font-normal placeholder:text-slate-500 placeholder:tracking-normal backdrop-blur-md'
+  const labelStyle = 'block text-[10px] font-black text-slate-400 uppercase tracking-[0.1em] text-center mb-1.5'
+
+  return (
+    <div className="relative z-10">
+      <h2 className="text-xl md:text-2xl font-black text-white text-center mb-2 tracking-tight">
+        {title}
+      </h2>
+      <p className="text-sm text-slate-400 font-bold mb-6 text-center">{description}</p>
+
+      <form action={dispatch} className="space-y-6">
+        <input type="hidden" name="store_id" value={storeId} />
+
+        <div>
+          <label htmlFor="auth_pin" className={labelStyle}>
+            Senha (PIN)
+          </label>
+          <input
+            id="auth_pin"
+            name="pin"
+            type="password"
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            className={inputStyle}
+            required
+            autoFocus
+            maxLength={6}
+            autoComplete="off"
+            placeholder="******"
+          />
+        </div>
+
+        {state.message && !state.success && (
+          <p className="text-xs text-red-400 text-center font-black uppercase tracking-widest bg-red-500/10 border border-red-500/20 p-2.5 rounded-xl">{state.message}</p>
+        )}
+
+        <SubmitButton />
+      </form>
+    </div>
+  )
+}
+
 export default function EmployeeAuthModal({
   storeId,
   isOpen,
@@ -53,31 +117,7 @@ export default function EmployeeAuthModal({
   description = 'Insira seu PIN para confirmar o recebimento.',
 }: EmployeeAuthModalProps) {
 
-  const initialState: AuthEmployeeResult = { success: false, message: '' }
-  const [state, dispatch] = useFormState(autenticarFuncionarioPorPin, initialState)
-
-  const [pin, setPin] = useState('')
-  const handledSuccessRef = useRef(false)
-
-  useEffect(() => {
-    if (!isOpen) {
-      handledSuccessRef.current = false
-    }
-  }, [isOpen])
-
-  useEffect(() => {
-    if (state.success && state.employee && !handledSuccessRef.current) {
-      handledSuccessRef.current = true
-      onSuccess(state.employee)
-      onClose()
-      setPin('')
-    }
-  }, [state, onSuccess, onClose])
-
   if (!isOpen) return null
-
-  const inputStyle = 'block w-full rounded-xl border border-white/10 bg-white/5 text-white h-11 text-center text-xl tracking-[0.2em] focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:outline-none font-bold transition-all placeholder:font-normal placeholder:text-slate-500 placeholder:tracking-normal backdrop-blur-md'
-  const labelStyle = 'block text-[10px] font-black text-slate-400 uppercase tracking-[0.1em] text-center mb-1.5'
 
   return (
     <div
@@ -98,41 +138,13 @@ export default function EmployeeAuthModal({
           <X className="h-5 w-5" />
         </button>
 
-        <div className="relative z-10">
-          <h2 className="text-xl md:text-2xl font-black text-white text-center mb-2 tracking-tight">
-            {title}
-          </h2>
-          <p className="text-sm text-slate-400 font-bold mb-6 text-center">{description}</p>
-
-          <form action={dispatch} className="space-y-6">
-            <input type="hidden" name="store_id" value={storeId} />
-
-            <div>
-              <label htmlFor="auth_pin" className={labelStyle}>
-                Senha (PIN)
-              </label>
-              <input
-                id="auth_pin"
-                name="pin"
-                type="password"
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                className={inputStyle}
-                required
-                autoFocus
-                maxLength={6}
-                autoComplete="off"
-                placeholder="******"
-              />
-            </div>
-
-            {state.message && !state.success && (
-              <p className="text-xs text-red-400 text-center font-black uppercase tracking-widest bg-red-500/10 border border-red-500/20 p-2.5 rounded-xl">{state.message}</p>
-            )}
-
-            <SubmitButton />
-          </form>
-        </div>
+        <EmployeeAuthForm 
+          storeId={storeId}
+          onClose={onClose}
+          onSuccess={onSuccess}
+          title={title}
+          description={description}
+        />
       </div>
     </div>
   )

@@ -345,7 +345,7 @@ export async function getStockMovements(storeId: number, filters?: StockFilters)
     let query = (supabaseAdmin
         .from('stock_movements') as any)
         .select(`
-            id, created_at, tipo, quantidade, motivo,
+            id, created_at, tipo, quantidade, motivo, product_id, variant_id, related_venda_id, related_os_id,
             products ( nome, codigo_barras ),
             product_variants ( 
                 nome_variante, esferico, cilindrico, eixo, 
@@ -387,6 +387,162 @@ export async function getStockMovements(storeId: number, filters?: StockFilters)
     }
 
     return data || []
+}
+
+// ================================================================
+// EXCLUIR MOVIMENTAÇÃO
+// ================================================================
+export async function excluirMovimentacao(
+    movementId: number,
+    storeId: number
+): Promise<StockActionResult> {
+    const supabaseAdmin = createAdminClient()
+
+    const { data: mov, error: fetchErr } = await (supabaseAdmin
+        .from('stock_movements') as any)
+        .select('*')
+        .eq('id', movementId)
+        .eq('store_id', storeId)
+        .single()
+
+    if (fetchErr || !mov) {
+        return { success: false, message: 'Movimentação não encontrada.' }
+    }
+
+    const negativeTypes = ['Saida', 'Perda', 'Brinde', 'Reserva']
+    const multiplicador = negativeTypes.includes(mov.tipo) ? -1 : 1
+    const deltaOriginal = mov.quantidade * multiplicador
+    const reverseDelta = -deltaOriginal
+
+    if (mov.variant_id) {
+        const { data: variant } = await (supabaseAdmin
+            .from('product_variants') as any)
+            .select('estoque_atual')
+            .eq('id', mov.variant_id)
+            .single()
+
+        if (variant) {
+            await (supabaseAdmin.from('product_variants') as any)
+                .update({ estoque_atual: variant.estoque_atual + reverseDelta })
+                .eq('id', mov.variant_id)
+        }
+
+        await (supabaseAdmin as any).rpc('increment_stock', {
+            p_product_id: mov.product_id,
+            p_quantity: reverseDelta,
+            p_new_cost: null
+        })
+    } else {
+        const { data: produto } = await (supabaseAdmin
+            .from('products') as any)
+            .select('estoque_atual')
+            .eq('id', mov.product_id)
+            .single()
+
+        if (produto) {
+            await (supabaseAdmin.from('products') as any)
+                .update({ estoque_atual: produto.estoque_atual + reverseDelta })
+                .eq('id', mov.product_id)
+        }
+    }
+
+    const { error: deleteErr } = await (supabaseAdmin
+        .from('stock_movements') as any)
+        .delete()
+        .eq('id', movementId)
+
+    if (deleteErr) {
+        return { success: false, message: 'Erro ao excluir: ' + deleteErr.message }
+    }
+
+    revalidatePath(`/dashboard/loja/${storeId}/estoque/movimentacoes`)
+    revalidatePath(`/dashboard/loja/${storeId}/cadastros`)
+
+    return { success: true, message: 'Movimentação excluída com sucesso.' }
+}
+
+// ================================================================
+// EDITAR MOVIMENTAÇÃO
+// ================================================================
+export async function editarMovimentacao(
+    movementId: number,
+    storeId: number,
+    novaQuantidade: number,
+    novoTipo: string,
+    novoMotivo: string
+): Promise<StockActionResult> {
+    const supabaseAdmin = createAdminClient()
+
+    const { data: mov, error: fetchErr } = await (supabaseAdmin
+        .from('stock_movements') as any)
+        .select('*')
+        .eq('id', movementId)
+        .eq('store_id', storeId)
+        .single()
+
+    if (fetchErr || !mov) {
+        return { success: false, message: 'Movimentação não encontrada.' }
+    }
+
+    const negativeTypes = ['Saida', 'Perda', 'Brinde', 'Reserva']
+    const oldMult = negativeTypes.includes(mov.tipo) ? -1 : 1
+    const newMult = negativeTypes.includes(novoTipo) ? -1 : 1
+
+    const oldDelta = mov.quantidade * oldMult
+    const newDelta = novaQuantidade * newMult
+    const correction = newDelta - oldDelta
+
+    if (correction !== 0) {
+        if (mov.variant_id) {
+            const { data: variant } = await (supabaseAdmin
+                .from('product_variants') as any)
+                .select('estoque_atual')
+                .eq('id', mov.variant_id)
+                .single()
+
+            if (variant) {
+                await (supabaseAdmin.from('product_variants') as any)
+                    .update({ estoque_atual: variant.estoque_atual + correction })
+                    .eq('id', mov.variant_id)
+            }
+
+            await (supabaseAdmin as any).rpc('increment_stock', {
+                p_product_id: mov.product_id,
+                p_quantity: correction,
+                p_new_cost: null
+            })
+        } else {
+            const { data: produto } = await (supabaseAdmin
+                .from('products') as any)
+                .select('estoque_atual')
+                .eq('id', mov.product_id)
+                .single()
+
+            if (produto) {
+                await (supabaseAdmin.from('products') as any)
+                    .update({ estoque_atual: produto.estoque_atual + correction })
+                    .eq('id', mov.product_id)
+            }
+        }
+    }
+
+    const { error: updateErr } = await (supabaseAdmin
+        .from('stock_movements') as any)
+        .update({
+            quantidade: novaQuantidade,
+            tipo: novoTipo,
+            motivo: novoMotivo
+        })
+        .eq('id', movementId)
+
+    if (updateErr) {
+        return { success: false, message: 'Erro ao editar: ' + updateErr.message }
+    }
+
+    revalidatePath(`/dashboard/loja/${storeId}/estoque/movimentacoes`)
+    revalidatePath(`/dashboard/loja/${storeId}/cadastros`)
+
+    return { success: true, message: 'Movimentação atualizada com sucesso.' }
 }
 
 // ================================================================
