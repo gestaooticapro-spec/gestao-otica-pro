@@ -226,10 +226,10 @@ export default function StoreClientPage() {
         setComercialFone(maskPhone(currentCustomer?.comercial_fone ?? ''));
         setComercialRenda(formatRenda(currentCustomer?.comercial_renda?.toString() ?? ''));
         setObsComercial(currentCustomer?.obs_comercial ?? '');
-        setRefComercio1(currentCustomer?.ref_comercio_1 ?? '');
-        setRefComercio2(currentCustomer?.ref_comercio_2 ?? '');
-        setRefPessoal1(currentCustomer?.ref_pessoal_1 ?? '');
-        setRefPessoal2(currentCustomer?.ref_pessoal_2 ?? '');
+        setRefComercio1(safeStr(currentCustomer?.ref_comercio_1));
+        setRefComercio2(safeStr(currentCustomer?.ref_comercio_2));
+        setRefPessoal1(safeStr(currentCustomer?.ref_pessoal_1));
+        setRefPessoal2(safeStr(currentCustomer?.ref_pessoal_2));
         setFaixaEtaria(currentCustomer?.faixa_etaria ?? '');
         setObsGeral(currentCustomer?.notes ?? currentCustomer?.obs_debito ?? '');
     }, [currentCustomer, currentIndex]);
@@ -247,14 +247,47 @@ export default function StoreClientPage() {
     const handleSaveSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
-        formData.set('notes', obsGeral);
-        formData.set('obs_debito', obsGeral);
+
+        // Garantir que TODOS os campos do state sejam enviados,
+        // independente de qual aba está ativa (renderização condicional)
+        formData.set('full_name', fullName);
+        formData.set('rg', rg);
         formData.set('cpf', cpf.replace(/\D/g, ''));
         formData.set('phone', phone.replace(/\D/g, ''));
         formData.set('fone_movel', foneMovel.replace(/\D/g, ''));
+        formData.set('email', email);
+        formData.set('naturalidade', naturalidade);
+        formData.set('estado_civil', estadoCivil);
+        formData.set('rua', rua);
+        formData.set('numero', numero);
+        formData.set('bairro', bairro);
+        formData.set('complemento', complemento);
+        formData.set('cidade', cidade);
+        formData.set('uf', uf);
+        formData.set('cep', cep);
+        formData.set('faixa_etaria', faixaEtaria);
+        formData.set('notes', obsGeral);
+        formData.set('obs_debito', obsGeral);
+
+        // Aba Detalhes
+        formData.set('pai', pai);
+        formData.set('mae', mae);
+        formData.set('conjuge_nome', conjugeNome);
         formData.set('conjuge_fone', conjugeFone.replace(/\D/g, ''));
+        formData.set('conjuge_naturalidade', conjugeNaturalidade);
+        formData.set('conjuge_trabalho', conjugeTrabalho);
+        formData.set('comercial_trabalho', comercialTrabalho);
+        formData.set('comercial_cargo', comercialCargo);
+        formData.set('comercial_endereco', comercialEndereco);
         formData.set('comercial_fone', comercialFone.replace(/\D/g, ''));
         formData.set('comercial_renda', comercialRenda.replace(/\./g, '').replace(',', '.'));
+        formData.set('obs_comercial', obsComercial);
+
+        // Aba Referências
+        formData.set('ref_pessoal_1', refPessoal1);
+        formData.set('ref_pessoal_2', refPessoal2);
+        formData.set('ref_comercio_1', refComercio1);
+        formData.set('ref_comercio_2', refComercio2);
 
         if (birthDate) formData.set('birth_date', birthDate);
         if (conjugeNascimento) formData.set('conjuge_nascimento', conjugeNascimento);
