@@ -1,5 +1,6 @@
 // ARQUIVO: src/lib/label-generator.ts
 import jsPDF from 'jspdf'
+import QRCode from 'qrcode'
 
 // Label sheet templates (dimensions in mm)
 export type LabelTemplate = {
@@ -125,13 +126,32 @@ function drawBarcode(doc: jsPDF, code: string, x: number, y: number, width: numb
     }
 }
 
-function drawLabelContent(
+async function drawQRCode(doc: jsPDF, code: string, x: number, y: number, size: number) {
+    if (!code || code.trim() === '') return
+
+    try {
+        const qrDataUrl = await QRCode.toDataURL(code, {
+            margin: 0,
+            errorCorrectionLevel: 'M', // Médio, bom equilíbrio de tamanho e dados
+            color: {
+                dark: '#000000',
+                light: '#FFFFFF'
+            }
+        })
+        doc.addImage(qrDataUrl, 'PNG', x, y, size, size)
+    } catch (err) {
+        console.error('Error generating QR code:', err)
+    }
+}
+
+async function drawLabelContent(
     doc: jsPDF,
     item: LabelItem,
     x: number,
     y: number,
     width: number,
-    height: number
+    height: number,
+    codeType: 'barcode' | 'qrcode' = 'barcode'
 ) {
     const padding = 1
     const innerX = x + padding
@@ -162,9 +182,16 @@ function drawLabelContent(
 
     // Barcode (middle)
     if (item.barcode) {
-        const barcodeY = innerY + nameFontSize * 0.6 + refOffset + 1
-        const barcodeHeight = Math.min(innerH * 0.35, 8)
-        drawBarcode(doc, item.barcode, innerX + 1, barcodeY, innerW - 2, barcodeHeight)
+        if (codeType === 'qrcode') {
+            const qrSize = Math.min(innerW * 0.45, innerH * 0.45) // Define um quadrado
+            const qrX = innerX + (innerW - qrSize) / 2
+            const qrY = innerY + nameFontSize * 0.7 + refOffset + 0.5
+            await drawQRCode(doc, item.barcode, qrX, qrY, qrSize)
+        } else {
+            const barcodeY = innerY + nameFontSize * 0.6 + refOffset + 1
+            const barcodeHeight = Math.min(innerH * 0.35, 8)
+            drawBarcode(doc, item.barcode, innerX + 1, barcodeY, innerW - 2, barcodeHeight)
+        }
     }
 
     // Price (bottom)
@@ -175,11 +202,12 @@ function drawLabelContent(
     doc.text(priceText, innerX + innerW / 2, innerY + innerH - 1, { align: 'center' })
 }
 
-export function generateLabelsPDF(
+export async function generateLabelsPDF(
     items: LabelItem[],
     template: LabelTemplate,
-    startPosition: number = 1
-): Buffer {
+    startPosition: number = 1,
+    codeType: 'barcode' | 'qrcode' = 'barcode'
+): Promise<Buffer> {
     const doc = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
@@ -218,7 +246,7 @@ export function generateLabelsPDF(
         const y = template.marginTop + row * (template.labelHeight + template.gapVertical)
 
         // Draw label content
-        drawLabelContent(doc, allLabels[labelIdx], x, y, template.labelWidth, template.labelHeight)
+        await drawLabelContent(doc, allLabels[labelIdx], x, y, template.labelWidth, template.labelHeight, codeType)
 
         currentPosition++
     }

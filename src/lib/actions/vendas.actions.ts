@@ -2821,7 +2821,7 @@ export async function getItensCompradosPorCliente(storeId: number, customerId: n
 // 29. INTERNAL: ATUALIZAR RANKING DO CLIENTE (SILENCIOSO)
 // ================================================================
 
-async function atualizarRankingCliente(clienteId: string) {
+export async function atualizarRankingCliente(clienteId: string) {
   const supabase = createClient()
 
   // 1. Soma o valor total das vendas fechadas desse cliente

@@ -187,7 +187,7 @@ export async function suggestLabelsFromMovements(storeId: number): Promise<{
     const { data, error } = await (admin.from('stock_movements') as any)
         .select(`
             product_id, variant_id, quantidade, created_at,
-            products ( nome, codigo_barras )
+            products ( nome, codigo_barras, tipo_produto )
         `)
         .eq('store_id', storeId)
         .eq('tipo', 'Entrada')
@@ -196,10 +196,13 @@ export async function suggestLabelsFromMovements(storeId: number): Promise<{
 
     if (error || !data) return []
 
+    // Filter out lenses - they don't need physical labels
+    const filtered = (data as any[]).filter((mov: any) => mov.products?.tipo_produto !== 'Lente')
+
     // Group by product_id + variant_id
     const grouped = new Map<string, any>()
 
-    for (const mov of data) {
+    for (const mov of filtered) {
         const key = `${mov.product_id}-${mov.variant_id || 'null'}`
         if (grouped.has(key)) {
             grouped.get(key).quantity += mov.quantidade

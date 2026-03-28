@@ -327,13 +327,14 @@ export default function ServiceOrderFormContent({
                 const esf = parseDegreeValue(longeOdEsf)
                 const cil = parseDegreeValue(longeOdCil, 0)
                 if (esf !== null && cil !== null) {
-                    const matches = await checkLensStock(storeId, esf, cil, null, parseDegreeValue(adicao), 'OD', parseAxisValue(longeOdEixo))
+                    const pid = vendaItens.find(i => i.id.toString() === lenteOdItemId)?.product_id || null
+                    const matches = await checkLensStock(storeId, esf, cil, pid, parseDegreeValue(adicao), 'OD', parseAxisValue(longeOdEixo))
                     setOdMatches(matches)
                 }
             } else setOdMatches({ exact: [], similar: [] })
         }, 800)
         return () => clearTimeout(timer)
-    }, [longeOdEsf, longeOdCil, longeOdEixo, adicao, storeId])
+    }, [longeOdEsf, longeOdCil, longeOdEixo, adicao, storeId, lenteOdItemId, vendaItens])
 
     // Monitora OE para sobras e estoque
     useEffect(() => {
@@ -342,13 +343,14 @@ export default function ServiceOrderFormContent({
                 const esf = parseDegreeValue(longeOeEsf)
                 const cil = parseDegreeValue(longeOeCil, 0)
                 if (esf !== null && cil !== null) {
-                    const matches = await checkLensStock(storeId, esf, cil, null, parseDegreeValue(adicao), 'OE', parseAxisValue(longeOeEixo))
+                    const pid = vendaItens.find(i => i.id.toString() === lenteOeItemId)?.product_id || null
+                    const matches = await checkLensStock(storeId, esf, cil, pid, parseDegreeValue(adicao), 'OE', parseAxisValue(longeOeEixo))
                     setOeMatches(matches)
                 }
             } else setOeMatches({ exact: [], similar: [] })
         }, 800)
         return () => clearTimeout(timer)
-    }, [longeOeEsf, longeOeCil, longeOeEixo, adicao, storeId])
+    }, [longeOeEsf, longeOeCil, longeOeEixo, adicao, storeId, lenteOeItemId, vendaItens])
 
     const handleReserve = async (variantId: number, productId: number) => {
         if (!currentOrder?.id) {

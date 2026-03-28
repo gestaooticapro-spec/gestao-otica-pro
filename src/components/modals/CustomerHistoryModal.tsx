@@ -32,11 +32,26 @@ type Tab = 'financeiro' | 'receitas'
 const formatCurrency = (value: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
 
-const formatDate = (dateStr: string) =>
-    new Date(dateStr).toLocaleDateString('pt-BR')
+const formatDate = (dateStr: string) => {
+    if (!dateStr) return '-'
+    // Garente o parse local para strings YYYY-MM-DD (sem T de timestamp)
+    if (dateStr.includes('-') && !dateStr.includes('T')) {
+        const [year, month, day] = dateStr.split('-').map(Number)
+        return new Date(year, month - 1, day).toLocaleDateString('pt-BR')
+    }
+    // Para timestamps completos (created_at), o parse nativo é seguro
+    return new Date(dateStr).toLocaleDateString('pt-BR')
+}
 
 const formatMonthYear = (dateStr: string) => {
-    const date = new Date(dateStr)
+    if (!dateStr) return '-'
+    let date: Date
+    if (dateStr.includes('-') && !dateStr.includes('T')) {
+        const [year, month, day] = dateStr.split('-').map(Number)
+        date = new Date(year, month - 1, day)
+    } else {
+        date = new Date(dateStr)
+    }
     return date.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })
 }
 

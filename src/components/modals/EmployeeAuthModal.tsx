@@ -93,7 +93,9 @@ function EmployeeAuthForm({
             required
             autoFocus
             maxLength={6}
-            autoComplete="off"
+            autoComplete="one-time-code"
+            data-lpignore="true"
+            data-1p-ignore="true"
             placeholder="******"
           />
         </div>

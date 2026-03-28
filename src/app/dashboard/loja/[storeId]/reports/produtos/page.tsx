@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Loader2, Box, TrendingUp, AlertCircle, ShoppingBag } from 'lucide-react';
+import { ArrowLeft, Loader2, Box, TrendingUp, AlertCircle, ShoppingBag, PackageSearch } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { getProdutosMetrics } from '@/lib/actions/reports.actions';
+import ExpandableReportCard from './_components/ExpandableReportCard';
+import LensAuditCard from './_components/LensAuditCard';
 
 export default function ProdutosReportPage() {
     const router = useRouter();
@@ -72,16 +74,16 @@ export default function ProdutosReportPage() {
                         <p className="text-slate-400 font-medium">Extraindo dados do catálogo...</p>
                     </div>
                 ) : metrics ? (
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in duration-700">
+                    <div className="flex flex-col gap-4 animate-in fade-in duration-700 w-full">
 
                         {/* 1. Mais Vendidos */}
-                        <div className="bg-black/40 border border-white/10 rounded-3xl p-6 backdrop-blur-md flex flex-col h-[500px]">
-                            <div className="flex items-center gap-3 mb-6 pb-4 border-b border-white/5">
-                                <div className="p-2 bg-emerald-500/20 rounded-lg"><ShoppingBag className="w-5 h-5 text-emerald-400" /></div>
-                                <h3 className="text-slate-200 font-bold uppercase tracking-widest text-sm">Mais Vendidos (Top 10)</h3>
-                            </div>
-
-                            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4">
+                        <ExpandableReportCard 
+                            title="Mais Vendidos (Top 10)" 
+                            icon={<ShoppingBag className="w-5 h-5" />} 
+                            colorClass="bg-emerald-500"
+                            defaultExpanded
+                        >
+                            <div className="max-h-[400px] overflow-y-auto custom-scrollbar pr-2 space-y-4">
                                 {metrics.maisVendidos.length > 0 ? metrics.maisVendidos.map((prod: any, i: number) => (
                                     <div key={i} className="flex items-center justify-between p-3 rounded-2xl bg-white/5 hover:bg-white/10 transition-colors">
                                         <div className="flex items-center gap-4">
@@ -93,7 +95,7 @@ export default function ProdutosReportPage() {
                                                 <p className="text-xs text-slate-400">{prod.categoria}</p>
                                             </div>
                                         </div>
-                                        <div className="text-right">
+                                        <div className="text-right flex-shrink-0 ml-4">
                                             <p className="text-emerald-400 font-bold text-lg">{prod.qtd} un</p>
                                             <p className="text-xs text-emerald-400/60">{formatCurrency(prod.valor)}</p>
                                         </div>
@@ -102,16 +104,15 @@ export default function ProdutosReportPage() {
                                     <p className="text-slate-500 text-center py-10">Dados insuficientes de vendas.</p>
                                 )}
                             </div>
-                        </div>
+                        </ExpandableReportCard>
 
                         {/* 2. Maior Margem */}
-                        <div className="bg-black/40 border border-white/10 rounded-3xl p-6 backdrop-blur-md flex flex-col h-[500px]">
-                            <div className="flex items-center gap-3 mb-6 pb-4 border-b border-white/5">
-                                <div className="p-2 bg-blue-500/20 rounded-lg"><TrendingUp className="w-5 h-5 text-blue-400" /></div>
-                                <h3 className="text-slate-200 font-bold uppercase tracking-widest text-sm">Top Margem de Lucro</h3>
-                            </div>
-
-                            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4">
+                        <ExpandableReportCard 
+                            title="Top Margem de Lucro" 
+                            icon={<TrendingUp className="w-5 h-5" />} 
+                            colorClass="bg-blue-500"
+                        >
+                            <div className="max-h-[400px] overflow-y-auto custom-scrollbar pr-2 space-y-4">
                                 {metrics.maiorMargem.length > 0 ? metrics.maiorMargem.map((prod: any, i: number) => (
                                     <div key={i} className="flex items-center justify-between p-3 rounded-2xl bg-white/5 hover:bg-white/10 transition-colors">
                                         <div>
@@ -128,16 +129,15 @@ export default function ProdutosReportPage() {
                                     <p className="text-slate-500 text-center py-10">Nenhum produto com margem cadastrada.</p>
                                 )}
                             </div>
-                        </div>
+                        </ExpandableReportCard>
 
                         {/* 3. Estoque Baixo */}
-                        <div className="bg-gradient-to-b from-rose-950/40 to-black/40 border border-rose-500/20 rounded-3xl p-6 backdrop-blur-md flex flex-col h-[500px] shadow-[0_0_30px_rgba(225,29,72,0.05)]">
-                            <div className="flex items-center gap-3 mb-6 pb-4 border-b border-rose-500/20">
-                                <div className="p-2 bg-rose-500/20 rounded-lg"><AlertCircle className="w-5 h-5 text-rose-400" /></div>
-                                <h3 className="text-slate-200 font-bold uppercase tracking-widest text-sm">Atenção: Estoque Baixo</h3>
-                            </div>
-
-                            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4">
+                        <ExpandableReportCard 
+                            title="Atenção: Estoque Baixo" 
+                            icon={<AlertCircle className="w-5 h-5" />} 
+                            colorClass="bg-rose-500"
+                        >
+                            <div className="max-h-[400px] overflow-y-auto custom-scrollbar pr-2 space-y-4">
                                 {metrics.estoqueBaixo.length > 0 ? metrics.estoqueBaixo.map((prod: any, i: number) => {
                                     const isZerado = prod.estoque_atual <= 0;
                                     return (
@@ -154,14 +154,23 @@ export default function ProdutosReportPage() {
                                         </div>
                                     )
                                 }) : (
-                                    <div className="flex flex-col items-center justify-center h-full text-slate-500 text-center">
+                                    <div className="flex flex-col items-center justify-center p-10 text-slate-500 text-center">
                                         <Box className="w-12 h-12 mb-4 text-emerald-500/50" />
                                         <p>Estoque abastecido!</p>
                                         <p className="text-sm mt-1">Nenhum alerta crítico.</p>
                                     </div>
                                 )}
                             </div>
-                        </div>
+                        </ExpandableReportCard>
+
+                        {/* 4. Auditoria de Lentes (Matriz) */}
+                        <ExpandableReportCard 
+                            title="Auditoria: Matriz de Lentes (Perdas e Sobras)" 
+                            icon={<PackageSearch className="w-5 h-5" />} 
+                            colorClass="bg-fuchsia-500"
+                        >
+                            <LensAuditCard storeId={storeId} />
+                        </ExpandableReportCard>
 
                     </div>
                 ) : null}

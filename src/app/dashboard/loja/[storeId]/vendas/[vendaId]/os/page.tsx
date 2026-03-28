@@ -368,7 +368,7 @@ function ServiceOrderFormContent({
             }
 
             const savedOS = saveState.data as ServiceOrderWithLinks
-            let newList = [...existingOrders]
+            const newList = [...existingOrders]
             const idx = newList.findIndex(o => o.id === savedOS.id)
             if (idx > -1) newList[idx] = savedOS; else newList.push(savedOS)
             newList.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())

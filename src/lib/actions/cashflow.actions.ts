@@ -393,22 +393,39 @@ export async function getRelatorioFinanceiroMensal(storeId: number, mes: number,
     if (error) return { success: false, message: 'Erro' }
     const res = data.map((p: any) => ({
         id: p.id, valor_pago: p.valor_pago, forma_pagamento: p.forma_pagamento || 'Outros', created_at: p.created_at, obs: p.obs,
-        customer_name: p.vendas?.customers?.full_name || (p.obs?.includes('Cliente:') ? p.obs.split('Cliente:')[1].trim() : 'Consumidro')
+        customer_name: p.vendas?.customers?.full_name || (p.obs?.includes('Cliente:') ? p.obs.split('Cliente:')[1].trim() : 'Consumidor')
     })).sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
     return { success: true, data: res }
 }
 
 export async function getUltimoFechamento(storeId: number) {
     const sb = createAdminClient()
-    const { data } = await (sb.from('caixa_diario') as any)
-        .select('saldo_final, data_fechamento')
+    const { data: ultimoCaixa } = await (sb.from('caixa_diario') as any)
+        .select('id, data_abertura, data_fechamento, saldo_final, saldo_inicial, status')
         .eq('store_id', storeId)
-        .eq('status', 'Fechado')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
 
-    return data
+    if (!ultimoCaixa) return null
+
+    if (ultimoCaixa.status === 'Fechado') {
+        return {
+            saldo_final: ultimoCaixa.saldo_final,
+            data_fechamento: ultimoCaixa.data_fechamento || ultimoCaixa.data_abertura
+        }
+    } else {
+        // O último caixa ficou aberto e será fechado automaticamente no momento da abertura.
+        // Calculamos o saldo esperado desse caixa aberto para sugerir como fundo do novo caixa.
+        const dataKey = getStoreDateKey(ultimoCaixa.data_abertura)
+        const resumo = await getResumoCaixaPorData(storeId, dataKey)
+        const saldoEsperado = resumo?.totais.saldo_esperado_dinheiro ?? Number(ultimoCaixa.saldo_inicial || 0)
+
+        return {
+            saldo_final: saldoEsperado,
+            data_fechamento: ultimoCaixa.data_abertura
+        }
+    }
 }
 
 export async function getHistoricoCaixa(storeId: number) {
@@ -416,7 +433,7 @@ export async function getHistoricoCaixa(storeId: number) {
 
     // 1. Buscas os últimos 30 caixas fechados
     const { data } = await (sb.from('caixa_diario') as any)
-        .select('id, data_abertura, data_fechamento, saldo_inicial, saldo_final, quebra_caixa')
+        .select('id, data_abertura, data_fechamento, saldo_inicial, saldo_final, quebra_caixa, obs')
         .eq('store_id', storeId)
         .eq('status', 'Fechado')
         .order('created_at', { ascending: false })
@@ -427,7 +444,6 @@ export async function getHistoricoCaixa(storeId: number) {
 
     const caixaIds = caixas.map((c: any) => c.id)
     const dateKeys = caixas.map((c: any) => getStoreDateKey(c.data_abertura))
-
     // 2. Busca movimentos manuais (para calcular Saídas)
     const { data: movs } = await (sb.from('caixa_movimentacoes') as any)
         .select('caixa_id, tipo, valor')
@@ -472,7 +488,8 @@ export async function getHistoricoCaixa(storeId: number) {
             saidas: movimentoManual.saidas,
             saldo_esperado: saldoEsperado,
             saldo_final: saldoFinal ?? 0,
-            quebra
+            quebra,
+            obs: cx.obs
         }
     })
 
@@ -1081,4 +1098,35 @@ export async function getResumoCaixaPorData(storeId: number, dataISO: string): P
             saldo_geral_acumulado: saldoGeral
         }
     }
+}
+
+// 7. ABSORVER QUEBRA
+export async function absorverQuebraCaixa(caixaId: number) {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { success: false, message: 'Sessão expirada.' }
+
+    const supabaseAdmin = createAdminClient()
+    
+    // Buscar o caixa atual para anexar a observação
+    const { data: caixa } = await (supabaseAdmin.from('caixa_diario') as any)
+        .select('obs, store_id')
+        .eq('id', caixaId)
+        .maybeSingle()
+
+    if (!caixa) return { success: false, message: 'Caixa não encontrado.' }
+
+    const currentObs = caixa.obs || ''
+    if (currentObs.includes('[ABSORVIDO]')) {
+        return { success: true, message: 'Já absorvido.' }
+    }
+
+    const newObs = currentObs ? `${currentObs} [ABSORVIDO]` : '[ABSORVIDO]'
+
+    await (supabaseAdmin.from('caixa_diario') as any)
+        .update({ obs: newObs })
+        .eq('id', caixaId)
+
+    revalidatePath(`/dashboard/loja/${caixa.store_id}/financeiro/caixa`)
+    return { success: true, message: 'Divergência absorvida com sucesso.' }
 }

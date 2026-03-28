@@ -12,6 +12,7 @@ import { DegreeInput } from '@/components/ui/DegreeInput'
 import { createClient as createSupabaseBrowserClient } from '@/lib/supabase/client'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import { Database } from '@/lib/database.types'
+import LensDivergenceDrawer from './LensDivergenceDrawer'
 
 interface Props {
     storeId: number
@@ -68,6 +69,9 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
     const [variants, setVariants] = useState<any[]>([])
     const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null)
     const [isLoadingVariants, setIsLoadingVariants] = useState(false)
+
+    // Drawer State
+    const [isDrawerOpen, setIsDrawerOpen] = useState(false)
 
     // Initial search if term provided
     useEffect(() => {
@@ -267,6 +271,16 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
             {/* Scrollable Form Area */}
             <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
                 <div className="max-w-3xl mx-auto space-y-4">
+
+                    <div className="flex justify-end mb-2">
+                        <button 
+                            type="button"
+                            onClick={() => setIsDrawerOpen(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-slate-900 border border-white/10 rounded-xl text-xs font-bold text-sky-400 hover:bg-sky-500/10 hover:border-sky-500/30 transition-all shadow-sm"
+                        >
+                            <PackageOpen className="w-4 h-4" /> Auditar Gaveta de Lentes
+                        </button>
+                    </div>
 
                     {/* CARD 1: Busca de Produto */}
                     <div className={cardStyle}>
@@ -537,6 +551,12 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
                 onSuccess={handleAuthSuccess}
                 title="Autorizar Movimentacao"
                 description="Insira seu PIN para confirmar o lancamento no estoque."
+            />
+            
+            <LensDivergenceDrawer 
+                storeId={storeId}
+                isOpen={isDrawerOpen}
+                onClose={() => setIsDrawerOpen(false)}
             />
         </div>
     )

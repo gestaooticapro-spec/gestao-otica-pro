@@ -14,7 +14,7 @@ import {
 } from '@/lib/actions/cashflow.actions'
 import {
     Wallet, ArrowUpCircle, ArrowDownCircle, Lock, Unlock,
-    Save, Loader2, DollarSign, AlertTriangle, TrendingUp, TrendingDown, Package, Printer, Pencil, Trash2, HelpCircle, History, Calculator, CalendarDays, Eye, ArrowLeft
+    Save, Loader2, DollarSign, AlertTriangle, TrendingUp, TrendingDown, Package, Printer, Pencil, Trash2, HelpCircle, History, Calculator, CalendarDays, Eye, ArrowLeft, RefreshCcw
 } from 'lucide-react'
 import RelatorioDateModal from '@/components/modals/RelatorioDateModal'
 import HistoricoCaixaModal from './HistoricoCaixaModal'
@@ -287,14 +287,30 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                     </div>
                 </div>
 
-                <button
-                    onClick={() => setIsHistoricoModalOpen(true)}
-                    className="bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 px-3 py-1.5 rounded-lg flex items-center gap-2 text-xs font-bold shadow-sm transition-all backdrop-blur-sm"
-                    title="Ver histórico de fechamentos e quebras"
-                >
-                    <History className="h-4 w-4 text-emerald-400" />
-                    Histórico de Fechamentos
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => {
+                            startTransition(() => {
+                                router.refresh()
+                            })
+                        }}
+                        disabled={isPending}
+                        className="bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 px-3 py-1.5 rounded-lg flex items-center gap-2 text-xs font-bold shadow-sm transition-all backdrop-blur-sm group disabled:opacity-50"
+                        title="Atualizar dados do caixa"
+                    >
+                        <RefreshCcw className={`h-4 w-4 text-emerald-400 ${isPending ? 'animate-spin' : 'group-active:rotate-180 transition-transform'}`} />
+                        <span className="hidden sm:inline">{isPending ? 'Atualizando...' : 'Atualizar'}</span>
+                    </button>
+
+                    <button
+                        onClick={() => setIsHistoricoModalOpen(true)}
+                        className="bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 px-3 py-1.5 rounded-lg flex items-center gap-2 text-xs font-bold shadow-sm transition-all backdrop-blur-sm"
+                        title="Ver histórico de fechamentos e quebras"
+                    >
+                        <History className="h-4 w-4 text-emerald-400" />
+                        <span className="hidden sm:inline">Histórico de Fechamentos</span>
+                    </button>
+                </div>
             </div>
 
             {/* --- AUDIT INFO BANNER --- */}

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { XMLParser } from 'fast-xml-parser'
 import { revalidatePath } from 'next/cache'
+import { generateSmartBarcode } from '@/lib/actions/catalog.actions'
 
 // Tipos para o Preview
 export type XmlPreviewItem = {
@@ -286,11 +287,16 @@ export async function saveImportedData(data: XmlPreviewData, storeId: number) {
                 }
             } else {
                 // PRODUTO NOVO: Cria o registro
+                let finalBarcode = item.codigo_barras || null
+                if (!finalBarcode) {
+                    finalBarcode = await generateSmartBarcode(storeId, item.valor_unitario)
+                }
+
                 const { data: newProd, error: insertError } = await (supabaseAdmin.from('products') as any).insert({
                     tenant_id: (profile as any).tenant_id,
                     store_id: storeId,
                     nome: item.descricao,
-                    codigo_barras: item.codigo_barras || null,
+                    codigo_barras: finalBarcode,
                     referencia: item.codigo_fornecedor,
                     tipo_produto: tipoDetectado,
                     categoria: categoriaDetectada,

@@ -903,3 +903,38 @@ export async function getLowStockProducts(storeId: number, limit: number = 10) {
         codigo: p.codigo_barras
     }))
 }
+
+// ================================================================
+// 8. ACTION: LISTAR DIVERGÊNCIAS DA GAVETA (PERDAS + SOBRAS)
+// ================================================================
+export async function getDivergenciasGaveta(storeId: number) {
+    const supabaseAdmin = createAdminClient()
+
+    const { data: perdas } = await (supabaseAdmin
+        .from('stock_movements') as any)
+        .select(`
+            id, created_at, quantidade, motivo, product_id, variant_id, related_venda_id,
+            products(nome, marca),
+            product_variants(nome_variante, esferico, cilindrico, eixo, adicao, olho, diametro, is_sobra)
+        `)
+        .eq('store_id', storeId)
+        .eq('tipo', 'Perda')
+        .order('created_at', { ascending: false })
+        .limit(200)
+
+    const { data: sobras } = await (supabaseAdmin
+        .from('product_variants') as any)
+        .select(`
+            id, nome_variante, esferico, cilindrico, eixo, adicao, olho, diametro, estoque_atual, product_id,
+            products(nome, marca)
+        `)
+        .eq('store_id', storeId)
+        .eq('is_sobra', true)
+        .gt('estoque_atual', 0)
+        .order('esferico', { ascending: true })
+
+    return {
+        perdas: perdas || [],
+        sobras: sobras || []
+    }
+}

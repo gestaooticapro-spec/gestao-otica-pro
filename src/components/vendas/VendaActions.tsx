@@ -2,15 +2,16 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useFormStatus } from 'react-dom'
 import { updateVendaStatus } from '@/lib/actions/vendas.actions'
 import { Database } from '@/lib/database.types'
 import { Loader2, Check, X, Printer, RefreshCcw, CheckCircle2, Lock, Unlock, FileText } from 'lucide-react'
 import ReturnModal from '@/components/modals/ReturnModal'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
+import AbandonoModal from '@/components/modals/AbandonoModal'
 // import FiscalEmissionModal from '@/components/modals/FiscalEmissionModal'
 
 type Venda = Database['public']['Tables']['vendas']['Row']
+type VendaWithMeta = Venda & { data_fechamento?: string | null }
 type VendaItem = Database['public']['Tables']['venda_itens']['Row']
 type Employee = Database['public']['Tables']['employees']['Row']
 type Customer = Database['public']['Tables']['customers']['Row'] // Importando Customer
@@ -38,9 +39,11 @@ export default function VendaActions({
     isSavingNF,
     onToggleNF,
 }: VendaActionsProps) {
+    void customer
 
     const [isReturnModalOpen, setIsReturnModalOpen] = useState(false)
     const [isAuthOpen, setIsAuthOpen] = useState(false)
+    const [isAbandonoModalOpen, setIsAbandonoModalOpen] = useState(false)
     // const [isFiscalModalOpen, setIsFiscalModalOpen] = useState(false)
     const [authAction, setAuthAction] = useState<'Finalizar' | 'Reabrir' | null>(null)
 
@@ -48,7 +51,8 @@ export default function VendaActions({
 
     const today = new Date().toDateString()
     const isSameDayCreated = new Date(venda.created_at).toDateString() === today
-    const isSameDayClosed = (venda as any).data_fechamento ? new Date((venda as any).data_fechamento).toDateString() === today : false
+    const vendaWithMeta = venda as VendaWithMeta
+    const isSameDayClosed = vendaWithMeta.data_fechamento ? new Date(vendaWithMeta.data_fechamento).toDateString() === today : false
     const canReopen = isSameDayCreated || isSameDayClosed
 
     const hasRemaining = (venda.valor_restante ?? 0) > 0.01
@@ -144,6 +148,16 @@ export default function VendaActions({
                         className="flex items-center gap-2 px-4 h-9 text-sm rounded-lg border border-red-500/50 text-red-400 hover:bg-red-500/10 font-bold transition-colors uppercase tracking-wide"
                     >
                         <X className="h-4 w-4" /> Cancelar
+                    </button>
+
+                    <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => setIsAbandonoModalOpen(true)}
+                        className="flex items-center gap-2 px-4 h-9 text-sm rounded-lg border border-orange-500/50 text-orange-400 hover:bg-orange-500/10 font-bold transition-colors uppercase tracking-wide whitespace-nowrap"
+                        title="Marcar pedido como abandonado pelo cliente"
+                    >
+                        Abandonada
                     </button>
 
                     {isLocked ? (
@@ -248,6 +262,15 @@ export default function VendaActions({
                     storeId={venda.store_id}
                     title={authAction === 'Finalizar' ? "Confirmar Fechamento" : "Autorizar Reabertura"}
                     description="Insira seu PIN para confirmar a operação."
+                />
+            )}
+
+            {isAbandonoModalOpen && (
+                <AbandonoModal
+                    isOpen={isAbandonoModalOpen}
+                    onClose={() => setIsAbandonoModalOpen(false)}
+                    vendaId={venda.id}
+                    onSuccess={onStatusChange}
                 />
             )}
 

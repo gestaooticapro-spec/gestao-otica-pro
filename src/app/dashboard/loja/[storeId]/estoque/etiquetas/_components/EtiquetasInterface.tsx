@@ -31,6 +31,7 @@ export default function EtiquetasInterface({ storeId, initialQueue, suggestions 
     const queue = initialQueue
     const [templateCode, setTemplateCode] = useState(LABEL_TEMPLATES[0].code)
     const [startPosition, setStartPosition] = useState(1)
+    const [codeType, setCodeType] = useState<'barcode' | 'qrcode'>('qrcode')
     const [generating, setGenerating] = useState(false)
     const [showSuggestions, setShowSuggestions] = useState(true)
     const [showSettings, setShowSettings] = useState(false)
@@ -93,7 +94,7 @@ export default function EtiquetasInterface({ storeId, initialQueue, suggestions 
             const response = await fetch('/api/labels/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ items, templateCode, startPosition })
+                body: JSON.stringify({ items, templateCode, startPosition, codeType })
             })
 
             if (!response.ok) {
@@ -244,7 +245,7 @@ export default function EtiquetasInterface({ storeId, initialQueue, suggestions 
                     </button>
 
                     {showSettings && (
-                        <div className="mt-4 grid grid-cols-2 gap-4">
+                        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
                             {/* Template Selector */}
                             <div>
                                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">
@@ -261,6 +262,30 @@ export default function EtiquetasInterface({ storeId, initialQueue, suggestions 
                                 </select>
                                 <p className="text-[9px] text-slate-600 mt-1">
                                     {selectedTemplate.columns} colunas × {selectedTemplate.rows} linhas = {labelsPerPage} etiquetas/folha
+                                </p>
+                            </div>
+
+                            {/* Label Type */}
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">
+                                    Formato do Código
+                                </label>
+                                <div className="flex bg-slate-800/80 border border-white/10 rounded-lg p-1">
+                                    <button
+                                        onClick={() => setCodeType('barcode')}
+                                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${codeType === 'barcode' ? 'bg-teal-500/20 text-teal-300' : 'text-slate-500 hover:text-slate-300'}`}
+                                    >
+                                        Barras (1D)
+                                    </button>
+                                    <button
+                                        onClick={() => setCodeType('qrcode')}
+                                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${codeType === 'qrcode' ? 'bg-teal-500/20 text-teal-300' : 'text-slate-500 hover:text-slate-300'}`}
+                                    >
+                                        QR Code
+                                    </button>
+                                </div>
+                                <p className="text-[9px] text-slate-600 mt-1">
+                                    QR Code melhora encaixe em etiquetas pquenas.
                                 </p>
                             </div>
 

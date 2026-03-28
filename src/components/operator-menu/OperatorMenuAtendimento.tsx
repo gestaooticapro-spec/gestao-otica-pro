@@ -6,7 +6,7 @@ import {
     Search, Loader2, X, User, MessageCircle
 } from 'lucide-react';
 import { useModals } from '@/lib/contexts/ModalsContext';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { searchCustomersQuick, CustomerSearchResult } from '@/lib/actions/customer-history.actions';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
@@ -126,6 +126,27 @@ export default function OperatorMenuAtendimento({
     const { preference } = useBackgroundPreference();
     const [isSearchOpen, setIsSearchOpen] = useState(false);
 
+    const [tooltip, setTooltip] = useState<{ visible: boolean, x: number, y: number, text: string }>({ visible: false, x: 0, y: 0, text: '' });
+    const hoverTimeout = useRef<NodeJS.Timeout | null>(null);
+
+    const handleHover = (e: React.MouseEvent, text: string) => {
+        const x = e.clientX;
+        const y = e.clientY;
+        if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
+        hoverTimeout.current = setTimeout(() => {
+            setTooltip({ visible: true, x, y, text });
+        }, 1200);
+    };
+    const handleMove = (e: React.MouseEvent) => {
+        if (tooltip.visible) {
+            setTooltip(prev => ({ ...prev, x: e.clientX, y: e.clientY }));
+        }
+    };
+    const handleLeave = () => {
+        if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
+        setTooltip(prev => ({ ...prev, visible: false }));
+    };
+
     return (
         <div className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-950 transition-colors duration-500">
 
@@ -175,6 +196,9 @@ export default function OperatorMenuAtendimento({
                                 {/* Botão Dossiê */}
                                 <button
                                     onClick={() => setIsSearchOpen(true)}
+                                    onMouseEnter={(e) => handleHover(e, "Inicie um atendimento completo baseado no histórico do cliente. Veja compras anteriores, dados de visão (receita/DNP), preferências e ofereça uma consultoria super personalizada.")}
+                                    onMouseMove={handleMove}
+                                    onMouseLeave={handleLeave}
                                     className="group w-full bg-gradient-to-br from-indigo-600/20 via-indigo-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-3 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-indigo-500/20 hover:border-indigo-500/30"
                                 >
                                     <div className="p-2.5 rounded-full bg-indigo-500/20 ring-1 ring-indigo-400/30 group-hover:bg-indigo-500/40 transition-colors shadow-[0_0_15px_rgba(99,102,241,0.3)]">
@@ -201,6 +225,9 @@ export default function OperatorMenuAtendimento({
                                 {/* Receituário */}
                                 <button
                                     onClick={() => onNavigate(`/dashboard/loja/${storeId}/atendimento`)}
+                                    onMouseEnter={(e) => handleHover(e, "Fluxo tradicional para clientes que trouxeram prescrição do oftalmologista. Venda de armação, lentes oftálmicas, tratamentos e serviços laboratoriais.")}
+                                    onMouseMove={handleMove}
+                                    onMouseLeave={handleLeave}
                                     className="group w-full bg-gradient-to-br from-blue-600/20 via-blue-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-3 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-blue-500/20 hover:border-blue-500/30"
                                 >
                                     <div className="p-2.5 rounded-full bg-blue-500/20 ring-1 ring-blue-400/30 group-hover:bg-blue-500/40 transition-colors shadow-[0_0_15px_rgba(59,130,246,0.3)]">
@@ -219,6 +246,9 @@ export default function OperatorMenuAtendimento({
                                 {/* Venda Rápida */}
                                 <button
                                     onClick={() => onNavigate(`/dashboard/loja/${storeId}/pdv-express`)}
+                                    onMouseEnter={(e) => handleHover(e, "Venda expressa avulsa. Ideal para óculos de sol, caixa de lentes de contato, líquidos e acessórios diversos de prateleira.")}
+                                    onMouseMove={handleMove}
+                                    onMouseLeave={handleLeave}
                                     className="group w-full bg-gradient-to-br from-blue-600/20 via-blue-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-3 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-blue-500/20 hover:border-blue-500/30"
                                 >
                                     <div className="p-2.5 rounded-full bg-blue-500/20 ring-1 ring-blue-400/30 group-hover:bg-blue-500/40 transition-colors shadow-[0_0_15px_rgba(59,130,246,0.3)]">
@@ -256,6 +286,9 @@ export default function OperatorMenuAtendimento({
                             {/* Entrega Óculos */}
                             <button
                                 onClick={() => onNavigate(`/dashboard/loja/${storeId}/entrega`)}
+                                onMouseEnter={(e) => handleHover(e, "Use este botão quando o cliente vier buscar o óculos pronto.")}
+                                onMouseMove={handleMove}
+                                onMouseLeave={handleLeave}
                                 className="group w-full bg-gradient-to-br from-amber-600/20 via-orange-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-4 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-amber-500/20 hover:border-amber-500/30"
                             >
                                 <div className="p-2.5 rounded-full bg-amber-500/20 ring-1 ring-amber-400/30 group-hover:bg-amber-500/40 transition-colors shadow-[0_0_15px_rgba(245,158,11,0.3)]">
@@ -273,6 +306,9 @@ export default function OperatorMenuAtendimento({
                             {/* Baixa Parcelas */}
                             <button
                                 onClick={() => openParcelaModal()}
+                                onMouseEnter={(e) => handleHover(e, "Use este botão quando o cliente vier pagar uma parcela.")}
+                                onMouseMove={handleMove}
+                                onMouseLeave={handleLeave}
                                 className="group w-full bg-gradient-to-br from-amber-600/20 via-orange-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-4 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-amber-500/20 hover:border-amber-500/30"
                             >
                                 <div className="p-2.5 rounded-full bg-amber-500/20 ring-1 ring-amber-400/30 group-hover:bg-amber-500/40 transition-colors shadow-[0_0_15px_rgba(245,158,11,0.3)]">
@@ -290,6 +326,9 @@ export default function OperatorMenuAtendimento({
                             {/* Assistência */}
                             <button
                                 onClick={() => onNavigate(`/dashboard/loja/${storeId}/assistencia`)}
+                                onMouseEnter={(e) => handleHover(e, "Use este botão quando o cliente vier pedir uma assistência ou fazer um conserto.")}
+                                onMouseMove={handleMove}
+                                onMouseLeave={handleLeave}
                                 className="group w-full bg-gradient-to-br from-amber-600/20 via-orange-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-4 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-amber-500/20 hover:border-amber-500/30"
                             >
                                 <div className="p-2.5 rounded-full bg-amber-500/20 ring-1 ring-amber-400/30 group-hover:bg-amber-500/40 transition-colors shadow-[0_0_15px_rgba(245,158,11,0.3)]">
@@ -323,6 +362,9 @@ export default function OperatorMenuAtendimento({
                         {/* Clientes */}
                         <button
                             onClick={() => onNavigate(`/dashboard/loja/${storeId}/clientes`)}
+                            onMouseEnter={(e) => handleHover(e, "Criação de nova ficha de paciente, atualização direta de número de celular/endereço e consulta minuciosa à documentação de receitas.")}
+                            onMouseMove={handleMove}
+                            onMouseLeave={handleLeave}
                             className="group bg-white/5 hover:bg-slate-700/30 rounded-xl flex items-center gap-4 px-4 py-3 border border-white/5 hover:border-slate-500/30 transition-all duration-300 cursor-pointer"
                         >
                             <div className="p-2 rounded-lg bg-slate-500/20 text-slate-300 group-hover:bg-slate-500 group-hover:text-white transition-colors">
@@ -337,6 +379,9 @@ export default function OperatorMenuAtendimento({
                         {/* Busca Universal */}
                         <button
                             onClick={() => onNavigate(`/dashboard/loja/${storeId}/consultas`)}
+                            onMouseEnter={(e) => handleHover(e, "O olho de Thundera. Pesquisa central para localizar instantaneamente qualquer cliente por Nome, CPF, Telefone ou número de OS.")}
+                            onMouseMove={handleMove}
+                            onMouseLeave={handleLeave}
                             className="group bg-white/5 hover:bg-slate-700/30 rounded-xl flex items-center gap-4 px-4 py-3 border border-white/5 hover:border-slate-500/30 transition-all duration-300 cursor-pointer"
                         >
                             <div className="p-2 rounded-lg bg-slate-500/20 text-slate-300 group-hover:bg-slate-500 group-hover:text-white transition-colors">
@@ -351,6 +396,9 @@ export default function OperatorMenuAtendimento({
                         {/* Info Clientes (Link para Modal Antigo) */}
                         <button
                             onClick={() => openCustomerHistoryModal()}
+                            onMouseEnter={(e) => handleHover(e, "Envie ao cliente via WhatsApp o último grau registrado ou detalhes financeiros de parcelas em aberto.")}
+                            onMouseMove={handleMove}
+                            onMouseLeave={handleLeave}
                             className="group bg-white/5 hover:bg-slate-700/30 rounded-xl flex items-center gap-4 px-4 py-3 border border-white/5 hover:border-slate-500/30 transition-all duration-300 cursor-pointer"
                         >
                             <div className="p-2 rounded-lg bg-slate-500/20 text-slate-300 group-hover:bg-slate-500 group-hover:text-white transition-colors">
@@ -374,6 +422,15 @@ export default function OperatorMenuAtendimento({
                 <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
                 <span className="text-xs font-bold uppercase tracking-wider">Voltar</span>
             </button>
+            {/* Tooltip personalizado */}
+            {tooltip.visible && (
+                <div
+                    className="fixed z-[100] bg-slate-900 text-slate-200 text-xs leading-relaxed px-4 py-3 rounded-xl shadow-[0_0_30px_rgba(0,0,0,1)] border border-slate-700 pointer-events-none max-w-[280px] transition-opacity duration-150 backdrop-blur-md font-medium"
+                    style={{ left: tooltip.x + 15, top: tooltip.y + 15 }}
+                >
+                    {tooltip.text}
+                </div>
+            )}
         </div >
     );
 }

@@ -232,11 +232,20 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
         if (allProductIds.size > 0) {
             const { data: productsData } = await supabase
                 .from('products')
-                .select('id, nome')
+                .select('id, nome, marca')
                 .in('id', Array.from(allProductIds))
 
             if (productsData) {
-                (productsData as any[]).forEach((p: any) => { productMap[p.id] = p.nome })
+                (productsData as any[]).forEach((p: any) => { 
+                    const nomeStr = String(p.nome || '').trim()
+                    const marcaStr = String(p.marca || '').trim()
+                    
+                    if (marcaStr && !nomeStr.toLowerCase().startsWith(marcaStr.toLowerCase()) && !nomeStr.toLowerCase().includes(marcaStr.toLowerCase())) {
+                        productMap[p.id] = `${marcaStr} ${nomeStr}`
+                    } else {
+                        productMap[p.id] = nomeStr
+                    }
+                })
             }
             console.log('[X-Ray] Loaded', Object.keys(productMap).length, 'product names')
         }
@@ -250,10 +259,27 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
         let paraSi = 0
         let paraDependentes = 0
 
-        const vendasComSaldo = vendas.filter((venda: any) => Number(venda.valor_restante || 0) > 0)
-        const saldoPendente = vendasComSaldo.reduce((acc: number, venda: any) => acc + Number(venda.valor_restante || 0), 0)
-        const totalVendasComSaldo = vendasComSaldo.length
-        const isDevedor = saldoPendente > 0
+        const vendasComSaldoFechadas = vendas.filter((venda: any) => 
+            (venda.status === 'Fechada' || venda.status === 'Entregue') && 
+            Number(venda.valor_restante || 0) > 0
+        )
+        const saldoPendente = vendasComSaldoFechadas.reduce((acc: number, venda: any) => acc + Number(venda.valor_restante || 0), 0)
+        const totalVendasComSaldo = vendasComSaldoFechadas.length
+        
+        let isDevedor = false;
+        if (vendasComSaldoFechadas.length > 0) {
+            const vendasEmDividaIds = vendasComSaldoFechadas.map((v: any) => v.id);
+            const hoje = new Date().toISOString().split('T')[0];
+            const { count: qtdParcelasAtrasadas } = await (supabase
+                .from('financiamento_parcelas') as any)
+                .select('id', { count: 'exact', head: true })
+                .eq('store_id', storeId)
+                .in('venda_id', vendasEmDividaIds)
+                .eq('status', 'Pendente')
+                .lt('data_vencimento', hoje);
+            
+            isDevedor = (qtdParcelasAtrasadas || 0) > 0;
+        }
 
 
         // Process Sales

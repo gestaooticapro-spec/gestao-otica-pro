@@ -37,7 +37,7 @@ async function getContext() {
 }
 
 // --- HELPER: BARCODE INTELIGENTE ---
-async function generateSmartBarcode(storeId: number, costPrice: number | null | undefined) {
+export async function generateSmartBarcode(storeId: number, costPrice: number | null | undefined) {
   const supabaseAdmin = createAdminClient()
   const date = new Date()
 

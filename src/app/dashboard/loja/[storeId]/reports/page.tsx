@@ -43,7 +43,7 @@ export default function ReportsHubPage() {
         },
         {
             title: 'Caixa & Banco',
-            description: 'Entradas totais, PIX, Cartão (recebidos e a receber) e pagamentos.',
+            description: 'Entradas totais, PIX, Cartao, pagamentos e despesas lancadas no fluxo.',
             icon: CreditCard,
             route: `/dashboard/loja/${storeId}/reports/financeiro`,
             tone: 'from-blue-600/20 via-blue-900/30 to-slate-900/80 hover:border-blue-500/50 hover:shadow-blue-500/20',

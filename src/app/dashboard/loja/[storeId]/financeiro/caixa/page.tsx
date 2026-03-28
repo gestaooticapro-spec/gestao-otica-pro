@@ -1,3 +1,6 @@
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 import { getResumoCaixa, getUltimoFechamento } from '@/lib/actions/cashflow.actions'
 import CaixaInterface from '@/components/financeiro/CaixaInterface'
 import CaixaBackground from '@/components/financeiro/CaixaBackground'

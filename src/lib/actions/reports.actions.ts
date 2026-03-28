@@ -293,7 +293,28 @@ export async function getParcelamentoMetrics(storeId: number) {
   };
 }
 
-export async function getFinanceiroMetrics(storeId: number, monthStr: string, yearStr: string) {
+export interface FinanceiroExpenseItem {
+  id: number;
+  description: string;
+  category: string;
+  paymentMethod: string;
+  sourceLabel: string;
+  paymentDate: string | null;
+  amountPaid: number;
+}
+
+export interface FinanceiroMetrics {
+  recebidoTotal: number;
+  recebidoDinheiro: number;
+  recebidoPix: number;
+  recebidoCartao: number;
+  cartaoAReceber: number;
+  despesasTotal: number;
+  categoriasOrdenadas: Array<{ name: string; value: number }>;
+  despesasDetalhadas: FinanceiroExpenseItem[];
+}
+
+export async function getFinanceiroMetrics(storeId: number, monthStr: string, yearStr: string): Promise<FinanceiroMetrics> {
   const supabase = createAdminClient();
   const month = parseInt(monthStr) - 1;
   const year = parseInt(yearStr);
@@ -325,23 +346,39 @@ export async function getFinanceiroMetrics(storeId: number, monthStr: string, ye
     else if (forma.includes('cart') || forma.includes('credito') || forma.includes('debito')) recebidoCartao += r.valor_pago;
   });
 
-  // Despesas (Contas a Pagar pagas)
-  const { data: despesasRaw, error: err2 } = await (supabase.from('accounts_payable') as any)
-    .select('amount_paid, category')
+  // Saidas do fluxo de caixa
+  const { data: despesasRaw, error: err2 } = await (supabase.from('caixa_movimentacoes') as any)
+    .select('id, descricao, categoria, valor, forma_pagamento, created_at')
     .eq('store_id', storeId)
-    .eq('status', 'Pago')
-    .gte('payment_date', startDateStr)
-    .lte('payment_date', endDateStr);
+    .eq('tipo', 'Saida')
+    .gte('created_at', startDateStr)
+    .lte('created_at', endDateStr)
+    .order('created_at', { ascending: false });
 
   let despesasTotal = 0;
   const despesasPorCategoria: Record<string, number> = {};
+  const despesasDetalhadas: FinanceiroExpenseItem[] = [];
 
   const despesas = (despesasRaw || []) as any[];
   despesas.forEach((d: any) => {
-    const valor = d.amount_paid || 0;
+    const valor = Number(d.valor || 0);
     despesasTotal += valor;
-    const cat = d.category || 'Sem Categoria';
+    const cat = d.categoria || 'Sem Categoria';
     despesasPorCategoria[cat] = (despesasPorCategoria[cat] || 0) + valor;
+    const description = d.descricao || 'Sem descricao';
+    const sourceLabel = description.startsWith('Pagto Conta:')
+      ? 'Conta paga no caixa'
+      : 'Lancamento manual';
+
+    despesasDetalhadas.push({
+      id: Number(d.id),
+      description,
+      category: cat,
+      paymentMethod: d.forma_pagamento || 'Dinheiro',
+      sourceLabel,
+      paymentDate: d.created_at || null,
+      amountPaid: valor,
+    });
   });
 
   // Valores a Receber (Cartão / Contas a Receber)
@@ -371,7 +408,8 @@ export async function getFinanceiroMetrics(storeId: number, monthStr: string, ye
     recebidoCartao,
     cartaoAReceber,
     despesasTotal,
-    categoriasOrdenadas
+    categoriasOrdenadas,
+    despesasDetalhadas
   };
 }
 

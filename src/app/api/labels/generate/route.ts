@@ -7,10 +7,11 @@ import { generateLabelsPDF, LABEL_TEMPLATES, LabelItem } from '@/lib/label-gener
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json()
-        const { items, templateCode, startPosition } = body as {
+        const { items, templateCode, startPosition, codeType } = body as {
             items: LabelItem[]
             templateCode: string
             startPosition: number
+            codeType?: 'barcode' | 'qrcode'
         }
 
         if (!items || items.length === 0) {
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Template não encontrado.' }, { status: 400 })
         }
 
-        const pdfBuffer = generateLabelsPDF(items, template, startPosition || 1)
+        const pdfBuffer = await generateLabelsPDF(items, template, startPosition || 1, codeType || 'barcode')
         const uint8Array = new Uint8Array(pdfBuffer)
 
         return new NextResponse(uint8Array, {
