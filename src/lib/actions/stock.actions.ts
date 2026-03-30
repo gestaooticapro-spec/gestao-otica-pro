@@ -616,6 +616,119 @@ export type LensStockMatch = {
     is_sobra: boolean
     preco_venda: number
     match_type: 'gold' | 'silver' | 'bronze'
+    same_product: boolean
+    target_product_has_grid: boolean
+}
+
+export type LensStockSearchResult = {
+    exact: LensStockMatch[]
+    similar: LensStockMatch[]
+    autoReserveCandidate: LensStockMatch | null
+    targetProductHasGrid: boolean
+}
+
+export type LensReservationSlot = 'OD' | 'OE'
+
+const buildReservationSlotTag = (slot: LensReservationSlot) => `[OS_SLOT:${slot}]`
+
+const hasReservationSlotTag = (reason: string | null | undefined, slot: LensReservationSlot) => {
+    if (!reason) return false
+    return reason.includes(buildReservationSlotTag(slot))
+}
+
+const buildReservationReason = (
+    slot: LensReservationSlot,
+    source: 'automatic' | 'manual'
+) => {
+    const prefix = source === 'automatic'
+        ? 'Reserva automatica de lente exata'
+        : 'Reserva manual de lente sugerida'
+
+    return `${prefix} ${buildReservationSlotTag(slot)}`
+}
+
+async function restoreReservationMovement(
+    supabaseAdmin: ReturnType<typeof createAdminClient>,
+    reservation: any,
+    reason: string
+) {
+    if (!reservation?.id) return
+
+    if (reservation.variant_id) {
+        const { data: variant } = await (supabaseAdmin.from('product_variants') as any)
+            .select('estoque_atual')
+            .eq('id', reservation.variant_id)
+            .single()
+
+        if (!variant) throw new Error('Variante da reserva nao encontrada para estorno.')
+
+        await (supabaseAdmin.from('product_variants') as any)
+            .update({ estoque_atual: (variant.estoque_atual || 0) + reservation.quantidade })
+            .eq('id', reservation.variant_id)
+
+        await (supabaseAdmin as any).rpc('increment_stock', {
+            p_product_id: reservation.product_id,
+            p_quantity: reservation.quantidade,
+            p_new_cost: null
+        })
+    } else {
+        const { data: product } = await (supabaseAdmin.from('products') as any)
+            .select('estoque_atual')
+            .eq('id', reservation.product_id)
+            .single()
+
+        if (!product) throw new Error('Produto da reserva nao encontrado para estorno.')
+
+        await (supabaseAdmin.from('products') as any)
+            .update({ estoque_atual: (product.estoque_atual || 0) + reservation.quantidade })
+            .eq('id', reservation.product_id)
+    }
+
+    await (supabaseAdmin.from('stock_movements') as any).insert({
+        tenant_id: reservation.tenant_id,
+        store_id: reservation.store_id,
+        product_id: reservation.product_id,
+        variant_id: reservation.variant_id,
+        tipo: 'Entrada',
+        quantidade: reservation.quantidade,
+        motivo: reason,
+        custo_unitario_momento: reservation.custo_unitario_momento,
+        registrado_por_id: reservation.registrado_por_id,
+        employee_id: reservation.employee_id,
+        related_os_id: reservation.related_os_id,
+        related_venda_id: reservation.related_venda_id,
+        created_at: new Date().toISOString()
+    })
+
+    await (supabaseAdmin.from('stock_movements') as any)
+        .update({ tipo: 'Devolucao' })
+        .eq('id', reservation.id)
+}
+
+export async function hasLensReservationForOsSlot(
+    osId: number,
+    slot: LensReservationSlot
+): Promise<boolean> {
+    const supabaseAdmin = createAdminClient()
+    const { data } = await (supabaseAdmin.from('stock_movements') as any)
+        .select('id, motivo, tipo')
+        .eq('related_os_id', osId)
+        .in('tipo', ['Reserva', 'Saida'])
+
+    return (data || []).some((movement: any) => hasReservationSlotTag(movement.motivo, slot))
+}
+
+export async function getLensReservationForOsSlot(
+    osId: number,
+    slot: LensReservationSlot
+): Promise<any | null> {
+    const supabaseAdmin = createAdminClient()
+    const { data } = await (supabaseAdmin.from('stock_movements') as any)
+        .select('*')
+        .eq('related_os_id', osId)
+        .in('tipo', ['Reserva', 'Saida'])
+
+    return (data || []).find((movement: any) => hasReservationSlotTag(movement.motivo, slot)) || null
 }
 
 export async function checkLensStock(
@@ -626,8 +739,16 @@ export async function checkLensStock(
     adicao: number | null,
     targetEye: 'OD' | 'OE',
     targetAxis: number | null
-): Promise<{ exact: LensStockMatch[], similar: LensStockMatch[] }> {
+): Promise<LensStockSearchResult> {
     const supabase = createAdminClient()
+    const { data: targetProduct } = targetProductId
+        ? await (supabase.from('products') as any)
+            .select('id, tem_grade')
+            .eq('id', targetProductId)
+            .eq('store_id', storeId)
+            .maybeSingle()
+        : { data: null }
+    const targetProductHasGrid = !!targetProduct?.tem_grade
 
     // Busca variantes com grau exato ou próximo (+/- 0.25)
     const range = 0.25
@@ -641,7 +762,7 @@ export async function checkLensStock(
     let query = (supabase.from('product_variants') as any)
         .select(`
             id, product_id, nome_variante, esferico, cilindrico, eixo, adicao, olho, estoque_atual, is_sobra,
-            products ( nome, preco_venda )
+            products ( nome, preco_venda, tem_grade )
         `)
         .eq('store_id', storeId)
         .gt('estoque_atual', 0)
@@ -670,11 +791,17 @@ export async function checkLensStock(
 
     if (error) {
         console.error('Erro ao buscar lentes:', error)
-        return { exact: [], similar: [] }
+        return {
+            exact: [],
+            similar: [],
+            autoReserveCandidate: null,
+            targetProductHasGrid
+        }
     }
 
     const exact: LensStockMatch[] = []
     const similar: LensStockMatch[] = []
+    let autoReserveCandidate: LensStockMatch | null = null
 
     data.forEach((item: any) => {
         let type: 'gold' | 'silver' | 'bronze' = 'bronze'
@@ -685,6 +812,7 @@ export async function checkLensStock(
                 : item.adicao
         const itemAxis = normalizeAxisValue(item.eixo)
         const itemEye = normalizeLensEye(item.olho)
+        const sameProduct = !!targetProductId && item.product_id === targetProductId
         const isEyeCompatible =
             itemEye === null ||
             itemEye === 'AMBOS' ||
@@ -693,8 +821,9 @@ export async function checkLensStock(
         if (!isEyeCompatible) return
 
         const isAxisCompatible =
-            itemAxis === null ||
-            (targetAxis !== null && itemAxis === targetAxis)
+            !!item.is_sobra
+                ? itemAxis === null || (targetAxis !== null && itemAxis === targetAxis)
+                : true
 
         if (!isAxisCompatible) return
 
@@ -703,14 +832,24 @@ export async function checkLensStock(
             normalizedAdicao === null
                 ? true
                 : itemAdicao !== null && Math.abs(itemAdicao - normalizedAdicao) <= adicaoRange
-        const isProductExact = targetProductId ? item.product_id === targetProductId : false
+        const isProductExact = sameProduct
+        const isGridExactMatch =
+            targetProductHasGrid &&
+            isProductExact &&
+            !item.is_sobra &&
+            isDegreeExact &&
+            isAdicaoExact
 
-        if (isDegreeExact && isAdicaoExact) {
-            if (isProductExact) {
+        if (targetProductHasGrid) {
+            if (isGridExactMatch) {
                 type = 'gold'
-            } else {
+            } else if (sameProduct || item.is_sobra || (isDegreeExact && isAdicaoExact)) {
                 type = 'silver'
+            } else {
+                type = 'bronze'
             }
+        } else if (isDegreeExact && isAdicaoExact) {
+            type = isProductExact ? 'gold' : 'silver'
         } else {
             type = 'bronze'
         }
@@ -728,10 +867,19 @@ export async function checkLensStock(
             estoque: item.estoque_atual,
             is_sobra: !!item.is_sobra,
             preco_venda: item.products?.preco_venda || 0,
-            match_type: type
+            match_type: type,
+            same_product: sameProduct,
+            target_product_has_grid: targetProductHasGrid
         }
 
-        if (type === 'gold' || type === 'silver') {
+        if (targetProductHasGrid) {
+            if (isGridExactMatch) {
+                exact.push(match)
+                if (!autoReserveCandidate) autoReserveCandidate = match
+            } else {
+                similar.push(match)
+            }
+        } else if (type === 'gold' || type === 'silver') {
             exact.push(match)
         } else {
             similar.push(match)
@@ -741,14 +889,22 @@ export async function checkLensStock(
     // Ordenar exatos: Gold primeiro
     const rankMatch = (item: LensStockMatch) => {
         const typeScore = item.match_type === 'gold' ? 2 : item.match_type === 'silver' ? 1 : 0
-        const axisScore = targetAxis !== null && item.eixo === targetAxis ? 1 : 0
-        return (typeScore * 10) + axisScore
+        const sameProductScore = item.same_product ? 3 : 0
+        const exactDegreeScore = (item.esferico === esferico ? 1 : 0) + (item.cilindrico === normalizedCilindrico ? 1 : 0)
+        const axisScore = item.is_sobra && targetAxis !== null && item.eixo === targetAxis ? 1 : 0
+        const sobraScore = item.is_sobra ? 1 : 0
+        return (sameProductScore * 100) + (typeScore * 10) + (exactDegreeScore * 2) + axisScore + sobraScore
     }
 
     exact.sort((a, b) => rankMatch(b) - rankMatch(a))
     similar.sort((a, b) => rankMatch(b) - rankMatch(a))
 
-    return { exact, similar }
+    return {
+        exact,
+        similar,
+        autoReserveCandidate: autoReserveCandidate || exact[0] || null,
+        targetProductHasGrid
+    }
 }
 
 // ================================================================
@@ -759,12 +915,64 @@ export async function reserveLens(
     variantId: number,
     productId: number,
     osId: number,
-    employeeId: number
+    employeeId: number,
+    options?: {
+        slot?: LensReservationSlot
+        source?: 'automatic' | 'manual'
+    }
 ): Promise<{ success: boolean, message: string }> {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) return { success: false, message: 'Usuário não autenticado.' }
+
+    const supabaseAdmin = createAdminClient()
+    const slot = options?.slot
+
+    if (slot) {
+        const { data: committedMovements } = await (supabaseAdmin.from('stock_movements') as any)
+            .select('id, motivo, tipo')
+            .eq('related_os_id', osId)
+            .eq('tipo', 'Saida')
+
+        const hasCommittedForSlot = (committedMovements || []).some((movement: any) =>
+            hasReservationSlotTag(movement.motivo, slot)
+        )
+
+        if (hasCommittedForSlot) {
+            return { success: false, message: `A lente do olho ${slot} ja foi baixada na venda e nao pode ser trocada por aqui.` }
+        }
+
+        const { data: activeReservations } = await (supabaseAdmin.from('stock_movements') as any)
+            .select('*')
+            .eq('related_os_id', osId)
+            .eq('tipo', 'Reserva')
+
+        const slotReservations = (activeReservations || []).filter((movement: any) =>
+            hasReservationSlotTag(movement.motivo, slot)
+        )
+
+        const alreadyReserved = slotReservations.find((movement: any) =>
+            movement.variant_id === variantId && movement.product_id === productId
+        )
+
+        if (alreadyReserved) {
+            return {
+                success: true,
+                message: options?.source === 'automatic'
+                    ? `A lente exata do olho ${slot} ja estava reservada.`
+                    : `Esta lente ja estava reservada para o olho ${slot}.`
+            }
+        }
+
+        for (const reservation of slotReservations) {
+            await restoreReservationMovement(
+                supabaseAdmin,
+                reservation,
+                `Troca de lente reservada ${buildReservationSlotTag(slot)}`
+            )
+        }
+    }
 
     const formData = new FormData()
     formData.append('store_id', storeId.toString())
@@ -772,6 +980,14 @@ export async function reserveLens(
     formData.append('product_id', productId.toString())
     formData.append('variant_id', variantId.toString())
     formData.append('related_os_id', osId.toString())
+    formData.append('tipo', 'Reserva')
+    formData.append('quantidade', '1')
+    formData.append(
+        'motivo',
+        slot
+            ? buildReservationReason(slot, options?.source || 'manual')
+            : 'Reserva manual de lente'
+    )
 
     // Reutilizamos a função principal que já trata estoque e log
     return await registrarMovimentacao({ success: false, message: '' }, formData)
@@ -820,6 +1036,15 @@ export async function cancelReservations(vendaId: number) {
         .eq('tipo', 'Reserva')
 
     if (!reservas || reservas.length === 0) return
+
+    for (const res of reservas) {
+        await restoreReservationMovement(
+            supabase,
+            res,
+            `Estorno de Reserva (Venda #${vendaId} Cancelada/Aberta)`
+        )
+    }
+    return
 
     // 3. Para cada reserva, cria uma entrada de estorno
     for (const res of reservas) {

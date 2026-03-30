@@ -12,7 +12,14 @@ import {
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
 
 import { getOSPageData, getVendaPageData, saveServiceOrder, deleteServiceOrder, type OSPageData, type SaveSOResult, type PrescriptionHistoryItem } from '@/lib/actions/vendas.actions'
-import { reserveLens, checkLensStock, type LensStockMatch } from '@/lib/actions/stock.actions'
+import {
+    reserveLens,
+    checkLensStock,
+    getLensReservationForOsSlot,
+    type LensStockMatch,
+    type LensStockSearchResult,
+    type LensReservationSlot
+} from '@/lib/actions/stock.actions'
 import { Database } from '@/lib/database.types'
 import AddDependenteModal from '@/components/modals/AddDependenteModal'
 import AddOftalmoModal from '@/components/modals/AddOftalmoModal'
@@ -56,6 +63,19 @@ const formatLensEye = (eye: LensEye | null | undefined) => {
     return 'Ambos'
 }
 
+type PendingLensSelection = {
+    slot: LensReservationSlot
+    variantId: number
+    productId: number
+    productName: string
+    variantName: string
+}
+
+const emptyPendingReservations = (): Record<LensReservationSlot, PendingLensSelection | null> => ({
+    OD: null,
+    OE: null
+})
+
 // --- ESTILOS DO DESIGN SYSTEM (Refatorado para Dark Glassmorphism) ---
 const cardBase = "rounded-xl shadow-xl border backdrop-blur-md p-3 flex flex-col relative overflow-hidden transition-all"
 const cardBlue = `${cardBase} bg-cyan-950/20 border-cyan-500/10 hover:bg-cyan-900/20`
@@ -85,7 +105,7 @@ const StockBadge = ({
     label,
     onOpen
 }: {
-    matches: { exact: LensStockMatch[], similar: LensStockMatch[] },
+    matches: LensStockSearchResult,
     label: string,
     onOpen: () => void
 }) => {
@@ -123,9 +143,9 @@ function StockReservationModal({
 }: {
     isOpen: boolean
     onClose: () => void
-    matches: { exact: LensStockMatch[], similar: LensStockMatch[] }
-    label: string
-    onReserve: (variantId: number, productId: number) => void
+    matches: LensStockSearchResult
+    label: LensReservationSlot
+    onReserve: (match: LensStockMatch, slot: LensReservationSlot) => void
 }) {
     if (!isOpen) return null
 
@@ -159,10 +179,10 @@ function StockReservationModal({
                                             </p>
                                         </div>
                                         <button
-                                            onClick={() => onReserve(m.variant_id, m.product_id)}
+                                            onClick={() => onReserve(m, label)}
                                             className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-sm transition-colors border border-emerald-500/30"
                                         >
-                                            RESERVAR
+                                            SELECIONAR
                                         </button>
                                     </div>
                                 ))}
@@ -189,10 +209,10 @@ function StockReservationModal({
                                             </p>
                                         </div>
                                         <button
-                                            onClick={() => onReserve(m.variant_id, m.product_id)}
+                                            onClick={() => onReserve(m, label)}
                                             className="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-sm transition-colors border border-amber-500/30"
                                         >
-                                            RESERVAR
+                                            SELECIONAR
                                         </button>
                                     </div>
                                 ))}
@@ -202,7 +222,7 @@ function StockReservationModal({
                 </div>
 
                 <div className="bg-white/5 px-4 py-2 text-center text-[10px] text-slate-500 border-t border-white/5">
-                    A reserva bloqueia o item no estoque imediatamente.
+                    A escolha so sera aplicada ao salvar a OS.
                 </div>
             </div>
         </div>
@@ -287,9 +307,11 @@ function ServiceOrderFormContent({
     const [dtPrometido, setDtPrometido] = useState(''); const [obsOs, setObsOs] = useState('')
 
     // Smart Stock Check
-    const [odMatches, setOdMatches] = useState<{ exact: LensStockMatch[], similar: LensStockMatch[] }>({ exact: [], similar: [] })
-    const [oeMatches, setOeMatches] = useState<{ exact: LensStockMatch[], similar: LensStockMatch[] }>({ exact: [], similar: [] })
+    const emptyStockSearchResult: LensStockSearchResult = { exact: [], similar: [], autoReserveCandidate: null, targetProductHasGrid: false }
+    const [odMatches, setOdMatches] = useState<LensStockSearchResult>(emptyStockSearchResult)
+    const [oeMatches, setOeMatches] = useState<LensStockSearchResult>(emptyStockSearchResult)
     const [stockModalOpen, setStockModalOpen] = useState<'OD' | 'OE' | null>(null)
+    const [pendingReservationBySlot, setPendingReservationBySlot] = useState<Record<LensReservationSlot, PendingLensSelection | null>>(emptyPendingReservations)
 
     // Monitora OD para sobras e estoque
     useEffect(() => {
@@ -309,8 +331,10 @@ function ServiceOrderFormContent({
                 if (esf !== null && cil !== null) {
                     const matches = await checkLensStock(storeId, esf, cil, pid, add, 'OD', axis)
                     setOdMatches(matches)
+                } else {
+                    setOdMatches(emptyStockSearchResult)
                 }
-            } else setOdMatches({ exact: [], similar: [] })
+            } else setOdMatches(emptyStockSearchResult)
         }, 500)
         return () => clearTimeout(timer)
     }, [longeOdEsf, longeOdCil, longeOdEixo, adicao, lenteOdItemId, storeId, vendaItens])
@@ -333,8 +357,10 @@ function ServiceOrderFormContent({
                 if (esf !== null && cil !== null) {
                     const matches = await checkLensStock(storeId, esf, cil, pid, add, 'OE', axis)
                     setOeMatches(matches)
+                } else {
+                    setOeMatches(emptyStockSearchResult)
                 }
-            } else setOeMatches({ exact: [], similar: [] })
+            } else setOeMatches(emptyStockSearchResult)
         }, 500)
         return () => clearTimeout(timer)
     }, [longeOeEsf, longeOeCil, longeOeEixo, adicao, lenteOeItemId, storeId, vendaItens])
@@ -360,6 +386,65 @@ function ServiceOrderFormContent({
     // CORREÇÃO: activeId garante que usamos o ID recém-salvo mesmo se o currentIndex ainda não atualizou
     const activeId = currentOrder?.id || (saveState?.success && saveState?.data?.id ? saveState.data.id : undefined)
 
+    const syncReservationsAfterSave = useCallback(async (osId: number) => {
+        const employeeId = venda.employee_id || employees[0]?.id
+        if (!employeeId) return
+
+        const nextPendingSelections = { ...pendingReservationBySlot }
+        const reserveIfNeeded = async (slot: LensReservationSlot, matches: LensStockSearchResult) => {
+            const currentReservation = await getLensReservationForOsSlot(osId, slot)
+            if (currentReservation?.tipo === 'Saida') return
+
+            const pendingSelection = pendingReservationBySlot[slot]
+            if (pendingSelection) {
+                const manualResult = await reserveLens(
+                    storeId,
+                    pendingSelection.variantId,
+                    pendingSelection.productId,
+                    osId,
+                    employeeId,
+                    { slot, source: 'manual' }
+                )
+
+                if (!manualResult.success) {
+                    alert(manualResult.message)
+                    return
+                }
+
+                nextPendingSelections[slot] = null
+                return
+            }
+
+            if (!matches.targetProductHasGrid || !matches.autoReserveCandidate) return
+            if (
+                currentReservation?.tipo === 'Reserva' &&
+                typeof currentReservation.motivo === 'string' &&
+                currentReservation.motivo.includes('Reserva manual')
+            ) {
+                return
+            }
+            if (
+                currentReservation?.variant_id === matches.autoReserveCandidate.variant_id &&
+                currentReservation?.product_id === matches.autoReserveCandidate.product_id
+            ) {
+                return
+            }
+
+            await reserveLens(
+                storeId,
+                matches.autoReserveCandidate.variant_id,
+                matches.autoReserveCandidate.product_id,
+                osId,
+                employeeId,
+                { slot, source: 'automatic' }
+            )
+        }
+
+        await reserveIfNeeded('OD', odMatches)
+        await reserveIfNeeded('OE', oeMatches)
+        setPendingReservationBySlot(nextPendingSelections)
+    }, [employees, odMatches, oeMatches, pendingReservationBySlot, storeId, venda.employee_id])
+
     useEffect(() => {
         if (saveState.success && saveState.data && saveState.timestamp !== lastSuccessRef.current) {
             // Se não for save silencioso, mostra alert
@@ -375,6 +460,7 @@ function ServiceOrderFormContent({
             onListChange(newList)
             setCurrentIndex(newList.findIndex(o => o.id === savedOS.id))
             lastSuccessRef.current = saveState.timestamp;
+            void syncReservationsAfterSave(savedOS.id)
 
             // Se tinha WhatsApp pendente, envia agora
             if (pendingWhatsApp) {
@@ -383,7 +469,7 @@ function ServiceOrderFormContent({
                 isSilentSave.current = false
             }
         }
-    }, [saveState, onListChange, existingOrders, pendingWhatsApp])
+    }, [existingOrders, onListChange, pendingWhatsApp, saveState, syncReservationsAfterSave])
 
     const resetForm = useCallback(() => {
         setDependenteId(''); setOftalmologistaId(''); setLenteOdItemId(''); setLenteOeItemId(''); setArmacaoItemId('')
@@ -392,11 +478,13 @@ function ServiceOrderFormContent({
         setMedH(''); setMedV(''); setMedDiag(''); setMedPonte(''); setDnpOd(''); setDnpOe(''); setAltOd(''); setAltOe(''); setDiametro('')
         setDtPedido(''); setPedidoPorId(''); setLabNome(''); setDtChegou(''); setDtMontado(''); setDtEntregue(''); setDtPrometido(''); setObsOs('')
         setProtocolo('')
+        setPendingReservationBySlot(emptyPendingReservations())
     }, [])
 
     useEffect(() => {
         if (!currentOrder) { resetForm() } else {
             const os = currentOrder
+            setPendingReservationBySlot(emptyPendingReservations())
             setDependenteId(os.dependente_id?.toString() ?? '')
             setOftalmologistaId(os.oftalmologista_id?.toString() ?? '')
             const linkLenteOd = os.links?.find((l: any) => l.uso_na_os === 'lente_od'); setLenteOdItemId(linkLenteOd?.venda_item_id.toString() ?? '')
@@ -516,16 +604,25 @@ ${addIf('Obs.', obsOs) || ''}
         window.open(url, '_blank');
     }
 
-    const handleReserve = async (variantId: number, productId: number) => {
-        if (!activeId) { alert('Salve a OS antes de reservar lentes.'); return; }
-        const employeeId = employees[0]?.id
+    const handleReserve = async (match: LensStockMatch, slot: LensReservationSlot) => {
+        const employeeId = 1
         if (!employeeId) { alert('Nenhum funcionário disponível para registrar a reserva.'); return; }
-        const res = await reserveLens(storeId, variantId, productId, activeId, employeeId)
-        if (res.success) {
-            alert('Lente reservada com sucesso!')
-            setStockModalOpen(null)
+        setPendingReservationBySlot(prev => ({
+            ...prev,
+            [slot]: {
+                slot,
+                variantId: match.variant_id,
+                productId: match.product_id,
+                productName: match.product_name,
+                variantName: match.variant_name
+            }
+        }))
+        setStockModalOpen(null)
+
+        if (activeId) {
+            alert(`Lente selecionada para ${slot}. A troca sera aplicada ao salvar a OS.`)
         } else {
-            alert(res.message)
+            alert(`Lente selecionada para ${slot}. Ela sera baixada quando a OS for salva.`)
         }
     }
 
@@ -796,6 +893,11 @@ ${addIf('Obs.', obsOs) || ''}
                                         </div>
 
                                         <StockBadge matches={odMatches} label="OD" onOpen={() => setStockModalOpen('OD')} />
+                                        {pendingReservationBySlot.OD && (
+                                            <div className="mb-2 rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 text-[10px] font-bold text-cyan-200">
+                                                OD selecionada para salvar: {pendingReservationBySlot.OD.productName} - {pendingReservationBySlot.OD.variantName}
+                                            </div>
+                                        )}
 
                                         {/* OD */}
                                         <div className="grid grid-cols-7 gap-2 mb-3 items-center p-3 bg-black/20 rounded-xl border border-white/5 shadow-inner">
@@ -806,6 +908,11 @@ ${addIf('Obs.', obsOs) || ''}
                                         </div>
 
                                         <StockBadge matches={oeMatches} label="OE" onOpen={() => setStockModalOpen('OE')} />
+                                        {pendingReservationBySlot.OE && (
+                                            <div className="mb-2 rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 text-[10px] font-bold text-cyan-200">
+                                                OE selecionada para salvar: {pendingReservationBySlot.OE.productName} - {pendingReservationBySlot.OE.variantName}
+                                            </div>
+                                        )}
 
                                         {/* OE */}
                                         <div className="grid grid-cols-7 gap-2 mb-3 items-center p-3 bg-black/20 rounded-xl border border-white/5 shadow-inner">
@@ -979,7 +1086,7 @@ ${addIf('Obs.', obsOs) || ''}
                 isOpen={!!stockModalOpen}
                 onClose={() => setStockModalOpen(null)}
                 matches={stockModalOpen === 'OD' ? odMatches : oeMatches}
-                label={stockModalOpen || ''}
+                label={stockModalOpen || 'OD'}
                 onReserve={handleReserve}
             />
         </>
