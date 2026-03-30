@@ -156,15 +156,15 @@ export default function LensGridEditor({ isOpen, onClose, productId, storeId, pr
                     ) : (
                         // --- MATRIZ DE ESTOQUE ---
                         <div className="flex-1 overflow-auto custom-scrollbar p-4 bg-slate-100">
-                            <div className="inline-block min-w-full bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                                <table className="w-full text-center border-collapse">
+                            <div className="inline-block min-w-full bg-white rounded-xl shadow-sm border border-slate-200">
+                                <table className="w-full text-center border-separate border-spacing-0">
                                     <thead>
                                         <tr>
-                                            <th className="p-3 bg-slate-50 border-b border-r border-slate-200 text-xs font-bold text-slate-500 uppercase sticky left-0 top-0 z-20">
+                                            <th className="sticky left-0 top-0 z-30 border-b border-r border-slate-200 bg-slate-50/95 p-3 text-xs font-bold uppercase text-slate-500 backdrop-blur">
                                                 Esf \ Cyl
                                             </th>
                                             {cylinders.map(cyl => (
-                                                <th key={cyl} className="p-2 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-700 min-w-[60px] sticky top-0 z-10">
+                                                <th key={cyl} className="sticky top-0 z-20 min-w-[60px] border-b border-r border-slate-200 bg-slate-50/95 p-2 text-xs font-bold text-slate-700 backdrop-blur last:border-r-0">
                                                     {cyl.toFixed(2)}
                                                 </th>
                                             ))}
@@ -173,13 +173,13 @@ export default function LensGridEditor({ isOpen, onClose, productId, storeId, pr
                                     <tbody>
                                         {sphericals.map(esf => (
                                             <tr key={esf} className="hover:bg-blue-50/50 transition-colors">
-                                                <td className="p-2 bg-slate-50 border-r border-slate-200 text-xs font-bold text-slate-700 sticky left-0 z-10">
+                                                <td className="sticky left-0 z-10 border-b border-r border-slate-200 bg-slate-50 p-2 text-xs font-bold text-slate-700">
                                                     {esf.toFixed(2)}
                                                 </td>
                                                 {cylinders.map(cyl => {
                                                     const variant = matrix[`${esf}_${cyl}`]
                                                     return (
-                                                        <td key={`${esf}_${cyl}`} className="p-1 border border-slate-100">
+                                                        <td key={`${esf}_${cyl}`} className="border-b border-r border-slate-100 p-1 last:border-r-0">
                                                             {variant ? (
                                                                 <input
                                                                     type="number"
