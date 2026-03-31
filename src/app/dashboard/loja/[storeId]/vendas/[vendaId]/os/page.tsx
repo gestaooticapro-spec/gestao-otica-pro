@@ -13,9 +13,7 @@ import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/Backg
 
 import { getOSPageData, getVendaPageData, saveServiceOrder, deleteServiceOrder, type OSPageData, type SaveSOResult, type PrescriptionHistoryItem } from '@/lib/actions/vendas.actions'
 import {
-    reserveLens,
     checkLensStock,
-    getLensReservationForOsSlot,
     type LensStockMatch,
     type LensStockSearchResult,
     type LensReservationSlot
@@ -386,65 +384,6 @@ function ServiceOrderFormContent({
     // CORREÇÃO: activeId garante que usamos o ID recém-salvo mesmo se o currentIndex ainda não atualizou
     const activeId = currentOrder?.id || (saveState?.success && saveState?.data?.id ? saveState.data.id : undefined)
 
-    const syncReservationsAfterSave = useCallback(async (osId: number) => {
-        const employeeId = venda.employee_id || employees[0]?.id
-        if (!employeeId) return
-
-        const nextPendingSelections = { ...pendingReservationBySlot }
-        const reserveIfNeeded = async (slot: LensReservationSlot, matches: LensStockSearchResult) => {
-            const currentReservation = await getLensReservationForOsSlot(osId, slot)
-            if (currentReservation?.tipo === 'Saida') return
-
-            const pendingSelection = pendingReservationBySlot[slot]
-            if (pendingSelection) {
-                const manualResult = await reserveLens(
-                    storeId,
-                    pendingSelection.variantId,
-                    pendingSelection.productId,
-                    osId,
-                    employeeId,
-                    { slot, source: 'manual' }
-                )
-
-                if (!manualResult.success) {
-                    alert(manualResult.message)
-                    return
-                }
-
-                nextPendingSelections[slot] = null
-                return
-            }
-
-            if (!matches.targetProductHasGrid || !matches.autoReserveCandidate) return
-            if (
-                currentReservation?.tipo === 'Reserva' &&
-                typeof currentReservation.motivo === 'string' &&
-                currentReservation.motivo.includes('Reserva manual')
-            ) {
-                return
-            }
-            if (
-                currentReservation?.variant_id === matches.autoReserveCandidate.variant_id &&
-                currentReservation?.product_id === matches.autoReserveCandidate.product_id
-            ) {
-                return
-            }
-
-            await reserveLens(
-                storeId,
-                matches.autoReserveCandidate.variant_id,
-                matches.autoReserveCandidate.product_id,
-                osId,
-                employeeId,
-                { slot, source: 'automatic' }
-            )
-        }
-
-        await reserveIfNeeded('OD', odMatches)
-        await reserveIfNeeded('OE', oeMatches)
-        setPendingReservationBySlot(nextPendingSelections)
-    }, [employees, odMatches, oeMatches, pendingReservationBySlot, storeId, venda.employee_id])
-
     useEffect(() => {
         if (saveState.success && saveState.data && saveState.timestamp !== lastSuccessRef.current) {
             // Se não for save silencioso, mostra alert
@@ -460,7 +399,6 @@ function ServiceOrderFormContent({
             onListChange(newList)
             setCurrentIndex(newList.findIndex(o => o.id === savedOS.id))
             lastSuccessRef.current = saveState.timestamp;
-            void syncReservationsAfterSave(savedOS.id)
 
             // Se tinha WhatsApp pendente, envia agora
             if (pendingWhatsApp) {
@@ -469,7 +407,7 @@ function ServiceOrderFormContent({
                 isSilentSave.current = false
             }
         }
-    }, [existingOrders, onListChange, pendingWhatsApp, saveState, syncReservationsAfterSave])
+    }, [existingOrders, onListChange, pendingWhatsApp, saveState])
 
     const resetForm = useCallback(() => {
         setDependenteId(''); setOftalmologistaId(''); setLenteOdItemId(''); setLenteOeItemId(''); setArmacaoItemId('')
@@ -604,9 +542,7 @@ ${addIf('Obs.', obsOs) || ''}
         window.open(url, '_blank');
     }
 
-    const handleReserve = async (match: LensStockMatch, slot: LensReservationSlot) => {
-        const employeeId = 1
-        if (!employeeId) { alert('Nenhum funcionário disponível para registrar a reserva.'); return; }
+    const handleReserve = (match: LensStockMatch, slot: LensReservationSlot) => {
         setPendingReservationBySlot(prev => ({
             ...prev,
             [slot]: {
@@ -1046,6 +982,7 @@ ${addIf('Obs.', obsOs) || ''}
                 <input type="hidden" name="venda_id" value={vendaId} />
                 <input type="hidden" name="customer_id" value={customer.id} />
                 <input type="hidden" name="item_links_json" value={JSON.stringify([{ item_id: lenteOdItemId, uso: 'lente_od' }, { item_id: lenteOeItemId, uso: 'lente_oe' }, { item_id: armacaoItemId, uso: 'armacao' }].filter(x => x.item_id))} />
+                <input type="hidden" name="pending_reservations_json" value={JSON.stringify(Object.values(pendingReservationBySlot).filter(Boolean))} />
 
             </form>
 

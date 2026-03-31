@@ -71,6 +71,10 @@ const typeLabels: Record<string, string> = {
 
 const inputStyle = "block w-full rounded-xl border border-white/10 bg-black/20 shadow-sm text-slate-200 h-9 text-xs px-3 focus:ring-1 focus:ring-amber-500/50 focus:border-amber-500/50 font-bold placeholder:font-normal placeholder:text-slate-600 disabled:opacity-50 transition-all outline-none"
 const labelStyle = "block text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-wider"
+const isReservationMovement = (movement: Pick<Movement, 'tipo' | 'motivo'>) => {
+    const lowerMotivo = (movement.motivo || '').toLowerCase()
+    return movement.tipo === 'Reserva' || lowerMotivo.startsWith('reserva automatica') || lowerMotivo.startsWith('reserva manual')
+}
 
 export default function MovementHistoryList({ movimentos, storeId }: Props) {
     const router = useRouter()
@@ -99,6 +103,7 @@ export default function MovementHistoryList({ movimentos, storeId }: Props) {
     const [editQtd, setEditQtd] = useState(1)
     const [editTipo, setEditTipo] = useState('')
     const [editMotivo, setEditMotivo] = useState('')
+    const selectedIsReservation = selectedMovement ? isReservationMovement(selectedMovement) : false
 
     const handleClose = () => {
         setSelectedMovement(null)
@@ -172,6 +177,7 @@ export default function MovementHistoryList({ movimentos, storeId }: Props) {
                     {movimentos.map((m) => {
                         const config = typeConfig[m.tipo] || typeConfig['Ajuste']
                         const Icon = config.icon
+                        const isReservation = isReservationMovement(m)
 
                         return (
                             <button
@@ -192,6 +198,11 @@ export default function MovementHistoryList({ movimentos, storeId }: Props) {
                                             {format(new Date(m.created_at), "dd MMM, HH:mm", { locale: ptBR })}
                                             {m.product_variants && (
                                                 <span className="ml-2 px-1 rounded bg-white/5 text-amber-500/80 font-bold">LENTE</span>
+                                            )}
+                                            {isReservation && (
+                                                <span className="ml-2 px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-black">
+                                                    RESERVA OS
+                                                </span>
                                             )}
                                         </p>
                                     </div>
@@ -309,6 +320,11 @@ export default function MovementHistoryList({ movimentos, storeId }: Props) {
                                                 <span className={`text-sm font-bold ${typeConfig[selectedMovement.tipo]?.color}`}>
                                                     {selectedMovement.tipo}
                                                 </span>
+                                                {selectedIsReservation && (
+                                                    <span className="px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 text-[10px] font-black uppercase tracking-wide">
+                                                        Reserva OS
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
                                         <div className="p-3 rounded-2xl bg-white/5 border border-white/5">
@@ -318,6 +334,15 @@ export default function MovementHistoryList({ movimentos, storeId }: Props) {
                                             </p>
                                         </div>
                                     </div>
+
+                                    {selectedIsReservation && (
+                                        <div className="p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20">
+                                            <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-1">Reserva de OS</p>
+                                            <p className="text-xs text-indigo-100/90">
+                                                Esta lente foi separada para a OS. Se a OS ou a venda for cancelada/reaberta, ela retorna ao estoque sem corte definitivo.
+                                            </p>
+                                        </div>
+                                    )}
 
                                     {/* Se for LENTE - Graus */}
                                     {selectedMovement.product_variants && (

@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { useCredit } from './wallet.actions'
 import { calcularERegistrarComissao, cancelarComissao, calcularComissaoMedico } from './commission.actions'
-import { confirmReservations, cancelReservations } from './stock.actions'
+import { checkLensStock, confirmReservations, cancelReservations, getLensReservationForOsSlot, reserveLensByAdmin, type LensReservationSlot } from './stock.actions'
 
 // ================================================================
 // --- TIPOS GLOBAIS ---
@@ -184,6 +184,26 @@ const ItemLinkSchema = z.object({
   uso: z.enum(['lente_od', 'lente_oe', 'armacao']),
 })
 
+const PendingReservationSchema = z.object({
+  slot: z.enum(['OD', 'OE']),
+  variantId: z.coerce.number(),
+  productId: z.coerce.number(),
+  productName: z.string().optional(),
+  variantName: z.string().optional(),
+})
+
+const parseDegreeValue = (value: string | null | undefined, fallback?: number) => {
+  if (!value || !value.trim()) return fallback ?? null
+  const parsed = parseFloat(value.replace(',', '.').replace('+', ''))
+  return Number.isNaN(parsed) ? fallback ?? null : parsed
+}
+
+const parseAxisValue = (value: string | null | undefined) => {
+  if (!value || !value.trim()) return null
+  const parsed = parseInt(value.replace(/\D/g, ''), 10)
+  return Number.isNaN(parsed) ? null : parsed
+}
+
 export async function saveServiceOrder(
   prevState: SaveSOResult,
   formData: FormData
@@ -251,9 +271,30 @@ export async function saveServiceOrder(
   let itemLinks: z.infer<typeof ItemLinkSchema>[] = []
   try {
     const json = formData.get('item_links_json') as string
-    if (json) itemLinks = JSON.parse(json)
+    if (json) {
+      const parsed = JSON.parse(json)
+      const validatedLinks = z.array(ItemLinkSchema).safeParse(parsed)
+      if (!validatedLinks.success) {
+        return { success: false, message: 'Erro nos vÃ­nculos de itens.', timestamp: Date.now() }
+      }
+      itemLinks = validatedLinks.data
+    }
   } catch (e) {
     return { success: false, message: 'Erro nos vínculos de itens.', timestamp: Date.now() }
+  }
+
+  let pendingReservations: z.infer<typeof PendingReservationSchema>[] = []
+  try {
+    const json = formData.get('pending_reservations_json') as string
+    if (json) {
+      const parsed = JSON.parse(json)
+      const validatedPending = z.array(PendingReservationSchema).safeParse(parsed)
+      if (validatedPending.success) {
+        pendingReservations = validatedPending.data
+      }
+    }
+  } catch (e) {
+    console.error('Erro ao ler reservas pendentes da OS:', e)
   }
 
   try {
@@ -291,6 +332,162 @@ export async function saveServiceOrder(
       }
     }
 
+    const reservationErrors: string[] = []
+    const reservationDebug: string[] = []
+    const pendingReservationBySlot = new Map<LensReservationSlot, z.infer<typeof PendingReservationSchema>>()
+    pendingReservations.forEach((reservation) => {
+      pendingReservationBySlot.set(reservation.slot, reservation)
+    })
+
+    const linkedLensItemIds = itemLinks
+      .filter((link) => link.uso === 'lente_od' || link.uso === 'lente_oe')
+      .map((link) => link.item_id)
+
+    const linkedLensItemsById = new Map<number, { id: number; product_id: number | null }>()
+    if (linkedLensItemIds.length > 0) {
+      const { data: linkedLensItems } = await (supabaseAdmin.from('venda_itens') as any)
+        .select('id, product_id')
+        .in('id', linkedLensItemIds)
+
+      ;(linkedLensItems || []).forEach((item: any) => {
+        linkedLensItemsById.set(item.id, item)
+      })
+    }
+
+    const { data: vendaForReservation } = await (supabaseAdmin.from('vendas') as any)
+      .select('employee_id')
+      .eq('id', osData.venda_id)
+      .maybeSingle()
+
+    let reservationEmployeeId = vendaForReservation?.employee_id || null
+    if (!reservationEmployeeId) {
+      const { data: firstEmployee } = await (supabaseAdmin.from('employees') as any)
+        .select('id')
+        .eq('store_id', osData.store_id)
+        .eq('is_active', true)
+        .order('id', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+
+      reservationEmployeeId = firstEmployee?.id || null
+    }
+
+    const reservationSlots: Array<{
+      slot: LensReservationSlot
+      itemUso: 'lente_od' | 'lente_oe'
+      esferico: string | null
+      cilindrico: string | null
+      eixo: string | null
+    }> = [
+      {
+        slot: 'OD',
+        itemUso: 'lente_od',
+        esferico: osData.receita_longe_od_esferico,
+        cilindrico: osData.receita_longe_od_cilindrico,
+        eixo: osData.receita_longe_od_eixo,
+      },
+      {
+        slot: 'OE',
+        itemUso: 'lente_oe',
+        esferico: osData.receita_longe_oe_esferico,
+        cilindrico: osData.receita_longe_oe_cilindrico,
+        eixo: osData.receita_longe_oe_eixo,
+      },
+    ]
+
+    for (const reservationSlot of reservationSlots) {
+      const pendingReservation = pendingReservationBySlot.get(reservationSlot.slot)
+
+      if (!reservationEmployeeId && pendingReservation) {
+        reservationDebug.push(`${reservationSlot.slot}=sem-funcionario-manual`)
+        reservationErrors.push(`Olho ${reservationSlot.slot}: nenhum funcionÃ¡rio ativo disponÃ­vel para registrar a reserva.`)
+        continue
+      }
+
+      if (pendingReservation && reservationEmployeeId) {
+        const manualResult = await reserveLensByAdmin(
+          osData.store_id,
+          pendingReservation.variantId,
+          pendingReservation.productId,
+          savedId,
+          reservationEmployeeId,
+          user.id,
+          tenant_id,
+          { slot: reservationSlot.slot, source: 'manual' }
+        )
+
+        if (!manualResult.success) {
+          reservationErrors.push(`Olho ${reservationSlot.slot}: ${manualResult.message}`)
+          reservationDebug.push(`${reservationSlot.slot}=manual-erro:${manualResult.message}`)
+        } else {
+          reservationDebug.push(`${reservationSlot.slot}=manual-ok:${pendingReservation.variantId}`)
+        }
+        continue
+      }
+
+      const itemLink = itemLinks.find((link) => link.uso === reservationSlot.itemUso)
+      const linkedItem = itemLink ? linkedLensItemsById.get(itemLink.item_id) : null
+      const esferico = parseDegreeValue(reservationSlot.esferico)
+      const cilindrico = parseDegreeValue(reservationSlot.cilindrico, 0)
+
+      if (!linkedItem?.product_id || esferico === null || cilindrico === null) {
+        reservationDebug.push(`${reservationSlot.slot}=sem-dados`)
+        continue
+      }
+      if (!reservationEmployeeId) {
+        reservationDebug.push(`${reservationSlot.slot}=sem-funcionario-auto`)
+        reservationErrors.push(`Olho ${reservationSlot.slot}: nenhum funcionÃ¡rio ativo disponÃ­vel para registrar a reserva.`)
+        continue
+      }
+
+      const currentReservation = await getLensReservationForOsSlot(savedId, reservationSlot.slot)
+      if (currentReservation?.tipo === 'Saida') {
+        reservationDebug.push(`${reservationSlot.slot}=ja-saida`)
+        continue
+      }
+      if (
+        currentReservation?.tipo === 'Reserva' &&
+        typeof currentReservation.motivo === 'string' &&
+        currentReservation.motivo.includes('Reserva manual')
+      ) {
+        reservationDebug.push(`${reservationSlot.slot}=mantida-manual`)
+        continue
+      }
+
+      const stockMatches = await checkLensStock(
+        osData.store_id,
+        esferico,
+        cilindrico,
+        linkedItem.product_id,
+        parseDegreeValue(osData.receita_adicao),
+        reservationSlot.slot,
+        parseAxisValue(reservationSlot.eixo)
+      )
+
+      if (!stockMatches.targetProductHasGrid || !stockMatches.autoReserveCandidate) {
+        reservationDebug.push(`${reservationSlot.slot}=sem-candidato-auto`)
+        continue
+      }
+
+      const autoReserveResult = await reserveLensByAdmin(
+        osData.store_id,
+        stockMatches.autoReserveCandidate.variant_id,
+        stockMatches.autoReserveCandidate.product_id,
+        savedId,
+        reservationEmployeeId,
+        user.id,
+        tenant_id,
+        { slot: reservationSlot.slot, source: 'automatic' }
+      )
+
+      if (!autoReserveResult.success) {
+        reservationErrors.push(`Olho ${reservationSlot.slot}: ${autoReserveResult.message}`)
+        reservationDebug.push(`${reservationSlot.slot}=auto-erro:${autoReserveResult.message}`)
+      } else {
+        reservationDebug.push(`${reservationSlot.slot}=auto-ok:${stockMatches.autoReserveCandidate.variant_id}`)
+      }
+    }
+
     revalidatePath(`/dashboard/loja/${osData.store_id}/vendas/${osData.venda_id}/os`)
     revalidatePath(`/dashboard/loja/${osData.store_id}/vendas/${osData.venda_id}`)
 
@@ -300,7 +497,14 @@ export async function saveServiceOrder(
       .eq('id', savedId)
       .single()
 
-    return { success: true, message: 'OS salva com sucesso!', data: finalOS as any, timestamp: Date.now() }
+    const debugSuffix = reservationDebug.length > 0
+      ? ` [reserva-v3 ${reservationDebug.join(' | ')}]`
+      : ' [reserva-v3 sem-debug]'
+    const saveMessage = reservationErrors.length > 0
+      ? `OS salva com sucesso! AtenÃ§Ã£o: ${reservationErrors.join(' ')}`
+      : `OS salva com sucesso!${debugSuffix}`
+
+    return { success: true, message: saveMessage, data: finalOS as any, timestamp: Date.now() }
   } catch (error: any) {
     return { success: false, message: `Erro no banco: ${error.message}`, timestamp: Date.now() }
   }

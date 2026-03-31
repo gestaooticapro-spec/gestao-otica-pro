@@ -72,6 +72,7 @@ export default function HistoryFilters({ storeId, inicio, fim, tipo }: Props) {
                     <option value="" className="bg-slate-900">Todos</option>
                     <option value="Entrada" className="bg-slate-900">Entrada</option>
                     <option value="Saida" className="bg-slate-900">Saída</option>
+                    <option value="Reserva" className="bg-slate-900">Reserva</option>
                     <option value="Perda" className="bg-slate-900">Perda</option>
                     <option value="Ajuste" className="bg-slate-900">Ajuste</option>
                     <option value="Brinde" className="bg-slate-900">Brinde</option>

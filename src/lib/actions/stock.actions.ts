@@ -368,7 +368,11 @@ export async function getStockMovements(storeId: number, filters?: StockFilters)
     }
 
     if (filters?.tipo && filters.tipo !== 'Todos') {
-        query = query.eq('tipo', filters.tipo)
+        if (filters.tipo === 'Reserva' || filters.tipo === 'Saida') {
+            query = query.eq('tipo', 'Saida')
+        } else {
+            query = query.eq('tipo', filters.tipo)
+        }
     }
 
     if (filters?.busca) {
@@ -386,7 +390,21 @@ export async function getStockMovements(storeId: number, filters?: StockFilters)
         return []
     }
 
-    return data || []
+    const normalizedData = (data || []).map((movement: any) =>
+        isPendingLensReservationMovement(movement)
+            ? { ...movement, tipo: 'Reserva' }
+            : movement
+    )
+
+    if (filters?.tipo === 'Reserva') {
+        return normalizedData.filter((movement: any) => movement.tipo === 'Reserva')
+    }
+
+    if (filters?.tipo === 'Saida') {
+        return normalizedData.filter((movement: any) => movement.tipo === 'Saida')
+    }
+
+    return normalizedData
 }
 
 // ================================================================
@@ -647,6 +665,11 @@ const buildReservationReason = (
     return `${prefix} ${buildReservationSlotTag(slot)}`
 }
 
+const isPendingLensReservationMovement = (movement: { motivo?: string | null | undefined } | null | undefined) => {
+    const reason = movement?.motivo?.toLowerCase() || ''
+    return reason.startsWith('reserva automatica') || reason.startsWith('reserva manual')
+}
+
 async function restoreReservationMovement(
     supabaseAdmin: ReturnType<typeof createAdminClient>,
     reservation: any,
@@ -705,6 +728,247 @@ async function restoreReservationMovement(
         .eq('id', reservation.id)
 }
 
+async function reserveLensWithAdminContext(params: {
+    storeId: number
+    variantId: number
+    productId: number
+    osId: number
+    employeeId: number
+    userId: string
+    tenantId: number
+    slot?: LensReservationSlot
+    source?: 'automatic' | 'manual'
+}): Promise<{ success: boolean, message: string }> {
+    /* const profile = await getProfileByAdmin(user.id) as any
+    if (!profile?.tenant_id) return { success: false, message: 'Perfil nÃ£o encontrado.' }
+
+    return reserveLensWithAdminContext({
+        storeId,
+        variantId,
+        productId,
+        osId,
+        employeeId,
+        userId: user.id,
+        tenantId: profile.tenant_id,
+        slot: options?.slot,
+        source: options?.source
+    })
+
+    */
+    /* const profile = await getProfileByAdmin(user.id) as any
+    if (!profile?.tenant_id) return { success: false, message: 'Perfil nÃ£o encontrado.' }
+
+    return reserveLensWithAdminContext({
+        storeId,
+        variantId,
+        productId,
+        osId,
+        employeeId,
+        userId: user.id,
+        tenantId: profile.tenant_id,
+        slot: options?.slot,
+        source: options?.source
+    })
+
+    */
+    /* const profile = await getProfileByAdmin(user.id) as any
+    if (!profile?.tenant_id) return { success: false, message: 'Perfil nÃ£o encontrado.' }
+
+    return reserveLensWithAdminContext({
+        storeId,
+        variantId,
+        productId,
+        osId,
+        employeeId,
+        userId: user.id,
+        tenantId: profile.tenant_id,
+        slot: options?.slot,
+        source: options?.source
+    })
+
+    */
+    const supabaseAdmin = createAdminClient()
+    const {
+        storeId,
+        variantId,
+        productId,
+        osId,
+        employeeId,
+        userId,
+        tenantId,
+        slot,
+        source
+    } = params
+
+    if (slot) {
+        const { data: committedMovements } = await (supabaseAdmin.from('stock_movements') as any)
+            .select('id, motivo, tipo')
+            .eq('related_os_id', osId)
+            .eq('tipo', 'Saida')
+
+        const hasCommittedForSlot = (committedMovements || []).some((movement: any) =>
+            hasReservationSlotTag(movement.motivo, slot) && !isPendingLensReservationMovement(movement)
+        )
+
+        if (hasCommittedForSlot) {
+            return { success: false, message: `A lente do olho ${slot} ja foi baixada na venda e nao pode ser trocada por aqui.` }
+        }
+
+        const { data: activeReservations } = await (supabaseAdmin.from('stock_movements') as any)
+            .select('*')
+            .eq('related_os_id', osId)
+            .in('tipo', ['Reserva', 'Saida'])
+
+        const slotReservations = (activeReservations || []).filter((movement: any) =>
+            hasReservationSlotTag(movement.motivo, slot) && isPendingLensReservationMovement(movement)
+        )
+
+        const alreadyReserved = slotReservations.find((movement: any) =>
+            movement.variant_id === variantId && movement.product_id === productId
+        )
+
+        if (alreadyReserved) {
+            return {
+                success: true,
+                message: source === 'automatic'
+                    ? `A lente exata do olho ${slot} ja estava reservada.`
+                    : `Esta lente ja estava reservada para o olho ${slot}.`
+            }
+        }
+
+        for (const reservation of slotReservations) {
+            await restoreReservationMovement(
+                supabaseAdmin,
+                reservation,
+                `Troca de lente reservada ${buildReservationSlotTag(slot)}`
+            )
+        }
+    }
+
+    const { data: product } = await (supabaseAdmin.from('products') as any)
+        .select('estoque_atual, preco_custo')
+        .eq('id', productId)
+        .single()
+
+    if (!product) {
+        return { success: false, message: 'Produto nao encontrado.' }
+    }
+
+    if (variantId) {
+        const { data: variant } = await (supabaseAdmin.from('product_variants') as any)
+            .select('estoque_atual')
+            .eq('id', variantId)
+            .single()
+
+        if (!variant) {
+            return { success: false, message: 'Variante nao encontrada.' }
+        }
+
+        if ((variant.estoque_atual || 0) < 1) {
+            return { success: false, message: 'Estoque insuficiente para reservar esta lente.' }
+        }
+
+        await (supabaseAdmin.from('product_variants') as any)
+            .update({ estoque_atual: variant.estoque_atual - 1 })
+            .eq('id', variantId)
+
+        await (supabaseAdmin as any).rpc('increment_stock', {
+            p_product_id: productId,
+            p_quantity: -1,
+            p_new_cost: null
+        })
+    } else {
+        if ((product.estoque_atual || 0) < 1) {
+            return { success: false, message: 'Estoque insuficiente para reservar este produto.' }
+        }
+
+        await (supabaseAdmin.from('products') as any)
+            .update({ estoque_atual: product.estoque_atual - 1 })
+            .eq('id', productId)
+    }
+
+    const { error: insertError } = await (supabaseAdmin.from('stock_movements') as any).insert({
+        tenant_id: tenantId,
+        store_id: storeId,
+        product_id: productId,
+        variant_id: variantId,
+        tipo: 'Saida',
+        quantidade: 1,
+        motivo: slot
+            ? buildReservationReason(slot, source || 'manual')
+            : 'Reserva manual de lente',
+        custo_unitario_momento: product.preco_custo,
+        registrado_por_id: userId,
+        employee_id: employeeId,
+        related_os_id: osId,
+        created_at: new Date().toISOString()
+    })
+
+    if (insertError) {
+        if (variantId) {
+            const { data: variantAfterFailure } = await (supabaseAdmin.from('product_variants') as any)
+                .select('estoque_atual')
+                .eq('id', variantId)
+                .single()
+
+            if (variantAfterFailure) {
+                await (supabaseAdmin.from('product_variants') as any)
+                    .update({ estoque_atual: (variantAfterFailure.estoque_atual || 0) + 1 })
+                    .eq('id', variantId)
+            }
+
+            await (supabaseAdmin as any).rpc('increment_stock', {
+                p_product_id: productId,
+                p_quantity: 1,
+                p_new_cost: null
+            })
+        } else {
+            const { data: productAfterFailure } = await (supabaseAdmin.from('products') as any)
+                .select('estoque_atual')
+                .eq('id', productId)
+                .single()
+
+            if (productAfterFailure) {
+                await (supabaseAdmin.from('products') as any)
+                    .update({ estoque_atual: (productAfterFailure.estoque_atual || 0) + 1 })
+                    .eq('id', productId)
+            }
+        }
+
+        return { success: false, message: `Erro ao registrar reserva: ${insertError.message}` }
+    }
+
+    revalidatePath(`/dashboard/loja/${storeId}/estoque/movimentacoes`)
+
+    return { success: true, message: 'Reserva registrada com sucesso.' }
+}
+
+export async function reserveLensByAdmin(
+    storeId: number,
+    variantId: number,
+    productId: number,
+    osId: number,
+    employeeId: number,
+    userId: string,
+    tenantId: number,
+    options?: {
+        slot?: LensReservationSlot
+        source?: 'automatic' | 'manual'
+    }
+): Promise<{ success: boolean, message: string }> {
+    return reserveLensWithAdminContext({
+        storeId,
+        variantId,
+        productId,
+        osId,
+        employeeId,
+        userId,
+        tenantId,
+        slot: options?.slot,
+        source: options?.source
+    })
+}
+
 export async function hasLensReservationForOsSlot(
     osId: number,
     slot: LensReservationSlot
@@ -727,6 +991,14 @@ export async function getLensReservationForOsSlot(
         .select('*')
         .eq('related_os_id', osId)
         .in('tipo', ['Reserva', 'Saida'])
+
+    const pendingReservation = (data || []).find((movement: any) =>
+        hasReservationSlotTag(movement.motivo, slot) && isPendingLensReservationMovement(movement)
+    )
+
+    if (pendingReservation) {
+        return { ...pendingReservation, tipo: 'Reserva' }
+    }
 
     return (data || []).find((movement: any) => hasReservationSlotTag(movement.motivo, slot)) || null
 }
@@ -936,7 +1208,7 @@ export async function reserveLens(
             .eq('tipo', 'Saida')
 
         const hasCommittedForSlot = (committedMovements || []).some((movement: any) =>
-            hasReservationSlotTag(movement.motivo, slot)
+            hasReservationSlotTag(movement.motivo, slot) && !isPendingLensReservationMovement(movement)
         )
 
         if (hasCommittedForSlot) {
@@ -946,10 +1218,10 @@ export async function reserveLens(
         const { data: activeReservations } = await (supabaseAdmin.from('stock_movements') as any)
             .select('*')
             .eq('related_os_id', osId)
-            .eq('tipo', 'Reserva')
+            .in('tipo', ['Reserva', 'Saida'])
 
         const slotReservations = (activeReservations || []).filter((movement: any) =>
-            hasReservationSlotTag(movement.motivo, slot)
+            hasReservationSlotTag(movement.motivo, slot) && isPendingLensReservationMovement(movement)
         )
 
         const alreadyReserved = slotReservations.find((movement: any) =>
@@ -980,7 +1252,7 @@ export async function reserveLens(
     formData.append('product_id', productId.toString())
     formData.append('variant_id', variantId.toString())
     formData.append('related_os_id', osId.toString())
-    formData.append('tipo', 'Reserva')
+    formData.append('tipo', 'Saida')
     formData.append('quantidade', '1')
     formData.append(
         'motivo',
@@ -1011,10 +1283,20 @@ export async function confirmReservations(vendaId: number) {
 
     // 2. Atualiza Reservas para Saída (Confirmação)
     // Isso mantém o estoque baixado, mas muda o status para oficializar a saída
+    const { data: reservations } = await (supabase.from('stock_movements') as any)
+        .select('id, motivo, tipo')
+        .in('related_os_id', osIds)
+        .in('tipo', ['Reserva', 'Saida'])
+
+    const pendingReservationIds = (reservations || [])
+        .filter((movement: any) => isPendingLensReservationMovement(movement))
+        .map((movement: any) => movement.id)
+
+    if (pendingReservationIds.length === 0) return
+
     await (supabase.from('stock_movements') as any)
         .update({ tipo: 'Saida', motivo: `Venda #${vendaId} Finalizada (Era Reserva)` })
-        .in('related_os_id', osIds)
-        .eq('tipo', 'Reserva')
+        .in('id', pendingReservationIds)
 }
 
 export async function cancelReservations(vendaId: number) {
@@ -1033,11 +1315,13 @@ export async function cancelReservations(vendaId: number) {
     const { data: reservas } = await (supabase.from('stock_movements') as any)
         .select('*')
         .in('related_os_id', osIds)
-        .eq('tipo', 'Reserva')
+        .in('tipo', ['Reserva', 'Saida'])
 
-    if (!reservas || reservas.length === 0) return
+    const pendingReservations = (reservas || []).filter((movement: any) => isPendingLensReservationMovement(movement))
 
-    for (const res of reservas) {
+    if (pendingReservations.length === 0) return
+
+    for (const res of pendingReservations) {
         await restoreReservationMovement(
             supabase,
             res,
