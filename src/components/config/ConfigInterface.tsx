@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition } from 'react';
 import {
     Users, Plus, Save, Power, Loader2, Lock, User,
     ShieldCheck, Briefcase, Wrench, BadgeCheck, Percent, CheckCircle2,
-    Store, MapPin, Phone, QrCode, ArrowLeftToLine
+    Store, MapPin, Phone, QrCode, ArrowLeftToLine, AlertCircle
 } from 'lucide-react';
 import { getEmployees, saveEmployee, toggleEmployeeStatus } from '@/lib/actions/employee.actions';
 import { getStoreProfile, updateStoreProfile } from '@/lib/actions/store.actions';
@@ -459,31 +459,55 @@ function TeamManagement({ storeId }: { storeId: number }) {
                             <h3 className="text-xs font-bold text-emerald-300 uppercase mb-4 flex items-center gap-2">
                                 <Percent className="h-4 w-4" /> Comissões (%)
                             </h3>
+                            
+                            {/* ALERTA DE EXCLUSIVIDADE */}
+                            {((formData.comm_rate_guaranteed || 0) > 0 || (formData.comm_rate_store_credit || 0) > 0) && ((formData.comm_rate_store_total || 0) > 0 || (formData.comm_rate_received || 0) > 0 || (formData.comm_rate_profit || 0) > 0) && (
+                                <div className="col-span-full mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400 font-bold flex items-center gap-2">
+                                    <AlertCircle className="h-4 w-4" />
+                                    Erro: Um colaborador não pode ter taxa Individual e Global ativas ao mesmo tempo. Zere uma das categorias.
+                                </div>
+                            )}
+
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-                                <div className="col-span-full p-3 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
-                                    <p className="text-[10px] font-bold text-emerald-300 uppercase mb-2">Vendas Próprias</p>
+                                <div className="col-span-full p-4 bg-emerald-500/10 rounded-lg border border-emerald-500/20 shadow-inner">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <p className="text-xs font-black text-emerald-300 uppercase tracking-widest">🚀 Vendas Próprias (Individual)</p>
+                                        <span className="text-[9px] text-emerald-400/70 border border-emerald-500/20 px-2 py-0.5 rounded-full uppercase font-bold tracking-widest">Pagas por Venda</span>
+                                    </div>
                                     <div className="flex gap-4">
                                         <div className="flex-1">
-                                            <label className={labelStyle}>Garantida</label>
-                                            <input type="number" step="0.01" value={formData.comm_rate_guaranteed} onChange={e => setFormData({ ...formData, comm_rate_guaranteed: parseFloat(e.target.value) })} className={`${inputStyle} text-right`} />
+                                            <label className={labelStyle}>Garantida <span className="text-[8px] font-normal normal-case text-emerald-300/60 ml-1">(PIX, Dinheiro, Cartão)</span></label>
+                                            <input type="number" step="0.01" disabled={isSaving || ((formData.comm_rate_store_total || 0) > 0 || (formData.comm_rate_received || 0) > 0 || (formData.comm_rate_profit || 0) > 0)} value={formData.comm_rate_guaranteed} onChange={e => setFormData({ ...formData, comm_rate_guaranteed: parseFloat(e.target.value) || 0 })} className={`${inputStyle} text-right disabled:opacity-50`} />
                                         </div>
                                         <div className="flex-1">
-                                            <label className={labelStyle}>Risco (Carnê)</label>
-                                            <input type="number" step="0.01" value={formData.comm_rate_store_credit} onChange={e => setFormData({ ...formData, comm_rate_store_credit: parseFloat(e.target.value) })} className={`${inputStyle} text-right`} />
+                                            <label className={labelStyle}>Risco <span className="text-[8px] font-normal normal-case text-emerald-300/60 ml-1">(Carnê Local, Crédito)</span></label>
+                                            <input type="number" step="0.01" disabled={isSaving || ((formData.comm_rate_store_total || 0) > 0 || (formData.comm_rate_received || 0) > 0 || (formData.comm_rate_profit || 0) > 0)} value={formData.comm_rate_store_credit} onChange={e => setFormData({ ...formData, comm_rate_store_credit: parseFloat(e.target.value) || 0 })} className={`${inputStyle} text-right disabled:opacity-50`} />
                                         </div>
                                     </div>
                                 </div>
-                                <div>
-                                    <label className={labelStyle}>Sobre Loja</label>
-                                    <input type="number" step="0.01" value={formData.comm_rate_store_total} onChange={e => setFormData({ ...formData, comm_rate_store_total: parseFloat(e.target.value) })} className={`${inputStyle} text-right`} />
-                                </div>
-                                <div>
-                                    <label className={labelStyle}>Recebimento</label>
-                                    <input type="number" step="0.01" value={formData.comm_rate_received} onChange={e => setFormData({ ...formData, comm_rate_received: parseFloat(e.target.value) })} className={`${inputStyle} text-right`} />
-                                </div>
-                                <div>
-                                    <label className={labelStyle}>Lucro</label>
-                                    <input type="number" step="0.01" value={formData.comm_rate_profit} onChange={e => setFormData({ ...formData, comm_rate_profit: parseFloat(e.target.value) })} className={`${inputStyle} text-right`} />
+                                
+                                <div className="col-span-full mt-2">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <p className="text-xs font-black text-indigo-300 uppercase tracking-widest">🌍 Faturamento Global (Loja Inteira)</p>
+                                        <span className="text-[9px] text-indigo-400/70 border border-indigo-500/20 px-2 py-0.5 rounded-full uppercase font-bold tracking-widest">Pagas no Mês</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-lg shadow-inner">
+                                        <div>
+                                            <label className={labelStyle}>Total Vendido (Bruto)</label>
+                                            <input type="number" step="0.01" disabled={isSaving || ((formData.comm_rate_guaranteed || 0) > 0 || (formData.comm_rate_store_credit || 0) > 0)} value={formData.comm_rate_store_total} onChange={e => setFormData({ ...formData, comm_rate_store_total: parseFloat(e.target.value) || 0 })} className={`${inputStyle} text-right border-indigo-500/30 focus:ring-indigo-500 disabled:opacity-50`} />
+                                        </div>
+                                        <div>
+                                            <label className={labelStyle}>Valores Recebidos (Caixa)</label>
+                                            <input type="number" step="0.01" disabled={isSaving || ((formData.comm_rate_guaranteed || 0) > 0 || (formData.comm_rate_store_credit || 0) > 0)} value={formData.comm_rate_received} onChange={e => setFormData({ ...formData, comm_rate_received: parseFloat(e.target.value) || 0 })} className={`${inputStyle} text-right border-indigo-500/30 focus:ring-indigo-500 disabled:opacity-50`} />
+                                        </div>
+                                        <div>
+                                            <label className={labelStyle}>Lucro Bruto <span className="text-[8px] font-normal normal-case text-indigo-300/60 ml-1">(Venda - Custo)</span></label>
+                                            <input type="number" step="0.01" disabled={isSaving || ((formData.comm_rate_guaranteed || 0) > 0 || (formData.comm_rate_store_credit || 0) > 0)} value={formData.comm_rate_profit} onChange={e => setFormData({ ...formData, comm_rate_profit: parseFloat(e.target.value) || 0 })} className={`${inputStyle} text-right border-indigo-500/30 focus:ring-indigo-500 disabled:opacity-50`} />
+                                        </div>
+                                        <p className="col-span-full text-[10px] text-indigo-200/50 mt-1 italic">
+                                            ⚠️ Importante: Atribuir uma taxa global anula as comissões por venda individual (e vice-versa).
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
                         </div>

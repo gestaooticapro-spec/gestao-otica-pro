@@ -193,20 +193,26 @@ export default function ComissoesInterface({
                                     <table className="w-full text-left text-sm">
                                         <thead className="bg-white text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
                                             <tr>
-                                                <th className="px-5 py-3">Data Fechamento</th>
-                                                <th className="px-5 py-3">Venda ID</th>
-                                                <th className="px-5 py-3 text-right">Valor Venda</th>
+                                                <th className="px-5 py-3">Data Ref.</th>
+                                                <th className="px-5 py-3">Origem / Venda ID</th>
+                                                <th className="px-5 py-3 text-right">Valor Base / Venda</th>
                                                 <th className="px-5 py-3 text-right">Comissão</th>
                                                 <th className="px-5 py-3 text-center">Status Pgto</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-50">
                                             {selectedEmployee.detalhes.map((det) => (
-                                                <tr key={det.id} className="hover:bg-slate-50 transition-colors">
+                                                <tr key={det.id} className={`transition-colors ${det.type === 'global_store' ? 'bg-indigo-50/50 hover:bg-indigo-50' : 'hover:bg-slate-50'}`}>
                                                     <td className="px-5 py-3 text-slate-500 font-mono text-xs">{formatDate(det.data)}</td>
-                                                    <td className="px-5 py-3 font-bold text-blue-600 text-xs">#{det.venda_id}</td>
-                                                    <td className="px-5 py-3 text-right text-slate-600">{formatCurrency(det.valor_venda)}</td>
-                                                    <td className="px-5 py-3 text-right font-bold text-slate-800">{formatCurrency(det.valor_comissao)}</td>
+                                                    <td className={`px-5 py-3 font-bold text-xs ${det.type === 'global_store' ? 'text-indigo-600' : 'text-blue-600'}`}>
+                                                        {det.type === 'global_store' ? '🎯 Faturamento Global' : `#${det.venda_id}`}
+                                                    </td>
+                                                    <td className="px-5 py-3 text-right text-slate-600">
+                                                        {det.type === 'global_store' ? <span className="text-[10px] text-slate-400">Todo o Mês</span> : formatCurrency(det.valor_venda)}
+                                                    </td>
+                                                    <td className={`px-5 py-3 text-right font-bold ${det.type === 'global_store' ? 'text-indigo-800' : 'text-slate-800'}`}>
+                                                        {formatCurrency(det.valor_comissao)}
+                                                    </td>
                                                     <td className="px-5 py-3 text-center">
                                                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${det.status === 'Pago' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
                                                             {det.status}

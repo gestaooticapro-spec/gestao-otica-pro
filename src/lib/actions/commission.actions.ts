@@ -51,8 +51,8 @@ export async function calcularERegistrarComissao(vendaId: number) {
         const rateReceived = emp.comm_rate_received || 0
         const rateProfit = emp.comm_rate_profit || 0
 
-        // Se todas forem zero, não há comissão a calcular
-        if (rateGuaranteed === 0 && rateCredit === 0 && rateStoreTotal === 0 && rateReceived === 0 && rateProfit === 0) {
+        // Se todas as INDIVIDUAIS forem zero, não há o que calcular
+        if (rateGuaranteed === 0 && rateCredit === 0) {
             return
         }
 
@@ -81,48 +81,17 @@ export async function calcularERegistrarComissao(vendaId: number) {
             comissaoTotal += totalRisco * (rateCredit / 100)
         }
 
-        // -------------------------------------------------------
-        // B. VENDAS SOBRE A LOJA (% sobre o total da venda)
-        // -------------------------------------------------------
-        if (rateStoreTotal > 0 && valorVenda > 0) {
-            comissaoTotal += valorVenda * (rateStoreTotal / 100)
-        }
-
-        // -------------------------------------------------------
-        // C. RECEBIMENTO (% sobre valores efetivamente recebidos)
-        // -------------------------------------------------------
-        if (rateReceived > 0) {
-            const totalRecebido = venda.pagamentos?.reduce((acc: number, pg: any) => {
-                return acc + (pg.valor_pago || 0)
-            }, 0) || 0
-
-            if (totalRecebido > 0) {
-                comissaoTotal += totalRecebido * (rateReceived / 100)
-            }
-        }
-
-        // -------------------------------------------------------
-        // D. SOBRE LUCRO (% sobre lucro bruto)
-        // -------------------------------------------------------
-        if (rateProfit > 0) {
-            const custoTotal = venda.venda_itens?.reduce((acc: number, item: any) => {
-                const custoUnit = item.produtos?.preco_custo || 0
-                return acc + (custoUnit * (item.quantidade || 1))
-            }, 0) || 0
-
-            const lucroBruto = valorVenda - custoTotal
-
-            if (lucroBruto > 0) {
-                comissaoTotal += lucroBruto * (rateProfit / 100)
-            }
-        }
+        // As taxas globais (rateStoreTotal, rateReceived, rateProfit) foram movidas 
+        // para calcularComissoesGlobais (por período).
 
         // -------------------------------------------------------
         // GRAVAÇÃO
         // -------------------------------------------------------
         if (comissaoTotal > 0) {
-            // Remove comissão anterior (caso de reprocessamento)
-            await (supabase.from('commissions') as any).delete().eq('venda_id', vendaId)
+            // Remove comissão individual anterior (caso de reprocessamento)
+            await (supabase.from('commissions') as any).delete()
+                .eq('venda_id', vendaId)
+                .eq('type', 'individual') // Garante que só deleta as individuais
 
             // CORREÇÃO: Usa data_fechamento da venda como referência temporal da comissão
             const dataComissao = venda.data_fechamento || new Date().toISOString()
@@ -132,6 +101,7 @@ export async function calcularERegistrarComissao(vendaId: number) {
                 store_id: venda.store_id,
                 employee_id: venda.employee_id,
                 venda_id: vendaId,
+                type: 'individual',
                 amount: parseFloat(comissaoTotal.toFixed(2)),
                 status: 'Pendente',
                 created_at: dataComissao
@@ -168,12 +138,128 @@ export type ResumoComissao = {
     detalhes: any[]
 }
 
+function formatDateOnly(date: Date) {
+    return date.toISOString().split('T')[0]
+}
+
+function isCurrentMonthlyPeriod(inicio: string, fim: string) {
+    const now = new Date()
+    const currentStart = formatDateOnly(new Date(now.getFullYear(), now.getMonth(), 1))
+    const currentEnd = formatDateOnly(new Date(now.getFullYear(), now.getMonth() + 1, 0))
+
+    return inicio === currentStart && fim === currentEnd
+}
+
+// ================================================================
+// COMISSÕES GLOBAIS (DA LOJA INTEIRA POR PERÍODO)
+// ================================================================
+export async function calcularComissoesGlobais(storeId: number, inicio: string, fim: string) {
+    const supabase = createAdminClient()
+    const dataInicio = `${inicio}T00:00:00`
+    const dataFim = `${fim}T23:59:59`
+    const periodRef = `${inicio}_${fim}`
+
+    try {
+        // 1. Busca funcionários da loja com pelo menos uma taxa global > 0
+        const { data: employees } = await (supabase.from('employees') as any)
+            .select('*')
+            .eq('store_id', storeId)
+            .eq('is_active', true)
+        
+        if (!employees) return
+
+        const globalEmployees = employees.filter((e: any) => 
+            (e.comm_rate_store_total || 0) > 0 || 
+            (e.comm_rate_received || 0) > 0 || 
+            (e.comm_rate_profit || 0) > 0
+        )
+
+        if (globalEmployees.length === 0) return
+
+        // 2. Busca totais da loja no período
+        const { data: vendas } = await (supabase.from('vendas') as any)
+            .select(`
+                id, valor_final, data_fechamento,
+                venda_itens ( quantidade, product_id, produtos:products(preco_custo) )
+            `)
+            .eq('store_id', storeId)
+            .eq('status', 'Fechada')
+            .gte('data_fechamento', dataInicio)
+            .lte('data_fechamento', dataFim)
+
+        const { data: pagamentos } = await (supabase.from('pagamentos') as any)
+            .select('valor_pago, created_at')
+            .eq('store_id', storeId)
+            .gte('created_at', dataInicio)
+            .lte('created_at', dataFim)
+
+        const totalVendido = (vendas || []).reduce((acc: number, v: any) => acc + (v.valor_final || 0), 0)
+        const totalRecebido = (pagamentos || []).reduce((acc: number, p: any) => acc + (p.valor_pago || 0), 0)
+        
+        let totalCusto = 0
+        ;(vendas || []).forEach((v: any) => {
+            (v.venda_itens || []).forEach((item: any) => {
+                const custoUnit = item.produtos?.preco_custo || 0
+                totalCusto += custoUnit * (item.quantidade || 1)
+            })
+        })
+        const totalLucro = Math.max(0, totalVendido - totalCusto)
+
+        // 3. Atualiza ou cria uma única comissão global por funcionário/período
+        for (const emp of globalEmployees) {
+            // Se já pagou parte global desse período, não recalcula
+            const { data: existingPaid } = await (supabase.from('commissions') as any)
+                .select('id')
+                .eq('store_id', storeId)
+                .eq('employee_id', emp.id)
+                .eq('type', 'global_store')
+                .eq('period_ref', periodRef)
+                .eq('status', 'Pago')
+                .limit(1)
+            
+            if (existingPaid && existingPaid.length > 0) continue; 
+
+            const cTotal = totalVendido * ((emp.comm_rate_store_total || 0) / 100)
+            const cRec = totalRecebido * ((emp.comm_rate_received || 0) / 100)
+            const cProf = totalLucro * ((emp.comm_rate_profit || 0) / 100)
+
+            const totalGlobal = cTotal + cRec + cProf
+
+            if (totalGlobal > 0) {
+                const { error: upsertError } = await (supabase.from('commissions') as any).upsert({
+                    tenant_id: emp.tenant_id,
+                    store_id: storeId,
+                    employee_id: emp.id,
+                    venda_id: null,
+                    type: 'global_store',
+                    period_ref: periodRef,
+                    amount: parseFloat(totalGlobal.toFixed(2)),
+                    status: 'Pendente',
+                    created_at: dataFim // Força pra data final, assim entra no filtro da tela sem problemas
+                }, {
+                    onConflict: 'store_id,employee_id,type,period_ref'
+                })
+
+                if (upsertError) throw upsertError
+            }
+        }
+    } catch (e) {
+        console.error("Erro ao recalcular comissoes globais:", e)
+    }
+}
+
 export async function getRelatorioComissoes(storeId: number, inicio: string, fim: string) {
     const supabase = createAdminClient()
 
     // Ajusta datas para cobrir o período completo
     const dataInicio = `${inicio}T00:00:00`
     const dataFim = `${fim}T23:59:59`
+
+    // Só autogera o mês corrente; períodos históricos ficam somente leitura
+    // para não recalcular com as taxas atuais ao abrir um relatório antigo.
+    if (isCurrentMonthlyPeriod(inicio, fim)) {
+        await calcularComissoesGlobais(storeId, inicio, fim)
+    }
 
     try {
         // CORREÇÃO: Busca comissões e filtra pela data_fechamento da VENDA,
@@ -182,7 +268,7 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
         const { data: comissoes, error } = await (supabase
             .from('commissions') as any)
             .select(`
-                id, amount, status, created_at, venda_id,
+                id, amount, status, created_at, venda_id, type, period_ref,
                 employees ( id, full_name ),
                 vendas ( valor_final, created_at, data_fechamento )
             `)
@@ -230,12 +316,13 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
 
             resumo.detalhes.push({
                 id: c.id,
-                // Mostra a data de fechamento da venda (não a data da comissão)
+                // Mostra a data de fechamento da venda ou do período (para global)
                 data: c.vendas?.data_fechamento || c.created_at,
                 venda_id: c.venda_id,
-                valor_venda: c.vendas?.valor_final,
+                valor_venda: c.vendas?.valor_final || 0,
                 valor_comissao: valor,
-                status: c.status
+                status: c.status,
+                type: c.type || 'individual'
             })
         })
 

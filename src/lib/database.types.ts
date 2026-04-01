@@ -505,7 +505,9 @@ export interface Database {
           tenant_id: string | null
           store_id: number
           employee_id: number
-          venda_id: number
+          venda_id: number | null
+          type: string
+          period_ref: string | null
           amount: number
           percentage: number | null
           status: string | null
@@ -518,7 +520,9 @@ export interface Database {
           tenant_id?: string | null
           store_id: number
           employee_id: number
-          venda_id: number
+          venda_id?: number | null
+          type?: string
+          period_ref?: string | null
           amount: number
           percentage?: number | null
           status?: string | null
@@ -527,6 +531,9 @@ export interface Database {
           updated_at?: string
         }
         Update: {
+          venda_id?: number | null
+          type?: string
+          period_ref?: string | null
           status?: string | null
           reversal_reason?: string | null
           updated_at?: string
