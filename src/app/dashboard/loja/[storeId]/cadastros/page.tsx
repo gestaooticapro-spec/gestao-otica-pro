@@ -29,6 +29,7 @@ const inputStyle = "block w-full rounded-xl border border-white/10 bg-black/20 s
 const cardStyle = "bg-white/5 p-5 rounded-2xl shadow-lg border border-white/10 backdrop-blur-md mb-3";
 
 type CategoryType = 'solar' | 'receituario' | 'lentes' | 'tratamentos' | 'oftalmologistas' | 'fornecedores' | 'produtos_gerais';
+type EditorMode = 'empty' | 'create' | 'edit';
 
 export default function CatalogPage() {
   const params = useParams();
@@ -37,7 +38,8 @@ export default function CatalogPage() {
   // --- Estados ---
   const [activeTab, setActiveTab] = useState<CategoryType>('solar'); // Padrão solicitado
   const [items, setItems] = useState<CatalogItemResult[]>([]);
-  const [selectedId, setSelectedId] = useState<number | null>(null); // null = Novo
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [editorMode, setEditorMode] = useState<EditorMode>('empty');
   const [search, setSearch] = useState('');
 
   // Controle de fundo com persistencia em localStorage via hook dedicado
@@ -84,17 +86,25 @@ export default function CatalogPage() {
   const handleTabChange = (tab: CategoryType) => {
     setActiveTab(tab);
     setSearch('');
-    handleNew();
+    handleCloseEditor();
   };
 
   const handleSelect = (item: CatalogItemResult) => {
     setSelectedId(item.id);
     setFormData(item.raw);
+    setEditorMode('edit');
   };
 
   const handleNew = () => {
     setSelectedId(null);
     setFormData({});
+    setEditorMode('create');
+  };
+
+  const handleCloseEditor = () => {
+    setSelectedId(null);
+    setFormData({});
+    setEditorMode('empty');
   };
 
   const handleInputChange = (field: string, value: any) => {
@@ -103,6 +113,7 @@ export default function CatalogPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (editorMode === 'empty') return;
 
     const formPayload = new FormData();
     if (selectedId) formPayload.append('id', selectedId.toString());
@@ -146,7 +157,7 @@ export default function CatalogPage() {
         // @ts-ignore
         const data = await fetchCatalogItems(storeId, activeTab, search);
         setItems(data);
-        handleNew();
+        handleCloseEditor();
 
         if (activeTab === 'produtos_gerais') {
           fetchCategoriasProdutos(storeId).then(setSugestoesCategorias);
@@ -168,7 +179,7 @@ export default function CatalogPage() {
         // @ts-ignore
         const data = await fetchCatalogItems(storeId, activeTab, search);
         setItems(data);
-        handleNew();
+        handleCloseEditor();
       } else {
         alert(result.message);
       }
@@ -331,37 +342,53 @@ export default function CatalogPage() {
           {/* Formulário */}
           <form id="catalog-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 custom-scrollbar">
             <div className="max-w-4xl mx-auto">
-              <div className={cardStyle}>
-                {activeTab === 'lentes' && (
-                  <FormLentes
-                    data={formData}
-                    onChange={handleInputChange}
-                    disabled={isSaving}
-                    onOpenGrid={() => setShowGridModal(true)} // Passando a prop
-                  />
-                )}
-                {(activeTab === 'solar' || activeTab === 'receituario') && (
-                  <FormArmacoes data={formData} onChange={handleInputChange} disabled={isSaving} storeId={storeId} />
-                )}
-                {activeTab === 'produtos_gerais' && (
-                  <FormProdutosGerais
-                    data={formData}
-                    onChange={handleInputChange}
-                    disabled={isSaving}
-                    sugestoes={sugestoesCategorias}
-                    storeId={storeId}
-                  />
-                )}
-                {activeTab === 'tratamentos' && (
-                  <FormTratamentos data={formData} onChange={handleInputChange} disabled={isSaving} />
-                )}
-                {activeTab === 'oftalmologistas' && (
-                  <FormOftalmos data={formData} onChange={handleInputChange} disabled={isSaving} showComissao={showComissao} setShowComissao={setShowComissao} />
-                )}
-                {activeTab === 'fornecedores' && (
-                  <FormFornecedores data={formData} onChange={handleInputChange} disabled={isSaving} />
-                )}
-              </div>
+              {editorMode === 'empty' ? (
+                <div className={`${cardStyle} min-h-[320px] flex items-center justify-center`}>
+                  <div className="max-w-md text-center">
+                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-indigo-500/20 bg-indigo-500/10">
+                      <ScanBarcode className="h-6 w-6 text-indigo-300" />
+                    </div>
+                    <h3 className="text-sm font-black uppercase tracking-[0.2em] text-slate-200">
+                      Nenhum cadastro aberto
+                    </h3>
+                    <p className="mt-3 text-sm leading-6 text-slate-400">
+                      Selecione um item da lista para editar ou clique em <span className="font-bold text-slate-200">Novo</span> para iniciar um cadastro com o formulário vazio.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className={cardStyle}>
+                  {activeTab === 'lentes' && (
+                    <FormLentes
+                      data={formData}
+                      onChange={handleInputChange}
+                      disabled={isSaving}
+                      onOpenGrid={() => setShowGridModal(true)} // Passando a prop
+                    />
+                  )}
+                  {(activeTab === 'solar' || activeTab === 'receituario') && (
+                    <FormArmacoes data={formData} onChange={handleInputChange} disabled={isSaving} storeId={storeId} />
+                  )}
+                  {activeTab === 'produtos_gerais' && (
+                    <FormProdutosGerais
+                      data={formData}
+                      onChange={handleInputChange}
+                      disabled={isSaving}
+                      sugestoes={sugestoesCategorias}
+                      storeId={storeId}
+                    />
+                  )}
+                  {activeTab === 'tratamentos' && (
+                    <FormTratamentos data={formData} onChange={handleInputChange} disabled={isSaving} />
+                  )}
+                  {activeTab === 'oftalmologistas' && (
+                    <FormOftalmos data={formData} onChange={handleInputChange} disabled={isSaving} showComissao={showComissao} setShowComissao={setShowComissao} />
+                  )}
+                  {activeTab === 'fornecedores' && (
+                    <FormFornecedores data={formData} onChange={handleInputChange} disabled={isSaving} />
+                  )}
+                </div>
+              )}
             </div>
           </form>
 
@@ -417,15 +444,17 @@ export default function CatalogPage() {
               </button>
             )}
 
-            <button
-              type="submit"
-              form="catalog-form"
-              disabled={isSaving}
-              className="px-6 py-2 text-xs font-bold text-emerald-100 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/50 rounded-lg shadow-md backdrop-blur-md transition-transform active:scale-95 flex items-center gap-2"
-            >
-              {isSaving ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="h-4 w-4" />}
-              SALVAR
-            </button>
+            {editorMode !== 'empty' && (
+              <button
+                type="submit"
+                form="catalog-form"
+                disabled={isSaving}
+                className="px-6 py-2 text-xs font-bold text-emerald-100 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/50 rounded-lg shadow-md backdrop-blur-md transition-transform active:scale-95 flex items-center gap-2"
+              >
+                {isSaving ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="h-4 w-4" />}
+                SALVAR
+              </button>
+            )}
           </div>
 
         </div>
