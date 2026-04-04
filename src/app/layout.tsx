@@ -19,13 +19,35 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: 'Gestão Ótica Pro',
   description: 'Sistema de gestão para redes de óticas',
+  openGraph: {
+    title: 'Gestão Ótica Pro',
+    description: 'Sistema de gestão para redes de óticas',
+    url: 'https://gestao-otica-pro.vercel.app',
+    siteName: 'Gestão Ótica Pro',
+    images: [
+      {
+        url: 'https://gestao-otica-pro.vercel.app/web-app-manifest-512x512.png',
+        width: 1200,
+        height: 630,
+        alt: 'Gestão Ótica Pro - Painel de Controle',
+      },
+    ],
+    type: 'website',
+    locale: 'pt_BR',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Gestão Ótica Pro',
+    description: 'Sistema de gestão para redes de óticas',
+    images: ['https://gestao-otica-pro.vercel.app/web-app-manifest-512x512.png'],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
     title: 'Ótica Pro',
   },
   formatDetection: {
-    telephone: false, // Evita que números aleatórios virem links de telefone
+    telephone: false,
   },
 }
 
