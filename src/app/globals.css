@@ -21,4 +21,21 @@
     .custom-scrollbar::-webkit-scrollbar-thumb:hover {
         background: rgba(255, 255, 255, 0.3);
     }
+
+    @keyframes shine {
+        from { transform: translateX(-100%) skewX(-15deg); }
+        to { transform: translateX(200%) skewX(-15deg); }
+    }
+
+    .animate-crystal-shine {
+        animation: shine 3s infinite;
+    }
+
+    .mesh-gradient-crystal {
+        background: radial-gradient(at 0% 0%, hsla(210,100%,98%,1) 0, transparent 50%), 
+                    radial-gradient(at 50% 0%, hsla(220,50%,95%,1) 0, transparent 50%), 
+                    radial-gradient(at 100% 0%, hsla(220,80%,90%,1) 0, transparent 50%),
+                    radial-gradient(at 100% 100%, hsla(220,100%,98%,1) 0, transparent 50%),
+                    white;
+    }
 }

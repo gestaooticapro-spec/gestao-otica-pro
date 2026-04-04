@@ -17,6 +17,7 @@ import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/Backg
 type Customer = Database['public']['Tables']['customers']['Row'];
 type Dependente = Database['public']['Tables']['dependentes']['Row'];
 type ActiveTab = 'principal' | 'detalhes' | 'referencias' | 'dependentes';
+type EditorMode = 'empty' | 'create' | 'edit';
 
 // --- HELPERS ---
 const safeStr = (v: any): string => { if (v == null) return ''; if (typeof v === 'object') return JSON.stringify(v) !== '{}' ? Object.values(v).filter(Boolean).join(' ') : ''; return String(v); };
@@ -85,6 +86,7 @@ export default function StoreClientPage() {
     const [isDeleting, startDeleteTransition] = useTransition();
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [currentIndex, setCurrentIndex] = useState(-1);
+    const [editorMode, setEditorMode] = useState<EditorMode>('empty');
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<ActiveTab>('principal');
 
@@ -146,6 +148,7 @@ export default function StoreClientPage() {
                 if (result.success && result.data) {
                     setCustomers([result.data]);
                     setCurrentIndex(0);
+                    setEditorMode('edit');
                 } else {
                     const listResult = await fetchDefaultCustomers(storeId);
                     if (listResult.success && listResult.data) {
@@ -234,6 +237,12 @@ export default function StoreClientPage() {
         setObsGeral(currentCustomer?.notes ?? currentCustomer?.obs_debito ?? '');
     }, [currentCustomer, currentIndex]);
 
+    useEffect(() => {
+        if (!loading && currentIndex === -1 && !currentCustomer && editorMode !== 'create') {
+            setEditorMode('empty');
+        }
+    }, [loading, currentIndex, currentCustomer, editorMode]);
+
     // --- HANDLERS ---
     const handleCpfChange = (val: string) => {
         const masked = maskCPF(val);
@@ -244,8 +253,15 @@ export default function StoreClientPage() {
         else setIsCpfValid(false);
     };
 
+    const handleCloseEditor = () => {
+        setCurrentIndex(-1);
+        setEditorMode('empty');
+        setActiveTab('principal');
+    };
+
     const handleSaveSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        if (editorMode === 'empty') return;
         const formData = new FormData(e.currentTarget);
 
         // Garantir que TODOS os campos do state sejam enviados,
@@ -296,7 +312,10 @@ export default function StoreClientPage() {
             const result = await saveCustomerDetails({ success: false, message: '' }, formData);
             if (result.success && result.data) {
                 alert(result.message);
-                if (currentIndex === -1) reloadDefaultList();
+                if (currentIndex === -1) {
+                    handleCloseEditor();
+                    reloadDefaultList();
+                }
                 else {
                     const updatedList = [...customers];
                     updatedList[currentIndex] = result.data;
@@ -317,6 +336,7 @@ export default function StoreClientPage() {
                 const result = await deleteCustomer(currentCustomer.id, storeId, `/dashboard/loja/${storeId}/clientes`);
                 if (result.success) {
                     alert('Cliente deletado.');
+                    handleCloseEditor();
                     reloadDefaultList();
                 } else { alert(result.message); }
             });
@@ -343,10 +363,12 @@ export default function StoreClientPage() {
             else if (direction === 'next') newIndex = (currentIndex >= lastIndex) ? 0 : currentIndex + 1;
         }
         setCurrentIndex(newIndex);
+        setEditorMode('edit');
     };
 
     const handleNew = () => {
         setCurrentIndex(-1);
+        setEditorMode('create');
         setActiveTab('principal');
     };
 
@@ -362,6 +384,7 @@ export default function StoreClientPage() {
             }
         }
         setCurrentIndex(index);
+        setEditorMode('edit');
     };
 
     const baseButtonStyle = "px-3 py-1.5 text-xs font-bold rounded-lg shadow-sm disabled:opacity-50 transition-all active:scale-95 flex items-center justify-center gap-1 border border-white/5";
@@ -475,41 +498,59 @@ export default function StoreClientPage() {
                                 </div>
                             )}
 
-                            {activeTab === 'principal' && (
-                                <div className={cardStyle}>
-                                    <AbaPrincipal
-                                        state={{ fullName, cpf, rg, birthDate, faixaEtaria, estadoCivil, rua, numero, bairro, complemento, cidade, uf, cep, phone, foneMovel, email, isCpfValid, obsGeral }}
-                                        handlers={{ setFullName, handleCpfChange, setRg, setBirthDate, setFaixaEtaria, setEstadoCivil, setRua, setNumero, setBairro, setComplemento, setCidade, setUf, setCep, setPhone, setFoneMovel, setEmail, setObsGeral }}
-                                        isSaving={isSaving} inputStyle={inputStyle}
-                                    />
+                            {editorMode === 'empty' ? (
+                                <div className={`${cardStyle} min-h-[320px] flex items-center justify-center`}>
+                                    <div className="max-w-md text-center">
+                                        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-indigo-500/20 bg-indigo-500/10">
+                                            <Users2 className="h-6 w-6 text-indigo-300" />
+                                        </div>
+                                        <h3 className="text-sm font-black uppercase tracking-[0.2em] text-slate-200">
+                                            Nenhum cliente aberto
+                                        </h3>
+                                        <p className="mt-3 text-sm leading-6 text-slate-400">
+                                            Selecione um cliente da lista para editar ou clique em <span className="font-bold text-slate-200">Novo</span> para iniciar um cadastro vazio.
+                                        </p>
+                                    </div>
                                 </div>
-                            )}
-                            {activeTab === 'detalhes' && (
-                                <div className={cardStyle}>
-                                    <AbaDetalhes
-                                        state={{ pai, mae, conjugeNome, conjugeNascimento, conjugeFone, conjugeNaturalidade, conjugeTrabalho, comercialTrabalho, comercialCargo, comercialRenda, comercialFone, comercialEndereco, obsComercial }}
-                                        handlers={{ setPai, setMae, setConjugeNome, setConjugeNascimento, setConjugeFone, setConjugeNaturalidade, setConjugeTrabalho, setComercialTrabalho, setComercialCargo, setComercialRenda, setComercialFone, setComercialEndereco, setObsComercial }}
-                                        isSaving={isSaving} inputStyle={inputStyle}
-                                    />
-                                </div>
-                            )}
-                            {activeTab === 'referencias' && (
-                                <div className={cardStyle}>
-                                    <AbaReferencias
-                                        state={{ refPessoal1, refPessoal2, refComercio1, refComercio2 }}
-                                        handlers={{ setRefPessoal1, setRefPessoal2, setRefComercio1, setRefComercio2 }}
-                                        isSaving={isSaving} inputStyle={inputStyle}
-                                    />
-                                </div>
-                            )}
-                            {activeTab === 'dependentes' && (
-                                <AbaDependentes
-                                    customerId={currentCustomer?.id}
-                                    storeId={storeId}
-                                    dependentes={dependentesList}
-                                    onUpdate={() => { if (currentCustomer?.id) getDependentes(currentCustomer.id).then(setDependentesList); }}
-                                    inputStyle={inputStyle}
-                                />
+                            ) : (
+                                <>
+                                    {activeTab === 'principal' && (
+                                        <div className={cardStyle}>
+                                            <AbaPrincipal
+                                                state={{ fullName, cpf, rg, birthDate, faixaEtaria, estadoCivil, rua, numero, bairro, complemento, cidade, uf, cep, phone, foneMovel, email, isCpfValid, obsGeral }}
+                                                handlers={{ setFullName, handleCpfChange, setRg, setBirthDate, setFaixaEtaria, setEstadoCivil, setRua, setNumero, setBairro, setComplemento, setCidade, setUf, setCep, setPhone, setFoneMovel, setEmail, setObsGeral }}
+                                                isSaving={isSaving} inputStyle={inputStyle}
+                                            />
+                                        </div>
+                                    )}
+                                    {activeTab === 'detalhes' && (
+                                        <div className={cardStyle}>
+                                            <AbaDetalhes
+                                                state={{ pai, mae, conjugeNome, conjugeNascimento, conjugeFone, conjugeNaturalidade, conjugeTrabalho, comercialTrabalho, comercialCargo, comercialRenda, comercialFone, comercialEndereco, obsComercial }}
+                                                handlers={{ setPai, setMae, setConjugeNome, setConjugeNascimento, setConjugeFone, setConjugeNaturalidade, setConjugeTrabalho, setComercialTrabalho, setComercialCargo, setComercialRenda, setComercialFone, setComercialEndereco, setObsComercial }}
+                                                isSaving={isSaving} inputStyle={inputStyle}
+                                            />
+                                        </div>
+                                    )}
+                                    {activeTab === 'referencias' && (
+                                        <div className={cardStyle}>
+                                            <AbaReferencias
+                                                state={{ refPessoal1, refPessoal2, refComercio1, refComercio2 }}
+                                                handlers={{ setRefPessoal1, setRefPessoal2, setRefComercio1, setRefComercio2 }}
+                                                isSaving={isSaving} inputStyle={inputStyle}
+                                            />
+                                        </div>
+                                    )}
+                                    {activeTab === 'dependentes' && (
+                                        <AbaDependentes
+                                            customerId={currentCustomer?.id}
+                                            storeId={storeId}
+                                            dependentes={dependentesList}
+                                            onUpdate={() => { if (currentCustomer?.id) getDependentes(currentCustomer.id).then(setDependentesList); }}
+                                            inputStyle={inputStyle}
+                                        />
+                                    )}
+                                </>
                             )}
                         </div>
                     </div>
@@ -521,7 +562,7 @@ export default function StoreClientPage() {
                                 <button type="button" onClick={() => handleNavigate('first')} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors border border-white/5"><ArrowLeftToLine className="h-4 w-4" /></button>
                                 <button type="button" onClick={() => handleNavigate('prev')} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors border border-white/5"><ChevronLeft className="h-4 w-4" /></button>
                                 <span className="bg-black/40 text-slate-200 text-xs px-3 py-2 rounded-lg font-mono font-bold min-w-[70px] text-center border border-white/10 shadow-inner">
-                                    {currentIndex === -1 ? 'NOVO' : `${currentIndex + 1} / ${customers.length}`}
+                                    {currentIndex === -1 ? (editorMode === 'create' ? 'NOVO' : '--') : `${currentIndex + 1} / ${customers.length}`}
                                 </span>
                                 <button type="button" onClick={() => handleNavigate('next')} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors border border-white/5"><ChevronRight className="h-4 w-4" /></button>
                                 <button type="button" onClick={() => handleNavigate('last')} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors border border-white/5"><ArrowRightToLine className="h-4 w-4" /></button>
@@ -539,9 +580,11 @@ export default function StoreClientPage() {
                                         {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Excluir
                                     </button>
                                 )}
-                                <button type="submit" disabled={isSaving} className={`${baseButtonStyle} bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/20 border-transparent px-6 border border-white/10`}>
-                                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4 mr-1" /> SALVAR</>}
-                                </button>
+                                {editorMode !== 'empty' && (
+                                    <button type="submit" disabled={isSaving} className={`${baseButtonStyle} bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/20 border-transparent px-6 border border-white/10`}>
+                                        {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4 mr-1" /> SALVAR</>}
+                                    </button>
+                                )}
                             </div>
                         </div>
                     )}

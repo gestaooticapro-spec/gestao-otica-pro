@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import {
     ArrowLeft,
@@ -12,7 +13,8 @@ import {
     LogOut,
     Percent,
     Settings,
-    BarChart3
+    BarChart3,
+    Store
 } from 'lucide-react';
 
 import { createClient } from '@/lib/supabase/client';
@@ -156,7 +158,28 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
             </div>
 
             <div className="relative z-10 w-full max-w-6xl flex flex-col items-center">
-                <div className="text-center mb-10 animate-in slide-in-from-top-5 duration-700">
+                <div className="text-center mb-10 flex flex-col items-center animate-in slide-in-from-top-5 duration-700">
+                    <div
+                        className="w-28 h-28 relative mb-6 rounded-3xl overflow-hidden shadow-2xl shadow-cyan-500/10 ring-1 ring-white/15 backdrop-blur-xl flex items-center justify-center group border border-white/10 transition-all duration-500 hover:shadow-cyan-400/20 hover:ring-white/25"
+                        style={{ background: 'radial-gradient(circle at 50% 40%, rgba(100,180,255,0.15) 0%, rgba(30,40,60,0.95) 60%, rgba(10,15,30,1) 100%)' }}
+                    >
+                        {/* Shine sweep */}
+                        <div className="absolute inset-0 z-20 bg-gradient-to-r from-transparent via-white/20 to-transparent w-1/2 h-full animate-crystal-shine pointer-events-none" />
+
+                        <div className="relative z-10 w-full h-full flex items-center justify-center">
+                            {logoUrl ? (
+                                <Image
+                                    src={logoUrl}
+                                    alt={storeName}
+                                    fill
+                                    className="object-contain p-4 drop-shadow-[0_0_8px_rgba(255,255,255,0.3)] group-hover:scale-110 transition-transform duration-500"
+                                />
+                            ) : (
+                                <Store className="w-12 h-12 text-white/40" />
+                            )}
+                        </div>
+                    </div>
+
                     <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white drop-shadow-lg mb-2">{storeName}</h1>
                     <p className="text-slate-400 text-xs font-black uppercase tracking-[0.3em] bg-white/5 px-4 py-1 rounded-full border border-white/10">
                         Hub Gerencial
