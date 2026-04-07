@@ -3,11 +3,10 @@
 import {
     Zap, FileText, CheckCircle2, Wallet,
     LifeBuoy, Users, Globe, ArrowLeft, FileSearch, ArrowRight,
-    Search, Loader2, X, User, MessageCircle
+    Search, Loader2, X, User, MessageCircle, Sparkles, Tag
 } from 'lucide-react';
 import { useModals } from '@/lib/contexts/ModalsContext';
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { searchCustomersQuick, CustomerSearchResult } from '@/lib/actions/customer-history.actions';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 
@@ -15,6 +14,7 @@ interface OperatorMenuAtendimentoProps {
     storeId: number;
     onBack: () => void;
     onNavigate: (route: string) => void;
+    preSaleAnalysisEnabled?: boolean;
 }
 
 // --- SUB-COMPONENTE: MODAL DE BUSCA PARA HISTÓRICO ---
@@ -32,13 +32,6 @@ function SearchRedirectModal({
     const [searchTerm, setSearchTerm] = useState('');
     const [results, setResults] = useState<CustomerSearchResult[]>([]);
     const [loading, setLoading] = useState(false);
-
-    useEffect(() => {
-        if (!isOpen) {
-            setSearchTerm('');
-            setResults([]);
-        }
-    }, [isOpen]);
 
     useEffect(() => {
         const timer = setTimeout(async () => {
@@ -120,7 +113,8 @@ function SearchRedirectModal({
 export default function OperatorMenuAtendimento({
     storeId,
     onBack,
-    onNavigate
+    onNavigate,
+    preSaleAnalysisEnabled = false
 }: OperatorMenuAtendimentoProps) {
     const { openParcelaModal, openCustomerHistoryModal } = useModals();
     const { preference } = useBackgroundPreference();
@@ -151,6 +145,7 @@ export default function OperatorMenuAtendimento({
         <div className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-950 transition-colors duration-500">
 
             <SearchRedirectModal
+                key={isSearchOpen ? 'search-open' : 'search-closed'}
                 isOpen={isSearchOpen}
                 onClose={() => setIsSearchOpen(false)}
                 storeId={storeId}
@@ -212,6 +207,27 @@ export default function OperatorMenuAtendimento({
                                         <ArrowRight className="w-5 h-5 text-indigo-300" />
                                     </div>
                                 </button>
+
+                                {preSaleAnalysisEnabled && (
+                                    <button
+                                        onClick={() => onNavigate(`/dashboard/loja/${storeId}/avaliacao`)}
+                                        onMouseEnter={(e) => handleHover(e, "Abra a tela de Avaliação para registrar análises pré-venda, importar o PDF do iVision e manter histórico individual por titular ou dependente.")}
+                                        onMouseMove={handleMove}
+                                        onMouseLeave={handleLeave}
+                                        className="group w-full bg-gradient-to-br from-indigo-600/20 via-fuchsia-900/30 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-3 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-fuchsia-500/20 hover:border-fuchsia-500/30"
+                                    >
+                                        <div className="p-2.5 rounded-full bg-fuchsia-500/20 ring-1 ring-fuchsia-400/30 group-hover:bg-fuchsia-500/40 transition-colors shadow-[0_0_15px_rgba(217,70,239,0.25)]">
+                                            <Sparkles className="w-7 h-7 text-fuchsia-200 group-hover:text-white transition-colors shrink-0" strokeWidth={1.5} />
+                                        </div>
+                                        <div className="text-left flex-1">
+                                            <span className="text-white text-lg font-bold block mb-0.5">Avaliação</span>
+                                            <span className="text-fuchsia-200/70 text-[10px] uppercase tracking-wide group-hover:text-fuchsia-100 transition-colors">Análise pré-venda</span>
+                                        </div>
+                                        <div className="absolute top-1/2 right-4 -translate-y-1/2 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all duration-300">
+                                            <ArrowRight className="w-5 h-5 text-fuchsia-300" />
+                                        </div>
+                                    </button>
+                                )}
                             </div>
                         </div>
 
@@ -358,7 +374,7 @@ export default function OperatorMenuAtendimento({
                         Apoio Operacional
                         <span className="w-8 h-px bg-slate-600"></span>
                     </h2>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
                         {/* Clientes */}
                         <button
                             onClick={() => onNavigate(`/dashboard/loja/${storeId}/clientes`)}
@@ -407,6 +423,23 @@ export default function OperatorMenuAtendimento({
                             <div className="text-left">
                                 <span className="text-slate-200 text-sm font-bold block group-hover:text-white transition-colors">Enviar Informação</span>
                                 <span className="text-slate-500 text-[10px] group-hover:text-slate-300 transition-colors">WhatsApp</span>
+                            </div>
+                        </button>
+
+                        {/* Tabela de Preços */}
+                        <button
+                            onClick={() => onNavigate(`/dashboard/loja/${storeId}/tabela-precos`)}
+                            onMouseEnter={(e) => handleHover(e, "Consulte a tabela de preços do laboratório ativo. Compare ofertas, tratamentos e valores lado a lado.")}
+                            onMouseMove={handleMove}
+                            onMouseLeave={handleLeave}
+                            className="group bg-white/5 hover:bg-slate-700/30 rounded-xl flex items-center gap-4 px-4 py-3 border border-white/5 hover:border-slate-500/30 transition-all duration-300 cursor-pointer"
+                        >
+                            <div className="p-2 rounded-lg bg-slate-500/20 text-slate-300 group-hover:bg-slate-500 group-hover:text-white transition-colors">
+                                <Tag className="w-5 h-5" strokeWidth={2} />
+                            </div>
+                            <div className="text-left">
+                                <span className="text-slate-200 text-sm font-bold block group-hover:text-white transition-colors">Tabela de Preços</span>
+                                <span className="text-slate-500 text-[10px] group-hover:text-slate-300 transition-colors">Laboratório</span>
                             </div>
                         </button>
                     </div>

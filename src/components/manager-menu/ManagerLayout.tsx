@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
     ArrowLeft,
     ArrowRight,
+    Bot,
     Briefcase,
     Building2,
     CalendarRange,
@@ -57,6 +58,15 @@ const GERENCIA_LINKS = [
         icon: FileText,
         route: (storeId: number) => `/dashboard/loja/${storeId}/fiscal`,
         tone: 'from-rose-600/15 via-rose-900/25 to-slate-900/60 hover:border-rose-400/30',
+        colSpan: false
+    },
+    {
+        id: 'catalogo-global',
+        title: 'Catálogo Global',
+        subtitle: 'Laboratórios',
+        icon: Bot,
+        route: (storeId: number) => `/dashboard/loja/${storeId}/catalogo-global`,
+        tone: 'from-cyan-600/15 via-cyan-900/25 to-slate-900/60 hover:border-cyan-400/30',
         colSpan: false
     },
     {

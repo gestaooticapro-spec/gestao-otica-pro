@@ -91,6 +91,8 @@ export interface Database {
           name: string
           tenant_id: string
           settings: Json | null
+          certificate_thumbprint: string | null
+          certificate_valid_until: string | null
           // Campos adicionais de perfil da loja
           razao_social: string | null
           cnpj: string | null
@@ -111,6 +113,8 @@ export interface Database {
           name: string
           tenant_id: string
           settings?: Json | null
+          certificate_thumbprint?: string | null
+          certificate_valid_until?: string | null
           razao_social?: string | null
           cnpj?: string | null
           inscricao_estadual?: string | null
@@ -130,6 +134,8 @@ export interface Database {
           name?: string
           tenant_id?: string
           settings?: Json | null
+          certificate_thumbprint?: string | null
+          certificate_valid_until?: string | null
           razao_social?: string | null
           cnpj?: string | null
           inscricao_estadual?: string | null
@@ -367,6 +373,177 @@ export interface Database {
       }
 
       // --- NOVAS TABELAS DE ASSISTÊNCIA ---
+      optical_evaluations: {
+        Row: {
+          id: number
+          created_at: string
+          updated_at: string
+          tenant_id: string
+          store_id: number
+          evaluated_customer_id: number | null
+          evaluated_dependente_id: number | null
+          responsible_customer_id: number | null
+          imported_by_user_id: string | null
+          source_system: 'manual' | 'ivision'
+          status: 'rascunho' | 'concluida' | 'importada' | 'exportada'
+          parse_status: 'success' | 'partial' | 'failed'
+          source_document_url: string | null
+          source_document_host: string | null
+          source_os_number: string | null
+          source_exam_type: string | null
+          source_exam_datetime: string | null
+          patient_name_raw: string | null
+          evaluated_name_snapshot: string | null
+          responsible_name_snapshot: string | null
+          relationship_snapshot: string | null
+          age_years: number | null
+          estilo_vida_uso_computador_horas: number | null
+          estilo_vida_dirigir_horas: number | null
+          estilo_vida_leitura_horas: number | null
+          estilo_vida_uso_celular_horas: number | null
+          estilo_vida_exposicao_sol_horas: number | null
+          estilo_vida_ambiente_interno_horas: number | null
+          estilo_vida_ambiente_externo_horas: number | null
+          estilo_vida_assistir_tv_horas: number | null
+          receita_longe_od_esferico: string | null
+          receita_longe_od_cilindrico: string | null
+          receita_longe_od_eixo: string | null
+          receita_longe_oe_esferico: string | null
+          receita_longe_oe_cilindrico: string | null
+          receita_longe_oe_eixo: string | null
+          receita_perto_od_esferico: string | null
+          receita_perto_od_cilindrico: string | null
+          receita_perto_od_eixo: string | null
+          receita_perto_oe_esferico: string | null
+          receita_perto_oe_cilindrico: string | null
+          receita_perto_oe_eixo: string | null
+          receita_adicao: string | null
+          medida_dnp_od: string | null
+          medida_dnp_oe: string | null
+          medida_altura_od: string | null
+          medida_altura_oe: string | null
+          recommended_lens_name: string | null
+          commercial_recommendation_raw: string | null
+          extracted_text: string | null
+          raw_payload_json: Json | null
+          parse_warning: string | null
+          document_hash: string | null
+          exported_service_order_id: number | null
+        }
+        Insert: {
+          id?: number
+          created_at?: string
+          updated_at?: string
+          tenant_id: string
+          store_id: number
+          evaluated_customer_id?: number | null
+          evaluated_dependente_id?: number | null
+          responsible_customer_id?: number | null
+          imported_by_user_id?: string | null
+          source_system?: 'manual' | 'ivision'
+          status?: 'rascunho' | 'concluida' | 'importada' | 'exportada'
+          parse_status?: 'success' | 'partial' | 'failed'
+          source_document_url?: string | null
+          source_document_host?: string | null
+          source_os_number?: string | null
+          source_exam_type?: string | null
+          source_exam_datetime?: string | null
+          patient_name_raw?: string | null
+          evaluated_name_snapshot?: string | null
+          responsible_name_snapshot?: string | null
+          relationship_snapshot?: string | null
+          age_years?: number | null
+          estilo_vida_uso_computador_horas?: number | null
+          estilo_vida_dirigir_horas?: number | null
+          estilo_vida_leitura_horas?: number | null
+          estilo_vida_uso_celular_horas?: number | null
+          estilo_vida_exposicao_sol_horas?: number | null
+          estilo_vida_ambiente_interno_horas?: number | null
+          estilo_vida_ambiente_externo_horas?: number | null
+          estilo_vida_assistir_tv_horas?: number | null
+          receita_longe_od_esferico?: string | null
+          receita_longe_od_cilindrico?: string | null
+          receita_longe_od_eixo?: string | null
+          receita_longe_oe_esferico?: string | null
+          receita_longe_oe_cilindrico?: string | null
+          receita_longe_oe_eixo?: string | null
+          receita_perto_od_esferico?: string | null
+          receita_perto_od_cilindrico?: string | null
+          receita_perto_od_eixo?: string | null
+          receita_perto_oe_esferico?: string | null
+          receita_perto_oe_cilindrico?: string | null
+          receita_perto_oe_eixo?: string | null
+          receita_adicao?: string | null
+          medida_dnp_od?: string | null
+          medida_dnp_oe?: string | null
+          medida_altura_od?: string | null
+          medida_altura_oe?: string | null
+          recommended_lens_name?: string | null
+          commercial_recommendation_raw?: string | null
+          extracted_text?: string | null
+          raw_payload_json?: Json | null
+          parse_warning?: string | null
+          document_hash?: string | null
+          exported_service_order_id?: number | null
+        }
+        Update: {
+          id?: number
+          created_at?: string
+          updated_at?: string
+          tenant_id?: string
+          store_id?: number
+          evaluated_customer_id?: number | null
+          evaluated_dependente_id?: number | null
+          responsible_customer_id?: number | null
+          imported_by_user_id?: string | null
+          source_system?: 'manual' | 'ivision'
+          status?: 'rascunho' | 'concluida' | 'importada' | 'exportada'
+          parse_status?: 'success' | 'partial' | 'failed'
+          source_document_url?: string | null
+          source_document_host?: string | null
+          source_os_number?: string | null
+          source_exam_type?: string | null
+          source_exam_datetime?: string | null
+          patient_name_raw?: string | null
+          evaluated_name_snapshot?: string | null
+          responsible_name_snapshot?: string | null
+          relationship_snapshot?: string | null
+          age_years?: number | null
+          estilo_vida_uso_computador_horas?: number | null
+          estilo_vida_dirigir_horas?: number | null
+          estilo_vida_leitura_horas?: number | null
+          estilo_vida_uso_celular_horas?: number | null
+          estilo_vida_exposicao_sol_horas?: number | null
+          estilo_vida_ambiente_interno_horas?: number | null
+          estilo_vida_ambiente_externo_horas?: number | null
+          estilo_vida_assistir_tv_horas?: number | null
+          receita_longe_od_esferico?: string | null
+          receita_longe_od_cilindrico?: string | null
+          receita_longe_od_eixo?: string | null
+          receita_longe_oe_esferico?: string | null
+          receita_longe_oe_cilindrico?: string | null
+          receita_longe_oe_eixo?: string | null
+          receita_perto_od_esferico?: string | null
+          receita_perto_od_cilindrico?: string | null
+          receita_perto_od_eixo?: string | null
+          receita_perto_oe_esferico?: string | null
+          receita_perto_oe_cilindrico?: string | null
+          receita_perto_oe_eixo?: string | null
+          receita_adicao?: string | null
+          medida_dnp_od?: string | null
+          medida_dnp_oe?: string | null
+          medida_altura_od?: string | null
+          medida_altura_oe?: string | null
+          recommended_lens_name?: string | null
+          commercial_recommendation_raw?: string | null
+          extracted_text?: string | null
+          raw_payload_json?: Json | null
+          parse_warning?: string | null
+          document_hash?: string | null
+          exported_service_order_id?: number | null
+        }
+      }
+
       assistance_tickets: {
         Row: {
           id: number
@@ -880,6 +1057,7 @@ export interface Database {
           protocolo_fisico: string | null
           dependente_id: number | null
           oftalmologista_id: number | null
+          source_optical_evaluation_id: number | null
           // NOVA TABELA ASSISTÊNCIA PODE TER RELAÇÃO, MAS NÃO ALTEROU OS AQUI
         }
         Insert: {

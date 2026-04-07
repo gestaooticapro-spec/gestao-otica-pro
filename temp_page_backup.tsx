@@ -1000,6 +1000,7 @@ export default function ServiceOrderPage() {
             onListChange={setExistingOrders}
             saveState={saveState}
             dispatch={dispatch}
+            preSaleAnalysisEnabled={data.preSaleAnalysisEnabled}
             venda={data.venda}
         />
     )

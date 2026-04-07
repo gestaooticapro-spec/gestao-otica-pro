@@ -1,9 +1,8 @@
-// ARQUIVO: src/components/modals/AddDependenteModal.tsx
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
-import { Loader2, X, Save, UserPlus } from 'lucide-react'
+import { Loader2, Save, UserPlus, X } from 'lucide-react'
 import { saveDependente, type SaveDependenteResult } from '@/lib/actions/dependents.actions'
 import { Database } from '@/lib/database.types'
 
@@ -19,11 +18,12 @@ type AddDependenteModalProps = {
 
 function SubmitButton() {
   const { pending } = useFormStatus()
+
   return (
     <button
       type="submit"
       disabled={pending}
-      className="flex w-full justify-center items-center gap-2 rounded-md bg-blue-600 py-2 px-4 text-sm font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+      className="flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
     >
       {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
       SALVAR DEPENDENTE
@@ -41,30 +41,40 @@ export default function AddDependenteModal({
   const initialState: SaveDependenteResult = { success: false, message: '' }
   const [state, dispatch] = useFormState(saveDependente, initialState)
   const formRef = useRef<HTMLFormElement>(null)
+  const handledDependenteIdRef = useRef<number | null>(null)
 
-  // Fecha e notifica sucesso
   useEffect(() => {
-    if (state.success && state.data) {
-      onSuccess(state.data)
-      onClose()
-      // Limpa o estado para a próxima abertura (opcional, pois o modal será desmontado se condicional)
-    }
-  }, [state, onSuccess, onClose])
+    if (!isOpen || !state.success || !state.data) return
+    if (handledDependenteIdRef.current === state.data.id) return
+
+    handledDependenteIdRef.current = state.data.id
+    formRef.current?.reset()
+    onSuccess(state.data)
+    onClose()
+  }, [isOpen, state, onSuccess, onClose])
+
+  useEffect(() => {
+    if (isOpen) return
+    handledDependenteIdRef.current = null
+  }, [isOpen])
 
   if (!isOpen) return null
 
-  const inputStyle = "block w-full rounded-md border-gray-300 shadow-sm h-9 text-sm px-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
-  const labelStyle = "block text-xs font-bold text-gray-700 mb-1"
+  const inputStyle =
+    'block w-full rounded-md border-gray-300 bg-white px-2 text-sm text-gray-900 shadow-sm h-9 focus:border-blue-500 focus:ring-blue-500'
+  const labelStyle = 'mb-1 block text-xs font-bold text-gray-700'
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
-      <div 
-        className="relative w-full max-w-md bg-gray-100 rounded-lg shadow-xl border border-gray-300 overflow-hidden"
-        onClick={e => e.stopPropagation()}
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-md overflow-hidden rounded-lg border border-gray-300 bg-gray-100 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex justify-between items-center px-4 py-3 bg-white border-b border-gray-200">
-          <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+        <div className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
+          <h3 className="flex items-center gap-2 text-sm font-bold text-gray-800">
             <UserPlus className="h-5 w-5 text-blue-600" />
             Novo Dependente / Paciente
           </h3>
@@ -73,14 +83,19 @@ export default function AddDependenteModal({
           </button>
         </div>
 
-        {/* Form */}
-        <form action={dispatch} ref={formRef} className="p-5 space-y-4">
+        <form action={dispatch} ref={formRef} className="space-y-4 p-5">
           <input type="hidden" name="store_id" value={storeId} />
           <input type="hidden" name="customer_id" value={customerId} />
 
           <div>
             <label className={labelStyle}>Nome Completo *</label>
-            <input type="text" name="nome_completo" required className={inputStyle} placeholder="Ex: João Silva Jr." />
+            <input
+              type="text"
+              name="nome_completo"
+              required
+              className={inputStyle}
+              placeholder="Ex: Joao Silva Jr."
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -88,8 +103,8 @@ export default function AddDependenteModal({
               <label className={labelStyle}>Parentesco *</label>
               <select name="parentesco" className={inputStyle}>
                 <option value="Filho(a)">Filho(a)</option>
-                <option value="Cônjuge">Cônjuge</option>
-                <option value="Pai/Mãe">Pai/Mãe</option>
+                <option value="Conjuge">Conjuge</option>
+                <option value="Pai/Mae">Pai/Mae</option>
                 <option value="Outro">Outro</option>
               </select>
             </div>
@@ -100,7 +115,7 @@ export default function AddDependenteModal({
           </div>
 
           {state.message && !state.success && (
-            <div className="p-2 bg-red-100 border border-red-200 text-red-700 text-xs rounded">
+            <div className="rounded border border-red-200 bg-red-100 p-2 text-xs text-red-700">
               {state.message}
             </div>
           )}

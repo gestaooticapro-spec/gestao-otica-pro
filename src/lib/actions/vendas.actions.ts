@@ -25,6 +25,9 @@ type Pagamento = Database['public']['Tables']['pagamentos']['Row']
 type Financiamento = Database['public']['Tables']['financiamento_loja']['Row']
 type FinanciamentoParcela = Database['public']['Tables']['financiamento_parcelas']['Row']
 type Employee = Database['public']['Tables']['employees']['Row']
+type StoreSettings = {
+  pre_sale_analysis_enabled?: boolean
+}
 
 type ServiceOrderWithLinks = ServiceOrder & {
   links?: { venda_item_id: number; uso_na_os: string }[]
@@ -43,6 +46,7 @@ export type OSPageData = {
   employees: Employee[]
   vendaItens: VendaItem[]
   existingOrders: ServiceOrderWithLinks[]
+  preSaleAnalysisEnabled: boolean
 }
 
 export type GetOSPageDataResult = {
@@ -102,6 +106,7 @@ export async function getOSPageData(
       employeesRes,
       itensRes,
       osRes,
+      storeRes,
     ] = await Promise.all([
       supabase.from('customers').select('*').eq('id', customerId).single(),
       supabase.from('vendas').select('*').eq('id', vendaId).single(),
@@ -113,9 +118,12 @@ export async function getOSPageData(
         .select('*, links:venda_itens_os_links(venda_item_id, uso_na_os)')
         .eq('venda_id', vendaId)
         .order('created_at'),
+      supabase.from('stores').select('settings').eq('id', storeId).single(),
     ])
 
     if (customerRes.error) throw new Error(`Cliente: ${customerRes.error.message}`)
+    const storeSettings = (storeRes.data as { settings?: unknown } | null)?.settings
+    const preSaleAnalysisEnabled = ((storeSettings || {}) as StoreSettings).pre_sale_analysis_enabled === true
 
     const data: OSPageData = {
       customer: customerRes.data,
@@ -125,6 +133,7 @@ export async function getOSPageData(
       employees: employeesRes.data || [],
       vendaItens: itensRes.data || [],
       existingOrders: osRes.data || [],
+      preSaleAnalysisEnabled,
     }
 
     return { success: true, data }
@@ -177,6 +186,7 @@ const ServiceOrderSchema = z.object({
   dt_prometido_para: z.string().nullable(),
   obs_os: z.string().nullable(),
   protocolo_fisico: z.string().optional().nullable(),
+  source_optical_evaluation_id: z.coerce.number().optional().nullable(),
 })
 
 const ItemLinkSchema = z.object({
@@ -260,6 +270,7 @@ export async function saveServiceOrder(
     dt_prometido_para: parseDate(formData.get('dt_prometido_para')),
     obs_os: nullIfEmpty(formData.get('obs_os')),
     protocolo_fisico: nullIfEmpty(formData.get('protocolo_fisico')),
+    source_optical_evaluation_id: nullIfEmpty(formData.get('source_optical_evaluation_id')),
   })
 
   if (!validated.success) {
@@ -267,6 +278,16 @@ export async function saveServiceOrder(
   }
 
   const { id, ...osData } = validated.data
+  let previousSourceEvaluationId: number | null = null
+
+  if (id) {
+    const { data: existingOrderLink } = await (supabaseAdmin.from('service_orders') as any)
+      .select('source_optical_evaluation_id')
+      .eq('id', id)
+      .maybeSingle()
+
+    previousSourceEvaluationId = existingOrderLink?.source_optical_evaluation_id ?? null
+  }
 
   let itemLinks: z.infer<typeof ItemLinkSchema>[] = []
   try {
@@ -488,8 +509,51 @@ export async function saveServiceOrder(
       }
     }
 
+    const nextSourceEvaluationId = payload.source_optical_evaluation_id ?? null
+
+    if (previousSourceEvaluationId && previousSourceEvaluationId !== nextSourceEvaluationId) {
+      const { error: unlinkError } = await (supabaseAdmin.from('optical_evaluations') as any)
+        .update({ exported_service_order_id: null, updated_at: new Date().toISOString() })
+        .eq('id', previousSourceEvaluationId)
+        .eq('store_id', osData.store_id)
+
+      if (unlinkError) throw unlinkError
+    }
+
+    if (nextSourceEvaluationId) {
+      const { data: linkedEvaluation, error: linkedEvaluationError } = await (supabaseAdmin.from('optical_evaluations') as any)
+        .select('id, store_id, evaluated_customer_id, evaluated_dependente_id, exported_service_order_id')
+        .eq('id', nextSourceEvaluationId)
+        .eq('store_id', osData.store_id)
+        .maybeSingle()
+
+      if (linkedEvaluationError || !linkedEvaluation) {
+        throw new Error('Avaliação vinculada não encontrada para esta loja.')
+      }
+
+      const matchesSubject =
+        (osData.dependente_id && linkedEvaluation.evaluated_dependente_id === osData.dependente_id) ||
+        (!osData.dependente_id && linkedEvaluation.evaluated_customer_id === osData.customer_id)
+
+      if (!matchesSubject) {
+        throw new Error('A avaliação selecionada não pertence ao paciente desta OS.')
+      }
+
+      if (linkedEvaluation.exported_service_order_id && linkedEvaluation.exported_service_order_id !== savedId) {
+        throw new Error('A avaliação selecionada já está vinculada a outra OS.')
+      }
+
+      const { error: linkError } = await (supabaseAdmin.from('optical_evaluations') as any)
+        .update({ exported_service_order_id: savedId, updated_at: new Date().toISOString() })
+        .eq('id', nextSourceEvaluationId)
+        .eq('store_id', osData.store_id)
+
+      if (linkError) throw linkError
+    }
+
     revalidatePath(`/dashboard/loja/${osData.store_id}/vendas/${osData.venda_id}/os`)
     revalidatePath(`/dashboard/loja/${osData.store_id}/vendas/${osData.venda_id}`)
+    revalidatePath(`/dashboard/loja/${osData.store_id}/avaliacao`)
 
     const { data: finalOS } = await supabaseAdmin
       .from('service_orders')
@@ -516,11 +580,26 @@ export async function saveServiceOrder(
 export async function deleteServiceOrder(id: number, storeId: number, vendaId: number): Promise<SaveSOResult> {
   const supabaseAdmin = createAdminClient()
   try {
+    const { data: orderToDelete } = await (supabaseAdmin.from('service_orders') as any)
+      .select('source_optical_evaluation_id')
+      .eq('id', id)
+      .maybeSingle()
+
+    if (orderToDelete?.source_optical_evaluation_id) {
+      const { error: unlinkError } = await (supabaseAdmin.from('optical_evaluations') as any)
+        .update({ exported_service_order_id: null, updated_at: new Date().toISOString() })
+        .eq('id', orderToDelete.source_optical_evaluation_id)
+        .eq('store_id', storeId)
+
+      if (unlinkError) throw unlinkError
+    }
+
     const { error } = await supabaseAdmin.from('service_orders').delete().eq('id', id)
     if (error) throw error
 
     revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}/os`)
     revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}`)
+    revalidatePath(`/dashboard/loja/${storeId}/avaliacao`)
 
     return { success: true, message: 'OS excluída.', timestamp: Date.now() }
   } catch (e: any) {
@@ -3087,3 +3166,94 @@ export async function updateVendaExperimentalFields(
   }
 }
 
+
+// ================================================================
+// 31. ACTION: TRANSFERIR TITULARIDADE DA VENDA
+// ================================================================
+export async function transferirTitularidadeVenda(
+  vendaId: number,
+  storeId: number,
+  novoCustomerId: number,
+  justificativa: string,
+  authedEmployeeId: number,
+  authedEmployeeName: string
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const supabaseAdmin = createAdminClient()
+    const { data: { user } } = await createClient().auth.getUser()
+    
+    if (!user) return { success: false, message: 'Usuário não autenticado.' }
+
+    // 1. Validar a Venda e checar permissão via employee_id (PIN)
+    const { data: venda, error: vendaError } = await (supabaseAdmin.from('vendas') as any)
+      .select('customer_id, employee_id, created_by_user_id')
+      .eq('id', vendaId)
+      .eq('store_id', storeId)
+      .single()
+
+    if (vendaError || !venda) throw new Error('Venda não encontrada.')
+
+    // O funcionário autenticado por PIN deve ser quem abriu a venda
+    if (venda.employee_id !== authedEmployeeId) {
+      return { success: false, message: 'Apenas o vendedor que abriu esta venda pode transferir a titularidade.' }
+    }
+
+    if (venda.customer_id === novoCustomerId) {
+      return { success: false, message: 'O novo titular deve ser diferente do atual.' }
+    }
+
+    // Identifica Tenant ID para o log de histórico
+    const { data: profile } = await (supabaseAdmin.from('profiles') as any)
+      .select('tenant_id')
+      .eq('id', user.id)
+      .single()
+
+    const oldCustomerId = venda.customer_id
+
+    // Atualização em múltiplas tabelas (cascata lógica)
+    const { error: errorVenda } = await (supabaseAdmin.from('vendas') as any)
+      .update({ customer_id: novoCustomerId })
+      .eq('id', vendaId)
+      .eq('store_id', storeId)
+
+    if (errorVenda) throw new Error('Erro ao atualizar titular da venda.')
+
+    await (supabaseAdmin.from('service_orders') as any)
+      .update({ customer_id: novoCustomerId })
+      .eq('venda_id', vendaId)
+      .eq('store_id', storeId)
+
+    await (supabaseAdmin.from('financiamento_loja') as any)
+      .update({ customer_id: novoCustomerId })
+      .eq('venda_id', vendaId)
+      .eq('store_id', storeId)
+
+    await (supabaseAdmin.from('financiamento_parcelas') as any)
+      .update({ customer_id: novoCustomerId })
+      .eq('venda_id', vendaId)
+      .eq('store_id', storeId)
+
+    // Log Auditoria no novo cliente
+    if (profile?.tenant_id) {
+      await (supabaseAdmin.from('cobranca_historico') as any)
+        .insert({
+          tenant_id: profile.tenant_id,
+          store_id: storeId,
+          customer_id: novoCustomerId,
+          venda_id: vendaId,
+          tipo_contato: 'Auditoria',
+          resumo_conversa: `[Transferência de Titularidade] Venda #$` + `{vendaId} transferida do cliente ID $` + `{oldCustomerId}. Autorizado por: $` + `{authedEmployeeName} (ID $` + `{authedEmployeeId}). Motivo: $` + `{justificativa}`,
+          registrado_por_id: user.id
+        })
+    }
+
+    revalidatePath(`/dashboard/loja/$` + `{storeId}/vendas/$` + `{vendaId}`)
+    revalidatePath(`/dashboard/loja/$` + `{storeId}/vendas/$` + `{vendaId}/experimental`)
+    revalidatePath(`/dashboard/loja/$` + `{storeId}/vendas`)
+    
+    return { success: true, message: 'Titularidade transferida com sucesso! Lembre-se de revisar os dependentes manualmente dentro de cada OS.' }
+  } catch (error: any) {
+    console.error('Erro na transferência:', error)
+    return { success: false, message: error.message || 'Erro inesperado.' }
+  }
+}

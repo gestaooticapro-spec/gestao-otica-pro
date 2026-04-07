@@ -8,6 +8,7 @@ import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
 type Employee = Database['public']['Tables']['employees']['Row']
+type EmployeeInsert = Database['public']['Tables']['employees']['Insert']
 
 // --- Schema de Validação ---
 const EmployeeSchema = z.object({
@@ -28,6 +29,25 @@ export type EmployeeActionResult = {
   success: boolean
   message: string
   errors?: Record<string, string[]>
+}
+
+function isEmployeesPrimaryKeyConflict(error: unknown) {
+  if (!error || typeof error !== 'object') return false
+
+  const maybeError = error as { code?: string; message?: string }
+  return maybeError.code === '23505' && (maybeError.message || '').includes('employees_pkey')
+}
+
+async function getNextEmployeeId(supabaseAdmin: ReturnType<typeof createAdminClient>) {
+  const { data, error } = await (supabaseAdmin.from('employees') as any)
+    .select('id')
+    .order('id', { ascending: false })
+    .limit(1)
+
+  if (error) throw error
+
+  const currentMaxId = Array.isArray(data) && data[0]?.id ? Number(data[0].id) : 0
+  return currentMaxId + 1
 }
 
 // --- Helper de Contexto Seguro ---
@@ -101,7 +121,7 @@ export async function saveEmployee(
     }
     // -------------------------------------
 
-    const payload = { ...data, tenant_id: profile.tenant_id }
+    const payload: EmployeeInsert & { tenant_id: string } = { ...data, tenant_id: profile.tenant_id }
 
     if (id) {
       // ATUALIZAÇÃO: O payload já contém os novos campos graças ao spread '...data'
@@ -115,7 +135,15 @@ export async function saveEmployee(
       const { error } = await (supabaseAdmin.from('employees') as any)
         .insert(payload)
 
-      if (error) throw error
+      if (error) {
+        if (!isEmployeesPrimaryKeyConflict(error)) throw error
+
+        const nextId = await getNextEmployeeId(supabaseAdmin)
+        const { error: retryError } = await (supabaseAdmin.from('employees') as any)
+          .insert({ ...payload, id: nextId })
+
+        if (retryError) throw retryError
+      }
     }
 
     revalidatePath(`/dashboard/loja/${profile.store_id}/config`)

@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition } from 'react';
 import {
     Users, Plus, Save, Power, Loader2, Lock, User,
     ShieldCheck, Briefcase, Wrench, BadgeCheck, Percent, CheckCircle2,
-    Store, MapPin, Phone, QrCode, ArrowLeftToLine, AlertCircle
+    Store, MapPin, Phone, QrCode, ArrowLeftToLine, AlertCircle, Sparkles
 } from 'lucide-react';
 import { getEmployees, saveEmployee, toggleEmployeeStatus } from '@/lib/actions/employee.actions';
 import { getStoreProfile, updateStoreProfile } from '@/lib/actions/store.actions';
@@ -13,6 +13,37 @@ import { useRouter } from 'next/navigation';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 
 type Employee = Database['public']['Tables']['employees']['Row'];
+type EmployeeRole = NonNullable<Employee['role']>;
+type StoreFeatureSettings = {
+    logo?: string;
+    pre_sale_analysis_enabled?: boolean;
+};
+type StoreData = {
+    id: number;
+    name: string;
+    razao_social: string | null;
+    cnpj: string | null;
+    inscricao_estadual: string | null;
+    whatsapp: string | null;
+    phone: string | null;
+    email: string | null;
+    website: string | null;
+    cep: string | null;
+    street: string | null;
+    number: string | null;
+    neighborhood: string | null;
+    city: string | null;
+    state: string | null;
+    pix_key?: string | null;
+    pix_city?: string | null;
+    csc_homologacao?: string | null;
+    csc_id_homologacao?: string | null;
+    csc_producao?: string | null;
+    csc_id_producao?: string | null;
+    certificate_thumbprint?: string | null;
+    certificate_valid_until?: string | null;
+    settings: StoreFeatureSettings | null;
+};
 
 // ═══════════════════════════════════════════════
 // 🎨 DESIGN SYSTEM: Dark Glassmorphism + Indigo
@@ -23,13 +54,13 @@ const cardStyle = "bg-white/5 backdrop-blur-xl border border-white/10 p-5 rounde
 
 // --- SUB-COMPONENTE: FORMULÁRIO DA LOJA ---
 function StoreDataForm({ storeId }: { storeId: number }) {
-    const [data, setData] = useState<any>(null)
+    const [data, setData] = useState<StoreData | null>(null)
     const [loading, setLoading] = useState(true)
     const [isSaving, startTransition] = useTransition()
 
     useEffect(() => {
         getStoreProfile(storeId).then(res => {
-            setData(res)
+            setData(res as StoreData | null)
             setLoading(false)
         })
     }, [storeId])
@@ -43,6 +74,7 @@ function StoreDataForm({ storeId }: { storeId: number }) {
     }
 
     if (loading) return <div className="p-10 text-center"><Loader2 className="animate-spin h-8 w-8 text-indigo-400 mx-auto" /></div>
+    if (!data) return <div className="p-10 text-center text-sm font-bold text-red-300">Não foi possível carregar os dados da loja.</div>
 
     return (
         <form action={handleSave} className="max-w-4xl mx-auto space-y-6 animate-in fade-in">
@@ -57,19 +89,19 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                 <div className="grid grid-cols-2 gap-4">
                     <div className="col-span-2 md:col-span-1">
                         <label className={labelStyle}>Nome Fantasia (Marca)</label>
-                        <input name="name" defaultValue={data.name} className={inputStyle} required />
+                        <input name="name" defaultValue={data.name ?? ''} className={inputStyle} required />
                     </div>
                     <div className="col-span-2 md:col-span-1">
                         <label className={labelStyle}>Razão Social</label>
-                        <input name="razao_social" defaultValue={data.razao_social} className={inputStyle} />
+                        <input name="razao_social" defaultValue={data.razao_social ?? ''} className={inputStyle} />
                     </div>
                     <div>
                         <label className={labelStyle}>CNPJ</label>
-                        <input name="cnpj" defaultValue={data.cnpj} className={inputStyle} placeholder="00.000.000/0000-00" />
+                        <input name="cnpj" defaultValue={data.cnpj ?? ''} className={inputStyle} placeholder="00.000.000/0000-00" />
                     </div>
                     <div>
                         <label className={labelStyle}>Inscrição Estadual</label>
-                        <input name="inscricao_estadual" defaultValue={data.inscricao_estadual} className={inputStyle} />
+                        <input name="inscricao_estadual" defaultValue={data.inscricao_estadual ?? ''} className={inputStyle} />
                     </div>
                 </div>
             </div>
@@ -85,21 +117,21 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                         <label className={labelStyle}>WhatsApp da Loja (Link Rastreio)</label>
                         <div className="relative">
                             <span className="absolute left-3 top-2.5 text-emerald-400 font-bold text-xs">WA</span>
-                            <input name="whatsapp" defaultValue={data.whatsapp} className={`${inputStyle} pl-10 border-emerald-500/20 focus:ring-emerald-500/50`} placeholder="(00) 90000-0000" />
+                            <input name="whatsapp" defaultValue={data.whatsapp ?? ''} className={`${inputStyle} pl-10 border-emerald-500/20 focus:ring-emerald-500/50`} placeholder="(00) 90000-0000" />
                         </div>
                         <p className="text-[9px] text-slate-500 mt-1">Este número será usado no botão &quot;Falar com Atendente&quot; do rastreio.</p>
                     </div>
                     <div>
                         <label className={labelStyle}>Telefone Fixo</label>
-                        <input name="phone" defaultValue={data.phone} className={inputStyle} />
+                        <input name="phone" defaultValue={data.phone ?? ''} className={inputStyle} />
                     </div>
                     <div>
                         <label className={labelStyle}>E-mail</label>
-                        <input name="email" type="email" defaultValue={data.email} className={inputStyle} />
+                        <input name="email" type="email" defaultValue={data.email ?? ''} className={inputStyle} />
                     </div>
                     <div>
                         <label className={labelStyle}>Website / Instagram</label>
-                        <input name="website" defaultValue={data.website} className={inputStyle} />
+                        <input name="website" defaultValue={data.website ?? ''} className={inputStyle} />
                     </div>
                 </div>
             </div>
@@ -113,29 +145,54 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                 <div className="grid grid-cols-6 gap-3">
                     <div className="col-span-2">
                         <label className={labelStyle}>CEP</label>
-                        <input name="cep" defaultValue={data.cep} className={inputStyle} />
+                        <input name="cep" defaultValue={data.cep ?? ''} className={inputStyle} />
                     </div>
                     <div className="col-span-3">
                         <label className={labelStyle}>Cidade</label>
-                        <input name="city" defaultValue={data.city} className={inputStyle} />
+                        <input name="city" defaultValue={data.city ?? ''} className={inputStyle} />
                     </div>
                     <div className="col-span-1">
                         <label className={labelStyle}>UF</label>
-                        <input name="state" defaultValue={data.state} className={inputStyle} maxLength={2} />
+                        <input name="state" defaultValue={data.state ?? ''} className={inputStyle} maxLength={2} />
                     </div>
                     <div className="col-span-4">
                         <label className={labelStyle}>Logradouro</label>
-                        <input name="street" defaultValue={data.street} className={inputStyle} />
+                        <input name="street" defaultValue={data.street ?? ''} className={inputStyle} />
                     </div>
                     <div className="col-span-2">
                         <label className={labelStyle}>Número</label>
-                        <input name="number" defaultValue={data.number} className={inputStyle} />
+                        <input name="number" defaultValue={data.number ?? ''} className={inputStyle} />
                     </div>
                     <div className="col-span-3">
                         <label className={labelStyle}>Bairro</label>
-                        <input name="neighborhood" defaultValue={data.neighborhood} className={inputStyle} />
+                        <input name="neighborhood" defaultValue={data.neighborhood ?? ''} className={inputStyle} />
                     </div>
                 </div>
+            </div>
+
+            <div className={cardStyle}>
+                <div className="absolute top-0 left-0 w-1 h-full bg-cyan-500"></div>
+                <h3 className="text-sm font-bold text-cyan-300 mb-4 flex items-center gap-2 border-b border-white/10 pb-2">
+                    <Sparkles className="h-4 w-4 text-cyan-400" /> Operação & Recursos
+                </h3>
+
+                <label className="flex items-start gap-4 rounded-xl border border-white/10 bg-black/20 p-4 cursor-pointer hover:bg-white/5 transition-colors">
+                    <input
+                        type="checkbox"
+                        name="pre_sale_analysis_enabled"
+                        defaultChecked={Boolean(data?.settings?.pre_sale_analysis_enabled)}
+                        className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-900 text-cyan-500 focus:ring-cyan-500"
+                    />
+                    <div>
+                        <p className="text-sm font-black text-white uppercase tracking-[0.15em]">
+                            Análise Pré-Venda
+                        </p>
+                        <p className="mt-1 text-xs text-slate-400 leading-relaxed">
+                            Quando habilitado, a loja passa a ver a nova tela de Avaliação no menu de Atendimento
+                            e pode registrar análises antes da venda, com histórico individual por titular ou dependente.
+                        </p>
+                    </div>
+                </label>
             </div>
 
             {/* CONFIGURAÇÃO FISCAL (NFC-e) */}
@@ -155,11 +212,11 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                             <div className="grid grid-cols-3 gap-2">
                                 <div className="col-span-1">
                                     <label className={labelStyle}>ID Token</label>
-                                    <input name="csc_id_homologacao" defaultValue={data.csc_id_homologacao} className={inputStyle} placeholder="Ex: 000001" />
+                                    <input name="csc_id_homologacao" defaultValue={data.csc_id_homologacao ?? ''} className={inputStyle} placeholder="Ex: 000001" />
                                 </div>
                                 <div className="col-span-2">
                                     <label className={labelStyle}>CSC (Código)</label>
-                                    <input name="csc_homologacao" defaultValue={data.csc_homologacao} className={inputStyle} placeholder="Ex: ABC123..." />
+                                    <input name="csc_homologacao" defaultValue={data.csc_homologacao ?? ''} className={inputStyle} placeholder="Ex: ABC123..." />
                                 </div>
                             </div>
                         </div>
@@ -169,11 +226,11 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                             <div className="grid grid-cols-3 gap-2">
                                 <div className="col-span-1">
                                     <label className={labelStyle}>ID Token</label>
-                                    <input name="csc_id_producao" defaultValue={data.csc_id_producao} className={inputStyle} placeholder="Ex: 000001" />
+                                    <input name="csc_id_producao" defaultValue={data.csc_id_producao ?? ''} className={inputStyle} placeholder="Ex: 000001" />
                                 </div>
                                 <div className="col-span-2">
                                     <label className={labelStyle}>CSC (Código)</label>
-                                    <input name="csc_producao" defaultValue={data.csc_producao} className={inputStyle} placeholder="Ex: XYZ789..." />
+                                    <input name="csc_producao" defaultValue={data.csc_producao ?? ''} className={inputStyle} placeholder="Ex: XYZ789..." />
                                 </div>
                             </div>
                         </div>
@@ -232,14 +289,14 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label className={labelStyle}>Chave Pix</label>
-                        <input name="pix_key" defaultValue={data.pix_key} className={inputStyle} placeholder="CPF, CNPJ, Email ou Aleatória" />
+                        <input name="pix_key" defaultValue={data.pix_key ?? ''} className={inputStyle} placeholder="CPF, CNPJ, Email ou Aleatória" />
                         <p className="text-[9px] text-slate-500 mt-1">
                             A chave será usada para gerar o QR Code nos carnês.
                         </p>
                     </div>
                     <div>
                         <label className={labelStyle}>Cidade do Pix</label>
-                        <input name="pix_city" defaultValue={data.pix_city} className={inputStyle} placeholder="Ex: Toledo" />
+                        <input name="pix_city" defaultValue={data.pix_city ?? ''} className={inputStyle} placeholder="Ex: Toledo" />
                         <p className="text-[9px] text-slate-500 mt-1">
                             Cidade onde a conta bancária foi aberta (obrigatório pelo Banco Central).
                         </p>
@@ -290,13 +347,13 @@ function TeamManagement({ storeId }: { storeId: number }) {
 
     const handleSelect = (emp: Employee) => {
         setSelectedId(emp.id);
-        setFormData({
-            full_name: emp.full_name || '',
-            pin: emp.pin || '',
-            role: (emp.role as any) || 'vendedor',
-            comm_rate_guaranteed: emp.comm_rate_guaranteed || 0,
-            comm_rate_store_credit: emp.comm_rate_store_credit || 0,
-            comm_rate_store_total: emp.comm_rate_store_total || 0,
+            setFormData({
+                full_name: emp.full_name || '',
+                pin: emp.pin || '',
+                role: (emp.role || 'vendedor') as EmployeeRole,
+                comm_rate_guaranteed: emp.comm_rate_guaranteed || 0,
+                comm_rate_store_credit: emp.comm_rate_store_credit || 0,
+                comm_rate_store_total: emp.comm_rate_store_total || 0,
             comm_rate_received: emp.comm_rate_received || 0,
             comm_rate_profit: emp.comm_rate_profit || 0
         });
@@ -437,7 +494,7 @@ function TeamManagement({ storeId }: { storeId: number }) {
                                 </div>
                                 <div>
                                     <label className={labelStyle}>Cargo / Função</label>
-                                    <select value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value as any })} className={inputStyle} disabled={isSaving}>
+                                    <select value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value as EmployeeRole })} className={inputStyle} disabled={isSaving}>
                                         <option value="vendedor">Vendedor (Padrão)</option>
                                         <option value="gerente">Gerente (Acesso Total)</option>
                                         <option value="tecnico">Técnico / Estoquista</option>

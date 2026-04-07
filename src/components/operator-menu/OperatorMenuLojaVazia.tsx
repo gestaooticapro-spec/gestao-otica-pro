@@ -5,7 +5,7 @@ import {
     DollarSign, HeartHandshake, Megaphone, Archive, Search, Globe, Printer,
     ArrowLeftRight, FileInput, Tag, FileSpreadsheet, ArrowLeft, Clock,
     AlertCircle, Gift, Calendar, Package, ChevronRight, ChevronDown, ChevronUp,
-    MessageCircle, CalendarClock, CalendarCheck, ArrowRight, Send, Users2, UserMinus
+    MessageCircle, CalendarClock, CalendarCheck, ArrowRight, Send, Users2, UserMinus, Layers3
 } from 'lucide-react';
 import { openWhatsApp } from '@/lib/utils/whatsapp';
 import { getWhatsAppLink } from '@/lib/utils';
@@ -367,6 +367,16 @@ export default function OperatorMenuLojaVazia({
                                         <div className="text-left">
                                             <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Cadastros</span>
                                             <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">Catálogo</span>
+                                        </div>
+                                    </button>
+                                    {/* Tabelas Globais */}
+                                    <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/catalogo-global`)} onMouseEnter={(e) => handleHover(e, "Ative uma tabela global de laboratório para esta loja. Aqui você escolhe a versão vigente, sincroniza ofertas e tratamentos e prepara a base para recomendação por IA e consulta visual em tabela.")} onMouseMove={handleMove} onMouseLeave={handleLeave} className="group bg-gradient-to-br from-cyan-600/12 via-cyan-900/25 to-slate-900/60 hover:from-cyan-500/22 hover:via-cyan-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-cyan-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(34,211,238,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/40">
+                                        <div className="p-2.5 rounded-lg bg-cyan-500/20 text-cyan-300 group-hover:bg-cyan-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(34,211,238,0.2)]">
+                                            <Layers3 className="w-6 h-6" strokeWidth={1.5} />
+                                        </div>
+                                        <div className="text-left">
+                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Tabelas Globais</span>
+                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-cyan-200/70 transition-colors">Laboratórios</span>
                                         </div>
                                     </button>
                                     {/* Lentes */}

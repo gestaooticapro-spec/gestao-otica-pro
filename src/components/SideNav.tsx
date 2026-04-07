@@ -100,6 +100,7 @@ const MENU_STRUCTURE: MenuGroup[] = [
 
             // --- CORREÇÃO AQUI: ROTA AJUSTADA PARA /consultas ---
             { label: 'Busca Universal', icon: Globe, route: '/dashboard/loja/[id]/consultas', allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico'] },
+            { label: 'Tabela de Preços', icon: Tag, route: '/dashboard/loja/[id]/tabela-precos', allowedRoles: ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico'] },
         ]
     },
     {
@@ -148,6 +149,7 @@ const MENU_STRUCTURE: MenuGroup[] = [
             { label: 'Central de Relatórios', icon: BarChart3, route: '/dashboard/loja/[id]/reports', allowedRoles: ['admin', 'manager'], withSeparator: true },
 
             { label: 'Configuração', icon: Settings, route: '/dashboard/loja/[id]/config', allowedRoles: ['admin', 'manager'] },
+            { label: 'Catálogo Global', icon: Bot, route: '/dashboard/loja/[id]/catalogo-global', allowedRoles: ['admin', 'manager'] },
             { label: 'Fiscal (NFC-e)', icon: FileText, route: '/dashboard/loja/[id]/fiscal', allowedRoles: ['admin', 'manager'] },
         ]
     }

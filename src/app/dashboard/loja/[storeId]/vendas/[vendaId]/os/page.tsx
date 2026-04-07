@@ -7,7 +7,7 @@ import { useFormState, useFormStatus } from 'react-dom'
 import {
     Loader2, Save, Trash2, ChevronLeft, ChevronRight,
     Eye, Glasses, User, Ruler, Truck, Plus, History, FileDown, CalendarClock,
-    MessageCircle, Sparkles, Printer, FileText, ArrowLeft
+    MessageCircle, Sparkles, Printer, FileText, ArrowLeft, ExternalLink, Import, Link2, Unlink2
 } from 'lucide-react'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
 
@@ -22,7 +22,14 @@ import { Database } from '@/lib/database.types'
 import AddDependenteModal from '@/components/modals/AddDependenteModal'
 import AddOftalmoModal from '@/components/modals/AddOftalmoModal'
 import PrescriptionHistoryModal from '@/components/modals/PrescriptionHistoryModal'
+import OpticalEvaluationImportModal from '@/components/modals/OpticalEvaluationImportModal'
 import { DegreeInput } from '@/components/ui/DegreeInput'
+import {
+    applyOpticalEvaluationToServiceOrder,
+    getOpticalEvaluationSummaryById,
+    type OpticalEvaluationImportOption,
+    type OpticalEvaluationSummary
+} from '@/lib/actions/evaluation.actions'
 
 type ServiceOrderWithLinks = any
 type Dependente = Database['public']['Tables']['dependentes']['Row']
@@ -231,16 +238,18 @@ function StockReservationModal({
 type FormProps = Omit<OSPageData, 'oftalmologistas'> & {
     storeId: number
     vendaId: number
+    customer: NonNullable<OSPageData['customer']>
+    venda: NonNullable<OSPageData['venda']>
     oftalmosList: OSPageData['oftalmologistas']
     authedEmployeeName: string
     onListChange: (l: any) => void
     saveState: SaveSOResult
     dispatch: (payload: FormData) => void
-    venda: any
+    preSaleAnalysisEnabled: boolean
 }
 
 function ServiceOrderFormContent({
-    storeId, vendaId, customer, vendaItens, dependentes: initialDependentes, oftalmosList, employees, existingOrders, authedEmployeeName, onListChange, saveState, dispatch,
+    storeId, vendaId, customer, vendaItens, dependentes: initialDependentes, oftalmosList, employees, existingOrders, authedEmployeeName, onListChange, saveState, dispatch, preSaleAnalysisEnabled,
     venda
 }: FormProps) {
 
@@ -266,9 +275,14 @@ function ServiceOrderFormContent({
 
     const [isDepModalOpen, setIsDepModalOpen] = useState(false)
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
+    const [isEvaluationModalOpen, setIsEvaluationModalOpen] = useState(false)
     const [isOftalmoModalOpen, setIsOftalmoModalOpen] = useState(false) // MANTIDO: Logic Button for Doctor Modal
     const [localDependentes, setLocalDependentes] = useState<Dependente[]>(initialDependentes)
     const [localOftalmos, setLocalOftalmos] = useState(oftalmosList)
+    const [sourceOpticalEvaluationId, setSourceOpticalEvaluationId] = useState('')
+    const [linkedEvaluationSummary, setLinkedEvaluationSummary] = useState<OpticalEvaluationSummary | null>(null)
+    const [isLoadingLinkedEvaluation, setIsLoadingLinkedEvaluation] = useState(false)
+    const [isApplyingEvaluation, startApplyEvaluationTransition] = useTransition()
 
     const lastSuccessRef = useRef<number | undefined>(0);
 
@@ -383,6 +397,9 @@ function ServiceOrderFormContent({
 
     // CORREÇÃO: activeId garante que usamos o ID recém-salvo mesmo se o currentIndex ainda não atualizou
     const activeId = currentOrder?.id || (saveState?.success && saveState?.data?.id ? saveState.data.id : undefined)
+    const currentPatientName = dependenteId
+        ? localDependentes.find(d => d.id === parseInt(dependenteId))?.full_name || customer?.full_name || 'Paciente'
+        : customer?.full_name || 'Paciente'
 
     useEffect(() => {
         if (saveState.success && saveState.data && saveState.timestamp !== lastSuccessRef.current) {
@@ -416,6 +433,8 @@ function ServiceOrderFormContent({
         setMedH(''); setMedV(''); setMedDiag(''); setMedPonte(''); setDnpOd(''); setDnpOe(''); setAltOd(''); setAltOe(''); setDiametro('')
         setDtPedido(''); setPedidoPorId(''); setLabNome(''); setDtChegou(''); setDtMontado(''); setDtEntregue(''); setDtPrometido(''); setObsOs('')
         setProtocolo('')
+        setSourceOpticalEvaluationId('')
+        setLinkedEvaluationSummary(null)
         setPendingReservationBySlot(emptyPendingReservations())
     }, [])
 
@@ -439,8 +458,24 @@ function ServiceOrderFormContent({
             setDtChegou(toDateTimeInput(os.dt_lente_chegou)); setDtMontado(toDateTimeInput(os.dt_montado_em)); setDtEntregue(toDateTimeInput(os.dt_entregue_em))
             setDtPrometido(toDateTimeInput(os.dt_prometido_para)); setObsOs(os.obs_os ?? '')
             setProtocolo(os.protocolo_fisico || os.id.toString())
+            setSourceOpticalEvaluationId(os.source_optical_evaluation_id?.toString() ?? '')
         }
     }, [currentIndex, currentOrder, resetForm])
+
+    useEffect(() => {
+        if (!sourceOpticalEvaluationId) {
+            setLinkedEvaluationSummary(null)
+            return
+        }
+
+        setIsLoadingLinkedEvaluation(true)
+        getOpticalEvaluationSummaryById({
+            storeId,
+            evaluationId: Number(sourceOpticalEvaluationId)
+        })
+            .then((summary) => setLinkedEvaluationSummary(summary))
+            .finally(() => setIsLoadingLinkedEvaluation(false))
+    }, [sourceOpticalEvaluationId, storeId])
 
     const handleNavigate = (dir: 'prev' | 'next' | 'new') => {
         if (dir === 'new') { setCurrentIndex(-1); return; }
@@ -477,6 +512,91 @@ function ServiceOrderFormContent({
             setAdicao(data.receita_adicao || ''); setDnpOd(data.medida_dnp_od || ''); setDnpOe(data.medida_dnp_oe || '');
             setIsHistoryModalOpen(false);
         }
+    }
+
+    const handleSelectEvaluation = (evaluation: OpticalEvaluationImportOption) => {
+        startApplyEvaluationTransition(async () => {
+            const result = await applyOpticalEvaluationToServiceOrder({
+                storeId,
+                evaluationId: evaluation.id,
+                customerId: customer.id,
+                dependenteId: dependenteId ? parseInt(dependenteId) : null,
+                serviceOrderId: activeId || null,
+                currentReceitaLongeOdEsferico: longeOdEsf || null,
+                currentReceitaLongeOdCilindrico: longeOdCil || null,
+                currentReceitaLongeOdEixo: longeOdEixo || null,
+                currentReceitaLongeOeEsferico: longeOeEsf || null,
+                currentReceitaLongeOeCilindrico: longeOeCil || null,
+                currentReceitaLongeOeEixo: longeOeEixo || null,
+                currentReceitaPertoOdEsferico: pertoOdEsf || null,
+                currentReceitaPertoOdCilindrico: pertoOdCil || null,
+                currentReceitaPertoOdEixo: pertoOdEixo || null,
+                currentReceitaPertoOeEsferico: pertoOeEsf || null,
+                currentReceitaPertoOeCilindrico: pertoOeCil || null,
+                currentReceitaPertoOeEixo: pertoOeEixo || null,
+                currentReceitaAdicao: adicao || null,
+                currentMedidaDnpOd: dnpOd || null,
+                currentMedidaDnpOe: dnpOe || null,
+                currentMedidaAlturaOd: altOd || null,
+                currentMedidaAlturaOe: altOe || null
+            })
+
+            if (!result.success || !result.data) {
+                alert(result.message)
+                return
+            }
+
+            if (result.data.wouldOverwriteExistingData) {
+                const confirmed = confirm(`Esta avaliação vai sobrescrever os campos já preenchidos na OS:\n\n${result.data.overwriteFields.join('\n')}\n\nDeseja continuar?`)
+                if (!confirmed) return
+            }
+
+            setLongeOdEsf(result.data.receitaLongeOdEsferico || '')
+            setLongeOdCil(result.data.receitaLongeOdCilindrico || '')
+            setLongeOdEixo(result.data.receitaLongeOdEixo || '')
+            setLongeOeEsf(result.data.receitaLongeOeEsferico || '')
+            setLongeOeCil(result.data.receitaLongeOeCilindrico || '')
+            setLongeOeEixo(result.data.receitaLongeOeEixo || '')
+            setPertoOdEsf(result.data.receitaPertoOdEsferico || '')
+            setPertoOdCil(result.data.receitaPertoOdCilindrico || '')
+            setPertoOdEixo(result.data.receitaPertoOdEixo || '')
+            setPertoOeEsf(result.data.receitaPertoOeEsferico || '')
+            setPertoOeCil(result.data.receitaPertoOeCilindrico || '')
+            setPertoOeEixo(result.data.receitaPertoOeEixo || '')
+            setAdicao(result.data.receitaAdicao || '')
+            setDnpOd(result.data.medidaDnpOd || '')
+            setDnpOe(result.data.medidaDnpOe || '')
+            setAltOd(result.data.medidaAlturaOd || '')
+            setAltOe(result.data.medidaAlturaOe || '')
+            if (result.data.recommendedLensName) {
+                const recommendedLensName = result.data.recommendedLensName
+                setObsOs((prev) => {
+                    const evaluationNote = `Avaliação sugeriu: ${recommendedLensName}`
+                    if (prev.includes(evaluationNote)) return prev
+                    return prev ? `${prev} | ${evaluationNote}` : evaluationNote
+                })
+            }
+            setSourceOpticalEvaluationId(String(result.data.evaluationId))
+            setLinkedEvaluationSummary({
+                id: result.data.evaluationId,
+                created_at: result.data.createdAt,
+                source_system: result.data.sourceSystem,
+                source_document_url: result.data.sourceDocumentUrl,
+                source_exam_type: result.data.sourceExamType,
+                source_os_number: result.data.sourceOsNumber,
+                evaluated_patient_name: result.data.evaluatedPatientName
+            })
+            setIsEvaluationModalOpen(false)
+            alert('Avaliação importada para a OS. Salve a OS para persistir o vínculo.')
+        })
+    }
+
+    const handleClearEvaluationLink = () => {
+        const confirmed = confirm('Deseja remover o vínculo com a avaliação importada? Os campos copiados permanecerão na OS até você alterá-los.')
+        if (!confirmed) return
+
+        setSourceOpticalEvaluationId('')
+        setLinkedEvaluationSummary(null)
     }
 
     const sendWhatsAppPedido = (overrideId?: number) => {
@@ -812,6 +932,15 @@ ${addIf('Obs.', obsOs) || ''}
                                         >
                                             <History className="h-3 w-3" /> Histórico
                                         </button>
+                                        {preSaleAnalysisEnabled && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsEvaluationModalOpen(true)}
+                                                className="text-[10px] font-bold text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 px-3 py-1 rounded-lg border border-emerald-500/20 shadow-sm flex items-center gap-1 transition-all uppercase tracking-wide"
+                                            >
+                                                {isApplyingEvaluation ? <Loader2 className="h-3 w-3 animate-spin" /> : <Import className="h-3 w-3" />} Avaliação
+                                            </button>
+                                        )}
                                         <button
                                             type="button"
                                             onClick={() => { setLongeOdEsf('+0,00'); setLongeOdCil('+0,00'); setLongeOdEixo('0'); setLongeOeEsf('+0,00'); setLongeOeCil('+0,00'); setLongeOeCil('+0,00'); setLongeOeEixo('0'); }}
@@ -821,6 +950,55 @@ ${addIf('Obs.', obsOs) || ''}
                                         </button>
                                     </div>
                                 </div>
+
+                                {(isLoadingLinkedEvaluation || linkedEvaluationSummary) && (
+                                    <div className="mb-4 flex flex-col gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+                                        {isLoadingLinkedEvaluation ? (
+                                            <div className="flex items-center gap-2 text-sm text-emerald-200">
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                Carregando avaliação vinculada...
+                                            </div>
+                                        ) : linkedEvaluationSummary && (
+                                            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                                                <div>
+                                                    <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-300">
+                                                        <Link2 className="h-3.5 w-3.5" />
+                                                        Baseada na Avaliação #{linkedEvaluationSummary.id}
+                                                    </p>
+                                                    <p className="mt-1 text-sm font-bold text-white">
+                                                        {linkedEvaluationSummary.evaluated_patient_name || currentPatientName}
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-slate-400">
+                                                        {formatDate(linkedEvaluationSummary.created_at)}
+                                                        {linkedEvaluationSummary.source_exam_type ? ` • ${linkedEvaluationSummary.source_exam_type}` : ''}
+                                                        {linkedEvaluationSummary.source_os_number ? ` • OS origem ${linkedEvaluationSummary.source_os_number}` : ''}
+                                                    </p>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    {linkedEvaluationSummary.source_document_url && (
+                                                        <a
+                                                            href={linkedEvaluationSummary.source_document_url}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.15em] text-cyan-200 transition-colors hover:bg-cyan-500/20"
+                                                        >
+                                                            <ExternalLink className="h-3.5 w-3.5" />
+                                                            Ver PDF
+                                                        </a>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleClearEvaluationLink}
+                                                        className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-[0.15em] text-slate-300 transition-colors hover:bg-white/10"
+                                                    >
+                                                        <Unlink2 className="h-3.5 w-3.5" />
+                                                        Desvincular
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
 
                                 <div className="flex gap-2">
                                     <div className="flex-1">
@@ -981,6 +1159,7 @@ ${addIf('Obs.', obsOs) || ''}
                 <input type="hidden" name="store_id" value={storeId} />
                 <input type="hidden" name="venda_id" value={vendaId} />
                 <input type="hidden" name="customer_id" value={customer.id} />
+                <input type="hidden" name="source_optical_evaluation_id" value={sourceOpticalEvaluationId} />
                 <input type="hidden" name="item_links_json" value={JSON.stringify([{ item_id: lenteOdItemId, uso: 'lente_od' }, { item_id: lenteOeItemId, uso: 'lente_oe' }, { item_id: armacaoItemId, uso: 'armacao' }].filter(x => x.item_id))} />
                 <input type="hidden" name="pending_reservations_json" value={JSON.stringify(Object.values(pendingReservationBySlot).filter(Boolean))} />
 
@@ -1025,6 +1204,16 @@ ${addIf('Obs.', obsOs) || ''}
                 matches={stockModalOpen === 'OD' ? odMatches : oeMatches}
                 label={stockModalOpen || 'OD'}
                 onReserve={handleReserve}
+            />
+            <OpticalEvaluationImportModal
+                isOpen={isEvaluationModalOpen}
+                onClose={() => setIsEvaluationModalOpen(false)}
+                onSelect={handleSelectEvaluation}
+                storeId={storeId}
+                customerId={customer.id}
+                dependenteId={dependenteId ? parseInt(dependenteId) : null}
+                serviceOrderId={activeId || null}
+                patientName={currentPatientName}
             />
         </>
     )
@@ -1093,7 +1282,7 @@ export default function ServiceOrderPage() {
         </div>
     )
 
-    if (!data) return null
+    if (!data?.customer || !data?.venda) return null
 
     return (
         <div className="h-full bg-slate-950 flex flex-col overflow-hidden relative z-0">
@@ -1110,6 +1299,7 @@ export default function ServiceOrderPage() {
                 onListChange={setExistingOrders}
                 saveState={saveState}
                 dispatch={dispatch}
+                preSaleAnalysisEnabled={data.preSaleAnalysisEnabled}
                 venda={data.venda}
             />
         </div>

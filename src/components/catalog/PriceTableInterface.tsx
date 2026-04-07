@@ -1,0 +1,707 @@
+'use client'
+
+import { useMemo, useState } from 'react'
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Filter,
+  Layers3,
+  LayoutGrid,
+  List,
+  Package,
+  Search,
+  Sparkles,
+  Tag,
+  X,
+} from 'lucide-react'
+import type { PriceTableData, PriceTableOffer } from '@/lib/actions/price-table.actions'
+
+type ViewMode = 'matrix' | 'list'
+
+function formatCurrency(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return '—'
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+function resolvePrice(
+  offer: PriceTableOffer,
+  compatibility: { specialPrice: number | null; priceMode: 'final' | 'surcharge' } | null,
+): number | null {
+  if (!compatibility) return offer.basePrice
+  if (compatibility.priceMode === 'surcharge') {
+    return (offer.basePrice || 0) + (compatibility.specialPrice || 0)
+  }
+  return compatibility.specialPrice ?? offer.basePrice
+}
+
+function getOfferLabel(offer: PriceTableOffer): string {
+  return offer.displayName || offer.canonicalLabel || offer.rawLabel
+}
+
+function getClinicalLabel(category: string): string {
+  const map: Record<string, string> = {
+    multifocal: 'Multifocal',
+    visao_simples: 'Visão Simples',
+    ocupacional: 'Ocupacional',
+    bifocal: 'Bifocal',
+    controle_miopia: 'Controle Miopia',
+    plana_solar: 'Solar/Plana',
+    mista: 'Mista',
+    indefinida: 'Indefinida',
+  }
+  return map[category] || category
+}
+
+function FilterPill({
+  label,
+  active,
+  onClick,
+}: {
+  label: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-all duration-200 ${
+        active
+          ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-200'
+          : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-white'
+      }`}
+    >
+      {label}
+      {active && <X className="h-3 w-3" />}
+    </button>
+  )
+}
+
+function MatrixTable({
+  offers,
+  treatments,
+  compatibilityMap,
+}: {
+  offers: PriceTableOffer[]
+  treatments: { id: string; nome: string }[]
+  compatibilityMap: Map<string, Map<string, { specialPrice: number | null; priceMode: 'final' | 'surcharge' }>>
+}) {
+  if (!offers.length) return null
+
+  // Only show treatments that have at least one compatibility with these offers
+  const relevantTreatmentIds = new Set<string>()
+  for (const offer of offers) {
+    const offerCompat = compatibilityMap.get(offer.globalOfferId)
+    if (offerCompat) {
+      for (const treatmentId of offerCompat.keys()) {
+        relevantTreatmentIds.add(treatmentId)
+      }
+    }
+  }
+
+  const visibleTreatments = treatments.filter((t) => relevantTreatmentIds.has(t.id))
+
+  if (!visibleTreatments.length) {
+    return (
+      <div className="space-y-2">
+        {offers.map((offer) => (
+          <div
+            key={offer.globalOfferId}
+            className="flex items-center justify-between rounded-xl border border-white/8 bg-black/20 px-4 py-3"
+          >
+            <div>
+              <p className="text-sm font-bold text-white">{getOfferLabel(offer)}</p>
+              {offer.material && (
+                <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                  {offer.material}
+                  {offer.indiceRefracao ? ` • ${offer.indiceRefracao}` : ''}
+                </p>
+              )}
+            </div>
+            <p className="text-lg font-black text-white">{formatCurrency(offer.basePrice)}</p>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-white/8">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-white/8 bg-black/30">
+            <th className="sticky left-0 z-10 bg-slate-900/95 px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 backdrop-blur-sm">
+              Oferta
+            </th>
+            <th className="px-3 py-3 text-center text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">
+              Base
+            </th>
+            {visibleTreatments.map((treatment) => (
+              <th
+                key={treatment.id}
+                className="px-3 py-3 text-center text-[10px] font-black uppercase tracking-[0.1em] text-slate-500"
+              >
+                <span className="block max-w-[100px] truncate" title={treatment.nome}>
+                  {treatment.nome}
+                </span>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {offers.map((offer, idx) => {
+            const offerCompat = compatibilityMap.get(offer.globalOfferId)
+            return (
+              <tr
+                key={offer.globalOfferId}
+                className={`border-b border-white/5 transition-colors hover:bg-white/5 ${
+                  idx % 2 === 0 ? 'bg-black/10' : ''
+                }`}
+              >
+                <td className="sticky left-0 z-10 bg-slate-900/95 px-4 py-3 backdrop-blur-sm">
+                  <p className="font-bold text-white">{getOfferLabel(offer)}</p>
+                  <p className="text-[10px] text-slate-500">
+                    {[offer.material, offer.indiceRefracao].filter(Boolean).join(' • ')}
+                  </p>
+                </td>
+                <td className="px-3 py-3 text-center">
+                  <span className="font-mono text-xs font-bold text-slate-300">
+                    {formatCurrency(offer.basePrice)}
+                  </span>
+                </td>
+                {visibleTreatments.map((treatment) => {
+                  const compat = offerCompat?.get(treatment.id) || null
+                  const price = compat ? resolvePrice(offer, compat) : null
+                  return (
+                    <td key={treatment.id} className="px-3 py-3 text-center">
+                      {price != null ? (
+                        <span className="font-mono text-xs font-bold text-cyan-200">
+                          {formatCurrency(price)}
+                        </span>
+                      ) : (
+                        <span className="text-slate-600">—</span>
+                      )}
+                    </td>
+                  )
+                })}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function AtomicOfferCard({ offer }: { offer: PriceTableOffer }) {
+  return (
+    <div className="flex items-center justify-between rounded-2xl border border-white/8 bg-black/20 px-5 py-4 transition-all hover:border-white/15 hover:bg-black/30">
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <Package className="h-4 w-4 text-amber-300" />
+          <p className="font-bold text-white">{getOfferLabel(offer)}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {offer.material && (
+            <span className="text-[10px] uppercase tracking-wider text-slate-500">
+              {offer.material}
+            </span>
+          )}
+          {offer.indiceRefracao && (
+            <span className="text-[10px] uppercase tracking-wider text-slate-500">
+              Índice {offer.indiceRefracao}
+            </span>
+          )}
+          {offer.alreadyIncludesTreatment && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-300">
+              <Sparkles className="h-3 w-3" />
+              Tratamento incluso
+            </span>
+          )}
+          {offer.isAtomicOffer && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-300">
+              Oferta Fechada
+            </span>
+          )}
+        </div>
+      </div>
+      <p className="text-xl font-black text-white">{formatCurrency(offer.basePrice)}</p>
+    </div>
+  )
+}
+
+function FamilySection({
+  familyName,
+  composableOffers,
+  atomicOffers,
+  treatments,
+  compatibilityMap,
+  viewMode,
+}: {
+  familyName: string
+  composableOffers: PriceTableOffer[]
+  atomicOffers: PriceTableOffer[]
+  treatments: { id: string; nome: string }[]
+  compatibilityMap: Map<string, Map<string, { specialPrice: number | null; priceMode: 'final' | 'surcharge' }>>
+  viewMode: ViewMode
+}) {
+  const [isOpen, setIsOpen] = useState(true)
+
+  // Group composable by section
+  const sections = useMemo(() => {
+    const map = new Map<string, PriceTableOffer[]>()
+    for (const offer of composableOffers) {
+      const key = offer.sectionName || 'Geral'
+      const list = map.get(key) || []
+      list.push(offer)
+      map.set(key, list)
+    }
+    return map
+  }, [composableOffers])
+
+  const totalOffers = composableOffers.length + atomicOffers.length
+
+  return (
+    <div className="rounded-3xl border border-white/8 bg-slate-900/60 backdrop-blur-sm">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex w-full items-center justify-between px-6 py-5 text-left transition-colors hover:bg-white/5"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-500/10 text-cyan-300">
+            <Layers3 className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="text-lg font-black tracking-tight text-white">{familyName}</h3>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
+              {totalOffers} {totalOffers === 1 ? 'oferta' : 'ofertas'}
+              {atomicOffers.length > 0 && ` • ${atomicOffers.length} fechada${atomicOffers.length > 1 ? 's' : ''}`}
+            </p>
+          </div>
+        </div>
+        {isOpen ? (
+          <ChevronDown className="h-5 w-5 text-slate-500" />
+        ) : (
+          <ChevronRight className="h-5 w-5 text-slate-500" />
+        )}
+      </button>
+
+      {isOpen && (
+        <div className="space-y-6 px-6 pb-6">
+          {/* Composable: Matrix or List */}
+          {composableOffers.length > 0 && (
+            <>
+              {viewMode === 'matrix' ? (
+                Array.from(sections.entries()).map(([sectionName, sectionOffers]) => (
+                  <div key={sectionName}>
+                    {sections.size > 1 && (
+                      <p className="mb-3 text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+                        {sectionName}
+                      </p>
+                    )}
+                    <MatrixTable
+                      offers={sectionOffers}
+                      treatments={treatments}
+                      compatibilityMap={compatibilityMap}
+                    />
+                  </div>
+                ))
+              ) : (
+                <div className="space-y-2">
+                  {composableOffers.map((offer) => {
+                    const offerCompat = compatibilityMap.get(offer.globalOfferId)
+                    const prices = offerCompat
+                      ? Array.from(offerCompat.values()).map((c) => resolvePrice(offer, c))
+                      : [offer.basePrice]
+                    const validPrices = prices.filter((p): p is number => p != null)
+                    const minPrice = validPrices.length ? Math.min(...validPrices) : null
+                    const maxPrice = validPrices.length ? Math.max(...validPrices) : null
+
+                    return (
+                      <div
+                        key={offer.globalOfferId}
+                        className="flex items-center justify-between rounded-xl border border-white/8 bg-black/20 px-4 py-3"
+                      >
+                        <div>
+                          <p className="text-sm font-bold text-white">{getOfferLabel(offer)}</p>
+                          <p className="text-[10px] text-slate-500">
+                            {[
+                              offer.material,
+                              offer.indiceRefracao ? `Índice ${offer.indiceRefracao}` : null,
+                              offer.sectionName,
+                            ]
+                              .filter(Boolean)
+                              .join(' • ')}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          {minPrice != null && maxPrice != null && minPrice !== maxPrice ? (
+                            <>
+                              <p className="text-xs text-slate-400">
+                                {formatCurrency(minPrice)} – {formatCurrency(maxPrice)}
+                              </p>
+                            </>
+                          ) : (
+                            <p className="font-mono text-sm font-bold text-white">
+                              {formatCurrency(minPrice)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Atomic offers */}
+          {atomicOffers.length > 0 && (
+            <div className="space-y-2">
+              {composableOffers.length > 0 && (
+                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-400/80">
+                  Ofertas Fechadas
+                </p>
+              )}
+              {atomicOffers.map((offer) => (
+                <AtomicOfferCard key={offer.globalOfferId} offer={offer} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function PriceTableInterface({ data }: { data: PriceTableData }) {
+  const [viewMode, setViewMode] = useState<ViewMode>('matrix')
+  const [search, setSearch] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const [clinicalFilter, setClinicalFilter] = useState<string | null>(null)
+  const [materialFilter, setMaterialFilter] = useState<string | null>(null)
+  const [indiceFilter, setIndiceFilter] = useState<number | null>(null)
+  const [featureFilter, setFeatureFilter] = useState<string | null>(null)
+  const [sectionFilter, setSectionFilter] = useState<string | null>(null)
+
+  // Build compatibility lookup: offerId -> treatmentId -> compat
+  const compatibilityMap = useMemo(() => {
+    const map = new Map<string, Map<string, { specialPrice: number | null; priceMode: 'final' | 'surcharge' }>>()
+    for (const c of data.compatibilities) {
+      let offerMap = map.get(c.offerId)
+      if (!offerMap) {
+        offerMap = new Map()
+        map.set(c.offerId, offerMap)
+      }
+      offerMap.set(c.treatmentId, { specialPrice: c.specialPrice, priceMode: c.priceMode })
+    }
+    return map
+  }, [data.compatibilities])
+
+  // Extract unique filter values
+  const filterOptions = useMemo(() => {
+    const clinicals = new Set<string>()
+    const materials = new Set<string>()
+    const indices = new Set<number>()
+    const features = new Set<string>()
+    const sections = new Set<string>()
+
+    for (const offer of data.offers) {
+      if (offer.clinicalCategory && offer.clinicalCategory !== 'indefinida') {
+        clinicals.add(offer.clinicalCategory)
+      }
+      if (offer.material) materials.add(offer.material)
+      if (offer.indiceRefracao) indices.add(offer.indiceRefracao)
+      if (offer.sectionName) sections.add(offer.sectionName)
+
+      const feat = offer.features || {}
+      for (const [key, val] of Object.entries(feat)) {
+        if (val === true) features.add(key)
+      }
+    }
+
+    return {
+      clinicals: Array.from(clinicals).sort(),
+      materials: Array.from(materials).sort(),
+      indices: Array.from(indices).sort((a, b) => a - b),
+      features: Array.from(features).sort(),
+      sections: Array.from(sections).sort(),
+    }
+  }, [data.offers])
+
+  // Filter offers
+  const filteredOffers = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    return data.offers.filter((offer) => {
+      if (term) {
+        const label = getOfferLabel(offer).toLowerCase()
+        const family = data.families.find((f) => f.id === offer.familyId)
+        const familyName = family?.nome?.toLowerCase() || ''
+        if (!label.includes(term) && !familyName.includes(term)) return false
+      }
+      if (clinicalFilter && offer.clinicalCategory !== clinicalFilter) return false
+      if (materialFilter && offer.material !== materialFilter) return false
+      if (indiceFilter && offer.indiceRefracao !== indiceFilter) return false
+      if (featureFilter && !(offer.features as Record<string, unknown>)[featureFilter]) return false
+      if (sectionFilter && offer.sectionName !== sectionFilter) return false
+      return true
+    })
+  }, [data.offers, data.families, search, clinicalFilter, materialFilter, indiceFilter, featureFilter, sectionFilter])
+
+  // Group by family
+  const familyGroups = useMemo(() => {
+    const familyMap = new Map(data.families.map((f) => [f.id, f]))
+    const groups = new Map<string, { family: { id: string; nome: string }; composable: PriceTableOffer[]; atomic: PriceTableOffer[] }>()
+
+    for (const offer of filteredOffers) {
+      const family = familyMap.get(offer.familyId)
+      if (!family) continue
+
+      let group = groups.get(family.id)
+      if (!group) {
+        group = { family, composable: [], atomic: [] }
+        groups.set(family.id, group)
+      }
+
+      if (offer.isAtomicOffer || !offer.allowsComposition) {
+        group.atomic.push(offer)
+      } else {
+        group.composable.push(offer)
+      }
+    }
+
+    return Array.from(groups.values()).sort((a, b) => a.family.nome.localeCompare(b.family.nome))
+  }, [filteredOffers, data.families])
+
+  const activeFilterCount = [clinicalFilter, materialFilter, indiceFilter, featureFilter, sectionFilter].filter(Boolean).length
+
+  const clearFilters = () => {
+    setClinicalFilter(null)
+    setMaterialFilter(null)
+    setIndiceFilter(null)
+    setFeatureFilter(null)
+    setSectionFilter(null)
+    setSearch('')
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-white">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
+        {/* Header */}
+        <div className="rounded-[2rem] border border-white/10 bg-gradient-to-br from-slate-900 via-slate-950 to-cyan-950/30 p-6 shadow-[0_25px_80px_rgba(2,6,23,0.45)] sm:p-7">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-[11px] font-black uppercase tracking-[0.3em] text-cyan-300/80">
+                Tabela de Preços
+              </p>
+              <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">
+                {data.laboratorio}
+              </h1>
+              <p className="mt-1 text-sm text-slate-400">
+                Versão <span className="font-bold text-slate-200">{data.versao}</span> •{' '}
+                {data.offers.length} ofertas • {data.treatments.length} tratamentos
+              </p>
+            </div>
+
+            {/* View toggle */}
+            <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/20 p-1.5">
+              <button
+                onClick={() => setViewMode('matrix')}
+                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all ${
+                  viewMode === 'matrix'
+                    ? 'bg-cyan-500/15 text-cyan-200'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <LayoutGrid className="h-4 w-4" />
+                Matriz
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all ${
+                  viewMode === 'list'
+                    ? 'bg-cyan-500/15 text-cyan-200'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <List className="h-4 w-4" />
+                Lista
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Search + Filter Bar */}
+        <div className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-slate-900/60 p-4 backdrop-blur-md sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar por família ou oferta..."
+                className="w-full rounded-2xl border border-white/10 bg-black/20 py-3 pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/40"
+              />
+            </div>
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-3 text-xs font-bold uppercase tracking-wider transition-all ${
+                showFilters || activeFilterCount
+                  ? 'border-cyan-400/30 bg-cyan-500/10 text-cyan-200'
+                  : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-white'
+              }`}
+            >
+              {showFilters ? <ChevronUp className="h-4 w-4" /> : <Filter className="h-4 w-4" />}
+              Filtros
+              {activeFilterCount > 0 && (
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-500 text-[10px] font-black text-slate-950">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+            {activeFilterCount > 0 && (
+              <button
+                onClick={clearFilters}
+                className="inline-flex items-center gap-1 text-xs font-bold text-slate-400 transition hover:text-red-300"
+              >
+                <X className="h-3 w-3" />
+                Limpar
+              </button>
+            )}
+          </div>
+
+          {/* Filter chips */}
+          {showFilters && (
+            <div className="space-y-3 border-t border-white/8 pt-4">
+              {/* Clinical */}
+              {filterOptions.clinicals.length > 0 && (
+                <div>
+                  <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                    Categoria Clínica
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {filterOptions.clinicals.map((cat) => (
+                      <FilterPill
+                        key={cat}
+                        label={getClinicalLabel(cat)}
+                        active={clinicalFilter === cat}
+                        onClick={() => setClinicalFilter(clinicalFilter === cat ? null : cat)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Material */}
+              {filterOptions.materials.length > 0 && (
+                <div>
+                  <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                    Material
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {filterOptions.materials.map((mat) => (
+                      <FilterPill
+                        key={mat}
+                        label={mat}
+                        active={materialFilter === mat}
+                        onClick={() => setMaterialFilter(materialFilter === mat ? null : mat)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Índice de Refração */}
+              {filterOptions.indices.length > 0 && (
+                <div>
+                  <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                    Índice de Refração
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {filterOptions.indices.map((idx) => (
+                      <FilterPill
+                        key={idx}
+                        label={String(idx)}
+                        active={indiceFilter === idx}
+                        onClick={() => setIndiceFilter(indiceFilter === idx ? null : idx)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Features */}
+              {filterOptions.features.length > 0 && (
+                <div>
+                  <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                    Features
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {filterOptions.features.map((feat) => (
+                      <FilterPill
+                        key={feat}
+                        label={feat.replace(/_/g, ' ')}
+                        active={featureFilter === feat}
+                        onClick={() => setFeatureFilter(featureFilter === feat ? null : feat)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Section */}
+              {filterOptions.sections.length > 0 && (
+                <div>
+                  <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                    Seção
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {filterOptions.sections.map((sec) => (
+                      <FilterPill
+                        key={sec}
+                        label={sec}
+                        active={sectionFilter === sec}
+                        onClick={() => setSectionFilter(sectionFilter === sec ? null : sec)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Results count */}
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+          {familyGroups.length} {familyGroups.length === 1 ? 'família' : 'famílias'} •{' '}
+          {filteredOffers.length} {filteredOffers.length === 1 ? 'oferta' : 'ofertas'}
+        </p>
+
+        {/* Family sections */}
+        <div className="space-y-6">
+          {familyGroups.map((group) => (
+            <FamilySection
+              key={group.family.id}
+              familyName={group.family.nome}
+              composableOffers={group.composable}
+              atomicOffers={group.atomic}
+              treatments={data.treatments}
+              compatibilityMap={compatibilityMap}
+              viewMode={viewMode}
+            />
+          ))}
+
+          {!familyGroups.length && (
+            <div className="rounded-3xl border border-dashed border-white/10 bg-slate-900/50 px-6 py-16 text-center">
+              <Tag className="mx-auto mb-3 h-10 w-10 text-slate-600" />
+              <p className="text-lg font-bold text-slate-400">Nenhuma oferta encontrada</p>
+              <p className="mt-1 text-sm text-slate-500">
+                Ajuste os filtros ou a busca para ver resultados.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

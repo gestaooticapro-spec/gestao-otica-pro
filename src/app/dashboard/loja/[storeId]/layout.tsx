@@ -17,6 +17,10 @@ type StoreDataShape = {
   name?: string | null;
   settings?: unknown;
 };
+type StoreSettings = {
+  logo?: string;
+  pre_sale_analysis_enabled?: boolean;
+};
 
 export default async function StoreLayout({
   children,
@@ -61,7 +65,9 @@ export default async function StoreLayout({
 
   const storeName = storeData?.name || 'Otica';
   const settings = storeData?.settings;
+  const typedSettings = (settings as StoreSettings | null) || null;
   let logoFile: string | null = null;
+  const preSaleAnalysisEnabled = typedSettings?.pre_sale_analysis_enabled === true;
 
   if (settings && typeof settings === 'object' && 'logo' in settings) {
     const maybeLogo = (settings as { logo?: unknown }).logo;
@@ -75,7 +81,7 @@ export default async function StoreLayout({
   if (userRole === 'store_operator') {
     return (
       <ModalsProvider storeId={storeIdParam}>
-        <OperatorLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl}>
+        <OperatorLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl} preSaleAnalysisEnabled={preSaleAnalysisEnabled}>
           {children}
         </OperatorLayout>
       </ModalsProvider>

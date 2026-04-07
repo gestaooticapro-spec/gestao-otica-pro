@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import OperatorMenuHome from './OperatorMenuHome';
 import OperatorMenuAtendimento from './OperatorMenuAtendimento';
 import OperatorMenuLojaVazia from './OperatorMenuLojaVazia';
+import { getStoreProfile } from '@/lib/actions/store.actions';
 
 type MenuState = 'home' | 'atendimento' | 'loja-vazia' | 'page';
 type HomeSelection = 'atendimento' | 'loja-vazia' | null;
@@ -15,6 +16,7 @@ interface OperatorLayoutProps {
     storeId: number;
     storeName: string;
     logoUrl: string | null;
+    preSaleAnalysisEnabled?: boolean;
     onBackToHub?: () => void;
     hubLabel?: string;
 }
@@ -24,6 +26,7 @@ export default function OperatorLayout({
     storeId,
     storeName,
     logoUrl,
+    preSaleAnalysisEnabled = false,
     onBackToHub,
     hubLabel = 'Voltar'
 }: OperatorLayoutProps) {
@@ -33,9 +36,38 @@ export default function OperatorLayout({
     const supabase = createClient();
 
     const [homeSelection, setHomeSelection] = useState<HomeSelection>(null);
+    const [livePreSaleAnalysisEnabled, setLivePreSaleAnalysisEnabled] = useState(preSaleAnalysisEnabled);
 
     const storeHomePath = `/dashboard/loja/${storeId}`;
     const menuParam = searchParams.get('menu');
+
+    useEffect(() => {
+        setLivePreSaleAnalysisEnabled(preSaleAnalysisEnabled);
+    }, [preSaleAnalysisEnabled]);
+
+    useEffect(() => {
+        if (pathname !== storeHomePath) return;
+
+        let isMounted = true;
+
+        getStoreProfile(storeId).then((store) => {
+            if (!isMounted) return;
+
+            const settings = store?.settings;
+            const enabled = Boolean(
+                settings &&
+                typeof settings === 'object' &&
+                'pre_sale_analysis_enabled' in settings &&
+                (settings as { pre_sale_analysis_enabled?: unknown }).pre_sale_analysis_enabled === true
+            );
+
+            setLivePreSaleAnalysisEnabled(enabled);
+        });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [pathname, storeHomePath, storeId]);
 
     const currentMenu: MenuState = (() => {
         if (pathname !== storeHomePath) return 'page';
@@ -81,7 +113,7 @@ export default function OperatorLayout({
     }
 
     if (currentMenu === 'atendimento') {
-        return <OperatorMenuAtendimento storeId={storeId} onBack={handleBack} onNavigate={handleRouteNavigate} />;
+        return <OperatorMenuAtendimento storeId={storeId} onBack={handleBack} onNavigate={handleRouteNavigate} preSaleAnalysisEnabled={livePreSaleAnalysisEnabled} />;
     }
 
     if (currentMenu === 'loja-vazia') {

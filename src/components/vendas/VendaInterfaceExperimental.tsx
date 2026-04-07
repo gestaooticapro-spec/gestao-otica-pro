@@ -20,6 +20,7 @@ import { updateVendaExperimentalFields } from '@/lib/actions/vendas.actions'
 import { toast } from 'sonner'
 import ReceiptSelectionModal from '@/components/modals/ReceiptSelectionModal'
 import UpdateCpfModal from '@/components/modals/UpdateCpfModal'
+import TransferVendaModal from '@/components/modals/TransferVendaModal'
 
 import { Database } from '@/lib/database.types'
 
@@ -186,6 +187,7 @@ export default function VendaInterfaceExperimental({
     // Estado para controlar qual modal está aberto
     const [activeModal, setActiveModal] = useState<'none' | 'produto' | 'pagamento' | 'parcelamento'>('none')
     const [isCpfModalOpen, setIsCpfModalOpen] = useState(false)
+    const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
 
     // Novos campos experimentais
     const [obsGeral, setObsGeral] = useState(venda.obs_geral || '')
@@ -271,6 +273,13 @@ export default function VendaInterfaceExperimental({
                     <div className="pointer-events-auto flex items-center gap-2 font-bold text-blue-200 bg-blue-500/10 px-4 py-1.5 rounded-full border border-blue-500/20 backdrop-blur-md shadow-lg hover:bg-blue-500/20 transition-colors">
                         <User className="h-3.5 w-3.5 text-blue-400" />
                         <span className="truncate max-w-[350px] text-sm">{customer?.full_name}</span>
+                        <button
+                            className="ml-1 p-1 rounded-full hover:bg-amber-500/20 text-blue-300/50 hover:text-amber-300 transition-all"
+                            title="Transferir Titularidade"
+                            onClick={() => setIsTransferModalOpen(true)}
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></svg>
+                        </button>
                     </div>
                 </div>
 
@@ -499,6 +508,18 @@ export default function VendaInterfaceExperimental({
                     customerName={customer.full_name}
                     currentCpf={customer.cpf || ''}
                     currentPhone={customer.fone_movel || customer.phone || ''}
+                />
+            )}
+
+            {/* Modal de Transferência de Titularidade */}
+            {customer && (
+                <TransferVendaModal
+                    isOpen={isTransferModalOpen}
+                    onClose={() => setIsTransferModalOpen(false)}
+                    vendaId={venda.id}
+                    storeId={venda.store_id}
+                    currentCustomerId={customer.id}
+                    onSuccess={onDataReload}
                 />
             )}
 

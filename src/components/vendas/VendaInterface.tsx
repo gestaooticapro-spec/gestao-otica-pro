@@ -16,6 +16,7 @@ import ResumoFinanceiro from '@/components/vendas/ResumoFinanceiro'
 import VendaActions from '@/components/vendas/VendaActions'
 import ListaOS from '@/components/vendas/ListaOS'
 import ReceiptSelectionModal from '@/components/modals/ReceiptSelectionModal'
+import TransferVendaModal from '@/components/modals/TransferVendaModal'
 
 import { Database } from '@/lib/database.types'
 
@@ -53,8 +54,9 @@ export default function VendaInterface({
     const router = useRouter()
     const [activeTab, setActiveTab] = useState<'produtos' | 'pagamento' | 'carne'>('produtos')
 
-    // NOVO: Estado para controlar o modal de impressão
+    // NOVO: Estado para controlar o modal de impressão e de transferência
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false)
+    const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
 
     const vendedorNome = employee?.full_name || 'N/A'
     const employeeIdFinanceiro = employee?.id || 0
@@ -81,9 +83,16 @@ export default function VendaInterface({
                 </div>
 
                 <div className="ml-auto flex items-center gap-3 text-[10px]">
-                    <div className="flex items-center gap-1 font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                    <div className="flex items-center gap-1 font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100 group relative">
                         <User className="h-3 w-3" />
-                        <span className="truncate max-w-[200px]">{customer?.full_name}</span>
+                        <span className="truncate max-w-[200px]" title={customer?.full_name}>{customer?.full_name}</span>
+                        <button 
+                            className="ml-1 opacity-60 hover:opacity-100 hover:text-amber-600 transition-opacity p-0.5 rounded"
+                            title="Transferir Titularidade"
+                            onClick={() => setIsTransferModalOpen(true)}
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></svg>
+                        </button>
                     </div>
                     <div className="hidden sm:flex items-center gap-1 text-gray-500">
                         <Briefcase className="h-3 w-3" />
@@ -237,6 +246,18 @@ export default function VendaInterface({
                 pagamentos={pagamentos}
                 onReload={onDataReload}
             />
+
+            {/* 5. MODAL DE TRANSFERÊNCIA DE TITULARIDADE */}
+            {customer && (
+                <TransferVendaModal
+                    isOpen={isTransferModalOpen}
+                    onClose={() => setIsTransferModalOpen(false)}
+                    vendaId={venda.id}
+                    storeId={venda.store_id}
+                    currentCustomerId={customer.id}
+                    onSuccess={onDataReload}
+                />
+            )}
 
         </div>
     )

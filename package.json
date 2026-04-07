@@ -22,6 +22,7 @@
     "lucide-react": "^0.554.0",
     "next": "^14.2.0",
     "nodemailer": "^7.0.11",
+    "pdf-parse": "^2.4.5",
     "qrcode": "^1.5.4",
     "qrcode.react": "^4.2.0",
     "react": "^18.2.0",

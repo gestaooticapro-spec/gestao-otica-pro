@@ -36,6 +36,7 @@ export default function ServiceOrderFormWrapper({
             onListChange={setExistingOrders}
             saveState={saveState}
             dispatch={dispatch}
+            preSaleAnalysisEnabled={initialData.preSaleAnalysisEnabled}
             venda={initialData.venda}
         />
     )

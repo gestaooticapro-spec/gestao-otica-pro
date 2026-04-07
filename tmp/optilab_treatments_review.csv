@@ -1,0 +1,50 @@
+name,type,tags,features
+Crizal Easy Pro,Antirreflexo,antirreflexo,{}
+Optifog,Antirreflexo,antirreflexo,{}
+Verniz Hc,Revestimento,revestimento,{}
+Trio Easy Clean,Antirreflexo,antirreflexo,{}
+Crizal Prevencia,Antirreflexo,antirreflexo,{}
+Crizal Sapphire HR,Antirreflexo,antirreflexo,{}
+Crizal Rock,Antirreflexo,antirreflexo,{}
+No Reflex,Antirreflexo,antirreflexo,{}
+Vert Clair,Antirreflexo,antirreflexo,{}
+Caneta teste Foto,Produto,catalogo_produtos,"{""service_price"": 55.0, ""source"": ""services_page"", ""service_section"": ""OUTROS PRODUTOS"", ""service_codes"": [""5077""]}"
+Varilux em Dobro (2O Par),Promocao,catalogo_promocoes,"{""service_price"": 305.0, ""source"": ""services_page"", ""service_section"": ""PROMOCIONAIS""}"
+Meu 1o Varilux (50% do valor do par),Promocao,catalogo_promocoes,"{""service_price"": 52.0, ""source"": ""services_page"", ""service_section"": ""PROMOCIONAIS""}"
+Stellest em Dobro (2O Par),Promocao,catalogo_promocoes,"{""service_price"": 150.0, ""source"": ""services_page"", ""service_section"": ""PROMOCIONAIS""}"
+Suave e Média CR-39,Coloracao,catalogo_coloracao,"{""service_price"": 126.0, ""source"": ""services_page"", ""service_section"": ""COLORAÇÃO""}"
+Solar CR-39,Coloracao,catalogo_coloracao,"{""service_price"": 156.0, ""source"": ""services_page"", ""service_section"": ""COLORAÇÃO""}"
+Degradê CR-39,Coloracao,catalogo_coloracao,"{""service_price"": 213.0, ""source"": ""services_page"", ""service_section"": ""COLORAÇÃO""}"
+"Suave 1.53, 1.59 e 1.67",Coloracao,catalogo_coloracao,"{""service_price"": 264.0, ""source"": ""services_page"", ""service_section"": ""COLORAÇÃO""}"
+"Solar 1.53, 1.59 e 1.67",Coloracao,catalogo_coloracao,"{""service_price"": 321.0, ""source"": ""services_page"", ""service_section"": ""COLORAÇÃO""}"
+"Degradê 1.53, 1.59 e 1.67",Coloracao,catalogo_coloracao,"{""service_price"": 480.0, ""source"": ""services_page"", ""service_section"": ""COLORAÇÃO""}"
+Night-Drive,Coloracao,catalogo_coloracao,"{""service_price"": 252.0, ""source"": ""services_page"", ""service_section"": ""COLORAÇÃO""}"
+Video-Filter,Coloracao,catalogo_coloracao,"{""service_price"": 207.0, ""source"": ""services_page"", ""service_section"": ""COLORAÇÃO""}"
+Verniz HC (Por face),Servico,catalogo_tratamentos,"{""service_price"": 321.0, ""source"": ""services_page"", ""service_section"": ""TRATAMENTOS""}"
+UV,Servico,catalogo_tratamentos,"{""service_price"": 333.0, ""source"": ""services_page"", ""service_section"": ""TRATAMENTOS""}"
+Antirreflexo Trio Easy Clean,Antirreflexo,catalogo_tratamentos,"{""service_price"": 318.0, ""source"": ""services_page"", ""service_section"": ""TRATAMENTOS""}"
+Antirreflexo No Reflex,Antirreflexo,catalogo_tratamentos,"{""service_price"": 336.0, ""source"": ""services_page"", ""service_section"": ""TRATAMENTOS""}"
+Antirreflexo Vert Clair Plus,Antirreflexo,catalogo_tratamentos,"{""service_price"": 684.0, ""source"": ""services_page"", ""service_section"": ""TRATAMENTOS"", ""service_codes"": [""5158""]}"
+Antirreflexo Optifog,Antirreflexo,catalogo_tratamentos,"{""service_price"": 918.0, ""source"": ""services_page"", ""service_section"": ""TRATAMENTOS""}"
+Antirreflexo Crizal Easy PRO,Antirreflexo,catalogo_tratamentos,"{""service_price"": 543.0, ""source"": ""services_page"", ""service_section"": ""TRATAMENTOS"", ""service_codes"": [""5157""]}"
+Antirreflexo Crizal Sapphire HR (Face interna),Antirreflexo,catalogo_tratamentos,"{""service_price"": 900.0, ""source"": ""services_page"", ""service_section"": ""TRATAMENTOS"", ""service_codes"": [""9683""]}"
+Visão Simples,Servico,catalogo_surfacagem,"{""service_price"": 285.0, ""source"": ""services_page"", ""service_section"": ""SURFAÇAGEM""}"
+Bi-Côncova/Bi-Convexa (Visão Simples),Servico,catalogo_surfacagem,"{""service_price"": 831.0, ""source"": ""services_page"", ""service_section"": ""SURFAÇAGEM""}"
+Bifocais,Servico,catalogo_surfacagem,"{""service_price"": 285.0, ""source"": ""services_page"", ""service_section"": ""SURFAÇAGEM""}"
+Bi-Côncova/Bi-Convexa (Bifocais),Servico,catalogo_surfacagem,"{""service_price"": 813.0, ""source"": ""services_page"", ""service_section"": ""SURFAÇAGEM""}"
+Ultra Light,Servico,catalogo_surfacagem,"{""service_price"": 684.0, ""source"": ""services_page"", ""service_section"": ""SURFAÇAGEM""}"
+Retífica de forma,Servico,catalogo_surfacagem,"{""service_price"": 156.0, ""source"": ""services_page"", ""service_section"": ""SURFAÇAGEM""}"
+Prisma (Cada unidade),Servico,catalogo_surfacagem,"{""service_price"": 72.0, ""source"": ""services_page"", ""service_section"": ""SURFAÇAGEM""}"
+Outros fabricantes (Não Essilor),Servico,catalogo_surfacagem,"{""service_price"": 684.0, ""source"": ""services_page"", ""service_section"": ""SURFAÇAGEM""}"
+Retífica de forma cruzada,Servico,catalogo_surfacagem,"{""service_price"": 297.0, ""source"": ""services_page"", ""service_section"": ""SURFAÇAGEM""}"
+CR-39,Servico,catalogo_montagem,"{""service_price"": 120.0, ""source"": ""services_page"", ""service_section"": ""NYLON E PARAFUSADAS""}"
+"Nyon 1.53, 1.59, 1.67, 1.74 e Polarizada",Servico,catalogo_montagem,"{""service_price"": 174.0, ""source"": ""services_page"", ""service_section"": ""NYLON E PARAFUSADAS""}"
+"Fio de Aço 1.53, 1.59, 1.67, 1.74 e Polarizada",Servico,catalogo_montagem,"{""service_price"": 189.0, ""source"": ""services_page"", ""service_section"": ""NYLON E PARAFUSADAS""}"
+"Numont 4 furos 1.53, 1.59, 1.67, 1.74 e Polarizada",Servico,catalogo_montagem,"{""service_price"": 258.0, ""source"": ""services_page"", ""service_section"": ""NYLON E PARAFUSADAS""}"
+"Numont 8 furos 1.53, 1.59, 1.67, 1.74 e Polarizada",Servico,catalogo_montagem,"{""service_price"": 312.0, ""source"": ""services_page"", ""service_section"": ""NYLON E PARAFUSADAS""}"
+"1.53, 1.59, 1.67, 1.74 e Polarizada",Servico,catalogo_montagem,"{""service_price"": 150.0, ""source"": ""services_page"", ""service_section"": ""METAL E ZILO""}"
+Curva 8,Servico,catalogo_montagem,"{""service_price"": 246.0, ""source"": ""services_page"", ""service_section"": ""METAL E ZILO""}"
+Especial***,Servico,catalogo_montagem,"{""service_price"": 111.0, ""source"": ""services_page"", ""service_section"": ""METAL E ZILO""}"
+Digital,Servico,catalogo_montagem,"{""service_price"": 216.0, ""source"": ""services_page"", ""service_section"": ""METAL E ZILO""}"
+"1.59, Colorida e Transitions",Servico,catalogo_montagem,"{""service_price"": 174.0, ""source"": ""services_page"", ""service_section"": ""METAL E ZILO""}"
+Outros fabricantes (Não Essilor)**,Servico,catalogo_montagem,"{""service_price"": 486.0, ""source"": ""services_page"", ""service_section"": ""METAL E ZILO""}"
