@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { X, Search, User, ArrowRight, Loader2, ArrowDownUp, ShieldCheck } from 'lucide-react'
 import { searchCustomersByName, transferirTitularidadeVenda, type CustomerSearchResult } from '@/lib/actions/vendas.actions'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
@@ -26,6 +26,7 @@ export default function TransferVendaModal({ isOpen, onClose, vendaId, storeId, 
 
   // Fluxo de autenticação por PIN
   const [isAuthOpen, setIsAuthOpen] = useState(false)
+  const justificativaRef = useRef<HTMLTextAreaElement>(null)
 
   if (!isOpen) return null
 
@@ -42,10 +43,18 @@ export default function TransferVendaModal({ isOpen, onClose, vendaId, storeId, 
     setIsSearching(false)
   }
 
+  const handleSelectCustomer = (c: CustomerSearchResult) => {
+    setSelectedCustomer(c)
+    setCustomers([])
+    setSearchTerm('')
+    // Pequeno timeout para garantir que o textarea esteja renderizado/focado
+    setTimeout(() => justificativaRef.current?.focus(), 100)
+  }
+
   // Ao clicar em "Confirmar", abre o EmployeeAuthModal primeiro
   const handleRequestTransfer = () => {
-    if (!selectedCustomer || justificativa.trim().length < 5) {
-      setError('Selecione um cliente e informe uma justificativa válida (mínimo 5 caracteres).')
+    if (!selectedCustomer) {
+      setError('Selecione um cliente para prosseguir.')
       return
     }
     setError(null)
@@ -113,54 +122,79 @@ export default function TransferVendaModal({ isOpen, onClose, vendaId, storeId, 
               <strong className="text-amber-300">⚠ Atenção:</strong> Ao transferir, prestações do crediário e OSs passarão para o novo titular. Nomes dos dependentes dentro das OSs devem ser corrigidos manualmente.
             </div>
 
-            {/* Busca */}
-            <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Buscar Novo Titular</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/30 backdrop-blur-md transition-all"
-                  placeholder="Nome ou CPF (mínimo 3 letras)"
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleSearch()}
-                />
-                <button
-                  onClick={handleSearch}
-                  disabled={isSearching || searchTerm.length < 3}
-                  className="bg-white/5 border border-white/10 px-4 rounded-xl flex items-center justify-center hover:bg-white/10 disabled:opacity-30 text-slate-300 transition-all"
-                >
-                  {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-
-            {/* Resultados */}
-            {customers.length > 0 && (
-              <div className="border border-white/10 rounded-xl overflow-hidden max-h-44 overflow-y-auto custom-scrollbar bg-black/20">
-                {customers.map(c => (
-                  <div
-                    key={c.id}
-                    onClick={() => setSelectedCustomer(c)}
-                    className={`p-3 border-b border-white/5 cursor-pointer flex justify-between items-center text-sm transition-all
-                      ${selectedCustomer?.id === c.id ? 'bg-amber-500/15 border-l-2 border-l-amber-400' : 'hover:bg-white/5'}`}
-                  >
-                    <div>
-                      <div className="font-bold text-white">{c.full_name}</div>
-                      <div className="text-[10px] text-slate-500">CPF: {c.cpf || '—'} | Fone: {c.fone_movel || '—'}</div>
-                    </div>
-                    {selectedCustomer?.id === c.id && <ArrowRight className="text-amber-400 h-4 w-4 shrink-0" />}
+            {/* Área de Seleção ou Card de Escolha */}
+            {!selectedCustomer ? (
+              <div className="space-y-4">
+                {/* Busca */}
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Buscar Novo Titular</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/30 backdrop-blur-md transition-all"
+                      placeholder="Nome ou CPF (mínimo 3 letras)"
+                      value={searchTerm}
+                      onChange={e => setSearchTerm(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                    />
+                    <button
+                      onClick={handleSearch}
+                      disabled={isSearching || searchTerm.length < 3}
+                      className="bg-white/5 border border-white/10 px-4 rounded-xl flex items-center justify-center hover:bg-white/10 disabled:opacity-30 text-slate-300 transition-all"
+                    >
+                      {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                    </button>
                   </div>
-                ))}
+                </div>
+
+                {/* Resultados */}
+                {customers.length > 0 && (
+                  <div className="border border-white/10 rounded-xl overflow-hidden max-h-44 overflow-y-auto custom-scrollbar bg-black/20">
+                    {customers.map(c => (
+                      <div
+                        key={c.id}
+                        onClick={() => handleSelectCustomer(c)}
+                        className="p-3 border-b border-white/5 cursor-pointer flex justify-between items-center text-sm transition-all hover:bg-white/5"
+                      >
+                        <div>
+                          <div className="font-bold text-white">{c.full_name}</div>
+                          <div className="text-[10px] text-slate-500">CPF: {c.cpf || '—'} | Fone: {c.fone_movel || '—'}</div>
+                        </div>
+                        <ArrowRight className="text-slate-500 h-4 w-4 shrink-0" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Card de Cliente Selecionado */
+              <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 flex justify-between items-center animate-in slide-in-from-top-2">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-amber-500/20 rounded-lg text-amber-400">
+                    <User className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-black text-amber-500 uppercase tracking-widest leading-none mb-1">Novo Titular Escolhido</div>
+                    <div className="font-bold text-white text-base">{selectedCustomer.full_name}</div>
+                    <div className="text-[10px] text-slate-400">CPF: {selectedCustomer.cpf || '—'}</div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedCustomer(null)}
+                  className="text-[10px] font-black text-slate-400 hover:text-white uppercase tracking-widest px-3 py-1.5 border border-white/5 hover:bg-white/5 rounded-lg transition-all"
+                >
+                  Alterar
+                </button>
               </div>
             )}
 
             {/* Justificativa */}
             <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Motivo da Transferência (Auditoria)</label>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Motivo da Transferência (Opcional)</label>
               <textarea
+                ref={justificativaRef}
                 className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white placeholder:text-slate-600 max-h-24 min-h-[60px] focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all resize-none backdrop-blur-md"
-                placeholder="Ex: Compra em nome da mãe, transferida para o filho (Fábio) que ficará responsável pelo pagamento..."
+                placeholder="Ex: Compra em nome da mãe, transferida para o filho (Fábio)..."
                 value={justificativa}
                 onChange={e => setJustificativa(e.target.value)}
               />
@@ -185,7 +219,7 @@ export default function TransferVendaModal({ isOpen, onClose, vendaId, storeId, 
 
             <button
               onClick={handleRequestTransfer}
-              disabled={!selectedCustomer || justificativa.trim().length < 5 || isTransferring}
+              disabled={!selectedCustomer || isTransferring}
               className="px-6 py-2.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all disabled:opacity-30 shadow-[0_0_15px_rgba(245,158,11,0.15)]"
             >
               {isTransferring ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}

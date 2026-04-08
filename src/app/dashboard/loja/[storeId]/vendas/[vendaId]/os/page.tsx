@@ -402,6 +402,12 @@ function ServiceOrderFormContent({
         : customer?.full_name || 'Paciente'
 
     useEffect(() => {
+        if (!saveState.success && saveState.message && saveState.timestamp !== lastSuccessRef.current) {
+            alert(`Erro ao salvar OS: ${saveState.message}`);
+            lastSuccessRef.current = saveState.timestamp;
+            return;
+        }
+
         if (saveState.success && saveState.data && saveState.timestamp !== lastSuccessRef.current) {
             // Se não for save silencioso, mostra alert
             if (!isSilentSave.current) {
