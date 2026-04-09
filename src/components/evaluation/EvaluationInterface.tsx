@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   Bot,
   Calendar,
+  CircleHelp,
   ExternalLink,
   FileSearch,
   History,
@@ -18,7 +19,11 @@ import {
   User,
   UserPlus,
   Users2,
-  X
+  X,
+  Baby,
+  UserRound,
+  Briefcase,
+  Trash2
 } from 'lucide-react'
 import QuickCustomerModal from '@/components/modals/QuickCustomerModal'
 import AddDependenteModal from '@/components/modals/AddDependenteModal'
@@ -106,8 +111,15 @@ type SuggestionGenerationResult =
   | { success: true; suggestion: ManualSuggestion }
   | { success: false }
 
+type QuickRetentionIntent =
+  | 'pesquisar'
+  | 'pensar'
+  | 'armacoes'
+  | 'concorrencia'
+
 const labelStyle = 'block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-[0.2em]'
-const inputStyle = 'block w-full rounded-xl border border-white/10 bg-black/20 shadow-inner text-slate-100 h-10 text-sm px-3 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 font-bold placeholder:font-normal placeholder:text-slate-500 disabled:opacity-50 transition-all outline-none'
+const inputStyle = 'block w-full rounded-xl border border-white/20 bg-slate-900/60 shadow-inner text-slate-100 h-10 text-sm px-3 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 font-bold placeholder:font-normal placeholder:text-slate-500 disabled:opacity-50 transition-all outline-none'
+const selectStyle = `${inputStyle} appearance-none bg-[url(data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%2394a3b8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22m6%208%204%204%204-4%22%2F%3E%3C%2Fsvg%3E)] bg-[length:1.25rem_1.25rem] bg-[right_0.5rem_center] bg-no-repeat pr-10`
 const cardStyle = 'bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl shadow-xl'
 
 const normalizePersonName = (value: string | null | undefined) =>
@@ -144,6 +156,164 @@ const getParseStatusLabel = (value: EvaluationParseStatus) => {
       return value
   }
 }
+
+
+
+// ==========================================
+// TEST PROFILES (FOR DEMO)
+// ==========================================
+const TEST_PROFILES = {
+  enzo: {
+    patientNameRaw: 'Enzo Gabriel (Criança Ativa)',
+    ageYears: '8',
+    estiloVidaUsoComputadorHoras: '0',
+    estiloVidaDirigirHoras: '0',
+    estiloVidaLeituraHoras: '1',
+    estiloVidaUsoCelularHoras: '2',
+    estiloVidaExposicaoSolHoras: '4',
+    estiloVidaAmbienteInternoHoras: '4',
+    estiloVidaAmbienteExternoHoras: '4',
+    estiloVidaAssistirTvHoras: '2',
+    marcaAtual: 'Nenhuma',
+    tipoLenteAtual: 'visao_simples',
+    usaMultifocalHoje: 'nao',
+    dificuldadeAdaptacao: 'baixa',
+    historicoTrocasRecentes: 'nenhuma',
+    prioridadePrincipal: 'resistencia',
+    principalIncomodoAtual: 'longe',
+    objetivoCompra: 'trocar_marca',
+    faixaOrcamento: '800_2000',
+    budgetTarget: '1200',
+    importanciaEstetica: 'baixa',
+    importanciaResistencia: 'alta',
+    prefereTransitions: 'sim',
+    prefereBlueUv: 'sim',
+    aceitaPremium: 'sim',
+    queixaDirigirNoite: 'nao',
+    queixaSensibilidadeLuz: 'sim',
+    queixaQuebraOculos: 'sim',
+    queixaCriancaAtiva: 'sim',
+    queixaProgressaoRapida: 'sim',
+    observacoesConsultor: 'Criança muito ativa, quebra óculos na escola. Pais preocupados com aumento rápido do grau.',
+    receitaLongeOdEsferico: '-4,50',
+    receitaLongeOdCilindrico: '-1,50',
+    receitaLongeOdEixo: '180',
+    receitaLongeOeEsferico: '-4,25',
+    receitaLongeOeCilindrico: '-1,25',
+    receitaLongeOeEixo: '170',
+    receitaAdicao: '',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '27',
+    medidaDnpOe: '27',
+    medidaAlturaOd: '16',
+    medidaAlturaOe: '16'
+  },
+  maria: {
+    patientNameRaw: 'Dona Maria (Adaptação Difícil)',
+    ageYears: '62',
+    estiloVidaUsoComputadorHoras: '1',
+    estiloVidaDirigirHoras: '0',
+    estiloVidaLeituraHoras: '4',
+    estiloVidaUsoCelularHoras: '3',
+    estiloVidaExposicaoSolHoras: '1',
+    estiloVidaAmbienteInternoHoras: '10',
+    estiloVidaAmbienteExternoHoras: '2',
+    estiloVidaAssistirTvHoras: '5',
+    marcaAtual: 'Marca Genérica',
+    tipoLenteAtual: 'multifocal',
+    usaMultifocalHoje: 'sim',
+    dificuldadeAdaptacao: 'alta',
+    historicoTrocasRecentes: 'uma',
+    prioridadePrincipal: 'adaptacao',
+    principalIncomodoAtual: 'adaptacao',
+    objetivoCompra: 'resolver_queixa',
+    faixaOrcamento: 'acima_5000',
+    budgetTarget: '5500',
+    importanciaEstetica: 'media',
+    importanciaResistencia: 'media',
+    prefereTransitions: 'nao',
+    prefereBlueUv: 'sim',
+    aceitaPremium: 'sim',
+    queixaDirigirNoite: 'nao',
+    queixaSensibilidadeLuz: 'sim',
+    queixaQuebraOculos: 'nao',
+    queixaCriancaAtiva: 'nao',
+    queixaProgressaoRapida: 'nao',
+    observacoesConsultor: 'Já tentou usar multifocal 2 vezes sem sucesso. Sente tontura e campo lateral muito estreito.',
+    receitaLongeOdEsferico: '+1,50',
+    receitaLongeOdCilindrico: '-0,75',
+    receitaLongeOdEixo: '90',
+    receitaLongeOeEsferico: '+1,75',
+    receitaLongeOeCilindrico: '-0,50',
+    receitaLongeOeEixo: '85',
+    receitaAdicao: '2,50',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '30',
+    medidaDnpOe: '30',
+    medidaAlturaOd: '21',
+    medidaAlturaOe: '21'
+  },
+  roberto: {
+    patientNameRaw: 'Sr. Roberto (Presbita Iniciante)',
+    ageYears: '42',
+    estiloVidaUsoComputadorHoras: '8',
+    estiloVidaDirigirHoras: '2',
+    estiloVidaLeituraHoras: '2',
+    estiloVidaUsoCelularHoras: '6',
+    estiloVidaExposicaoSolHoras: '1',
+    estiloVidaAmbienteInternoHoras: '12',
+    estiloVidaAmbienteExternoHoras: '1',
+    estiloVidaAssistirTvHoras: '1',
+    marcaAtual: 'Nenhuma',
+    tipoLenteAtual: 'nao_informado',
+    usaMultifocalHoje: 'nao',
+    dificuldadeAdaptacao: 'nao_informado',
+    historicoTrocasRecentes: 'nenhuma',
+    prioridadePrincipal: 'equilibrio',
+    principalIncomodoAtual: 'perto',
+    objetivoCompra: 'primeira_multifocal',
+    faixaOrcamento: '2000_5000',
+    budgetTarget: '3500',
+    importanciaEstetica: 'alta',
+    importanciaResistencia: 'baixa',
+    prefereTransitions: 'nao',
+    prefereBlueUv: 'sim',
+    aceitaPremium: 'sim',
+    queixaDirigirNoite: 'sim',
+    queixaSensibilidadeLuz: 'nao',
+    queixaQuebraOculos: 'nao',
+    queixaCriancaAtiva: 'nao',
+    queixaProgressaoRapida: 'nao',
+    observacoesConsultor: 'Empresário. Grande demanda digital. Começou a afastar objetos para ler recentemente.',
+    receitaLongeOdEsferico: '0,00',
+    receitaLongeOdCilindrico: '',
+    receitaLongeOdEixo: '',
+    receitaLongeOeEsferico: '0,00',
+    receitaLongeOeCilindrico: '',
+    receitaLongeOeEixo: '',
+    receitaAdicao: '1,25',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '33',
+    medidaDnpOe: '33',
+    medidaAlturaOd: '19',
+    medidaAlturaOe: '19'
+  }
+};
 
 const parseNullableNumber = (value: string | null | undefined) => {
   if (!value?.trim()) return null
@@ -207,59 +377,59 @@ const generateManualSuggestion = (form: ReturnType<typeof createEmptyForm>): Man
   const dirigeNoite = form.queixaDirigirNoite === 'sim'
   const sensibilidadeLuz = form.queixaSensibilidadeLuz === 'sim'
 
-  let primaryLens = 'Lente visÃ£o simples'
+  let primaryLens = 'Lente visão simples'
   const complementaryOptions: string[] = []
   const reasons: string[] = []
 
   if (progressaoRapida && isChild) {
     primaryLens = 'Lente de controle de miopia'
-    reasons.push('idade infantil com relato de progressÃ£o rÃ¡pida do grau favorece avaliar uma soluÃ§Ã£o especÃ­fica para controle de miopia')
+    reasons.push('idade infantil com relato de progressão rápida do grau favorece avaliar uma solução específica para controle de miopia')
   } else if ((addicao !== null && addicao >= 0.75) || (age !== null && age >= 45)) {
     primaryLens = 'Lente multifocal / progressiva'
-    reasons.push(`idade${age !== null ? ` ${age}` : ''} e adiÃ§Ã£o ${formatDegreeDisplay(form.receitaAdicao) || 'presente'} favorecem correÃ§Ã£o para longe, perto e intermediÃ¡rio`)
+    reasons.push(`idade${age !== null ? ` ${age}` : ''} e adição ${formatDegreeDisplay(form.receitaAdicao) || 'presente'} favorecem correção para longe, perto e intermediário`)
 
     if (usoPerto >= 10) {
-      complementaryOptions.push('campo intermediÃ¡rio ampliado')
-      reasons.push(`rotina de perto intensa (${usoPerto}h entre leitura, computador e celular) pede mais conforto no uso diÃ¡rio`)
+      complementaryOptions.push('campo intermediário ampliado')
+      reasons.push(`rotina de perto intensa (${usoPerto}h entre leitura, computador e celular) pede mais conforto no uso diário`)
     }
   } else if ((age !== null && age >= 38) || usoPerto >= 8) {
     primaryLens = 'Lente digital / anti-fadiga'
     reasons.push(`uso de perto elevado (${usoPerto}h) indica necessidade de mais conforto visual em telas e leitura`)
   } else if (usoPerto >= 4) {
-    primaryLens = 'Lente visÃ£o simples com desenho para rotina digital'
-    reasons.push(`hÃ¡ demanda relevante para perto e telas, mesmo sem sinais fortes de presbiopia`)
+    primaryLens = 'Lente visão simples com desenho para rotina digital'
+    reasons.push(`há demanda relevante para perto e telas, mesmo sem sinais fortes de presbiopia`)
   } else {
-    reasons.push('receita e rotina sugerem uma soluÃ§Ã£o bÃ¡sica, com foco em nitidez e adaptaÃ§Ã£o simples')
+    reasons.push('receita e rotina sugerem uma solução básica, com foco em nitidez e adaptação simples')
   }
 
   if (dirigir >= 4) {
     complementaryOptions.push('antirreflexo premium')
-    reasons.push(`dirigir ${dirigir}h por dia reforÃ§a benefÃ­cio de antirreflexo com melhor contraste e reduÃ§Ã£o de reflexos`)
+    reasons.push(`dirigir ${dirigir}h por dia reforça benefício de antirreflexo com melhor contraste e redução de reflexos`)
   }
 
   if (dirigeNoite) {
-    complementaryOptions.push('conforto para direÃ§Ã£o noturna')
-    reasons.push('foi marcada dificuldade para dirigir Ã  noite, o que reforÃ§a contraste e reduÃ§Ã£o de reflexos')
+    complementaryOptions.push('conforto para direção noturna')
+    reasons.push('foi marcada dificuldade para dirigir à noite, o que reforça contraste e redução de reflexos')
   }
 
   if (sol >= 4 || ambienteExterno >= 4) {
-    complementaryOptions.push('fotossensÃ­vel / proteÃ§Ã£o UV')
-    reasons.push(`exposiÃ§Ã£o externa relevante (${Math.max(sol, ambienteExterno)}h) combina com proteÃ§Ã£o solar no dia a dia`)
+    complementaryOptions.push('fotossensível / proteção UV')
+    reasons.push(`exposição externa relevante (${Math.max(sol, ambienteExterno)}h) combina com proteção solar no dia a dia`)
   }
 
   if (computador + celular >= 6) {
     complementaryOptions.push('conforto digital')
-    reasons.push(`uso combinado de computador e celular (${computador + celular}h) pede alÃ­vio para rotina de telas`)
+    reasons.push(`uso combinado de computador e celular (${computador + celular}h) pede alívio para rotina de telas`)
   }
 
   if (sensibilidadeLuz) {
     complementaryOptions.push('controle de claridade')
-    reasons.push('foi marcada sensibilidade Ã  luz, favorecendo conforto com claridade e ambientes externos')
+    reasons.push('foi marcada sensibilidade à luz, favorecendo conforto com claridade e ambientes externos')
   }
 
   if (precisaResistencia) {
     complementaryOptions.push('material resistente')
-    reasons.push('o contexto indica necessidade de uma configuraÃ§Ã£o mais resistente para reduzir risco de quebra')
+    reasons.push('o contexto indica necessidade de uma configuração mais resistente para reduzir risco de quebra')
   }
 
   const uniqueOptions = [...new Set(complementaryOptions)]
@@ -281,16 +451,158 @@ const buildAiRecommendationLabel = (option: RecommendationOption) => {
   return `${option.familyName} | ${option.offerLabel}${treatmentPart}`
 }
 
+const getClinicalCategoryLabel = (category: RecommendationOption['clinicalCategory']) => {
+  switch (category) {
+    case 'controle_miopia':
+      return 'controle de miopia'
+    case 'multifocal':
+      return 'multifocal'
+    case 'ocupacional':
+      return 'ocupacional'
+    case 'bifocal':
+      return 'bifocal'
+    case 'plana_solar':
+      return 'solar'
+    case 'visao_simples':
+      return 'visão simples'
+    default:
+      return 'categoria compatível'
+  }
+}
+
+const buildAiOptionNarrative = (
+  option: RecommendationOption,
+  index: number,
+  referenceOption?: RecommendationOption | null
+) => {
+  const reasons = getUniqueHumanizedReasons(option.reasons, 3)
+  const mainReasons = reasons.slice(0, 2)
+  const priceFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
+  const categoryLabel = getClinicalCategoryLabel(option.clinicalCategory)
+  const supportText = option.treatmentExplainWhy || option.commercialSummary || option.recommendationNotes || ''
+
+  if (index === 0) {
+    const intro = mainReasons.length
+      ? `Escolhi esta como a melhor opção porque ela atende mais diretamente ao caso em ${mainReasons.join(' e ').toLowerCase()}.`
+      : `Escolhi esta como a melhor opção porque ela ficou mais coerente com a necessidade principal do caso.`
+
+    return [intro, supportText].filter(Boolean).join(' ')
+  }
+
+  if (index === 1) {
+    const intro = mainReasons.length
+      ? `Esta continua muito forte para o caso, principalmente por ${mainReasons.join(' e ').toLowerCase()}.`
+      : `Esta continua muito coerente com a necessidade principal e funciona como segunda opção segura.`
+
+    const priceHint =
+      referenceOption && option.finalPrice !== referenceOption.finalPrice
+        ? option.finalPrice > referenceOption.finalPrice
+          ? `Ela sobe um pouco o investimento para buscar outra configuração dentro da mesma direção clínica.`
+          : `Ela reduz um pouco o investimento sem sair da mesma direção clínica.`
+        : ''
+
+    return [intro, priceHint, supportText].filter(Boolean).join(' ')
+  }
+
+  const topCategory = referenceOption ? getClinicalCategoryLabel(referenceOption.clinicalCategory) : null
+  const categoryShift =
+    referenceOption && option.clinicalCategory !== referenceOption.clinicalCategory
+      ? `Ela não cobre de forma tão direta a necessidade principal de ${topCategory}, mas entra como alternativa plausível se a conversa pender para ${categoryLabel}.`
+      : `Ela abre uma alternativa comercial sem fugir totalmente do raciocínio principal do caso.`
+
+  let priceTradeoff = ''
+  if (referenceOption) {
+    if (option.finalPrice < referenceOption.finalPrice) {
+      priceTradeoff = `Aqui existe uma troca em favor de preço, ficando em ${priceFormatter.format(option.finalPrice)}.`
+    } else if (option.finalPrice > referenceOption.finalPrice) {
+      priceTradeoff = `Aqui existe uma troca em favor de outra proposta de valor, subindo para ${priceFormatter.format(option.finalPrice)}.`
+    }
+  }
+
+  const reasonWrap = mainReasons.length
+    ? `Eu a mantive porque ainda entrega ${mainReasons.join(' e ').toLowerCase()}.`
+    : ''
+
+  return [categoryShift, priceTradeoff, reasonWrap, supportText].filter(Boolean).join(' ')
+}
+
 const buildAiCommercialSummary = (option: RecommendationOption) => {
   const explanation = option.treatmentExplainWhy || option.commercialSummary || option.recommendationNotes || ''
   const reasons = option.reasons.slice(0, 3).map(humanizeRecommendationReason).join(', ')
   return [
-    `${buildAiRecommendationLabel(option)} â€” ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(option.finalPrice)}`,
+    `${buildAiRecommendationLabel(option)} — ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(option.finalPrice)}`,
     explanation,
     reasons ? `Motivos considerados: ${reasons}.` : ''
   ]
     .filter(Boolean)
     .join('\n\n')
+}
+
+const getTopAlternativeOption = (recommendations: RecommendationOption[]) =>
+  recommendations[1] || recommendations[2] || recommendations[0] || null
+
+const buildQuickRetentionReply = (params: {
+  intent: QuickRetentionIntent
+  recommendations: RecommendationOption[]
+  activeCatalog: ActiveCatalogContext
+}) => {
+  const { intent, recommendations, activeCatalog } = params
+  const topOption = recommendations[0] || null
+  const alternativeOption = getTopAlternativeOption(recommendations)
+  const priceFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
+
+  const topLabel = topOption ? buildAiRecommendationLabel(topOption) : 'a configuração principal'
+  const topPrice = topOption ? priceFormatter.format(topOption.finalPrice) : null
+  const altIsDifferent = alternativeOption && alternativeOption.configKey !== topOption?.configKey
+  const altLabel = altIsDifferent ? buildAiRecommendationLabel(alternativeOption) : null
+  const altPrice = altIsDifferent ? priceFormatter.format(alternativeOption!.finalPrice) : null
+  const labName = activeCatalog?.laboratorio || 'o catálogo ativo da loja'
+
+  if (intent === 'pesquisar') {
+    return `Sem problema. Antes de sair para pesquisar, vale te mostrar por que eu separei ${topLabel}${topPrice ? ` por ${topPrice}` : ''}: ela conversa diretamente com o que você me contou e já está dentro do que temos hoje em ${labName}. Se quiser, eu também posso te mostrar agora uma segunda comparação lado a lado${altLabel ? `, incluindo ${altLabel}${altPrice ? ` por ${altPrice}` : ''}` : ''}, para você decidir com mais segurança sem precisar ir embora na dúvida.`
+  }
+
+  if (intent === 'pensar') {
+    return `Claro, você pode pensar com calma. Antes disso, deixa eu te resumir em uma frase: a opção que fez mais sentido para o seu caso foi ${topLabel}${topPrice ? ` por ${topPrice}` : ''} porque ela resolve melhor a necessidade principal sem eu te empurrar algo aleatório. Se preferir, eu também posso te deixar uma alternativa mais equilibrada${altLabel ? `, como ${altLabel}${altPrice ? ` por ${altPrice}` : ''}` : ''}, para você comparar com tranquilidade.`
+  }
+
+  if (intent === 'armacoes') {
+    return `Sem problema com a armação, isso a gente consegue contornar aqui na loja. O importante é que a lente indicada para o seu caso continua sendo ${topLabel}${topPrice ? ` por ${topPrice}` : ''}; a armação eu posso trocar por outro estilo sem perder essa base técnica. Se quiser, eu já separo outras opções de armação com perfil diferente e mantenho a lente que realmente faz sentido para você.`
+  }
+
+  return `Entendo. Se você encontrou preço melhor na concorrência, vale comparar não só o valor, mas o que está entrando na configuração. Eu cheguei em ${topLabel}${topPrice ? ` por ${topPrice}` : ''} porque ela conversa melhor com o seu caso dentro do que temos hoje em ${labName}. Se a questão for orçamento, eu consigo te mostrar uma alternativa mais defensável sem desmontar a recomendação${altLabel ? `, como ${altLabel}${altPrice ? ` por ${altPrice}` : ''}` : ''}, para você comparar preço com mais justiça.`
+}
+
+const buildAiOptionDetails = (option: RecommendationOption) => {
+  const supportText = option.treatmentExplainWhy || option.commercialSummary || option.recommendationNotes || ''
+  const reasons = getUniqueHumanizedReasons(option.reasons, 4)
+
+  return [
+    supportText ? `Contexto da configuração:\n${supportText}` : '',
+    reasons.length ? `Critérios considerados:\n${reasons.map((reason) => `• ${reason}`).join('\n')}` : ''
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+function AiOptionInfoButton({ option }: { option: RecommendationOption }) {
+  const details = buildAiOptionDetails(option)
+  if (!details) return null
+
+  return (
+    <div className="group relative">
+      <button
+        type="button"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/20 text-slate-300 transition-colors hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-100"
+        aria-label="Ver detalhes da recomendação"
+      >
+        <CircleHelp className="h-4 w-4" />
+      </button>
+      <div className="pointer-events-none absolute right-0 top-11 z-20 hidden w-80 rounded-2xl border border-cyan-500/20 bg-slate-950/95 p-4 text-sm leading-6 text-slate-200 shadow-2xl shadow-black/40 group-hover:block">
+        <p className="whitespace-pre-line">{details}</p>
+      </div>
+    </div>
+  )
 }
 
 const normalizeCompareText = (value: string | null | undefined) =>
@@ -307,57 +619,59 @@ const humanizeRecommendationReason = (reason: string) => {
   const value = rawValue.replace(/_/g, ' ')
 
   const labelsByValue: Record<string, string> = {
-    multifocal: 'Categoria clÃ­nica multifocal',
-    bifocal: 'Categoria clÃ­nica bifocal',
-    visao_simples: 'Categoria clÃ­nica visÃ£o simples',
-    ocupacional: 'Categoria clÃ­nica ocupacional',
-    controle_miopia: 'Categoria clÃ­nica de controle de miopia',
-    plana_solar: 'Categoria clÃ­nica solar',
+    multifocal: 'Categoria clínica multifocal',
+    bifocal: 'Categoria clínica bifocal',
+    visao_simples: 'Categoria clínica visão simples',
+    ocupacional: 'Categoria clínica ocupacional',
+    controle_miopia: 'Categoria clínica de controle de miopia',
+    plana_solar: 'Categoria clínica solar',
     dirigir: 'Rotina com bastante tempo ao volante',
-    dirigir_noite: 'Queixa de direÃ§Ã£o noturna',
+    dirigir_noite: 'Queixa de direção noturna',
     computador: 'Rotina intensa de computador',
     celular: 'Uso frequente de celular',
-    sol: 'ExposiÃ§Ã£o solar relevante',
-    crianca_ativa: 'CrianÃ§a muito ativa',
+    sol: 'Exposição solar relevante',
+    crianca_ativa: 'Criança muito ativa',
     risco_quebra: 'Risco frequente de quebra',
-    adaptacao_rapida: 'Busca adaptaÃ§Ã£o mais fÃ¡cil',
+    adaptacao_rapida: 'Busca adaptação mais fácil',
     conforto_visual: 'Busca mais conforto visual',
     conforto_luz: 'Busca mais conforto com claridade',
     resistencia: 'Busca material mais resistente',
-    custo_beneficio: 'Busca melhor custo-benefÃ­cio',
-    transitions: 'PreferÃªncia por Transitions',
-    blue_uv: 'PreferÃªncia por proteÃ§Ã£o Blue UV',
-    resistente: 'ConfiguraÃ§Ã£o com material mais resistente',
+    custo_beneficio: 'Busca melhor custo-benefício',
+    transitions: 'Preferência por Transitions',
+    blue_uv: 'Preferência por proteção Blue UV',
+    resistente: 'Configuração com material mais resistente',
   }
 
   if (reason === 'categoria:mista_sem_oferta_definida') {
-    return 'FamÃ­lia mista com oferta especÃ­fica compatÃ­vel'
+    return 'Família mista com oferta específica compatível'
   }
 
   if (reason === 'oferta_atomica') return 'Oferta pronta'
-  if (reason === 'inclui_tratamento') return 'ConfiguraÃ§Ã£o jÃ¡ inclui tratamento'
+  if (reason === 'inclui_tratamento') return 'Configuração já inclui tratamento'
   if (reason === 'tratamento:antirreflexo') return 'Tratamento antirreflexo'
-  if (reason === 'tratamento:conforto_telas') return 'Tratamento favorÃ¡vel para telas'
-  if (reason === 'tratamento:dirigir_noite') return 'Tratamento favorÃ¡vel para direÃ§Ã£o noturna'
-  if (reason === 'tratamento:outdoor') return 'Tratamento favorÃ¡vel para uso externo'
+  if (reason === 'tratamento:conforto_telas') return 'Tratamento favorável para telas'
+  if (reason === 'tratamento:dirigir_noite') return 'Tratamento favorável para direção noturna'
+  if (reason === 'tratamento:outdoor') return 'Tratamento favorável para uso externo'
+  if (reason === 'opcao:alternativa_plausivel') return 'Alternativa plausível para ampliar a conversa'
+  if (reason === 'opcao:salto_preco_controlado') return 'Alternativa com salto de preço controlado'
 
   if (type === 'categoria' && rawValue === 'controle_miopia') {
-    return 'Categoria clÃƒÂ­nica de controle de miopia'
+    return 'Categoria clínica de controle de miopia'
   }
   if ((type === 'beneficio' || type === 'uso') && rawValue === 'controle_miopia') {
-    return 'Sinal de progressÃƒÂ£o rÃƒÂ¡pida do grau'
+    return 'Sinal de progressão rápida do grau'
   }
 
   if (type === 'orcamento') {
-    return `Faixa de orÃ§amento ${value}`
+    return `Faixa de orçamento ${value}`
   }
 
   if (type === 'alvo_preco') {
-    return `PreÃ§o prÃ³ximo do alvo informado`
+    return `Preço próximo do alvo informado`
   }
 
   if (type === 'tratamento_orcamento') {
-    return `Tratamento com nÃ­vel de preÃ§o ${value}`
+    return `Tratamento com nível de preço ${value}`
   }
 
   if (type === 'tratamento_uso') {
@@ -365,7 +679,7 @@ const humanizeRecommendationReason = (reason: string) => {
   }
 
   if (type === 'tratamento_beneficio') {
-    return `Tratamento alinhado ao benefÃ­cio: ${labelsByValue[rawValue] || value}`
+    return `Tratamento alinhado ao benefício: ${labelsByValue[rawValue] || value}`
   }
 
   if (type === 'categoria' || type === 'uso' || type === 'beneficio' || type === 'feature' || type === 'material') {
@@ -374,6 +688,9 @@ const humanizeRecommendationReason = (reason: string) => {
 
   return reason.replace(/_/g, ' ')
 }
+
+const getUniqueHumanizedReasons = (reasons: string[], limit = 3) =>
+  Array.from(new Set(reasons.map(humanizeRecommendationReason).filter(Boolean))).slice(0, limit)
 
 const detectAgreementLevel = (
   ivisionLabel: string,
@@ -419,14 +736,14 @@ const buildComparisonText = (
     .join(', ')
 
   if (level === 'forte') {
-    return 'A IA chegou a uma direÃ§Ã£o muito parecida com a sugestÃ£o do iVision. A diferenÃ§a estÃ¡ mais na configuraÃ§Ã£o comercial, no tratamento ou no preÃ§o final do que no desenho principal da lente.'
+    return 'A IA chegou a uma direção muito parecida com a sugestão do iVision. A diferença está mais na configuração comercial, no tratamento ou no preço final do que no desenho principal da lente.'
   }
 
   if (level === 'parcial') {
-    return `A IA manteve a mesma direÃ§Ã£o clÃ­nica geral do iVision, mas ajustou a configuraÃ§Ã£o para refletir melhor o caso atual em preÃ§o final, tratamento e conforto de uso. ${humanReasons ? `Ela priorizou especialmente: ${humanReasons}.` : ''}`.trim()
+    return `A IA manteve a mesma direção clínica geral do iVision, mas ajustou a configuração para refletir melhor o caso atual em preço final, tratamento e conforto de uso. ${humanReasons ? `Ela priorizou especialmente: ${humanReasons}.` : ''}`.trim()
   }
 
-  return `A IA considerou sinais adicionais do caso, como rotina, adaptaÃ§Ã£o, faixa de preÃ§o e features desejadas, e por isso priorizou uma combinaÃ§Ã£o diferente da sugerida pelo iVision. ${humanReasons ? `Os critÃ©rios mais fortes foram: ${humanReasons}.` : ''}`.trim()
+  return `A IA considerou sinais adicionais do caso, como rotina, adaptação, faixa de preço e features desejadas, e por isso priorizou uma combinação diferente da sugerida pelo iVision. ${humanReasons ? `Os critérios mais fortes foram: ${humanReasons}.` : ''}`.trim()
 }
 
 const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>) => {
@@ -619,6 +936,19 @@ const createEmptyForm = () => ({
   queixaCriancaAtiva: 'nao',
   queixaProgressaoRapida: 'nao',
   prioridadePrincipal: 'equilibrio',
+  tipoLenteAtual: 'nao_informado',
+  usaMultifocalHoje: 'nao_informado',
+  principalIncomodoAtual: 'nao_informado',
+  objetivoCompra: 'nao_informado',
+  faixaOrcamento: 'nao_informado',
+  budgetTarget: '',
+  importanciaEstetica: 'nao_informado',
+  importanciaResistencia: 'nao_informado',
+  prefereTransitions: 'nao_informado',
+  prefereBlueUv: 'nao_informado',
+  aceitaPremium: 'nao_informado',
+  historicoTrocasRecentes: 'nao_informado',
+  observacoesConsultor: '',
   receitaLongeOdEsferico: '',
   receitaLongeOdCilindrico: '',
   receitaLongeOdEixo: '',
@@ -678,6 +1008,7 @@ export default function EvaluationInterface({
   const [aiRecommendations, setAiRecommendations] = useState<RecommendationOption[]>([])
   const [aiFeedback, setAiFeedback] = useState<string | null>(null)
   const [aiConversationInput, setAiConversationInput] = useState('')
+  const [quickRetentionReply, setQuickRetentionReply] = useState<string | null>(null)
   const [ivisionReferenceSuggestion, setIvisionReferenceSuggestion] = useState<string | null>(null)
   const [ivisionReferenceSummary, setIvisionReferenceSummary] = useState<string | null>(null)
 
@@ -797,12 +1128,12 @@ export default function EvaluationInterface({
 
   const generateManualSuggestionResult = (): SuggestionGenerationResult => {
     if (!hasAnyDegreeData(form)) {
-      setFormError('Preencha pelo menos os campos principais do grau antes de gerar a sugestÃ£o.')
+      setFormError('Preencha pelo menos os campos principais do grau antes de gerar a sugestão.')
       return { success: false }
     }
 
     if (!form.ageYears && !hasAnyLifestyleData(form) && !form.receitaAdicao && !hasAnyComplaintData(form)) {
-      setFormError('Informe idade, adiÃ§Ã£o, estilo de vida ou alguma queixa do cliente para gerar a sugestÃ£o.')
+      setFormError('Informe idade, adição, estilo de vida ou alguma queixa do cliente para gerar a sugestão.')
       return { success: false }
     }
 
@@ -825,18 +1156,20 @@ export default function EvaluationInterface({
     const result = generateManualSuggestionResult()
     if (!result.success) return
 
-    applyManualSuggestion(result.suggestion, 'SugestÃ£o comercial gerada com base nas regras da avaliaÃ§Ã£o manual.')
+    applyManualSuggestion(result.suggestion, 'Sugestão comercial gerada com base nas regras da avaliação manual.')
   }
 
   const fallbackToSystemSuggestion = () => {
     const result = generateManualSuggestionResult()
     if (!result.success) return false
 
+    setQuickRetentionReply(null)
+
     setAiState(null)
     setAiRecommendations([])
     setAiConversationInput('')
-    setAiFeedback('SugestÃ£o comercial gerada com base nos dados da avaliaÃ§Ã£o.')
-    applyManualSuggestion(result.suggestion, 'SugestÃ£o comercial gerada com base nos dados da avaliaÃ§Ã£o.')
+    setAiFeedback('Sugestão comercial gerada com base nos dados da avaliação.')
+    applyManualSuggestion(result.suggestion, 'Sugestão comercial gerada com base nos dados da avaliação.')
     return true
   }
 
@@ -852,12 +1185,13 @@ export default function EvaluationInterface({
     }
 
     if (aiCaseInput.esferico === null || aiCaseInput.cilindrico === null) {
-      setFormError('Preencha pelo menos esfÃ©rico e cilÃ­ndrico para a IA recomendar.')
+      setFormError('Preencha pelo menos esférico e cilíndrico para a IA recomendar.')
       return
     }
 
     setFormError(null)
     setAiFeedback(null)
+    setQuickRetentionReply(null)
     setManualSuggestion(null)
 
     startAiGenerationTransition(async () => {
@@ -881,7 +1215,7 @@ export default function EvaluationInterface({
       setAiState(payload.state)
       setAiRecommendations(payload.recommendations)
       setManualSuggestion(null)
-      setAiFeedback('SugestÃ£o por IA gerada com base no catÃ¡logo ativo da loja.')
+      setAiFeedback('Sugestão por IA gerada com base no catálogo ativo da loja.')
     })
   }
 
@@ -913,8 +1247,21 @@ export default function EvaluationInterface({
       setAiState(payload.nextState)
       setAiRecommendations(payload.recommendations)
       setManualSuggestion(null)
-      setAiFeedback(`SugestÃ£o refinada para: "${currentInput}"`)
+      setAiFeedback(`Sugestão refinada para: "${currentInput}"`)
     })
+  }
+
+  const handleQuickRetentionAction = (intent: QuickRetentionIntent) => {
+    if (!aiRecommendations.length) return
+
+    setQuickRetentionReply(
+      buildQuickRetentionReply({
+        intent,
+        recommendations: aiRecommendations,
+        activeCatalog,
+      })
+    )
+    setAiFeedback('Resposta rápida gerada para ajudar o consultor a segurar o cliente na loja.')
   }
 
   const handleApplyAiRecommendation = (option: RecommendationOption) => {
@@ -923,7 +1270,7 @@ export default function EvaluationInterface({
       recommendedLensName: buildAiRecommendationLabel(option),
       commercialRecommendationRaw: buildAiCommercialSummary(option)
     }))
-    setFeedback('SugestÃ£o da IA aplicada aos campos comerciais. Revise antes de salvar.')
+    setFeedback('Sugestão da IA aplicada aos campos comerciais. Revise antes de salvar.')
     setFormError(null)
   }
 
@@ -945,7 +1292,7 @@ export default function EvaluationInterface({
       return
     }
     if (!form.sourceUrl.trim()) {
-      setFormError('Cole primeiro o link do PDF do iVision para iniciar a importaÃ§Ã£o.')
+      setFormError('Cole primeiro o link do PDF do iVision para iniciar a importação.')
       return
     }
 
@@ -966,7 +1313,7 @@ export default function EvaluationInterface({
         const result = await response.json() as ImportPreviewResponse
 
         if (!response.ok || !result.success || !result.data) {
-          setFormError(result.message || 'NÃ£o foi possÃ­vel importar o PDF do iVision.')
+          setFormError(result.message || 'Não foi possível importar o PDF do iVision.')
           return
         }
         const preview = result.data
@@ -1170,16 +1517,16 @@ export default function EvaluationInterface({
           <div className="border-b border-white/10 bg-gradient-to-br from-indigo-900/50 to-slate-900/60 p-4">
             <h1 className="flex items-center gap-2 text-lg font-black uppercase tracking-tight text-white">
               <Sparkles className="h-5 w-5 text-indigo-300" />
-              AvaliaÃ§Ã£o
+              Avaliação
             </h1>
             <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-300/80">
-              PrÃ©-venda e histÃ³rico individual
+              Pré-venda e histórico individual
             </p>
           </div>
 
           <div className="border-b border-white/10 p-4 space-y-4">
             <div>
-              <label className={labelStyle}>Titular / ResponsÃ¡vel</label>
+              <label className={labelStyle}>Titular / Responsável</label>
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
                 <input
@@ -1249,7 +1596,7 @@ export default function EvaluationInterface({
             {selectedCustomer && (
               <>
                 <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300">ResponsÃ¡vel</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300">Responsável</p>
                   <p className="mt-2 text-lg font-black text-white">{selectedCustomer.full_name}</p>
                   <p className="mt-1 text-xs font-bold text-slate-400">
                     {selectedCustomer.cpf || 'Sem CPF'} â€¢ {selectedCustomer.fone_movel || 'Sem telefone'}
@@ -1311,21 +1658,21 @@ export default function EvaluationInterface({
           <div className="flex-1 overflow-y-auto p-4">
             <div className="mb-3 flex items-center gap-2">
               <History className="h-4 w-4 text-indigo-300" />
-              <h2 className="text-xs font-black uppercase tracking-[0.2em] text-indigo-300">HistÃ³rico</h2>
+              <h2 className="text-xs font-black uppercase tracking-[0.2em] text-indigo-300">Histórico</h2>
               {isLoadingHistory && <Loader2 className="h-4 w-4 animate-spin text-indigo-300" />}
             </div>
 
             {!selectedCustomer ? (
               <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-center text-sm text-slate-500">
-                Selecione um responsÃ¡vel e um paciente para ver o histÃ³rico de avaliaÃ§Ãµes.
+                Selecione um responsável e um paciente para ver o histórico de avaliações.
               </div>
             ) : !isSubjectChosen ? (
               <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-center text-sm text-slate-500">
-                Escolha primeiro o paciente avaliado para liberar o histÃ³rico individual.
+                Escolha primeiro o paciente avaliado para liberar o histórico individual.
               </div>
             ) : history.length === 0 ? (
               <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-center text-sm text-slate-500">
-                Nenhuma avaliaÃ§Ã£o encontrada para {selectedSubjectLabel}.
+                Nenhuma avaliação encontrada para {selectedSubjectLabel}.
               </div>
             ) : (
               <div className="space-y-3">
@@ -1340,7 +1687,7 @@ export default function EvaluationInterface({
                           {item.evaluated_patient_name || item.patient_name_raw || 'Paciente'}
                         </p>
                         <p className="mt-1 text-xs font-bold text-slate-400">
-                          OS {item.source_os_number || 'N/A'} â€¢ {item.source_exam_type || 'AvaliaÃ§Ã£o'}
+                          OS {item.source_os_number || 'N/A'} â€¢ {item.source_exam_type || 'Avaliação'}
                         </p>
                       </div>
                       {item.source_document_url && (
@@ -1364,8 +1711,8 @@ export default function EvaluationInterface({
                     </div>
                     {(item.receita_adicao || item.recommended_lens_name) && (
                       <div className="mt-2 text-xs text-slate-400">
-                        {item.receita_adicao && <span className="mr-3 font-bold text-emerald-300">AdiÃ§Ã£o {formatDegreeDisplay(item.receita_adicao)}</span>}
-                        {item.recommended_lens_name && <span>SugestÃ£o: {item.recommended_lens_name}</span>}
+                        {item.receita_adicao && <span className="mr-3 font-bold text-emerald-300">Adição {formatDegreeDisplay(item.receita_adicao)}</span>}
+                        {item.recommended_lens_name && <span>Sugestão: {item.recommended_lens_name}</span>}
                       </div>
                     )}
                   </div>
@@ -1377,9 +1724,9 @@ export default function EvaluationInterface({
 
         <div className="flex-1 overflow-hidden rounded-2xl border border-white/10 bg-slate-900/40 backdrop-blur-xl shadow-xl">
           <div className="border-b border-white/10 bg-slate-900/60 px-6 py-4">
-            <h2 className="text-lg font-black uppercase tracking-tight text-white">Nova AvaliaÃ§Ã£o</h2>
+            <h2 className="text-lg font-black uppercase tracking-tight text-white">Nova Avaliação</h2>
             <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-300">
-              ImportaÃ§Ã£o iVision ou preenchimento manual
+              Importação iVision ou preenchimento manual
             </p>
           </div>
 
@@ -1394,7 +1741,7 @@ export default function EvaluationInterface({
                     Selecione o paciente
                   </h3>
                   <p className="mt-3 text-sm leading-6 text-slate-400">
-                    Escolha primeiro o titular e, se necessÃ¡rio, o dependente avaliado para importar ou preencher a anÃ¡lise.
+                    Escolha primeiro o titular e, se necessário, o dependente avaliado para importar ou preencher a análise.
                   </p>
                 </div>
               </div>
@@ -1408,7 +1755,7 @@ export default function EvaluationInterface({
                     Escolha o Paciente Avaliado
                   </h3>
                   <p className="mt-3 text-sm leading-6 text-slate-400">
-                    Depois de selecionar o titular, escolha quem foi avaliado na coluna Ã  esquerda. SÃ³ entÃ£o a nova avaliaÃ§Ã£o serÃ¡ aberta.
+                    Depois de selecionar o titular, escolha quem foi avaliado na coluna à esquerda. Só então a nova avaliação será aberta.
                   </p>
                 </div>
               </div>
@@ -1424,6 +1771,54 @@ export default function EvaluationInterface({
                     <Sparkles className="h-4 w-4" /> {feedback}
                   </div>
                 )}
+
+                {/* TEST PROFILES - REMOVE EASILY BY DELETING THIS BLOCK */}
+                <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/5 bg-white/5 p-4 mb-5">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                    Preenchimento Rápido (DEMO):
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.enzo }))
+                      setFeedback('Perfil do Enzo (Criança) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <Baby className="h-3.5 w-3.5" /> Enzo (Criança)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.maria }))
+                      setFeedback('Perfil da Maria (Adaptação) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <UserRound className="h-3.5 w-3.5" /> Maria (Adaptação)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.roberto }))
+                      setFeedback('Perfil do Roberto (Empresário) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <Briefcase className="h-3.5 w-3.5" /> Roberto (Empresário)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm(createEmptyForm())
+                      setFormError(null)
+                      setFeedback('Formulário limpo com sucesso!')
+                    }}
+                    className="ml-auto inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 transition-all hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Limpar Tudo
+                  </button>
+                </div>
 
                 <div className={`${cardStyle} p-5`}>
                   <div className="mb-4 flex items-center justify-between gap-4">
@@ -1552,7 +1947,7 @@ export default function EvaluationInterface({
                       <input type="number" min="0" value={form.estiloVidaUsoCelularHoras} onChange={(e) => handleFormChange('estiloVidaUsoCelularHoras', e.target.value)} className={inputStyle} />
                     </div>
                     <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>ExposiÃ§Ã£o ao Sol (h)</label>
+                      <label className={labelStyle}>Exposição ao Sol (h)</label>
                       <input type="number" min="0" value={form.estiloVidaExposicaoSolHoras} onChange={(e) => handleFormChange('estiloVidaExposicaoSolHoras', e.target.value)} className={inputStyle} />
                     </div>
                     <div className="col-span-12 md:col-span-3">
@@ -1575,6 +1970,12 @@ export default function EvaluationInterface({
                     Queixas e Prioridades
                   </h3>
                   <div className="grid grid-cols-12 gap-4">
+                    {/* SUBSECTION 1: HISTÃ“RICO E Ã“CULOS ATUAL */}
+                    <div className="col-span-12">
+                      <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 pb-2 border-b border-white/5">
+                        Histórico e Ã“culos Atual
+                      </h4>
+                    </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Marca atual</label>
                       <input
@@ -1585,87 +1986,274 @@ export default function EvaluationInterface({
                       />
                     </div>
                     <div className="col-span-12 md:col-span-4">
-                      <label className={labelStyle}>AdaptaÃ§Ã£o com lentes anteriores</label>
+                      <label className={labelStyle}>Tipo da lente atual</label>
+                      <select
+                        value={form.tipoLenteAtual}
+                        onChange={(e) => handleFormChange('tipoLenteAtual', e.target.value)}
+                        className={selectStyle}
+                      >
+                        <option value="nao_informado">Não informado</option>
+                        <option value="visao_simples">Visão simples</option>
+                        <option value="multifocal">Multifocal / progressiva</option>
+                        <option value="ocupacional">Ocupacional</option>
+                        <option value="bifocal">Bifocal</option>
+                      </select>
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className={labelStyle}>Usa multifocal hoje?</label>
+                      <select
+                        value={form.usaMultifocalHoje}
+                        onChange={(e) => handleFormChange('usaMultifocalHoje', e.target.value)}
+                        className={selectStyle}
+                      >
+                        <option value="nao_informado">Não informado</option>
+                        <option value="sim">Sim</option>
+                        <option value="nao">Não</option>
+                      </select>
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className={labelStyle}>Adaptação com lentes anteriores</label>
                       <select
                         value={form.dificuldadeAdaptacao}
                         onChange={(e) => handleFormChange('dificuldadeAdaptacao', e.target.value)}
-                        className={inputStyle}
+                        className={selectStyle}
                       >
-                        <option value="nao_informado">NÃ£o informado</option>
-                        <option value="baixa">Boa adaptaÃ§Ã£o</option>
+                        <option value="nao_informado">Não informado</option>
+                        <option value="baixa">Boa adaptação</option>
                         <option value="media">Alguma dificuldade</option>
                         <option value="alta">Muita dificuldade</option>
                       </select>
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className={labelStyle}>Trocas recentes de lente</label>
+                      <select
+                        value={form.historicoTrocasRecentes}
+                        onChange={(e) => handleFormChange('historicoTrocasRecentes', e.target.value)}
+                        className={selectStyle}
+                      >
+                        <option value="nao_informado">Não informado</option>
+                        <option value="nenhuma">Nenhuma recente</option>
+                        <option value="uma">Uma troca recente</option>
+                        <option value="varias">Várias trocas / retrabalho</option>
+                      </select>
+                    </div>
+
+                    {/* SUBSECTION 2: OBJETIVOS E PREFERÃŠNCIAS */}
+                    <div className="col-span-12 mt-4">
+                      <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 pb-2 border-b border-white/5">
+                        Objetivos e Preferências
+                      </h4>
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Prioridade principal</label>
                       <select
                         value={form.prioridadePrincipal}
                         onChange={(e) => handleFormChange('prioridadePrincipal', e.target.value)}
-                        className={inputStyle}
+                        className={selectStyle}
                       >
-                        <option value="equilibrio">EquilÃ­brio geral</option>
-                        <option value="economia">Melhor custo-benefÃ­cio</option>
-                        <option value="adaptacao">AdaptaÃ§Ã£o mais fÃ¡cil</option>
-                        <option value="resistencia">Mais resistÃªncia</option>
+                        <option value="equilibrio">Equilíbrio geral</option>
+                        <option value="economia">Melhor custo-benefício</option>
+                        <option value="adaptacao">Adaptação mais fácil</option>
+                        <option value="resistencia">Mais resistência</option>
                         <option value="controle_miopia">Controle de miopia</option>
                         <option value="premium">Desempenho premium</option>
                       </select>
                     </div>
-                    <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Dificuldade para dirigir Ã  noite</label>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className={labelStyle}>Principal incômodo atual</label>
+                      <select
+                        value={form.principalIncomodoAtual}
+                        onChange={(e) => handleFormChange('principalIncomodoAtual', e.target.value)}
+                        className={selectStyle}
+                      >
+                        <option value="nao_informado">Não informado</option>
+                        <option value="nenhum">Nenhum específico</option>
+                        <option value="perto">Não enxerga bem de perto</option>
+                        <option value="longe">Não enxerga bem de longe</option>
+                        <option value="intermediario">Intermediário / computador</option>
+                        <option value="peso_espessura">Peso / espessura</option>
+                        <option value="reflexo">Reflexo / brilho</option>
+                        <option value="adaptacao">Dificuldade de adaptação</option>
+                        <option value="preco">Preço</option>
+                      </select>
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className={labelStyle}>Objetivo desta compra</label>
+                      <select
+                        value={form.objetivoCompra}
+                        onChange={(e) => handleFormChange('objetivoCompra', e.target.value)}
+                        className={selectStyle}
+                      >
+                        <option value="nao_informado">Não informado</option>
+                        <option value="primeira_multifocal">Primeira multifocal</option>
+                        <option value="upgrade">Upgrade de lente</option>
+                        <option value="resolver_queixa">Resolver queixa específica</option>
+                        <option value="economizar">Economizar</option>
+                        <option value="trocar_marca">Trocar marca/laboratório</option>
+                      </select>
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className={labelStyle}>Faixa de orçamento</label>
+                      <select
+                        value={form.faixaOrcamento}
+                        onChange={(e) => handleFormChange('faixaOrcamento', e.target.value)}
+                        className={selectStyle}
+                      >
+                        <option value="nao_informado">Não informado</option>
+                        <option value="ate_800">Até 800</option>
+                        <option value="800_2000">800 a 2.000</option>
+                        <option value="2000_5000">2.000 a 5.000</option>
+                        <option value="acima_5000">Acima de 5.000</option>
+                      </select>
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className={labelStyle}>Orçamento alvo</label>
+                      <input
+                        value={form.budgetTarget}
+                        onChange={(e) => handleFormChange('budgetTarget', e.target.value)}
+                        className={inputStyle}
+                        placeholder="Ex: até 2500"
+                      />
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className={labelStyle}>Importância de estética/finura</label>
+                      <select
+                        value={form.importanciaEstetica}
+                        onChange={(e) => handleFormChange('importanciaEstetica', e.target.value)}
+                        className={selectStyle}
+                      >
+                        <option value="nao_informado">Não informado</option>
+                        <option value="baixa">Baixa</option>
+                        <option value="media">Média</option>
+                        <option value="alta">Alta</option>
+                      </select>
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className={labelStyle}>Importância de resistência</label>
+                      <select
+                        value={form.importanciaResistencia}
+                        onChange={(e) => handleFormChange('importanciaResistencia', e.target.value)}
+                        className={selectStyle}
+                      >
+                        <option value="nao_informado">Não informado</option>
+                        <option value="baixa">Baixa</option>
+                        <option value="media">Média</option>
+                        <option value="alta">Alta</option>
+                      </select>
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className={labelStyle}>Prefere Transitions?</label>
+                      <select
+                        value={form.prefereTransitions}
+                        onChange={(e) => handleFormChange('prefereTransitions', e.target.value)}
+                        className={selectStyle}
+                      >
+                        <option value="nao_informado">Não informado</option>
+                        <option value="sim">Sim</option>
+                        <option value="nao">Não</option>
+                      </select>
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className={labelStyle}>Prefere Blue/UV?</label>
+                      <select
+                        value={form.prefereBlueUv}
+                        onChange={(e) => handleFormChange('prefereBlueUv', e.target.value)}
+                        className={selectStyle}
+                      >
+                        <option value="nao_informado">Não informado</option>
+                        <option value="sim">Sim</option>
+                        <option value="nao">Não</option>
+                      </select>
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className={labelStyle}>Aceita opção premium?</label>
+                      <select
+                        value={form.aceitaPremium}
+                        onChange={(e) => handleFormChange('aceitaPremium', e.target.value)}
+                        className={selectStyle}
+                      >
+                        <option value="nao_informado">Não informado</option>
+                        <option value="sim">Sim</option>
+                        <option value="nao">Não</option>
+                      </select>
+                    </div>
+
+                    {/* SUBSECTION 3: SINTOMAS E COMPORTAMENTOS */}
+                    <div className="col-span-12 mt-4">
+                      <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 pb-2 border-b border-white/5">
+                        Sintomas e Comportamentos
+                      </h4>
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className={labelStyle}>Dificuldade para dirigir à noite</label>
                       <select
                         value={form.queixaDirigirNoite}
                         onChange={(e) => handleFormChange('queixaDirigirNoite', e.target.value)}
-                        className={inputStyle}
+                        className={selectStyle}
                       >
-                        <option value="nao">NÃ£o</option>
+                        <option value="nao">Não</option>
                         <option value="sim">Sim</option>
                       </select>
                     </div>
-                    <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Sensibilidade Ã  luz</label>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className={labelStyle}>Sensibilidade à luz</label>
                       <select
                         value={form.queixaSensibilidadeLuz}
                         onChange={(e) => handleFormChange('queixaSensibilidadeLuz', e.target.value)}
-                        className={inputStyle}
+                        className={selectStyle}
                       >
-                        <option value="nao">NÃ£o</option>
+                        <option value="nao">Não</option>
                         <option value="sim">Sim</option>
                       </select>
                     </div>
-                    <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Quebra Ã³culos com frequÃªncia</label>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className={labelStyle}>Quebra óculos com frequência</label>
                       <select
                         value={form.queixaQuebraOculos}
                         onChange={(e) => handleFormChange('queixaQuebraOculos', e.target.value)}
-                        className={inputStyle}
+                        className={selectStyle}
                       >
-                        <option value="nao">NÃ£o</option>
+                        <option value="nao">Não</option>
                         <option value="sim">Sim</option>
                       </select>
                     </div>
-                    <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>CrianÃ§a muito ativa</label>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className={labelStyle}>Criança muito ativa</label>
                       <select
                         value={form.queixaCriancaAtiva}
                         onChange={(e) => handleFormChange('queixaCriancaAtiva', e.target.value)}
-                        className={inputStyle}
+                        className={selectStyle}
                       >
-                        <option value="nao">NÃ£o</option>
+                        <option value="nao">Não</option>
                         <option value="sim">Sim</option>
                       </select>
                     </div>
-                    <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Grau aumentando rÃ¡pido</label>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className={labelStyle}>Grau aumentando rápido</label>
                       <select
                         value={form.queixaProgressaoRapida}
                         onChange={(e) => handleFormChange('queixaProgressaoRapida', e.target.value)}
-                        className={inputStyle}
+                        className={selectStyle}
                       >
-                        <option value="nao">NÃ£o</option>
+                        <option value="nao">Não</option>
                         <option value="sim">Sim</option>
                       </select>
+                    </div>
+
+                    {/* SUBSECTION 4: OBSERVAÃ‡Ã•ES ADICIONAIS */}
+                    <div className="col-span-12 mt-4">
+                      <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 pb-2 border-b border-white/5">
+                        Observações Adicionais
+                      </h4>
+                    </div>
+                    <div className="col-span-12">
+                      <label className={labelStyle}>Observações do consultor</label>
+                      <textarea
+                        value={form.observacoesConsultor}
+                        onChange={(e) => handleFormChange('observacoesConsultor', e.target.value)}
+                        className="block min-h-[92px] w-full rounded-xl border border-white/20 bg-slate-900/60 shadow-inner text-slate-100 px-3 py-3 text-sm font-bold placeholder:font-normal placeholder:text-slate-500 outline-none focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all disabled:opacity-50"
+                        placeholder="Ex: cliente muito sensível a preço, já devolveu multifocal, quer lente mais fina, compara muito com concorrente..."
+                      />
                     </div>
                   </div>
                 </div>
@@ -1673,7 +2261,7 @@ export default function EvaluationInterface({
                 {isIvisionMode && (
                   <div className={`${cardStyle} p-5`}>
                     <h3 className="mb-4 text-sm font-black uppercase tracking-[0.2em] text-indigo-300">
-                      CabeÃ§alho do PDF
+                      Cabeçalho do PDF
                     </h3>
                     <div className="grid grid-cols-12 gap-4">
                       <div className="col-span-12 md:col-span-6">
@@ -1685,7 +2273,7 @@ export default function EvaluationInterface({
                         />
                         {patientNameMismatch && (
                           <p className="mt-2 text-xs font-bold text-red-300">
-                            O nome do PDF estÃ¡ diferente do paciente avaliado escolhido: {selectedSubjectName}
+                            O nome do PDF está diferente do paciente avaliado escolhido: {selectedSubjectName}
                           </p>
                         )}
                       </div>
@@ -1742,7 +2330,7 @@ export default function EvaluationInterface({
                       <input value={form.receitaLongeOeEixo} onChange={(e) => handleFormChange('receitaLongeOeEixo', e.target.value)} className={inputStyle} />
                     </div>
                     <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>AdiÃ§Ã£o</label>
+                      <label className={labelStyle}>Adição</label>
                       <DegreeInput value={form.receitaAdicao} onChange={(value) => handleFormChange('receitaAdicao', value)} className={inputStyle} />
                     </div>
                     <div className="col-span-12 md:col-span-3">
@@ -1765,7 +2353,7 @@ export default function EvaluationInterface({
 
                 <div className={`${cardStyle} p-5`}>
                   <h3 className="mb-4 text-sm font-black uppercase tracking-[0.2em] text-indigo-300">
-                    RecomendaÃ§Ã£o Comercial
+                    Recomendação Comercial
                   </h3>
                   <div className="grid grid-cols-12 gap-4">
                     {activeCatalog && (
@@ -1773,13 +2361,13 @@ export default function EvaluationInterface({
                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                           <div>
                             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-300">
-                              SugestÃ£o assistida por IA
+                              Sugestão assistida por IA
                             </p>
                             <p className="mt-2 text-sm text-slate-300">
-                              A IA usa o catÃ¡logo ativo da loja para sugerir lente, tratamento e preÃ§o final.
+                              A IA usa o catálogo ativo da loja para sugerir lente, tratamento e preço final.
                             </p>
                             <p className="mt-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-                              CatÃ¡logo ativo: {activeCatalog.laboratorio} Â· {activeCatalog.versao}
+                              Catálogo ativo: {activeCatalog.laboratorio} Â· {activeCatalog.versao}
                             </p>
                           </div>
                           <button
@@ -1803,7 +2391,7 @@ export default function EvaluationInterface({
                           <div className="mt-4 grid grid-cols-12 gap-4">
                             <div className="col-span-12 lg:col-span-6 rounded-2xl border border-indigo-500/20 bg-indigo-500/10 p-4">
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-300">
-                                SugestÃ£o iVision
+                                Sugestão iVision
                               </p>
                               <p className="mt-2 text-lg font-black text-white">{ivisionReferenceSuggestion}</p>
                               {ivisionReferenceSummary && (
@@ -1814,31 +2402,32 @@ export default function EvaluationInterface({
                             </div>
                             <div className="col-span-12 lg:col-span-6 rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/10 p-4">
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-300">
-                                SugestÃ£o IA
+                                Sugestão IA
                               </p>
                               {aiTopRecommendation ? (
-                                <>
-                                  <p className="mt-2 text-lg font-black text-white">
-                                    {buildAiRecommendationLabel(aiTopRecommendation)}
-                                  </p>
-                                  <p className="mt-2 text-sm font-bold text-fuchsia-100">
-                                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(aiTopRecommendation.finalPrice)}
-                                  </p>
-                                  <div className="mt-3 space-y-2">
-                                    {aiTopRecommendation.reasons.slice(0, 3).map((reason) => (
-                                      <p key={reason} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-300">
-                                        {humanizeRecommendationReason(reason)}
+                                <div className="mt-2 flex h-full flex-col">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <p className="text-lg font-black text-white">
+                                        {buildAiRecommendationLabel(aiTopRecommendation)}
                                       </p>
-                                    ))}
+                                      <p className="mt-2 text-sm font-bold text-fuchsia-100">
+                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(aiTopRecommendation.finalPrice)}
+                                      </p>
+                                    </div>
+                                    <AiOptionInfoButton option={aiTopRecommendation} />
                                   </div>
+                                  <p className="mt-3 rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-3 text-sm leading-6 text-cyan-100">
+                                    {buildAiOptionNarrative(aiTopRecommendation, 0, aiTopRecommendation)}
+                                  </p>
                                   <button
                                     type="button"
                                     onClick={() => handleApplyAiRecommendation(aiTopRecommendation)}
-                                    className="mt-4 inline-flex items-center gap-2 rounded-xl bg-fuchsia-500 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-white hover:bg-fuchsia-400"
+                                    className="mt-auto ml-auto inline-flex items-center gap-2 rounded-xl bg-fuchsia-500 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-white hover:bg-fuchsia-400"
                                   >
-                                    Aplicar esta opÃ§Ã£o
+                                    Aplicar esta opção
                                   </button>
-                                </>
+                                </div>
                               ) : manualSuggestion ? (
                                 <>
                                   <p className="mt-2 text-lg font-black text-white">
@@ -1859,7 +2448,7 @@ export default function EvaluationInterface({
                                 </>
                               ) : (
                                 <div className="mt-3 rounded-xl border border-dashed border-white/10 bg-black/20 px-4 py-4 text-sm leading-6 text-slate-300">
-                                  Gere pela IA para comparar a sugestÃ£o importada do iVision com uma recomendaÃ§Ã£o baseada no catÃ¡logo ativo da loja.
+                                  Gere pela IA para comparar a sugestão importada do iVision com uma recomendação baseada no catálogo ativo da loja.
                                 </div>
                               )}
                             </div>
@@ -1881,35 +2470,31 @@ export default function EvaluationInterface({
                                 key={option.configKey}
                                 className={`col-span-12 rounded-2xl border p-4 ${index === 0 ? 'border-fuchsia-500/20 bg-fuchsia-500/10' : 'border-white/10 bg-black/20'}`}
                               >
-                                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch lg:justify-between">
                                   <div>
-                                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                                      OpÃ§Ã£o {index + 1}
-                                    </p>
-                                    <p className="mt-2 text-lg font-black text-white">{buildAiRecommendationLabel(option)}</p>
-                                    <p className="mt-2 text-sm font-bold text-fuchsia-100">
-                                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(option.finalPrice)}
-                                    </p>
-                                    <div className="mt-3 space-y-2">
-                                      {option.reasons.slice(0, 3).map((reason) => (
-                                        <p key={`${option.configKey}-${reason}`} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-300">
-                                          {humanizeRecommendationReason(reason)}
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                                          Opção {index + 1}
                                         </p>
-                                      ))}
+                                        <p className="mt-2 text-lg font-black text-white">{buildAiRecommendationLabel(option)}</p>
+                                        <p className="mt-2 text-sm font-bold text-fuchsia-100">
+                                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(option.finalPrice)}
+                                        </p>
+                                      </div>
+                                      <AiOptionInfoButton option={option} />
                                     </div>
+                                    <p className="mt-3 rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-3 text-sm leading-6 text-cyan-100">
+                                      {buildAiOptionNarrative(option, index, aiRecommendations[0] || option)}
+                                    </p>
                                   </div>
-                                  <div className="lg:max-w-sm">
-                                    {(option.treatmentExplainWhy || option.commercialSummary) && (
-                                      <p className="rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-3 text-sm leading-6 text-cyan-100">
-                                        {option.treatmentExplainWhy || option.commercialSummary}
-                                      </p>
-                                    )}
+                                  <div className="flex lg:min-w-[220px] lg:max-w-sm lg:flex-col lg:justify-end">
                                     <button
                                       type="button"
                                       onClick={() => handleApplyAiRecommendation(option)}
-                                      className="mt-4 inline-flex items-center gap-2 rounded-xl bg-fuchsia-500 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-white hover:bg-fuchsia-400"
+                                      className="mt-auto ml-auto inline-flex items-center gap-2 self-end rounded-xl bg-fuchsia-500 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-white hover:bg-fuchsia-400"
                                     >
-                                      Aplicar esta opÃ§Ã£o
+                                      Aplicar esta opção
                                     </button>
                                   </div>
                                 </div>
@@ -1921,7 +2506,7 @@ export default function EvaluationInterface({
                         {!showIvisionReference && !aiRecommendations.length && manualSuggestion && (
                           <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
                             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                              SugestÃ£o do sistema
+                              Sugestão do sistema
                             </p>
                             <p className="mt-2 text-lg font-black text-white">{manualSuggestion.primaryLens}</p>
                             {manualSuggestion.complementaryOptions.length > 0 && (
@@ -1942,10 +2527,61 @@ export default function EvaluationInterface({
                         {aiRecommendations.length > 0 && (
                           <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
                             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                              Refinar recomendaÃ§Ã£o
+                              Refinar recomendação
+                            </p>
+                            <div className="mt-3 flex gap-3">
+                              <input
+                                value={aiConversationInput}
+                                onChange={(e) => setAiConversationInput(e.target.value)}
+                                placeholder="Ex: ele quer pensar melhor, mas gostou da proposta"
+                                className={`${inputStyle} flex-1`}
+                              />
+                              <button
+                                type="button"
+                                onClick={handleContinueAiConversation}
+                                disabled={!aiState || !aiConversationInput.trim() || isContinuingAi}
+                                className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-cyan-100 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {isContinuingAi ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
+                                Refinar
+                              </button>
+                            </div>
+
+                            <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                              Resposta rápida para retenção
                             </p>
                             <div className="mt-3 flex flex-wrap gap-2">
-                              {['Ficou caro', 'Ele quer algo em atÃ© 8000', 'Quero manter Transitions', 'Quero outra opÃ§Ã£o'].map((suggestion) => (
+                              {[
+                                { id: 'pesquisar', label: 'Vou dar uma pesquisada' },
+                                { id: 'pensar', label: 'Vou falar com meu marido' },
+                                { id: 'armacoes', label: 'Não gostei das armações' },
+                                { id: 'concorrencia', label: 'Achei mais barato na concorrência' }
+                              ].map((shortcut) => (
+                                <button
+                                  key={shortcut.id}
+                                  type="button"
+                                  onClick={() => handleQuickRetentionAction(shortcut.id as QuickRetentionIntent)}
+                                  className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/10"
+                                >
+                                  {shortcut.label}
+                                </button>
+                              ))}
+                            </div>
+                            {quickRetentionReply && (
+                              <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-4 text-sm leading-6 text-amber-50">
+                                {quickRetentionReply}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {false && aiRecommendations.length > 0 && (
+                          <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                              Refinar recomendação
+                            </p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {['Ficou caro', 'Ele quer algo em até 8000', 'Quero manter Transitions', 'Quero outra opção'].map((suggestion) => (
                                 <button
                                   key={suggestion}
                                   type="button"
@@ -1960,7 +2596,7 @@ export default function EvaluationInterface({
                               <input
                                 value={aiConversationInput}
                                 onChange={(e) => setAiConversationInput(e.target.value)}
-                                placeholder="Ex: ficou caro, quero algo em atÃ© 8000"
+                                placeholder="Ex: ficou caro, quero algo em até 8000"
                                 className={`${inputStyle} flex-1`}
                               />
                               <button
@@ -1978,7 +2614,7 @@ export default function EvaluationInterface({
 
                         {!aiRecommendations.length && (
                           <div className="mt-4 rounded-xl border border-dashed border-white/10 bg-black/10 px-4 py-4 text-sm text-slate-400">
-                            Gere a recomendaÃ§Ã£o por IA para comparar ou aplicar uma opÃ§Ã£o comercial nesta avaliaÃ§Ã£o.
+                            Gere a recomendação por IA para comparar ou aplicar uma opção comercial nesta avaliação.
                           </div>
                         )}
                       </div>
@@ -1988,10 +2624,10 @@ export default function EvaluationInterface({
                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                           <div>
                             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-300">
-                              SugestÃ£o do Sistema
+                              Sugestão do Sistema
                             </p>
                             <p className="mt-2 text-sm text-slate-300">
-                              Gere uma sugestÃ£o comercial a partir do grau, da idade e do estilo de vida antes de salvar.
+                              Gere uma sugestão comercial a partir do grau, da idade e do estilo de vida antes de salvar.
                             </p>
                           </div>
                           <button
@@ -2000,14 +2636,14 @@ export default function EvaluationInterface({
                             className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-emerald-200 hover:bg-emerald-500/20"
                           >
                             <Sparkles className="h-4 w-4" />
-                            Gerar SugestÃ£o
+                            Gerar Sugestão
                           </button>
                         </div>
 
                         {manualSuggestion ? (
                           <div className="mt-4 grid grid-cols-12 gap-4">
                             <div className="col-span-12 lg:col-span-5">
-                              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">SugestÃ£o principal</p>
+                              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Sugestão principal</p>
                               <p className="mt-2 text-lg font-black text-white">{manualSuggestion.primaryLens}</p>
                               {manualSuggestion.complementaryOptions.length > 0 && (
                                 <p className="mt-2 text-sm font-bold text-emerald-200">
@@ -2028,7 +2664,7 @@ export default function EvaluationInterface({
                           </div>
                         ) : (
                           <div className="mt-4 rounded-xl border border-dashed border-white/10 bg-black/10 px-4 py-4 text-sm text-slate-400">
-                            A sugestÃ£o aparecerÃ¡ aqui e tambÃ©m poderÃ¡ preencher os campos comerciais logo abaixo.
+                            A sugestão aparecerá aqui e também poderá preencher os campos comerciais logo abaixo.
                           </div>
                         )}
                       </div>
@@ -2043,27 +2679,27 @@ export default function EvaluationInterface({
                         value={form.commercialRecommendationRaw}
                         onChange={(e) => handleFormChange('commercialRecommendationRaw', e.target.value)}
                         className="block min-h-[92px] w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm font-bold text-slate-100 shadow-inner outline-none transition-all placeholder:font-normal placeholder:text-slate-500 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50"
-                        placeholder="Tratamento sugerido, material, observaÃ§Ãµes comerciais..."
+                        placeholder="Tratamento sugerido, material, observações comerciais..."
                       />
                     </div>
                     {isIvisionMode && (
                       <>
                         <div className="col-span-12">
-                          <label className={labelStyle}>Avisos da importaÃ§Ã£o</label>
+                          <label className={labelStyle}>Avisos da importação</label>
                           <textarea
                             value={form.parseWarning}
                             onChange={(e) => handleFormChange('parseWarning', e.target.value)}
                             className="block min-h-[72px] w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm font-bold text-slate-100 shadow-inner outline-none transition-all placeholder:font-normal placeholder:text-slate-500 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50"
-                            placeholder="Avisos de parse ou observaÃ§Ãµes internas"
+                            placeholder="Avisos de parse ou observações internas"
                           />
                         </div>
                         <div className="col-span-12">
-                          <label className={labelStyle}>Texto extraÃ­do do PDF</label>
+                          <label className={labelStyle}>Texto extraído do PDF</label>
                           <textarea
                             value={form.extractedText}
                             onChange={(e) => handleFormChange('extractedText', e.target.value)}
                             className="block min-h-[180px] w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm font-medium text-slate-200 shadow-inner outline-none transition-all placeholder:font-normal placeholder:text-slate-500 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50"
-                            placeholder="O texto bruto extraÃ­do do PDF fica registrado aqui"
+                            placeholder="O texto bruto extraído do PDF fica registrado aqui"
                           />
                         </div>
                       </>
@@ -2079,7 +2715,7 @@ export default function EvaluationInterface({
                     className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-indigo-600 px-6 py-3 text-xs font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 disabled:opacity-50"
                   >
                     {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    Salvar AvaliaÃ§Ã£o
+                    Salvar Avaliação
                   </button>
                 </div>
               </div>
