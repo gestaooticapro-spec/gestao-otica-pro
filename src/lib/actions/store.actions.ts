@@ -220,3 +220,47 @@ export async function getTenantName(tenantId: string) {
         return null
     }
 }
+
+export async function updateStoreSettings(storeId: number, newSettings: Partial<StoreSettings>): Promise<StoreActionResult> {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+        return { success: false, message: 'Sem permissão.' }
+    }
+
+    const profile = await getProfileByAdmin(user.id) as ProfileRow | null
+    if (!profile) {
+        return { success: false, message: 'Perfil não encontrado.' }
+    }
+
+    if (profile.role !== 'admin' && profile.store_id !== storeId) {
+        return { success: false, message: 'Acesso negado.' }
+    }
+
+    const storesTable = createAdminClient().from('stores') as unknown as StoreTableApi
+
+    try {
+        const currentStore = await getStoreProfile(storeId)
+        if (!currentStore) {
+            return { success: false, message: 'Loja não encontrada.' }
+        }
+
+        const currentSettings = ((currentStore.settings || {}) as StoreSettings | Json) as StoreSettings
+        
+        const updatedSettings = {
+            ...currentSettings,
+            ...newSettings
+        }
+
+        await storesTable
+            .update({ settings: updatedSettings as Json })
+            .eq('id', storeId)
+
+        revalidatePath(`/dashboard/loja/${storeId}/config`)
+        revalidatePath(`/dashboard/loja/${storeId}`)
+        return { success: true, message: 'Recursos atualizados!' }
+    } catch (error: unknown) {
+        return { success: false, message: toErrorMessage(error, 'Erro ao atualizar recursos.') }
+    }
+}

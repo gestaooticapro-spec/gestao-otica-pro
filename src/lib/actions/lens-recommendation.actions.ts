@@ -11,6 +11,7 @@ import {
 
 const RecommendationCaseSchema = z.object({
   versionId: z.string().uuid(),
+  versionIds: z.array(z.string().uuid()).optional(),
   idade: z.number().int().positive().optional().nullable(),
   marca_atual: z.string().optional().nullable(),
   esferico: z.number().nullable(),
@@ -75,6 +76,7 @@ export async function generateLensRecommendationsAction(
 
     const result = await startRecommendationConversation({
       versionId: parsed.versionId,
+      versionIds: parsed.versionIds,
       caseInput: toCaseInput(parsed),
       topN: parsed.topN,
     })

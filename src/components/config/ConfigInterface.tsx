@@ -7,7 +7,7 @@ import {
     Store, MapPin, Phone, QrCode, ArrowLeftToLine, AlertCircle, Sparkles
 } from 'lucide-react';
 import { getEmployees, saveEmployee, toggleEmployeeStatus } from '@/lib/actions/employee.actions';
-import { getStoreProfile, updateStoreProfile } from '@/lib/actions/store.actions';
+import { getStoreProfile, updateStoreProfile, updateStoreSettings } from '@/lib/actions/store.actions';
 import { Database } from '@/lib/database.types';
 import { useRouter } from 'next/navigation';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
@@ -170,30 +170,6 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                 </div>
             </div>
 
-            <div className={cardStyle}>
-                <div className="absolute top-0 left-0 w-1 h-full bg-cyan-500"></div>
-                <h3 className="text-sm font-bold text-cyan-300 mb-4 flex items-center gap-2 border-b border-white/10 pb-2">
-                    <Sparkles className="h-4 w-4 text-cyan-400" /> Operação & Recursos
-                </h3>
-
-                <label className="flex items-start gap-4 rounded-xl border border-white/10 bg-black/20 p-4 cursor-pointer hover:bg-white/5 transition-colors">
-                    <input
-                        type="checkbox"
-                        name="pre_sale_analysis_enabled"
-                        defaultChecked={Boolean(data?.settings?.pre_sale_analysis_enabled)}
-                        className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-900 text-cyan-500 focus:ring-cyan-500"
-                    />
-                    <div>
-                        <p className="text-sm font-black text-white uppercase tracking-[0.15em]">
-                            Análise Pré-Venda
-                        </p>
-                        <p className="mt-1 text-xs text-slate-400 leading-relaxed">
-                            Quando habilitado, a loja passa a ver a nova tela de Avaliação no menu de Atendimento
-                            e pode registrar análises antes da venda, com histórico individual por titular ou dependente.
-                        </p>
-                    </div>
-                </label>
-            </div>
 
             {/* CONFIGURAÇÃO FISCAL (NFC-e) */}
             <div className={cardStyle}>
@@ -311,6 +287,76 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                 </button>
             </div>
         </form>
+    )
+}
+
+// --- SUB-COMPONENTE: RECURSOS ---
+function ResourcesForm({ storeId }: { storeId: number }) {
+    const [data, setData] = useState<StoreData | null>(null)
+    const [loading, setLoading] = useState(true)
+    const [isSaving, startTransition] = useTransition()
+
+    useEffect(() => {
+        getStoreProfile(storeId).then(res => {
+            setData(res as StoreData | null)
+            setLoading(false)
+        })
+    }, [storeId])
+
+    const handleToggle = (enabled: boolean) => {
+        startTransition(async () => {
+            const res = await updateStoreSettings(storeId, { pre_sale_analysis_enabled: enabled })
+            if (res.success) {
+                // Atualiza o estado local para refletir a mudança
+                setData(prev => prev ? {
+                    ...prev,
+                    settings: {
+                        ...(prev.settings as any),
+                        pre_sale_analysis_enabled: enabled
+                    }
+                } : null)
+            } else {
+                alert("Erro: " + res.message)
+            }
+        })
+    }
+
+    if (loading) return <div className="p-10 text-center"><Loader2 className="animate-spin h-8 w-8 text-indigo-400 mx-auto" /></div>
+    if (!data) return <div className="p-10 text-center text-sm font-bold text-red-300">Não foi possível carregar os dados da loja.</div>
+
+    return (
+        <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in">
+            <div className={cardStyle}>
+                <div className="absolute top-0 left-0 w-1 h-full bg-cyan-500"></div>
+                <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-4">
+                    <h3 className="text-sm font-bold text-cyan-300 flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-cyan-400" /> Operação & Recursos
+                    </h3>
+                    {isSaving && <div className="flex items-center gap-2 text-[10px] text-cyan-400 animate-pulse font-bold tracking-widest uppercase">
+                        <Loader2 className="h-3 w-3 animate-spin" /> Salvando...
+                    </div>}
+                </div>
+
+                <label className="flex items-start gap-4 rounded-xl border border-white/10 bg-black/20 p-4 cursor-pointer hover:bg-white/5 transition-colors group">
+                    <input
+                        type="checkbox"
+                        checked={Boolean(data?.settings?.pre_sale_analysis_enabled)}
+                        onChange={(e) => handleToggle(e.target.checked)}
+                        disabled={isSaving}
+                        className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-900 text-cyan-500 focus:ring-cyan-500 disabled:opacity-50"
+                    />
+                    <div>
+                        <p className="text-sm font-black text-white uppercase tracking-[0.15em] group-hover:text-cyan-300 transition-colors">
+                            Análise Pré-Venda
+                        </p>
+                        <p className="mt-1 text-xs text-slate-400 leading-relaxed">
+                            Quando habilitado, a loja passa a ver a nova tela de Avaliação no menu de Atendimento
+                            e pode registrar análises antes da venda, com histórico individual por titular ou dependente.
+                        </p>
+                    </div>
+                </label>
+            </div>
+        </div>
     )
 }
 
@@ -589,7 +635,7 @@ function TeamManagement({ storeId }: { storeId: number }) {
 
 // --- COMPONENTE PRINCIPAL (COM ABAS) ---
 export default function ConfigInterface({ storeId }: { storeId: number }) {
-    const [activeTab, setActiveTab] = useState<'loja' | 'equipe'>('loja')
+    const [activeTab, setActiveTab] = useState<'loja' | 'recursos' | 'equipe'>('loja')
     const router = useRouter()
     const { preference } = useBackgroundPreference()
 
@@ -621,6 +667,12 @@ export default function ConfigInterface({ storeId }: { storeId: number }) {
                     <Store className="h-4 w-4" /> Dados da Loja
                 </button>
                 <button
+                    onClick={() => setActiveTab('recursos')}
+                    className={`py-4 text-[10px] font-black border-b-2 transition-colors flex items-center gap-2 uppercase tracking-[0.2em] ${activeTab === 'recursos' ? 'border-cyan-500 text-cyan-300' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
+                >
+                    <Sparkles className="h-4 w-4" /> Recursos
+                </button>
+                <button
                     onClick={() => setActiveTab('equipe')}
                     className={`py-4 text-[10px] font-black border-b-2 transition-colors flex items-center gap-2 uppercase tracking-[0.2em] ${activeTab === 'equipe' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
                 >
@@ -632,11 +684,9 @@ export default function ConfigInterface({ storeId }: { storeId: number }) {
             </div>
 
             <div className="relative z-10 flex-1 overflow-y-auto p-6 custom-scrollbar">
-                {activeTab === 'loja' ? (
-                    <StoreDataForm storeId={storeId} />
-                ) : (
-                    <TeamManagement storeId={storeId} />
-                )}
+                {activeTab === 'loja' && <StoreDataForm storeId={storeId} />}
+                {activeTab === 'recursos' && <ResourcesForm storeId={storeId} />}
+                {activeTab === 'equipe' && <TeamManagement storeId={storeId} />}
             </div>
         </div>
     )

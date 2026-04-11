@@ -1,15 +1,34 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ShieldAlert, Tag } from 'lucide-react'
+import { Building2, Search, ShieldAlert, Tag } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getProfileByAdmin } from '@/lib/supabase/admin'
-import { getStorePriceTableData } from '@/lib/actions/price-table.actions'
+import { getStoreGlobalCatalogOverview } from '@/lib/actions/global-catalog.actions'
+import {
+  getStorePriceTableAllActiveOffersData,
+  getStorePriceTableData,
+} from '@/lib/actions/price-table.actions'
+import PriceTableCatalogCards from '@/components/catalog/PriceTableCatalogCards'
 import PriceTableInterface from '@/components/catalog/PriceTableInterface'
+import PriceTableLensSearchInterface from '@/components/catalog/PriceTableLensSearchInterface'
+
+export const dynamic = 'force-dynamic'
 
 export default async function StorePriceTablePage({
   params,
+  searchParams,
 }: {
   params: { storeId: string }
+  searchParams?: {
+    versionId?: string
+    scope?: string
+    q?: string
+    clinical?: string
+    material?: string
+    indice?: string
+    feature?: string
+    section?: string
+  }
 }) {
   const storeId = parseInt(params.storeId, 10)
   const supabase = createClient()
@@ -21,11 +40,12 @@ export default async function StorePriceTablePage({
 
   const profile = (await getProfileByAdmin(user.id)) as any
   const allowedRoles = ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico']
-  const isAllowed =
+  const canView =
     allowedRoles.includes(profile?.role) &&
     (profile?.role === 'admin' || profile?.store_id === storeId)
+  const canManage = (profile?.role === 'admin' || profile?.role === 'manager') && canView
 
-  if (!isAllowed) {
+  if (!canView) {
     return (
       <div className="flex min-h-[calc(100vh-64px)] items-center justify-center bg-slate-950 p-6">
         <div className="max-w-md rounded-3xl border border-white/10 border-t-4 border-t-red-500 bg-slate-900 p-8 text-center shadow-xl">
@@ -47,32 +67,132 @@ export default async function StorePriceTablePage({
     )
   }
 
-  const data = await getStorePriceTableData(storeId)
-
-  if (!data) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 px-6 py-10 text-white">
-        <div className="max-w-2xl rounded-[2rem] border border-white/10 bg-slate-900/80 p-8 text-center shadow-[0_25px_80px_rgba(2,6,23,0.45)]">
-          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-cyan-500/10 text-cyan-200">
-            <Tag className="h-8 w-8" />
-          </div>
-          <h1 className="text-3xl font-black tracking-tight text-white">
-            Ative um catálogo primeiro
-          </h1>
-          <p className="mt-3 text-sm leading-6 text-slate-300">
-            A tabela de preços usa o catálogo global ativo da loja. Primeiro ative
-            uma versão em catálogo global e depois volte para esta tela.
-          </p>
-          <Link
-            href={`/dashboard/loja/${storeId}/catalogo-global`}
-            className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-cyan-500 px-5 py-3 font-black text-slate-950 transition hover:bg-cyan-400"
-          >
-            Abrir catálogo global
-          </Link>
-        </div>
-      </div>
-    )
+  const overview = await getStoreGlobalCatalogOverview(storeId)
+  const scope = searchParams?.scope === 'lente' ? 'lente' : 'laboratorio'
+  const initialLabFilters = {
+    search: typeof searchParams?.q === 'string' ? searchParams.q : '',
+    clinicalFilter: typeof searchParams?.clinical === 'string' ? searchParams.clinical : null,
+    materialFilter: typeof searchParams?.material === 'string' ? searchParams.material : null,
+    indiceFilter:
+      typeof searchParams?.indice === 'string' && searchParams.indice.trim() !== ''
+        ? Number(searchParams.indice)
+        : null,
+    featureFilter:
+      typeof searchParams?.feature === 'string' && searchParams.feature.trim() !== ''
+        ? searchParams.feature
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean)
+        : [],
+    sectionFilter: typeof searchParams?.section === 'string' ? searchParams.section : null,
   }
+  const labData =
+    scope === 'laboratorio'
+      ? await getStorePriceTableData(
+          storeId,
+          typeof searchParams?.versionId === 'string' ? searchParams.versionId : null,
+        )
+      : null
+  const mixedData = scope === 'lente' ? await getStorePriceTableAllActiveOffersData(storeId) : null
 
-  return <PriceTableInterface data={data} />
+  return (
+    <div className="min-h-screen bg-slate-950 text-white">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
+        <div className="rounded-[2rem] border border-white/10 bg-gradient-to-br from-slate-900 via-slate-950 to-cyan-950/30 p-6 shadow-[0_25px_80px_rgba(2,6,23,0.45)] sm:p-7">
+          <PriceTableCatalogCards overview={overview} canManage={canManage} embedded />
+        </div>
+
+        <div className="rounded-3xl border border-white/10 bg-slate-900/60 p-4 backdrop-blur-md">
+          <div className="border-b border-white/10 px-1">
+            <div className="flex flex-wrap items-end gap-1.5">
+              <Link
+                href={`/dashboard/loja/${storeId}/tabela-precos?scope=laboratorio`}
+                aria-current={scope === 'laboratorio' ? 'page' : undefined}
+                className={`relative -mb-px inline-flex items-center gap-2 rounded-t-2xl border px-4 py-3 transition ${
+                  scope === 'laboratorio'
+                    ? 'border-white/15 border-b-slate-900 bg-slate-950 text-white shadow-[0_-1px_0_rgba(255,255,255,0.04)]'
+                    : 'border-transparent bg-slate-800/70 text-slate-400 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <span
+                  className={`flex h-8 w-8 items-center justify-center rounded-xl ${
+                    scope === 'laboratorio'
+                      ? 'bg-cyan-400/15 text-cyan-200'
+                      : 'bg-black/20 text-slate-500'
+                  }`}
+                >
+                  <Building2 className="h-4 w-4" />
+                </span>
+                <span className="text-xs font-black uppercase tracking-[0.18em]">
+                  Por laboratorio
+                </span>
+              </Link>
+
+              <Link
+                href={`/dashboard/loja/${storeId}/tabela-precos?scope=lente`}
+                aria-current={scope === 'lente' ? 'page' : undefined}
+                className={`relative -mb-px inline-flex items-center gap-2 rounded-t-2xl border px-4 py-3 transition ${
+                  scope === 'lente'
+                    ? 'border-white/15 border-b-slate-900 bg-slate-950 text-white shadow-[0_-1px_0_rgba(255,255,255,0.04)]'
+                    : 'border-transparent bg-slate-800/70 text-slate-400 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <span
+                  className={`flex h-8 w-8 items-center justify-center rounded-xl ${
+                    scope === 'lente'
+                      ? 'bg-cyan-400/15 text-cyan-200'
+                      : 'bg-black/20 text-slate-500'
+                  }`}
+                >
+                  <Search className="h-4 w-4" />
+                </span>
+                <span className="text-xs font-black uppercase tracking-[0.18em]">
+                  Por lente
+                </span>
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {scope === 'laboratorio' && !labData ? (
+          <div className="flex items-center justify-center px-2 py-4 text-white">
+            <div className="max-w-2xl rounded-[2rem] border border-white/10 bg-slate-900/80 p-8 text-center shadow-[0_25px_80px_rgba(2,6,23,0.45)]">
+              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-cyan-500/10 text-cyan-200">
+                <Tag className="h-8 w-8" />
+              </div>
+              <h1 className="text-3xl font-black tracking-tight text-white">
+                Ative pelo menos uma tabela primeiro
+              </h1>
+              <p className="mt-3 text-sm leading-6 text-slate-300">
+                A consulta de preços usa as tabelas globais ativas da loja. Primeiro ligue pelo
+                menos uma tabela e depois consulte os preços logo abaixo.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
+        {scope === 'lente' && !mixedData ? (
+          <div className="flex items-center justify-center px-2 py-4 text-white">
+            <div className="max-w-2xl rounded-[2rem] border border-white/10 bg-slate-900/80 p-8 text-center shadow-[0_25px_80px_rgba(2,6,23,0.45)]">
+              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-cyan-500/10 text-cyan-200">
+                <Tag className="h-8 w-8" />
+              </div>
+              <h1 className="text-3xl font-black tracking-tight text-white">
+                Ative pelo menos uma tabela primeiro
+              </h1>
+              <p className="mt-3 text-sm leading-6 text-slate-300">
+                A busca por lente usa todas as tabelas globais ativas da loja. Ligue pelo menos
+                uma tabela para pesquisar entre os laboratorios.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
+        {scope === 'laboratorio' && labData ? (
+          <PriceTableInterface data={labData} embedded initialFilters={initialLabFilters} />
+        ) : null}
+        {scope === 'lente' && mixedData ? <PriceTableLensSearchInterface data={mixedData} /> : null}
+      </div>
+    </div>
+  )
 }

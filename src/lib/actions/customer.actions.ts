@@ -404,15 +404,26 @@ export async function updateCustomerCriticalData(
   const foneLimpo = fone.replace(/\D/g, '') // Remove máscara do telefone
 
   try {
-    // 2. Verificar duplicidade de CPF (exceto o próprio usuário)
-    const { data: existe } = await (supabaseAdmin.from('customers') as any)
+    // 1.5 Buscar o store_id do cliente atual
+    const { data: currentCustomer, error: fetchError } = await (supabaseAdmin.from('customers') as any)
+      .select('store_id')
+      .eq('id', customerId)
+      .single()
+
+    if (fetchError || !currentCustomer) {
+      return { success: false, message: 'Cliente não encontrado para atualização.' }
+    }
+
+    // 2. Verificar duplicidade de CPF na mesma LOJA (exceto o próprio)
+    const { data: duplicados } = await (supabaseAdmin.from('customers') as any)
       .select('id')
+      .eq('store_id', currentCustomer.store_id)
       .eq('cpf', cpfLimpo)
       .neq('id', customerId)
-      .maybeSingle()
+      .limit(1)
 
-    if (existe) {
-      return { success: false, message: 'Este CPF já está em uso por outro cliente.' }
+    if (duplicados && duplicados.length > 0) {
+      return { success: false, message: 'Este CPF já está em uso por outro cliente nesta loja.' }
     }
 
     // 3. Atualizar
@@ -420,7 +431,12 @@ export async function updateCustomerCriticalData(
       .update({ cpf: cpfLimpo, fone_movel: foneLimpo })
       .eq('id', customerId)
 
-    if (error) throw error
+    if (error) {
+      if (error.message.includes('unique constraint') || error.code === '23505') {
+        return { success: false, message: 'Este CPF já está cadastrado nesta rede de lojas.' }
+      }
+      throw error
+    }
 
     revalidatePath(pathname)
     return { success: true, message: 'Dados atualizados com sucesso!' }

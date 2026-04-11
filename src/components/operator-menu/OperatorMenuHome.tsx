@@ -124,7 +124,7 @@ export default function OperatorMenuHome({
 
                 <div className="text-center opacity-40 hover:opacity-100 transition-opacity duration-300 mt-8 mb-8 md:mb-0">
                     <p className="text-[10px] text-slate-300 font-medium uppercase tracking-[0.3em]">
-                        Powered by <span className="font-bold text-white">NeoManager 2.0</span>
+                        Powered by <span className="font-bold text-white">MBOptical</span>
                     </p>
                 </div>
             </div>

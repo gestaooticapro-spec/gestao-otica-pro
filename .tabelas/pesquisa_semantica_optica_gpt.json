@@ -1,0 +1,979 @@
+[
+{
+"entity_name": "Varilux XR series",
+"entity_type": "family",
+"manufacturer_or_brand": "Essilor / Varilux",
+"category": "progressiva",
+"recommended_for": [
+"presbitas que querem visão em todas as distâncias",
+"usuários que valorizam nitidez imediata ao mudar o olhar",
+"clientes com rotina dinâmica e múltiplas mudanças de foco"
+],
+"not_ideal_for": [
+"não há, nas fontes analisadas, evidência suficiente para dizer que é superior em todo perfil",
+"alegações de superioridade ampla devem ser tratadas como claim do fabricante"
+],
+"positioning": "ultra_premium",
+"benefit_tags": [
+"nitidez em movimento",
+"transições entre distâncias",
+"foco responsivo",
+"campo visual amplo"
+],
+"usage_tags": [
+"uso geral",
+"múltiplas distâncias",
+"rotina dinâmica"
+],
+"technology_tags": [
+"behavioral artificial intelligence",
+"eye-responsive design"
+],
+"material_tags": [],
+"commercial_summary": "Linha progressiva de topo da Varilux, apresentada como solução avançada para usuários que alternam frequentemente entre distâncias e buscam resposta visual rápida.",
+"recommendation_notes": "Boa candidata para clientes que pedem máxima sofisticação em progressiva e aceitam pagar por posicionamento premium. A linguagem de 'best overall' e de superioridade ampla vem do próprio fabricante e deve ser tratada como posicionamento/marketing, não como comparação neutra universal.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+"POSITIONING: "the best overall progressive lens" é autodeclaração do fabricante, não evidência neutra comparativa. ",
+"FACT: a página oficial descreve a linha como "first eye-responsive progressive lens powered by behavioral artificial intelligence". ",
+"CLAIM: a versão brasileira afirma que a lente prevê o movimento dos olhos para entregar nitidez instantânea. "
+],
+"source_urls": [
+"https://www.essilorpro.com/resources/varilux/varilux-xr-series
+",
+"https://www.essilor.com/br-pt/produtos/varilux/varilux-xr-series/
+"
+]
+},
+{
+"entity_name": "Varilux Physio Extensee",
+"entity_type": "family",
+"manufacturer_or_brand": "Essilor / Varilux",
+"category": "progressiva",
+"recommended_for": [
+"presbitas que valorizam nitidez e contraste",
+"usuários sensíveis a condições de iluminação variadas",
+"clientes interessados em progressiva premium com foco em qualidade óptica"
+],
+"not_ideal_for": [
+"não há evidência nas fontes analisadas para afirmar superioridade absoluta sobre outras premium",
+"não há base nas fontes para classificá-la como linha de entrada ou para perfil econômico"
+],
+"positioning": "premium",
+"benefit_tags": [
+"nitidez",
+"contraste",
+"qualidade óptica",
+"desempenho em diferentes condições de luz"
+],
+"usage_tags": [
+"uso geral",
+"todas as distâncias",
+"ambientes com luz variável"
+],
+"technology_tags": [
+"otimização por dinâmica pupilar",
+"redução de aberrações de alta ordem",
+"wavefront"
+],
+"material_tags": [],
+"commercial_summary": "Progressiva premium posicionada em torno de intensidade visual, nitidez e contraste, com discurso técnico centrado em aberrações e variação do tamanho pupilar.",
+"recommendation_notes": "Forte candidata para cliente que prioriza percepção de nitidez e qualidade de imagem. O discurso de inteligência artificial e previsão do comportamento pupilar vem do fabricante e deve ser tratado com cautela como linguagem de produto premium.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+"FACT: a página oficial Essilor Pro diz que reduz aberrações de alta ordem e minimiza distorções de wavefront para melhorar nitidez e contraste em qualquer condição de luz. ",
+"CLAIM: a versão brasileira diz que a lente prevê a variação do tamanho da pupila ao longo do dia. ",
+"POSITIONING: o fabricante a apresenta como lente multifocal/premium de alta intensidade visual. "
+],
+"source_urls": [
+"https://www.essilorpro.com/resources/varilux/varilux-physio-extensee
+",
+"https://www.essilor.com/br-pt/produtos/varilux/varilux-physio-extensee/
+"
+]
+},
+{
+"entity_name": "Varilux (família geral)",
+"entity_type": "family",
+"manufacturer_or_brand": "Essilor / Varilux",
+"category": "progressiva",
+"recommended_for": [
+"pessoas com 40+ com presbiopia",
+"usuários que precisam visão de perto, intermediária e longe sem linha visível"
+],
+"not_ideal_for": [
+"não substitui análise de subfamília quando o objetivo é diferenciar adaptação, telas ou tarefas específicas"
+],
+"positioning": "indefinido",
+"benefit_tags": [
+"multidistância",
+"transição suave",
+"sem linha visível"
+],
+"usage_tags": [
+"uso geral",
+"perto",
+"intermediário",
+"longe"
+],
+"technology_tags": [],
+"material_tags": [],
+"commercial_summary": "Família progressiva da Essilor voltada a presbitas. A página geral ajuda a classificar a categoria, mas não diferencia claramente Comfort, Liberty ou outras sublinhas.",
+"recommendation_notes": "Útil como nó semântico pai no catálogo. Não usar a página geral para inferir automaticamente características de linhas específicas sem fonte própria.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+"FACT: a página Varilux geral diz que as lentes são projetadas para pessoas com mais de 40 anos e oferecem visão nítida em cada distância com transições perfeitas. "
+],
+"source_urls": [
+"https://www.essilor.com/br-pt/produtos/varilux/
+",
+"https://www.essilor.com/us-en/products/varilux/
+"
+]
+},
+{
+"entity_name": "KODAK Precise",
+"entity_type": "family",
+"manufacturer_or_brand": "KODAK Lens / Signet Armorlite",
+"category": "progressiva",
+"recommended_for": [
+"presbitas que buscam progressiva para uso geral",
+"usuários que valorizam adaptação fácil",
+"clientes de armações pequenas quando considerada a variante Precise Short"
+],
+"not_ideal_for": [
+"não há nas fontes analisadas foco explícito em uso digital intenso prolongado",
+"não há evidência suficiente nas fontes para colocá-la acima de linhas digitais modernas para tela"
+],
+"positioning": "intermediaria",
+"benefit_tags": [
+"clareza em todas as áreas",
+"adaptação rápida",
+"boa zona de perto",
+"transição suave"
+],
+"usage_tags": [
+"uso geral",
+"perto",
+"intermediário",
+"longe",
+"armações pequenas"
+],
+"technology_tags": [
+"Vision First Design Technology"
+],
+"material_tags": [],
+"commercial_summary": "Progressiva da KODAK voltada a clareza geral e adaptação simples, com narrativa de facilidade de uso e disponibilidade ampla, inclusive em versão para armações pequenas.",
+"recommendation_notes": "Boa para compor faixa equilibrada/intermediária no catálogo, especialmente quando o foco for progressiva geral com adaptação facilitada. A comparação com visão simples aparece em depoimento/comunicação do fabricante e deve ser marcada como claim.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+"FACT: a página diz que a ampla zona de perto é posicionada para promover movimento natural de cabeça e olhos em tarefas de perto. ",
+"FACT: a zona intermediária faz transição suave entre longe e perto e fornece visão clara em média distância. ",
+"FACT: o fabricante afirma que a distorção periférica é quase eliminada e que a adaptação é rápida e fácil. ",
+"FACT: existe KODAK Precise Short com altura mínima de montagem de 13 mm para armações pequenas. ",
+"CLAIM: wearers have compared their experience to single vision eyewear; isso é linguagem promocional do fabricante. "
+],
+"source_urls": [
+"https://www.signetarmorlite.com/kodak-lens/kodak-progressives/kodak-precise/
+"
+]
+},
+{
+"entity_name": "KODAK Network",
+"entity_type": "family",
+"manufacturer_or_brand": "KODAK Lens / Signet Armorlite",
+"category": "progressiva",
+"recommended_for": [
+"progressivos com uso digital prolongado",
+"adultos que passam muitas horas em telas",
+"usuários que querem progressiva geral com ênfase em leitura e intermediário"
+],
+"not_ideal_for": [
+"não há evidência nas fontes para dizer que substitui uma ocupacional quando a demanda principal é só perto/intermediário",
+"não há prova forte nas fontes para tratá-la como melhor que todas as demais progressivas digitais"
+],
+"positioning": "premium",
+"benefit_tags": [
+"uso digital",
+"campo de visão mais amplo",
+"estabilidade de imagem",
+"menos distorção",
+"adaptação facilitada"
+],
+"usage_tags": [
+"uso geral",
+"telas",
+"perto",
+"intermediário",
+"longe"
+],
+"technology_tags": [
+"i-Sync",
+"Vision First Design"
+],
+"material_tags": [],
+"commercial_summary": "Progressiva KODAK explicitamente posicionada para o estilo de vida digital, mantendo uso em todas as distâncias mas com ênfase em tela, leitura e estabilidade de imagem.",
+"recommendation_notes": "Forte candidata para clientes presbitas que trabalham muito em telas, mas ainda precisam longe. Em sistemas de recomendação, deve ficar semanticamente entre uma progressiva geral e uma opção mais direcionada ao uso digital.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+"FACT: a página descreve a lente como "designed for extensive digital users" e "good vision at all distances, optimized for even more screen time". ",
+"FACT: diz que para quem passa mais de 6 horas por dia em dispositivos digitais, a lente é a ideal progressive lens. ",
+"FACT: a página atribui à linha um campo de visão mais amplo, melhor estabilidade de imagem e menos distorção. ",
+"FACT: i-Sync é descrita como tecnologia que corrige erros oblíquos quando se olha fora do centro óptico. ",
+"FACT: Vision First Design é descrita como graduação suave de potência que reduz blurring/'swim effect' e facilita adaptação. "
+],
+"source_urls": [
+"https://kodaklenses.com/kodak-network-lenses
+"
+]
+},
+{
+"entity_name": "KODAK Unique / Unique HD / Unique DRO",
+"entity_type": "family",
+"manufacturer_or_brand": "KODAK Lens / Signet Armorlite",
+"category": "progressiva",
+"recommended_for": [
+"usuários que buscam progressiva personalizada",
+"clientes interessados em otimização de prescrição e medidas de uso",
+"perfis que desejam equilíbrio entre progressiva moderna e recursos digitais"
+],
+"not_ideal_for": [
+"as fontes recuperadas não permitem diferenciar com segurança Unique, Unique HD e Unique DRO em profundidade clínica",
+"não há base suficiente nas fontes analisadas para posicionamento absoluto acima de Network ou XR"
+],
+"positioning": "premium",
+"benefit_tags": [
+"customização",
+"otimização de prescrição",
+"uso digital",
+"proteção UV",
+"leveza"
+],
+"usage_tags": [
+"uso geral",
+"perto",
+"intermediário",
+"longe",
+"telas"
+],
+"technology_tags": [
+"full prescription optimization",
+"as-worn measurements",
+"DRO"
+],
+"material_tags": [],
+"commercial_summary": "Família progressiva KODAK apresentada como personalizada ao indivíduo, com versões HD e DRO associadas a otimização e ênfase crescente em uso digital/intermediário.",
+"recommendation_notes": "Útil como grupo semântico premium da KODAK, mas as fontes abertas aqui não sustentam diferenciação clínica fina entre as subvariantes. Tratar detalhes como provisórios até captar documentação técnica mais específica.",
+"evidence_level": "baixo",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+"FACT: o fabricante diz que KODAK Unique e Unique HD são "customized to the individual patient". ",
+"FACT: a mesma página diz que Unique HD pode oferecer full prescription optimization com as-worn measurements. ",
+"FACT: a página de produtos KODAK diz que o aumento do uso de dispositivos digitais motivou a evolução de Unique para Unique DRO, com foco em intermediate and reading areas. ",
+"CLAIM: menções a UV/glare protection, thinness, lightweight comfort e darkness adaptation aparecem em comunicação comercial do fabricante; úteis, mas não equivalem a comparação clínica neutra. "
+],
+"source_urls": [
+"https://www.signetarmorlite.com/weareallunique/
+",
+"https://www.kodaklens.us/pro/products/lenses/
+"
+]
+},
+{
+"entity_name": "Eyezen (família geral)",
+"entity_type": "family",
+"manufacturer_or_brand": "Essilor / Eyezen",
+"category": "visao_simples",
+"recommended_for": [
+"usuários de visão simples com rotina conectada",
+"pessoas com queixa de fadiga visual associada a telas",
+"clientes que querem lente simples com discurso de conforto digital"
+],
+"not_ideal_for": [
+"não deve ser confundida com lente de controle real de progressão miópica",
+"não substitui progressiva quando a necessidade principal é presbiopia"
+],
+"positioning": "intermediaria",
+"benefit_tags": [
+"fadiga visual",
+"proteção/gestão de luz",
+"conforto digital",
+"relaxamento visual"
+],
+"usage_tags": [
+"telas",
+"uso diário",
+"visão simples"
+],
+"technology_tags": [],
+"material_tags": [],
+"commercial_summary": "Família de visão simples da Essilor voltada ao estilo de vida conectado, combinando linguagem de proteção e relaxamento ocular.",
+"recommendation_notes": "Bom nó semântico pai para organizar Start, Boost e Kids. Importante separar no catálogo a promessa de conforto digital da categoria de controle de miopia.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+"FACT: a página brasileira diz que Eyezen são lentes de visão simples que oferecem proteção e relaxamento para os olhos e ajudam a combater fadiga visual. "
+],
+"source_urls": [
+"https://www.essilor.com/br-pt/produtos/eyezen/
+"
+]
+},
+{
+"entity_name": "Eyezen Start",
+"entity_type": "subfamily",
+"manufacturer_or_brand": "Essilor / Eyezen",
+"category": "visao_simples",
+"recommended_for": [
+"usuários iniciando busca por conforto digital",
+"pessoas com rotina conectada",
+"clientes de visão simples que pedem apoio em tarefas de perto"
+],
+"not_ideal_for": [
+"não há nas fontes analisadas prova de controle de miopia",
+"não é a indicação principal quando a necessidade é progressiva/ocupacional pura"
+],
+"positioning": "entrada",
+"benefit_tags": [
+"filtro azul-violeta",
+"redução de fadiga visual",
+"apoio ao perto"
+],
+"usage_tags": [
+"telas",
+"uso diário",
+"visão simples"
+],
+"technology_tags": [
+"blue-violet filtering",
+"near vision support"
+],
+"material_tags": [],
+"commercial_summary": "Entrada da família Eyezen para estilo de vida conectado, com discurso de redução de fadiga visual e filtragem de luz azul-violeta.",
+"recommendation_notes": "Faz sentido como opção econômica/equilíbrio dentro do universo digital da Essilor, principalmente quando o cliente quer algo além da visão simples convencional sem entrar em produto mais avançado.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+"FACT: Eyezen Start oferece blue-violet light filtering e tecnologia para ajudar a reduzir vision fatigue. ",
+"CLAIM: a versão brasileira se apresenta como "nova geração" para o estilo de vida conectado; isso é linguagem de posicionamento do fabricante. "
+],
+"source_urls": [
+"https://www.essilorpro.com/resources/eyezen/eyezen-start
+",
+"https://www.essilor.com/br-pt/produtos/eyezen/eyezen-start/
+"
+]
+},
+{
+"entity_name": "Eyezen Boost",
+"entity_type": "subfamily",
+"manufacturer_or_brand": "Essilor / Eyezen",
+"category": "visao_simples",
+"recommended_for": [
+"usuários de visão simples com uso intenso de telas",
+"clientes que relatam esforço de foco ocular",
+"perfis que buscam opção digital acima do nível de entrada"
+],
+"not_ideal_for": [
+"não há evidência nas fontes analisadas de controle miópico",
+"não substitui ocupacional quando a necessidade principal é perto/intermediário em presbiopia"
+],
+"positioning": "premium",
+"benefit_tags": [
+"apoio ao foco",
+"uso digital",
+"filtragem de luz azul-violeta"
+],
+"usage_tags": [
+"telas",
+"uso prolongado",
+"visão simples"
+],
+"technology_tags": [
+"advanced filter",
+"focus support"
+],
+"material_tags": [],
+"commercial_summary": "Subfamília Eyezen orientada a maior suporte ao esforço de foco e a um discurso mais forte de uso digital.",
+"recommendation_notes": "Útil como opção de visão simples digital acima do Start. As fontes analisadas sustentam melhor o posicionamento comercial do que parâmetros ópticos comparativos detalhados.",
+"evidence_level": "baixo",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+"CLAIM: a página brasileira diz que Eyezen Boost é o melhor aliado para apoiar os esforços de foco ocular. ",
+"CLAIM: a mesma página menciona filtro avançado e associação ao universo digital; o texto é claramente promocional e pouco técnico. "
+],
+"source_urls": [
+"https://www.essilor.com/br-pt/produtos/eyezen/eyezen-boost/
+"
+]
+},
+{
+"entity_name": "Eyezen Kids",
+"entity_type": "subfamily",
+"manufacturer_or_brand": "Essilor / Eyezen",
+"category": "visao_simples",
+"recommended_for": [
+"crianças aproximadamente de 6 a 12 anos",
+"rotina escolar e digital infantil",
+"pais que querem lente infantil associada a conforto visual"
+],
+"not_ideal_for": [
+"não deve ser classificada como lente de controle real de progressão miópica apenas com base nesta fonte",
+"não substituir Stellest quando o objetivo explícito é manejo da progressão miópica"
+],
+"positioning": "intermediaria",
+"benefit_tags": [
+"infantil",
+"conforto visual",
+"rotina conectada"
+],
+"usage_tags": [
+"crianças",
+"escola",
+"telas",
+"visão simples"
+],
+"technology_tags": [],
+"material_tags": [],
+"commercial_summary": "Linha infantil da família Eyezen, focada em desenho do produto para crianças, mas sem nas fontes abertas aqui apresentar evidência de controle de progressão miópica.",
+"recommendation_notes": "No motor de recomendação, separar claramente de produtos de myopia management. Pode entrar como conforto digital/visão simples infantil.",
+"evidence_level": "baixo",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+"FACT: a página Essilor Pro descreve Eyezen Kids como lente especificamente desenhada para crianças de 6 a 12 anos. "
+],
+"source_urls": [
+"https://www.essilorpro.com/resources/eyezen/eyezen-kids
+"
+]
+},
+{
+"entity_name": "Varilux Digitime",
+"entity_type": "family",
+"manufacturer_or_brand": "Essilor / Varilux",
+"category": "ocupacional",
+"recommended_for": [
+"presbitas com atividades digitais",
+"usuários que priorizam perto e intermediário",
+"trabalho em escritório e telas"
+],
+"not_ideal_for": [
+"não é a opção principal quando a prioridade é desempenho pleno em todas as distâncias como uma progressiva geral",
+"não há nas fontes analisadas prova comparativa de superioridade sobre todas as ocupacionais"
+],
+"positioning": "premium",
+"benefit_tags": [
+"uso digital",
+"perto e intermediário",
+"nitidez em tarefas de tela",
+"adaptação rápida"
+],
+"usage_tags": [
+"ocupacional",
+"escritório",
+"telas",
+"perto",
+"intermediário"
+],
+"technology_tags": [],
+"material_tags": [],
+"commercial_summary": "Lente ocupacional da família Varilux orientada ao trabalho digital e às distâncias de perto/intermediário, com comunicação de adaptação rápida.",
+"recommendation_notes": "Boa candidata quando o perfil do cliente é claramente de escritório/tela e a queixa principal não é visão de longe em mobilidade externa. Sem fonte comparativa direta com Interview nas páginas abertas aqui.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+"FACT: a página a descreve como varifocal lens specifically designed for digital activities. ",
+"FACT: menciona super sharp vision e adaptação rápida aos novos óculos. "
+],
+"source_urls": [
+"https://ecp.essilor-pro.com/gb/essilor-lenses/varifocals/varilux-digitime
+"
+]
+},
+{
+"entity_name": "Stellest",
+"entity_type": "family",
+"manufacturer_or_brand": "Essilor / Stellest",
+"category": "controle_miopia",
+"recommended_for": [
+"crianças com miopia",
+"famílias que buscam controle real de progressão miópica com óculos",
+"casos em que se deseja separar claramente manejo de miopia de simples conforto digital"
+],
+"not_ideal_for": [
+"não deve ser confundida com lente simples infantil/digital",
+"pode haver sintomas visuais como blur e halos segundo a autorização regulatória citada",
+"requer uso consistente para melhor efeito"
+],
+"positioning": "premium",
+"benefit_tags": [
+"controle de miopia",
+"correção refrativa",
+"uso infantil",
+"evidência clínica"
+],
+"usage_tags": [
+"crianças",
+"uso diário",
+"controle de progressão",
+"miopia"
+],
+"technology_tags": [
+"H.A.L.T.",
+"highly aspherical lenslets"
+],
+"material_tags": [],
+"commercial_summary": "Lente infantil de manejo de miopia com base de evidência clínica bem mais forte que linhas apenas digitais. Deve ficar semanticamente separada de Eyezen Kids.",
+"recommendation_notes": "É a principal entidade deste conjunto para 'controle real de progressão miópica'. Nas fontes há forte suporte clínico/regulatório, mas números percentuais variam conforme fonte e endpoint; armazene isso como evidência contextual, não como promessa comercial única.",
+"evidence_level": "alto",
+"evidence_type": "clinico_especializado",
+"source_quotes_or_points": [
+"FACT: a página oficial diz que Stellest é desenhada para desacelerar a progressão da miopia enquanto corrige o erro refrativo em crianças. ",
+"FACT: a página/registros oficiais usam a tecnologia H.A.L.T. e descrevem uma zona de visão simples combinada com zona de controle da miopia. ",
+"FACT: a FDA informou que avaliou dois anos de dados clínicos e que as lentes reduziram a progressão miópica em 71% em equivalente esférico e 53% na elongação axial vs. controle de visão simples. ",
+"FACT: a FDA também registrou que alguns participantes relataram sintomas visuais como blur e halos, sem eventos adversos graves. ",
+"FACT: revisão científica de 2025 descreve HALT como associada a reduções significativas de elongação axial. ",
+"CONFLICT: a eficácia aparece como 67% em páginas oficiais internacionais e 71% na autorização FDA; os números variam por fonte/medida/população e não devem ser consolidados como um único valor universal. "
+],
+"source_urls": [
+"https://www.essilor.com/us-en/products/stellest/
+",
+"https://www.essilorpro.com/resources/stellest
+",
+"https://www.fda.gov/news-events/press-announcements/fda-authorizes-marketing-first-eyeglass-lenses-slow-progression-pediatric-myopia
+",
+"https://www.essilor.com/ca-en/products/stellest/technology/
+"
+]
+},
+{
+"entity_name": "CR-39 / resina 1.50",
+"entity_type": "material",
+"manufacturer_or_brand": "categoria de material",
+"category": "material",
+"recommended_for": [
+"graus baixos",
+"clientes sensíveis a custo",
+"casos em que tintabilidade e economia importam"
+],
+"not_ideal_for": [
+"prescrições mais altas quando a estética/espessura é prioridade",
+"situações de alto risco de impacto quando comparado a policarbonato/Trivex"
+],
+"positioning": "entrada",
+"benefit_tags": [
+"econômica",
+"boa clareza óptica",
+"boa para tingimento",
+"durável"
+],
+"usage_tags": [
+"uso geral",
+"graus baixos",
+"custo-benefício"
+],
+"technology_tags": [],
+"material_tags": [
+"índice 1.50",
+"base index",
+"mais espessa"
+],
+"commercial_summary": "Material de entrada e referência semântica para custo-benefício em graus baixos.",
+"recommendation_notes": "Útil como baseline do catálogo. Boa para perfil econômico e baixa graduação; em graus mais altos, materiais de índice maior tendem a ganhar por estética/espessura.",
+"evidence_level": "medio",
+"evidence_type": "apoio_secundario",
+"source_quotes_or_points": [
+"FACT: Laramy-K classifica CR-39/plastic como base index 1.498. ",
+"FACT: a mesma fonte explica que índices mais altos exigem menos curvatura para a mesma potência e, portanto, podem gerar lentes mais finas; por implicação, 1.50 tende a ser mais espessa que high-index. ",
+"FACT: HOYA descreve plastic 1.50 como reliable and budget-friendly, great solution for simple prescriptions in low powers. ",
+"FACT: Laramy-K lista como vantagens do CR-39 ser mais leve que vidro e facilmente colorível/tintável. "
+],
+"source_urls": [
+"https://www.laramyk.com/resources/education/lens-options-and-materials/lens-materials/
+",
+"https://www.hoyavision.com/vision-products/lens-materials/
+"
+]
+},
+{
+"entity_name": "Policarbonato / Airwear / 1.59",
+"entity_type": "material",
+"manufacturer_or_brand": "categoria de material / Essilor Airwear",
+"category": "material",
+"recommended_for": [
+"crianças",
+"óculos de segurança/risco de impacto",
+"usuários que priorizam resistência a impacto e leveza"
+],
+"not_ideal_for": [
+"usuários muito sensíveis à qualidade óptica periférica",
+"alguns drill-mounts, conforme ressalva de fonte especializada secundária",
+"não é a principal escolha quando a prioridade é melhor Abbe possível"
+],
+"positioning": "intermediaria",
+"benefit_tags": [
+"alto impacto",
+"leveza",
+"UV inerente",
+"mais fina que CR-39"
+],
+"usage_tags": [
+"infantil",
+"esporte",
+"segurança",
+"uso diário"
+],
+"technology_tags": [],
+"material_tags": [
+"índice 1.59",
+"impact resistant",
+"UV protection"
+],
+"commercial_summary": "Material orientado a resistência e segurança, frequentemente uma escolha prática para infantil e perfil ativo.",
+"recommendation_notes": "No sistema, deve ganhar peso quando o perfil exigir resistência a impacto. Não assumir automaticamente que é a melhor escolha óptica para todo cliente, porque fontes secundárias apontam Abbe baixo e potenciais limitações ópticas/periféricas.",
+"evidence_level": "medio",
+"evidence_type": "apoio_secundario",
+"source_quotes_or_points": [
+"FACT: Laramy-K afirma que policarbonato é o material mais resistente a impacto e a escolha para óculos de segurança e infantis. ",
+"FACT: a mesma fonte informa índice 1.59, proteção UV inerente e lentes mais finas/leves que glass or plastic. ",
+"FACT: Laramy-K destaca limitação de qualidade óptica do policarbonato e Abbe 29, com mais aberração cromática. ",
+"FACT: a história institucional EssilorLuxottica confirma Airwear como policarbonato da marca. "
+],
+"source_urls": [
+"https://www.laramyk.com/resources/education/lens-options-and-materials/lens-materials/
+",
+"https://www.laramyk.com/resources/education/lens-options-and-materials/trivex-vs-polycarbonate/
+",
+"https://www.essilorluxottica.com/en/group/history/
+"
+]
+},
+{
+"entity_name": "Trivex / PNX 1.53",
+"entity_type": "material",
+"manufacturer_or_brand": "categoria de material / HOYA PNX",
+"category": "material",
+"recommended_for": [
+"crianças",
+"esporte",
+"usuários ativos",
+"drill-mounts quando resistência estrutural é valorizada",
+"clientes que querem resistência com melhor clareza que policarbonato"
+],
+"not_ideal_for": [
+"casos em que a menor espessura possível é a prioridade máxima em graus altos",
+"quando a disponibilidade de desenhos/materiais no laboratório é limitada"
+],
+"positioning": "premium",
+"benefit_tags": [
+"alto impacto",
+"leveza",
+"melhor clareza que policarbonato",
+"boa resistência estrutural"
+],
+"usage_tags": [
+"infantil",
+"esporte",
+"ativo",
+"drill-mount"
+],
+"technology_tags": [],
+"material_tags": [
+"índice 1.53",
+"impact resistant",
+"UV protection",
+"lightweight"
+],
+"commercial_summary": "Material resistente e leve, útil como alternativa de maior qualidade óptica ao policarbonato em perfis ativos.",
+"recommendation_notes": "Excelente nó semântico para casos de impacto + qualidade óptica. Não costuma ganhar em espessura contra high-index; sua força é resistência/leveza/clareza relativa.",
+"evidence_level": "medio",
+"evidence_type": "apoio_secundario",
+"source_quotes_or_points": [
+"FACT: Laramy-K informa que Trivex passou testes FDA/ANSI de resistência a impacto e é, por gravidade específica, o material de lente mais leve disponível. ",
+"FACT: a mesma fonte informa índice 1.53, proteção UV inerente e Abbe 45, teoricamente superior ao policarbonato. ",
+"FACT: Laramy-K relata maior resistência a trincas em drill holes que policarbonato. ",
+"FACT: HOYA descreve PNX 1.53 como material forte, flexível e resistente a impacto, ideal para crianças e estilo de vida ativo. "
+],
+"source_urls": [
+"https://www.laramyk.com/resources/education/lens-options-and-materials/trivex-vs-polycarbonate/
+",
+"https://www.hoyavision.com/vision-products/lens-materials/
+"
+]
+},
+{
+"entity_name": "1.60 high-index",
+"entity_type": "material",
+"manufacturer_or_brand": "categoria de material",
+"category": "material",
+"recommended_for": [
+"graus médios",
+"clientes que querem equilíbrio entre espessura, conforto e custo",
+"perfis que pedem material versátil"
+],
+"not_ideal_for": [
+"não é a opção mais fina possível para graus muito altos",
+"não é a principal escolha quando a maior resistência a impacto é o critério dominante"
+],
+"positioning": "intermediaria",
+"benefit_tags": [
+"mais fina que 1.50",
+"equilíbrio",
+"clareza",
+"conforto"
+],
+"usage_tags": [
+"uso geral",
+"graus médios",
+"custo-benefício premium"
+],
+"technology_tags": [],
+"material_tags": [
+"índice 1.60",
+"high-index"
+],
+"commercial_summary": "Material de equilíbrio, frequentemente um dos melhores compromissos entre estética, conforto e custo.",
+"recommendation_notes": "No catálogo, costuma funcionar muito bem como recomendação central/equilibrada. Use quando o cliente quer melhorar a espessura sem migrar para custo mais alto de 1.67/1.74.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+"FACT: Laramy-K explica que materiais acima de 1.58 são high-index e tendem a ficar mais finos e leves que índices menores. ",
+"FACT: HOYA descreve Eyas 1.60 como seu material orgânico número um e best-seller, com combinação de optical clarity e exceptional comfort. "
+],
+"source_urls": [
+"https://www.laramyk.com/resources/education/lens-options-and-materials/lens-materials/
+",
+"https://www.hoyavision.com/vision-products/lens-materials/
+"
+]
+},
+{
+"entity_name": "1.67 high-index",
+"entity_type": "material",
+"manufacturer_or_brand": "categoria de material",
+"category": "material",
+"recommended_for": [
+"graus médios-altos",
+"clientes que priorizam estética e lente mais fina",
+"perfis que aceitam faixa premium"
+],
+"not_ideal_for": [
+"não é a opção mais resistente a impacto para infantil/segurança",
+"pode não ser a melhor relação custo-benefício em graus baixos"
+],
+"positioning": "premium",
+"benefit_tags": [
+"fina",
+"leve",
+"estética",
+"clareza adequada"
+],
+"usage_tags": [
+"uso geral",
+"graus mais altos",
+"estética"
+],
+"technology_tags": [],
+"material_tags": [
+"índice 1.67",
+"high-index"
+],
+"commercial_summary": "Material premium para afinar e melhorar estética em prescrições mais exigentes.",
+"recommendation_notes": "No sistema de recomendação, tende a subir quando o peso do critério 'espessura/estética' aumenta e o orçamento permite.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+"FACT: HOYA descreve Eynoa 1.67 como premium high-index, thin and lightweight yet optically pure. ",
+"FACT: Laramy-K explica a lógica geral de que índices maiores permitem menor curvatura para a mesma potência e, portanto, lente mais fina. "
+],
+"source_urls": [
+"https://www.hoyavision.com/vision-products/lens-materials/
+",
+"https://www.laramyk.com/resources/education/lens-options-and-materials/lens-materials/
+"
+]
+},
+{
+"entity_name": "1.74 high-index",
+"entity_type": "material",
+"manufacturer_or_brand": "categoria de material",
+"category": "material",
+"recommended_for": [
+"graus altos",
+"clientes muito sensíveis à espessura e estética",
+"perfis premium/ultra-premium"
+],
+"not_ideal_for": [
+"graus baixos, quando o ganho cosmético não justifica custo",
+"perfis focados em economia",
+"não é a principal escolha quando resistência a impacto é mais importante que espessura"
+],
+"positioning": "ultra_premium",
+"benefit_tags": [
+"ultrafina",
+"leve",
+"estética superior"
+],
+"usage_tags": [
+"graus altos",
+"estética",
+"premium"
+],
+"technology_tags": [],
+"material_tags": [
+"índice 1.74",
+"ultra-high-index"
+],
+"commercial_summary": "Material de topo para afinar ao máximo, voltado a prescrições altas e exigência estética elevada.",
+"recommendation_notes": "No catálogo, deve receber peso maior quando a graduação é alta e a estética é prioritária. Nem sempre é a melhor compra em custo-benefício para potências modestas.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+"FACT: HOYA descreve Eyvia 1.74 como seu material orgânico mais fino e elegante, com propriedades ultra-thin. ",
+"POSITIONING: a própria HOYA o apresenta para pacientes mais exigentes, o que reforça posicionamento ultra-premium. "
+],
+"source_urls": [
+"https://www.hoyavision.com/vision-products/lens-materials/
+"
+]
+},
+{
+"entity_name": "Blue UV Filter System / Blue UV Capture",
+"entity_type": "technology",
+"manufacturer_or_brand": "Essilor",
+"category": "tratamento",
+"recommended_for": [
+"clientes que pedem filtragem de luz azul-violeta",
+"usuários que valorizam proteção UV combinada a lente transparente",
+"perfis interessados em argumentos de conforto/proteção no dia a dia"
+],
+"not_ideal_for": [
+"não usar como argumento de benefício clínico forte para redução de sintomas digitais sem cautela",
+"não confundir filtragem de luz azul com evidência robusta de melhora universal de fadiga ocular"
+],
+"positioning": "premium",
+"benefit_tags": [
+"filtro azul-violeta",
+"proteção UV",
+"lente transparente"
+],
+"usage_tags": [
+"uso diário",
+"telas",
+"ambientes internos e externos"
+],
+"technology_tags": [
+"blue-violet filtering",
+"UV management"
+],
+"material_tags": [],
+"commercial_summary": "Tecnologia/tratamento da Essilor voltado a gestão de exposição à luz azul-violeta e UV, com linguagem forte de proteção diária.",
+"recommendation_notes": "Pode entrar no catálogo como atributo valorizado comercialmente. Porém, quando o sistema explicar benefício ao usuário, é importante separar o claim do fabricante da posição mais cautelosa de fontes clínicas sobre sintomas digitais.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+"CLAIM: a página brasileira diz que um filtro no centro da lente proporciona proteção contra a luz e transparência ideal para todos os dias. ",
+"CLAIM: a página Blue UV Capture fala em proteção diária contra raios UV e filtragem de luz azul-violeta em lente com transparência ideal. ",
+"CONFLICT: a AAO afirma que several studies suggest blue light-blocking glasses do not improve symptoms of digital eye strain; portanto, benefício sintomático universal não deve ser tratado como fato técnico consolidado. "
+],
+"source_urls": [
+"https://www.essilor.com/br-pt/produtos/blue-uv-filter-system/
+",
+"https://www.essilor.com/br-pt/produtos/blue-uv-filter-system/blue-uv-capture/
+",
+"https://www.aao.org/eye-health/tips-prevention/are-computer-glasses-worth-it
+",
+"https://www.aao.org/eye-health/tips-prevention/should-you-be-worried-about-blue-light
+"
+]
+},
+{
+"entity_name": "Crizal",
+"entity_type": "treatment",
+"manufacturer_or_brand": "Essilor / Crizal",
+"category": "tratamento",
+"recommended_for": [
+"clientes que querem lente com proteção superficial e facilidade de manutenção",
+"usuários que valorizam antirreflexo e proteção da lente"
+],
+"not_ideal_for": [
+"as fontes abertas aqui não permitem diferenciar com precisão todas as variantes Crizal",
+"não usar esta entidade como sinônimo de um coating específico sem detalhar a sublinha"
+],
+"positioning": "premium",
+"benefit_tags": [
+"antirreflexo",
+"proteção da lente",
+"escudo invisível"
+],
+"usage_tags": [
+"uso diário",
+"tratamento premium"
+],
+"technology_tags": [],
+"material_tags": [],
+"commercial_summary": "Família de coatings da Essilor posicionada como proteção invisível para olhos e lentes.",
+"recommendation_notes": "Boa entidade pai para tratamentos AR/hidrofóbicos/oleofóbicos, mas vale captar fontes mais específicas antes de granularizar benefícios por subversão.",
+"evidence_level": "baixo",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+"CLAIM: a página oficial descreve os coatings Crizal como tecnologias e benefícios que atuam como invisible shield, protegendo os olhos e as lentes. "
+],
+"source_urls": [
+"https://www.essilor.com/us-en/products/crizal/
+"
+]
+},
+{
+"entity_name": "Transitions",
+"entity_type": "family",
+"manufacturer_or_brand": "Transitions",
+"category": "tratamento",
+"recommended_for": [
+"clientes sensíveis a variações de luminosidade",
+"usuários que querem praticidade indoor/outdoor",
+"perfis que valorizam fotossensível"
+],
+"not_ideal_for": [
+"as fontes abertas aqui não detalham tempos comparativos de ativação por geração/material",
+"não usar para inferir proteção solar equivalente a lente solar dedicada sem fonte adicional específica"
+],
+"positioning": "premium",
+"benefit_tags": [
+"fotossensível",
+"adaptação à luz",
+"proteção UV",
+"conveniência"
+],
+"usage_tags": [
+"indoor/outdoor",
+"uso diário",
+"luminosidade variável"
+],
+"technology_tags": [
+"photochromic"
+],
+"material_tags": [],
+"commercial_summary": "Família fotossensível centrada em adaptação automática à mudança de luz.",
+"recommendation_notes": "No sistema, funciona bem como atributo adicional para perfis com incômodo em luminosidade variável. As fontes aqui sustentam o conceito geral mais do que uma comparação técnica entre gerações.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+"FACT: a página oficial diz que Transitions lenses automatically adapt to changing light, darken outdoors and return to clear indoors, protecting from UV. ",
+"FACT: o portal educacional oficial reforça que há materiais formativos para profissionais sobre benefícios e conhecimento do produto. "
+],
+"source_urls": [
+"https://www.transitions.com/en-us/
+",
+"https://trade.transitions.com/education
+",
+"https://trade.transitions.com/LearningCenter/ContinuingEducation
+"
+]
+}
+]

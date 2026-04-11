@@ -225,7 +225,7 @@ export default function VendaActions({
                 title="Imprimir Recibos de Pagamento"
             >
                 <Printer className="h-4 w-4" />
-                <span>Imprimir</span>
+                <span>Recibos</span>
             </button>
 
             {/* BOTÃO NFC-e (TEMPORARIAMENTE BLOQUEADO) */}

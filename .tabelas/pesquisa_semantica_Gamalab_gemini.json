@@ -1,0 +1,349 @@
+[
+  {
+    "entity_name": "Linhas Gamalab (GamaVision, Dynamic, Life)",
+    "entity_type": "family",
+    "manufacturer_or_brand": "Gamalab",
+    "category": "progressiva",
+    "recommended_for": [
+      "Usuários buscando portfólio primário da marca"
+    ],
+    "not_ideal_for": [
+      "Pacientes sensíveis a aberrações e distorções periféricas (dependendo da linha exata)"
+    ],
+    "positioning": "indefinido",
+    "benefit_tags": [
+      "Amplitude de campo de visão"
+    ],
+    "usage_tags": [
+      "Adaptação"
+    ],
+    "technology_tags": [],
+    "material_tags": [],
+    "commercial_summary": "Portfólio primário da Gamalab. As fontes indicam que a diferenciação comercial se baseia na amplitude do campo de visão e facilidade de adaptação, com atenção às limitações periféricas.",
+    "recommendation_notes": "Forte candidata para oferta principal. O sistema precisará de mais dados para separar o que é entrada, intermediária ou premium entre GamaVision, Dynamic e Life.",
+    "evidence_level": "medio",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "Detalha o posicionamento de cada lente quanto à amplitude do campo de visão, indicações de adaptação e limitações (como aberrações e distorções periféricas)."
+    ],
+    "source_urls": [
+      "http://www.gamalab.com.br/"
+    ]
+  },
+  {
+    "entity_name": "Sigma",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "Gamalab",
+    "category": "tratamento",
+    "recommended_for": [
+      "Usuários que buscam facilidade de limpeza e durabilidade da lente"
+    ],
+    "not_ideal_for": [],
+    "positioning": "indefinido",
+    "benefit_tags": [
+      "Antiestática",
+      "Hidrofóbica",
+      "Antirrisco"
+    ],
+    "usage_tags": [
+      "Uso diário"
+    ],
+    "technology_tags": [],
+    "material_tags": [],
+    "commercial_summary": "Tratamento dedicado da Gamalab focado em proteção e manutenção diária da lente.",
+    "recommendation_notes": "Boa para agregar valor (upsell) nas lentes de visão simples e progressivas da marca.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "Melhor fonte para você mapear os benefícios exatos oferecidos por eles (camada antiestática, hidrofóbica e antirrisco)."
+    ],
+    "source_urls": [
+      "https://antirreflexosigma.com.br/"
+    ]
+  },
+  {
+    "entity_name": "Varilux XR Series",
+    "entity_type": "family",
+    "manufacturer_or_brand": "Essilor",
+    "category": "progressiva",
+    "recommended_for": [
+      "Usuários exigentes buscando alta acuidade visual",
+      "Perfil tecnológico"
+    ],
+    "not_ideal_for": [],
+    "positioning": "premium",
+    "benefit_tags": [
+      "Alta acuidade visual",
+      "Conforto visual premium"
+    ],
+    "usage_tags": [
+      "Multitarefas"
+    ],
+    "technology_tags": [
+      "Inteligência artificial comportamental"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Lente topo de linha da Essilor, posicionada no segmento premium com forte apelo em inteligência artificial e alta acuidade.",
+    "recommendation_notes": "Posicionada para o topo do catálogo (premium/alta tecnologia). O claim de IA é um argumento comercial forte.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "Apresenta o topo de linha (XR series) focado em inteligência artificial comportamental."
+    ],
+    "source_urls": [
+      "https://www.essilor.com/br-pt/produtos/varilux/varilux-xr-series/"
+    ]
+  },
+  {
+    "entity_name": "Varilux (Physio, Comfort, Liberty)",
+    "entity_type": "family",
+    "manufacturer_or_brand": "Essilor",
+    "category": "progressiva",
+    "recommended_for": [
+      "Presbitas que buscam conforto em visão de perto"
+    ],
+    "not_ideal_for": [],
+    "positioning": "intermediaria",
+    "benefit_tags": [
+      "Conforto visão de perto",
+      "Arquitetura otimizada"
+    ],
+    "usage_tags": [
+      "Leitura",
+      "Uso diário"
+    ],
+    "technology_tags": [],
+    "material_tags": [],
+    "commercial_summary": "Linhas clássicas da Varilux que se diferenciam tecnicamente pela arquitetura da lente e níveis de conforto na visão de perto.",
+    "recommendation_notes": "O sistema deve usar estas opções como degraus (upsell/downsell) baseados na prioridade que o cliente dá ao conforto para perto.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "Detalha tecnicamente a diferença na arquitetura da lente e no conforto de visão de perto entre as linhas Physio, Comfort e Liberty."
+    ],
+    "source_urls": [
+      "https://ecp.essilor-pro.com/pt/lentes/lentes-progressivas"
+    ]
+  },
+  {
+    "entity_name": "Eyezen (Start, Boost e Kids)",
+    "entity_type": "family",
+    "manufacturer_or_brand": "Essilor",
+    "category": "visao_simples",
+    "recommended_for": [
+      "Usuários com fadiga digital",
+      "Uso intensivo de telas"
+    ],
+    "not_ideal_for": [
+      "Pessoas com presbiopia já instalada que necessitam de multifocal real"
+    ],
+    "positioning": "indefinido",
+    "benefit_tags": [
+      "Alívio de fadiga digital",
+      "Suporte acomodativo"
+    ],
+    "usage_tags": [
+      "Telas",
+      "Uso de eletrônicos",
+      "Visão de perto"
+    ],
+    "technology_tags": [
+      "Eyezen Focus (adição de +0.40)"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Linha focada no conforto digital e redução da fadiga visual, utilizando um reforço na parte inferior da lente.",
+    "recommendation_notes": "Boa para jovens e pré-presbitas. Fundamental criar uma trava no sistema: não recomendar para perfis com adição (presbitas). O controle de miopia na linha Kids não foi detalhado na fonte, focar no alívio digital.",
+    "evidence_level": "medio",
+    "evidence_type": "clinico_especializado",
+    "source_quotes_or_points": [
+      "Focado na explicação do alívio de fadiga digital e na tecnologia 'Eyezen Focus' (adição de +0.40 na parte inferior).",
+      "Para quem a Eyezen não é indicada (ex: quem já tem presbiopia e precisa de multifocal real)."
+    ],
+    "source_urls": [
+      "https://irp.cdn-website.com/96f77ac7/files/uploaded/Treinamento%20Eyezen_Uso%20Interno.pdf",
+      "https://lenscope.com.br/blog/lentes-eyezen-esssilor-e-boa/"
+    ]
+  },
+  {
+    "entity_name": "Kodak (Unique UHD, Network UHD, Precise UHD)",
+    "entity_type": "family",
+    "manufacturer_or_brand": "Kodak",
+    "category": "progressiva",
+    "recommended_for": [
+      "Clientes sensíveis a preço buscando marcas conhecidas"
+    ],
+    "not_ideal_for": [],
+    "positioning": "entrada",
+    "benefit_tags": [
+      "Custo-benefício",
+      "Transições suaves"
+    ],
+    "usage_tags": [
+      "Adaptação progressiva"
+    ],
+    "technology_tags": [
+      "Vision First"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Linhas que se dividem entre entrada e intermediária, com forte apelo comercial em custo-benefício e tecnologias de suavização de transição de campos.",
+    "recommendation_notes": "Forte candidata para a faixa econômica/equilibrada do recomendador.",
+    "evidence_level": "medio",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "Apelo forte em custo-benefício e transições suaves (tecnologias Vision First).",
+      "Diferenciar claramente o posicionamento comercial (entrada vs. intermediária) das linhas Unique UHD, Network UHD e Precise UHD."
+    ],
+    "source_urls": [
+      "https://lenteskodak.com.br/pemikir-yang-progresif-br"
+    ]
+  },
+  {
+    "entity_name": "Kodak Unique Infinite",
+    "entity_type": "subfamily",
+    "manufacturer_or_brand": "Kodak",
+    "category": "progressiva",
+    "recommended_for": [
+      "Usuários de computador",
+      "Trabalho em escritório"
+    ],
+    "not_ideal_for": [],
+    "positioning": "intermediaria",
+    "benefit_tags": [
+      "Campo intermediário amplo",
+      "Redução de rebote médio"
+    ],
+    "usage_tags": [
+      "Computador",
+      "Telas"
+    ],
+    "technology_tags": [],
+    "material_tags": [],
+    "commercial_summary": "Lente progressiva com foco técnico específico na ampliação do corredor intermediário.",
+    "recommendation_notes": "Posicionada para profissionais que passam muito tempo no computador, competindo parcialmente com atributos de lentes ocupacionais.",
+    "evidence_level": "medio",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "Apresenta dados comparativos sobre a redução do 'rebote médio' e a melhoria na largura intermediária para uso no computador."
+    ],
+    "source_urls": [
+      "https://lenteskodak.com.br/br-2"
+    ]
+  },
+  {
+    "entity_name": "Trivex",
+    "entity_type": "material",
+    "manufacturer_or_brand": "PPG",
+    "category": "material",
+    "recommended_for": [
+      "Armações parafusadas ou de nylon",
+      "Pessoas que buscam óculos leves",
+      "Crianças e esportistas"
+    ],
+    "not_ideal_for": [
+      "Altas ametropias que exigem espessuras ultrassecretas (alto índice)"
+    ],
+    "positioning": "intermediaria",
+    "benefit_tags": [
+      "Extrema leveza",
+      "Resistência superior a impactos",
+      "Proteção UV inerente",
+      "Sem stress interno"
+    ],
+    "usage_tags": [
+      "Esportes",
+      "Dia a dia",
+      "Armações delicadas"
+    ],
+    "technology_tags": [],
+    "material_tags": [
+      "Leveza extrema",
+      "Resistência a impacto"
+    ],
+    "commercial_summary": "Material de alta resistência e leveza, superior ao policarbonato na questão do stress interno (ausência de trincas nas bordas).",
+    "recommendation_notes": "Boa para recomendações onde durabilidade da armação (parafusadas) e leveza são as prioridades. O sistema deve priorizá-lo sobre o policarbonato em quesito de qualidade óptica.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "Extrema leveza, proteção UV inerente na massa e resistência superior ao policarbonato, sem o 'stress' interno."
+    ],
+    "source_urls": [
+      "https://www.ppg.com/en-US/optical/trivex-lens-material"
+    ]
+  },
+  {
+    "entity_name": "Alto Índice (MR-8, MR-7, MR-174)",
+    "entity_type": "material",
+    "manufacturer_or_brand": "Mitsui Chemicals",
+    "category": "material",
+    "recommended_for": [
+      "Graus médios a altos",
+      "Usuários buscando estética (lentes mais finas)"
+    ],
+    "not_ideal_for": [
+      "Graus muito baixos onde o custo não justifica a redução de espessura"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "Lentes finas (Estética)",
+      "Boa qualidade óptica"
+    ],
+    "usage_tags": [
+      "Alta miopia",
+      "Alta hipermetropia"
+    ],
+    "technology_tags": [
+      "Número Abbe otimizado"
+    ],
+    "material_tags": [
+      "1.60",
+      "1.67",
+      "1.74",
+      "Estética/Espessura"
+    ],
+    "commercial_summary": "Família de resinas de alto índice focadas em reduzir espessura sem comprometer drasticamente a qualidade óptica (aberração cromática controlada pelo Número Abbe).",
+    "recommendation_notes": "Crucial para a regra de negócio baseada na dioptria (grau da receita). Recomendar de acordo com o aumento do grau (1.60 -> 1.67 -> 1.74).",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "Fonte definitiva das resinas de alto índice (1.60/MR-8, 1.67/MR-7, 1.74/MR-174), contendo os argumentos técnicos sobre Número Abbe (qualidade óptica vs. aberração cromática) e testes de impacto."
+    ],
+    "source_urls": [
+      "https://us.mitsuichemicals.com/service/product/mr-series/index.htm",
+      "https://poloptic.com/treatments/info/materials"
+    ]
+  },
+  {
+    "entity_name": "Transitions (Signature Gen 8, Xtractive)",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "Essilor",
+    "category": "tratamento",
+    "recommended_for": [
+      "Pessoas sensíveis à luz",
+      "Transição frequente entre ambientes internos e externos"
+    ],
+    "not_ideal_for": [],
+    "positioning": "premium",
+    "benefit_tags": [
+      "Ativação rápida",
+      "Proteção contra luz solar"
+    ],
+    "usage_tags": [
+      "Ambientes externos",
+      "Fotofobia leve a moderada"
+    ],
+    "technology_tags": [
+      "Ativação térmica/luminosa"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Tratamento fotossensível líder de mercado, categorizado pelo nível de escurecimento e velocidade de reação.",
+    "recommendation_notes": "Posicionada como tratamento premium. O sistema deve usar o perfil de sensibilidade à luz do cliente para escolher entre o Gen 8 (dia a dia) e o Xtractive (alta sensibilidade/ativação no carro).",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "Útil para mapear as categorias atuais do Transitions (Signature Gen 8, Xtractive), o público-alvo (níveis de sensibilidade à luz) e a velocidade de ativação térmica/luminosa."
+    ],
+    "source_urls": [
+      "https://www.essilor.com/br-pt/produtos/transitions/"
+    ]
+  }
+]

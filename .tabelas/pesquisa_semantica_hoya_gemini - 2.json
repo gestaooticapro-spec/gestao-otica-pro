@@ -1,0 +1,565 @@
+[
+  {
+    "entity_name": "Hoyalux iD MySelf",
+    "entity_type": "subfamily",
+    "manufacturer_or_brand": "HOYA",
+    "category": "progressiva",
+    "recommended_for": [
+      "Pacientes exigentes que buscam máxima performance visual",
+      "Usuários que valorizam visão binocular perfeita e percepção 3D"
+    ],
+    "not_ideal_for": [
+      "Pacientes com orçamento restrito (busca por linhas de entrada)"
+    ],
+    "positioning": "ultra_premium",
+    "benefit_tags": [
+      "Alta performance",
+      "Conforto 3D",
+      "Transições suaves"
+    ],
+    "usage_tags": [
+      "Uso diário",
+      "Uso geral",
+      "Dinâmico"
+    ],
+    "technology_tags": [
+      "Harmonização Binocular",
+      "Visão 3D"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Posicionada como a lente progressiva top de linha da HOYA, com apelo fortemente baseado em tecnologia avançada para visão binocular.",
+    "recommendation_notes": "Forte candidata para clientes premium sem restrição orçamentária, que relatam desconforto com progressivas tradicionais em visão dinâmica.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "Detalha as tecnologias de Harmonização Binocular e Visão 3D",
+      "lente top de linha da marca"
+    ],
+    "source_urls": [
+      "https://www.hoyavision.com/br/produtos/lentes-progressivas/hoyalux-id-myself/"
+    ]
+  },
+  {
+    "entity_name": "Hoyalux iD MyStyle V+",
+    "entity_type": "subfamily",
+    "manufacturer_or_brand": "HOYA",
+    "category": "progressiva",
+    "recommended_for": [
+      "Usuários que necessitam de lentes adaptadas ao seu estilo de vida específico"
+    ],
+    "not_ideal_for": [
+      "Clientes em busca de soluções padronizadas de rápida escolha sem anamnese detalhada"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "Personalização profunda",
+      "Adequação ao estilo de vida"
+    ],
+    "usage_tags": [
+      "Uso geral",
+      "Estilo de vida específico"
+    ],
+    "technology_tags": [
+      "Personalização por perfil"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Lente de alto valor agregado baseada em personalização profunda. O argumento de vendas é o design moldado à rotina do paciente.",
+    "recommendation_notes": "Indicada quando a ótica ou o sistema possui dados detalhados sobre as atividades diárias do paciente para justificar a customização.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "Fornece os parâmetros de personalização profunda baseados no estilo de vida do usuário"
+    ],
+    "source_urls": [
+      "https://www.hoyavision.com/br/produtos/lentes-progressivas/hoyalux-id-mystyle/"
+    ]
+  },
+  {
+    "entity_name": "Hoyalux iD LifeStyle 3 / 4",
+    "entity_type": "subfamily",
+    "manufacturer_or_brand": "HOYA",
+    "category": "progressiva",
+    "recommended_for": [
+      "Pacientes com rotinas bem definidas (ambientes internos, urbanos ou externos)"
+    ],
+    "not_ideal_for": [
+      "Não especificado nas fontes fornecidas"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "Versatilidade de design",
+      "Foco na atividade principal"
+    ],
+    "usage_tags": [
+      "Indoor",
+      "Urban",
+      "Outdoor"
+    ],
+    "technology_tags": [
+      "Perfis de design pré-configurados"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Posicionada como uma linha premium acessível, oferecendo personalização categorizada (Indoor, Urban, Outdoor) para facilitar a escolha.",
+    "recommendation_notes": "Excelente para sistemas de recomendação baseados em questionários simples de rotina (ex: 'passa mais tempo no escritório ou na rua?').",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "Explica os três perfis de design (Indoor, Urban, Outdoor) vitais para o cruzamento de dados com o perfil de uso do paciente"
+    ],
+    "source_urls": [
+      "https://www.hoyavision.com/br/produtos/lentes-progressivas/hoyalux-id-lifestyle-3/"
+    ]
+  },
+  {
+    "entity_name": "Hoyalux Balansis",
+    "entity_type": "subfamily",
+    "manufacturer_or_brand": "HOYA",
+    "category": "progressiva",
+    "recommended_for": [
+      "Novos usuários de lentes progressivas",
+      "Clientes sensíveis a preço buscando qualidade de marca reconhecida"
+    ],
+    "not_ideal_for": [
+      "Casos complexos que exigem personalização avançada do campo visual"
+    ],
+    "positioning": "intermediaria",
+    "benefit_tags": [
+      "Rápida adaptação",
+      "Custo-benefício"
+    ],
+    "usage_tags": [
+      "Transição",
+      "Primeira progressiva"
+    ],
+    "technology_tags": [
+      "Design de fácil adaptação"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Atua como a linha intermediária e de transição da HOYA. Seu principal claim de marketing é o custo-benefício e o conforto imediato.",
+    "recommendation_notes": "A escolha mais segura (equilibrada) para orçamentos médios e para reduzir o índice de inadaptação em novos présbitas.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "Foca nos benefícios de rápida adaptação e custo-benefício, indicando o público-alvo para esta lente de transição/intermediária"
+    ],
+    "source_urls": [
+      "https://www.hoyavision.com/br/produtos/lentes-progressivas/hoyalux-balansis/"
+    ]
+  },
+  {
+    "entity_name": "Soluções Ocupacionais (WorkStyle / WorkSmart)",
+    "entity_type": "family",
+    "manufacturer_or_brand": "HOYA",
+    "category": "ocupacional",
+    "recommended_for": [
+      "Profissionais de escritório",
+      "Usuários que necessitam de amplo campo de visão para distâncias intermediárias"
+    ],
+    "not_ideal_for": [
+      "Direção",
+      "Visão de longe estática"
+    ],
+    "positioning": "indefinido",
+    "benefit_tags": [
+      "Ergonomia visual",
+      "Produtividade"
+    ],
+    "usage_tags": [
+      "Ambiente interno",
+      "Telas",
+      "Leitura",
+      "Computador"
+    ],
+    "technology_tags": [
+      "Degressão ajustada para perto e intermediário"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Focadas puramente no nicho corporativo e de trabalho em mesa, posicionadas como ferramentas de produtividade.",
+    "recommendation_notes": "Sempre recomendar como 'segundo par' complementar à progressiva de uso geral, focando em ergonomia no trabalho.",
+    "evidence_level": "medio",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "diretriz oficial da fabricante sobre como posicionar as lentes ocupacionais visando produtividade em distâncias intermediárias"
+    ],
+    "source_urls": [
+      "https://www.hoyavision.com/br/produtos/"
+    ]
+  },
+  {
+    "entity_name": "Nulux iDentity V+",
+    "entity_type": "subfamily",
+    "manufacturer_or_brand": "HOYA",
+    "category": "visao_simples",
+    "recommended_for": [
+      "Míopes/hipermetropes/astigmatas com alta exigência estética e visual"
+    ],
+    "not_ideal_for": [
+      "Baixas ametropias onde a personalização não gera ganho perceptível que justifique o custo"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "Visão de alta definição",
+      "Estética superior"
+    ],
+    "usage_tags": [
+      "Uso geral"
+    ],
+    "technology_tags": [
+      "Personalizada"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Visão simples premium, com foco em personalização extrema para reduzir distorções periféricas.",
+    "recommendation_notes": "Ideal para indicar em graus elevados ou usuários de armações curvadas onde a ótica asférica personalizada faz diferença.",
+    "evidence_level": "medio",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "Mapeia os diferenciais entre os produtos Nulux iDentity V+ (personalizada) e Nulux TrueForm (otimizada)."
+    ],
+    "source_urls": [
+      "https://www.hoyavision.com/br/produtos/lentes-monofocais/"
+    ]
+  },
+  {
+    "entity_name": "Nulux TrueForm",
+    "entity_type": "subfamily",
+    "manufacturer_or_brand": "HOYA",
+    "category": "visao_simples",
+    "recommended_for": [
+      "Usuários de visão simples que buscam melhoria frente às lentes surfaçadas tradicionais"
+    ],
+    "not_ideal_for": [
+      "Não especificado nas fontes"
+    ],
+    "positioning": "intermediaria",
+    "benefit_tags": [
+      "Otimização óptica",
+      "Melhor campo visual que o padrão"
+    ],
+    "usage_tags": [
+      "Uso geral"
+    ],
+    "technology_tags": [
+      "Otimizada (TrueForm)"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Posicionada como um upgrade direto das lentes visão simples padrão, entregando tecnologia otimizada a um custo acessível.",
+    "recommendation_notes": "Boa para preencher a faixa 'equilibrada' na matriz de recomendação de visão simples.",
+    "evidence_level": "medio",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "Nulux TrueForm (otimizada)."
+    ],
+    "source_urls": [
+      "https://www.hoyavision.com/br/produtos/lentes-monofocais/"
+    ]
+  },
+  {
+    "entity_name": "Sync III",
+    "entity_type": "subfamily",
+    "manufacturer_or_brand": "HOYA",
+    "category": "visao_simples",
+    "recommended_for": [
+      "Jovens e adultos (13 a 45 anos)",
+      "Pessoas com sintomas de fadiga ocular digital",
+      "Estudantes e profissionais altamente conectados"
+    ],
+    "not_ideal_for": [
+      "Pacientes acima de 45 anos (indicação de progressivas padrão)"
+    ],
+    "positioning": "intermediaria",
+    "benefit_tags": [
+      "Redução da fadiga digital",
+      "Descanso ocular"
+    ],
+    "usage_tags": [
+      "Telas",
+      "Smartphones",
+      "Leitura prolongada"
+    ],
+    "technology_tags": [
+      "Reforço acomodativo (Booster)"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Vendido como uma lente monofocal avançada de uso diário, desenhada especificamente para a era digital e alívio do esforço acomodativo.",
+    "recommendation_notes": "Sempre associar ao tratamento BlueControl para recomendação ideal de 'pacote digital'. Fazer filtro rigoroso por idade na recomendação.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "público jovem-adulto (13 a 45 anos) e os perfis de fadiga digital que se enquadram nesta solução avançada"
+    ],
+    "source_urls": [
+      "https://www.hoyavision.com/br/produtos/lentes-monofocais/sync-iii/"
+    ]
+  },
+  {
+    "entity_name": "EnRoute",
+    "entity_type": "subfamily",
+    "manufacturer_or_brand": "HOYA",
+    "category": "visao_simples",
+    "recommended_for": [
+      "Motoristas frequentes",
+      "Pessoas que dirigem à noite e sentem desconforto com faróis"
+    ],
+    "not_ideal_for": [
+      "Profissionais que necessitam de fidelidade extrema de cores fora da direção"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "Redução de ofuscamento",
+      "Melhor contraste em baixa luz"
+    ],
+    "usage_tags": [
+      "Direção",
+      "Noturno"
+    ],
+    "technology_tags": [
+      "Filtro contra ofuscamento"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Lente de nicho focada em mobilidade e segurança no trânsito.",
+    "recommendation_notes": "Oferecida nas versões Visão Simples e Progressiva. Recomendar com base no perfil de 'horas ao volante'.",
+    "evidence_level": "medio",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "lentes de direção (redução de ofuscamento)"
+    ],
+    "source_urls": [
+      "https://www.hoyavision.com/br/produtos/lentes-especiais/"
+    ]
+  },
+  {
+    "entity_name": "Sportive",
+    "entity_type": "subfamily",
+    "manufacturer_or_brand": "HOYA",
+    "category": "visao_simples",
+    "recommended_for": [
+      "Praticantes de esportes ao ar livre",
+      "Usuários de armações curvadas esportivas"
+    ],
+    "not_ideal_for": [
+      "Armações clássicas e planas de uso em escritório"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "Estética em armações curvadas",
+      "Proteção (quando em PNX)"
+    ],
+    "usage_tags": [
+      "Esporte",
+      "Outdoor",
+      "Ação"
+    ],
+    "technology_tags": [
+      "Cálculo óptico para curvatura base alta"
+    ],
+    "material_tags": [
+      "Ideal associar a materiais resistentes (PNX)"
+    ],
+    "commercial_summary": "Direcionada a um público ativo, solucionando o problema de distorção óptica em armações de design esportivo/envolvente.",
+    "recommendation_notes": "Sempre alinhar a recomendação técnica com a armação escolhida pelo cliente no sistema.",
+    "evidence_level": "medio",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "prática esportiva (curvatura e resistência)"
+    ],
+    "source_urls": [
+      "https://www.hoyavision.com/br/produtos/lentes-especiais/"
+    ]
+  },
+  {
+    "entity_name": "MiYOSMART",
+    "entity_type": "family",
+    "manufacturer_or_brand": "HOYA",
+    "category": "controle_miopia",
+    "recommended_for": [
+      "Crianças e adolescentes em fase de crescimento e desenvolvimento da miopia"
+    ],
+    "not_ideal_for": [
+      "Adultos com miopia estabilizada",
+      "Crianças sem acompanhamento médico especializado"
+    ],
+    "positioning": "ultra_premium",
+    "benefit_tags": [
+      "Desaceleração da miopia",
+      "Proteção infantil"
+    ],
+    "usage_tags": [
+      "Uso diário contínuo",
+      "Infantil"
+    ],
+    "technology_tags": [
+      "Tecnologia DIMS"
+    ],
+    "material_tags": [
+      "Requer material resistente (geralmente Policarbonato especializado na versão DIMS)"
+    ],
+    "commercial_summary": "Tratamento clínico com validação científica (baseado em evidências) para controle miópico, não apenas correção. Posicionamento de saúde em vez de estética.",
+    "recommendation_notes": "Requer indicação médica rigorosa. A recomendação não deve ser tratada como lente comum, mas como protocolo clínico.",
+    "evidence_level": "alto",
+    "evidence_type": "clinico_especializado",
+    "source_quotes_or_points": [
+      "Traz os dados do ensaio clínico, índices de desaceleração da miopia e protocolos rigorosos de indicação"
+    ],
+    "source_urls": [
+      "https://www.hoyavision.com/br/produtos/miyosmart/"
+    ]
+  },
+  {
+    "entity_name": "Eyvia (1.74) / Eynoa (1.67) / Eyas (1.60)",
+    "entity_type": "material",
+    "manufacturer_or_brand": "HOYA",
+    "category": "material",
+    "recommended_for": [
+      "Altas ametropias (miopia/hipermetropia elevadas)",
+      "Pacientes que buscam lentes extremamente finas e leves"
+    ],
+    "not_ideal_for": [
+      "Graus muito baixos (plano a +/- 1.50) onde o custo extra não compensa o ganho de espessura"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "Leveza extrema",
+      "Fina espessura (Estética)",
+      "Boa qualidade óptica"
+    ],
+    "usage_tags": [
+      "Estética superior"
+    ],
+    "technology_tags": [
+      "Alto Índice de Refração"
+    ],
+    "material_tags": [
+      "1.60",
+      "1.67",
+      "1.74"
+    ],
+    "commercial_summary": "Linha de resinas de alto índice proprietárias da HOYA, focadas no benefício estético de redução de bordas ou centro.",
+    "recommendation_notes": "O sistema deve acionar a recomendação desses materiais proporcionalmente ao aumento da dioptria informada na receita.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "destacando características de leveza, ótica e resistência."
+    ],
+    "source_urls": [
+      "https://www.hoyavision.com/br/produtos/materiais/"
+    ]
+  },
+  {
+    "entity_name": "PNX (1.53)",
+    "entity_type": "material",
+    "manufacturer_or_brand": "HOYA",
+    "category": "material",
+    "recommended_for": [
+      "Crianças",
+      "Esportistas",
+      "Usuários de armações grifadas/parafusadas (Balgriff) ou Nylor"
+    ],
+    "not_ideal_for": [
+      "Miopias muito elevadas onde índices como 1.67 ou 1.74 ofereceriam bordas bem mais finas"
+    ],
+    "positioning": "intermediaria",
+    "benefit_tags": [
+      "Alta resistência a impactos",
+      "Leveza",
+      "Qualidade óptica superior ao Policarbonato padrão"
+    ],
+    "usage_tags": [
+      "Segurança",
+      "Armações frágeis"
+    ],
+    "technology_tags": [
+      "Semelhante ao Trivex"
+    ],
+    "material_tags": [
+      "1.53"
+    ],
+    "commercial_summary": "Material focado em resistência mecânica e segurança ocular, posicionado como o concorrente direto do Trivex, superior ao policarbonato na qualidade óptica (Valor ABBE).",
+    "recommendation_notes": "A regra de recomendação deve torná-lo obrigatório em armações balgriff (parafusadas) para evitar quebra da lente, e fortemente sugerido para crianças.",
+    "evidence_level": "alto",
+    "evidence_type": "apoio_secundario",
+    "source_quotes_or_points": [
+      "o PNX da Hoya concorre com o Trivex",
+      "limitações físicas (furações em armações balgriff)"
+    ],
+    "source_urls": [
+      "https://www.2020mag.com/",
+      "https://www.hoyavision.com/br/produtos/materiais/"
+    ]
+  },
+  {
+    "entity_name": "BlueControl / UVControl / LongLife",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "HOYA",
+    "category": "tratamento",
+    "recommended_for": [
+      "Todos os perfis de usuários",
+      "Trabalhadores digitais intensos (BlueControl)"
+    ],
+    "not_ideal_for": [
+      "Fotógrafos ou designers gráficos rigorosos com colorimetria (podem preferir um AR neutro sem filtro azul aparente)"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "Durabilidade do antirreflexo",
+      "Filtro de luz azul nociva",
+      "Proteção UV aprimorada"
+    ],
+    "usage_tags": [
+      "Telas",
+      "Uso diário",
+      "Ambiente externo (UV)"
+    ],
+    "technology_tags": [
+      "Tratamento AR de superfície"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Gama de tratamentos de superfície para aumentar vida útil, facilitar a limpeza e agregar proteção de saúde ocular frente a telas e sol.",
+    "recommendation_notes": "Devem ser sugeridos como upsell na jornada final. BlueControl é altamente sinérgico com a lente Sync III.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "propriedades e níveis de durabilidade das famílias LongLife, BlueControl e UVControl, essenciais para o upsell no seu sistema"
+    ],
+    "source_urls": [
+      "https://www.hoyavision.com/br/produtos/antirreflexo/"
+    ]
+  },
+  {
+    "entity_name": "Sensity",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "HOYA",
+    "category": "tratamento",
+    "recommended_for": [
+      "Pessoas com fotofobia (sensibilidade à luz)",
+      "Usuários frequentes de transição entre ambientes internos e externos"
+    ],
+    "not_ideal_for": [
+      "Pessoas que trabalham 100% do tempo em escritórios fechados sem necessidade de escurecimento"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "Conforto visual extremo",
+      "Adaptação automática à luminosidade",
+      "Estética de sol e grau numa só lente"
+    ],
+    "usage_tags": [
+      "Outdoor",
+      "Indoor",
+      "Sensibilidade à luz"
+    ],
+    "technology_tags": [
+      "Tecnologia Fotossensível"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Solução fotossensível da HOYA, vendida por sua resposta rápida de escurecimento e clareamento para máximo conforto do dia a dia.",
+    "recommendation_notes": "Excelente indicador de conforto e luxo no sistema. Questionar se o usuário se sente incomodado pela luz do sol para acionar o gatilho de recomendação.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "Descreve a resposta fotossensível, a paleta de cores oferecida e o posicionamento de conforto contra luz intensa"
+    ],
+    "source_urls": [
+      "https://www.hoyavision.com/br/produtos/sensity/"
+    ]
+  }
+]

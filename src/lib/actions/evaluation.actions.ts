@@ -215,7 +215,8 @@ const SaveEvaluationSchema = z
     extractedText: z.string().nullable().optional(),
     rawPayloadJson: z.record(z.string(), z.unknown()).nullable().optional(),
     parseWarning: z.string().nullable().optional(),
-    documentHash: z.string().nullable().optional()
+    documentHash: z.string().nullable().optional(),
+    employeeId: z.coerce.number().nullable().optional()
   })
   .superRefine((data, ctx) => {
     const hasCustomer = !!data.evaluatedCustomerId
@@ -315,6 +316,7 @@ export async function saveOpticalEvaluation(
     evaluated_customer_id: data.evaluatedCustomerId ?? null,
     evaluated_dependente_id: data.evaluatedDependenteId ?? null,
     responsible_customer_id: data.responsibleCustomerId ?? null,
+    employee_id: data.employeeId ?? null,
     imported_by_user_id: auth.userId,
     source_system: data.sourceSystem,
     status: derivedStatus,

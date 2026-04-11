@@ -39,6 +39,11 @@ export default async function AvaliacaoPage({
         versao: overview.currentActivation.versao,
       }
     : null
+  const activeCatalogs = overview.activeActivations.map((activation) => ({
+    versionId: activation.id,
+    laboratorio: activation.laboratorio,
+    versao: activation.versao,
+  }))
 
-  return <EvaluationInterface activeCatalog={activeCatalog} />
+  return <EvaluationInterface activeCatalog={activeCatalog} activeCatalogs={activeCatalogs} />
 }

@@ -1,0 +1,122 @@
+{
+  "document_name": "Tabela Optilab 2026 - PVC - Digital v2",
+  "pages": [
+    {
+      "page_number": 15,
+      "family_name": "VARILUX® Physio® Extensee™",
+      "section_name": "DIGITAL",
+      "subsection_name": null,
+      "table_type": "pricing_matrix",
+      "notes": [
+        "Sempre com Crizal, melhor com Transitions ou Blue UV Filter.",
+        "Preços em pares e em reais",
+        "Cilíndrico até -6,00",
+        "Adição 1,00 a 3,50 (Stylis 1.74: 1,00 a 4,00)",
+        "Alt. Mínima 14mm"
+      ],
+      "offers": [
+        {
+          "raw_label": "Orma",
+          "material": "Orma",
+          "indice_refracao": "1.50",
+          "codes": ["15668","15669","15670","15671","15672"],
+          "prices": [
+            {"label": "CRIZAL PREVENCIA", "price": 3819.00},
+            {"label": "CRIZAL SAPPHIRE HR", "price": 3819.00},
+            {"label": "CRIZAL ROCK", "price": 3549.00},
+            {"label": "CRIZAL EASY PRO", "price": 3199.00},
+            {"label": "CRIZAL OPTIFOG", "price": 3439.00}
+          ],
+          "grid_text": "-11,00 a +7,00",
+          "source_excerpt": "Orma 3.819,00 3.819,00 3.549,00 3.199,00 3.439,00"
+        },
+        {
+          "raw_label": "Orma + Transitions Gen S",
+          "material": "Orma",
+          "indice_refracao": "1.50",
+          "codes": ["15680","15681","15682","15683","15684","15686","15687","15688","15689","15690","15692","15693","15694","15695","15696"],
+          "prices": [
+            {"label": "CRIZAL PREVENCIA", "price": 4919.00},
+            {"label": "CRIZAL SAPPHIRE HR", "price": 4919.00},
+            {"label": "CRIZAL ROCK", "price": 4649.00},
+            {"label": "CRIZAL EASY PRO", "price": 4299.00},
+            {"label": "CRIZAL OPTIFOG", "price": 4539.00}
+          ],
+          "grid_text": "-11,00 a +7,00",
+          "source_excerpt": "+ Transitions Gen S 4.919,00 4.919,00 4.649,00 4.299,00 4.539,00"
+        },
+        {
+          "raw_label": "Airwear",
+          "material": "Airwear",
+          "indice_refracao": "1.59",
+          "codes": ["15705","15706","15707","15708","15709"],
+          "prices": [
+            {"label": "CRIZAL PREVENCIA", "price": 4119.00},
+            {"label": "CRIZAL SAPPHIRE HR", "price": 4119.00},
+            {"label": "CRIZAL ROCK", "price": 3849.00},
+            {"label": "CRIZAL EASY PRO", "price": 3499.00},
+            {"label": "CRIZAL OPTIFOG", "price": 3739.00}
+          ],
+          "grid_text": "-12,00 a +7,00",
+          "source_excerpt": "Airwear 4.119,00 4.119,00 3.849,00 3.499,00 3.739,00"
+        },
+        {
+          "raw_label": "Airwear + Transitions Gen S",
+          "material": "Airwear",
+          "indice_refracao": "1.59",
+          "codes": ["15711","15712","15713","15714","15715","15717","15718","15719","15720","15721","15723","15724","15725","15726","15727","15729","15730","15731","15732","15733","15735","15736","15737","15738","15739","15741","15742","15743","15744","15745","15747","15748","15749","15750","15751","15753","15754","15755","15756","15757"],
+          "prices": [
+            {"label": "CRIZAL PREVENCIA", "price": 5219.00},
+            {"label": "CRIZAL SAPPHIRE HR", "price": 5219.00},
+            {"label": "CRIZAL ROCK", "price": 4949.00},
+            {"label": "CRIZAL EASY PRO", "price": 4599.00},
+            {"label": "CRIZAL OPTIFOG", "price": 4839.00}
+          ],
+          "grid_text": "-12,00 a +7,00",
+          "source_excerpt": "+ Transitions Gen S 5.219,00 5.219,00 4.949,00 4.599,00 4.839,00"
+        },
+        {
+          "raw_label": "Stylis 1.67",
+          "material": "Stylis",
+          "indice_refracao": "1.67",
+          "codes": ["15765","15766","15767","15768","15769"],
+          "prices": [
+            {"label": "CRIZAL PREVENCIA", "price": 6109.00},
+            {"label": "CRIZAL SAPPHIRE HR", "price": 6109.00},
+            {"label": "CRIZAL ROCK", "price": 5839.00},
+            {"label": "CRIZAL EASY PRO", "price": 5489.00},
+            {"label": "CRIZAL OPTIFOG", "price": 5729.00}
+          ],
+          "grid_text": "-14,00 a +10,00",
+          "source_excerpt": "Stylis 1.67 6.109,00 6.109,00 5.839,00 5.489,00 5.729,00"
+        }
+      ],
+      "services": [
+        {
+          "name": "Orma VERNIZ HC",
+          "price": 2979.00,
+          "unit": null,
+          "source_excerpt": "Orma 2.979,00"
+        },
+        {
+          "name": "Orma + Coloração especial",
+          "price": 3089.00,
+          "unit": null,
+          "source_excerpt": "+ Coloração especial 3.089,00"
+        },
+        {
+          "name": "Airwear VERNIZ HC",
+          "price": 3279.00,
+          "unit": null,
+          "source_excerpt": "Airwear 3.279,00"
+        },
+        {
+          "name": "Airwear + Coloração especial",
+          "price": 3389.00,
+          "unit": null,
+          "source_excerpt": "3.389,00"
+        }
+      ]
+    }
+  ]
+}

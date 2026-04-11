@@ -1,0 +1,58 @@
+[
+  {
+    "rule_id": "R1",
+    "rule_text": "Indice de refracao maior reduz espessura, especialmente em graus mais altos.",
+    "rule_type": "geometria",
+    "applies_when": "grau_moderado_ou_alto",
+    "confidence_notes": "Beneficio cresce com o grau e depende do ED e descentração."
+  },
+  {
+    "rule_id": "R2",
+    "rule_text": "Em graus baixos, o ganho de espessura com indice alto tende a ser pequeno.",
+    "rule_type": "heuristica_disp",
+    "applies_when": "grau_baixo",
+    "confidence_notes": "Nao existe um corte universal, usar faixa aproximada."
+  },
+  {
+    "rule_id": "R3",
+    "rule_text": "ED (diametro efetivo) e descentração impactam mais na espessura que o indice.",
+    "rule_type": "geometria",
+    "applies_when": "sempre",
+    "confidence_notes": "Armacoes grandes podem anular ganho de indice."
+  },
+  {
+    "rule_id": "R4",
+    "rule_text": "Miopia aumenta espessura na borda; hipermetropia aumenta no centro.",
+    "rule_type": "optica_basica",
+    "applies_when": "sempre",
+    "confidence_notes": "Regra geometrica classica."
+  },
+  {
+    "rule_id": "R5",
+    "rule_text": "Indice alto costuma reduzir Abbe (mais aberracao cromatica).",
+    "rule_type": "tradeoff_optico",
+    "applies_when": "indice_alto",
+    "confidence_notes": "Compensar com centragem e tamanho de armacao."
+  },
+  {
+    "rule_id": "R6",
+    "rule_text": "Indice alto aumenta reflexao superficial e pede antirreflexo de qualidade.",
+    "rule_type": "tradeoff_optico",
+    "applies_when": "indice_alto",
+    "confidence_notes": "Sem AR, reflexos podem piorar conforto."
+  },
+  {
+    "rule_id": "R7",
+    "rule_text": "Em graus altos, indice baixo tende a gerar lente mais grossa e pesada.",
+    "rule_type": "heuristica_disp",
+    "applies_when": "grau_alto",
+    "confidence_notes": "Especialmente acima de ~4.00D."
+  },
+  {
+    "rule_id": "R8",
+    "rule_text": "Escolha da armacao pode impactar mais que o material na espessura final.",
+    "rule_type": "decisao_pratica",
+    "applies_when": "sempre",
+    "confidence_notes": "Armacoes menores e bem centradas reduzem espessura."
+  }
+]

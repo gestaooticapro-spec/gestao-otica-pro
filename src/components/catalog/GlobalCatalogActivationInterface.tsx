@@ -3,7 +3,16 @@
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { CheckCircle2, Clock3, Database, Layers3, RefreshCcw, ShieldCheck, Sparkles, Tag } from 'lucide-react'
+import {
+  CheckCircle2,
+  Clock3,
+  Database,
+  Layers3,
+  RefreshCcw,
+  ShieldCheck,
+  Sparkles,
+  Tag,
+} from 'lucide-react'
 import {
   activateGlobalCatalogForStore,
   type StoreCatalogOverview,
@@ -15,11 +24,7 @@ function formatDate(value: string | null) {
   return new Date(value).toLocaleString('pt-BR')
 }
 
-function VersionStatusBadge({
-  status,
-}: {
-  status: string
-}) {
+function VersionStatusBadge({ status }: { status: string }) {
   const tone =
     status === 'published'
       ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/30'
@@ -28,7 +33,9 @@ function VersionStatusBadge({
         : 'bg-slate-500/15 text-slate-300 border-slate-400/20'
 
   return (
-    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${tone}`}>
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${tone}`}
+    >
       {status}
     </span>
   )
@@ -49,7 +56,9 @@ function ActivationBadge({
         : 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-400/30'
 
   return (
-    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${tone}`}>
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${tone}`}
+    >
       {activation.status === 'active' ? 'Ativa nesta loja' : activation.status}
     </span>
   )
@@ -59,15 +68,21 @@ function VersionCard({
   storeId,
   version,
   isCurrent,
+  replacesSameLabActive,
 }: {
   storeId: number
   version: StoreCatalogVersionSummary
   isCurrent: boolean
+  replacesSameLabActive: boolean
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
-  const buttonLabel = isCurrent ? 'Re-sincronizar versão' : 'Ativar nesta loja'
+  const buttonLabel = isCurrent
+    ? 'Re-sincronizar versão'
+    : replacesSameLabActive
+      ? 'Ativar e substituir versão'
+      : 'Ativar nesta loja'
 
   const handleActivate = () => {
     startTransition(async () => {
@@ -78,9 +93,7 @@ function VersionCard({
       }
 
       toast.success(
-        isCurrent
-          ? 'Catálogo re-sincronizado com sucesso.'
-          : 'Catálogo ativado nesta loja.',
+        isCurrent ? 'Catálogo re-sincronizado com sucesso.' : 'Catálogo ativado nesta loja.',
       )
       router.refresh()
     })
@@ -96,7 +109,12 @@ function VersionCard({
             {isCurrent && (
               <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/25 bg-cyan-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                Catálogo vigente
+                Catálogo ativo deste laboratório
+              </span>
+            )}
+            {!isCurrent && replacesSameLabActive && (
+              <span className="inline-flex items-center rounded-full border border-amber-400/25 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">
+                Substitui a versão ativa deste laboratório
               </span>
             )}
           </div>
@@ -173,7 +191,11 @@ function VersionCard({
             disabled={isPending}
             className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-500 px-4 py-3 font-black text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isPending ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+            {isPending ? (
+              <RefreshCcw className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCcw className="h-4 w-4" />
+            )}
             {buttonLabel}
           </button>
         </div>
@@ -198,6 +220,14 @@ export default function GlobalCatalogActivationInterface({
     )
   }, [overview.versions, search])
 
+  const activeByLaboratorio = useMemo(
+    () =>
+      new Map(
+        overview.activeActivations.map((activation) => [activation.laboratorio, activation.id]),
+      ),
+    [overview.activeActivations],
+  )
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-6 py-8">
@@ -208,33 +238,40 @@ export default function GlobalCatalogActivationInterface({
                 Catálogo Global
               </p>
               <h1 className="mt-2 text-4xl font-black tracking-tight text-white">
-                Ative uma tabela de laboratório nesta loja
+                Ative tabelas de laboratório nesta loja
               </h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-                Escolha a versão global que ficará vigente para a loja. A ativação cria
-                um snapshot local em <span className="font-semibold text-white">ofertas</span> e
-                <span className="font-semibold text-white"> tratamentos</span>, preservando o histórico
-                e preparando a base para recomendação por IA e tabela visual.
+                A loja pode manter vários fornecedores ativos ao mesmo tempo. Ao ativar uma nova
+                versão do <span className="font-semibold text-white">mesmo laboratório</span>, a
+                versão anterior desse fornecedor é substituída. Cada ativação cria um snapshot
+                local em <span className="font-semibold text-white">ofertas</span> e{' '}
+                <span className="font-semibold text-white">tratamentos</span>, preservando o
+                histórico e preparando a base para recomendação por IA e tabela visual.
               </p>
             </div>
 
             <div className="w-full max-w-md rounded-3xl border border-cyan-400/15 bg-black/20 p-5">
               <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
-                Catálogo ativo
+                Catálogos ativos
               </p>
-              {overview.currentActivation ? (
-                <div className="mt-3">
-                  <p className="text-lg font-black text-white">
-                    {overview.currentActivation.laboratorio}
-                  </p>
-                  <p className="text-sm text-slate-300">{overview.currentActivation.versao}</p>
-                  <p className="mt-2 text-xs text-slate-500">
-                    Ativado em {formatDate(overview.currentActivation.activation?.activatedAt || null)}
-                  </p>
+              {overview.activeActivations.length ? (
+                <div className="mt-3 space-y-3">
+                  {overview.activeActivations.map((activation) => (
+                    <div
+                      key={activation.id}
+                      className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3"
+                    >
+                      <p className="text-sm font-black text-white">{activation.laboratorio}</p>
+                      <p className="text-sm text-slate-300">{activation.versao}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Ativado em {formatDate(activation.activation?.activatedAt || null)}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <p className="mt-3 text-sm text-slate-400">
-                  Ainda não existe uma tabela global ativa nesta loja.
+                  Ainda não existe nenhuma tabela global ativa nesta loja.
                 </p>
               )}
             </div>
@@ -247,7 +284,9 @@ export default function GlobalCatalogActivationInterface({
               Versões disponíveis para ativação
             </p>
             <p className="text-xs text-slate-500">
-              Você pode ativar uma versão nova ou re-sincronizar a que já está em uso.
+              Você pode ativar fornecedores diferentes em paralelo e re-sincronizar qualquer
+              versão já ativa. Ao ativar uma nova versão do mesmo laboratório, a anterior é
+              desativada automaticamente.
             </p>
           </div>
 
@@ -265,7 +304,11 @@ export default function GlobalCatalogActivationInterface({
               key={version.id}
               storeId={overview.storeId}
               version={version}
-              isCurrent={overview.currentActivation?.id === version.id}
+              isCurrent={version.activation?.status === 'active'}
+              replacesSameLabActive={
+                Boolean(activeByLaboratorio.get(version.laboratorio)) &&
+                activeByLaboratorio.get(version.laboratorio) !== version.id
+              }
             />
           ))}
 

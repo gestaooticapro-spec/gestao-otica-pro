@@ -109,9 +109,6 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
 
   return (
     <div className="h-full overflow-hidden relative font-sans">
-
-
-
       <div className="relative z-10 h-full overflow-y-auto custom-scrollbar">
         <div className="max-w-7xl mx-auto w-full p-4 lg:p-8 space-y-8">
 
@@ -240,12 +237,6 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
               </div>
 
               <div className="space-y-6">
-                {/* 
-                    Nota: Os widgets internos (Aniversariantes, etc) ainda têm fundo branco.
-                    Para não quebrar o layout interno deles agora, vou mantê-los, mas 
-                    podemos envelopar em um container semi-transparente para suavizar.
-                 */}
-
                 {/* Widget Vencimentos */}
                 <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
                   <WidgetVencimentos dados={vencimentos} storeName={storeName} />
@@ -278,7 +269,7 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
 
         {/* Footer discreto */}
         <div className="py-6 text-center">
-          <p className="text-[10px] text-slate-600 font-medium tracking-widest uppercase">NeoManager 2.0 • {storeName}</p>
+          <p className="text-[10px] text-slate-600 font-medium tracking-widest uppercase">MBOptical • {storeName}</p>
         </div>
       </div>
 

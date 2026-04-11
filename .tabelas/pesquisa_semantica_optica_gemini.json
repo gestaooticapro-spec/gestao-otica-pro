@@ -1,0 +1,581 @@
+[
+  {
+    "entity_name": "Varilux XR",
+    "entity_type": "family",
+    "manufacturer_or_brand": "Essilor",
+    "category": "progressiva",
+    "recommended_for": [
+      "usuários exigentes",
+      "visão em movimento",
+      "alta demanda visual dinâmica"
+    ],
+    "not_ideal_for": [
+      "orçamentos restritos",
+      "materiais incompatíveis indicados na tabela de marcação"
+    ],
+    "positioning": "ultra_premium",
+    "benefit_tags": [
+      "transição fluida",
+      "estabilidade em movimento"
+    ],
+    "usage_tags": [
+      "uso contínuo",
+      "dinâmico"
+    ],
+    "technology_tags": [
+      "tecnologia preditiva",
+      "freeform avançado"
+    ],
+    "material_tags": [
+      "Orma",
+      "Airwear",
+      "Stylis"
+    ],
+    "commercial_summary": "Linha ultra premium da Essilor voltada para visão em movimento e alta tecnologia de transição.",
+    "recommendation_notes": "Forte candidata para clientes de alto padrão que buscam a mais recente tecnologia da marca para adaptação imediata e conforto dinâmico.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "posicionamento comercial de cada lente (ex: XR series para visão em movimento)"
+    ],
+    "source_urls": [
+      "https://www.essilor.com/br-pt/produtos/varilux/"
+    ]
+  },
+  {
+    "entity_name": "Varilux Liberty",
+    "entity_type": "family",
+    "manufacturer_or_brand": "Essilor",
+    "category": "progressiva",
+    "recommended_for": [
+      "primeiros usuários de multifocais",
+      "necessidades visuais básicas"
+    ],
+    "not_ideal_for": [
+      "usuários com alta demanda dinâmica",
+      "graus que exigem índices ultra-altos como 1.74"
+    ],
+    "positioning": "entrada",
+    "benefit_tags": [
+      "custo-benefício",
+      "adaptação tradicional"
+    ],
+    "usage_tags": [
+      "uso diário básico"
+    ],
+    "technology_tags": [
+      "transição básica"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Lente progressiva de entrada da Essilor para transições básicas e primeiro uso.",
+    "recommendation_notes": "Boa para clientes que buscam a marca Varilux mas possuem orçamento limitado ou demandas visuais menos complexas.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "Liberty para transição básica",
+      "não existe Varilux Liberty em material de ultra-alto índice 1.74"
+    ],
+    "source_urls": [
+      "https://www.essilor.com/br-pt/produtos/varilux/"
+    ]
+  },
+  {
+    "entity_name": "Kodak Unique",
+    "entity_type": "family",
+    "manufacturer_or_brand": "Kodak Lenses",
+    "category": "progressiva",
+    "recommended_for": [
+      "usuários digitais",
+      "transição suave entre distâncias"
+    ],
+    "not_ideal_for": [],
+    "positioning": "premium",
+    "benefit_tags": [
+      "conforto digital"
+    ],
+    "usage_tags": [
+      "uso contínuo",
+      "telas"
+    ],
+    "technology_tags": [
+      "digital premium"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Posicionada como a opção digital premium dentro do portfólio de progressivas da Kodak.",
+    "recommendation_notes": "Linha premium voltada a usuários que buscam qualidade visual superior dentro da marca Kodak, especialmente para uso de telas.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "direcionamento de mercado das lentes Unique... digital premium"
+    ],
+    "source_urls": [
+      "https://br.kodaklenses.com/lentes-multifocais/"
+    ]
+  },
+  {
+    "entity_name": "Kodak Network / Precise",
+    "entity_type": "family",
+    "manufacturer_or_brand": "Kodak Lenses",
+    "category": "progressiva",
+    "recommended_for": [
+      "orçamentos equilibrados",
+      "usuários de entrada"
+    ],
+    "not_ideal_for": [
+      "exigências visuais extremas"
+    ],
+    "positioning": "intermediaria",
+    "benefit_tags": [
+      "acessibilidade"
+    ],
+    "usage_tags": [
+      "uso diário"
+    ],
+    "technology_tags": [],
+    "material_tags": [],
+    "commercial_summary": "Lentes de entrada e perfil intermediário para composição de portfólio econômico.",
+    "recommendation_notes": "Boas opções de entrada e intermediárias para criar concorrência na tabela comercial contra linhas de entrada de outras marcas.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "mapear os perfis de usuários (entrada vs. digital premium) das lentes Unique, Precise e Network"
+    ],
+    "source_urls": [
+      "https://br.kodaklenses.com/lentes-multifocais/"
+    ]
+  },
+  {
+    "entity_name": "Eyezen (Start / Boost)",
+    "entity_type": "family",
+    "manufacturer_or_brand": "Essilor",
+    "category": "visao_simples",
+    "recommended_for": [
+      "usuários de telas",
+      "pacientes com fadiga visual",
+      "diferentes faixas etárias (Start vs Boost)"
+    ],
+    "not_ideal_for": [
+      "presbitas estabilizados (necessitam progressiva)"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "alívio de acomodação",
+      "redução de fadiga digital"
+    ],
+    "usage_tags": [
+      "telas",
+      "trabalho de perto"
+    ],
+    "technology_tags": [
+      "lentes digitais com suporte acomodativo"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Visão simples avançada com quebra de público-alvo por idade e nível de suporte acomodativo.",
+    "recommendation_notes": "Excelente para jovens e pré-presbitas. O sistema deve recomendar 'Start' para demandas mais jovens/leves e 'Boost' para quem precisa de mais suporte na leitura de perto.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "quebra de público-alvo pelas idades e necessidades de acomodação visual nas versões Start, Boost"
+    ],
+    "source_urls": [
+      "https://www.essilor.com/br-pt/produtos/eyezen/"
+    ]
+  },
+  {
+    "entity_name": "Eyezen Kids",
+    "entity_type": "subfamily",
+    "manufacturer_or_brand": "Essilor",
+    "category": "visao_simples",
+    "recommended_for": [
+      "crianças",
+      "uso de telas e dispositivos digitais"
+    ],
+    "not_ideal_for": [
+      "crianças com diagnóstico de miopia progressiva (indicar Stellest)"
+    ],
+    "positioning": "intermediaria",
+    "benefit_tags": [
+      "conforto digital infantil"
+    ],
+    "usage_tags": [
+      "telas",
+      "estudos"
+    ],
+    "technology_tags": [
+      "otimização pediátrica"
+    ],
+    "material_tags": [
+      "policarbonato (sugerido por segurança, cruzar com catálogo)"
+    ],
+    "commercial_summary": "Lente de visão simples focada no conforto visual e acomodação de crianças frente às telas.",
+    "recommendation_notes": "Posicionada para conforto digital infantil, NÃO é tratamento para miopia. Se houver miopia progressiva, a recomendação deve mudar para linhas de controle.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "acomodação visual nas versões... Kids"
+    ],
+    "source_urls": [
+      "https://www.essilor.com/br-pt/produtos/eyezen/"
+    ]
+  },
+  {
+    "entity_name": "Stellest",
+    "entity_type": "technology",
+    "manufacturer_or_brand": "Essilor",
+    "category": "controle_miopia",
+    "recommended_for": [
+      "crianças com miopia progressiva"
+    ],
+    "not_ideal_for": [
+      "adultos",
+      "crianças sem progressão miópica documentada (uso desnecessário da tecnologia)"
+    ],
+    "positioning": "ultra_premium",
+    "benefit_tags": [
+      "desaceleração da miopia",
+      "eficácia clínica comprovada"
+    ],
+    "usage_tags": [
+      "uso pediátrico contínuo"
+    ],
+    "technology_tags": [
+      "H.A.L.T."
+    ],
+    "material_tags": [
+      "exige material resistente (evitar Resina 1.50 comum)"
+    ],
+    "commercial_summary": "Tratamento clínico com tecnologia H.A.L.T. focado na desaceleração real do crescimento do eixo axial do olho infantil.",
+    "recommendation_notes": "Linha clínica premium. O sistema deve indicar exclusivamente quando houver receita pediátrica focada em controle de miopia, diferenciando-a de lentes apenas para conforto digital.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "tecnologia H.A.L.T., estudos de eficácia clínica e indicações rigorosas de uso para crianças com miopia progressiva",
+      "não dá para oferecer Stellest em Resina 1.50 comum sem tratamentos"
+    ],
+    "source_urls": [
+      "https://www.essilor.com/br-pt/produtos/stellest/"
+    ]
+  },
+  {
+    "entity_name": "Varilux Digitime",
+    "entity_type": "family",
+    "manufacturer_or_brand": "Essilor",
+    "category": "ocupacional",
+    "recommended_for": [
+      "trabalho em escritório",
+      "uso de computadores e telas",
+      "necessidade de amplos campos de perto e intermediário"
+    ],
+    "not_ideal_for": [
+      "direção de veículos",
+      "visão de longa distância externa"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "visão dinâmica",
+      "foco em distâncias Near, Mid e Room"
+    ],
+    "usage_tags": [
+      "escritório",
+      "telas",
+      "ambientes internos"
+    ],
+    "technology_tags": [
+      "mecânica moderna",
+      "freeform"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Lente ocupacional moderna, calculada de forma livre (freeform) para distâncias específicas de ambiente de trabalho.",
+    "recommendation_notes": "Forte candidata para presbitas que sofrem no computador com progressivas comuns. O sistema deve parametrizar a distância principal (Near, Mid, Room) para a recomendação.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "mecânica moderna das lentes ocupacionais (distâncias Near, Mid e Room)",
+      "modernas Digitime (freeform e dinâmicas)"
+    ],
+    "source_urls": [
+      "https://www.essilor.com/br-pt/produtos/varilux/digitime/"
+    ]
+  },
+  {
+    "entity_name": "Interview",
+    "entity_type": "family",
+    "manufacturer_or_brand": "Essilor",
+    "category": "ocupacional",
+    "recommended_for": [
+      "trabalho de perto estático",
+      "orçamentos limitados para segunda lente"
+    ],
+    "not_ideal_for": [
+      "dinâmica rápida de visão",
+      "ambientes que exigem profundidade de campo variável (Room)",
+      "direção"
+    ],
+    "positioning": "entrada",
+    "benefit_tags": [
+      "profundidade de leitura estendida básica"
+    ],
+    "usage_tags": [
+      "leitura",
+      "computador"
+    ],
+    "technology_tags": [
+      "regressão fixa (0.80 ou 1.30)"
+    ],
+    "material_tags": [
+      "Acrílica"
+    ],
+    "commercial_summary": "Tecnologia ocupacional antiga com fator de regressão fixo, atuando como um óculos de leitura com profundidade melhorada.",
+    "recommendation_notes": "Posicionada para entrada. O sistema deve sinalizar a limitação técnica (regressão fixa) em comparação com as ocupacionais dinâmicas (Digitime) para justificar a diferença de preço.",
+    "evidence_level": "medio",
+    "evidence_type": "clinico_especializado",
+    "source_quotes_or_points": [
+      "antiga linha Interview (acrílica, regressão fixa de 0.80 ou 1.30) das modernas Digitime (freeform e dinâmicas)"
+    ],
+    "source_urls": [
+      "http://oticabarreto.com.br/lentes-Multifocal"
+    ]
+  },
+  {
+    "entity_name": "Série MR (MR-8, MR-7, MR-174)",
+    "entity_type": "material",
+    "manufacturer_or_brand": "Mitsui Chemicals",
+    "category": "material",
+    "recommended_for": [
+      "altos graus (miopia/hipermetropia)",
+      "armações parafusadas (balgriff)",
+      "busca por estética e lentes finas"
+    ],
+    "not_ideal_for": [
+      "graus muito baixos onde o custo não justifica o benefício estético"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "alta resistência à tração",
+      "redução de espessura",
+      "excelente óptica (valor Abbe equilibrado)"
+    ],
+    "usage_tags": [
+      "estética",
+      "leveza"
+    ],
+    "technology_tags": [
+      "monômeros de alto índice"
+    ],
+    "material_tags": [
+      "1.60",
+      "1.67",
+      "1.74"
+    ],
+    "commercial_summary": "Materiais de alto e ultra-alto índice usados globalmente para afinar lentes em altos graus, mantendo alta resistência mecânica e qualidade óptica.",
+    "recommendation_notes": "Base de dados técnica pura. O sistema deve acionar a recomendação destes índices progressivamente conforme o grau do cliente aumenta, priorizando MR-8 (1.60) para graus médios e armações sem aro por sua resistência à tração.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "monômeros MR-8, MR-7 e MR-174 (usados no mundo todo para resinas 1.60, 1.67 e 1.74)",
+      "dados puros sobre resistência à tração, valor Abbe e dispersão cromática"
+    ],
+    "source_urls": [
+      "https://jp.mitsuichemicals.com/en/special/visioncare/assets/pdf/1-1/mr_brochure_po.pdf"
+    ]
+  },
+  {
+    "entity_name": "CR-39 / Resina 1.50",
+    "entity_type": "material",
+    "manufacturer_or_brand": "Genérico",
+    "category": "material",
+    "recommended_for": [
+      "graus baixos (esférico até +/- 2.00)",
+      "armações de aro fechado"
+    ],
+    "not_ideal_for": [
+      "armações parafusadas (risco de quebra)",
+      "graus altos (lente ficará espessa e pesada)",
+      "crianças (segurança ao impacto inferior ao policarbonato)"
+    ],
+    "positioning": "entrada",
+    "benefit_tags": [
+      "ótima qualidade óptica (alto valor Abbe)",
+      "baixo custo"
+    ],
+    "usage_tags": [
+      "uso geral básico"
+    ],
+    "technology_tags": [],
+    "material_tags": [
+      "acrílico",
+      "CR-39"
+    ],
+    "commercial_summary": "O material mais tradicional e econômico, com excelente qualidade óptica mas limitações estéticas em altas dioptrias.",
+    "recommendation_notes": "Padrão ouro de baixo custo. O sistema deve vetar recomendação para graus altos ou armações de três peças (parafusadas) devido à espessura e fragilidade.",
+    "evidence_level": "alto",
+    "evidence_type": "clinico_especializado",
+    "source_quotes_or_points": [
+      "relação peso x espessura x qualidade óptica",
+      "não dá para oferecer Stellest em Resina 1.50 comum"
+    ],
+    "source_urls": [
+      "https://submissoesrevistarcmos.com.br/rcmos/article/download/1429/3432"
+    ]
+  },
+  {
+    "entity_name": "Policarbonato / Trivex",
+    "entity_type": "material",
+    "manufacturer_or_brand": "Genérico",
+    "category": "material",
+    "recommended_for": [
+      "crianças (segurança)",
+      "praticantes de esportes",
+      "armações parafusadas / fio de nylon",
+      "graus moderados"
+    ],
+    "not_ideal_for": [
+      "pacientes extremamente sensíveis a dispersão cromática (Policarbonato tem menor Abbe)"
+    ],
+    "positioning": "intermediaria",
+    "benefit_tags": [
+      "alta resistência a impacto",
+      "leveza"
+    ],
+    "usage_tags": [
+      "esportes",
+      "infantil",
+      "segurança"
+    ],
+    "technology_tags": [],
+    "material_tags": [
+      "Policarbonato",
+      "Airwear",
+      "Trivex"
+    ],
+    "commercial_summary": "Materiais focados na resistência contra impactos e leveza, superando a resina 1.50 em segurança mecânica.",
+    "recommendation_notes": "Mandatório no sistema para perfis infantis e esportistas. O Trivex entrega melhor qualidade óptica que o Poli, o que pode justificar um degrau comercial entre eles.",
+    "evidence_level": "alto",
+    "evidence_type": "clinico_especializado",
+    "source_quotes_or_points": [
+      "relação peso x espessura x qualidade óptica entre CR-39, Policarbonato e Trivex"
+    ],
+    "source_urls": [
+      "https://submissoesrevistarcmos.com.br/rcmos/article/download/1429/3432"
+    ]
+  },
+  {
+    "entity_name": "Crizal (Easy Pro, Prevencia, Sapphire HR)",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "Essilor",
+    "category": "tratamento",
+    "recommended_for": [
+      "todos os usuários",
+      "dirigir à noite (Sapphire)",
+      "uso intenso de telas (Prevencia)"
+    ],
+    "not_ideal_for": [
+      "perfis de compra focados apenas em preço sem agregação de valor"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "transparência",
+      "anti-risco",
+      "repelência a sujeira/água",
+      "filtro de luz azul seletiva (Prevencia)"
+    ],
+    "usage_tags": [
+      "conforto visual",
+      "estética",
+      "telas (Prevencia)"
+    ],
+    "technology_tags": [
+      "antirreflexo multicamadas"
+    ],
+    "material_tags": [],
+    "commercial_summary": "A principal família de tratamentos antirreflexo da Essilor, dividida em degraus de benefícios (entrada da linha, foco em proteção e foco em máxima transparência).",
+    "recommendation_notes": "Estrutura de 'upsell' perfeita para o sistema: iniciar com Easy Pro, oferecer Prevencia se a tag do cliente for 'telas', e Sapphire HR se a tag for 'estética invisível' ou 'direção noturna'.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "escadinha de upsell dos tratamentos antirreflexo (Easy Pro, Prevencia, Sapphire HR)",
+      "benefícios técnicos atrelar a cada um"
+    ],
+    "source_urls": [
+      "https://www.essilor.com/br-pt/produtos/crizal/"
+    ]
+  },
+  {
+    "entity_name": "Transitions (Gen S / XTRActive)",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "Transitions Optical",
+    "category": "tratamento",
+    "recommended_for": [
+      "sensibilidade à luz (fotofobia)",
+      "praticidade (óculos de grau e sol no mesmo)",
+      "motoristas (XTRActive - ativa no carro)"
+    ],
+    "not_ideal_for": [
+      "pessoas que desejam lentes 100% transparentes o tempo todo em ambientes muito claros internamente"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "escurecimento inteligente",
+      "proteção UV",
+      "rapidez de desativação (Gen S)"
+    ],
+    "usage_tags": [
+      "uso misto interno/externo"
+    ],
+    "technology_tags": [
+      "fotossensível",
+      "ativação UV/Luz visível"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Tecnologia de lentes dinâmicas que escurecem no sol e clareiam em ambientes internos.",
+    "recommendation_notes": "O sistema deve recomendar XTRActive especificamente se o perfil do usuário incluir 'direção constante de dia', pois linhas tradicionais não ativam atrás do para-brisa.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "métricas de desempenho mais recentes das gerações fotossensíveis (Gen S, XTRActive)"
+    ],
+    "source_urls": [
+      "https://www.essilor.com/br-pt/produtos/transitions/"
+    ]
+  },
+  {
+    "entity_name": "Blue UV / Antirrisco Genéricos",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "Genérico",
+    "category": "tratamento",
+    "recommended_for": [
+      "proteção contra telas",
+      "aumento da vida útil da lente"
+    ],
+    "not_ideal_for": [
+      "profissionais de cor (designers/fotógrafos) devido ao residual amarelado"
+    ],
+    "positioning": "indefinido",
+    "benefit_tags": [
+      "filtro azul",
+      "proteção superficial"
+    ],
+    "usage_tags": [
+      "telas",
+      "luzes artificiais"
+    ],
+    "technology_tags": [
+      "absorção de massa ou tratamento de superfície"
+    ],
+    "material_tags": [
+      "acrílico",
+      "policarbonato"
+    ],
+    "commercial_summary": "Tratamentos básicos de filtro azul e proteção superficial aplicados em diversas resinas.",
+    "recommendation_notes": "Atenção técnica: o sistema deve registrar o risco de amarelamento progressivo ao longo do tempo (degradação UV) como um fato técnico a ser informado ou para justificar venda de tratamentos premium (como Crizal).",
+    "evidence_level": "medio",
+    "evidence_type": "clinico_especializado",
+    "source_quotes_or_points": [
+      "amarelamento e degradação de tratamentos anti-risco e Blue UV em acrílico (resina) e policarbonato",
+      "mapear a tag de cautelas e limitações"
+    ],
+    "source_urls": [
+      "https://repositorium.uminho.pt/bitstreams/f67b2819-d465-4f26-9bb0-3501af0cf548/download"
+    ]
+  }
+]

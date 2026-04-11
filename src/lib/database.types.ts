@@ -429,6 +429,7 @@ export interface Database {
           parse_warning: string | null
           document_hash: string | null
           exported_service_order_id: number | null
+          employee_id: number | null
         }
         Insert: {
           id?: number
@@ -485,6 +486,7 @@ export interface Database {
           parse_warning?: string | null
           document_hash?: string | null
           exported_service_order_id?: number | null
+          employee_id?: number | null
         }
         Update: {
           id?: number
@@ -541,6 +543,7 @@ export interface Database {
           parse_warning?: string | null
           document_hash?: string | null
           exported_service_order_id?: number | null
+          employee_id?: number | null
         }
       }
 

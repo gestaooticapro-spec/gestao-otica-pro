@@ -1,0 +1,297 @@
+[
+  {
+    "entity_name": "Tecnologia Freeform",
+    "entity_type": "technology",
+    "manufacturer_or_brand": "Gamalab",
+    "category": "progressiva",
+    "recommended_for": [
+      "usuários que buscam maior campo de visão",
+      "usuários sensíveis a distorções laterais",
+      "usuários que desejam lentes digitais mais modernas"
+    ],
+    "not_ideal_for": [
+      "não especificado nas fontes"
+    ],
+    "positioning": "intermediaria",
+    "benefit_tags": [
+      "campo de visão ampliado",
+      "redução de distorções",
+      "melhor adaptação visual"
+    ],
+    "usage_tags": [
+      "uso geral",
+      "visão dinâmica",
+      "rotina com múltiplas distâncias"
+    ],
+    "technology_tags": [
+      "freeform",
+      "surfaçagem digital",
+      "produção ponto a ponto"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Tecnologia base utilizada nas lentes digitais da Gamalab, posicionada como evolução das lentes convencionais.",
+    "recommendation_notes": "Boa para usuários que reclamam de distorção lateral ou dificuldade de adaptação em multifocais tradicionais.",
+    "evidence_level": "medio",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "produção ponto a ponto",
+      "aumento de campo de visão (~30%)",
+      "redução de distorções"
+    ],
+    "source_urls": [
+      "https://www.gamalab.com.br/"
+    ]
+  },
+  {
+    "entity_name": "Antirreflexo Sigma",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "Gamalab",
+    "category": "tratamento",
+    "recommended_for": [
+      "usuários que buscam maior transparência",
+      "uso noturno",
+      "uso com telas",
+      "usuários que desejam facilidade de limpeza"
+    ],
+    "not_ideal_for": [
+      "não especificado nas fontes"
+    ],
+    "positioning": "intermediaria",
+    "benefit_tags": [
+      "redução de reflexo",
+      "facilidade de limpeza",
+      "resistência a sujeira",
+      "melhor estética"
+    ],
+    "usage_tags": [
+      "direção noturna",
+      "uso digital",
+      "uso diário"
+    ],
+    "technology_tags": [
+      "multicamadas",
+      "hidrofóbico",
+      "antiestático",
+      "blue light filter"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Tratamento antirreflexo com múltiplas camadas e propriedades adicionais como hidrofobicidade e filtro de luz azul.",
+    "recommendation_notes": "Forte candidato para usuários que reclamam de reflexos, sujeira constante ou uso intenso de telas.",
+    "evidence_level": "medio",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "antirreflexo multicamada",
+      "hidrofóbico",
+      "antiestático",
+      "blue filter"
+    ],
+    "source_urls": [
+      "https://antirreflexosigma.com.br/"
+    ]
+  },
+  {
+    "entity_name": "Blue UV Filter",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "Essilor",
+    "category": "tratamento",
+    "recommended_for": [
+      "usuários expostos a luz azul",
+      "uso digital frequente",
+      "proteção UV ocular"
+    ],
+    "not_ideal_for": [
+      "não especificado nas fontes"
+    ],
+    "positioning": "intermediaria",
+    "benefit_tags": [
+      "proteção UV",
+      "filtragem de luz azul",
+      "conforto visual"
+    ],
+    "usage_tags": [
+      "uso com telas",
+      "uso prolongado",
+      "ambientes internos e externos"
+    ],
+    "technology_tags": [
+      "blue light filtering",
+      "UV protection"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Tecnologia integrada às lentes que combina proteção UV com filtragem de luz azul.",
+    "recommendation_notes": "Boa para usuários digitais, mas avaliar necessidade real conforme perfil.",
+    "evidence_level": "medio",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "Blue UV Filter",
+      "proteção UV integrada",
+      "filtragem de luz azul"
+    ],
+    "source_urls": [
+      "https://opticalaercio.com.br/wp-content/uploads/2023/03/Tabela-Consumidor-Essilor-X.pdf"
+    ]
+  },
+  {
+    "entity_name": "Lentes Kodak",
+    "entity_type": "family",
+    "manufacturer_or_brand": "Kodak",
+    "category": "indefinido",
+    "recommended_for": [
+      "usuários que buscam custo-benefício",
+      "usuários com necessidades básicas a intermediárias"
+    ],
+    "not_ideal_for": [
+      "usuários que buscam personalização avançada"
+    ],
+    "positioning": "intermediaria",
+    "benefit_tags": [
+      "custo-benefício",
+      "proteção UV",
+      "opções variadas"
+    ],
+    "usage_tags": [
+      "uso geral",
+      "uso diário"
+    ],
+    "technology_tags": [
+      "blue light",
+      "UV protection"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Linha de lentes com foco em acessibilidade e variedade de opções com recursos modernos básicos.",
+    "recommendation_notes": "Posicionada como alternativa equilibrada, especialmente quando custo é fator relevante.",
+    "evidence_level": "medio",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "categorias: multifocal, solar, visão simples",
+      "proteção UV",
+      "blue light"
+    ],
+    "source_urls": [
+      "https://lenteskodak.com.br/"
+    ]
+  },
+  {
+    "entity_name": "Materiais de Alto Índice (1.67 / 1.74)",
+    "entity_type": "material",
+    "manufacturer_or_brand": "indefinido",
+    "category": "material",
+    "recommended_for": [
+      "graus altos",
+      "usuários que buscam lentes mais finas",
+      "prioridade estética"
+    ],
+    "not_ideal_for": [
+      "graus baixos (custo desnecessário)"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "menor espessura",
+      "melhor estética",
+      "redução de peso relativa"
+    ],
+    "usage_tags": [
+      "uso diário",
+      "óculos discretos"
+    ],
+    "technology_tags": [],
+    "material_tags": [
+      "alto índice",
+      "1.67",
+      "1.74"
+    ],
+    "commercial_summary": "Materiais de alto índice utilizados para reduzir espessura em lentes de grau elevado.",
+    "recommendation_notes": "Forte candidato para graus altos; avaliar custo-benefício em graus baixos.",
+    "evidence_level": "medio",
+    "evidence_type": "apoio_secundario",
+    "source_quotes_or_points": [
+      "1.67 e 1.74 mais finos",
+      "redução de espessura",
+      "melhor estética"
+    ],
+    "source_urls": [
+      "https://www.oculosvine.com/lentes-multifocal-policarbonato"
+    ]
+  },
+  {
+    "entity_name": "Policarbonato (1.59)",
+    "entity_type": "material",
+    "manufacturer_or_brand": "indefinido",
+    "category": "material",
+    "recommended_for": [
+      "crianças",
+      "óculos de segurança",
+      "usuários que precisam de resistência a impacto"
+    ],
+    "not_ideal_for": [
+      "usuários que priorizam máxima qualidade óptica"
+    ],
+    "positioning": "intermediaria",
+    "benefit_tags": [
+      "alta resistência a impacto",
+      "leveza"
+    ],
+    "usage_tags": [
+      "uso infantil",
+      "uso esportivo",
+      "uso diário"
+    ],
+    "technology_tags": [],
+    "material_tags": [
+      "policarbonato",
+      "1.59"
+    ],
+    "commercial_summary": "Material leve e resistente, amplamente utilizado em situações que exigem segurança.",
+    "recommendation_notes": "Boa escolha para segurança, mas avaliar qualidade óptica comparada a outros materiais.",
+    "evidence_level": "medio",
+    "evidence_type": "apoio_secundario",
+    "source_quotes_or_points": [
+      "alta resistência",
+      "leveza",
+      "uso em segurança"
+    ],
+    "source_urls": [
+      "https://www.oculosvine.com/lentes-multifocal-policarbonato"
+    ]
+  },
+  {
+    "entity_name": "CR-39 (1.50)",
+    "entity_type": "material",
+    "manufacturer_or_brand": "indefinido",
+    "category": "material",
+    "recommended_for": [
+      "graus baixos",
+      "usuários que buscam custo-benefício"
+    ],
+    "not_ideal_for": [
+      "graus altos",
+      "usuários que buscam lentes finas"
+    ],
+    "positioning": "entrada",
+    "benefit_tags": [
+      "baixo custo",
+      "boa qualidade óptica"
+    ],
+    "usage_tags": [
+      "uso diário"
+    ],
+    "technology_tags": [],
+    "material_tags": [
+      "resina",
+      "1.50",
+      "CR-39"
+    ],
+    "commercial_summary": "Material tradicional com bom custo-benefício e qualidade óptica adequada.",
+    "recommendation_notes": "Forte candidato para usuários com grau baixo e foco em economia.",
+    "evidence_level": "medio",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "Orma (CR-39)",
+      "material padrão",
+      "boa qualidade óptica"
+    ],
+    "source_urls": [
+      "https://opticalaercio.com.br/wp-content/uploads/2023/03/Tabela-Consumidor-Essilor-X.pdf"
+    ]
+  }
+]

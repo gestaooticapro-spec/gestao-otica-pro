@@ -1,0 +1,205 @@
+{
+  "document_name": "Tabela Optilab 2026 - PVC - Digital v2",
+  "pages": [
+    {
+      "page_number": 11,
+      "family_name": "VARILUX® XR SERIES™",
+      "section_name": "DIGITAL",
+      "subsection_name": null,
+      "table_type": "pricing_matrix",
+      "notes": [
+        "Sempre com Crizal, melhor com Transitions ou Blue UV Filter.",
+        "Preços em pares e em reais",
+        "Cilíndrico até -6,00",
+        "Adição 1,00 a 3,50 (Stylis 1.74: 1,00 a 4,00)",
+        "Alt. Mínima 14mm"
+      ],
+      "offers": [
+        {
+          "raw_label": "Orma",
+          "material": "Orma",
+          "indice_refracao": "1.50",
+          "codes": ["10207", "10208", "10209"],
+          "prices": [
+            {"label": "CRIZAL PREVENCIA", "price": 11029.00},
+            {"label": "CRIZAL SAPPHIRE HR", "price": 11029.00},
+            {"label": "CRIZAL EASY PRO", "price": 10649.00}
+          ],
+          "grid_text": "-10,00 a +6,00",
+          "source_excerpt": "Orma 11.029,00 11.029,00 - - 10.649,00"
+        },
+        {
+          "raw_label": "Orma + Transitions Gen S",
+          "material": "Orma",
+          "indice_refracao": "1.50",
+          "codes": ["10210","10211","10212","10213","10214","10215","10216","10217","10218"],
+          "prices": [
+            {"label": "CRIZAL PREVENCIA", "price": 12549.00},
+            {"label": "CRIZAL SAPPHIRE HR", "price": 12549.00},
+            {"label": "CRIZAL EASY PRO", "price": 12169.00}
+          ],
+          "grid_text": "-10,00 a +6,00",
+          "source_excerpt": "+ Transitions Gen S 12.549,00 12.549,00 - - 12.169,00"
+        },
+        {
+          "raw_label": "Airwear",
+          "material": "Airwear",
+          "indice_refracao": "1.59",
+          "codes": ["10226","10227","10228"],
+          "prices": [
+            {"label": "CRIZAL PREVENCIA", "price": 11449.00},
+            {"label": "CRIZAL SAPPHIRE HR", "price": 11449.00},
+            {"label": "CRIZAL EASY PRO", "price": 11069.00}
+          ],
+          "grid_text": "-10,00 a +6,00",
+          "source_excerpt": "Airwear 11.449,00 11.449,00 - - 11.069,00"
+        },
+        {
+          "raw_label": "Stylis 1.67",
+          "material": "Stylis",
+          "indice_refracao": "1.67",
+          "codes": ["10242","10243","10244"],
+          "prices": [
+            {"label": "CRIZAL PREVENCIA", "price": 14229.00},
+            {"label": "CRIZAL SAPPHIRE HR", "price": 14229.00},
+            {"label": "CRIZAL EASY PRO", "price": 13849.00}
+          ],
+          "grid_text": "-12,00 a +9,00",
+          "source_excerpt": "Stylis 1.67 14.229,00 14.229,00 - - 13.849,00"
+        }
+      ],
+      "services": []
+    },
+    {
+      "page_number": 12,
+      "family_name": "VARILUX® XR SERIES™",
+      "section_name": "DIGITAL",
+      "subsection_name": null,
+      "table_type": "pricing_matrix",
+      "notes": [
+        "Preços em pares e em reais",
+        "Cilíndrico até -6,00",
+        "Adição 1,00 a 3,50"
+      ],
+      "offers": [
+        {
+          "raw_label": "Orma",
+          "material": "Orma",
+          "indice_refracao": "1.50",
+          "codes": ["10249","10250","10251","10252","10253"],
+          "prices": [
+            {"label": "CRIZAL PREVENCIA", "price": 6789.00},
+            {"label": "CRIZAL SAPPHIRE HR", "price": 6789.00},
+            {"label": "CRIZAL ROCK", "price": 6519.00},
+            {"label": "CRIZAL EASY PRO", "price": 6169.00},
+            {"label": "CRIZAL OPTIFOG", "price": 6409.00}
+          ],
+          "grid_text": "-10,00 a +6,00",
+          "source_excerpt": "Orma 6.789,00 6.789,00 6.519,00 6.169,00 6.409,00"
+        },
+        {
+          "raw_label": "Airwear",
+          "material": "Airwear",
+          "indice_refracao": "1.59",
+          "codes": ["10276","10277","10278","10279","10280"],
+          "prices": [
+            {"label": "CRIZAL PREVENCIA", "price": 7209.00},
+            {"label": "CRIZAL SAPPHIRE HR", "price": 7209.00},
+            {"label": "CRIZAL ROCK", "price": 6939.00},
+            {"label": "CRIZAL EASY PRO", "price": 6589.00},
+            {"label": "CRIZAL OPTIFOG", "price": 6829.00}
+          ],
+          "grid_text": "-10,00 a +6,00",
+          "source_excerpt": "Airwear 7.209,00 7.209,00 6.939,00 6.589,00 6.829,00"
+        }
+      ],
+      "services": []
+    },
+    {
+      "page_number": 13,
+      "family_name": "VARILUX® XR SERIES™",
+      "section_name": "DIGITAL",
+      "subsection_name": null,
+      "table_type": "pricing_matrix",
+      "notes": [
+        "Preços em pares e em reais"
+      ],
+      "offers": [
+        {
+          "raw_label": "Orma",
+          "material": "Orma",
+          "indice_refracao": "1.50",
+          "codes": ["12339","12340","12341","12342","12343"],
+          "prices": [
+            {"label": "CRIZAL PREVENCIA", "price": 6509.00},
+            {"label": "CRIZAL SAPPHIRE HR", "price": 6509.00},
+            {"label": "CRIZAL ROCK", "price": 6239.00},
+            {"label": "CRIZAL EASY PRO", "price": 5889.00},
+            {"label": "CRIZAL OPTIFOG", "price": 6129.00}
+          ],
+          "grid_text": "-10,00 a +6,00",
+          "source_excerpt": "Orma 6.509,00 6.509,00 6.239,00 5.889,00 6.129,00"
+        },
+        {
+          "raw_label": "Airwear",
+          "material": "Airwear",
+          "indice_refracao": "1.59",
+          "codes": ["12349","12350","12351","12352","12353"],
+          "prices": [
+            {"label": "CRIZAL PREVENCIA", "price": 6929.00},
+            {"label": "CRIZAL SAPPHIRE HR", "price": 6929.00},
+            {"label": "CRIZAL ROCK", "price": 6659.00},
+            {"label": "CRIZAL EASY PRO", "price": 6309.00},
+            {"label": "CRIZAL OPTIFOG", "price": 6549.00}
+          ],
+          "grid_text": "-10,00 a +6,00",
+          "source_excerpt": "Airwear 6.929,00 6.929,00 6.659,00 6.309,00 6.549,00"
+        }
+      ],
+      "services": []
+    },
+    {
+      "page_number": 14,
+      "family_name": "VARILUX® XR SERIES™",
+      "section_name": "DIGITAL",
+      "subsection_name": null,
+      "table_type": "pricing_matrix",
+      "notes": [
+        "Preços em pares e em reais"
+      ],
+      "offers": [
+        {
+          "raw_label": "Orma",
+          "material": "Orma",
+          "indice_refracao": "1.50",
+          "codes": ["10369","10370","10371","10372","10373"],
+          "prices": [
+            {"label": "CRIZAL PREVENCIA", "price": 5869.00},
+            {"label": "CRIZAL SAPPHIRE HR", "price": 5869.00},
+            {"label": "CRIZAL ROCK", "price": 5599.00},
+            {"label": "CRIZAL EASY PRO", "price": 5249.00},
+            {"label": "CRIZAL OPTIFOG", "price": 5489.00}
+          ],
+          "grid_text": "-10,00 a +6,00",
+          "source_excerpt": "Orma 5.869,00 5.869,00 5.599,00 5.249,00 5.489,00"
+        },
+        {
+          "raw_label": "Airwear",
+          "material": "Airwear",
+          "indice_refracao": "1.59",
+          "codes": ["10396","10397","10398","10399","10400"],
+          "prices": [
+            {"label": "CRIZAL PREVENCIA", "price": 6289.00},
+            {"label": "CRIZAL SAPPHIRE HR", "price": 6289.00},
+            {"label": "CRIZAL ROCK", "price": 6019.00},
+            {"label": "CRIZAL EASY PRO", "price": 5669.00},
+            {"label": "CRIZAL OPTIFOG", "price": 5909.00}
+          ],
+          "grid_text": "-10,00 a +6,00",
+          "source_excerpt": "Airwear 6.289,00 6.289,00 6.019,00 5.669,00 5.909,00"
+        }
+      ],
+      "services": []
+    }
+  ]
+}

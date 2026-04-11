@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import Link from 'next/link'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -18,6 +19,15 @@ import {
 import type { PriceTableData, PriceTableOffer } from '@/lib/actions/price-table.actions'
 
 type ViewMode = 'matrix' | 'list'
+
+type InitialFilters = {
+  search?: string
+  clinicalFilter?: string | null
+  materialFilter?: string | null
+  indiceFilter?: number | null
+  featureFilter?: string[]
+  sectionFilter?: string | null
+}
 
 function formatCurrency(value: number | null): string {
   if (value == null || !Number.isFinite(value)) return '—'
@@ -312,7 +322,10 @@ function FamilySection({
                     const offerCompat = compatibilityMap.get(offer.globalOfferId)
                     const prices = offerCompat
                       ? Array.from(offerCompat.values()).map((c) => resolvePrice(offer, c))
-                      : [offer.basePrice]
+                      : []
+                    if (offer.basePrice != null) {
+                      prices.unshift(offer.basePrice)
+                    }
                     const validPrices = prices.filter((p): p is number => p != null)
                     const minPrice = validPrices.length ? Math.min(...validPrices) : null
                     const maxPrice = validPrices.length ? Math.max(...validPrices) : null
@@ -374,15 +387,31 @@ function FamilySection({
   )
 }
 
-export default function PriceTableInterface({ data }: { data: PriceTableData }) {
+export default function PriceTableInterface({
+  data,
+  embedded = false,
+  initialFilters,
+}: {
+  data: PriceTableData
+  embedded?: boolean
+  initialFilters?: InitialFilters
+}) {
   const [viewMode, setViewMode] = useState<ViewMode>('matrix')
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(initialFilters?.search || '')
   const [showFilters, setShowFilters] = useState(false)
-  const [clinicalFilter, setClinicalFilter] = useState<string | null>(null)
-  const [materialFilter, setMaterialFilter] = useState<string | null>(null)
-  const [indiceFilter, setIndiceFilter] = useState<number | null>(null)
-  const [featureFilter, setFeatureFilter] = useState<string | null>(null)
-  const [sectionFilter, setSectionFilter] = useState<string | null>(null)
+  const [clinicalFilter, setClinicalFilter] = useState<string | null>(
+    initialFilters?.clinicalFilter || null,
+  )
+  const [materialFilter, setMaterialFilter] = useState<string | null>(
+    initialFilters?.materialFilter || null,
+  )
+  const [indiceFilter, setIndiceFilter] = useState<number | null>(
+    initialFilters?.indiceFilter ?? null,
+  )
+  const [featureFilter, setFeatureFilter] = useState<string[]>(initialFilters?.featureFilter || [])
+  const [sectionFilter, setSectionFilter] = useState<string | null>(
+    initialFilters?.sectionFilter || null,
+  )
 
   // Build compatibility lookup: offerId -> treatmentId -> compat
   const compatibilityMap = useMemo(() => {
@@ -398,6 +427,8 @@ export default function PriceTableInterface({ data }: { data: PriceTableData }) 
     return map
   }, [data.compatibilities])
 
+  const familyMap = useMemo(() => new Map(data.families.map((f) => [f.id, f])), [data.families])
+
   // Extract unique filter values
   const filterOptions = useMemo(() => {
     const clinicals = new Set<string>()
@@ -406,18 +437,53 @@ export default function PriceTableInterface({ data }: { data: PriceTableData }) 
     const features = new Set<string>()
     const sections = new Set<string>()
 
+    const term = search.trim().toLowerCase()
+    const matchesBase = (
+      offer: PriceTableOffer,
+      opts: { ignoreMaterial?: boolean; ignoreIndice?: boolean; ignoreFeature?: boolean } = {},
+    ) => {
+      if (term) {
+        const label = getOfferLabel(offer).toLowerCase()
+        const familyName = familyMap.get(offer.familyId)?.nome?.toLowerCase() || ''
+        if (!label.includes(term) && !familyName.includes(term)) return false
+      }
+      if (clinicalFilter && offer.clinicalCategory !== clinicalFilter) return false
+      if (!opts.ignoreFeature && featureFilter.length > 0) {
+        const feat = offer.features as Record<string, unknown>
+        if (!featureFilter.every((key) => feat?.[key])) return false
+      }
+      if (!opts.ignoreMaterial && materialFilter && offer.material !== materialFilter) return false
+      if (!opts.ignoreIndice && indiceFilter && offer.indiceRefracao !== indiceFilter) return false
+      if (sectionFilter && offer.sectionName !== sectionFilter) return false
+      return true
+    }
+
     for (const offer of data.offers) {
+      if (!matchesBase(offer)) continue
+
       if (offer.clinicalCategory && offer.clinicalCategory !== 'indefinida') {
         clinicals.add(offer.clinicalCategory)
       }
-      if (offer.material) materials.add(offer.material)
-      if (offer.indiceRefracao) indices.add(offer.indiceRefracao)
       if (offer.sectionName) sections.add(offer.sectionName)
 
+    }
+
+    for (const offer of data.offers) {
+      if (!matchesBase(offer, { ignoreFeature: true })) continue
       const feat = offer.features || {}
       for (const [key, val] of Object.entries(feat)) {
         if (val === true) features.add(key)
       }
+    }
+
+    for (const offer of data.offers) {
+      if (!matchesBase(offer, { ignoreMaterial: true })) continue
+      if (offer.material) materials.add(offer.material)
+    }
+
+    for (const offer of data.offers) {
+      if (!matchesBase(offer, { ignoreIndice: true })) continue
+      if (offer.indiceRefracao) indices.add(offer.indiceRefracao)
     }
 
     return {
@@ -427,7 +493,16 @@ export default function PriceTableInterface({ data }: { data: PriceTableData }) 
       features: Array.from(features).sort(),
       sections: Array.from(sections).sort(),
     }
-  }, [data.offers])
+  }, [
+    clinicalFilter,
+    data.offers,
+    familyMap,
+    featureFilter,
+    indiceFilter,
+    materialFilter,
+    search,
+    sectionFilter,
+  ])
 
   // Filter offers
   const filteredOffers = useMemo(() => {
@@ -435,22 +510,32 @@ export default function PriceTableInterface({ data }: { data: PriceTableData }) 
     return data.offers.filter((offer) => {
       if (term) {
         const label = getOfferLabel(offer).toLowerCase()
-        const family = data.families.find((f) => f.id === offer.familyId)
-        const familyName = family?.nome?.toLowerCase() || ''
+        const familyName = familyMap.get(offer.familyId)?.nome?.toLowerCase() || ''
         if (!label.includes(term) && !familyName.includes(term)) return false
       }
       if (clinicalFilter && offer.clinicalCategory !== clinicalFilter) return false
       if (materialFilter && offer.material !== materialFilter) return false
       if (indiceFilter && offer.indiceRefracao !== indiceFilter) return false
-      if (featureFilter && !(offer.features as Record<string, unknown>)[featureFilter]) return false
+      if (featureFilter.length > 0) {
+        const feat = offer.features as Record<string, unknown>
+        if (!featureFilter.every((key) => feat?.[key])) return false
+      }
       if (sectionFilter && offer.sectionName !== sectionFilter) return false
       return true
     })
-  }, [data.offers, data.families, search, clinicalFilter, materialFilter, indiceFilter, featureFilter, sectionFilter])
+  }, [
+    data.offers,
+    familyMap,
+    search,
+    clinicalFilter,
+    materialFilter,
+    indiceFilter,
+    featureFilter,
+    sectionFilter,
+  ])
 
   // Group by family
   const familyGroups = useMemo(() => {
-    const familyMap = new Map(data.families.map((f) => [f.id, f]))
     const groups = new Map<string, { family: { id: string; nome: string }; composable: PriceTableOffer[]; atomic: PriceTableOffer[] }>()
 
     for (const offer of filteredOffers) {
@@ -473,20 +558,116 @@ export default function PriceTableInterface({ data }: { data: PriceTableData }) 
     return Array.from(groups.values()).sort((a, b) => a.family.nome.localeCompare(b.family.nome))
   }, [filteredOffers, data.families])
 
-  const activeFilterCount = [clinicalFilter, materialFilter, indiceFilter, featureFilter, sectionFilter].filter(Boolean).length
+  const activeFilterCount = [
+    clinicalFilter,
+    materialFilter,
+    indiceFilter,
+    sectionFilter,
+    featureFilter.length > 0 ? 'feature' : null,
+  ]
+    .filter(Boolean)
+    .length
 
   const clearFilters = () => {
     setClinicalFilter(null)
     setMaterialFilter(null)
     setIndiceFilter(null)
-    setFeatureFilter(null)
+    setFeatureFilter([])
     setSectionFilter(null)
     setSearch('')
   }
 
+  useEffect(() => {
+    if (materialFilter && !filterOptions.materials.includes(materialFilter)) {
+      setMaterialFilter(null)
+    }
+  }, [filterOptions.materials, materialFilter])
+
+  useEffect(() => {
+    if (indiceFilter != null && !filterOptions.indices.includes(indiceFilter)) {
+      setIndiceFilter(null)
+    }
+  }, [filterOptions.indices, indiceFilter])
+
+  useEffect(() => {
+    if (featureFilter.length === 0) return
+    const next = featureFilter.filter((feature) => filterOptions.features.includes(feature))
+    if (next.length !== featureFilter.length) {
+      setFeatureFilter(next)
+    }
+  }, [featureFilter, filterOptions.features])
+
+  const activeQueryString = useMemo(() => {
+    const params = new URLSearchParams()
+    params.set('scope', 'laboratorio')
+    params.set('versionId', data.versionId)
+    if (search.trim()) params.set('q', search.trim())
+    if (clinicalFilter) params.set('clinical', clinicalFilter)
+    if (materialFilter) params.set('material', materialFilter)
+    if (indiceFilter != null) params.set('indice', String(indiceFilter))
+    if (featureFilter.length > 0) params.set('feature', featureFilter.join(','))
+    if (sectionFilter) params.set('section', sectionFilter)
+    return params.toString()
+  }, [
+    clinicalFilter,
+    data.versionId,
+    featureFilter,
+    indiceFilter,
+    materialFilter,
+    search,
+    sectionFilter,
+  ])
+
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
+    <div className={embedded ? 'text-white' : 'min-h-screen bg-slate-950 text-white'}>
+      <div
+        className={
+          embedded
+            ? 'flex w-full flex-col gap-6'
+            : 'mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8'
+        }
+      >
+        {data.activeCatalogs.length > 1 && (
+          <div className="rounded-2xl border border-white/10 bg-slate-900/45 px-4 py-4 backdrop-blur-md sm:px-5">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">
+                  Alternar tabela
+                </p>
+                <p className="hidden text-xs text-slate-500">
+                  Escolha qual fornecedor/versão deseja consultar agora. A avaliação e a IA
+                  continuam usando o catálogo ativo principal até a próxima etapa.
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-300">
+                  Escolha o laboratorio desta consulta
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {data.activeCatalogs.map((catalog) => {
+                  const isSelected = catalog.versionId === data.versionId
+                  return (
+                    <Link
+                      key={catalog.versionId}
+                      href={`/dashboard/loja/${data.storeId}/tabela-precos?${(() => {
+                        const params = new URLSearchParams(activeQueryString)
+                        params.set('versionId', catalog.versionId)
+                        return params.toString()
+                      })()}`}
+                      className={`inline-flex rounded-2xl border px-4 py-2 text-xs font-black uppercase tracking-[0.14em] transition-all ${
+                        isSelected
+                          ? 'border-cyan-400/35 bg-cyan-500/12 text-cyan-200'
+                          : 'border-white/10 bg-black/10 text-slate-400 hover:border-white/20 hover:text-white'
+                      }`}
+                    >
+                      {catalog.laboratorio} • {catalog.versao}
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="rounded-[2rem] border border-white/10 bg-gradient-to-br from-slate-900 via-slate-950 to-cyan-950/30 p-6 shadow-[0_25px_80px_rgba(2,6,23,0.45)] sm:p-7">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -504,13 +685,13 @@ export default function PriceTableInterface({ data }: { data: PriceTableData }) 
             </div>
 
             {/* View toggle */}
-            <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/20 p-1.5">
+            <div className="flex items-center gap-1 rounded-2xl border border-white/8 bg-black/10 p-1">
               <button
                 onClick={() => setViewMode('matrix')}
-                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all ${
+                className={`flex items-center gap-2 rounded-xl px-3 py-2 text-[11px] font-bold uppercase tracking-[0.16em] transition-all ${
                   viewMode === 'matrix'
-                    ? 'bg-cyan-500/15 text-cyan-200'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-cyan-500/12 text-cyan-200'
+                    : 'text-slate-500 hover:text-white'
                 }`}
               >
                 <LayoutGrid className="h-4 w-4" />
@@ -518,10 +699,10 @@ export default function PriceTableInterface({ data }: { data: PriceTableData }) 
               </button>
               <button
                 onClick={() => setViewMode('list')}
-                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all ${
+                className={`flex items-center gap-2 rounded-xl px-3 py-2 text-[11px] font-bold uppercase tracking-[0.16em] transition-all ${
                   viewMode === 'list'
-                    ? 'bg-cyan-500/15 text-cyan-200'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-cyan-500/12 text-cyan-200'
+                    : 'text-slate-500 hover:text-white'
                 }`}
               >
                 <List className="h-4 w-4" />
@@ -641,8 +822,14 @@ export default function PriceTableInterface({ data }: { data: PriceTableData }) 
                       <FilterPill
                         key={feat}
                         label={feat.replace(/_/g, ' ')}
-                        active={featureFilter === feat}
-                        onClick={() => setFeatureFilter(featureFilter === feat ? null : feat)}
+                        active={featureFilter.includes(feat)}
+                        onClick={() =>
+                          setFeatureFilter((current) =>
+                            current.includes(feat)
+                              ? current.filter((item) => item !== feat)
+                              : [...current, feat],
+                          )
+                        }
                       />
                     ))}
                   </div>

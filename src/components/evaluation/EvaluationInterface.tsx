@@ -1,7 +1,7 @@
-﻿'use client'
+'use client'
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
-import { useParams } from 'next/navigation'
+import React, { useEffect, useMemo, useState, useTransition } from 'react'
+import { useParams, useRouter } from 'next/navigation'
 import {
   AlertTriangle,
   Bot,
@@ -25,6 +25,7 @@ import {
   Briefcase,
   Trash2
 } from 'lucide-react'
+import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import QuickCustomerModal from '@/components/modals/QuickCustomerModal'
 import AddDependenteModal from '@/components/modals/AddDependenteModal'
 import { getDependentes } from '@/lib/actions/dependents.actions'
@@ -101,6 +102,12 @@ type ActiveCatalogContext = {
   laboratorio: string
   versao: string
 } | null
+
+type ActiveCatalogSummary = {
+  versionId: string
+  laboratorio: string
+  versao: string
+}
 
 type LensRecommendationActionPayload = {
   state: RecommendationConversationState
@@ -448,7 +455,8 @@ const generateManualSuggestion = (form: ReturnType<typeof createEmptyForm>): Man
 
 const buildAiRecommendationLabel = (option: RecommendationOption) => {
   const treatmentPart = option.treatmentName ? ` + ${option.treatmentName}` : ''
-  return `${option.familyName} | ${option.offerLabel}${treatmentPart}`
+  const sourcePart = option.sourceLaboratorio ? ` · ${option.sourceLaboratorio}` : ''
+  return `${option.familyName} | ${option.offerLabel}${treatmentPart}${sourcePart}`
 }
 
 const getClinicalCategoryLabel = (category: RecommendationOption['clinicalCategory']) => {
@@ -480,6 +488,12 @@ const buildAiOptionNarrative = (
   const priceFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
   const categoryLabel = getClinicalCategoryLabel(option.clinicalCategory)
   const supportText = option.treatmentExplainWhy || option.commercialSummary || option.recommendationNotes || ''
+  const rawReasons = option.reasons || []
+  const hasResistance = rawReasons.includes('material:resistente') || rawReasons.includes('beneficio:resistencia')
+  const hasThinness = rawReasons.includes('material:lente_fina') || rawReasons.includes('beneficio:lente_fina')
+  const hasBlueUv = rawReasons.includes('feature:blue_uv') || rawReasons.includes('tratamento:conforto_telas')
+  const hasTransitions = rawReasons.includes('feature:transitions') || rawReasons.includes('tratamento:outdoor')
+  const hasAntirreflexo = rawReasons.includes('tratamento:antirreflexo')
 
   if (index === 0) {
     const intro = mainReasons.length
@@ -519,11 +533,21 @@ const buildAiOptionNarrative = (
     }
   }
 
+  const whyWorthItParts: string[] = []
+  if (hasResistance) whyWorthItParts.push('maior resistência')
+  if (hasThinness) whyWorthItParts.push('lente mais fina/estética')
+  if (hasTransitions) whyWorthItParts.push('fotossensível para conforto no sol')
+  if (hasBlueUv) whyWorthItParts.push('proteção de luz azul')
+  if (hasAntirreflexo) whyWorthItParts.push('antirreflexo de melhor qualidade')
+  const whyWorthIt = whyWorthItParts.length
+    ? `Ela vale o investimento adicional por ${whyWorthItParts.join(', ')}.`
+    : ''
+
   const reasonWrap = mainReasons.length
     ? `Eu a mantive porque ainda entrega ${mainReasons.join(' e ').toLowerCase()}.`
     : ''
 
-  return [categoryShift, priceTradeoff, reasonWrap, supportText].filter(Boolean).join(' ')
+  return [categoryShift, priceTradeoff, whyWorthIt, reasonWrap, supportText].filter(Boolean).join(' ')
 }
 
 const buildAiCommercialSummary = (option: RecommendationOption) => {
@@ -545,8 +569,9 @@ const buildQuickRetentionReply = (params: {
   intent: QuickRetentionIntent
   recommendations: RecommendationOption[]
   activeCatalog: ActiveCatalogContext
+  activeCatalogs?: ActiveCatalogSummary[]
 }) => {
-  const { intent, recommendations, activeCatalog } = params
+  const { intent, recommendations, activeCatalog, activeCatalogs } = params
   const topOption = recommendations[0] || null
   const alternativeOption = getTopAlternativeOption(recommendations)
   const priceFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -556,7 +581,11 @@ const buildQuickRetentionReply = (params: {
   const altIsDifferent = alternativeOption && alternativeOption.configKey !== topOption?.configKey
   const altLabel = altIsDifferent ? buildAiRecommendationLabel(alternativeOption) : null
   const altPrice = altIsDifferent ? priceFormatter.format(alternativeOption!.finalPrice) : null
-  const labName = activeCatalog?.laboratorio || 'o catálogo ativo da loja'
+  const labName =
+    activeCatalog?.laboratorio ||
+    (activeCatalogs && activeCatalogs.length
+      ? activeCatalogs.map((catalog) => catalog.laboratorio).join(' + ')
+      : 'os catálogos ativos da loja')
 
   if (intent === 'pesquisar') {
     return `Sem problema. Antes de sair para pesquisar, vale te mostrar por que eu separei ${topLabel}${topPrice ? ` por ${topPrice}` : ''}: ela conversa diretamente com o que você me contou e já está dentro do que temos hoje em ${labName}. Se quiser, eu também posso te mostrar agora uma segunda comparação lado a lado${altLabel ? `, incluindo ${altLabel}${altPrice ? ` por ${altPrice}` : ''}` : ''}, para você decidir com mais segurança sem precisar ir embora na dúvida.`
@@ -636,6 +665,8 @@ const humanizeRecommendationReason = (reason: string) => {
     conforto_visual: 'Busca mais conforto visual',
     conforto_luz: 'Busca mais conforto com claridade',
     resistencia: 'Busca material mais resistente',
+    indice_alto_pouco_ganho: 'Índice alto com ganho mínimo para este grau',
+    indice_baixo_grau_alto: 'Índice baixo para um grau que pede lente mais fina',
     custo_beneficio: 'Busca melhor custo-benefício',
     transitions: 'Preferência por Transitions',
     blue_uv: 'Preferência por proteção Blue UV',
@@ -654,6 +685,8 @@ const humanizeRecommendationReason = (reason: string) => {
   if (reason === 'tratamento:outdoor') return 'Tratamento favorável para uso externo'
   if (reason === 'opcao:alternativa_plausivel') return 'Alternativa plausível para ampliar a conversa'
   if (reason === 'opcao:salto_preco_controlado') return 'Alternativa com salto de preço controlado'
+  if (reason === 'material:indice_alto_pouco_ganho') return 'Índice alto com ganho pequeno neste grau'
+  if (reason === 'material:indice_baixo_grau_alto') return 'Índice baixo para grau alto'
 
   if (type === 'categoria' && rawValue === 'controle_miopia') {
     return 'Categoria clínica de controle de miopia'
@@ -776,6 +809,7 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>) 
 
   if (parseNullableNumber(form.receitaAdicao) !== null || (age !== null && age >= 45)) {
     desiredBenefits.push('adaptacao_rapida', 'conforto_visual')
+    objetivoTags.push('presbiopia')
   }
 
   if (form.dificuldadeAdaptacao === 'alta') {
@@ -789,6 +823,16 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>) 
   if (form.queixaSensibilidadeLuz === 'sim') {
     desiredBenefits.push('conforto_luz')
     preferredFeatures.push('transitions')
+  }
+
+  if (form.prefereTransitions === 'sim') {
+    preferredFeatures.push('transitions')
+    desiredBenefits.push('conforto_luz')
+  }
+
+  if (form.prefereBlueUv === 'sim') {
+    preferredFeatures.push('blue_uv')
+    desiredBenefits.push('conforto_digital')
   }
 
   const isChild = age !== null && age <= 14
@@ -812,7 +856,29 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>) 
     objetivoTags.push('controle_miopia')
   }
 
+  if (parseNullableNumber(form.receitaAdicao) !== null && form.usaMultifocalHoje === 'nao') {
+    objetivoTags.push('primeira_multifocal')
+  }
+
   let budgetMode: 'economico' | 'intermediario' | 'premium' = 'intermediario'
+
+  if (form.faixaOrcamento === 'ate_800' || form.faixaOrcamento === '800_2000') {
+    budgetMode = 'economico'
+  }
+  if (form.faixaOrcamento === 'acima_5000') {
+    budgetMode = 'premium'
+  }
+
+  const targetBudget = parseNullableNumber(form.budgetTarget)
+  if (targetBudget !== null) {
+    if (targetBudget <= 1500) budgetMode = 'economico'
+    if (targetBudget >= 5000) budgetMode = 'premium'
+  }
+
+  if (form.aceitaPremium === 'nao' && budgetMode === 'premium') {
+    budgetMode = 'intermediario'
+  }
+
   if (form.prioridadePrincipal === 'economia') {
     budgetMode = 'economico'
     objetivoTags.push('custo_beneficio')
@@ -830,6 +896,22 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>) 
     rotinaTags.push('controle_miopia')
     desiredBenefits.push('controle_miopia')
     objetivoTags.push('controle_miopia')
+  }
+
+  if (form.importanciaResistencia === 'alta') {
+    desiredBenefits.push('resistencia')
+  }
+
+  if (form.importanciaEstetica === 'alta') {
+    desiredBenefits.push('estetica', 'lente_fina')
+  }
+
+  if (form.principalIncomodoAtual === 'peso_espessura') {
+    desiredBenefits.push('lente_fina', 'estetica')
+  }
+
+  if (form.principalIncomodoAtual === 'reflexo') {
+    desiredBenefits.push('antirreflexo', 'conforto_visual')
   }
 
   return {
@@ -975,11 +1057,14 @@ const createEmptyForm = () => ({
 })
 
 export default function EvaluationInterface({
-  activeCatalog
+  activeCatalog,
+  activeCatalogs = []
 }: {
   activeCatalog: ActiveCatalogContext
+  activeCatalogs?: ActiveCatalogSummary[]
 }) {
   const params = useParams()
+  const router = useRouter()
   const storeId = parseInt(params.storeId as string, 10)
   const { preference } = useBackgroundPreference()
 
@@ -996,6 +1081,9 @@ export default function EvaluationInterface({
   const [feedback, setFeedback] = useState<string | null>(null)
   const [isQuickModalOpen, setIsQuickModalOpen] = useState(false)
   const [isDependenteModalOpen, setIsDependenteModalOpen] = useState(false)
+  
+  const hasAuthenticatedRef = React.useRef(false)
+  const [authenticatedEmployee, setAuthenticatedEmployee] = useState<{ id: number; full_name: string; role: string } | null>(null)
 
   const [isSearching, startSearchTransition] = useTransition()
   const [isImporting, startImportTransition] = useTransition()
@@ -1197,6 +1285,10 @@ export default function EvaluationInterface({
     startAiGenerationTransition(async () => {
       const result = await generateLensRecommendationsAction({
         versionId: activeCatalog.versionId,
+        versionIds:
+          activeCatalogs.length > 0
+            ? activeCatalogs.map((catalog) => catalog.versionId)
+            : undefined,
         ...aiCaseInput,
         topN: 3
       })
@@ -1259,6 +1351,7 @@ export default function EvaluationInterface({
         intent,
         recommendations: aiRecommendations,
         activeCatalog,
+        activeCatalogs,
       })
     )
     setAiFeedback('Resposta rápida gerada para ajudar o consultor a segurar o cliente na loja.')
@@ -1397,6 +1490,7 @@ export default function EvaluationInterface({
         evaluatedNameSnapshot: selectedSubjectType === 'dependente' ? (selectedDependente?.full_name || '') : selectedCustomer.full_name,
         responsibleNameSnapshot: selectedSubjectType === 'dependente' ? selectedCustomer.full_name : null,
         relationshipSnapshot: selectedSubjectType === 'dependente' ? (selectedDependente?.parentesco || 'Dependente') : 'Titular',
+        employeeId: authenticatedEmployee?.id ?? undefined,
         sourceSystem: form.sourceSystem,
         status: derivedStatus,
         parseStatus: form.parseStatus,
@@ -1481,7 +1575,7 @@ export default function EvaluationInterface({
     !!selectedSubjectName &&
     normalizePersonName(form.patientNameRaw) !== normalizePersonName(selectedSubjectName)
   const isIvisionMode = form.sourceSystem === 'ivision'
-  const hasCatalogForAi = !!activeCatalog
+  const hasCatalogForAi = activeCatalogs.length > 0 || !!activeCatalog
   const aiCaseInput = inferRecommendationCaseInput(form)
   const canGenerateAi =
     hasCatalogForAi &&
@@ -1500,6 +1594,32 @@ export default function EvaluationInterface({
     !!form.sourceUrl &&
     (!!form.documentHash || !!form.extractedText)
   const hasSourceUrl = form.sourceUrl.trim().length > 0
+
+  if (!authenticatedEmployee) {
+    return (
+      <div className="relative flex h-[calc(100vh-64px)] items-center justify-center overflow-hidden bg-slate-950">
+        <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
+          <div className="absolute inset-0 bg-[url('/atendimento.jpg')] bg-cover bg-center opacity-40 blur-[2px]" />
+          <div className="absolute inset-0 bg-gradient-to-b from-slate-950/60 via-slate-950/80 to-slate-950" />
+        </div>
+        <EmployeeAuthModal
+          storeId={storeId}
+          isOpen={true}
+          onClose={() => {
+            if (!hasAuthenticatedRef.current) {
+              router.back()
+            }
+          }}
+          onSuccess={(emp) => {
+            hasAuthenticatedRef.current = true
+            setAuthenticatedEmployee(emp)
+          }}
+          title="Assinatura de Avaliação"
+          description="Acesso restrito. Insira o seu PIN de consultor para assumir a titularidade desta avaliação."
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="relative flex h-[calc(100vh-64px)] overflow-hidden bg-slate-950">
@@ -1522,6 +1642,14 @@ export default function EvaluationInterface({
             <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-300/80">
               Pré-venda e histórico individual
             </p>
+            {authenticatedEmployee && (
+              <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1" title={authenticatedEmployee.full_name}>
+                <div className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-[9px] font-black uppercase tracking-[0.15em] text-indigo-200 truncate max-w-[240px]">
+                  Consultor(a): {authenticatedEmployee.full_name}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="border-b border-white/10 p-4 space-y-4">
@@ -2364,10 +2492,14 @@ export default function EvaluationInterface({
                               Sugestão assistida por IA
                             </p>
                             <p className="mt-2 text-sm text-slate-300">
-                              A IA usa o catálogo ativo da loja para sugerir lente, tratamento e preço final.
+                              A IA usa os catálogos ativos da loja para sugerir lente, tratamento e preço final.
                             </p>
                             <p className="mt-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-                              Catálogo ativo: {activeCatalog.laboratorio} Â· {activeCatalog.versao}
+                              {activeCatalogs.length > 1
+                                ? `Catálogos ativos: ${activeCatalogs
+                                    .map((catalog) => catalog.laboratorio)
+                                    .join(' + ')}`
+                                : `Catálogo ativo: ${activeCatalog.laboratorio} · ${activeCatalog.versao}`}
                             </p>
                           </div>
                           <button

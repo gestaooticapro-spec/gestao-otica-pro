@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(py --version)",
+      "Bash(python -c ':*)",
+      "Bash(python -m pip install pdfplumber --quiet)",
+      "Bash(python scripts/gen_hoya_catalog_json.py)",
+      "Bash(node -e ':*)"
+    ]
+  }
+}

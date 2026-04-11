@@ -1,0 +1,93 @@
+{
+  "document_name": "Tabela Optilab 2026 - PVC - Digital v2",
+  "pages": [
+    {
+      "page_number": 26,
+      "family_name": "Eyezen",
+      "section_name": "VISÃO SIMPLES DIGITAL",
+      "subsection_name": null,
+      "table_type": "pricing_matrix",
+      "notes": [
+        "Preços em pares e em reais",
+        "Cilíndrico até -6,00",
+        "Alt. mínima 18mm",
+        "Lentes Eyezen com coloração não possuem filtragem de luz azul-violeta"
+      ],
+      "offers": [
+        {
+          "raw_label": "Eyezen (base)",
+          "material": null,
+          "indice_refracao": null,
+          "codes": ["12411"],
+          "prices": [
+            {
+              "label": "CRIZAL SAPPHIRE HR",
+              "price": 4749.00
+            }
+          ],
+          "grid_text": "-18,00 a +13,00",
+          "source_excerpt": "+ Transitions Gen S - 4.749,00 -18,00 a +13,00"
+        }
+      ],
+      "services": []
+    },
+    {
+      "page_number": 27,
+      "family_name": "Eyezen",
+      "section_name": "COLORAÇÃO",
+      "subsection_name": "SOLARES",
+      "table_type": "service_table",
+      "notes": [
+        "Coloração padrão, especial e Xperio",
+        "Cilíndrico até -6,00",
+        "Alt. mínima 18mm"
+      ],
+      "offers": [],
+      "services": [
+        {
+          "name": "+ Coloração especial",
+          "price": 769.00,
+          "unit": null,
+          "source_excerpt": "+ Coloração especial - - 769,00"
+        },
+        {
+          "name": "+ Xperio cinza/marrom/verde",
+          "price": 1689.00,
+          "unit": null,
+          "source_excerpt": "+ Xperio cinza/marrom/verde 1.689,00"
+        },
+        {
+          "name": "Airwear VERNIZ HC",
+          "price": 879.00,
+          "unit": null,
+          "source_excerpt": "Airwear - - 879,00"
+        },
+        {
+          "name": "Airwear + Coloração especial",
+          "price": 989.00,
+          "unit": null,
+          "source_excerpt": "- - 989,00"
+        },
+        {
+          "name": "Airwear + Xperio cinza/marrom/verde",
+          "price": 1909.00,
+          "unit": null,
+          "source_excerpt": "+ Xperio cinza/marrom/verde 1.909,00"
+        }
+      ]
+    },
+    {
+      "page_number": 28,
+      "family_name": "Eyezen",
+      "section_name": "VISÃO SIMPLES DIGITAL",
+      "subsection_name": null,
+      "table_type": "marketing",
+      "notes": [
+        "Página descritiva sobre tecnologia Eyezen",
+        "Sem tabela de preços"
+      ],
+      "offers": [],
+      "services": []
+    }
+  ]
+}

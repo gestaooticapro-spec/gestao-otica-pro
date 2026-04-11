@@ -19,6 +19,7 @@ import argparse
 import csv
 import json
 import re
+import unicodedata
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -52,6 +53,40 @@ KNOWN_COLUMNS = [
     "SEM AR",
     "VERNIZ HC",
 ]
+
+STOCK_READY_PARTIAL_RE = re.compile(
+    r"^(?P<label>.+?)\s+(?P<price>\d{1,3}(?:\.\d{3})*,\d{2})\s+"
+    r"(?P<sph_min>[+\-âˆ’]?\d{1,2},\d{2})\s+a\s+(?P<sph_max>[+\-âˆ’]?\d{1,2},\d{2})$"
+)
+
+HEADER_HINT_TOKENS = (
+    "CRIZAL",
+    "PREVENCIA",
+    "SAPPHIRE",
+    "HR",
+    "ROCK",
+    "EASY PRO",
+    "OPTIFOG",
+    "NO REFLEX",
+    "VERT CLAIR",
+    "TRIO EASY",
+    "EASY CLEAN",
+    "VERNIZ HC",
+    "SEM AR",
+    "ESFERICO",
+    "CILINDRICO",
+    "MARCACAO",
+    "SURF",
+    "DIGITAL",
+    "FACE INTERNA",
+)
+
+XR_PAGE_SUBSECTIONS = {
+    11: "XR Pro",
+    12: "XR Track",
+    13: "XR Track Lite",
+    14: "XR Design",
+}
 
 TREATMENT_TYPES = {
     "CRIZAL PREVENCIA": "Antirreflexo",
@@ -150,6 +185,12 @@ SECTION_KEYWORDS = {
 
 def normalize_whitespace(value: str) -> str:
     return re.sub(r"\s+", " ", value or "").strip()
+
+
+def normalize_ascii_upper(value: str) -> str:
+    normalized = unicodedata.normalize("NFD", value or "")
+    without_accents = "".join(char for char in normalized if unicodedata.category(char) != "Mn")
+    return normalize_whitespace(without_accents).upper()
 
 
 def make_slug(value: str) -> str:
@@ -367,6 +408,19 @@ def detect_section_name(lines: list[str], index: int) -> str | None:
     line = normalize_whitespace(lines[index])
     if not line:
         return None
+    normalized_upper = normalize_ascii_upper(line)
+    if normalized_upper in {
+        "DIGITAL",
+        "TRADICIONAL",
+        "COLORACAO",
+        "SOLARES",
+        "VISAO INTERMEDIARIA",
+        "LENTES VISAO SIMPLES SURFACADAS",
+        "LENTES PRONTAS",
+        "LENTES ACABADAS",
+        "LENTES SURFACADAS DIGITAIS",
+    }:
+        return line
     upper = line.upper()
     if upper in {"DIGITAL", "TRADICIONAL", "COLORAÇÃO", "COLORACAO", "SOLARES", "VISÃO INTERMEDIÁRIA", "LENTES VISÃO SIMPLES SURFAÇADAS", "LENTES PRONTAS", "LENTES ACABADAS", "LENTES SURFAÇADAS DIGITAIS"}:
         return line
@@ -382,6 +436,9 @@ def detect_section_name_v2(lines: list[str], index: int) -> str | None:
     line = normalize_whitespace(lines[index])
     if not line:
         return None
+    normalized_upper = normalize_ascii_upper(line)
+    if normalized_upper in SECTION_KEYWORDS:
+        return line
     upper = line.upper()
     if upper in SECTION_KEYWORDS:
         return line
@@ -389,6 +446,17 @@ def detect_section_name_v2(lines: list[str], index: int) -> str | None:
 
 
 def detect_columns(header_lines: list[str]) -> list[str]:
+    normalized_header = normalize_ascii_upper(" ".join(header_lines))
+    found_ascii: list[tuple[int, str]] = []
+    for column in KNOWN_COLUMNS:
+        normalized_column = normalize_ascii_upper(column)
+        position = normalized_header.find(normalized_column)
+        if position >= 0:
+            found_ascii.append((position, column))
+    if found_ascii:
+        found_ascii.sort(key=lambda item: item[0])
+        return [column for _, column in found_ascii]
+
     header_text = normalize_whitespace(" ".join(header_lines)).upper()
     found: list[tuple[int, str]] = []
     for column in KNOWN_COLUMNS:
@@ -443,6 +511,27 @@ def detect_features(
     }
 
 
+def is_disclaimer_or_footer_line(line: str) -> bool:
+    normalized = normalize_whitespace(line)
+    normalized_upper = normalize_ascii_upper(normalized)
+    if not normalized:
+        return False
+    if normalized.startswith("*"):
+        return True
+    if normalized_upper.startswith(
+        (
+            "PRECOS EM PARES",
+            "PRECOS EM PARES E EM REAIS",
+            "EM DIOPTRIAS NEGATIVAS",
+            "PERSONALIZACAO MANDATORIA",
+            "A MARCACAO",
+            "DISPONIVEL NAS LENTES SOLARES",
+        )
+    ):
+        return True
+    return len(normalized) > 120 and "." in normalized
+
+
 def infer_material(raw_label: str) -> str | None:
     lowered = raw_label.lower()
     if "airwear" in lowered or "poly" in lowered or "policarbonato" in lowered:
@@ -458,11 +547,39 @@ def infer_material(raw_label: str) -> str | None:
 
 def infer_index(raw_label: str) -> float | None:
     match = INDEX_RE.search(raw_label)
-    return float(match.group(0)) if match else None
+    if match:
+        return float(match.group(0))
+
+    lowered = raw_label.lower()
+    if "airwear" in lowered or "poly" in lowered or "policarbonato" in lowered:
+        return 1.59
+    if "orma" in lowered or "cr-39" in lowered:
+        return 1.50
+    return 1.50
+
+
+def infer_material_from_index_value(index_value: float | None) -> str | None:
+    if index_value is None:
+        return None
+    if abs(index_value - 1.59) < 0.001:
+        return "Policarbonato"
+    if index_value >= 1.67:
+        return "Resina High Index"
+    return "Resina"
 
 
 def infer_design(family_name: str, page_text: str) -> str:
+    normalized_family = normalize_ascii_upper(family_name)
     lowered = f"{family_name} {page_text}".lower()
+    if (
+        ("LENTES" in normalized_family and "KODAK" in normalized_family)
+        or ("VARILUX" in normalized_family and "ACTIVITIES" in normalized_family)
+        or ("LENTES" in normalized_family and "ESSILOR" in normalized_family)
+        or normalized_family.startswith("ITOP")
+    ):
+        return "Mista"
+    if "DIGITIME" in normalized_family or "INTERVIEW" in normalized_family:
+        return "Ocupacional"
     if "eyezen" in lowered or "visão simples" in lowered or "visao simples" in lowered or "single" in lowered:
         return "Visao Simples"
     if "ocupacional" in lowered or "intermediária" in lowered or "intermediaria" in lowered:
@@ -474,6 +591,23 @@ def infer_design(family_name: str, page_text: str) -> str:
     if "solares" in lowered or "solar" in lowered:
         return "Solar"
     return "Nao identificado"
+
+
+def get_page_subsection_override(family_name: str, page_number: int) -> str | None:
+    normalized_family = normalize_ascii_upper(family_name)
+    if "VARILUX" in normalized_family and "PHYSIO" in normalized_family and "EXTENSEE" in normalized_family:
+        if page_number == 15:
+            return "Essilor Fit Eyecode | CVP"
+        if page_number == 16:
+            return "Essilor Fit Eyecode"
+    if "EYEZEN BOOST" in normalized_family:
+        if page_number == 22:
+            return "0.4"
+        if page_number == 23:
+            return "0.6"
+        if page_number == 24:
+            return "0.85"
+    return None
 
 
 def build_canonical_label(family_name: str, section_name: str | None, raw_label: str) -> str:
@@ -580,7 +714,7 @@ def parse_standard_row(
         if first_token_value is not None and second_token_value is not None and first_token_value < 10 and second_token_value >= 20:
             label_token_count = 1
 
-    label_end = money_matches[label_token_count].end() if label_token_count else money_matches[0].start()
+    label_end = money_matches[label_token_count - 1].end() if label_token_count else money_matches[0].start()
     raw_label = normalize_whitespace(price_segment[:label_end])
     if not raw_label:
         return None
@@ -604,14 +738,34 @@ def parse_standard_row(
     sph_min = diopter_to_number(range_match.group(1))
     sph_max = diopter_to_number(range_match.group(2))
 
+    normalized_family_name = normalize_ascii_upper(family_name)
+    normalized_subsection_name = normalize_ascii_upper(subsection_name or "")
+    named_prices = [
+        value
+        for column_name, value in price_map.items()
+        if value is not None and not column_name.startswith("COLUNA_")
+    ]
+
     base_price = None
-    if "SEM AR" in price_map and price_map["SEM AR"] is not None:
+    if "BIFOCAIS" in normalized_family_name and named_prices:
+        # In the bifocal pages the matrix columns are already final prices per treatment.
+        # Using Verniz HC as base creates impossible cases where an upgrade is cheaper.
+        base_price = min(named_prices)
+    elif "SEM AR" in price_map and price_map["SEM AR"] is not None:
         base_price = price_map["SEM AR"]
+    elif "SURF" in price_map and price_map["SURF"] is not None:
+        # In the iTop blocks, Surf is the real untreated/base option.
+        base_price = price_map["SURF"]
     elif "VERNIZ HC" in price_map and price_map["VERNIZ HC"] is not None:
         base_price = price_map["VERNIZ HC"]
     else:
-        non_null_prices = [value for value in price_map.values() if value is not None]
-        base_price = non_null_prices[-1] if non_null_prices else None
+        if columns and named_prices:
+            # Some tables only expose final prices per treatment; anchor base_price to the
+            # cheapest real combination so downstream pricing logic never sees base > final.
+            base_price = min(named_prices)
+        else:
+            non_null_prices = [value for value in price_map.values() if value is not None]
+            base_price = non_null_prices[-1] if non_null_prices else None
 
     compatibilities: list[dict[str, Any]] = []
     if columns:
@@ -644,6 +798,18 @@ def parse_standard_row(
     if raw_label == "+":
         confidence -= 0.08
 
+    normalized_section = normalize_ascii_upper(section_name or "")
+    is_single_vision_section = (
+        "LENTES VISAO SIMPLES SURFACADAS" in normalized_section
+        or normalized_section == "VISAO SIMPLES"
+        or normalized_section.startswith("VISAO SIMPLES")
+    )
+    add_min = diopter_to_number(inline_add_match.group(1)) if inline_add_match else page_constraints["page_add_min"]
+    add_max = diopter_to_number(inline_add_match.group(2)) if inline_add_match else page_constraints["page_add_max"]
+    if is_single_vision_section:
+        add_min = None
+        add_max = None
+
     return {
         "legacy_code": None,
         "raw_label": raw_label,
@@ -663,14 +829,35 @@ def parse_standard_row(
                 "sph_max": sph_max,
                 "cyl_min": 0.0,
                 "cyl_max": page_constraints["page_cyl_max"],
-                "add_min": diopter_to_number(inline_add_match.group(1)) if inline_add_match else page_constraints["page_add_min"],
-                "add_max": diopter_to_number(inline_add_match.group(2)) if inline_add_match else page_constraints["page_add_max"],
+                "add_min": add_min,
+                "add_max": add_max,
                 "metadata": metadata,
             }
         ],
         "compatible_treatments": compatibilities,
         "_price_map": price_map,
     }
+
+
+def overwrite_compatibilities(
+    offer: dict[str, Any],
+    treatment_names: list[str],
+    base_price: float | None = None,
+) -> None:
+    current_values = [
+        item.get("special_price")
+        for item in offer.get("compatible_treatments", [])
+        if item.get("special_price") is not None
+    ]
+    compatible_treatments = [
+        {"treatment_name": name, "special_price": value}
+        for name, value in zip(treatment_names, current_values)
+    ]
+    offer["compatible_treatments"] = compatible_treatments
+    if base_price is not None:
+        offer["base_price"] = base_price
+    elif compatible_treatments:
+        offer["base_price"] = compatible_treatments[-1]["special_price"]
 
 
 def parse_service_treatments(lines: list[str]) -> list[dict[str, Any]]:
@@ -809,6 +996,11 @@ def parse_service_mixed_page(
     family = get_or_create_family(families_by_name, family_name, page_number, text, lines)
 
     offer_pattern = re.compile(r"^(?P<label>.+?)\s+(?P<price>\d{1,3}(?:\.\d{3})*,\d{2})$")
+    stock_pattern_partial = re.compile(
+        r"^(?P<label>.+?)\s+(?P<price>\d{1,3}(?:\.\d{3})*,\d{2})\s+"
+        r"(?P<sph_min>[+\-âˆ’]?\d{1,2},\d{2})\s+a\s+(?P<sph_max>[+\-âˆ’]?\d{1,2},\d{2})$"
+    )
+
     page_offer_count = 0
     capture = False
     header_breaks = {"OUTROS PRODUTOS", "PREÇOS DE PARES", "PRECOS DE PARES", "PROMOCIONAIS", "COLORAÇÃO", "COLORACAO", "TRATAMENTOS"}
@@ -979,11 +1171,48 @@ def parse_stock_ready_page(
     for index in range(header_index + 1, end_index):
         line = normalize_whitespace(lines[index])
         match = stock_pattern.match(line)
+        continuation_match = None
+        continuation_cyl = None
+        code_line_index = index + 1
         if not match:
-            continue
+            partial_match = STOCK_READY_PARTIAL_RE.match(line)
+            if not partial_match or index + 3 >= len(lines):
+                continue
+            continuation_match = re.fullmatch(
+                r"([+\-âˆ’]?\d{1,2},\d{2})\s+a\s+([+\-âˆ’]?\d{1,2},\d{2})",
+                normalize_whitespace(lines[index + 1]),
+            )
+            continuation_cyl = diopter_to_number(normalize_whitespace(lines[index + 2]))
+            if continuation_match is None or continuation_cyl is None:
+                continue
+            match = partial_match
+            code_line_index = index + 4
 
         raw_label = match.group("label")
         base_price = price_to_number(match.group("price"))
+        sph_min = diopter_to_number(match.group("sph_min"))
+        sph_max = diopter_to_number(match.group("sph_max"))
+        cyl_max = diopter_to_number(match.group("cyl")) if "cyl" in match.groupdict() else continuation_cyl
+
+        if (
+            raw_label == "Lentes KODAK City 1.67"
+            and cyl_max == 0.0
+            and index + 2 < len(lines)
+        ):
+            continuation_match = re.fullmatch(
+                r"([+\-âˆ’]?\d{1,2},\d{2})\s+a\s+([+\-âˆ’]?\d{1,2},\d{2})",
+                normalize_whitespace(lines[index + 1]),
+            )
+            continuation_cyl = diopter_to_number(normalize_whitespace(lines[index + 2]))
+            if continuation_match and continuation_cyl is not None:
+                continuation_sph_min = diopter_to_number(continuation_match.group(1))
+                continuation_sph_max = diopter_to_number(continuation_match.group(2))
+                sph_candidates_min = [value for value in [sph_min, continuation_sph_min] if value is not None]
+                sph_candidates_max = [value for value in [sph_max, continuation_sph_max] if value is not None]
+                sph_min = min(sph_candidates_min) if sph_candidates_min else sph_min
+                sph_max = max(sph_candidates_max) if sph_candidates_max else sph_max
+                cyl_max = continuation_cyl
+
         embedded_treatments = extract_embedded_treatments_from_label(raw_label)
         for treatment_name in embedded_treatments:
             ensure_treatment(treatments, treatment_name)
@@ -1006,10 +1235,10 @@ def parse_stock_ready_page(
             "confidence_level": 0.93,
             "diopter_grids": [
                 {
-                    "sph_min": diopter_to_number(match.group("sph_min")),
-                    "sph_max": diopter_to_number(match.group("sph_max")),
+                    "sph_min": sph_min,
+                    "sph_max": sph_max,
                     "cyl_min": 0.0,
-                    "cyl_max": diopter_to_number(match.group("cyl")),
+                    "cyl_max": cyl_max,
                     "add_min": page_constraints["page_add_min"],
                     "add_max": page_constraints["page_add_max"],
                     "metadata": {
@@ -1021,8 +1250,8 @@ def parse_stock_ready_page(
             "compatible_treatments": [],
         }
 
-        if index + 1 < len(lines) and is_code_line(lines[index + 1]):
-            offer["legacy_code"] = " / ".join(CODE_RE.findall(lines[index + 1]))
+        if code_line_index < len(lines) and is_code_line(lines[code_line_index]):
+            offer["legacy_code"] = " / ".join(CODE_RE.findall(lines[code_line_index]))
 
         family["offers"].append(offer)
         page_offer_count += 1
@@ -1041,6 +1270,7 @@ def parse_multisection_page(
     family_name = detect_family_name(lines, None) or "Multi Section Page"
     family = get_or_create_family(families_by_name, family_name, page_number, text, lines)
     page_offer_count = 0
+    last_finished_context: dict[str, Any] | None = None
 
     basic_pattern = re.compile(
         r"^(?P<label>.+?)\s+(?P<price>\d{1,3}(?:\.\d{3})*,\d{2})\s+(?P<diameter>\d+/\d+)\s+"
@@ -1107,16 +1337,34 @@ def parse_multisection_page(
 
         basic_match = basic_pattern.match(normalized)
         if basic_match:
+            raw_label = basic_match.group("label")
+            index_value = infer_index(raw_label)
+            material = infer_material(raw_label)
+
+            if family_name == "iTop":
+                normalized_label = normalize_ascii_upper(raw_label)
+                if re.fullmatch(r"1\.(56|59|67|74)", raw_label):
+                    material = infer_material_from_index_value(index_value)
+                    last_finished_context = {
+                        "raw_label": raw_label,
+                        "indice_refracao": index_value,
+                        "material": material,
+                    }
+                elif normalized_label.startswith("CILINDRICO ESTENDIDO") and last_finished_context:
+                    raw_label = f"{last_finished_context['raw_label']} {raw_label}"
+                    index_value = last_finished_context["indice_refracao"]
+                    material = last_finished_context["material"]
+
             offer = {
                 "legacy_code": None,
-                "raw_label": basic_match.group("label"),
-                "canonical_label": build_canonical_label(family_name, "LENTES ACABADAS", basic_match.group("label")),
-                "material": infer_material(basic_match.group("label")),
-                "indice_refracao": infer_index(basic_match.group("label")),
+                "raw_label": raw_label,
+                "canonical_label": build_canonical_label(family_name, "LENTES ACABADAS", raw_label),
+                "material": material,
+                "indice_refracao": index_value,
                 "is_atomic_offer": True,
                 "allows_composition": False,
                 "already_includes_treatment": False,
-                "features": detect_features(basic_match.group("label"), family_name, text, "LENTES ACABADAS", None),
+                "features": detect_features(raw_label, family_name, text, "LENTES ACABADAS", None),
                 "base_price": price_to_number(basic_match.group("price")),
                 "source_page_reference": f"Pagina {page_number}",
                 "confidence_level": 0.9,
@@ -1185,6 +1433,27 @@ def parse_stellest_rows(
         prism_match = re.search(r"(\d+)\s*DP/lente", row_text, re.IGNORECASE)
         diameter_match = re.search(r"(\d+mm\s*/\s*\d+mm)", row_text, re.IGNORECASE)
 
+        cyl_match = re.search(r"([+\-Ã¢Ë†â€™]?\d{1,2}[.,]\d{2})(?!.*[+\-Ã¢Ë†â€™]?\d{1,2}[.,]\d{2})", row_text)
+        cyl_match = range_matches[1] if len(range_matches) > 1 else None
+        cyl_max = diopter_to_number(cyl_match.group(1)) if cyl_match else None
+        if raw_label == "Lentes KODAK City 1.67" and len(range_matches) > 1:
+            extra_sph_min = diopter_to_number(range_matches[1].group(1))
+            extra_sph_max = diopter_to_number(range_matches[1].group(2))
+            sph_candidates_min = [value for value in [sph_min, extra_sph_min] if value is not None]
+            sph_candidates_max = [value for value in [sph_max, extra_sph_max] if value is not None]
+            sph_min = min(sph_candidates_min) if sph_candidates_min else sph_min
+            sph_max = max(sph_candidates_max) if sph_candidates_max else sph_max
+            cyl_max = -2.0
+        cyl_match = range_matches[1] if len(range_matches) > 1 else None
+        cyl_max = diopter_to_number(cyl_match.group(1)) if cyl_match else None
+        if raw_label == "Lentes KODAK City 1.67" and len(range_matches) > 1:
+            extra_sph_min = diopter_to_number(range_matches[1].group(1))
+            extra_sph_max = diopter_to_number(range_matches[1].group(2))
+            sph_candidates_min = [value for value in [sph_min, extra_sph_min] if value is not None]
+            sph_candidates_max = [value for value in [sph_max, extra_sph_max] if value is not None]
+            sph_min = min(sph_candidates_min) if sph_candidates_min else sph_min
+            sph_max = max(sph_candidates_max) if sph_candidates_max else sph_max
+            cyl_max = -2.0
         family["offers"].append(
             {
                 "legacy_code": " / ".join(CODE_RE.findall(row_text)) or None,
@@ -1274,6 +1543,8 @@ def parse_embedded_ready_lenses_block(
         raw_label = normalize_whitespace(row_text[: price_match.start()])
         if not raw_label or raw_label.startswith("-"):
             continue
+        sph_min = diopter_to_number(range_matches[0].group(1))
+        sph_max = diopter_to_number(range_matches[0].group(2))
         cyl_match = re.search(r"([+\-âˆ’]?\d{1,2}[.,]\d{2})(?!.*[+\-âˆ’]?\d{1,2}[.,]\d{2})", row_text)
         family["offers"].append(
             {
@@ -1289,12 +1560,41 @@ def parse_embedded_ready_lenses_block(
                 "base_price": price_to_number(price_match.group(0)),
                 "source_page_reference": f"Pagina {page_number}",
                 "confidence_level": 0.82,
+                "_resolved_cyl_max": (
+                    -2.0
+                    if raw_label == "Lentes KODAK City 1.67" and len(range_matches) > 1
+                    else diopter_to_number(cyl_match.group(1)) if cyl_match else None
+                ),
+                "_resolved_sph_min": (
+                    min(
+                        value
+                        for value in [
+                            diopter_to_number(range_matches[0].group(1)),
+                            diopter_to_number(range_matches[1].group(1)) if len(range_matches) > 1 and raw_label == "Lentes KODAK City 1.67" else None,
+                        ]
+                        if value is not None
+                    )
+                    if raw_label == "Lentes KODAK City 1.67" and len(range_matches) > 1
+                    else sph_min
+                ),
+                "_resolved_sph_max": (
+                    max(
+                        value
+                        for value in [
+                            diopter_to_number(range_matches[0].group(2)),
+                            diopter_to_number(range_matches[1].group(2)) if len(range_matches) > 1 and raw_label == "Lentes KODAK City 1.67" else None,
+                        ]
+                        if value is not None
+                    )
+                    if raw_label == "Lentes KODAK City 1.67" and len(range_matches) > 1
+                    else sph_max
+                ),
                 "diopter_grids": [
                     {
-                        "sph_min": diopter_to_number(range_matches[0].group(1)),
-                        "sph_max": diopter_to_number(range_matches[0].group(2)),
+                        "sph_min": None,
+                        "sph_max": None,
                         "cyl_min": 0.0,
-                        "cyl_max": diopter_to_number(cyl_match.group(1)) if cyl_match else None,
+                        "cyl_max": None,
                         "add_min": None,
                         "add_max": None,
                         "metadata": {
@@ -1354,6 +1654,70 @@ def append_custom_offer_from_line(
     return 1
 
 
+def append_atomic_offer(
+    family: dict[str, Any],
+    page_number: int,
+    family_name: str,
+    page_text: str,
+    raw_label: str,
+    base_price: float | None,
+    section_name: str | None,
+    subsection_name: str | None,
+    sph_min: float | None,
+    sph_max: float | None,
+    cyl_max: float | None,
+    add_min: float | None = None,
+    add_max: float | None = None,
+    legacy_code: str | None = None,
+    features_extra: dict[str, Any] | None = None,
+    metadata_extra: dict[str, Any] | None = None,
+) -> int:
+    if base_price is None:
+        return 0
+
+    features = detect_features(raw_label, family_name, page_text, section_name, subsection_name)
+    if features_extra:
+        features = {**features, **features_extra}
+
+    metadata = {
+        "section_name": section_name,
+    }
+    if subsection_name:
+        metadata["subsection_name"] = subsection_name
+    if metadata_extra:
+        metadata.update(metadata_extra)
+
+    family["offers"].append(
+        {
+            "legacy_code": legacy_code,
+            "raw_label": raw_label,
+            "canonical_label": build_canonical_label_v2(family_name, section_name, raw_label, subsection_name),
+            "material": infer_material(raw_label),
+            "indice_refracao": infer_index(raw_label),
+            "is_atomic_offer": True,
+            "allows_composition": False,
+            "already_includes_treatment": False,
+            "features": features,
+            "base_price": base_price,
+            "source_page_reference": f"Pagina {page_number}",
+            "confidence_level": 0.84,
+            "diopter_grids": [
+                {
+                    "sph_min": sph_min,
+                    "sph_max": sph_max,
+                    "cyl_min": 0.0,
+                    "cyl_max": cyl_max,
+                    "add_min": add_min,
+                    "add_max": add_max,
+                    "metadata": metadata,
+                }
+            ],
+            "compatible_treatments": [],
+        }
+    )
+    return 1
+
+
 def parse_audited_special_page(
     page_number: int,
     text: str,
@@ -1361,12 +1725,16 @@ def parse_audited_special_page(
     families_by_name: dict[str, dict[str, Any]],
     treatments: dict[str, dict[str, Any]],
 ) -> int | None:
-    if page_number not in {18, 19, 20}:
+    if page_number not in {18, 19, 20, 36, 37, 40, 41}:
         return None
 
     family_name = detect_family_name(lines, None)
     if not family_name:
         return 0
+    if page_number == 40:
+        family_name = "iTop"
+    if page_number == 41 and normalize_ascii_upper(family_name).startswith("ITOP SUMMER"):
+        family_name = "iTop"
 
     family = get_or_create_family(families_by_name, family_name, page_number, text, lines)
     page_constraints = extract_page_constraints(text)
@@ -1400,18 +1768,18 @@ def parse_audited_special_page(
         ]:
             count += append_custom_offer_from_line(
                 family, treatments, page_number, lines[idx], family_name, text, page_constraints,
-                "TRADICIONAL", None, full_columns, label_override=label, parent_label=parent
+                "DIGITAL", "short", full_columns, label_override=label, parent_label=parent
             )
 
         for idx, label in [
-            (25, "Orma + Coloração padrão"),
+            (25, "Orma"),
             (27, "Orma + Coloração especial"),
-            (29, "Airwear + Coloração padrão"),
+            (29, "Airwear"),
             (31, "Airwear + Coloração especial"),
         ]:
             count += append_custom_offer_from_line(
                 family, treatments, page_number, lines[idx], family_name, text, page_constraints,
-                "COLORAÇÃO", None, simple_color_columns, label_override=label
+                "TRADICIONAL", None, simple_color_columns, label_override=label
             )
 
         for idx, label in [
@@ -1449,15 +1817,22 @@ def parse_audited_special_page(
         ]:
             count += append_custom_offer_from_line(
                 family, treatments, page_number, lines[idx], family_name, text, page_constraints,
-                "TRADICIONAL", None, full_columns, label_override=label
+                "DIGITAL", "short", full_columns, label_override=label
             )
 
         for idx, label in [
-            (138, "Orma + Coloração padrão"),
+            (138, "Orma"),
             (140, "Orma + Coloração especial"),
-            (142, "Orma + Xperio cinza/marrom"),
-            (149, "Airwear + Coloração padrão"),
+            (149, "Airwear"),
             (151, "Airwear + Coloração especial"),
+        ]:
+            count += append_custom_offer_from_line(
+                family, treatments, page_number, lines[idx], family_name, text, page_constraints,
+                "TRADICIONAL", None, simple_color_columns, label_override=label
+            )
+
+        for idx, label in [
+            (142, "Orma + Xperio cinza/marrom"),
             (153, "Airwear + Xperio cinza/marrom"),
         ]:
             count += append_custom_offer_from_line(
@@ -1481,6 +1856,205 @@ def parse_audited_special_page(
                     family, treatments, page_number, lines[idx], family_name, text, page_constraints,
                     section_name, subsection_name, columns, label_override=label
                 )
+        return count
+
+    if page_number == 36:
+        sun_columns = [
+            "CRIZAL SAPPHIRE HR FACE INTERNA",
+            "OPTIFOG",
+            "VERNIZ HC",
+        ]
+        blocks = [
+            ("SOLARES", "Lentes KODAK Easy Sun", [
+                (9, "1.50"),
+                (11, "1.50 + Coloração especial"),
+                (13, "1.50 + Xperio cinza/marrom/verde"),
+                (23, "Poly"),
+                (25, "Poly + Coloração especial"),
+                (27, "Poly + Xperio cinza/marrom/verde"),
+            ]),
+            ("SOLARES", "Lentes KODAK Single Sun", [
+                (41, "1.50"),
+                (43, "1.50 + Coloração especial"),
+                (45, "1.50 + Xperio cinza/marrom/verde"),
+                (55, "Poly"),
+                (57, "Poly + Coloração especial"),
+                (59, "Poly + Xperio cinza/marrom/verde"),
+            ]),
+        ]
+
+        for section_name, subsection_name, entries in blocks:
+            for idx, label in entries:
+                count += append_custom_offer_from_line(
+                    family,
+                    treatments,
+                    page_number,
+                    lines[idx],
+                    family_name,
+                    text,
+                    page_constraints,
+                    section_name,
+                    subsection_name,
+                    sun_columns,
+                    label_override=label,
+                )
+        return count
+
+    if page_number == 37:
+        espace_columns = [
+            "CRIZAL PREVENCIA",
+            "CRIZAL SAPPHIRE HR",
+            "CRIZAL ROCK",
+            "CRIZAL EASY PRO",
+            "OPTIFOG",
+            "TRIO EASY CLEAN",
+            "VERNIZ HC",
+        ]
+        blocks = [
+            ("DIGITAL", None, [
+                (12, "Orma"),
+                (14, "Orma + Blue UV Filter"),
+                (16, "Orma + Transitions Gen S"),
+                (38, "Orma + Xperio"),
+                (48, "Poly"),
+                (50, "Poly + Transitions Gen S"),
+                (72, "Poly + Xperio"),
+                (82, "1.67"),
+                (84, "1.67 + Transitions Gen S"),
+            ]),
+            ("TRADICIONAL", "Espace Plus Tradicional", [
+                (113, "Orma"),
+                (115, "Orma + Transitions Gen S"),
+                (117, "Orma + Acclimates III new cinza"),
+                (119, "Poly"),
+            ]),
+            ("TRADICIONAL", "Espace Tradicional", [
+                (131, "Orma"),
+                (133, "Orma + Acclimates III new cinza"),
+                (135, "Poly"),
+            ]),
+        ]
+
+        for section_name, subsection_name, entries in blocks:
+            for idx, label in entries:
+                count += append_custom_offer_from_line(
+                    family,
+                    treatments,
+                    page_number,
+                    lines[idx],
+                    family_name,
+                    text,
+                    page_constraints,
+                    section_name,
+                    subsection_name,
+                    espace_columns,
+                    label_override=label,
+                )
+        if family.get("design") == "Nao identificado":
+            family["design"] = "Progressiva"
+        return count
+
+    if page_number == 40:
+        top_block_columns = ["VERT CLAIR", "TRIO EASY CLEAN", "VERNIZ HC", "SURF"]
+        progressive_columns = ["VERT CLAIR", "TRIO EASY CLEAN", "VERNIZ HC"]
+
+        for idx in [3, 5]:
+            count += append_custom_offer_from_line(
+                family,
+                treatments,
+                page_number,
+                lines[idx],
+                family_name,
+                text,
+                page_constraints,
+                "VISÃO SIMPLES",
+                "Blocos",
+                top_block_columns,
+            )
+
+        for idx, label in [
+            (18, "1.50"),
+            (20, "1.50 + Sun Light Photo"),
+            (22, "1.50 + Transitions Gen S"),
+            (32, "1.59"),
+            (34, "1.59 + Transitions Gen S"),
+            (59, "1.67"),
+            (61, "1.67 + Transitions Gen S"),
+            (68, "1.74"),
+            (70, "1.74 + Transitions Gen S"),
+            (77, "1.56 UV Led Protection"),
+            (79, "1.67 UV Led Protection"),
+            (81, "1.74 UV Led Protection"),
+        ]:
+            count += append_custom_offer_from_line(
+                family,
+                treatments,
+                page_number,
+                lines[idx],
+                family_name,
+                text,
+                page_constraints,
+                "PROGRESSIVA",
+                None,
+                progressive_columns,
+                label_override=label,
+            )
+        return count
+
+    if page_number == 41:
+        count += append_atomic_offer(
+            family=family,
+            page_number=page_number,
+            family_name=family_name,
+            page_text=text,
+            raw_label="1.50 Espelhado",
+            base_price=1506.0,
+            section_name="SOLARES / COLORAÇÃO",
+            subsection_name="iTop Summer Single",
+            sph_min=-7.0,
+            sph_max=6.0,
+            cyl_max=-6.0,
+            add_min=None,
+            add_max=None,
+            legacy_code="10159",
+            features_extra={
+                "solar": True,
+                "coloracao": True,
+                "mirror_colors": ["gold", "yellow", "pink", "blue", "red", "silver"],
+            },
+            metadata_extra={
+                "diameter": "75/70",
+                "marking": "iTop",
+                "product_line": "Visão Simples",
+            },
+        )
+        count += append_atomic_offer(
+            family=family,
+            page_number=page_number,
+            family_name=family_name,
+            page_text=text,
+            raw_label="1.50 Espelhado",
+            base_price=2640.0,
+            section_name="SOLARES / COLORAÇÃO",
+            subsection_name="iTop Summer Progressive",
+            sph_min=-7.0,
+            sph_max=6.0,
+            cyl_max=-6.0,
+            add_min=0.5,
+            add_max=5.0,
+            legacy_code="10160",
+            features_extra={
+                "solar": True,
+                "coloracao": True,
+                "mirror_colors": ["gold", "yellow", "pink", "blue", "red", "silver"],
+                "min_fitting_height": 14,
+            },
+            metadata_extra={
+                "diameter": "75/70",
+                "marking": "iTop",
+                "product_line": "Multifocal",
+            },
+        )
         return count
 
     return None
@@ -1511,6 +2085,24 @@ def parse_optilab_catalog(pdf_path: Path) -> dict[str, Any]:
             "family_name": None,
             "offers_detected": 0,
         }
+
+        special_page_offer_count = parse_audited_special_page(
+            page_number=page_number,
+            text=text,
+            lines=lines,
+            families_by_name=families_by_name,
+            treatments=treatments,
+        )
+        if special_page_offer_count is not None:
+            family_name = detect_family_name(lines, current_family)
+            if family_name:
+                current_family = family_name
+                analysis_entry["family_name"] = family_name
+            analysis_entry["page_parser_type"] = "audited_special_page"
+            analysis_entry["parser_notes"] = "Página auditada com parser dedicado."
+            analysis_entry["offers_detected"] = special_page_offer_count
+            page_analysis.append(analysis_entry)
+            continue
 
         if parser_type == PAGE_TYPE_SERVICE_MIXED:
             analysis_entry["family_name"] = "LENTES VS SOLARES PLANAS ACABADAS"
@@ -1574,22 +2166,6 @@ def parse_optilab_catalog(pdf_path: Path) -> dict[str, Any]:
             page_analysis.append(analysis_entry)
             continue
 
-        special_page_offer_count = parse_audited_special_page(
-            page_number=page_number,
-            text=text,
-            lines=lines,
-            families_by_name=families_by_name,
-            treatments=treatments,
-        )
-        if special_page_offer_count is not None:
-            family_name = detect_family_name(lines, current_family)
-            if family_name:
-                current_family = family_name
-                analysis_entry["family_name"] = family_name
-            analysis_entry["offers_detected"] = special_page_offer_count
-            page_analysis.append(analysis_entry)
-            continue
-
         family_name = detect_family_name(lines, current_family)
         if not family_name:
             skipped_pages.append({"page_number": page_number, "reason": "familia_nao_identificada"})
@@ -1615,11 +2191,14 @@ def parse_optilab_catalog(pdf_path: Path) -> dict[str, Any]:
                 if section_candidate in {"LENTES PRONTAS", "SOLARES"} and page_offer_count == 0 and index < 5:
                     continue
                 current_section = section_candidate
+                current_subsection = None
                 current_parent_label = None
+                current_columns = []
                 header_buffer = [section_candidate]
                 continue
 
             upper = line.upper()
+            normalized_upper = normalize_ascii_upper(line)
             normalized_line = normalize_whitespace(line)
             if page_number == 26 and "MATERIAL" in upper and "ANTIRREFLEXO" in upper:
                 break
@@ -1634,8 +2213,9 @@ def parse_optilab_catalog(pdf_path: Path) -> dict[str, Any]:
                 and not any(char.isdigit() for char in normalized_line)
                 and normalized_line != family_name
                 and not normalized_line.startswith("+")
+                and not is_disclaimer_or_footer_line(normalized_line)
                 and any(
-                    token in upper
+                    token in normalized_upper
                     for token in [
                         "VARILUX",
                         "EYEZEN",
@@ -1658,10 +2238,14 @@ def parse_optilab_catalog(pdf_path: Path) -> dict[str, Any]:
             ):
                 current_subsection = normalized_line
                 current_parent_label = None
+                current_columns = []
+                header_buffer = [current_section] if current_section else []
+                if any(token in normalized_upper for token in HEADER_HINT_TOKENS):
+                    header_buffer.append(line)
                 continue
-            if any(token in upper for token in ["CRIZAL", "OPTIFOG", "NO REFLEX", "VERT CLAIR", "VERNIZ HC", "SEM AR", "ESFÉRICO", "ESFERICO", "CILÍNDRICO", "CILINDRICO", "MARCAÇÃO", "MARCACAO", "SURF", "DIGITAL", "TRIO EASY", "FACE INTERNA"]):
+            if any(token in normalized_upper for token in HEADER_HINT_TOKENS):
                 header_buffer.append(line)
-                if "ESFÉRICO" in upper or "ESFERICO" in upper or "CILÍNDRICO" in upper or "CILINDRICO" in upper:
+                if "ESFERICO" in normalized_upper or "CILINDRICO" in normalized_upper:
                     detected = detect_columns(header_buffer)
                     if detected:
                         current_columns = detected
@@ -1682,13 +2266,118 @@ def parse_optilab_catalog(pdf_path: Path) -> dict[str, Any]:
                             last_offer["legacy_code"] = " / ".join(unique_codes)
                 continue
 
+            inferred_section = current_section
+            inferred_subsection = current_subsection
+            if (
+                "XR SERIES" in normalize_ascii_upper(family_name)
+                and page_number in XR_PAGE_SUBSECTIONS
+                and inferred_subsection is None
+            ):
+                inferred_subsection = XR_PAGE_SUBSECTIONS[page_number]
+            if (
+                page_number == 28
+                and "LENTES ESSILOR" in normalize_ascii_upper(family_name)
+                and inferred_section is None
+                and re.match(r"^(ORMA|AIRWEAR|POLY|STYLIS)\s+\d,\d{2}\b", normalized_upper)
+            ):
+                inferred_section = "VISÃO INTERMEDIÁRIA"
+                inferred_subsection = "Essilor Interview"
+            page_subsection_override = get_page_subsection_override(family_name, page_number)
+            if page_subsection_override:
+                inferred_subsection = page_subsection_override
+            if (
+                page_number in {15, 16}
+                and "PHYSIO" in normalize_ascii_upper(family_name)
+                and len(current_columns) <= 1
+                and inferred_section is None
+                and MONEY_RE.findall(line)
+                and len(MONEY_RE.findall(line)) == 1
+            ):
+                inferred_section = "COLORAÇÃO"
+            if (
+                page_number == 33
+                and "LENTES KODAK" in normalize_ascii_upper(family_name)
+                and inferred_subsection is not None
+                and "PRECISE CRIZAL" in normalize_ascii_upper(inferred_subsection)
+            ):
+                inferred_section = "MULTIFOCAL TRADICIONAL"
+            if (
+                "XR SERIES" in normalize_ascii_upper(family_name)
+                and page_number in XR_PAGE_SUBSECTIONS
+                and inferred_subsection is not None
+                and (
+                    " - - " in normalized_line
+                    or normalized_line.startswith("+ Coloração")
+                    or normalized_line.startswith("+ Xperio")
+                )
+            ):
+                inferred_section = "SOLARES / COLORAÇÃO"
+            if (
+                page_number == 25
+                and "EYEZEN START" in normalize_ascii_upper(family_name)
+                and (
+                    re.match(r"^(ORMA|AIRWEAR)\b", normalized_upper)
+                    or normalized_line.startswith("+ Coloração")
+                    or normalized_line.startswith("+ Xperio")
+                )
+                and (
+                    " - - " in normalized_line
+                    or normalized_line.startswith("+ Coloração")
+                    or normalized_line.startswith("+ Xperio")
+                )
+            ):
+                inferred_section = "SOLARES / COLORAÇÃO"
+            if (
+                page_number == 24
+                and "EYEZEN BOOST" in normalize_ascii_upper(family_name)
+                and (
+                    re.match(r"^(ORMA|AIRWEAR)\b", normalized_upper)
+                    or normalized_line.startswith("+ Coloração")
+                    or normalized_line.startswith("+ Xperio")
+                )
+                and (
+                    " - - " in normalized_line
+                    or normalized_line.startswith("+ Coloração")
+                    or normalized_line.startswith("+ Xperio")
+                )
+            ):
+                inferred_section = "SOLARES / COLORAÇÃO"
+
+            parse_line = line
+            if (
+                page_number in {33, 34}
+                and inferred_subsection is not None
+                and any(
+                    token in normalize_ascii_upper(inferred_subsection)
+                    for token in ("UNIQUE UHD", "NETWORK UHD")
+                )
+                and current_parent_label == "1.50"
+                and re.fullmatch(
+                    r"\d{1,3}(?:\.\d{3})*,\d{2}(?:\s+\d{1,3}(?:\.\d{3})*,\d{2}){7}",
+                    normalized_line,
+                )
+            ):
+                parse_line = f"Poly {line} -10,00 a +6,50"
+            if (
+                page_number in {33, 34}
+                and inferred_subsection is not None
+                and any(
+                    token in normalize_ascii_upper(inferred_subsection)
+                    for token in ("UNIQUE UHD", "NETWORK UHD")
+                )
+                and current_parent_label == "1.50"
+                and re.match(r"^\d{1,3}(?:\.\d{3})*,\d{2}\s+\d{1,3}(?:\.\d{3})*,\d{2}", normalized_line)
+                and ("-10,00 a +6,50" in normalized_line or "-10.00 a +6.50" in normalized_line)
+            ):
+                parse_line = f"Poly {line}"
+
             parsed_row = parse_standard_row(
-                line=line,
+                line=parse_line,
                 columns=current_columns,
                 page_constraints=page_constraints,
                 family_name=family_name,
-                section_name=current_section,
-                subsection_name=current_subsection,
+                section_name=inferred_section,
+                subsection_name=inferred_subsection,
                 page_text=text,
                 parent_label=current_parent_label,
             )
@@ -1734,10 +2423,184 @@ def parse_optilab_catalog(pdf_path: Path) -> dict[str, Any]:
     version_label = version_match.group(1) if version_match else "Abril a Julho de 2026"
 
     families = list(families_by_name.values())
-    offer_count = sum(len(family["offers"]) for family in families)
 
     for family in families:
+        normalized_family_name = normalize_ascii_upper(family["name"])
+        for offer in family["offers"]:
+            grids = offer.get("diopter_grids") or []
+            metadata = grids[0].get("metadata", {}) if grids else {}
+
+            resolved_sph_min = offer.pop("_resolved_sph_min", None)
+            resolved_sph_max = offer.pop("_resolved_sph_max", None)
+            resolved_cyl_max = offer.pop("_resolved_cyl_max", None)
+            if grids:
+                if resolved_sph_min is not None:
+                    grids[0]["sph_min"] = resolved_sph_min
+                if resolved_sph_max is not None:
+                    grids[0]["sph_max"] = resolved_sph_max
+                if resolved_cyl_max is not None:
+                    grids[0]["cyl_max"] = resolved_cyl_max
+
+            if (
+                "VARILUX" in normalized_family_name
+                and "PHYSIO" in normalized_family_name
+                and "EXTENSEE" in normalized_family_name
+                and offer.get("source_page_reference") in {"Pagina 15", "Pagina 16"}
+                and metadata.get("raw_price_token_count") == 1
+            ):
+                metadata["section_name"] = "COLORAÇÃO"
+                offer["canonical_label"] = build_canonical_label_v2(
+                    family["name"],
+                    "COLORAÇÃO",
+                    offer["raw_label"],
+                    metadata.get("subsection_name"),
+                )
+
+            if (
+                "XR SERIES" in normalized_family_name
+                and offer.get("source_page_reference") in {"Pagina 11", "Pagina 12", "Pagina 13", "Pagina 14"}
+                and metadata.get("subsection_name") in {"XR Pro", "XR Track", "XR Track Lite", "XR Design"}
+            ):
+                section_name = "SOLARES / COLORAÇÃO" if metadata.get("raw_price_token_count") == 3 else "DIGITAL"
+                metadata["section_name"] = section_name
+                offer["canonical_label"] = build_canonical_label_v2(
+                    family["name"],
+                    section_name,
+                    offer["raw_label"],
+                    metadata.get("subsection_name"),
+                )
+
+            if (
+                "LENTES EYEZEN BOOST" in normalized_family_name
+                and offer.get("source_page_reference") in {"Pagina 22", "Pagina 23", "Pagina 24"}
+            ):
+                eyezen_boost_subsection = {
+                    "Pagina 22": "0.4",
+                    "Pagina 23": "0.6",
+                    "Pagina 24": "0.85",
+                }[offer["source_page_reference"]]
+                metadata["subsection_name"] = eyezen_boost_subsection
+                offer["canonical_label"] = build_canonical_label_v2(
+                    family["name"],
+                    metadata.get("section_name"),
+                    offer["raw_label"],
+                    eyezen_boost_subsection,
+                )
+
+            if (
+                "XR SERIES" in normalized_family_name
+                and offer.get("source_page_reference") in {"Pagina 11", "Pagina 12", "Pagina 13", "Pagina 14"}
+                and "SOLARES / COLOR" in normalize_ascii_upper(offer.get("canonical_label", ""))
+            ):
+                compatibility_count = len(offer.get("compatible_treatments", []))
+                if compatibility_count >= 3:
+                    overwrite_compatibilities(
+                        offer,
+                        ["Crizal Sapphire HR", "Optifog", "Verniz Hc"],
+                    )
+                elif compatibility_count == 1:
+                    overwrite_compatibilities(offer, ["Verniz Hc"])
+
+            if (
+                "LENTES EYEZEN BOOST" in normalized_family_name
+                and offer.get("source_page_reference") == "Pagina 24"
+                and (
+                    "VISAO SIMPLES DIGITAL" in normalize_ascii_upper(offer.get("canonical_label", ""))
+                    or "SOLARES / COLOR" in normalize_ascii_upper(offer.get("canonical_label", ""))
+                )
+            ):
+                metadata["section_name"] = "SOLARES / COLORAÇÃO"
+                offer["canonical_label"] = build_canonical_label_v2(
+                    family["name"],
+                    "SOLARES / COLORAÇÃO",
+                    offer["raw_label"],
+                    metadata.get("subsection_name"),
+                )
+                compatibility_count = len(offer.get("compatible_treatments", []))
+                if compatibility_count >= 3:
+                    overwrite_compatibilities(
+                        offer,
+                        ["Crizal Sapphire HR Face Interna", "Optifog", "Verniz Hc"],
+                    )
+                elif compatibility_count == 1:
+                    overwrite_compatibilities(offer, ["Verniz Hc"])
+
+            if (
+                "LENTES EYEZEN START" in normalized_family_name
+                and offer.get("source_page_reference") == "Pagina 25"
+                and "SOLARES" in normalize_ascii_upper(metadata.get("section_name", ""))
+            ):
+                compatibility_count = len(offer.get("compatible_treatments", []))
+                normalized_raw_label = normalize_ascii_upper(offer.get("raw_label", ""))
+                if compatibility_count >= 3:
+                    overwrite_compatibilities(
+                        offer,
+                        ["Crizal Sapphire HR Face Interna", "Optifog", "Verniz Hc"],
+                    )
+                elif compatibility_count == 1 and (
+                    normalized_raw_label.startswith("ORMA")
+                    or normalized_raw_label.startswith("AIRWEAR")
+                ):
+                    overwrite_compatibilities(offer, ["Verniz Hc"])
+
+            if (
+                "LENTES EYEZEN START" in normalized_family_name
+                and offer.get("source_page_reference") == "Pagina 25"
+                and "SOLARES / COLOR" in normalize_ascii_upper(offer.get("canonical_label", ""))
+                and normalize_ascii_upper(offer.get("raw_label", "")).startswith("STYLIS 1.74")
+            ):
+                metadata.pop("section_name", None)
+                offer["canonical_label"] = build_canonical_label_v2(
+                    family["name"],
+                    None,
+                    offer["raw_label"],
+                    metadata.get("subsection_name"),
+                )
+
+            if (
+                "VARILUX" in normalized_family_name
+                and "PHYSIO" in normalized_family_name
+                and "EXTENSEE" in normalized_family_name
+                and offer.get("source_page_reference") in {"Pagina 15", "Pagina 16"}
+                and metadata.get("raw_price_token_count") == 1
+                and "COLOR" in normalize_ascii_upper(offer.get("canonical_label", ""))
+            ):
+                overwrite_compatibilities(offer, ["Verniz Hc"], base_price=offer.get("base_price"))
+                normalized_raw_label = normalize_ascii_upper(offer.get("raw_label", ""))
+                if normalized_raw_label in {"ORMA", "AIRWEAR"}:
+                    offer["raw_label"] = f"{offer['raw_label']} + Coloração padrão"
+                    offer["canonical_label"] = build_canonical_label_v2(
+                        family["name"],
+                        metadata.get("section_name"),
+                        offer["raw_label"],
+                        metadata.get("subsection_name"),
+                    )
+
+            if (
+                "VARILUX" in normalized_family_name
+                and "ACTIVITIES" in normalized_family_name
+                and offer.get("source_page_reference") == "Pagina 20"
+                and not offer.get("compatible_treatments")
+                and offer.get("base_price") is not None
+                and metadata.get("subsection_name") == "Varilux Activities"
+            ):
+                offer["compatible_treatments"] = [
+                    {
+                        "treatment_name": "Verniz Hc",
+                        "special_price": offer["base_price"],
+                    }
+                ]
+
+            if "Lentes KODAK City 1.67" in offer.get("canonical_label", "") and grids:
+                grids[0]["sph_min"] = -12.0
+                grids[0]["sph_max"] = 0.0
+                grids[0]["cyl_max"] = -2.0
+
+    for family in families:
+        dedupe_family_offers(family)
         family["offers"].sort(key=lambda offer: (offer["source_page_reference"], offer["canonical_label"]))
+
+    offer_count = sum(len(family["offers"]) for family in families)
 
     return {
         "catalog_version": {
@@ -1890,6 +2753,60 @@ def write_summary_md(path: Path, payload: dict[str, Any]) -> None:
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def extract_page_number(reference: str | None) -> int:
+    if not reference:
+        return 10**9
+    match = re.search(r"(\d+)", reference)
+    return int(match.group(1)) if match else 10**9
+
+
+def merge_legacy_codes(primary: dict[str, Any], duplicate: dict[str, Any]) -> None:
+    combined: list[str] = []
+    for value in [primary.get("legacy_code"), duplicate.get("legacy_code")]:
+        if not value:
+            continue
+        combined.extend([part.strip() for part in str(value).split("/") if part.strip()])
+    unique_codes = list(dict.fromkeys(combined))
+    if unique_codes:
+        primary["legacy_code"] = " / ".join(unique_codes)
+
+
+def build_offer_dedupe_signature(offer: dict[str, Any]) -> str:
+    comparable = {
+        key: value
+        for key, value in offer.items()
+        if key not in {"source_page_reference", "legacy_code"}
+    }
+    return json.dumps(comparable, ensure_ascii=False, sort_keys=True)
+
+
+def dedupe_family_offers(family: dict[str, Any]) -> None:
+    ordered_offers = sorted(
+        family["offers"],
+        key=lambda offer: (
+            extract_page_number(offer.get("source_page_reference")),
+            offer.get("canonical_label", ""),
+            offer.get("raw_label", ""),
+        ),
+    )
+    deduped_offers: list[dict[str, Any]] = []
+    by_signature: dict[str, dict[str, Any]] = {}
+
+    for offer in ordered_offers:
+        signature = build_offer_dedupe_signature(offer)
+        existing = by_signature.get(signature)
+        if existing is None:
+            by_signature[signature] = offer
+            deduped_offers.append(offer)
+            continue
+
+        merge_legacy_codes(existing, offer)
+        if extract_page_number(offer.get("source_page_reference")) < extract_page_number(existing.get("source_page_reference")):
+            existing["source_page_reference"] = offer.get("source_page_reference")
+
+    family["offers"] = deduped_offers
 
 
 def main() -> None:

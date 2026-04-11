@@ -74,7 +74,7 @@ export default function LoginPage() {
         {/* LOGO / BRANDING */}
         <div className="mb-8 text-center">
           <h1 className="text-4xl font-black tracking-tight mb-2 text-white drop-shadow-lg">
-            <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Neo</span>Manager 2.0
+            <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">MB</span>Optical
           </h1>
           <p className="text-gray-300 text-xs font-medium uppercase tracking-widest text-shadow-sm opacity-80">Sistema de Gestão Ótica</p>
         </div>
@@ -141,7 +141,7 @@ export default function LoginPage() {
 
         {/* Footer discreto */}
         <div className="mt-8 pt-6 border-t border-white/5 text-center">
-          <p className="text-[10px] text-gray-300 opacity-80">© {new Date().getFullYear()} NeoManager. Todos os direitos reservados.</p>
+          <p className="text-[10px] text-gray-300 opacity-80">© {new Date().getFullYear()} MBOptical. Todos os direitos reservados.</p>
         </div>
       </div>
     </main>

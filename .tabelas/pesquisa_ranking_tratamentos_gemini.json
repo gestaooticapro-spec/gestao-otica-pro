@@ -1,0 +1,467 @@
+[
+  {
+    "entity_name": "ZEISS DuraVision Platinum",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "ZEISS",
+    "category": "antirreflexo",
+    "recommended_for": [
+      "Usuários que buscam alta resistência e facilidade de limpeza"
+    ],
+    "not_ideal_for": [
+      "Não especificado nas fontes"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "Resistência a arranhões",
+      "Fácil limpeza",
+      "Antiestático"
+    ],
+    "usage_tags": [
+      "Uso diário intenso"
+    ],
+    "technology_tags": [
+      "Endurecimento termoendurecido",
+      "Camadas antiestáticas",
+      "Camadas hidrofóbicas"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Fato técnico: Engenharia baseada em endurecimento termoendurecido com propriedades antiestáticas e hidrofóbicas. Posicionamento comercial: Tratamento de topo de linha para durabilidade. Claim de marketing: Máxima resistência e clareza.",
+    "recommendation_notes": "Nível 'premium' inferido pelo nome 'Platinum' e pelas características descritas como superiores dentro da família DuraVision.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "detalhando a engenharia por trás do endurecimento termoendurecido, camadas antiestáticas e hidrofóbicas"
+    ],
+    "source_urls": [
+      "https://www.zeiss.com.br/vision-care/precisa-de-lentes-novas/tratamentos-duravision.html"
+    ]
+  },
+  {
+    "entity_name": "HOYA LongLife",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "HOYA",
+    "category": "hidrofobico/oleofobico/antiestatico",
+    "recommended_for": [
+      "Usuários que necessitam de lentes que não sujem com facilidade e exijam menos manutenção"
+    ],
+    "not_ideal_for": [
+      "Não especificado nas fontes"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "Repelência a água e óleo",
+      "Alta durabilidade",
+      "Fácil de limpar"
+    ],
+    "usage_tags": [
+      "Uso diário"
+    ],
+    "technology_tags": [
+      "Liporrepelente",
+      "Hidrorrepelente",
+      "Antiestático"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Fato técnico: Propriedades físico-químicas de repelência a água (hidro) e gordura (lipo). Posicionamento comercial: Opção de alta performance para quem busca praticidade. Claim de marketing: Máxima facilidade de limpeza e vida útil prolongada.",
+    "recommendation_notes": "Posicionamento 'premium' inferido em contraste com a linha Aqua, focando em resistência e repelência total.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "detalha as propriedades de durabilidade e facilidade de limpeza das linhas LongLife (liporrepelente, hidrorrepelente e antiestático)"
+    ],
+    "source_urls": [
+      "https://www.hoyavision.com/br/produtos/antirreflexo/"
+    ]
+  },
+  {
+    "entity_name": "Crizal Sapphire HR",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "Essilor",
+    "category": "antirreflexo",
+    "recommended_for": [
+      "Usuários que priorizam a estética e transparência máxima da lente"
+    ],
+    "not_ideal_for": [
+      "Não especificado nas fontes"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "Transparência",
+      "Redução de reflexos"
+    ],
+    "usage_tags": [
+      "Uso geral",
+      "Estética"
+    ],
+    "technology_tags": [
+      "Tecnologia Multiangular"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Fato técnico: Utiliza Tecnologia Multiangular para controle de luz de vários ângulos. Posicionamento comercial: Topo do portfólio tradicional da Crizal. Claim de marketing: A lente invisível, clareza absoluta.",
+    "recommendation_notes": "A fonte especializada da Lenscope permitiu mapear esta opção de forma clara no nível 'premium' da hierarquia comercial.",
+    "evidence_level": "medio",
+    "evidence_type": "especializada",
+    "source_quotes_or_points": [
+      "destacando a Tecnologia Multiangular",
+      "mapear a hierarquia comercial ... Easy Pro vs premium"
+    ],
+    "source_urls": [
+      "https://www.essilor.com/br-pt/",
+      "https://lenscope.com.br/blog/lentes-crizal-todos-os-tipos-que-existem/"
+    ]
+  },
+  {
+    "entity_name": "Crizal Rock",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "Essilor",
+    "category": "durabilidade/anti-risco",
+    "recommended_for": [
+      "Usuários descuidados ou submetidos a ambientes abrasivos"
+    ],
+    "not_ideal_for": [
+      "Não especificado nas fontes"
+    ],
+    "positioning": "intermediario",
+    "benefit_tags": [
+      "Resistência a riscos",
+      "Durabilidade"
+    ],
+    "usage_tags": [
+      "Atividades intensas",
+      "Crianças/Jovens"
+    ],
+    "technology_tags": [
+      "Endurecimento avançado"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Fato técnico: Processos de superfície voltados ao aumento da dureza da lente. Posicionamento comercial: Lente com foco específico na resistência física. Claim de marketing: A Crizal mais resistente a arranhões.",
+    "recommendation_notes": "Posicionada como 'intermediário' na escala de tratamentos essilor, ficando entre a Easy Pro e a Sapphire HR conforme base cruzada da Lenscope e Essilor Promoções.",
+    "evidence_level": "medio",
+    "evidence_type": "especializada",
+    "source_quotes_or_points": [
+      "artigo técnico especializado é excelente para mapear a hierarquia comercial",
+      "entender o escopo de cobertura legal e 'promessas' da fabricante na proteção anti-riscos"
+    ],
+    "source_urls": [
+      "https://lenscope.com.br/blog/lentes-crizal-todos-os-tipos-que-existem/",
+      "https://essilorbrasil.com.br/promocao/crizal-dobro/"
+    ]
+  },
+  {
+    "entity_name": "Crizal Easy Pro",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "Essilor",
+    "category": "antirreflexo",
+    "recommended_for": [
+      "Primeiros usuários de óculos ou pessoas com orçamento limitado que buscam qualidade de marca"
+    ],
+    "not_ideal_for": [
+      "Não especificado nas fontes"
+    ],
+    "positioning": "entrada",
+    "benefit_tags": [
+      "Antirreflexo básico",
+      "Limpeza facilitada"
+    ],
+    "usage_tags": [
+      "Uso diário comum"
+    ],
+    "technology_tags": [],
+    "material_tags": [],
+    "commercial_summary": "Fato técnico: Antirreflexo padrão de entrada do laboratório. Posicionamento comercial: Lente de acesso à tecnologia de marca. Claim de marketing: Conforto e limpeza básica com assinatura Crizal.",
+    "recommendation_notes": "Marcada claramente como nível de 'entrada' nas fontes especializadas de hierarquia comercial.",
+    "evidence_level": "medio",
+    "evidence_type": "especializada",
+    "source_quotes_or_points": [
+      "comparação de custos de entrada vs. premium"
+    ],
+    "source_urls": [
+      "https://lenscope.com.br/blog/lentes-crizal-todos-os-tipos-que-existem/"
+    ]
+  },
+  {
+    "entity_name": "ZEISS BlueGuard",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "ZEISS",
+    "category": "filtro_luz_azul",
+    "recommended_for": [
+      "Pessoas expostas a telas que não desejam o reflexo residual roxo/azul forte nas lentes"
+    ],
+    "not_ideal_for": [
+      "Não especificado nas fontes"
+    ],
+    "positioning": "indefinido",
+    "benefit_tags": [
+      "Estética superior (sem reflexo roxo)",
+      "Proteção luz azul"
+    ],
+    "usage_tags": [
+      "Telas",
+      "Dispositivos digitais",
+      "Videochamadas"
+    ],
+    "technology_tags": [
+      "Filtro na massa/resina da lente"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Fato técnico: O filtro de luz azul está na matriz do material (na massa), e não como uma camada de superfície. Posicionamento comercial: Evolução estética na proteção digital. Claim de marketing: Proteção total contra a luz azul bloqueando a emissão sem reflexos incômodos.",
+    "recommendation_notes": "As fontes não explicitam ranking de valor para a BlueGuard, apenas um diferencial tecnológico evolutivo (massa vs. tratamento). Logo, deixado como 'indefinido'.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "diferenciar tecnicamente lentes que filtram luz azul pela própria resina/material (BlueGuard)",
+      "cita redução de reflexo roxo"
+    ],
+    "source_urls": [
+      "https://www.zeiss.com.br/vision-care/precisa-de-lentes-novas/blueguard.html"
+    ]
+  },
+  {
+    "entity_name": "ZEISS DuraVision BlueProtect UV",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "ZEISS",
+    "category": "filtro_luz_azul",
+    "recommended_for": [
+      "Profissionais que trabalham sob iluminação artificial ou telas"
+    ],
+    "not_ideal_for": [
+      "Não especificado nas fontes"
+    ],
+    "positioning": "indefinido",
+    "benefit_tags": [
+      "Atenuação de luz nociva",
+      "Preservação do ritmo circadiano"
+    ],
+    "usage_tags": [
+      "Telas",
+      "Iluminação LED"
+    ],
+    "technology_tags": [
+      "Atenuação seletiva da luz azul-violeta",
+      "Tratamento de superfície"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Fato técnico: Filtra a faixa azul-violeta na superfície da lente, permitindo passagem do espectro não prejudicial. Posicionamento comercial: Proteção digital ativa. Claim de marketing: Protege seus olhos mantendo a luz azul boa que regula o sono.",
+    "recommendation_notes": "Não há indicativo de ser superior ou inferior à BlueGuard nas fontes; representa uma abordagem tecnológica diferente (superfície).",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "atenuação seletiva da luz azul-violeta na superfície da lente",
+      "permitindo a passagem da luz azul boa (ritmo circadiano)"
+    ],
+    "source_urls": [
+      "https://www.zeiss.com.br/vision-care/para-os-profissionais-de-optica/lentes/tratamentos-e-tecnologias/tratamento-de-protecao-contra-luz-azul.html"
+    ]
+  },
+  {
+    "entity_name": "Crizal Prevencia",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "Essilor",
+    "category": "filtro_luz_azul",
+    "recommended_for": [
+      "Usuários de tecnologia e trabalhadores de escritório"
+    ],
+    "not_ideal_for": [
+      "Profissionais de design/cor (por possível reflexo violeta residual)"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "Filtro azul",
+      "Prevenção visual"
+    ],
+    "usage_tags": [
+      "Telas",
+      "Proteção digital"
+    ],
+    "technology_tags": [
+      "Filtro seletivo de superfície"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Fato técnico: Tratamento antirreflexo com função de bloqueio seletivo da luz azul-violeta. Posicionamento comercial: Lente com apelo preventivo à saúde. Claim de marketing: Proteção contra a luz nociva das telas digitais.",
+    "recommendation_notes": "Nível inferido baseado no artigo especializado que a contrasta com soluções mais simples.",
+    "evidence_level": "medio",
+    "evidence_type": "especializada",
+    "source_quotes_or_points": [
+      "alegações da Essilor sobre a tecnologia de filtro azul da Crizal Prevencia (e a diferença para a proteção incorporada Blue UV)"
+    ],
+    "source_urls": [
+      "https://lenscope.com.br/blog/essilor-lentes/"
+    ]
+  },
+  {
+    "entity_name": "Transitions Gen S",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "Transitions",
+    "category": "fotossensivel",
+    "recommended_for": [
+      "Usuários frequentes que buscam a mais rápida adaptação de cor da marca"
+    ],
+    "not_ideal_for": [
+      "Não especificado nas fontes"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "Ultradinâmica",
+      "Transição rápida"
+    ],
+    "usage_tags": [
+      "Uso diário",
+      "Transição de ambientes"
+    ],
+    "technology_tags": [
+      "Fotossensível de nova geração"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Fato técnico: Alta reatividade molecular a raios UV. Posicionamento comercial: Lente fotossensível voltada ao dinamismo do dia a dia. Claim de marketing: A melhor tecnologia dinâmica da marca para o cotidiano.",
+    "recommendation_notes": "Inferido 'premium' como tecnologia mais recente/core do portfólio dominante da marca matriz.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "Gen S (ultradinâmica/dia a dia)"
+    ],
+    "source_urls": [
+      "https://www.transitions.com/pt-br/"
+    ]
+  },
+  {
+    "entity_name": "Transitions XTRActive",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "Transitions",
+    "category": "fotossensivel",
+    "recommended_for": [
+      "Motoristas",
+      "Pessoas com intensa fotofobia"
+    ],
+    "not_ideal_for": [
+      "Usuários que desejam a lente 100% transparente em ambientes fechados (pode haver um leve tom residual)"
+    ],
+    "positioning": "premium",
+    "benefit_tags": [
+      "Escurece atrás do para-brisa",
+      "Escurecimento extra profundo"
+    ],
+    "usage_tags": [
+      "Direção",
+      "Sensibilidade extrema à luz"
+    ],
+    "technology_tags": [
+      "Ativação por luz visível e UV"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Fato técnico: Moléculas que reagem tanto ao UV quanto à luz visível, permitindo escurecimento dentro de veículos. Posicionamento comercial: Solução especialista e de alta proteção à luz. Claim de marketing: A lente que escurece até no carro.",
+    "recommendation_notes": "A distinção de indicação de uso ('dia a dia' vs 'carro/fotofobia') é crucial para não recomendar XTRActive por padrão para usuários que buscam a Gen S.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "XTRActive (escurece dentro do carro/fotofobia)"
+    ],
+    "source_urls": [
+      "https://www.transitions.com/pt-br/"
+    ]
+  },
+  {
+    "entity_name": "ZEISS PhotoFusion X",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "ZEISS",
+    "category": "fotossensivel",
+    "recommended_for": [
+      "Usuários que exigem a mais alta performance temporal na transição claro-escuro"
+    ],
+    "not_ideal_for": [
+      "Não especificado nas fontes"
+    ],
+    "positioning": "ultra_premium",
+    "benefit_tags": [
+      "Escurecimento imediato (15s)",
+      "Clareamento acelerado"
+    ],
+    "usage_tags": [
+      "Uso diário",
+      "Ambientes internos/externos"
+    ],
+    "technology_tags": [
+      "Matriz fotocromática otimizada"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Fato técnico: Apresenta métricas específicas de tempo de reação (escurece em 15s, clareia 2,5x mais rápido que gerações passadas). Posicionamento comercial: Resposta da marca para o nicho de alta performance fotocromática. Claim de marketing: O melhor desempenho de velocidade na categoria.",
+    "recommendation_notes": "A clareza dos dados e métricas de velocidade fornecem forte apelo lógico para ser posicionada como 'ultra_premium' dentro do sistema.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "alegações técnicas e métricas (escurece em 15 segundos, clareia 2,5x mais rápido) importantes para embasar o posicionamento premium/ultra-premium"
+    ],
+    "source_urls": [
+      "https://www.zeiss.com.br/vision-care/precisa-de-lentes-novas/photofusion-x.html"
+    ]
+  },
+  {
+    "entity_name": "HOYA Sensity 2",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "HOYA",
+    "category": "fotossensivel",
+    "recommended_for": [
+      "Usuários de variados climas geográficos que buscam estabilidade no tom"
+    ],
+    "not_ideal_for": [
+      "Não especificado nas fontes"
+    ],
+    "positioning": "indefinido",
+    "benefit_tags": [
+      "Estabilidade térmica",
+      "Constância de coloração"
+    ],
+    "usage_tags": [
+      "Uso em diferentes estações/temperaturas"
+    ],
+    "technology_tags": [
+      "Estabilização de temperatura"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Fato técnico: Desempenho fotoquímico otimizado contra dependência térmica da reação fotossensível. Posicionamento comercial: Solução confiável para usuários frustrados com falhas de escurecimento no calor. Claim de marketing: Desempenho independente do clima.",
+    "recommendation_notes": "Falta de dados comparativos de posicionamento financeiro; listado como indefinido de ranking, focado na resolução da dor técnica da 'estabilidade climática'.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "argumentos sobre desempenho independente do clima/temperatura (um limitador histórico em tecnologias fotossensíveis mais antigas)"
+    ],
+    "source_urls": [
+      "https://www.hoyavision.com/br/produtos/sensity/"
+    ]
+  },
+  {
+    "entity_name": "ZEISS DuraVision AntiVirus Platinum UV",
+    "entity_type": "treatment",
+    "manufacturer_or_brand": "ZEISS",
+    "category": "antirreflexo",
+    "recommended_for": [
+      "Profissionais de saúde",
+      "Pessoas altamente preocupadas com higiene e agentes patológicos"
+    ],
+    "not_ideal_for": [
+      "Usuários com orçamento limitado que apenas buscam clareza óptica"
+    ],
+    "positioning": "ultra_premium",
+    "benefit_tags": [
+      "Proteção antibacteriana e antiviral",
+      "Higienização passiva"
+    ],
+    "usage_tags": [
+      "Saúde",
+      "Higiene extrema"
+    ],
+    "technology_tags": [
+      "Nanopartículas de prata"
+    ],
+    "material_tags": [],
+    "commercial_summary": "Fato técnico: Camada de revestimento embutida com nanopartículas de prata antimicrobianas. Posicionamento comercial: Tratamento de ultra nicho para biossegurança. Claim de marketing: Lentes que combatem ativamente vírus e bactérias.",
+    "recommendation_notes": "Indicado claramente pelas fontes como um tratamento 'ultra-premium' ou de nicho para biossegurança.",
+    "evidence_level": "alto",
+    "evidence_type": "oficial",
+    "source_quotes_or_points": [
+      "tratamentos ultra-premium/nichados baseados em nanopartículas de prata antimicrobianas"
+    ],
+    "source_urls": [
+      "https://www.zeiss.com.br/vision-care/para-os-profissionais-de-optica/lentes/tratamentos-e-tecnologias/tratamento-antibacteriano-e-antiviral.html"
+    ]
+  }
+]

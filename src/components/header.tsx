@@ -74,13 +74,10 @@ export default function Header() {
         {/* Esquerda: Marca do Sistema */}
         <Link href="/dashboard/manager" className="flex items-center gap-2.5 group">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/favicon.svg" alt="NeoManager" className="w-8 h-8 drop-shadow-[0_0_8px_rgba(59,130,246,0.4)] group-hover:drop-shadow-[0_0_12px_rgba(59,130,246,0.6)] transition-all" />
+          <img src="/favicon.svg" alt="MBOptical" className="w-8 h-8 drop-shadow-[0_0_8px_rgba(59,130,246,0.4)] group-hover:drop-shadow-[0_0_12px_rgba(59,130,246,0.6)] transition-all" />
           <div>
             <span className="text-base font-black text-white tracking-tight group-hover:text-blue-300 transition-colors">
-              NeoManager
-            </span>
-            <span className="text-[10px] text-blue-400/80 font-bold ml-1.5 bg-blue-500/10 px-1.5 py-0.5 rounded-full border border-blue-500/20">
-              2.0
+              <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">MB</span>Optical
             </span>
           </div>
         </Link>

@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getSharedFamilySemanticProfile } from '@/lib/server/shared-lens-semantics'
 
 export type BudgetMode = 'economico' | 'intermediario' | 'premium'
 export type ClinicalCategory =
@@ -37,6 +38,8 @@ export type RecommendationOption = {
   offerLabel: string
   treatmentName: string | null
   treatmentType: string | null
+  sourceLaboratorio: string | null
+  sourceVersao: string | null
   clinicalCategory: ClinicalCategory
   finalPrice: number
   basePrice: number | null
@@ -52,6 +55,7 @@ export type RecommendationOption = {
 
 export type RecommendationConversationState = {
   versionId: string
+  versionIds?: string[]
   caseInput: RecommendationCaseInput
   forcedClinicalCategories?: ClinicalCategory[]
   requiredFeatures?: string[]
@@ -83,6 +87,8 @@ type CatalogFamily = {
   tags_uso: string[]
   tags_beneficios: string[]
   clinical_category: ClinicalCategory
+  sourceLaboratorio?: string | null
+  sourceVersao?: string | null
 }
 
 type CatalogOffer = {
@@ -98,6 +104,8 @@ type CatalogOffer = {
   already_includes_treatment: boolean
   allows_composition: boolean
   source_page_reference: string | null
+  sourceLaboratorio?: string | null
+  sourceVersao?: string | null
 }
 
 type CatalogGrid = {
@@ -133,6 +141,12 @@ type TreatmentSemanticProfile = {
   commercial_summary?: string
   recommendation_notes?: string
   explain_why?: string
+}
+
+type EmbeddedTreatmentInfo = {
+  name: string
+  type: string | null
+  semantic: TreatmentSemanticProfile
 }
 
 type CatalogTreatment = {
@@ -209,6 +223,10 @@ function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)))
 }
 
+function mergeSemanticArrays(...groups: Array<string[] | null | undefined>): string[] {
+  return uniqueStrings(groups.flatMap((group) => group || []))
+}
+
 function withoutAccents(value: string): string {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 }
@@ -262,10 +280,47 @@ function extractPriceTarget(message: string): {
   return {}
 }
 
+function extractIndexValue(descriptor: string): number | null {
+  const match = descriptor.match(/1[.,](50|53|56|59|60|67|74)/)
+  if (match?.[0]) {
+    return Number(match[0].replace(',', '.'))
+  }
+  if (/(policarbonato|airwear|poly\b)/.test(descriptor)) return 1.59
+  if (/(trivex)/.test(descriptor)) return 1.53
+  return null
+}
+
 function normalizeFeatureFlags(features: Record<string, unknown> = {}): Record<string, boolean> {
-  return Object.fromEntries(
+  const base = Object.fromEntries(
     Object.entries(features).filter(([, featureValue]) => featureValue === true),
   ) as Record<string, boolean>
+
+  const normalized: Record<string, boolean> = { ...base }
+
+  if (base.blue_control || base.bluecontrol) normalized.blue_uv = true
+  if (base.fotossensivel || base.sensity || base.photochromic || base.photofusion) {
+    normalized.transitions = true
+  }
+  if (base.solar || base.polarizado) normalized.solar = true
+  if (base.uv_control) normalized.uv = true
+
+  if (
+    base.meiryo ||
+    base.longlife ||
+    base.hard ||
+    base.clean_extra ||
+    base.blue_control ||
+    base.blue_uv ||
+    base.uv
+  ) {
+    normalized.antirreflexo = true
+  }
+
+  return normalized
+}
+
+function uniqueValues<T>(values: T[]): T[] {
+  return Array.from(new Set(values))
 }
 
 function getDesiredClinicalCategories(input: RecommendationCaseInput): ClinicalCategory[] {
@@ -354,22 +409,214 @@ function getTreatmentSemanticProfile(treatment: CatalogTreatment | null): Treatm
   return semanticProfile as TreatmentSemanticProfile
 }
 
+const EMBEDDED_TREATMENT_SEMANTICS: Record<string, EmbeddedTreatmentInfo> = {
+  transitions: {
+    name: 'Fotossensível',
+    type: 'fotossensivel',
+    semantic: {
+      usage_tags: ['sol', 'outdoor', 'uso_diario'],
+      benefit_tags: ['conforto_externo', 'versatilidade', 'proteção_uv'],
+      commercial_summary:
+        'Tratamento fotossensível embutido, indicado para quem alterna entre ambientes internos e externos.',
+      recommendation_notes:
+        'Boa opção quando o cliente quer praticidade e conforto no sol sem trocar de óculos.',
+      explain_why:
+        'Foi escolhido porque combina uso diário com proteção e adaptação automática à luz.',
+    },
+  },
+  blue_uv: {
+    name: 'Filtro de Luz Azul',
+    type: 'blue_uv',
+    semantic: {
+      usage_tags: ['telas', 'uso_diario'],
+      benefit_tags: ['conforto_digital', 'redução_reflexos', 'proteção_luz_azul'],
+      commercial_summary:
+        'Tratamento embutido para conforto digital e gestão de luz azul em uso prolongado de telas.',
+      recommendation_notes:
+        'Sobe quando a rotina é intensa em telas ou o cliente relata cansaço visual.',
+      explain_why:
+        'Foi escolhido porque atende a necessidade de conforto digital com filtragem de luz azul.',
+    },
+  },
+  uv: {
+    name: 'Proteção UV',
+    type: 'uv',
+    semantic: {
+      usage_tags: ['outdoor', 'uso_diario'],
+      benefit_tags: ['proteção_uv'],
+      commercial_summary:
+        'Tratamento embutido com foco em proteção UV para uso diário e exposição ao sol.',
+      recommendation_notes:
+        'Indicado como complemento de proteção quando o cliente tem rotina externa.',
+      explain_why:
+        'Foi escolhido para reforçar proteção UV em situações de exposição ao sol.',
+    },
+  },
+  polarizado: {
+    name: 'Polarizado',
+    type: 'polarizado',
+    semantic: {
+      usage_tags: ['sol', 'outdoor', 'dirigir'],
+      benefit_tags: ['redução_ofuscamento', 'conforto_externo'],
+      commercial_summary:
+        'Tratamento solar polarizado embutido para reduzir reflexos e melhorar contraste.',
+      recommendation_notes:
+        'Boa opção para direção diurna, água e atividades externas com muito brilho.',
+      explain_why:
+        'Foi escolhido para reduzir ofuscamento em ambientes com reflexo intenso.',
+    },
+  },
+  solar: {
+    name: 'Solar',
+    type: 'solar',
+    semantic: {
+      usage_tags: ['sol', 'outdoor'],
+      benefit_tags: ['conforto_externo', 'proteção_uv'],
+      commercial_summary: 'Tratamento solar embutido focado em conforto visual ao ar livre.',
+      recommendation_notes:
+        'Indicado quando o cliente prioriza proteção solar e conforto em ambientes externos.',
+      explain_why: 'Foi escolhido para uso externo com maior intensidade de luz.',
+    },
+  },
+  antirreflexo: {
+    name: 'Antirreflexo',
+    type: 'antirreflexo',
+    semantic: {
+      usage_tags: ['uso_diario', 'telas', 'dirigir_noite'],
+      benefit_tags: ['antirreflexo', 'clareza', 'conforto_visual'],
+      commercial_summary:
+        'Tratamento antirreflexo embutido para reduzir reflexos e melhorar a nitidez.',
+      recommendation_notes:
+        'Sobe quando a prioridade é clareza visual no dia a dia ou em ambientes com luz artificial.',
+      explain_why:
+        'Foi escolhido para melhorar a nitidez e reduzir reflexos em uso diário.',
+    },
+  },
+  espelhado: {
+    name: 'Espelhado',
+    type: 'espelhado',
+    semantic: {
+      usage_tags: ['sol', 'estilo'],
+      benefit_tags: ['estetica', 'conforto_externo'],
+      commercial_summary: 'Tratamento espelhado embutido com foco em estilo e conforto solar.',
+      recommendation_notes:
+        'Boa opção quando estética e uso externo são prioridades.',
+      explain_why: 'Foi escolhido para unir estilo e conforto no sol.',
+    },
+  },
+}
+
+function resolveEmbeddedTreatment(
+  offer: CatalogOffer,
+  input: RecommendationCaseInput,
+): EmbeddedTreatmentInfo | null {
+  if (!offer.already_includes_treatment) return null
+
+  const flags = normalizeFeatureFlags(offer.features)
+  const preferred = input.preferred_features || []
+
+  const pickIf = (key: string) => (flags[key] ? EMBEDDED_TREATMENT_SEMANTICS[key] : null)
+
+  if (preferred.includes('transitions')) return pickIf('transitions')
+  if (preferred.includes('blue_uv')) return pickIf('blue_uv')
+  if (preferred.includes('polarizado')) return pickIf('polarizado')
+  if (preferred.includes('solar')) return pickIf('solar')
+
+  return (
+    pickIf('transitions') ||
+    pickIf('blue_uv') ||
+    pickIf('polarizado') ||
+    pickIf('solar') ||
+    pickIf('antirreflexo') ||
+    pickIf('uv') ||
+    pickIf('espelhado') ||
+    null
+  )
+}
+
+function scoreEmbeddedTreatment(params: {
+  embedded: EmbeddedTreatmentInfo | null
+  input: RecommendationCaseInput
+}): { score: number; reasons: string[] } {
+  const { embedded, input } = params
+  if (!embedded) return { score: 0, reasons: [] }
+
+  const fakeTreatment: CatalogTreatment = {
+    id: 'embedded',
+    nome: embedded.name,
+    tipo: embedded.type,
+    features: { semantic_profile: embedded.semantic },
+  }
+
+  return scoreTreatment({ treatment: fakeTreatment, input })
+}
+
 function resolveOfferClinicalCategory(family: CatalogFamily, offer: CatalogOffer): ClinicalCategory {
   if (offer.clinical_category !== 'indefinida') return offer.clinical_category
   if (family.clinical_category !== 'mista') return family.clinical_category
   return 'indefinida'
 }
 
+function inferMixedCategoryFromSemanticSignals(
+  family: CatalogFamily,
+  offer: CatalogOffer,
+  usageProfile: CatalogUsageProfile | null,
+): ClinicalCategory | null {
+  const sharedSemantic = getSharedFamilySemanticProfile(family.nome)
+  const descriptor = withoutAccents(
+    `${family.nome} ${offer.raw_label} ${offer.canonical_label || ''} ${offer.material || ''}`.toLowerCase(),
+  )
+  const usageTags = mergeSemanticArrays(
+    family.tags_uso,
+    usageProfile?.usage_tags,
+    sharedSemantic?.usage_tags,
+  )
+  const benefitTags = mergeSemanticArrays(
+    family.tags_beneficios,
+    usageProfile?.benefit_tags,
+    sharedSemantic?.benefit_tags,
+  )
+
+  if (
+    usageTags.includes('controle_miopia') ||
+    benefitTags.includes('controle_miopia') ||
+    /(stellest|miokids|miopia|myopi|kids)/.test(descriptor)
+  ) {
+    return 'controle_miopia'
+  }
+
+  if (/(interview|digitime|office|work|softwear|relax)/.test(descriptor)) {
+    return 'ocupacional'
+  }
+
+  if (/(varilux|espace|comfort|liberty|physio|xr|precise|unique|network|progress)/.test(descriptor)) {
+    return 'multifocal'
+  }
+
+  if (/(bifocal)/.test(descriptor)) {
+    return 'bifocal'
+  }
+
+  if (/(solar|sun|transitions|foto|phot|fotossens)/.test(descriptor)) {
+    return 'plana_solar'
+  }
+
+  return null
+}
+
 function evaluateClinicalEligibility(
   input: RecommendationCaseInput,
   family: CatalogFamily,
   offer: CatalogOffer,
+  usageProfile: CatalogUsageProfile | null,
   forcedClinicalCategories?: ClinicalCategory[],
 ): ClinicalEvaluation {
   const desiredCategories = forcedClinicalCategories?.length
     ? forcedClinicalCategories
     : getDesiredClinicalCategories(input)
   const effectiveCategory = resolveOfferClinicalCategory(family, offer)
+  const wantsPresbyopia =
+    input.adicao != null || desiredCategories.includes('multifocal') || desiredCategories.includes('bifocal')
 
   if (effectiveCategory !== 'indefinida') {
     return {
@@ -380,10 +627,27 @@ function evaluateClinicalEligibility(
   }
 
   if (family.clinical_category === 'mista') {
+    const inferredCategory = inferMixedCategoryFromSemanticSignals(family, offer, usageProfile)
+    if (inferredCategory) {
+      return {
+        eligible: desiredCategories.includes(inferredCategory),
+        effectiveCategory: inferredCategory,
+        confidencePenalty: desiredCategories.includes(inferredCategory) ? 1 : 0,
+      }
+    }
+
+    if (wantsPresbyopia) {
+      return {
+        eligible: false,
+        effectiveCategory,
+        confidencePenalty: 6,
+      }
+    }
+
     return {
-      eligible: true,
+      eligible: !desiredCategories.includes('controle_miopia'),
       effectiveCategory,
-      confidencePenalty: 2,
+      confidencePenalty: desiredCategories.includes('controle_miopia') ? 6 : 2,
     }
   }
 
@@ -430,6 +694,47 @@ function scorePriceTarget(params: {
   return (1 - normalizedDistance) * 3
 }
 
+function getPrescriptionStrength(input: RecommendationCaseInput): number {
+  return Math.abs(input.esferico || 0) + Math.abs(input.cilindrico || 0)
+}
+
+function wantsThinLens(input: RecommendationCaseInput): boolean {
+  const benefits = input.desired_benefits || []
+  const routine = input.rotina_tags || []
+  return (
+    getPrescriptionStrength(input) >= 4.5 ||
+    benefits.includes('estetica') ||
+    benefits.includes('lente_fina') ||
+    routine.includes('alta_dioptria')
+  )
+}
+
+function getResistancePriority(input: RecommendationCaseInput): number {
+  const benefits = input.desired_benefits || []
+  const routine = input.rotina_tags || []
+
+  if (benefits.includes('resistencia')) return 1
+  if (routine.includes('risco_quebra')) return 0.65
+  if (routine.includes('crianca_ativa')) return 0.35
+  return 0
+}
+
+function getThinnessPriority(input: RecommendationCaseInput): number {
+  const benefits = input.desired_benefits || []
+  const prescriptionStrength = getPrescriptionStrength(input)
+
+  let priority = 0
+
+  if (benefits.includes('estetica')) priority += 0.35
+  if (benefits.includes('lente_fina')) priority += 0.35
+
+  if (prescriptionStrength >= 7) return priority + 1
+  if (prescriptionStrength >= 5.5) return priority + 0.8
+  if (prescriptionStrength >= 4.5) return priority + 0.6
+
+  return priority
+}
+
 function scoreOffer(params: {
   offer: CatalogOffer
   family: CatalogFamily
@@ -457,13 +762,27 @@ function scoreOffer(params: {
   let score = 0
   const reasons: string[] = []
 
-  const familyUsage = usageProfile?.usage_tags || family.tags_uso
-  const familyBenefits = usageProfile?.benefit_tags || family.tags_beneficios
+  const sharedSemantic = getSharedFamilySemanticProfile(family.nome)
+  const familyUsage = mergeSemanticArrays(family.tags_uso, usageProfile?.usage_tags, sharedSemantic?.usage_tags)
+  const familyBenefits = mergeSemanticArrays(
+    family.tags_beneficios,
+    usageProfile?.benefit_tags,
+    sharedSemantic?.benefit_tags,
+  )
   const offerFeatures = normalizeFeatureFlags(offer.features)
   const offerDescriptor = withoutAccents(
     `${offer.raw_label} ${offer.canonical_label || ''} ${offer.material || ''}`.toLowerCase(),
   )
+  const indexValue = extractIndexValue(offerDescriptor)
   const budgetMode = normalizeBudgetMode(input.budget_mode)
+  const prescriptionStrength = getPrescriptionStrength(input)
+  const seeksThinness = wantsThinLens(input)
+  const resistancePriority = getResistancePriority(input)
+  const thinnessPriority = getThinnessPriority(input)
+  const wantsMiopiaControl =
+    (input.rotina_tags || []).includes('controle_miopia') ||
+    (input.desired_benefits || []).includes('controle_miopia') ||
+    (input.objetivo_tags || []).includes('controle_miopia')
 
   if (clinicalEvaluation.effectiveCategory !== 'indefinida') {
     score += 5
@@ -471,6 +790,16 @@ function scoreOffer(params: {
   } else if (clinicalEvaluation.confidencePenalty > 0) {
     score -= clinicalEvaluation.confidencePenalty
     reasons.push('categoria:mista_sem_oferta_definida')
+  }
+
+  if (input.adicao != null) {
+    if (['multifocal', 'bifocal'].includes(clinicalEvaluation.effectiveCategory)) {
+      score += 3
+      reasons.push('beneficio:adicao_presente')
+    } else {
+      score -= 4
+      reasons.push('opcao:adicao_incompativel')
+    }
   }
 
   for (const need of input.rotina_tags || []) {
@@ -494,14 +823,43 @@ function scoreOffer(params: {
     }
   }
 
-  const seeksResistance =
-    (input.desired_benefits || []).includes('resistencia') ||
-    (input.rotina_tags || []).includes('crianca_ativa') ||
-    (input.rotina_tags || []).includes('risco_quebra')
-
-  if (seeksResistance && /(airwear|poly\b|policarbonato)/.test(offerDescriptor)) {
-    score += 4
+  if (resistancePriority > 0 && /(airwear|poly\b|policarbonato|trivex)/.test(offerDescriptor)) {
+    score += Number((0.5 + resistancePriority * 1.5).toFixed(2))
     reasons.push('material:resistente')
+  }
+
+  if (seeksThinness && /(1\.67|1,67|1\.74|1,74|high[\s-]?index|thin|lite|mr-8|mr8|mr-174)/.test(offerDescriptor)) {
+    score += Number((2 + thinnessPriority * 2.5).toFixed(2))
+    reasons.push('material:lente_fina')
+  }
+
+  if (
+    seeksThinness &&
+    thinnessPriority >= 0.8 &&
+    /(1\.50|1,50|1\.53|1,53|1\.56|1,56|1\.59|1,59|policarbonato|poly)/.test(offerDescriptor) &&
+    !/(1\.67|1,67|1\.74|1,74)/.test(offerDescriptor)
+  ) {
+    score -= thinnessPriority >= 1 ? 1.5 : 0.75
+  }
+
+  if (indexValue != null) {
+    if (prescriptionStrength < 2 && indexValue >= 1.67) {
+      score -= 3
+      reasons.push('material:indice_alto_pouco_ganho')
+    } else if (prescriptionStrength < 3 && indexValue >= 1.67) {
+      score -= 1
+      reasons.push('material:indice_alto_pouco_ganho')
+    }
+
+    if (prescriptionStrength >= 4 && indexValue <= 1.56) {
+      score -= 2
+      reasons.push('material:indice_baixo_grau_alto')
+    }
+
+    if (prescriptionStrength >= 6 && indexValue <= 1.59) {
+      score -= 3
+      reasons.push('material:indice_baixo_grau_alto')
+    }
   }
 
   if (
@@ -513,6 +871,18 @@ function scoreOffer(params: {
   ) {
     score += 6
     reasons.push('beneficio:controle_miopia')
+  }
+
+  if (wantsMiopiaControl && clinicalEvaluation.effectiveCategory !== 'controle_miopia') {
+    score -= 6
+  }
+
+  if (
+    wantsMiopiaControl &&
+    (clinicalEvaluation.effectiveCategory === 'plana_solar' || offerFeatures.solar)
+  ) {
+    score -= 3
+    reasons.push('opcao:desvio_solar')
   }
 
   if (offer.is_atomic_offer) {
@@ -631,135 +1001,176 @@ function dedupeRankedEntries(entries: RecommendationOption[]): RecommendationOpt
   )
 }
 
-export async function loadRecommendationCatalog(versionId: string): Promise<RecommendationCatalog> {
-  const supabaseAdmin = createAdminClient() as any
+function selectDiverseTopEntries(
+  entries: RecommendationOption[],
+  topN: number,
+): RecommendationOption[] {
+  if (entries.length <= topN) return entries.slice(0, topN)
 
-  const { data: families, error: familiesError } = await supabaseAdmin
-    .from('global_lens_families')
-    .select('id,nome,tags_uso,tags_beneficios,clinical_category')
-    .eq('version_id', versionId)
+  const selected: RecommendationOption[] = []
+  const selectedConfigKeys = new Set<string>()
+  const selectedFamilies = new Set<string>()
+  const selectedOffers = new Set<string>()
 
-  if (familiesError) throw familiesError
-
-  const familyIds = (families || []).map((family: { id: string }) => family.id)
-
-  const [
-    { data: offers, error: offersError },
-    { data: grids, error: gridsError },
-    { data: usageProfiles, error: profilesError },
-    { data: compatibilities, error: compatError },
-    { data: treatments, error: treatmentsError },
-  ] = await Promise.all([
-    supabaseAdmin
-      .from('global_lens_offers')
-      .select('id,family_id,raw_label,canonical_label,material,clinical_category,features,base_price,is_atomic_offer,already_includes_treatment,allows_composition,source_page_reference')
-      .in('family_id', familyIds),
-    supabaseAdmin
-      .from('global_offer_diopter_grids')
-      .select('offer_id,sph_min,sph_max,cyl_min,cyl_max,add_min,add_max'),
-    supabaseAdmin
-      .from('global_usage_profiles')
-      .select('family_id,usage_tags,benefit_tags,commercial_summary,recommendation_notes')
-      .eq('profile_scope', 'family')
-      .in('family_id', familyIds),
-    supabaseAdmin
-      .from('global_offer_treatments_compatibility')
-      .select('offer_id,treatment_id,special_price,price_mode'),
-    supabaseAdmin
-      .from('global_treatments')
-      .select('id,nome,tipo,features')
-      .eq('version_id', versionId),
-  ])
-
-  if (offersError) throw offersError
-  if (gridsError) throw gridsError
-  if (profilesError) throw profilesError
-  if (compatError) throw compatError
-  if (treatmentsError) throw treatmentsError
-
-  return {
-    families: (families || []).map((family: Record<string, unknown>) => ({
-      id: String(family.id),
-      nome: String(family.nome || ''),
-      tags_uso: normalizeStringArray(family.tags_uso),
-      tags_beneficios: normalizeStringArray(family.tags_beneficios),
-      clinical_category: normalizeCategory(family.clinical_category),
-    })),
-    offers: (offers || []).map((offer: Record<string, unknown>) => ({
-      id: String(offer.id),
-      family_id: String(offer.family_id),
-      raw_label: String(offer.raw_label || ''),
-      canonical_label: offer.canonical_label ? String(offer.canonical_label) : null,
-      material: offer.material ? String(offer.material) : null,
-      clinical_category: normalizeCategory(offer.clinical_category),
-      features: toFeatureRecord(offer.features),
-      base_price: normalizeNumber(offer.base_price),
-      is_atomic_offer: Boolean(offer.is_atomic_offer),
-      already_includes_treatment: Boolean(offer.already_includes_treatment),
-      allows_composition: Boolean(offer.allows_composition),
-      source_page_reference: offer.source_page_reference ? String(offer.source_page_reference) : null,
-    })),
-    grids: (grids || []).map((grid: Record<string, unknown>) => ({
-      offer_id: String(grid.offer_id),
-      sph_min: normalizeNumber(grid.sph_min),
-      sph_max: normalizeNumber(grid.sph_max),
-      cyl_min: normalizeNumber(grid.cyl_min),
-      cyl_max: normalizeNumber(grid.cyl_max),
-      add_min: normalizeNumber(grid.add_min),
-      add_max: normalizeNumber(grid.add_max),
-    })),
-    usageProfiles: (usageProfiles || []).map((profile: Record<string, unknown>) => ({
-      family_id: String(profile.family_id),
-      usage_tags: normalizeStringArray(profile.usage_tags),
-      benefit_tags: normalizeStringArray(profile.benefit_tags),
-      commercial_summary: profile.commercial_summary ? String(profile.commercial_summary) : null,
-      recommendation_notes: profile.recommendation_notes ? String(profile.recommendation_notes) : null,
-    })),
-    compatibilities: (compatibilities || []).map((compatibility: Record<string, unknown>) => ({
-      offer_id: String(compatibility.offer_id),
-      treatment_id: String(compatibility.treatment_id),
-      special_price: normalizeNumber(compatibility.special_price),
-      price_mode: compatibility.price_mode === 'surcharge' ? 'surcharge' : 'final',
-    })),
-    treatments: (treatments || []).map((treatment: Record<string, unknown>) => ({
-      id: String(treatment.id),
-      nome: String(treatment.nome || ''),
-      tipo: treatment.tipo ? String(treatment.tipo) : null,
-      features: toFeatureRecord(treatment.features),
-    })),
+  const trySelect = (entry: RecommendationOption) => {
+    if (selected.length >= topN) return
+    if (selectedConfigKeys.has(entry.configKey)) return
+    selected.push(entry)
+    selectedConfigKeys.add(entry.configKey)
+    selectedFamilies.add(entry.familyId)
+    selectedOffers.add(entry.offerId)
   }
+
+  for (const entry of entries) {
+    if (!selectedFamilies.has(entry.familyId)) {
+      trySelect(entry)
+    }
+  }
+
+  for (const entry of entries) {
+    if (selected.length >= topN) break
+    if (!selectedOffers.has(entry.offerId)) {
+      trySelect(entry)
+    }
+  }
+
+  for (const entry of entries) {
+    if (selected.length >= topN) break
+    trySelect(entry)
+  }
+
+  return selected
 }
 
-export async function recommendLensConfigurations(params: {
-  versionId: string
-  caseInput: RecommendationCaseInput
-  topN?: number
+function appendPrioritizedEntries(
+  selected: RecommendationOption[],
+  pool: RecommendationOption[],
+  topN: number,
+): RecommendationOption[] {
+  if (selected.length >= topN) return selected.slice(0, topN)
+
+  const selectedConfigKeys = new Set(selected.map((entry) => entry.configKey))
+  const selectedFamilies = new Set(selected.map((entry) => entry.familyId))
+  const selectedOffers = new Set(selected.map((entry) => entry.offerId))
+
+  const trySelect = (entry: RecommendationOption) => {
+    if (selected.length >= topN) return
+    if (selectedConfigKeys.has(entry.configKey)) return
+    selected.push(entry)
+    selectedConfigKeys.add(entry.configKey)
+    selectedFamilies.add(entry.familyId)
+    selectedOffers.add(entry.offerId)
+  }
+
+  for (const entry of pool) {
+    if (selected.length >= topN) break
+    if (!selectedFamilies.has(entry.familyId)) {
+      trySelect(entry)
+    }
+  }
+
+  for (const entry of pool) {
+    if (selected.length >= topN) break
+    if (!selectedOffers.has(entry.offerId)) {
+      trySelect(entry)
+    }
+  }
+
+  for (const entry of pool) {
+    if (selected.length >= topN) break
+    trySelect(entry)
+  }
+
+  return selected.slice(0, topN)
+}
+
+function applyExploratoryPriceDiscipline(
+  exploratoryEntries: RecommendationOption[],
+  anchorEntries: RecommendationOption[],
+): RecommendationOption[] {
+  if (!anchorEntries.length) return exploratoryEntries
+
+  const anchorPrices = anchorEntries
+    .map((entry) => entry.finalPrice)
+    .filter((value) => Number.isFinite(value) && value > 0)
+
+  if (!anchorPrices.length) return exploratoryEntries
+
+  const maxAnchorPrice = Math.max(...anchorPrices)
+  const softCeiling = maxAnchorPrice * 1.8
+
+  return exploratoryEntries
+    .map((entry) => {
+      if (!Number.isFinite(entry.finalPrice) || entry.finalPrice <= softCeiling) {
+        return entry
+      }
+
+      const priceOverflowRatio = Math.min((entry.finalPrice - softCeiling) / softCeiling, 1.5)
+      const penalty = Number((1.25 + priceOverflowRatio * 2.5).toFixed(2))
+
+      return {
+        ...entry,
+        score: Number((entry.score - penalty).toFixed(2)),
+        reasons: uniqueStrings([...entry.reasons, 'opcao:salto_preco_controlado']),
+      }
+    })
+    .sort((a, b) => b.score - a.score || a.finalPrice - b.finalPrice)
+}
+
+function getExploratoryClinicalCategories(
+  input: RecommendationCaseInput,
+  forcedClinicalCategories?: ClinicalCategory[],
+): ClinicalCategory[] {
+  const strict = forcedClinicalCategories?.length
+    ? forcedClinicalCategories
+    : getDesiredClinicalCategories(input)
+
+  if (strict.includes('controle_miopia')) {
+    return uniqueCategories(['controle_miopia', 'visao_simples']) || strict
+  }
+
+  if (strict.includes('multifocal')) {
+    return uniqueCategories(['multifocal', 'ocupacional', 'visao_simples']) || strict
+  }
+
+  if (strict.includes('ocupacional')) {
+    return uniqueCategories(['ocupacional', 'visao_simples', 'multifocal']) || strict
+  }
+
+  if (strict.includes('visao_simples')) {
+    return uniqueCategories(['visao_simples', 'ocupacional']) || strict
+  }
+
+  return strict
+}
+
+function sameCategories(a: ClinicalCategory[] | undefined, b: ClinicalCategory[] | undefined): boolean {
+  const left = a || []
+  const right = b || []
+  if (left.length !== right.length) return false
+  return left.every((value) => right.includes(value))
+}
+
+function rankRecommendationOptions(params: {
+  catalog: RecommendationCatalog
+  input: RecommendationCaseInput
   forcedClinicalCategories?: ClinicalCategory[]
   requiredFeatures?: string[]
-    budgetModeOverride?: BudgetMode | null
-    maxPrice?: number | null
-    minPrice?: number | null
-    targetPrice?: number | null
-    excludedConfigKeys?: string[]
-    catalog?: RecommendationCatalog
-}): Promise<RecommendationOption[]> {
+  maxPrice?: number | null
+  minPrice?: number | null
+  targetPrice?: number | null
+  excludedConfigKeys?: string[]
+}): RecommendationOption[] {
   const {
-    versionId,
-    topN = 3,
+    catalog,
+    input,
     forcedClinicalCategories,
     requiredFeatures = [],
-    budgetModeOverride,
     maxPrice,
     minPrice,
     targetPrice,
     excludedConfigKeys = [],
   } = params
-
-  const catalog = params.catalog || (await loadRecommendationCatalog(versionId))
-  const input = enrichCaseInput({
-    ...params.caseInput,
-    budget_mode: budgetModeOverride || params.caseInput.budget_mode || 'intermediario',
-  })
 
   const familyById = new Map(catalog.families.map((family) => [family.id, family]))
   const usageProfileByFamilyId = new Map(catalog.usageProfiles.map((entry) => [entry.family_id, entry]))
@@ -784,7 +1195,13 @@ export async function recommendLensConfigurations(params: {
       const family = familyById.get(offer.family_id)
       if (!family) return null
 
-      const clinicalEvaluation = evaluateClinicalEligibility(input, family, offer, forcedClinicalCategories)
+      const clinicalEvaluation = evaluateClinicalEligibility(
+        input,
+        family,
+        offer,
+        usageProfileByFamilyId.get(offer.family_id) || null,
+        forcedClinicalCategories,
+      )
       if (!clinicalEvaluation.eligible) return null
 
       const offerGrids = gridsByOfferId.get(offer.id) || []
@@ -852,8 +1269,22 @@ export async function recommendLensConfigurations(params: {
       treatment: entry.treatment,
       input,
     })
-    const totalScore = Number((offerScoring.score + treatmentScoring.score).toFixed(2))
-    const configKey = `${entry.family.nome} | ${entry.offer.raw_label} | ${entry.treatment?.nome || 'sem_tratamento'}`
+    const embeddedTreatment = resolveEmbeddedTreatment(entry.offer, input)
+    const embeddedScoring = scoreEmbeddedTreatment({
+      embedded: embeddedTreatment,
+      input,
+    })
+
+    const totalScore = Number(
+      (offerScoring.score + treatmentScoring.score + embeddedScoring.score).toFixed(2),
+    )
+    const sourceLabel =
+      entry.family.sourceLaboratorio ||
+      entry.offer.sourceLaboratorio ||
+      'catalogo'
+    const configKey = `${sourceLabel} | ${entry.family.nome} | ${entry.offer.raw_label} | ${
+      entry.treatment?.nome || embeddedTreatment?.name || 'sem_tratamento'
+    }`
 
     return {
       configKey,
@@ -862,26 +1293,265 @@ export async function recommendLensConfigurations(params: {
       treatmentId: entry.treatment?.id || null,
       familyName: entry.family.nome,
       offerLabel: entry.offer.canonical_label || entry.offer.raw_label,
-      treatmentName: entry.treatment?.nome || null,
-      treatmentType: entry.treatment?.tipo || null,
+      treatmentName: entry.treatment?.nome || (embeddedTreatment ? `${embeddedTreatment.name} (embutido)` : null),
+      treatmentType: entry.treatment?.tipo || embeddedTreatment?.type || null,
+      sourceLaboratorio: entry.family.sourceLaboratorio || entry.offer.sourceLaboratorio || null,
+      sourceVersao: entry.family.sourceVersao || entry.offer.sourceVersao || null,
       clinicalCategory: entry.clinicalEvaluation.effectiveCategory,
       finalPrice: entry.finalPrice,
       basePrice: entry.offer.base_price,
-      reasons: [...offerScoring.reasons, ...treatmentScoring.reasons],
+      reasons: [...offerScoring.reasons, ...treatmentScoring.reasons, ...embeddedScoring.reasons],
       score: totalScore,
       sourcePageReference: entry.offer.source_page_reference,
-      commercialSummary: entry.usageProfile?.commercial_summary || null,
-      recommendationNotes: entry.usageProfile?.recommendation_notes || null,
-      treatmentSummary: getTreatmentSemanticProfile(entry.treatment)?.commercial_summary || null,
-      treatmentNotes: getTreatmentSemanticProfile(entry.treatment)?.recommendation_notes || null,
-      treatmentExplainWhy: getTreatmentSemanticProfile(entry.treatment)?.explain_why || null,
+      commercialSummary:
+        entry.usageProfile?.commercial_summary ||
+        getSharedFamilySemanticProfile(entry.family.nome)?.commercial_summary ||
+        null,
+      recommendationNotes:
+        entry.usageProfile?.recommendation_notes ||
+        getSharedFamilySemanticProfile(entry.family.nome)?.recommendation_notes ||
+        null,
+      treatmentSummary:
+        getTreatmentSemanticProfile(entry.treatment)?.commercial_summary ||
+        embeddedTreatment?.semantic.commercial_summary ||
+        null,
+      treatmentNotes:
+        getTreatmentSemanticProfile(entry.treatment)?.recommendation_notes ||
+        embeddedTreatment?.semantic.recommendation_notes ||
+        null,
+      treatmentExplainWhy:
+        getTreatmentSemanticProfile(entry.treatment)?.explain_why ||
+        embeddedTreatment?.semantic.explain_why ||
+        null,
     } satisfies RecommendationOption
   })
 
-  const dedupedRanked = dedupeRankedEntries(
+  return dedupeRankedEntries(
     ranked.filter((entry) => !excludedConfigKeys.includes(entry.configKey)),
   )
-  return dedupedRanked.slice(0, topN)
+}
+
+export async function loadRecommendationCatalog(versionId: string): Promise<RecommendationCatalog> {
+  const supabaseAdmin = createAdminClient() as any
+
+  const { data: versionMeta, error: versionMetaError } = await supabaseAdmin
+    .from('global_catalog_versions')
+    .select('id,laboratorio,versao')
+    .eq('id', versionId)
+    .single()
+
+  if (versionMetaError) throw versionMetaError
+
+  const { data: families, error: familiesError } = await supabaseAdmin
+    .from('global_lens_families')
+    .select('id,nome,tags_uso,tags_beneficios,clinical_category')
+    .eq('version_id', versionId)
+
+  if (familiesError) throw familiesError
+
+  const familyIds = (families || []).map((family: { id: string }) => family.id)
+
+  const [
+    { data: offers, error: offersError },
+    { data: grids, error: gridsError },
+    { data: usageProfiles, error: profilesError },
+    { data: compatibilities, error: compatError },
+    { data: treatments, error: treatmentsError },
+  ] = await Promise.all([
+    supabaseAdmin
+      .from('global_lens_offers')
+      .select('id,family_id,raw_label,canonical_label,material,clinical_category,features,base_price,is_atomic_offer,already_includes_treatment,allows_composition,source_page_reference')
+      .in('family_id', familyIds),
+    supabaseAdmin
+      .from('global_offer_diopter_grids')
+      .select('offer_id,sph_min,sph_max,cyl_min,cyl_max,add_min,add_max'),
+    supabaseAdmin
+      .from('global_usage_profiles')
+      .select('family_id,usage_tags,benefit_tags,commercial_summary,recommendation_notes')
+      .eq('profile_scope', 'family')
+      .in('family_id', familyIds),
+    supabaseAdmin
+      .from('global_offer_treatments_compatibility')
+      .select('offer_id,treatment_id,special_price,price_mode'),
+    supabaseAdmin
+      .from('global_treatments')
+      .select('id,nome,tipo,features')
+      .eq('version_id', versionId),
+  ])
+
+  if (offersError) throw offersError
+  if (gridsError) throw gridsError
+  if (profilesError) throw profilesError
+  if (compatError) throw compatError
+  if (treatmentsError) throw treatmentsError
+
+  return {
+    families: (families || []).map((family: Record<string, unknown>) => ({
+      id: String(family.id),
+      nome: String(family.nome || ''),
+      tags_uso: normalizeStringArray(family.tags_uso),
+      tags_beneficios: normalizeStringArray(family.tags_beneficios),
+      clinical_category: normalizeCategory(family.clinical_category),
+      sourceLaboratorio: versionMeta?.laboratorio ? String(versionMeta.laboratorio) : null,
+      sourceVersao: versionMeta?.versao ? String(versionMeta.versao) : null,
+    })),
+    offers: (offers || []).map((offer: Record<string, unknown>) => ({
+      id: String(offer.id),
+      family_id: String(offer.family_id),
+      raw_label: String(offer.raw_label || ''),
+      canonical_label: offer.canonical_label ? String(offer.canonical_label) : null,
+      material: offer.material ? String(offer.material) : null,
+      clinical_category: normalizeCategory(offer.clinical_category),
+      features: toFeatureRecord(offer.features),
+      base_price: normalizeNumber(offer.base_price),
+      is_atomic_offer: Boolean(offer.is_atomic_offer),
+      already_includes_treatment: Boolean(offer.already_includes_treatment),
+      allows_composition: Boolean(offer.allows_composition),
+      source_page_reference: offer.source_page_reference ? String(offer.source_page_reference) : null,
+      sourceLaboratorio: versionMeta?.laboratorio ? String(versionMeta.laboratorio) : null,
+      sourceVersao: versionMeta?.versao ? String(versionMeta.versao) : null,
+    })),
+    grids: (grids || []).map((grid: Record<string, unknown>) => ({
+      offer_id: String(grid.offer_id),
+      sph_min: normalizeNumber(grid.sph_min),
+      sph_max: normalizeNumber(grid.sph_max),
+      cyl_min: normalizeNumber(grid.cyl_min),
+      cyl_max: normalizeNumber(grid.cyl_max),
+      add_min: normalizeNumber(grid.add_min),
+      add_max: normalizeNumber(grid.add_max),
+    })),
+    usageProfiles: (usageProfiles || []).map((profile: Record<string, unknown>) => ({
+      family_id: String(profile.family_id),
+      usage_tags: normalizeStringArray(profile.usage_tags),
+      benefit_tags: normalizeStringArray(profile.benefit_tags),
+      commercial_summary: profile.commercial_summary ? String(profile.commercial_summary) : null,
+      recommendation_notes: profile.recommendation_notes ? String(profile.recommendation_notes) : null,
+    })),
+    compatibilities: (compatibilities || []).map((compatibility: Record<string, unknown>) => ({
+      offer_id: String(compatibility.offer_id),
+      treatment_id: String(compatibility.treatment_id),
+      special_price: normalizeNumber(compatibility.special_price),
+      price_mode: compatibility.price_mode === 'surcharge' ? 'surcharge' : 'final',
+    })),
+    treatments: (treatments || []).map((treatment: Record<string, unknown>) => ({
+      id: String(treatment.id),
+      nome: String(treatment.nome || ''),
+      tipo: treatment.tipo ? String(treatment.tipo) : null,
+      features: toFeatureRecord(treatment.features),
+    })),
+  }
+}
+
+async function loadRecommendationCatalogMulti(versionIds: string[]): Promise<RecommendationCatalog> {
+  const uniqueIds = uniqueValues(versionIds.filter(Boolean))
+  if (uniqueIds.length <= 1) {
+    return loadRecommendationCatalog(uniqueIds[0])
+  }
+
+  const catalogs = await Promise.all(uniqueIds.map((id) => loadRecommendationCatalog(id)))
+  return {
+    families: catalogs.flatMap((catalog) => catalog.families),
+    offers: catalogs.flatMap((catalog) => catalog.offers),
+    grids: catalogs.flatMap((catalog) => catalog.grids),
+    usageProfiles: catalogs.flatMap((catalog) => catalog.usageProfiles),
+    compatibilities: catalogs.flatMap((catalog) => catalog.compatibilities),
+    treatments: catalogs.flatMap((catalog) => catalog.treatments),
+  }
+}
+
+export async function recommendLensConfigurations(params: {
+  versionId: string
+  versionIds?: string[]
+  caseInput: RecommendationCaseInput
+  topN?: number
+  forcedClinicalCategories?: ClinicalCategory[]
+  requiredFeatures?: string[]
+    budgetModeOverride?: BudgetMode | null
+    maxPrice?: number | null
+    minPrice?: number | null
+    targetPrice?: number | null
+    excludedConfigKeys?: string[]
+    catalog?: RecommendationCatalog
+}): Promise<RecommendationOption[]> {
+  const {
+    versionId,
+    topN = 3,
+    forcedClinicalCategories,
+    requiredFeatures = [],
+    budgetModeOverride,
+    maxPrice,
+    minPrice,
+    targetPrice,
+    excludedConfigKeys = [],
+  } = params
+
+  const resolvedVersionIds = params.versionIds?.length
+    ? uniqueValues(params.versionIds)
+    : [versionId]
+  const catalog =
+    params.catalog ||
+    (resolvedVersionIds.length > 1
+      ? await loadRecommendationCatalogMulti(resolvedVersionIds)
+      : await loadRecommendationCatalog(resolvedVersionIds[0]))
+  const input = enrichCaseInput({
+    ...params.caseInput,
+    budget_mode: budgetModeOverride || params.caseInput.budget_mode || 'intermediario',
+  })
+  const strictCategories = forcedClinicalCategories?.length
+    ? forcedClinicalCategories
+    : getDesiredClinicalCategories(input)
+  const strictRanked = rankRecommendationOptions({
+    catalog,
+    input,
+    forcedClinicalCategories: strictCategories,
+    requiredFeatures,
+    maxPrice,
+    minPrice,
+    targetPrice,
+    excludedConfigKeys,
+  })
+
+  if (topN <= 2) {
+    return selectDiverseTopEntries(strictRanked, topN)
+  }
+
+  const strictQuota = Math.min(2, topN)
+  const selected = selectDiverseTopEntries(strictRanked, strictQuota)
+  const exploratoryCategories = getExploratoryClinicalCategories(input, strictCategories)
+
+  if (!sameCategories(strictCategories, exploratoryCategories)) {
+    const exploratoryRanked = applyExploratoryPriceDiscipline(
+      rankRecommendationOptions({
+        catalog,
+        input,
+        forcedClinicalCategories: exploratoryCategories,
+        requiredFeatures,
+        maxPrice,
+      minPrice,
+      targetPrice,
+      excludedConfigKeys,
+      }).map((entry) => {
+        if (strictCategories.includes(entry.clinicalCategory)) {
+          return entry
+        }
+
+      return {
+        ...entry,
+        score: Number((entry.score - 0.75).toFixed(2)),
+          reasons: uniqueStrings([...entry.reasons, 'opcao:alternativa_plausivel']),
+        }
+      }),
+      selected,
+    )
+
+    appendPrioritizedEntries(selected, exploratoryRanked, topN)
+  }
+
+  if (selected.length < topN) {
+    appendPrioritizedEntries(selected, strictRanked, topN)
+  }
+
+  return selected.slice(0, topN)
 }
 
 export function inferConversationIntents(message: string): ConversationIntent[] {
@@ -1034,6 +1704,7 @@ export async function continueRecommendationConversation(params: {
 
   const recommendations = await recommendLensConfigurations({
     versionId: nextState.versionId,
+    versionIds: nextState.versionIds,
     caseInput: nextState.caseInput,
     topN: params.topN || 3,
     forcedClinicalCategories: nextState.forcedClinicalCategories,
@@ -1056,6 +1727,7 @@ export async function continueRecommendationConversation(params: {
 
 export async function startRecommendationConversation(params: {
   versionId: string
+  versionIds?: string[]
   caseInput: RecommendationCaseInput
   topN?: number
 }): Promise<{
@@ -1064,6 +1736,7 @@ export async function startRecommendationConversation(params: {
 }> {
   const state: RecommendationConversationState = {
     versionId: params.versionId,
+    versionIds: params.versionIds,
     caseInput: enrichCaseInput(params.caseInput),
     requiredFeatures: [],
     excludedConfigKeys: [],
@@ -1073,6 +1746,7 @@ export async function startRecommendationConversation(params: {
 
   const recommendations = await recommendLensConfigurations({
     versionId: params.versionId,
+    versionIds: params.versionIds,
     caseInput: state.caseInput,
     topN: params.topN || 3,
   })
