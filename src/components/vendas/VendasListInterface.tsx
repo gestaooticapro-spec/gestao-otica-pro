@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Plus, ShoppingCart, Calendar, User, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, XCircle, Clock, RefreshCcw } from 'lucide-react'
@@ -18,6 +19,24 @@ interface VendasListInterfaceProps {
 export default function VendasListInterface({ vendas, storeId, mode, startDate, endDate }: VendasListInterfaceProps) {
     const { preference } = useBackgroundPreference()
     const router = useRouter()
+    const [isRefreshing, setIsRefreshing] = useState(false)
+
+    // Função de Refresh manual
+    const handleRefresh = () => {
+        setIsRefreshing(true)
+        router.refresh()
+        // Pequeno delay para a animação ser visível e indicar que algo ocorreu
+        setTimeout(() => setIsRefreshing(false), 800)
+    }
+
+    // Auto-refresh quando a janela recebe foco (volta para a aba)
+    useEffect(() => {
+        const onFocus = () => {
+            handleRefresh()
+        }
+        window.addEventListener('focus', onFocus)
+        return () => window.removeEventListener('focus', onFocus)
+    }, [])
 
     const formatDate = (dateString: string) => {
         return new Date(dateString).toLocaleDateString('pt-BR', {
@@ -91,9 +110,19 @@ export default function VendasListInterface({ vendas, storeId, mode, startDate, 
                         <h2 className={`font-bold text-sm flex items-center gap-2 ${mode === 'pendencias' ? 'text-amber-400' : 'text-slate-200'}`}>
                             {mode === 'pendencias' ? <AlertCircle className="h-4 w-4" /> : <Calendar className="h-4 w-4" />}
                             {mode === 'pendencias' ? 'Fila de Pendências' : 'Histórico do Período'}
-                            <span className="opacity-60 text-xs ml-1 bg-white/10 px-2 py-0.5 rounded-full text-white">
-                                {vendas?.length || 0}
-                            </span>
+                            <div className="flex items-center gap-2 ml-1">
+                                <span className="opacity-60 text-xs bg-white/10 px-2 py-0.5 rounded-full text-white">
+                                    {vendas?.length || 0}
+                                </span>
+                                <button
+                                    onClick={handleRefresh}
+                                    disabled={isRefreshing}
+                                    title="Atualizar lista"
+                                    className={`p-1 rounded-md hover:bg-white/10 transition-all text-slate-400 hover:text-white ${isRefreshing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                >
+                                    <RefreshCcw className={`h-3 w-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+                                </button>
+                            </div>
                         </h2>
                     </div>
 

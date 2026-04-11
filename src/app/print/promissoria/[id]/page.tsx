@@ -22,6 +22,6 @@ export default async function PrintPromissoriaPage({ params }: { params: { id: s
 
 function PrintTrigger() {
     return (
-        <script dangerouslySetInnerHTML={{ __html: 'window.print();' }} />
+        <script dangerouslySetInnerHTML={{ __html: 'window.onafterprint = function() { window.close(); }; window.print();' }} />
     )
 }

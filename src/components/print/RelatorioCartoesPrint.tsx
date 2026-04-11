@@ -25,8 +25,8 @@ export default function RelatorioCartoesPrint({
 }) {
     useEffect(() => {
         const timer = setTimeout(() => {
+            window.onafterprint = () => window.close()
             window.print()
-            window.close()
         }, 800)
         return () => clearTimeout(timer)
     }, [])

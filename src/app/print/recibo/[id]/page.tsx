@@ -78,6 +78,6 @@ export default async function PrintReciboPage({ params, searchParams }: { params
 
 function PrintTrigger() {
     return (
-        <script dangerouslySetInnerHTML={{ __html: 'window.print(); window.onafterprint = function() { window.close(); };' }} />
+        <script dangerouslySetInnerHTML={{ __html: 'window.onafterprint = function() { window.close(); }; window.print();' }} />
     )
 }
