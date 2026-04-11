@@ -1,6 +1,0 @@
-fonte_tabela,laboratorio,pagina_pdf,bloco_visual,familia,produto,design,material,indice_refracao,tratamento,treatment_group,treatment_application,transitions,transitions_cores,blue_uv,esferico_min,esferico_max,cilindrico_max,adicao_min,adicao_max,preco_tipo,preco_par_brl,nota_disponibilidade
-PVC,Essilor,12,Lentes Essilor,VS Essilor Surfaçada,VS Essilor Surfaçada,Surfaçada,Orma,1.50,Blue UV,,,,,,,,,,,derivado_regra,479.00,Blue UV = +R$80 vs Orma base
-PVC,Essilor,12,Lentes Essilor,VS Essilor Surfaçada,VS Essilor Surfaçada,Surfaçada,Airwear,1.59,Crizal Prevencia,,,,,,,,,,,derivado_regra,599.00,Airwear = +R$200 vs Orma
-PVC,Essilor,12,Lentes Essilor,VS Essilor Surfaçada,VS Essilor Surfaçada,Surfaçada,Airwear,1.59,Blue UV,,,,,,,,,,,derivado_regra,679.00,Blue UV = +R$80 vs Airwear base
-PVC,Essilor,12,Lentes Essilor,VS Essilor Surfaçada,VS Essilor Surfaçada,Surfaçada,Stylis 1.67,1.67,Crizal Prevencia,,,,,,,,,,,derivado_regra,1599.00,+R$1000 vs Airwear
-PVC,Essilor,12,Lentes Essilor,VS Essilor Surfaçada,VS Essilor Surfaçada,Surfaçada,Stylis 1.74,1.74,Crizal Sapphire HR,,,,,,,,,,,derivado_regra,2319.00,+R$780 vs Stylis 1.67; cilíndrico Stylis 1.74 até -8.00

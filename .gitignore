@@ -39,3 +39,32 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# --- CUSTOM PROJECT IGNORES ---
+
+# Temporary/Data folders
+/tmp/
+/.tabelas/
+/.agent/
+/.claude/
+/.migracao_nfce/
+
+# Heavy Files & Archives
+*.pdf
+*.zip
+*.rar
+*.7z
+*.xlsx
+
+# Data Snapshots (CSV files in root and elsewhere)
+*.csv
+
+# SQL & Backups (Keep migrations, ignore others)
+*.sql
+!supabase_migration_*.sql
+!src/lib/database/*.sql
+
+# System & Local Logs
+*.log
+PROJETO_COMPLETO_IA.txt
+build.log
