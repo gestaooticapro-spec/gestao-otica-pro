@@ -683,7 +683,7 @@ export async function upsertOpticalEvaluation(
     medida_altura_oe: normalizeText(data.medidaAlturaOe),
     recommended_lens_name: normalizeText(data.recommendedLensName),
     commercial_recommendation_raw: normalizeText(data.commercialRecommendationRaw),
-    recommended_items: data.recommendedItems ?? null,
+    recommended_items: (data.recommendedItems ?? null) as any,
     extracted_text: normalizeText(data.extractedText),
     raw_payload_json: (data.rawPayloadJson || {}) as EvaluationJson,
     parse_warning: normalizeText(data.parseWarning),
