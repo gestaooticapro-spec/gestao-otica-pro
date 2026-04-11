@@ -1,0 +1,1494 @@
+[
+{
+"entity_name": "Varilux XR Series",
+"entity_type": "family",
+"family": "Varilux",
+"subfamily": "XR Series",
+"material": null,
+"treatment": null,
+"technology": "inteligência artificial aplicada ao desenho progressivo",
+"manufacturer_or_brand": "Essilor",
+"category": "progressiva",
+"recommended_for": [
+"presbitas",
+"usuários que valorizam nitidez em movimento",
+"usuários que buscam transições entre longe, intermediário e perto"
+],
+"not_ideal_for": [
+"casos em que a fonte disponível não sustenta comparação objetiva com outras progressivas fora do ecossistema Essilor"
+],
+"positioning": "premium",
+"benefit_tags": [
+"nitidez instantanea",
+"visao em movimento",
+"transicao entre distancias"
+],
+"usage_tags": [
+"uso diario",
+"multitarefas",
+"mobilidade"
+],
+"technology_tags": [
+"IA",
+"desenho progressivo",
+"predicao do comportamento visual"
+],
+"material_tags": [],
+"commercial_summary": "Linha progressiva apresentada como solução avançada para nitidez em movimento e transições suaves entre campos de visão.",
+"recommendation_notes": "Boa candidata para perfis que priorizam mobilidade e conforto em múltiplas distâncias. A afirmação de 'melhor' aparece na comunicação oficial, mas deve ser tratada como claim de marketing, não como superioridade objetiva universal.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "claim de marketing",
+"text": "a melhor lente progressiva"
+},
+{
+"type": "fato técnico",
+"text": "concebida com inteligência artificial"
+},
+{
+"type": "posicionamento comercial",
+"text": "consegue prever o comportamento dos seus olhos, para que usufrua de nitidez instantânea mesmo em movimento"
+}
+],
+"source_urls": [
+"[https://www.essilor.com/pt-pt/produtos/varilux/varilux-xr-series/](https://www.essilor.com/pt-pt/produtos/varilux/varilux-xr-series/)",
+"[https://www.essilor.com/br-pt/discover-varilux-xr-experts/](https://www.essilor.com/br-pt/discover-varilux-xr-experts/)"
+]
+},
+{
+"entity_name": "Varilux Comfort Max",
+"entity_type": "family",
+"family": "Varilux",
+"subfamily": "Comfort Max",
+"material": null,
+"treatment": null,
+"technology": null,
+"manufacturer_or_brand": "Essilor",
+"category": "progressiva",
+"recommended_for": [
+"primeiro usuário de multifocal",
+"presbitas que priorizam adaptação",
+"uso diario"
+],
+"not_ideal_for": [
+"usuários que buscam uma proposta explicitamente voltada para tecnologia mais avançada ou personalização mais sofisticada"
+],
+"positioning": "intermediaria",
+"benefit_tags": [
+"conforto o dia todo",
+"adaptacao facilitada",
+"visao progressiva"
+],
+"usage_tags": [
+"primeira multifocal",
+"rotina diaria"
+],
+"technology_tags": [
+"desenho progressivo"
+],
+"material_tags": [],
+"commercial_summary": "Linha progressiva apresentada com forte foco em conforto diário e facilidade de adaptação.",
+"recommendation_notes": "Forte candidata para quem está entrando em multifocais. O próprio texto oficial enfatiza adaptação, então a recomendação semântica deve privilegiar perfis iniciantes.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "posicionamento comercial",
+"text": "multifocais ergonômicas para o conforto da visão durante todo o dia"
+},
+{
+"type": "posicionamento comercial",
+"text": "nunca usou lentes multifocais antes?"
+},
+{
+"type": "posicionamento comercial",
+"text": "descubra como se adaptar facilmente às lentes multifocais"
+}
+],
+"source_urls": [
+"[https://www.essilor.com/br-pt/produtos/varilux/varilux-comfort-max/](https://www.essilor.com/br-pt/produtos/varilux/varilux-comfort-max/)"
+]
+},
+{
+"entity_name": "Varilux Physio extensee",
+"entity_type": "family",
+"family": "Varilux",
+"subfamily": "Physio extensee",
+"material": null,
+"treatment": null,
+"technology": "inteligência artificial baseada em dinâmica pupilar",
+"manufacturer_or_brand": "Essilor",
+"category": "progressiva",
+"recommended_for": [
+"presbitas",
+"usuários sensíveis a conforto visual em diferentes condições de luz",
+"usuários que valorizam estabilidade de desempenho ao longo do dia"
+],
+"not_ideal_for": [
+"casos em que o catálogo precise de evidência clínica comparativa robusta frente a outras linhas progressivas"
+],
+"positioning": "premium",
+"benefit_tags": [
+"conforto visual",
+"variacao pupilar",
+"visao em diferentes luminosidades"
+],
+"usage_tags": [
+"uso diario",
+"ambientes com variacao de luz"
+],
+"technology_tags": [
+"IA",
+"dinamica pupilar",
+"desenho progressivo"
+],
+"material_tags": [],
+"commercial_summary": "Linha progressiva apresentada como otimizada segundo a variação do tamanho da pupila ao longo do dia.",
+"recommendation_notes": "Boa para perfis que relatam sensibilidade a mudança de luz ou querem um discurso de conforto visual mais refinado. Parte importante da proposta vem de linguagem técnico-comercial da própria marca.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "fato técnico",
+"text": "prevê a variação do tamanho da sua pupila ao longo do dia"
+},
+{
+"type": "fato técnico",
+"text": "desenvolvidas com base em inteligência artificial e na dinâmica pupilar"
+},
+{
+"type": "posicionamento comercial",
+"text": "otimizam a tecnologia da lente de acordo com as variações do tamanho da pupila"
+}
+],
+"source_urls": [
+"[https://www.essilor.com/br-pt/produtos/varilux/varilux-physio-extensee/](https://www.essilor.com/br-pt/produtos/varilux/varilux-physio-extensee/)",
+"[https://www.essilor.com/us-en/products/varilux/varilux-physio-extensee/](https://www.essilor.com/us-en/products/varilux/varilux-physio-extensee/)"
+]
+},
+{
+"entity_name": "Eyezen",
+"entity_type": "family",
+"family": "Eyezen",
+"subfamily": null,
+"material": null,
+"treatment": null,
+"technology": "lente de visão simples otimizada para vida conectada",
+"manufacturer_or_brand": "Essilor",
+"category": "visao_simples",
+"recommended_for": [
+"usuários de telas",
+"vida digital intensa",
+"perfis com queixa de fadiga visual"
+],
+"not_ideal_for": [
+"controle real de progressão de miopia infantil",
+"necessidade de correção progressiva"
+],
+"positioning": "intermediaria",
+"benefit_tags": [
+"relaxamento ocular",
+"fadiga visual",
+"conforto visual"
+],
+"usage_tags": [
+"telas",
+"uso digital",
+"uso diario"
+],
+"technology_tags": [
+"visao simples otimizada",
+"design para vida conectada"
+],
+"material_tags": [],
+"commercial_summary": "Família de visão simples apresentada para apoiar conforto e relaxamento ocular em estilos de vida conectados.",
+"recommendation_notes": "Importante diferenciar Eyezen de controle de miopia: as fontes oficiais encontradas falam de conforto digital e fadiga visual, não de desacelerar progressão de miopia.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "fato técnico",
+"text": "lentes de visão simples"
+},
+{
+"type": "posicionamento comercial",
+"text": "oferecem proteção e relaxamento para os seus olhos"
+},
+{
+"type": "posicionamento comercial",
+"text": "ajudam a combater a fadiga visual"
+}
+],
+"source_urls": [
+"[https://www.essilor.com/br-pt/produtos/eyezen/](https://www.essilor.com/br-pt/produtos/eyezen/)",
+"[https://www.essilor.com/us-en/products/eyezen/](https://www.essilor.com/us-en/products/eyezen/)"
+]
+},
+{
+"entity_name": "Eyezen Start",
+"entity_type": "subfamily",
+"family": "Eyezen",
+"subfamily": "Start",
+"material": null,
+"treatment": null,
+"technology": "nova geração de visão simples para estilo de vida conectado",
+"manufacturer_or_brand": "Essilor",
+"category": "visao_simples",
+"recommended_for": [
+"usuários conectados",
+"rotina digital",
+"quem busca entrada na proposta Eyezen"
+],
+"not_ideal_for": [
+"controle real de miopia",
+"necessidade de desenho ocupacional dedicado"
+],
+"positioning": "entrada",
+"benefit_tags": [
+"vida conectada",
+"conforto visual",
+"visao simples"
+],
+"usage_tags": [
+"telas",
+"uso diario"
+],
+"technology_tags": [
+"visao simples",
+"lifestyle conectado"
+],
+"material_tags": [],
+"commercial_summary": "Subfamília apresentada como nova geração de lentes de visão simples para estilos de vida conectados.",
+"recommendation_notes": "Faz sentido como opção mais acessível dentro do universo Eyezen quando o perfil principal é conforto digital básico.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "posicionamento comercial",
+"text": "a nova geração de lentes de visão simples para atender às necessidades do estilo de vida conectada"
+}
+],
+"source_urls": [
+"[https://www.essilor.com/br-pt/produtos/eyezen/eyezen-start/](https://www.essilor.com/br-pt/produtos/eyezen/eyezen-start/)"
+]
+},
+{
+"entity_name": "Eyezen Boost",
+"entity_type": "subfamily",
+"family": "Eyezen",
+"subfamily": "Boost",
+"material": null,
+"treatment": null,
+"technology": "apoio ao esforço de foco ocular com filtro de luz azul-violeta",
+"manufacturer_or_brand": "Essilor",
+"category": "visao_simples",
+"recommended_for": [
+"usuários de telas",
+"leitura de caracteres pequenos",
+"pessoas com fadiga visual"
+],
+"not_ideal_for": [
+"controle de miopia infantil",
+"usuários que necessitam lente progressiva"
+],
+"positioning": "intermediaria",
+"benefit_tags": [
+"reducao da fadiga visual",
+"melhor leitura",
+"filtro azul-violeta"
+],
+"usage_tags": [
+"telas",
+"leitura",
+"uso digital"
+],
+"technology_tags": [
+"filtro avancado",
+"suporte ao foco ocular"
+],
+"material_tags": [],
+"commercial_summary": "Subfamília Eyezen com discurso mais explícito para foco ocular, leitura e conforto em ambientes digitais.",
+"recommendation_notes": "Boa para perfis digitais que relatam esforço de foco e leitura cansativa. A página de FAQ encontrada também associa a linha a 18 a 50 anos e altos níveis de fadiga visual.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "posicionamento comercial",
+"text": "o melhor aliado de Eyezen para apoiar os esforços de foco ocular"
+},
+{
+"type": "fato técnico",
+"text": "filtro de luz azul-violeta"
+},
+{
+"type": "posicionamento comercial",
+"text": "melhorar a leitura de pequenos caracteres"
+},
+{
+"type": "posicionamento comercial",
+"text": "otimizado para dispositivos digitais"
+},
+{
+"type": "posicionamento comercial",
+"text": "de 18 a 50 anos de idade com um alto nível de fadiga visual"
+}
+],
+"source_urls": [
+"[https://www.essilor.com/br-pt/produtos/eyezen/eyezen-boost/](https://www.essilor.com/br-pt/produtos/eyezen/eyezen-boost/)",
+"[https://www.essilor.com/br-pt/produtos/eyezen/perguntas-mais-frequentes/](https://www.essilor.com/br-pt/produtos/eyezen/perguntas-mais-frequentes/)"
+]
+},
+{
+"entity_name": "Stellest",
+"entity_type": "family",
+"family": "Stellest",
+"subfamily": null,
+"material": null,
+"treatment": null,
+"technology": "lente para correção da miopia com controle da progressão",
+"manufacturer_or_brand": "Essilor",
+"category": "controle_miopia",
+"recommended_for": [
+"criancas miopes",
+"familias que buscam correção da miopia associada a controle de progressão"
+],
+"not_ideal_for": [
+"adultos presbitas",
+"quem busca apenas conforto digital",
+"casos em que o objetivo é somente visão simples sem foco em miopia progressiva"
+],
+"positioning": "premium",
+"benefit_tags": [
+"controle da progressao",
+"correcao da miopia",
+"visao nitida de longe"
+],
+"usage_tags": [
+"uso infantil",
+"uso diario"
+],
+"technology_tags": [
+"controle de miopia",
+"tecnologia dedicada"
+],
+"material_tags": [],
+"commercial_summary": "Linha dedicada ao controle da progressão da miopia infantil, separada semanticamente das linhas de conforto digital.",
+"recommendation_notes": "Deve ser tratada em categoria própria de controle de miopia, e não como simples variação de visão simples infantil. A própria Essilor diferencia correção da miopia e controle da progressão.",
+"evidence_level": "alto",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "posicionamento comercial",
+"text": "a melhor solução da Essilor para combater a miopia do seu filho"
+},
+{
+"type": "posicionamento comercial",
+"text": "com eficácia clinicamente comprovada"
+},
+{
+"type": "fato técnico",
+"text": "proporcionam a correção da miopia e uma visão nítida de longe, por meio de uma área de visão simples, e o controle da progressão da miopia"
+},
+{
+"type": "fato técnico",
+"text": "first and only FDA market authorized spectacle lens to slow the progression of nearsightedness in children"
+}
+],
+"source_urls": [
+"[https://www.essilor.com/br-pt/produtos/stellest/](https://www.essilor.com/br-pt/produtos/stellest/)",
+"[https://www.essilor.com/br-pt/produtos/stellest/perguntas-mais-frequentes/](https://www.essilor.com/br-pt/produtos/stellest/perguntas-mais-frequentes/)",
+"[https://www.essilor.com/us-en/](https://www.essilor.com/us-en/)"
+]
+},
+{
+"entity_name": "KODAK Unique UHD",
+"entity_type": "family",
+"family": "KODAK",
+"subfamily": "Unique UHD",
+"material": null,
+"treatment": null,
+"technology": "UHD, Vision First, DRO",
+"manufacturer_or_brand": "KODAK Lens / Essilor licensing ecosystem",
+"category": "progressiva",
+"recommended_for": [
+"presbitas",
+"quem busca desempenho em todas as distâncias",
+"usuários que valorizam transição suave e adaptação"
+],
+"not_ideal_for": [
+"casos em que o catálogo exija prova objetiva de superioridade clínica frente a outros progressivos"
+],
+"positioning": "premium",
+"benefit_tags": [
+"visao nitida",
+"transicao suave",
+"adaptacao",
+"desempenho em todas as distancias"
+],
+"usage_tags": [
+"uso diario",
+"longe",
+"intermediario",
+"perto"
+],
+"technology_tags": [
+"UHD",
+"Vision First",
+"DRO"
+],
+"material_tags": [],
+"commercial_summary": "Progressiva Kodak apresentada como opção com excelente desempenho em todas as distâncias e transição mais uniforme.",
+"recommendation_notes": "Boa candidata para perfis que valorizam campo completo e adaptação. O texto oficial a coloca acima de outras progressivas Kodak em sofisticação percebida, mas isso ainda é posicionamento comercial.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "posicionamento comercial",
+"text": "excelente desempenho para todas as distâncias"
+},
+{
+"type": "posicionamento comercial",
+"text": "transição suave, mais rápida e uniforme"
+},
+{
+"type": "fato técnico",
+"text": "tecnologias UHD, Vision first e DRO"
+}
+],
+"source_urls": [
+"[https://lenteskodak.com.br/br-8](https://lenteskodak.com.br/br-8)",
+"[https://lenteskodak.com.br/](https://lenteskodak.com.br/)"
+]
+},
+{
+"entity_name": "KODAK Precise UHD",
+"entity_type": "family",
+"family": "KODAK",
+"subfamily": "Precise UHD",
+"material": null,
+"treatment": null,
+"technology": "UHD, Vision First",
+"manufacturer_or_brand": "KODAK Lens / Essilor licensing ecosystem",
+"category": "progressiva",
+"recommended_for": [
+"primeiro usuário de multifocal",
+"perfil sensível a custo-benefício",
+"presbitas que querem entrada em progressivas Kodak"
+],
+"not_ideal_for": [
+"usuários que procuram o topo do portfólio progressivo Kodak"
+],
+"positioning": "entrada",
+"benefit_tags": [
+"custo_beneficio",
+"inicio em multifocal",
+"boa performance"
+],
+"usage_tags": [
+"primeira progressiva",
+"uso diario"
+],
+"technology_tags": [
+"UHD",
+"Vision First"
+],
+"material_tags": [],
+"commercial_summary": "Progressiva Kodak com discurso explícito de custo-benefício e início de uso em multifocais.",
+"recommendation_notes": "Deve ser fortemente associada a perfis de entrada no catálogo progressivo. A própria marca liga a linha ao começo de uso em multifocais.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "posicionamento comercial",
+"text": "excelente custo-benefício para quem vai começar a usar lentes multifocais"
+},
+{
+"type": "posicionamento comercial",
+"text": "boa performance para todas as distâncias"
+},
+{
+"type": "fato técnico",
+"text": "tecnologias UHD e Vision first"
+}
+],
+"source_urls": [
+"[https://lenteskodak.com.br/br-3](https://lenteskodak.com.br/br-3)"
+]
+},
+{
+"entity_name": "KODAK Network UHD",
+"entity_type": "family",
+"family": "KODAK",
+"subfamily": "Network UHD",
+"material": null,
+"treatment": null,
+"technology": "UHD, Vision First",
+"manufacturer_or_brand": "KODAK Lens / Essilor licensing ecosystem",
+"category": "progressiva",
+"recommended_for": [
+"presbitas",
+"usuários que querem adaptação sem esforço",
+"quem quer progressiva entre entrada e premium"
+],
+"not_ideal_for": [
+"catálogos que dependam de diferenciação técnica muito clara frente a Unique UHD, pois a fonte disponível é mais comercial do que comparativa"
+],
+"positioning": "intermediaria",
+"benefit_tags": [
+"adaptacao",
+"transicao suave",
+"boa performance"
+],
+"usage_tags": [
+"uso diario",
+"todas as distancias"
+],
+"technology_tags": [
+"UHD",
+"Vision First"
+],
+"material_tags": [],
+"commercial_summary": "Progressiva Kodak posicionada entre boa performance geral e adaptação sem esforço.",
+"recommendation_notes": "Boa candidata para perfil equilibrado no catálogo Kodak. A diferenciação frente a Precise e Unique parece mais comercial do que sustentada por comparação técnica detalhada na página encontrada.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "posicionamento comercial",
+"text": "boa performance para todas as distâncias"
+},
+{
+"type": "posicionamento comercial",
+"text": "adaptação sem esforço e transição suave entre os campos de visão"
+},
+{
+"type": "fato técnico",
+"text": "tecnologias UHD e Vision first"
+}
+],
+"source_urls": [
+"[https://lenteskodak.com.br/br-4](https://lenteskodak.com.br/br-4)"
+]
+},
+{
+"entity_name": "KODAK Unique Infinite",
+"entity_type": "family",
+"family": "KODAK",
+"subfamily": "Unique Infinite",
+"material": null,
+"treatment": null,
+"technology": "duas novas tecnologias não nomeadas no trecho recuperado",
+"manufacturer_or_brand": "KODAK Lens / Essilor licensing ecosystem",
+"category": "progressiva",
+"recommended_for": [
+"usuários ativos",
+"quem percebe desconforto com distorções laterais",
+"quem busca conforto visual"
+],
+"not_ideal_for": [
+"casos em que o sistema precise de descrição técnica fechada das tecnologias, pois o trecho recuperado não traz os nomes completos"
+],
+"positioning": "premium",
+"benefit_tags": [
+"reducao de distorcoes laterais",
+"clareza",
+"precisao",
+"conforto visual"
+],
+"usage_tags": [
+"estilo de vida ativo",
+"uso diario"
+],
+"technology_tags": [
+"reducao de distorcao periferica"
+],
+"material_tags": [],
+"commercial_summary": "Progressiva Kodak com foco em redução de distorções laterais e conforto visual.",
+"recommendation_notes": "Interessante para perfis que reclamam de sensação de limitação periférica. Como o trecho recuperado não detalha plenamente as tecnologias, a modelagem técnica deve ser conservadora.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "posicionamento comercial",
+"text": "reduzir as distorções laterais"
+},
+{
+"type": "posicionamento comercial",
+"text": "visão melhor, com clareza e precisão"
+},
+{
+"type": "posicionamento comercial",
+"text": "isso proporciona ao usuário o máximo conforto visual"
+}
+],
+"source_urls": [
+"[https://lenteskodak.com.br/br-2](https://lenteskodak.com.br/br-2)",
+"[https://lenteskodak.com.br/pemikir-yang-progresif-br](https://lenteskodak.com.br/pemikir-yang-progresif-br)"
+]
+},
+{
+"entity_name": "KODAK City",
+"entity_type": "family",
+"family": "KODAK",
+"subfamily": "City",
+"material": null,
+"treatment": null,
+"technology": "filtragem de luz azul-violeta e redução de ofuscamento/reflexo",
+"manufacturer_or_brand": "KODAK Lens / Essilor licensing ecosystem",
+"category": "visao_simples",
+"recommended_for": [
+"uso urbano",
+"visão diurna e noturna",
+"usuários sensíveis a ofuscamento"
+],
+"not_ideal_for": [
+"quem precisa de polarização explícita, pois a página fala em redução de reflexo/ofuscamento e filtragem, não em polarização"
+],
+"positioning": "intermediaria",
+"benefit_tags": [
+"reducao de ofuscamento",
+"filtro azul_violeta",
+"protecao UV",
+"conforto visual"
+],
+"usage_tags": [
+"uso urbano",
+"dia e noite",
+"conducao"
+],
+"technology_tags": [
+"filtro azul_violeta",
+"controle de reflexos"
+],
+"material_tags": [],
+"commercial_summary": "Linha Kodak voltada a conforto visual urbano, com filtragem de azul-violeta e redução de ofuscamento durante o dia e à noite.",
+"recommendation_notes": "Boa para perfis com queixa de brilho, reflexo e rotina urbana. Como os percentuais de redução aparecem em página comercial, convém armazená-los como claim controlado.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "fato técnico",
+"text": "filtram a Luz Azul-Violeta"
+},
+{
+"type": "claim de marketing",
+"text": "reduzir o ofuscamento e o reflexo em até 30% à noite e 60% durante o dia"
+},
+{
+"type": "fato técnico",
+"text": "protegem seus olhos filtrando 100% dos raios UV prejudiciais"
+},
+{
+"type": "posicionamento comercial",
+"text": "lentes para visão diurna e noturna"
+}
+],
+"source_urls": [
+"[https://lenteskodak.com.br/city-lens-br](https://lenteskodak.com.br/city-lens-br)",
+"[https://lenteskodak.com.br/comfort-keeper-br](https://lenteskodak.com.br/comfort-keeper-br)"
+]
+},
+{
+"entity_name": "KODAK UVBlue",
+"entity_type": "family",
+"family": "KODAK",
+"subfamily": "UVBlue",
+"material": null,
+"treatment": null,
+"technology": "filtragem de luz azul-violeta com proteção UV",
+"manufacturer_or_brand": "KODAK Lens / Essilor licensing ecosystem",
+"category": "visao_simples",
+"recommended_for": [
+"usuários preocupados com proteção UV",
+"perfis sensíveis a brilho e exposição luminosa",
+"uso diário"
+],
+"not_ideal_for": [
+"quem busca controle real de miopia",
+"quem precisa de polarização"
+],
+"positioning": "intermediaria",
+"benefit_tags": [
+"filtro azul_violeta",
+"protecao UV",
+"conforto visual"
+],
+"usage_tags": [
+"uso diario",
+"ambientes claros",
+"telas"
+],
+"technology_tags": [
+"blue filter",
+"UV filter"
+],
+"material_tags": [],
+"commercial_summary": "Linha Kodak focada em filtragem de luz azul-violeta e proteção UV em uso diário.",
+"recommendation_notes": "Boa candidata quando o sistema quiser sugerir uma opção com discurso de proteção e conforto diário, sem confundir isso com tratamento médico de miopia.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "fato técnico",
+"text": "filtram a luz azul-violeta"
+},
+{
+"type": "posicionamento comercial",
+"text": "proporcionando uma experiência visual mais relaxada durante todo o dia"
+},
+{
+"type": "fato técnico",
+"text": "filtram 100% da luz UV"
+}
+],
+"source_urls": [
+"[https://lenteskodak.com.br/evoblue-lens-br](https://lenteskodak.com.br/evoblue-lens-br)"
+]
+},
+{
+"entity_name": "KODAK Intro",
+"entity_type": "family",
+"family": "KODAK",
+"subfamily": "Intro",
+"material": null,
+"treatment": "antirreflexo",
+"technology": null,
+"manufacturer_or_brand": "KODAK Lens / Essilor licensing ecosystem",
+"category": "visao_simples",
+"recommended_for": [
+"perfil econômico",
+"quem quer entrada na marca Kodak",
+"usuário que valoriza autenticidade e garantia"
+],
+"not_ideal_for": [
+"perfis que buscam tecnologia avançada explicitamente descrita"
+],
+"positioning": "entrada",
+"benefit_tags": [
+"acessibilidade",
+"antirreflexo",
+"garantia"
+],
+"usage_tags": [
+"uso diario",
+"entrada de catalogo"
+],
+"technology_tags": [],
+"material_tags": [],
+"commercial_summary": "Linha Kodak de entrada, descrita como mais acessível e com antirreflexo.",
+"recommendation_notes": "Pode funcionar como opção econômica dentro do catálogo. A fonte disponível foca mais em acessibilidade e autenticidade do produto do que em atributos ópticos detalhados.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "posicionamento comercial",
+"text": "são mais acessíveis"
+},
+{
+"type": "fato técnico",
+"text": "contam com antirreflexo"
+},
+{
+"type": "fato técnico",
+"text": "possuem certificado de garantia"
+}
+],
+"source_urls": [
+"[https://lenteskodak.com.br/uvblue-lens-br](https://lenteskodak.com.br/uvblue-lens-br)"
+]
+},
+{
+"entity_name": "KODAK SoftWear",
+"entity_type": "family",
+"family": "KODAK",
+"subfamily": "SoftWear",
+"material": null,
+"treatment": null,
+"technology": "desenho digital para escritório com zona intermediária ampliada",
+"manufacturer_or_brand": "KODAK Lens / Essilor licensing ecosystem",
+"category": "ocupacional",
+"recommended_for": [
+"ambiente de escritório",
+"uso de computador",
+"pessoas com mais de 40 anos",
+"tarefas de intermediário e perto"
+],
+"not_ideal_for": [
+"quem precisa de progressiva full time para todas as distâncias",
+"quem busca apenas visão simples padrão"
+],
+"positioning": "intermediaria",
+"benefit_tags": [
+"produtividade",
+"zona intermediaria ampliada",
+"reducao do cansaco visual"
+],
+"usage_tags": [
+"escritorio",
+"computador",
+"leitura"
+],
+"technology_tags": [
+"lente digital",
+"desenho ocupacional",
+"zona intermediaria"
+],
+"material_tags": [],
+"commercial_summary": "Lente digital ocupacional Kodak com foco explícito em escritório, tela e leitura.",
+"recommendation_notes": "Deve ficar em categoria ocupacional, não progressiva comum. A própria descrição destaca correção intermediária adicional para computador e correção de perto para leitura.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "fato técnico",
+"text": "lentes digitais com desenho especialmente projetado para uso em ambientes de escritório"
+},
+{
+"type": "fato técnico",
+"text": "zona central com correção intermediária adicional para uso na tela do computador mais correção de zona de perto para leitura"
+},
+{
+"type": "posicionamento comercial",
+"text": "reduzem o cansaço visual"
+},
+{
+"type": "fato técnico",
+"text": "pessoas com mais de 40 anos"
+}
+],
+"source_urls": [
+"[https://lenteskodak.com.br/softwear-lens-br](https://lenteskodak.com.br/softwear-lens-br)",
+"[https://lenteskodak.com.br/pemikir-yang-progresif-br](https://lenteskodak.com.br/pemikir-yang-progresif-br)"
+]
+},
+{
+"entity_name": "Crizal Sapphire HR",
+"entity_type": "treatment",
+"family": "Crizal",
+"subfamily": "Sapphire HR",
+"material": null,
+"treatment": "antirreflexo",
+"technology": "redução de reflexos 360°, facilidade de limpeza e resistência",
+"manufacturer_or_brand": "Essilor",
+"category": "tratamento",
+"recommended_for": [
+"usuários que priorizam transparência estética",
+"quem quer tratamento premium antirreflexo",
+"uso diário"
+],
+"not_ideal_for": [
+"perfis estritamente econômicos"
+],
+"positioning": "premium",
+"benefit_tags": [
+"transparencia",
+"antirreflexo",
+"facilidade de limpeza",
+"durabilidade",
+"protecao UV"
+],
+"usage_tags": [
+"uso diario",
+"ambientes internos e externos"
+],
+"technology_tags": [
+"360 reflex reduction",
+"easy clean",
+"scratch resistance"
+],
+"material_tags": [],
+"commercial_summary": "Tratamento Crizal com forte ênfase em transparência, estética e durabilidade.",
+"recommendation_notes": "Boa opção premium quando o sistema quiser priorizar lente mais limpa, menos reflexiva e com apelo estético. Alguns benefícios vêm em linguagem fortemente comercial, mas há base funcional clara.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "posicionamento comercial",
+"text": "transparência que resiste ao teste do tempo"
+},
+{
+"type": "fato técnico",
+"text": "redução dos reflexos em 360°"
+},
+{
+"type": "fato técnico",
+"text": "repele água e pó e resiste a manchas"
+},
+{
+"type": "fato técnico",
+"text": "proteção UV"
+}
+],
+"source_urls": [
+"[https://www.essilor.com/br-pt/produtos/crizal/crizal-sapphire-hr/](https://www.essilor.com/br-pt/produtos/crizal/crizal-sapphire-hr/)",
+"[https://www.essilor.com/ie-en/products/crizal/crizal-sapphire-hr/](https://www.essilor.com/ie-en/products/crizal/crizal-sapphire-hr/)"
+]
+},
+{
+"entity_name": "Crizal Prevencia",
+"entity_type": "treatment",
+"family": "Crizal",
+"subfamily": "Prevencia",
+"material": null,
+"treatment": "antirreflexo",
+"technology": "filtragem seletiva de luz azul-violeta com proteção UV",
+"manufacturer_or_brand": "Essilor",
+"category": "tratamento",
+"recommended_for": [
+"usuários interessados em filtragem de azul-violeta",
+"uso diário",
+"perfis que valorizam proteção e conforto"
+],
+"not_ideal_for": [
+"situações em que o sistema precise tratar o filtro azul como benefício clinicamente fechado para todos os perfis sem ressalva"
+],
+"positioning": "premium",
+"benefit_tags": [
+"filtro azul_violeta",
+"protecao UV",
+"facilidade de limpeza",
+"conforto visual"
+],
+"usage_tags": [
+"uso diario",
+"telas",
+"ambientes luminosos"
+],
+"technology_tags": [
+"blue_violet_filter",
+"UV protection"
+],
+"material_tags": [],
+"commercial_summary": "Tratamento Crizal voltado à filtragem de luz azul-violeta com proteção UV e benefícios de limpeza.",
+"recommendation_notes": "Adequado para perfis que pedem proteção/filtro azul, mas o sistema deve separar fato técnico de promessa ampla de preservação visual, que aparece em linguagem comercial.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "fato técnico",
+"text": "filtragem de luz azul-violeta"
+},
+{
+"type": "fato técnico",
+"text": "proteção UV"
+},
+{
+"type": "posicionamento comercial",
+"text": "proteção duradoura para preservar sua visão"
+},
+{
+"type": "fato técnico",
+"text": "repele água e pó e resiste a manchas"
+}
+],
+"source_urls": [
+"[https://www.essilor.com/br-pt/produtos/crizal/crizal-prevencia/](https://www.essilor.com/br-pt/produtos/crizal/crizal-prevencia/)",
+"[https://www.essilor.com/pt-pt/produtos/crizal/crizal-prevencia/](https://www.essilor.com/pt-pt/produtos/crizal/crizal-prevencia/)"
+]
+},
+{
+"entity_name": "Crizal Rock",
+"entity_type": "treatment",
+"family": "Crizal",
+"subfamily": "Rock",
+"material": null,
+"treatment": "antirreflexo",
+"technology": "alta resistência contra riscos e manchas",
+"manufacturer_or_brand": "Essilor",
+"category": "tratamento",
+"recommended_for": [
+"usuários preocupados com durabilidade",
+"rotina intensa",
+"quem valoriza resistência a riscos superficiais e manchas"
+],
+"not_ideal_for": [
+"casos em que a prioridade principal seja filtro azul-violeta, já que a proposta central aqui é robustez/durabilidade"
+],
+"positioning": "intermediaria",
+"benefit_tags": [
+"alta_resistencia",
+"anti_risco",
+"anti_manchas",
+"protecao UV"
+],
+"usage_tags": [
+"uso diario",
+"rotina intensa"
+],
+"technology_tags": [
+"scratch resistance",
+"smudge resistance"
+],
+"material_tags": [],
+"commercial_summary": "Tratamento com proposta centrada em durabilidade, resistência e manutenção da lente no uso cotidiano.",
+"recommendation_notes": "Boa opção para perfis práticos, crianças mais ativas ou usuários que sujam/manuseiam muito os óculos. O discurso recuperado é bem consistente nesse eixo de resistência.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "posicionamento comercial",
+"text": "a melhor combinação contra riscos e manchas"
+},
+{
+"type": "fato técnico",
+"text": "alta resistência"
+},
+{
+"type": "fato técnico",
+"text": "proteção UV"
+}
+],
+"source_urls": [
+"[https://www.essilor.com/br-pt/produtos/crizal/crizal-rock/](https://www.essilor.com/br-pt/produtos/crizal/crizal-rock/)",
+"[https://www.essilor.com/ae-en/products/crizal/crizal-rock/](https://www.essilor.com/ae-en/products/crizal/crizal-rock/)"
+]
+},
+{
+"entity_name": "Crizal Easy Pro",
+"entity_type": "treatment",
+"family": "Crizal",
+"subfamily": "Easy Pro",
+"material": null,
+"treatment": "antirreflexo",
+"technology": "facilidade de limpeza, repelência a água/pó/manchas e resistência a riscos",
+"manufacturer_or_brand": "Essilor",
+"category": "tratamento",
+"recommended_for": [
+"usuários que priorizam manutenção e limpeza fácil",
+"uso diário",
+"quem quer praticidade"
+],
+"not_ideal_for": [
+"catálogos que busquem diferenciador clínico específico além da experiência de uso/manutenção"
+],
+"positioning": "intermediaria",
+"benefit_tags": [
+"facilidade de limpeza",
+"repelencia",
+"durabilidade",
+"protecao UV"
+],
+"usage_tags": [
+"uso diario",
+"rotina pratica"
+],
+"technology_tags": [
+"easy clean",
+"water dust smudge repellent",
+"scratch resistance"
+],
+"material_tags": [],
+"commercial_summary": "Tratamento antirreflexo com proposta de praticidade, limpeza e durabilidade.",
+"recommendation_notes": "Forte candidata para clientes que valorizam baixa manutenção. A fonte oficial sustenta bem o eixo limpeza/praticidade, mais do que desempenho óptico avançado.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "posicionamento comercial",
+"text": "o revestimento anti-reflexo mais fácil de limpar"
+},
+{
+"type": "fato técnico",
+"text": "repele água e pó e resiste a manchas"
+},
+{
+"type": "fato técnico",
+"text": "resistência a riscos"
+},
+{
+"type": "fato técnico",
+"text": "proteção UV"
+}
+],
+"source_urls": [
+"[https://www.essilor.com/br-pt/produtos/crizal/crizal-easy-pro/](https://www.essilor.com/br-pt/produtos/crizal/crizal-easy-pro/)",
+"[https://www.essilor.com/au-en/products/crizal/crizal-easy-pro/](https://www.essilor.com/au-en/products/crizal/crizal-easy-pro/)"
+]
+},
+{
+"entity_name": "Blue UV Filter System",
+"entity_type": "technology",
+"family": "Blue UV",
+"subfamily": null,
+"material": null,
+"treatment": null,
+"technology": "filtragem de luz azul-violeta com transparência para uso diário",
+"manufacturer_or_brand": "Essilor",
+"category": "technology",
+"recommended_for": [
+"usuários interessados em proteção diária",
+"quem procura filtragem azul-violeta em lente transparente",
+"uso diário"
+],
+"not_ideal_for": [
+"quem busca descrição totalmente fechada do mecanismo sem recorrer a outras páginas técnicas complementares"
+],
+"positioning": "intermediaria",
+"benefit_tags": [
+"filtro azul_violeta",
+"uso diario",
+"transparencia",
+"protecao UV"
+],
+"usage_tags": [
+"uso diario",
+"telas",
+"ambientes internos e externos"
+],
+"technology_tags": [
+"blue uv filter"
+],
+"material_tags": [],
+"commercial_summary": "Tecnologia Essilor de filtragem azul-violeta voltada ao dia a dia, com proposta de conforto e transparência.",
+"recommendation_notes": "Útil como entidade tecnológica transversal no catálogo. Pode ser conectada a linhas específicas sem tratá-la como prova isolada de superioridade.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "fato técnico",
+"text": "um filtro no centro da lente proporciona proteção contra a luz e transparência ideal para todos os dias"
+},
+{
+"type": "posicionamento comercial",
+"text": "torna sua vida mais confortável"
+},
+{
+"type": "posicionamento comercial",
+"text": "a tecnologia de filtragem mais avançada da Essilor"
+}
+],
+"source_urls": [
+"[https://www.essilor.com/br-pt/produtos/blue-uv-filter-system/](https://www.essilor.com/br-pt/produtos/blue-uv-filter-system/)",
+"[https://www.essilor.com/us-en/products/blue-uv-filter-system/](https://www.essilor.com/us-en/products/blue-uv-filter-system/)"
+]
+},
+{
+"entity_name": "Blue UV Capture",
+"entity_type": "technology",
+"family": "Blue UV",
+"subfamily": "Capture",
+"material": null,
+"treatment": null,
+"technology": "filtragem azul-violeta com transparência otimizada e proteção UV",
+"manufacturer_or_brand": "Essilor",
+"category": "technology",
+"recommended_for": [
+"uso diário",
+"quem quer lente transparente com filtragem azul-violeta",
+"perfis sensíveis à luz"
+],
+"not_ideal_for": [
+"casos em que o sistema precise tratar a indicação como superioridade clínica sem ressalvas"
+],
+"positioning": "intermediaria",
+"benefit_tags": [
+"protecao UV",
+"filtro azul_violeta",
+"transparencia"
+],
+"usage_tags": [
+"uso diario",
+"telas",
+"ambientes externos"
+],
+"technology_tags": [
+"blue uv capture"
+],
+"material_tags": [],
+"commercial_summary": "Implementação de filtragem Blue UV com foco em proteção diária e transparência.",
+"recommendation_notes": "Boa entidade tecnológica para associar a linhas transparentes do catálogo. O trecho 'até 3 vezes mais filtragem' apareceu em versão internacional e deve ser tratado como claim controlado.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "fato técnico",
+"text": "proteção diária contra raios UV e filtragem de luz azul-violeta em uma lente com transparência ideal"
+},
+{
+"type": "claim de marketing",
+"text": "up to 3 times more filtering"
+},
+{
+"type": "fato técnico",
+"text": "100% UV protection on front of the lens"
+}
+],
+"source_urls": [
+"[https://www.essilor.com/br-pt/produtos/blue-uv-filter-system/blue-uv-capture/](https://www.essilor.com/br-pt/produtos/blue-uv-filter-system/blue-uv-capture/)",
+"[https://www.essilor.com/za-en/products/blue-uv/blue-uv-capture/](https://www.essilor.com/za-en/products/blue-uv/blue-uv-capture/)"
+]
+},
+{
+"entity_name": "Transitions GEN S",
+"entity_type": "technology",
+"family": "Transitions",
+"subfamily": "GEN S",
+"material": null,
+"treatment": null,
+"technology": "lente fotossensível dinâmica de uso diário",
+"manufacturer_or_brand": "Transitions / EssilorLuxottica ecosystem",
+"category": "tratamento",
+"recommended_for": [
+"usuários que querem lente fotossensível para uso diário",
+"quem valoriza adaptação rápida à luz",
+"quem quer versatilidade entre ambientes internos e externos"
+],
+"not_ideal_for": [
+"quem precisa de proposta explicitamente voltada a alta sensibilidade à luz ou uso mais extremo, que aparece mais ligada à XTRActive"
+],
+"positioning": "premium",
+"benefit_tags": [
+"fotossensivel",
+"uso diario",
+"mudanca de cor",
+"qualidade visual"
+],
+"usage_tags": [
+"ambientes internos e externos",
+"rotina diaria"
+],
+"technology_tags": [
+"photochromic",
+"dynamic lens"
+],
+"material_tags": [],
+"commercial_summary": "Tecnologia fotossensível de uso diário com foco em dinâmica de cor e adaptação luminosa.",
+"recommendation_notes": "Boa opção para quem quer uma lente fotossensível versátil do dia a dia. A narrativa de 'novo padrão' e 'espetacular' é comercial e deve ser separada dos fatos funcionais.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "fato técnico",
+"text": "lentes dinâmicas para uso diário"
+},
+{
+"type": "posicionamento comercial",
+"text": "de transparentes, em ambientes internos, a cores vivas, em ambientes externos"
+},
+{
+"type": "claim de marketing",
+"text": "novo padrão de lentes que vai além do normal"
+},
+{
+"type": "posicionamento comercial",
+"text": "visão HD na velocidade da sua vida"
+}
+],
+"source_urls": [
+"[https://www.transitions.com/pt-br/produtos/transitions-gen-s/](https://www.transitions.com/pt-br/produtos/transitions-gen-s/)",
+"[https://www.essilor.com/br-pt/produtos/transitions/transitions-gen-s/](https://www.essilor.com/br-pt/produtos/transitions/transitions-gen-s/)"
+]
+},
+{
+"entity_name": "Transitions XTRActive new generation",
+"entity_type": "technology",
+"family": "Transitions",
+"subfamily": "XTRActive new generation",
+"material": null,
+"treatment": null,
+"technology": "lente fotossensível para alta sensibilidade à luz e luz intensa",
+"manufacturer_or_brand": "Transitions / EssilorLuxottica ecosystem",
+"category": "tratamento",
+"recommended_for": [
+"usuários muito sensíveis à luz",
+"exposição frequente à luz intensa",
+"quem quer transição fotossensível mais robusta"
+],
+"not_ideal_for": [
+"quem quer solução fotossensível mais neutra de uso cotidiano, sem ênfase em sensibilidade luminosa elevada"
+],
+"positioning": "premium",
+"benefit_tags": [
+"fotossensivel",
+"alta sensibilidade a luz",
+"conforto luminoso"
+],
+"usage_tags": [
+"sol forte",
+"ambientes externos",
+"uso diario"
+],
+"technology_tags": [
+"photochromic",
+"xtractive"
+],
+"material_tags": [],
+"commercial_summary": "Fotossensível voltada a usuários sensíveis à luz e expostos a brilho intenso.",
+"recommendation_notes": "Deve ser sugerida por perfil de sensibilidade luminosa, não como superior absoluta da família Transitions.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "posicionamento comercial",
+"text": "desafie a luz"
+},
+{
+"type": "fato técnico",
+"text": "se você é muito sensível à luz ou frequentemente exposto à luz intensa, as lentes Transitions XTRActive New Generation são perfeitas para você"
+}
+],
+"source_urls": [
+"[https://www.essilor.com/br-pt/produtos/transitions/transitions-xtractive-new-generation/](https://www.essilor.com/br-pt/produtos/transitions/transitions-xtractive-new-generation/)"
+]
+},
+{
+"entity_name": "Transitions XTRActive Polarized",
+"entity_type": "technology",
+"family": "Transitions",
+"subfamily": "XTRActive Polarized",
+"material": null,
+"treatment": null,
+"technology": "fotossensível polarizada dinâmica",
+"manufacturer_or_brand": "Transitions / EssilorLuxottica ecosystem",
+"category": "solar",
+"recommended_for": [
+"usuários expostos a sol e brilho refletido",
+"quem quer fotossensível com polarização ao escurecer",
+"uso externo"
+],
+"not_ideal_for": [
+"quem precisa de lente totalmente clara em todos os cenários internos, já que a linha é descrita como having hint of protective tint indoors em materiais internacionais"
+],
+"positioning": "premium",
+"benefit_tags": [
+"polarizacao",
+"fotossensivel",
+"reducao de brilho",
+"filtro azul_violeta"
+],
+"usage_tags": [
+"externo",
+"sol",
+"reflexos"
+],
+"technology_tags": [
+"dynamic polarization",
+"photochromic"
+],
+"material_tags": [],
+"commercial_summary": "Tecnologia que combina fotossensibilidade e polarização dinâmica para cenários de brilho intenso e reflexos.",
+"recommendation_notes": "Boa para perfis com queixa de reflexo solar e brilho externo. A eficiência de polarização e claims de superioridade devem ficar marcados como claims ou dados de fonte oficial técnica, não verdade universal.",
+"evidence_level": "medio",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "fato técnico",
+"text": "become polarized as they darken outdoors"
+},
+{
+"type": "fato técnico",
+"text": "achieving a polarization efficiency of up to 90% even in hot temperatures"
+},
+{
+"type": "fato técnico",
+"text": "offer the best blue-violet light filtration indoors and filter up to 90% of blue-violet light outdoors"
+},
+{
+"type": "posicionamento comercial",
+"text": "help to reduce the glare created by the sun"
+}
+],
+"source_urls": [
+"[https://www.transitions.com/en-us/products/transitions-xtractive-polarized/](https://www.transitions.com/en-us/products/transitions-xtractive-polarized/)",
+"[https://www.transitions.com/pt/products/transitions-xtractive-polarized/](https://www.transitions.com/pt/products/transitions-xtractive-polarized/)"
+]
+},
+{
+"entity_name": "Crizal on KODAK lenses",
+"entity_type": "technology",
+"family": "KODAK",
+"subfamily": "Crizal combination",
+"material": null,
+"treatment": "antirreflexo",
+"technology": "combinação de lentes Kodak com tratamento Crizal",
+"manufacturer_or_brand": "KODAK Lens / Essilor ecosystem",
+"category": "tratamento",
+"recommended_for": [
+"usuários Kodak que querem antirreflexo, proteção UV e facilidade de limpeza"
+],
+"not_ideal_for": [
+"catalogação que exija saber exatamente qual variante Crizal está aplicada sem informação adicional"
+],
+"positioning": "indefinido",
+"benefit_tags": [
+"antirreflexo",
+"conforto visual",
+"protecao UV",
+"facilidade de limpeza"
+],
+"usage_tags": [
+"uso diario",
+"dia e noite"
+],
+"technology_tags": [
+"crizal combination"
+],
+"material_tags": [],
+"commercial_summary": "Associação promocional e funcional entre lentes Kodak e tratamento Crizal.",
+"recommendation_notes": "Útil como regra transversal no catálogo Kodak. Não permite inferir automaticamente qual sublinha Crizal está presente sem outra fonte.",
+"evidence_level": "baixo",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "posicionamento comercial",
+"text": "o tratamento antirreflexo Crizal é uma ótima combinação para as Lentes KODAK"
+},
+{
+"type": "fato técnico",
+"text": "reduz a intensidade dos reflexos indesejáveis"
+},
+{
+"type": "fato técnico",
+"text": "são mais fáceis de limpar e repelem poeira e água"
+},
+{
+"type": "fato técnico",
+"text": "conta com proteção contra riscos superficiais"
+}
+],
+"source_urls": [
+"[https://lenteskodak.com.br/cleanclear-lens-coating-br](https://lenteskodak.com.br/cleanclear-lens-coating-br)"
+]
+},
+{
+"entity_name": "Optifog on KODAK lenses",
+"entity_type": "technology",
+"family": "KODAK",
+"subfamily": "Optifog combination",
+"material": null,
+"treatment": "antiembaçante",
+"technology": "combinação promocional citada em regulamento",
+"manufacturer_or_brand": "KODAK Lens / Essilor ecosystem",
+"category": "tratamento",
+"recommended_for": [
+"indefinido"
+],
+"not_ideal_for": [
+"qualquer recomendação detalhada baseada apenas nas fontes recuperadas, pois não foi encontrada página técnica dedicada nesta rodada"
+],
+"positioning": "indefinido",
+"benefit_tags": [
+"antiembacante"
+],
+"usage_tags": [],
+"technology_tags": [
+"optifog"
+],
+"material_tags": [],
+"commercial_summary": "Optifog apareceu nas fontes recuperadas como tecnologia elegível/combinável em materiais promocionais Kodak, sem detalhamento técnico suficiente nesta rodada.",
+"recommendation_notes": "Manter como entidade existente, mas com baixo peso semântico até obter fonte técnica mais específica.",
+"evidence_level": "baixo",
+"evidence_type": "oficial",
+"source_quotes_or_points": [
+{
+"type": "fato técnico",
+"text": "Optifog aparece listado como tecnologia/t tratamento elegível junto de Crizal, Transitions e Xperio em regulamento promocional Kodak"
+}
+],
+"source_urls": [
+"[https://lenteskodak.com.br/dose-dupla](https://lenteskodak.com.br/dose-dupla)"
+]
+}
+]

@@ -561,12 +561,9 @@ export async function saveServiceOrder(
       .eq('id', savedId)
       .single()
 
-    const debugSuffix = reservationDebug.length > 0
-      ? ` [reserva-v3 ${reservationDebug.join(' | ')}]`
-      : ' [reserva-v3 sem-debug]'
     const saveMessage = reservationErrors.length > 0
-      ? `OS salva com sucesso! AtenÃ§Ã£o: ${reservationErrors.join(' ')}`
-      : `OS salva com sucesso!${debugSuffix}`
+      ? `OS salva com sucesso! Atenção: ${reservationErrors.join(' ')}`
+      : `OS salva com sucesso!`
 
     return { success: true, message: saveMessage, data: finalOS as any, timestamp: Date.now() }
   } catch (error: any) {
@@ -2260,7 +2257,7 @@ export async function receberParcela(prevState: any, formData: FormData) {
   if (!validated.success) return { success: false, message: 'Dados inválidos.' }
 
   // Mantive os nomes originais das suas variáveis aqui para não mudar a lógica abaixo
-  const { parcela_id, venda_id, store_id, valor_original, valor_pago_total, valor_juros, forma_pagamento, estrategia, data_pagamento } = validated.data
+  const { parcela_id, venda_id, store_id, employee_id, valor_original, valor_pago_total, valor_juros, forma_pagamento, estrategia, data_pagamento } = validated.data
 
   const principalAbatido = valor_pago_total - valor_juros
   const diferencaDivida = valor_original - principalAbatido
@@ -2279,13 +2276,14 @@ export async function receberParcela(prevState: any, formData: FormData) {
     const { error: errorPagto } = await (supabaseAdmin.from('pagamentos') as any).insert({
       tenant_id: (profile as any).tenant_id,
       store_id: store_id,
-      venda_id: venda_id, // Usa o venda_id real (coluna NOT NULL)
-      customer_id: parcelaAtual.customer_id, // Fix: Inclusão do ID do Cliente
+      venda_id: venda_id,
+      customer_id: parcelaAtual.customer_id,
+      employee_id: employee_id,
       created_by_user_id: user.id,
       valor_pago: valor_pago_total,
       forma_pagamento: forma_pagamento,
       data_pagamento: data_pagamento,
-      created_at: new Date(`${data_pagamento}T12:00:00Z`).toISOString(), // Força a data correta no relatório
+      created_at: new Date(`${data_pagamento}T12:00:00Z`).toISOString(),
       parcelas: 1,
       obs: `Ref. Venda #${venda_id} - Parc. ${parcelaAtual.numero_parcela} (Principal: ${principalAbatido.toFixed(2)} + Juros: ${valor_juros.toFixed(2)}) - Cliente: ${parcelaAtual.customers?.full_name}`
     })
@@ -2349,23 +2347,37 @@ export async function receberParcela(prevState: any, formData: FormData) {
         }
       }
     } else if (diferencaDivida < -0.01) {
-      const excedente = Math.abs(diferencaDivida)
-      const { data: proxParcela } = await supabaseAdmin
+      // Excedente: quita parcelas seguintes em cascata até o dinheiro acabar
+      let excedente = Math.abs(diferencaDivida)
+
+      const { data: proximasParcelas } = await supabaseAdmin
         .from('financiamento_parcelas')
         .select('*')
         .eq('financiamento_id', parcelaAtual.financiamento_id)
         .gt('numero_parcela', parcelaAtual.numero_parcela)
         .eq('status', 'Pendente')
         .order('numero_parcela', { ascending: true })
-        .limit(1)
-        .maybeSingle()
 
-      if (proxParcela) {
-        const prox = proxParcela as any;
-        const { error: errSubProx } = await (supabaseAdmin.from('financiamento_parcelas') as any)
-          .update({ valor_parcela: prox.valor_parcela - excedente })
-          .eq('id', prox.id)
-        if (errSubProx) throw new Error(`Erro subtrair excedente: ${errSubProx.message}`)
+      if (proximasParcelas) {
+        for (const prox of proximasParcelas as any[]) {
+          if (excedente <= 0.01) break
+
+          if (excedente >= prox.valor_parcela - 0.01) {
+            // Quita essa parcela inteira
+            const { error: errQuita } = await (supabaseAdmin.from('financiamento_parcelas') as any)
+              .update({ status: 'Pago', data_pagamento: new Date().toISOString() })
+              .eq('id', prox.id)
+            if (errQuita) throw new Error(`Erro ao quitar parcela ${prox.numero_parcela}: ${errQuita.message}`)
+            excedente -= prox.valor_parcela
+          } else {
+            // Abate parcialmente na parcela atual
+            const { error: errAbate } = await (supabaseAdmin.from('financiamento_parcelas') as any)
+              .update({ valor_parcela: prox.valor_parcela - excedente })
+              .eq('id', prox.id)
+            if (errAbate) throw new Error(`Erro ao abater parcela ${prox.numero_parcela}: ${errAbate.message}`)
+            excedente = 0
+          }
+        }
       }
     }
 
@@ -3198,7 +3210,7 @@ export async function transferirTitularidadeVenda(
       return { success: false, message: 'Apenas o vendedor que abriu esta venda pode transferir a titularidade.' }
     }
 
-    if (venda.customer_id === novoCustomerId) {
+    if (Number(venda.customer_id) === Number(novoCustomerId)) {
       return { success: false, message: 'O novo titular deve ser diferente do atual.' }
     }
 

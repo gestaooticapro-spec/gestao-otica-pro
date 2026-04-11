@@ -430,6 +430,10 @@ export interface Database {
           document_hash: string | null
           exported_service_order_id: number | null
           employee_id: number | null
+          outcome_status: 'venda_fechada' | 'cliente_pesquisa' | 'perdido_preco' | 'perdido_produto' | 'perdido_prazo' | null
+          panic_reason: string | null
+          recommended_items: Json | null
+          exported_venda_id: number | null
         }
         Insert: {
           id?: number
@@ -442,8 +446,12 @@ export interface Database {
           responsible_customer_id?: number | null
           imported_by_user_id?: string | null
           source_system?: 'manual' | 'ivision'
-          status?: 'rascunho' | 'concluida' | 'importada' | 'exportada'
+          status?: 'rascunho' | 'em_andamento' | 'pendente' | 'concluida' | 'importada' | 'exportada'
           parse_status?: 'success' | 'partial' | 'failed'
+          outcome_status?: 'venda_fechada' | 'cliente_pesquisa' | 'perdido_preco' | 'perdido_produto' | 'perdido_prazo' | null
+          panic_reason?: string | null
+          recommended_items?: Json | null
+          exported_venda_id?: number | null
           source_document_url?: string | null
           source_document_host?: string | null
           source_os_number?: string | null
@@ -499,8 +507,12 @@ export interface Database {
           responsible_customer_id?: number | null
           imported_by_user_id?: string | null
           source_system?: 'manual' | 'ivision'
-          status?: 'rascunho' | 'concluida' | 'importada' | 'exportada'
+          status?: 'rascunho' | 'em_andamento' | 'pendente' | 'concluida' | 'importada' | 'exportada'
           parse_status?: 'success' | 'partial' | 'failed'
+          outcome_status?: 'venda_fechada' | 'cliente_pesquisa' | 'perdido_preco' | 'perdido_produto' | 'perdido_prazo' | null
+          panic_reason?: string | null
+          recommended_items?: Json | null
+          exported_venda_id?: number | null
           source_document_url?: string | null
           source_document_host?: string | null
           source_os_number?: string | null

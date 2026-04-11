@@ -11,6 +11,12 @@ import { getStoreProfile, updateStoreProfile, updateStoreSettings } from '@/lib/
 import { Database } from '@/lib/database.types';
 import { useRouter } from 'next/navigation';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
+import dynamic from 'next/dynamic';
+
+const AiSuggestionConfigPanel = dynamic(() => import('@/components/config/AiSuggestionConfigPanel'), {
+    loading: () => <div className="p-6 text-center"><Loader2 className="animate-spin h-6 w-6 text-cyan-400 mx-auto" /></div>,
+    ssr: false,
+});
 
 type Employee = Database['public']['Tables']['employees']['Row'];
 type EmployeeRole = NonNullable<Employee['role']>;
@@ -356,6 +362,9 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                     </div>
                 </label>
             </div>
+
+            {/* CONFIGURAÇÃO DO MOTOR DE IA */}
+            <AiSuggestionConfigPanel storeId={storeId} />
         </div>
     )
 }

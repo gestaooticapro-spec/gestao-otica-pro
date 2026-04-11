@@ -23,6 +23,53 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 const args = process.argv.slice(2)
 const inputArg = args.find((arg) => !arg.startsWith('--')) || 'tmp/gamalab_catalog_draft.json'
 const shouldCommit = args.includes('--commit')
+const IMPORT_THROTTLE_MS = Number(process.env.IMPORT_THROTTLE_MS || '0')
+const IMPORT_OFFER_THROTTLE_MS = Number(process.env.IMPORT_OFFER_THROTTLE_MS || '0')
+const IMPORT_RETRY_ATTEMPTS = Number(process.env.IMPORT_RETRY_ATTEMPTS || '5')
+const IMPORT_FAMILY_START = Number(process.env.IMPORT_FAMILY_START || '0')
+const IMPORT_FAMILY_END = Number(process.env.IMPORT_FAMILY_END || '0')
+const IMPORT_FAMILY_NAMES = (process.env.IMPORT_FAMILY_NAMES || '')
+  .split(',')
+  .map((name) => name.trim())
+  .filter(Boolean)
+const IMPORT_LOG_OFFERS = process.env.IMPORT_LOG_OFFERS === '1'
+const IMPORT_SKIP_EXISTING = process.env.IMPORT_SKIP_EXISTING === '1'
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function shouldRetryError(error) {
+  const message = (error?.message || '').toLowerCase()
+  return (
+    message.includes('fetch failed') ||
+    message.includes('econnreset') ||
+    message.includes('etimedout') ||
+    message.includes('network') ||
+    message.includes('timeout')
+  )
+}
+
+async function withRetry(task, label) {
+  let lastError = null
+  for (let attempt = 1; attempt <= IMPORT_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      return await task()
+    } catch (error) {
+      lastError = error
+      const message = error?.message || error
+      const cause = error?.cause?.message || error?.cause
+      console.warn(`[retry] ${label} erro: ${message}${cause ? ` (cause: ${cause})` : ''}`)
+      if (!shouldRetryError(error) || attempt === IMPORT_RETRY_ATTEMPTS) {
+        throw error
+      }
+      const waitMs = 500 * attempt
+      console.warn(`[retry] ${label} falhou (tentativa ${attempt}). Aguardando ${waitMs}ms...`)
+      await sleep(waitMs)
+    }
+  }
+  throw lastError
+}
 
 function buildOfferImportKey(offer) {
   const canonical = offer.canonical_label || offer.raw_label || 'sem-label'
@@ -203,10 +250,14 @@ function buildSummary(payload) {
 }
 
 async function upsertSingle(table, row, onConflict) {
-  const { data, error } = await supabase
-    .from(table)
-    .upsert(row, { onConflict })
-    .select('*')
+  const { data, error } = await withRetry(
+    () =>
+      supabase
+        .from(table)
+        .upsert(row, { onConflict })
+        .select('*'),
+    `upsert:${table}`
+  )
 
   if (error) {
     error.message = `[${table}] ${error.message}`
@@ -219,11 +270,15 @@ async function upsertSingle(table, row, onConflict) {
 }
 
 async function updateSingleById(table, id, row) {
-  const { data, error } = await supabase
-    .from(table)
-    .update(row)
-    .eq('id', id)
-    .select('*')
+  const { data, error } = await withRetry(
+    () =>
+      supabase
+        .from(table)
+        .update(row)
+        .eq('id', id)
+        .select('*'),
+    `update:${table}#${id}`
+  )
 
   if (error) {
     error.message = `[${table}#${id}] ${error.message}`
@@ -451,30 +506,44 @@ async function deleteOfferAndReferences(offerId) {
 }
 
 async function loadExistingFamilyOffers(savedFamilyId, treatmentNameById) {
-  const { data: offers, error: offersError } = await supabase
-    .from('global_lens_offers')
-    .select('id,family_id,import_key,raw_label,canonical_label,material,indice_refracao,is_atomic_offer,allows_composition,already_includes_treatment,features,base_price,source_page_reference,confidence_level')
-    .eq('family_id', savedFamilyId)
+  const { data: offers, error: offersError } = await withRetry(
+    () =>
+      supabase
+        .from('global_lens_offers')
+        .select('id,family_id,import_key,raw_label,canonical_label,material,indice_refracao,is_atomic_offer,allows_composition,already_includes_treatment,features,base_price,source_page_reference,confidence_level')
+        .eq('family_id', savedFamilyId),
+    `select:global_lens_offers:family:${savedFamilyId}`
+  )
 
   if (offersError) throw offersError
 
   const offerIds = (offers || []).map((offer) => offer.id)
   if (offerIds.length === 0) return []
 
-  const [{ data: compatRows, error: compatError }, { data: gridRows, error: gridError }, { data: tenantRefs, error: tenantRefsError }] = await Promise.all([
-    supabase
-      .from('global_offer_treatments_compatibility')
-      .select('offer_id,treatment_id,special_price,price_mode')
-      .in('offer_id', offerIds),
-    supabase
-      .from('global_offer_diopter_grids')
-      .select('offer_id,sph_min,sph_max,cyl_min,cyl_max,add_min,add_max,metadata')
-      .in('offer_id', offerIds),
-    supabase
-      .from('tenant_commercial_offers')
-      .select('global_offer_id')
-      .in('global_offer_id', offerIds),
-  ])
+  const { data: compatRows, error: compatError } = await withRetry(
+    () =>
+      supabase
+        .from('global_offer_treatments_compatibility')
+        .select('offer_id,treatment_id,special_price,price_mode')
+        .in('offer_id', offerIds),
+    `select:global_offer_treatments_compatibility:${offerIds.length}`
+  )
+  const { data: gridRows, error: gridError } = await withRetry(
+    () =>
+      supabase
+        .from('global_offer_diopter_grids')
+        .select('offer_id,sph_min,sph_max,cyl_min,cyl_max,add_min,add_max,metadata')
+        .in('offer_id', offerIds),
+    `select:global_offer_diopter_grids:${offerIds.length}`
+  )
+  const { data: tenantRefs, error: tenantRefsError } = await withRetry(
+    () =>
+      supabase
+        .from('tenant_commercial_offers')
+        .select('global_offer_id')
+        .in('global_offer_id', offerIds),
+    `select:tenant_commercial_offers:${offerIds.length}`
+  )
 
   if (compatError) throw compatError
   if (gridError) throw gridError
@@ -607,6 +676,7 @@ async function cleanupStaleVersionFamilies(versionId, incomingFamilies, treatmen
 }
 
 async function importPayload(payload) {
+  console.log('[import] iniciando upsert da versao')
   const version = await upsertSingle(
     'global_catalog_versions',
     {
@@ -619,6 +689,7 @@ async function importPayload(payload) {
     'laboratorio,versao'
   )
 
+  console.log('[import] versao ok, iniciando upsert do documento')
   const document = await upsertSingle(
     'catalog_source_documents',
     {
@@ -637,6 +708,7 @@ async function importPayload(payload) {
     'version_id,document_hash'
   )
 
+  console.log('[import] documento ok, importando paginas (se houver)')
   for (const page of payload.source_document.pages || []) {
     const savedPage = await upsertSingle(
       'catalog_source_pages',
@@ -664,6 +736,7 @@ async function importPayload(payload) {
     }
   }
 
+  console.log('[import] paginas ok, importando tratamentos (se houver)')
   const treatmentIdByName = new Map()
   for (const treatment of payload.treatments || []) {
     const savedTreatment = await upsertSingle(
@@ -682,7 +755,21 @@ async function importPayload(payload) {
   }
   const treatmentNameById = new Map([...treatmentIdByName.entries()].map(([name, id]) => [id, name]))
 
-  for (const family of payload.families || []) {
+  const families = payload.families || []
+  const totalFamilies = families.length
+  let familyIndex = 0
+  for (const family of families) {
+    familyIndex += 1
+    if (IMPORT_FAMILY_START && familyIndex < IMPORT_FAMILY_START) {
+      continue
+    }
+    if (IMPORT_FAMILY_END && familyIndex > IMPORT_FAMILY_END) {
+      continue
+    }
+    if (IMPORT_FAMILY_NAMES.length > 0 && !IMPORT_FAMILY_NAMES.includes(family.name)) {
+      continue
+    }
+    console.log(`[import] familia ${familyIndex}/${totalFamilies}: ${family.name}`)
     const familyClinicalCategory = family.clinical_category || inferFamilyClinicalCategory(family)
     const savedFamily = await upsertSingle(
       'global_lens_families',
@@ -699,12 +786,15 @@ async function importPayload(payload) {
       },
       'version_id,nome'
     )
-    const existingFamilyOffers = await loadExistingFamilyOffers(savedFamily.id, treatmentNameById)
+    const existingFamilyOffers = IMPORT_SKIP_EXISTING ? [] : await loadExistingFamilyOffers(savedFamily.id, treatmentNameById)
     const incomingOfferPlans = prepareIncomingOfferPlan(existingFamilyOffers, family.offers || [])
     const pendingOfferMerges = []
 
     for (const plan of incomingOfferPlans) {
       const offer = plan.offer
+      if (IMPORT_LOG_OFFERS) {
+        console.log(`[import] oferta: ${offer.canonical_label || offer.raw_label}`)
+      }
       const offerClinicalCategory = offer.clinical_category || inferOfferClinicalCategory(offer, family, familyClinicalCategory)
       const offerRow = {
         family_id: savedFamily.id,
@@ -729,24 +819,32 @@ async function importPayload(payload) {
         ? await updateSingleById('global_lens_offers', plan.targetOffer.id, offerRow)
         : await upsertSingle('global_lens_offers', offerRow, 'family_id,import_key')
 
-      const { error: deleteGridsError } = await supabase
-        .from('global_offer_diopter_grids')
-        .delete()
-        .eq('offer_id', savedOffer.id)
+      const { error: deleteGridsError } = await withRetry(
+        () =>
+          supabase
+            .from('global_offer_diopter_grids')
+            .delete()
+            .eq('offer_id', savedOffer.id),
+        `delete:global_offer_diopter_grids:${savedOffer.id}`
+      )
 
       if (deleteGridsError) throw deleteGridsError
 
       for (const grid of offer.diopter_grids || []) {
-        const { error } = await supabase.from('global_offer_diopter_grids').insert({
-          offer_id: savedOffer.id,
-          sph_min: grid.sph_min,
-          sph_max: grid.sph_max,
-          cyl_min: grid.cyl_min ?? 0,
-          cyl_max: grid.cyl_max ?? grid.cyl_min ?? 0,
-          add_min: grid.add_min ?? null,
-          add_max: grid.add_max ?? null,
-          metadata: grid.metadata || {},
-        })
+        const { error } = await withRetry(
+          () =>
+            supabase.from('global_offer_diopter_grids').insert({
+              offer_id: savedOffer.id,
+              sph_min: grid.sph_min,
+              sph_max: grid.sph_max,
+              cyl_min: grid.cyl_min ?? 0,
+              cyl_max: grid.cyl_max ?? grid.cyl_min ?? 0,
+              add_min: grid.add_min ?? null,
+              add_max: grid.add_max ?? null,
+              metadata: grid.metadata || {},
+            }),
+          `insert:global_offer_diopter_grids:${savedOffer.id}`
+        )
 
         if (error) throw error
       }
@@ -755,20 +853,28 @@ async function importPayload(payload) {
         const treatmentId = treatmentIdByName.get(compat.treatment_name)
         if (!treatmentId) continue
 
-        const { error } = await supabase
-          .from('global_offer_treatments_compatibility')
-          .upsert(
-            {
-              offer_id: savedOffer.id,
-              treatment_id: treatmentId,
-              special_price: compat.special_price ?? null,
-              price_mode: compat.price_mode || 'final',
-              notes: null,
-            },
-            { onConflict: 'offer_id,treatment_id' }
-          )
+        const { error } = await withRetry(
+          () =>
+            supabase
+              .from('global_offer_treatments_compatibility')
+              .upsert(
+                {
+                  offer_id: savedOffer.id,
+                  treatment_id: treatmentId,
+                  special_price: compat.special_price ?? null,
+                  price_mode: compat.price_mode || 'final',
+                  notes: null,
+                },
+                { onConflict: 'offer_id,treatment_id' }
+              ),
+          `upsert:global_offer_treatments_compatibility:${savedOffer.id}`
+        )
 
         if (error) throw error
+      }
+
+      if (IMPORT_OFFER_THROTTLE_MS > 0) {
+        await sleep(IMPORT_OFFER_THROTTLE_MS)
       }
 
       for (const duplicateOfferId of plan.duplicateOfferIds) {
@@ -781,7 +887,13 @@ async function importPayload(payload) {
       await mergeOfferReferences(mergeTask.targetId, mergeTask.duplicateId)
     }
 
-    await cleanupStaleFamilyOffers(savedFamily.id, family.offers || [], treatmentNameById)
+    if (!IMPORT_SKIP_EXISTING) {
+      await cleanupStaleFamilyOffers(savedFamily.id, family.offers || [], treatmentNameById)
+    }
+
+    if (IMPORT_THROTTLE_MS > 0) {
+      await sleep(IMPORT_THROTTLE_MS)
+    }
   }
 
   await cleanupStaleVersionFamilies(version.id, payload.families || [], treatmentNameById)

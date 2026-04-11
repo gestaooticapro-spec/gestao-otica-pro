@@ -672,7 +672,7 @@ export async function getResumoCaixa(storeId: number): Promise<ResumoCaixa | nul
 
     const { data: pagamentosVendas } = await supabaseAdmin
         .from('pagamentos')
-        .select(`id, valor_pago, forma_pagamento, created_at, venda_id, obs, vendas (customer_id, customers (full_name))`)
+        .select(`id, valor_pago, forma_pagamento, created_at, venda_id, obs, employee_id, vendas (customer_id, customers (full_name))`)
         .eq('store_id', storeId)
         .gte('created_at', dataRef.toISOString())
 
@@ -737,7 +737,7 @@ export async function getResumoCaixa(storeId: number): Promise<ResumoCaixa | nul
         const origemCalculada = formaNormalizada.includes('dinheiro') ? 'Caixa' : 'Banco'
 
         historicoUnificado.push({
-            id: `pg-${pg.id}`, tipo: tipo, descricao: clienteNome, categoria: categoria, valor: Number(pg.valor_pago), horario: pg.created_at, forma_pagamento: pg.forma_pagamento, origem: origemCalculada
+            id: `pg-${pg.id}`, tipo: tipo, descricao: clienteNome, categoria: categoria, valor: Number(pg.valor_pago), horario: pg.created_at, forma_pagamento: pg.forma_pagamento, origem: origemCalculada, employee_id: pg.employee_id ?? null
         })
 
         // Marca como processado para deduplicação
@@ -981,7 +981,7 @@ export async function getResumoCaixaPorData(storeId: number, dataISO: string): P
     // 4. PAGAMENTOS do dia
     const { data: pagamentosVendas } = await supabaseAdmin
         .from('pagamentos')
-        .select(`id, valor_pago, forma_pagamento, created_at, venda_id, obs, vendas (customer_id, customers (full_name))`)
+        .select(`id, valor_pago, forma_pagamento, created_at, venda_id, obs, employee_id, vendas (customer_id, customers (full_name))`)
         .eq('store_id', storeId)
         .gte('created_at', dataRef.toISOString())
         .lte('created_at', dataFim.toISOString())
@@ -1034,7 +1034,7 @@ export async function getResumoCaixaPorData(storeId: number, dataISO: string): P
         const origemCalculada = formaNormalizada.includes('dinheiro') ? 'Caixa' : 'Banco'
 
         historicoUnificado.push({
-            id: `pg-${pg.id}`, tipo, descricao: clienteNome, categoria, valor: Number(pg.valor_pago), horario: pg.created_at, forma_pagamento: pg.forma_pagamento, origem: origemCalculada
+            id: `pg-${pg.id}`, tipo, descricao: clienteNome, categoria, valor: Number(pg.valor_pago), horario: pg.created_at, forma_pagamento: pg.forma_pagamento, origem: origemCalculada, employee_id: pg.employee_id ?? null
         })
     })
 
@@ -1100,7 +1100,46 @@ export async function getResumoCaixaPorData(storeId: number, dataISO: string): P
     }
 }
 
-// 7. ABSORVER QUEBRA
+// 7. ALTERAR FORMA DE PAGAMENTO
+export async function alterarFormaPagamento(
+    pagamentoId: number,
+    novaForma: string,
+    authedEmployeeId: number,
+    storeId: number,
+    parcelas?: number
+): Promise<{ success: boolean; message: string }> {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { success: false, message: 'Sessão expirada.' }
+
+    const supabaseAdmin = createAdminClient()
+
+    const { data: pagamento, error } = await (supabaseAdmin.from('pagamentos') as any)
+        .select('id, employee_id, store_id, forma_pagamento')
+        .eq('id', pagamentoId)
+        .eq('store_id', storeId)
+        .single()
+
+    if (error || !pagamento) return { success: false, message: 'Pagamento não encontrado.' }
+
+    if (pagamento.employee_id && Number(pagamento.employee_id) !== Number(authedEmployeeId)) {
+        return { success: false, message: 'Apenas o funcionário que realizou este pagamento pode alterá-lo.' }
+    }
+
+    const updatePayload: any = { forma_pagamento: novaForma }
+    if (parcelas && parcelas > 1) updatePayload.parcelas = parcelas
+
+    const { error: errUpdate } = await (supabaseAdmin.from('pagamentos') as any)
+        .update(updatePayload)
+        .eq('id', pagamentoId)
+
+    if (errUpdate) return { success: false, message: `Erro ao atualizar: ${errUpdate.message}` }
+
+    revalidatePath(`/dashboard/loja/${storeId}/financeiro/caixa`)
+    return { success: true, message: 'Forma de pagamento atualizada com sucesso.' }
+}
+
+// 8. ABSORVER QUEBRA
 export async function absorverQuebraCaixa(caixaId: number) {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()

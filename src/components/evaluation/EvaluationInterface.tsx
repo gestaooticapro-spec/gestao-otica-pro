@@ -23,16 +23,16 @@ import {
   Baby,
   UserRound,
   Briefcase,
-  Trash2
+  Trash2, ShoppingCart
 } from 'lucide-react'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import QuickCustomerModal from '@/components/modals/QuickCustomerModal'
 import AddDependenteModal from '@/components/modals/AddDependenteModal'
 import { getDependentes } from '@/lib/actions/dependents.actions'
-import { searchCustomersByName, type CustomerSearchResult } from '@/lib/actions/vendas.actions'
+import { searchCustomersByName, createNewVenda, type CustomerSearchResult } from '@/lib/actions/vendas.actions'
 import {
   getOpticalEvaluationsForSubject,
-  saveOpticalEvaluation,
+  upsertOpticalEvaluation,
   type OpticalEvaluationListItem
 } from '@/lib/actions/evaluation.actions'
 import {
@@ -40,6 +40,8 @@ import {
   generateLensRecommendationsAction
 } from '@/lib/actions/lens-recommendation.actions'
 import { Database } from '@/lib/database.types'
+import { EvaluationDashboard } from './EvaluationDashboard'
+import { getRecentEvaluationsForEmployee, updateEvaluationPanicReason, updateEvaluationExportedVendaId, updateEvaluationOutcomeStatus } from '@/lib/actions/evaluation.actions'
 import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/BackgroundToggle'
 import type {
   RecommendationConversationState,
@@ -50,7 +52,7 @@ type Dependente = Database['public']['Tables']['dependentes']['Row']
 type Customer = Database['public']['Tables']['customers']['Row']
 type SubjectType = 'customer' | 'dependente'
 type EvaluationSourceSystem = 'manual' | 'ivision'
-type EvaluationStatus = 'rascunho' | 'concluida' | 'importada' | 'exportada'
+type EvaluationStatus = 'rascunho' | 'em_andamento' | 'pendente' | 'concluida' | 'importada' | 'exportada'
 type EvaluationParseStatus = 'success' | 'partial' | 'failed'
 type OpticalEvaluationPreview = {
   source_document_url: string
@@ -1070,12 +1072,16 @@ export default function EvaluationInterface({
 
   const [query, setQuery] = useState('')
   const [customerResults, setCustomerResults] = useState<CustomerSearchResult[]>([])
+  const [recentEvaluations, setRecentEvaluations] = useState<OpticalEvaluationListItem[]>([])
+  const [isLoadingDashboard, setIsLoadingDashboard] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerSearchResult | null>(null)
   const [dependentes, setDependentes] = useState<Dependente[]>([])
   const [selectedSubjectType, setSelectedSubjectType] = useState<SubjectType | null>(null)
   const [selectedDependenteId, setSelectedDependenteId] = useState<string>('')
   const [history, setHistory] = useState<OpticalEvaluationListItem[]>([])
   const [form, setForm] = useState(createEmptyForm())
+  const [evaluationId, setEvaluationId] = useState<number | null>(null)
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [searchError, setSearchError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -1088,6 +1094,7 @@ export default function EvaluationInterface({
   const [isSearching, startSearchTransition] = useTransition()
   const [isImporting, startImportTransition] = useTransition()
   const [isSaving, startSaveTransition] = useTransition()
+  const [isCreatingVenda, startCreateVendaTransition] = useTransition()
   const [isLoadingHistory, startHistoryTransition] = useTransition()
   const [isGeneratingAi, startAiGenerationTransition] = useTransition()
   const [isContinuingAi, startAiConversationTransition] = useTransition()
@@ -1147,6 +1154,17 @@ export default function EvaluationInterface({
     })
   }, [selectedCustomer, selectedSubjectType, selectedDependenteId, storeId])
 
+  
+  useEffect(() => { // Load Dashboard
+    if (authenticatedEmployee && !selectedCustomer && query.length === 0) {
+      setIsLoadingDashboard(true)
+      getRecentEvaluationsForEmployee(authenticatedEmployee.id, storeId).then(list => {
+        setRecentEvaluations(list)
+        setIsLoadingDashboard(false)
+      })
+    }
+  }, [authenticatedEmployee, selectedCustomer, query.length, storeId])
+
   const clearSubject = () => {
     setSelectedCustomer(null)
     setDependentes([])
@@ -1156,6 +1174,8 @@ export default function EvaluationInterface({
     setCustomerResults([])
     setHistory([])
     setForm(createEmptyForm())
+    setEvaluationId(null)
+    setSyncStatus('idle')
     setManualSuggestion(null)
     setAiState(null)
     setAiRecommendations([])
@@ -1167,6 +1187,72 @@ export default function EvaluationInterface({
     setFeedback(null)
   }
 
+  
+  const handleSelectEvaluation = (ev: OpticalEvaluationListItem) => {
+    // Restaurar estado da avaliação
+    setEvaluationId(ev.id)
+    setSyncStatus('saved')
+    
+    // Configurar sujeito
+    if (ev.evaluated_dependente_id) {
+      setSelectedSubjectType('dependente')
+      setSelectedDependenteId(String(ev.evaluated_dependente_id))
+    } else if (ev.evaluated_customer_id) {
+      setSelectedSubjectType('customer')
+    }
+    
+    // Fake customer search to simulate they are selected
+    if (ev.evaluated_patient_name) {
+       setQuery(ev.evaluated_patient_name)
+       setSelectedCustomer({
+           id: ev.responsible_customer_id || ev.evaluated_customer_id || 0,
+           full_name: ev.responsible_customer_name || ev.evaluated_patient_name,
+           cpf: '', fone_movel: '', tem_pendencia: false, obs_debito: ''
+       })
+    }
+    
+    // Restaurar forms
+    setForm({
+      ...createEmptyForm(),
+      sourceSystem: ev.source_system,
+      status: ev.status,
+      sourceUrl: ev.source_document_url || '',
+      sourceDocumentHost: ev.source_document_host || '',
+      sourceOsNumber: ev.source_os_number || '',
+      sourceExamType: ev.source_exam_type || '',
+      sourceExamDatetime: ev.source_exam_datetime ? ev.source_exam_datetime.slice(0, 16) : '',
+      patientNameRaw: ev.patient_name_raw || '',
+      ageYears: ev.age_years ? String(ev.age_years) : '',
+      receitaLongeOdEsferico: ev.receita_longe_od_esferico || '',
+      receitaLongeOdCilindrico: ev.receita_longe_od_cilindrico || '',
+      receitaLongeOdEixo: ev.receita_longe_od_eixo || '',
+      receitaLongeOeEsferico: ev.receita_longe_oe_esferico || '',
+      receitaLongeOeCilindrico: ev.receita_longe_oe_cilindrico || '',
+      receitaLongeOeEixo: ev.receita_longe_oe_eixo || '',
+      receitaPertoOdEsferico: ev.receita_perto_od_esferico || '',
+      receitaPertoOdCilindrico: ev.receita_perto_od_cilindrico || '',
+      receitaPertoOdEixo: ev.receita_perto_od_eixo || '',
+      receitaPertoOeEsferico: ev.receita_perto_oe_esferico || '',
+      receitaPertoOeCilindrico: ev.receita_perto_oe_cilindrico || '',
+      receitaPertoOeEixo: ev.receita_perto_oe_eixo || '',
+      receitaAdicao: ev.receita_adicao || '',
+      medidaDnpOd: ev.medida_dnp_od || '',
+      medidaDnpOe: ev.medida_dnp_oe || '',
+      medidaAlturaOd: ev.medida_altura_od || '',
+      medidaAlturaOe: ev.medida_altura_oe || '',
+      recommendedLensName: ev.recommended_lens_name || '',
+      commercialRecommendationRaw: ev.commercial_recommendation_raw || '',
+      rawPayloadJson: (ev.raw_payload_json as Record<string, unknown>) || {}
+    })
+  }
+
+  const handleCloseEvaluation = async (evaluationId: number) => {
+    if (!storeId) return
+    await updateEvaluationOutcomeStatus(evaluationId, storeId, 'cliente_pesquisa')
+    // Recarrega o mural removendo o card encerrado
+    setRecentEvaluations((prev) => prev.filter((ev) => ev.id !== evaluationId))
+  }
+
   const handleSelectCustomer = (customer: CustomerSearchResult) => {
     setSelectedCustomer(customer)
     setQuery(customer.full_name)
@@ -1175,6 +1261,8 @@ export default function EvaluationInterface({
     setSelectedSubjectType(null)
     setHistory([])
     setForm(createEmptyForm())
+    setEvaluationId(null)
+    setSyncStatus('idle')
     setManualSuggestion(null)
     setAiState(null)
     setAiRecommendations([])
@@ -1280,6 +1368,8 @@ export default function EvaluationInterface({
     setFormError(null)
     setAiFeedback(null)
     setQuickRetentionReply(null)
+    setEvaluationId(null)
+    setSyncStatus('idle')
     setManualSuggestion(null)
 
     startAiGenerationTransition(async () => {
@@ -1306,7 +1396,9 @@ export default function EvaluationInterface({
       const payload = result.data as LensRecommendationActionPayload
       setAiState(payload.state)
       setAiRecommendations(payload.recommendations)
-      setManualSuggestion(null)
+      setEvaluationId(null)
+    setSyncStatus('idle')
+    setManualSuggestion(null)
       setAiFeedback('Sugestão por IA gerada com base no catálogo ativo da loja.')
     })
   }
@@ -1338,7 +1430,9 @@ export default function EvaluationInterface({
       }
       setAiState(payload.nextState)
       setAiRecommendations(payload.recommendations)
-      setManualSuggestion(null)
+      setEvaluationId(null)
+    setSyncStatus('idle')
+    setManualSuggestion(null)
       setAiFeedback(`Sugestão refinada para: "${currentInput}"`)
     })
   }
@@ -1355,6 +1449,12 @@ export default function EvaluationInterface({
       })
     )
     setAiFeedback('Resposta rápida gerada para ajudar o consultor a segurar o cliente na loja.')
+
+    if (evaluationId && storeId) {
+      updateEvaluationPanicReason(evaluationId, storeId, intent).catch(() => {
+        // silencioso — não bloqueia o fluxo do consultor
+      })
+    }
   }
 
   const handleApplyAiRecommendation = (option: RecommendationOption) => {
@@ -1447,7 +1547,9 @@ export default function EvaluationInterface({
           documentHash: preview.document_hash || '',
           rawPayloadJson: preview.raw_payload_json || {}
         }))
-        setManualSuggestion(null)
+        setEvaluationId(null)
+    setSyncStatus('idle')
+    setManualSuggestion(null)
         setAiState(null)
         setAiRecommendations([])
         setAiFeedback(null)
@@ -1458,6 +1560,33 @@ export default function EvaluationInterface({
         setFeedback(result.message)
       } catch (error) {
         setFormError(error instanceof Error ? error.message : 'Falha inesperada ao importar o PDF do iVision.')
+      }
+    })
+  }
+
+  const handleIrParaVenda = () => {
+    if (!selectedCustomer) {
+      setFormError('Selecione o titular antes de prosseguir para venda.')
+      return
+    }
+    if (!authenticatedEmployee) {
+      setFormError('Consultor não identificado. Impossível criar venda diretamente.')
+      return
+    }
+
+    setFormError(null)
+    setFeedback(null)
+
+    startCreateVendaTransition(async () => {
+      const result = await createNewVenda(selectedCustomer.id, authenticatedEmployee.id)
+      
+      if (result.success && result.data) {
+         if (evaluationId) {
+             await updateEvaluationExportedVendaId(evaluationId, storeId, result.data.id)
+         }
+         router.push(`/dashboard/loja/${storeId}/vendas/${result.data.id}/experimental?evaluation_id=${evaluationId || ''}`)
+      } else {
+         setFormError(result.message || 'Erro ao converter avaliação em Venda.')
       }
     })
   }
@@ -1482,7 +1611,8 @@ export default function EvaluationInterface({
 
     startSaveTransition(async () => {
       const derivedStatus: EvaluationStatus = form.sourceSystem === 'ivision' ? 'importada' : 'concluida'
-      const result = await saveOpticalEvaluation({
+      const result = await upsertOpticalEvaluation({
+        evaluationId: evaluationId || undefined,
         storeId,
         evaluatedCustomerId: selectedSubjectType === 'customer' ? selectedCustomer.id : null,
         evaluatedDependenteId: selectedSubjectType === 'dependente' ? Number(selectedDependenteId) : null,
@@ -1544,7 +1674,9 @@ export default function EvaluationInterface({
         ...createEmptyForm(),
         sourceUrl: prev.sourceUrl
       }))
-      setManualSuggestion(null)
+      setEvaluationId(null)
+    setSyncStatus('idle')
+    setManualSuggestion(null)
       setAiState(null)
       setAiRecommendations([])
       setAiFeedback(null)
@@ -1561,8 +1693,12 @@ export default function EvaluationInterface({
     })
   }
 
+
+
+  
+
   const selectedSubjectLabel = selectedSubjectType === 'dependente'
-    ? selectedDependente?.full_name || 'Dependente'
+? selectedDependente?.full_name || 'Dependente'
     : selectedCustomer?.full_name || 'Titular'
   const selectedSubjectName = selectedSubjectType === 'dependente'
     ? selectedDependente?.full_name || null
@@ -1574,6 +1710,93 @@ export default function EvaluationInterface({
     !!form.patientNameRaw &&
     !!selectedSubjectName &&
     normalizePersonName(form.patientNameRaw) !== normalizePersonName(selectedSubjectName)
+
+  // CRM Auto-save
+  useEffect(() => {
+    // Só salva automaticamente se tiver paciente escolhido E funcionário autenticado
+    if (!isSubjectChosen || !authenticatedEmployee) {
+      return
+    }
+
+    const timer = setTimeout(() => {
+      startSaveTransition(async () => {
+        setSyncStatus('saving')
+        
+        try {
+          const derivedStatus: EvaluationStatus = form.sourceSystem === 'ivision' ? 'importada' : 'em_andamento'
+          const payload = {
+            storeId,
+            evaluationId: evaluationId || undefined,
+            evaluatedCustomerId: selectedSubjectType === 'customer' ? selectedCustomer?.id : null,
+            evaluatedDependenteId: selectedSubjectType === 'dependente' ? Number(selectedDependenteId) : null,
+            responsibleCustomerId: selectedSubjectType === 'dependente' ? selectedCustomer?.id : null,
+            evaluatedNameSnapshot: selectedSubjectType === 'dependente' ? (selectedDependente?.full_name || '') : selectedCustomer?.full_name || '',
+            responsibleNameSnapshot: selectedSubjectType === 'dependente' ? (selectedCustomer?.full_name || '') : null,
+            relationshipSnapshot: selectedSubjectType === 'dependente' ? (selectedDependente?.parentesco || 'Dependente') : 'Titular',
+            employeeId: authenticatedEmployee.id,
+            sourceSystem: form.sourceSystem,
+            status: derivedStatus,
+            parseStatus: form.parseStatus,
+            sourceDocumentUrl: form.sourceUrl || null,
+            sourceDocumentHost: form.sourceDocumentHost || null,
+            sourceOsNumber: form.sourceOsNumber || null,
+            sourceExamType: form.sourceExamType || null,
+            sourceExamDatetime: form.sourceExamDatetime || null,
+            patientNameRaw: form.patientNameRaw || null,
+            ageYears: form.ageYears ? Number(form.ageYears) : null,
+            estiloVidaUsoComputadorHoras: form.estiloVidaUsoComputadorHoras ? Number(form.estiloVidaUsoComputadorHoras) : null,
+            estiloVidaDirigirHoras: form.estiloVidaDirigirHoras ? Number(form.estiloVidaDirigirHoras) : null,
+            estiloVidaLeituraHoras: form.estiloVidaLeituraHoras ? Number(form.estiloVidaLeituraHoras) : null,
+            estiloVidaUsoCelularHoras: form.estiloVidaUsoCelularHoras ? Number(form.estiloVidaUsoCelularHoras) : null,
+            estiloVidaExposicaoSolHoras: form.estiloVidaExposicaoSolHoras ? Number(form.estiloVidaExposicaoSolHoras) : null,
+            estiloVidaAmbienteInternoHoras: form.estiloVidaAmbienteInternoHoras ? Number(form.estiloVidaAmbienteInternoHoras) : null,
+            estiloVidaAmbienteExternoHoras: form.estiloVidaAmbienteExternoHoras ? Number(form.estiloVidaAmbienteExternoHoras) : null,
+            estiloVidaAssistirTvHoras: form.estiloVidaAssistirTvHoras ? Number(form.estiloVidaAssistirTvHoras) : null,
+            receitaLongeOdEsferico: form.receitaLongeOdEsferico || null,
+            receitaLongeOdCilindrico: form.receitaLongeOdCilindrico || null,
+            receitaLongeOdEixo: form.receitaLongeOdEixo || null,
+            receitaLongeOeEsferico: form.receitaLongeOeEsferico || null,
+            receitaLongeOeCilindrico: form.receitaLongeOeCilindrico || null,
+            receitaLongeOeEixo: form.receitaLongeOeEixo || null,
+            receitaPertoOdEsferico: form.receitaPertoOdEsferico || null,
+            receitaPertoOdCilindrico: form.receitaPertoOdCilindrico || null,
+            receitaPertoOdEixo: form.receitaPertoOdEixo || null,
+            receitaPertoOeEsferico: form.receitaPertoOeEsferico || null,
+            receitaPertoOeCilindrico: form.receitaPertoOeCilindrico || null,
+            receitaPertoOeEixo: form.receitaPertoOeEixo || null,
+            receitaAdicao: form.receitaAdicao || null,
+            medidaDnpOd: form.medidaDnpOd || null,
+            medidaDnpOe: form.medidaDnpOe || null,
+            medidaAlturaOd: form.medidaAlturaOd || null,
+            medidaAlturaOe: form.medidaAlturaOe || null,
+            recommendedLensName: form.recommendedLensName || null,
+            commercialRecommendationRaw: form.commercialRecommendationRaw || null,
+            recommendedItems: aiRecommendations.length > 0 ? aiRecommendations : null,
+            extractedText: form.extractedText || null,
+            rawPayloadJson: form.rawPayloadJson,
+            parseWarning: form.parseWarning || null,
+            documentHash: form.documentHash || null
+          }
+
+          const result = await upsertOpticalEvaluation(payload)
+
+          if (result.success && result.data) {
+            setEvaluationId(result.data.id)
+            setSyncStatus('saved')
+          } else {
+            console.error('Save error:', result.message)
+            setSyncStatus('error')
+          }
+        } catch (err) {
+          console.error('Save error:', err)
+          setSyncStatus('error')
+        }
+      })
+    }, 1200)
+
+    return () => clearTimeout(timer)
+  }, [form, isSubjectChosen, authenticatedEmployee, evaluationId, selectedCustomer, selectedDependente, selectedSubjectType, selectedDependenteId, storeId])
+
   const isIvisionMode = form.sourceSystem === 'ivision'
   const hasCatalogForAi = activeCatalogs.length > 0 || !!activeCatalog
   const aiCaseInput = inferRecommendationCaseInput(form)
@@ -1677,6 +1900,19 @@ export default function EvaluationInterface({
                   <Loader2 className="absolute right-3 top-3 h-4 w-4 animate-spin text-indigo-400" />
                 )}
               </div>
+
+              
+              {!selectedCustomer && query.length < 2 && (
+                <div className="mt-4 pt-4 border-t border-white/10 flex-1">
+                  <EvaluationDashboard
+                    employeeName={authenticatedEmployee?.full_name || ''}
+                    evaluations={recentEvaluations}
+                    onSelectEvaluation={handleSelectEvaluation}
+                    onCloseEvaluation={handleCloseEvaluation}
+                    isLoading={isLoadingDashboard}
+                  />
+                </div>
+              )}
 
               {!selectedCustomer && (query.length >= 2 || customerResults.length > 0) && (
                 <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-slate-900/90 shadow-2xl">
@@ -2839,7 +3075,7 @@ export default function EvaluationInterface({
                   </div>
                 </div>
 
-                <div className="flex justify-end">
+                <div className="flex justify-end gap-3 mt-4">
                   <button
                     type="button"
                     onClick={handleSave}
@@ -2848,6 +3084,16 @@ export default function EvaluationInterface({
                   >
                     {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                     Salvar Avaliação
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleIrParaVenda}
+                    disabled={isCreatingVenda || isSaving || !selectedCustomer}
+                    className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-600 px-6 py-3 text-xs font-black uppercase tracking-[0.2em] text-emerald-50 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:bg-emerald-500 hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] disabled:opacity-50 transition-all font-sans"
+                  >
+                    {isCreatingVenda ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}
+                    Ir para Venda (Checkout)
                   </button>
                 </div>
               </div>

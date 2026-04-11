@@ -36,7 +36,7 @@ export default function TransferVendaModal({ isOpen, onClose, vendaId, storeId, 
     setError(null)
     const result = await searchCustomersByName(searchTerm, storeId)
     if (result.success && result.data) {
-      setCustomers(result.data.filter(c => c.id !== currentCustomerId))
+      setCustomers(result.data.filter(c => Number(c.id) !== Number(currentCustomerId)))
     } else {
       setError(result.message || 'Erro ao buscar cliente')
     }

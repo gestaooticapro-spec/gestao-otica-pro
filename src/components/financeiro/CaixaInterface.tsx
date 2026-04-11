@@ -10,8 +10,10 @@ import {
     atualizarMovimento,
     deletarMovimento,
     fecharCaixa,
-    getResumoCaixaPorData
+    getResumoCaixaPorData,
+    alterarFormaPagamento
 } from '@/lib/actions/cashflow.actions'
+import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import {
     Wallet, ArrowUpCircle, ArrowDownCircle, Lock, Unlock,
     Save, Loader2, DollarSign, AlertTriangle, TrendingUp, TrendingDown, Package, Printer, Pencil, Trash2, HelpCircle, History, Calculator, CalendarDays, Eye, ArrowLeft, RefreshCcw
@@ -37,6 +39,12 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
     const [isSaldoModalOpen, setIsSaldoModalOpen] = useState(false)
     const [isMovModalOpen, setIsMovModalOpen] = useState(false)
     const [editingMov, setEditingMov] = useState<any>(null)
+    const [editingPgForma, setEditingPgForma] = useState<any>(null)
+    const [isPgFormaAuthOpen, setIsPgFormaAuthOpen] = useState(false)
+    const [isFormaSelectOpen, setIsFormaSelectOpen] = useState(false)
+    const [novaFormaSelecionada, setNovaFormaSelecionada] = useState('')
+    const [parcelasCredito, setParcelasCredito] = useState(1)
+    const authedEmployeeForFormaRef = useRef<number | null>(null)
     const [saldoInicialInput, setSaldoInicialInput] = useState('')
     const [isCalcOpen, setIsCalcOpen] = useState(false)
 
@@ -629,6 +637,11 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                             setIsMovModalOpen(true)
                                         }}
                                         onDelete={(rawId: number) => handleDeletarMov(rawId)}
+                                        onEditForma={(mov: any) => {
+                                            setEditingPgForma(mov)
+                                            setNovaFormaSelecionada(mov.forma_pagamento || '')
+                                            setIsPgFormaAuthOpen(true)
+                                        }}
                                     />
                                 </div>
                             </div>
@@ -744,6 +757,88 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                     )}
 
                     <CalculadoraNotasModal isOpen={isCalcOpen} onClose={() => setIsCalcOpen(false)} />
+
+                    {/* MODAL TROCA DE FORMA DE PAGAMENTO — autenticação do funcionário */}
+                    <EmployeeAuthModal
+                        storeId={storeId}
+                        isOpen={isPgFormaAuthOpen}
+                        onClose={() => {
+                            // Só limpa editingPgForma se não vai abrir o próximo modal
+                            if (!isFormaSelectOpen) setEditingPgForma(null)
+                            setIsPgFormaAuthOpen(false)
+                        }}
+                        title="Alterar Forma de Pagamento"
+                        description="Insira o PIN do funcionário que realizou este recebimento."
+                        onSuccess={(employee) => {
+                            authedEmployeeForFormaRef.current = employee.id
+                            setIsFormaSelectOpen(true)
+                            // onClose() interno do EmployeeAuthForm vai fechar o auth modal
+                        }}
+                    />
+
+                    {/* MODAL SELEÇÃO DA NOVA FORMA */}
+                    {isFormaSelectOpen && editingPgForma && (
+                        <SimpleModal
+                            title="Alterar Forma de Pagamento"
+                            onClose={() => {
+                                setIsFormaSelectOpen(false)
+                                setEditingPgForma(null)
+                            }}
+                        >
+                            <div className="space-y-4">
+                                <div>
+                                    <p className="text-xs text-slate-400 mb-1">Pagamento: <span className="text-white font-bold">{editingPgForma.descricao}</span></p>
+                                    <p className="text-xs text-slate-400 mb-3">Forma atual: <span className="text-amber-400 font-bold">{editingPgForma.forma_pagamento}</span></p>
+                                    <label className={labelStyle}>Nova Forma de Pagamento</label>
+                                    <select
+                                        value={novaFormaSelecionada}
+                                        onChange={e => { setNovaFormaSelecionada(e.target.value); setParcelasCredito(1) }}
+                                        className={`${inputStyle} cursor-pointer`}
+                                    >
+                                        <option className="bg-slate-900">PIX Remoto</option>
+                                        <option className="bg-slate-900">PIX na maquininha</option>
+                                        <option className="bg-slate-900">Dinheiro</option>
+                                        <option className="bg-slate-900">Cartão Débito</option>
+                                        <option className="bg-slate-900">Cartão Crédito</option>
+                                    </select>
+                                </div>
+                                {novaFormaSelecionada === 'Cartão Crédito' && (
+                                    <div>
+                                        <label className={labelStyle}>Parcelas do Cartão</label>
+                                        <select
+                                            value={parcelasCredito}
+                                            onChange={e => setParcelasCredito(Number(e.target.value))}
+                                            className={`${inputStyle} cursor-pointer`}
+                                        >
+                                            {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => (
+                                                <option key={n} value={n} className="bg-slate-900">{n}x</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                                <button
+                                    disabled={isPending || novaFormaSelecionada === editingPgForma.forma_pagamento}
+                                    onClick={async () => {
+                                        const pgId = Number(editingPgForma.id.replace('pg-', ''))
+                                        startTransition(async () => {
+                                            const res = await alterarFormaPagamento(pgId, novaFormaSelecionada, authedEmployeeForFormaRef.current!, storeId, parcelasCredito)
+                                            if (res.success) {
+                                                setIsFormaSelectOpen(false)
+                                                setEditingPgForma(null)
+                                                router.refresh()
+                                            } else {
+                                                alert(res.message)
+                                            }
+                                        })
+                                    }}
+                                    className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white h-10 rounded-lg font-bold border border-white/10 transition-colors"
+                                >
+                                    {isPending ? <Loader2 className="animate-spin h-4 w-4 inline mr-2" /> : null}
+                                    Confirmar Alteração
+                                </button>
+                            </div>
+                        </SimpleModal>
+                    )}
                 </>
             )}
         </div>
@@ -751,7 +846,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
 }
 
 // --- SUB-COMPONENTE DE TABELA (REUTILIZÁVEL) ---
-function TabelaMovimentos({ movimentos, emptyMessage, onEdit, onDelete }: { movimentos: any[], emptyMessage: string, onEdit?: (mov: any) => void, onDelete?: (rawId: number) => void }) {
+function TabelaMovimentos({ movimentos, emptyMessage, onEdit, onDelete, onEditForma }: { movimentos: any[], emptyMessage: string, onEdit?: (mov: any) => void, onDelete?: (rawId: number) => void, onEditForma?: (mov: any) => void }) {
     if (movimentos.length === 0) {
         return (
             <div className="h-full flex flex-col items-center justify-center text-slate-500">
@@ -819,6 +914,15 @@ function TabelaMovimentos({ movimentos, emptyMessage, onEdit, onDelete }: { movi
                                             </button>
                                         )}
                                     </div>
+                                ) : !isManual && mov.id?.startsWith?.('pg-') && onEditForma ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => onEditForma(mov)}
+                                        className="text-[10px] bg-white/5 hover:bg-amber-500/20 px-2 py-1 rounded font-bold text-slate-400 hover:text-amber-400 transition-colors"
+                                        title="Alterar forma de pagamento"
+                                    >
+                                        <Pencil className="h-3 w-3 inline" />
+                                    </button>
                                 ) : (
                                     <span className="text-[9px] text-slate-600">-</span>
                                 )}

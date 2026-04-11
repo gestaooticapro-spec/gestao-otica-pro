@@ -8,8 +8,10 @@ import {
   type RecommendationCaseInput,
   type RecommendationConversationState,
 } from '@/lib/server/lens-recommendation'
+import { getAiSuggestionConfig } from '@/lib/actions/store.actions'
 
 const RecommendationCaseSchema = z.object({
+  storeId: z.number().int().positive().optional(),
   versionId: z.string().uuid(),
   versionIds: z.array(z.string().uuid()).optional(),
   idade: z.number().int().positive().optional().nullable(),
@@ -22,6 +24,7 @@ const RecommendationCaseSchema = z.object({
   desired_benefits: z.array(z.string()).default([]),
   preferred_features: z.array(z.string()).default([]),
   budget_mode: z.enum(['economico', 'intermediario', 'premium']).optional().default('intermediario'),
+  budget_signal: z.enum(['informado', 'nao_informado']).optional(),
   adaptation_difficulty: z.enum(['baixa', 'media', 'alta']).optional().nullable(),
   notes: z.string().optional().nullable(),
   topN: z.number().int().min(1).max(10).optional().default(3),
@@ -62,6 +65,7 @@ function toCaseInput(payload: z.infer<typeof RecommendationCaseSchema>): Recomme
     desired_benefits: payload.desired_benefits,
     preferred_features: payload.preferred_features,
     budget_mode: payload.budget_mode,
+    budget_signal: payload.budget_signal,
     adaptation_difficulty: payload.adaptation_difficulty,
     notes: payload.notes,
   }
@@ -74,10 +78,15 @@ export async function generateLensRecommendationsAction(
     await ensureAuthenticated()
     const parsed = RecommendationCaseSchema.parse(input)
 
+    const aiConfig = parsed.storeId
+      ? await getAiSuggestionConfig(parsed.storeId)
+      : undefined
+
     const result = await startRecommendationConversation({
       versionId: parsed.versionId,
       versionIds: parsed.versionIds,
       caseInput: toCaseInput(parsed),
+      aiConfig,
       topN: parsed.topN,
     })
 

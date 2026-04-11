@@ -1,0 +1,2 @@
+rows_total=2333
+rows_changed_laboratorio=814

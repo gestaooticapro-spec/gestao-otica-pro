@@ -36,6 +36,15 @@ type OpticalEvaluationsTableApi = {
       single: () => SingleResult<OpticalEvaluationTableRow>
     }
   }
+  update: (values: Partial<OpticalEvaluationInsert>) => {
+    eq: (column: string, value: number | string) => {
+      eq: (column: string, value: number | string) => {
+        select: (columns: string) => {
+          single: () => SingleResult<OpticalEvaluationTableRow>
+        }
+      }
+    }
+  }
 }
 
 export type OpticalEvaluationRow = {
@@ -93,6 +102,10 @@ export type OpticalEvaluationRow = {
   parse_warning: string | null
   document_hash: string | null
   exported_service_order_id: number | null
+  outcome_status: 'venda_fechada' | 'cliente_pesquisa' | 'perdido_preco' | 'perdido_produto' | 'perdido_prazo' | null
+  panic_reason: string | null
+  recommended_items: unknown | null
+  exported_venda_id: number | null
 }
 
 export type OpticalEvaluationListItem = OpticalEvaluationRow & {
@@ -176,7 +189,7 @@ const SaveEvaluationSchema = z
     responsibleNameSnapshot: z.string().nullable().optional(),
     relationshipSnapshot: z.string().nullable().optional(),
     sourceSystem: z.enum(['manual', 'ivision']),
-    status: z.enum(['rascunho', 'concluida', 'importada', 'exportada']).optional(),
+    status: z.enum(['rascunho', 'em_andamento', 'pendente', 'concluida', 'importada', 'exportada']).optional(),
     parseStatus: z.enum(['success', 'partial', 'failed']).default('success'),
     sourceDocumentUrl: z.string().url().nullable().optional(),
     sourceDocumentHost: z.string().nullable().optional(),
@@ -212,6 +225,7 @@ const SaveEvaluationSchema = z
     medidaAlturaOe: z.string().nullable().optional(),
     recommendedLensName: z.string().nullable().optional(),
     commercialRecommendationRaw: z.string().nullable().optional(),
+    recommendedItems: z.array(z.unknown()).nullable().optional(),
     extractedText: z.string().nullable().optional(),
     rawPayloadJson: z.record(z.string(), z.unknown()).nullable().optional(),
     parseWarning: z.string().nullable().optional(),
@@ -594,5 +608,226 @@ export async function applyOpticalEvaluationToServiceOrder(
       overwriteFields,
       wouldOverwriteExistingData: hasAnyValue(overwriteChecks.map(([, incoming, current]) => normalizeText(incoming) && normalizeText(current) ? '1' : null))
     }
+  }
+}
+
+export type UpsertEvaluationInput = z.infer<typeof SaveEvaluationSchema> & {
+  evaluationId?: number
+}
+
+export async function upsertOpticalEvaluation(
+  input: UpsertEvaluationInput
+): Promise<EvaluationActionResult<OpticalEvaluationRow>> {
+  const validated = SaveEvaluationSchema.safeParse(input)
+  if (!validated.success) {
+    return { success: false, message: validated.error.issues[0]?.message || 'Dados invalidos.' }
+  }
+
+  const auth = await getAuthorizedContext(validated.data.storeId)
+  if (!auth.ok) return { success: false, message: auth.message }
+
+  const isEnabled = await isPreSaleAnalysisEnabled(validated.data.storeId)
+  if (!isEnabled) {
+    return { success: false, message: 'A Analise Pre-Venda nao esta habilitada para esta loja.' }
+  }
+
+  const opticalEvaluationsTable = createAdminClient().from('optical_evaluations') as unknown as OpticalEvaluationsTableApi
+  const data = validated.data
+  const derivedStatus = data.status ?? (data.sourceSystem === 'ivision' ? 'importada' : 'em_andamento')
+
+  const payload: Partial<OpticalEvaluationInsert> = {
+    tenant_id: auth.tenantId,
+    store_id: data.storeId,
+    evaluated_customer_id: data.evaluatedCustomerId ?? null,
+    evaluated_dependente_id: data.evaluatedDependenteId ?? null,
+    responsible_customer_id: data.responsibleCustomerId ?? null,
+    employee_id: data.employeeId ?? null,
+    imported_by_user_id: auth.userId,
+    source_system: data.sourceSystem,
+    status: derivedStatus,
+    parse_status: data.parseStatus,
+    source_document_url: normalizeText(data.sourceDocumentUrl),
+    source_document_host: normalizeText(data.sourceDocumentHost),
+    source_os_number: normalizeText(data.sourceOsNumber),
+    source_exam_type: normalizeText(data.sourceExamType),
+    source_exam_datetime: data.sourceExamDatetime || null,
+    patient_name_raw: normalizeText(data.patientNameRaw),
+    evaluated_name_snapshot: normalizeText(data.evaluatedNameSnapshot),
+    responsible_name_snapshot: normalizeText(data.responsibleNameSnapshot),
+    relationship_snapshot: normalizeText(data.relationshipSnapshot),
+    age_years: data.ageYears ?? null,
+    estilo_vida_uso_computador_horas: data.estiloVidaUsoComputadorHoras ?? null,
+    estilo_vida_dirigir_horas: data.estiloVidaDirigirHoras ?? null,
+    estilo_vida_leitura_horas: data.estiloVidaLeituraHoras ?? null,
+    estilo_vida_uso_celular_horas: data.estiloVidaUsoCelularHoras ?? null,
+    estilo_vida_exposicao_sol_horas: data.estiloVidaExposicaoSolHoras ?? null,
+    estilo_vida_ambiente_interno_horas: data.estiloVidaAmbienteInternoHoras ?? null,
+    estilo_vida_ambiente_externo_horas: data.estiloVidaAmbienteExternoHoras ?? null,
+    estilo_vida_assistir_tv_horas: data.estiloVidaAssistirTvHoras ?? null,
+    receita_longe_od_esferico: normalizeText(data.receitaLongeOdEsferico),
+    receita_longe_od_cilindrico: normalizeText(data.receitaLongeOdCilindrico),
+    receita_longe_od_eixo: normalizeText(data.receitaLongeOdEixo),
+    receita_longe_oe_esferico: normalizeText(data.receitaLongeOeEsferico),
+    receita_longe_oe_cilindrico: normalizeText(data.receitaLongeOeCilindrico),
+    receita_longe_oe_eixo: normalizeText(data.receitaLongeOeEixo),
+    receita_perto_od_esferico: normalizeText(data.receitaPertoOdEsferico),
+    receita_perto_od_cilindrico: normalizeText(data.receitaPertoOdCilindrico),
+    receita_perto_od_eixo: normalizeText(data.receitaPertoOdEixo),
+    receita_perto_oe_esferico: normalizeText(data.receitaPertoOeEsferico),
+    receita_perto_oe_cilindrico: normalizeText(data.receitaPertoOeCilindrico),
+    receita_perto_oe_eixo: normalizeText(data.receitaPertoOeEixo),
+    receita_adicao: normalizeText(data.receitaAdicao),
+    medida_dnp_od: normalizeText(data.medidaDnpOd),
+    medida_dnp_oe: normalizeText(data.medidaDnpOe),
+    medida_altura_od: normalizeText(data.medidaAlturaOd),
+    medida_altura_oe: normalizeText(data.medidaAlturaOe),
+    recommended_lens_name: normalizeText(data.recommendedLensName),
+    commercial_recommendation_raw: normalizeText(data.commercialRecommendationRaw),
+    recommended_items: data.recommendedItems ?? null,
+    extracted_text: normalizeText(data.extractedText),
+    raw_payload_json: (data.rawPayloadJson || {}) as EvaluationJson,
+    parse_warning: normalizeText(data.parseWarning),
+    document_hash: normalizeText(data.documentHash),
+    updated_at: new Date().toISOString()
+  }
+
+  if (input.evaluationId) {
+    const { data: updated, error } = await opticalEvaluationsTable
+      .update(payload)
+      .eq('id', input.evaluationId)
+      .eq('store_id', data.storeId)
+      .select('*')
+      .single()
+
+    if (error) {
+      return { success: false, message: error.message }
+    }
+    
+    return { success: true, message: 'Avaliacao atualizada com sucesso.', data: updated as OpticalEvaluationRow }
+  } else {
+    const insertPayload = payload as OpticalEvaluationInsert
+    const { data: inserted, error } = await opticalEvaluationsTable
+      .insert(insertPayload)
+      .select('*')
+      .single()
+
+    if (error) {
+      return { success: false, message: error.message }
+    }
+
+    revalidatePath(`/dashboard/loja/${data.storeId}/avaliacao`)
+    return { success: true, message: 'Avaliacao salva com sucesso.', data: inserted as OpticalEvaluationRow }
+  }
+}
+
+
+export async function getRecentEvaluationsForEmployee(
+  employeeId: number,
+  storeId: number,
+  limit: number = 20
+): Promise<OpticalEvaluationListItem[]> {
+  try {
+    const tableApi = createClient().from('optical_evaluations') as unknown as OpticalEvaluationsTableApi
+    
+    // Create query to fetch recent evaluations that are not converted (exported_venda_id is null)
+    // and status is not concluida, so we can resume them. Also filter by store_id and employee_id.
+    const query = createClient()
+      .from('optical_evaluations')
+      .select(`
+        *,
+        evaluated_patient:customers!optical_evaluations_evaluated_customer_id_fkey(full_name),
+        responsible_customer:customers!optical_evaluations_responsible_customer_id_fkey(full_name)
+      `)
+      .eq('store_id', storeId)
+      .eq('employee_id', employeeId)
+      .is('exported_venda_id', null)
+      .not('status', 'eq', 'concluida')
+      .order('created_at', { ascending: false })
+      .limit(limit)
+
+    const { data: records, error } = await query
+
+    if (error) {
+      console.error('getRecentEvaluationsForEmployee: Query error', error)
+      return []
+    }
+
+    if (!records) return []
+
+    return records.map((record: any) => ({
+      ...record,
+      evaluated_patient_name:
+        record.evaluated_name_snapshot || 
+        record.evaluated_patient?.full_name ||
+        record.patient_name_raw || null,
+      responsible_customer_name:
+        record.responsible_name_snapshot ||
+        record.responsible_customer?.full_name || null
+    })) as OpticalEvaluationListItem[]
+  } catch (error) {
+    console.error('getRecentEvaluationsForEmployee: Unexpected error', error)
+    return []
+  }
+}
+
+export async function updateEvaluationPanicReason(
+  evaluationId: number,
+  storeId: number,
+  panicReason: string
+): Promise<EvaluationActionResult> {
+  try {
+    const tableApi = createAdminClient().from('optical_evaluations') as any
+    
+    const { error } = await tableApi
+      .update({ panic_reason: panicReason } as any)
+      .eq('id', evaluationId)
+      .eq('store_id', storeId)
+
+    if (error) {
+      return { success: false, message: error.message }
+    }
+    
+    return { success: true, message: 'Motivo registrado com sucesso.' }
+  } catch (error) {
+    return { success: false, message: 'Falha inesperada.' }
+  }
+}
+
+export async function updateEvaluationOutcomeStatus(
+  evaluationId: number,
+  storeId: number,
+  outcomeStatus: 'cliente_pesquisa' | 'perdido_preco' | 'perdido_produto' | 'perdido_prazo'
+): Promise<EvaluationActionResult> {
+  try {
+    const tableApi = createAdminClient().from('optical_evaluations') as any
+
+    const { error } = await tableApi
+      .update({ outcome_status: outcomeStatus, status: 'concluida' } as any)
+      .eq('id', evaluationId)
+      .eq('store_id', storeId)
+
+    if (error) return { success: false, message: error.message }
+    return { success: true, message: 'Desfecho registrado com sucesso.' }
+  } catch {
+    return { success: false, message: 'Falha ao registrar desfecho.' }
+  }
+}
+
+export async function updateEvaluationExportedVendaId(
+  evaluationId: number,
+  storeId: number,
+  vendaId: number
+): Promise<EvaluationActionResult> {
+  try {
+    const tableApi = createAdminClient().from('optical_evaluations') as any
+    const { error } = await tableApi
+      .update({ exported_venda_id: vendaId } as any)
+      .eq('id', evaluationId)
+      .eq('store_id', storeId)
+
+    if (error) return { success: false, message: error.message }
+    return { success: true, message: 'Vinculado com sucesso.' }
+  } catch (error) {
+    return { success: false, message: 'Falha ao vincular venda.' }
   }
 }

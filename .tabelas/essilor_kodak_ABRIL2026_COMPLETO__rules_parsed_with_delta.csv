@@ -1,0 +1,14 @@
+fonte_tabela,laboratorio,pagina_pdf,bloco_visual,familia,produto,design,material,indice_refracao,tratamento,preco_par_brl,rule_type,base_reference,price_delta_raw,note_raw,price_delta_value
+PVC,Essilor,12,Lentes Essilor,VS Essilor Surfaçada,Surfaçada,Orma,1.50,Blue UV,Blue UV,Blue UV = +R$80 vs Orma base,delta_vs_base,Orma base,Blue UV = +R$80,,80.0
+PVC,Essilor,12,Lentes Essilor,VS Essilor Surfaçada,Surfaçada,Airwear,1.59,Crizal Prevencia,Crizal Prevencia,Airwear = +R$200 vs Orma,delta_vs_base,Orma,Airwear = +R$200,,200.0
+PVC,Essilor,12,Lentes Essilor,VS Essilor Surfaçada,Surfaçada,Airwear,1.59,Blue UV,Blue UV,Blue UV = +R$80 vs Airwear base,delta_vs_base,Airwear base,Blue UV = +R$80,,80.0
+PVC,Essilor,12,Lentes Essilor,VS Essilor Surfaçada,Surfaçada,Stylis 1.67,1.67,Crizal Prevencia,Crizal Prevencia,+R$1000 vs Airwear,delta_vs_base,Airwear,+R$1000,,1000.0
+PVC,Essilor,12,Lentes Essilor,VS Essilor Surfaçada,Surfaçada,Stylis 1.74,1.74,Crizal Sapphire HR,Crizal Sapphire HR,+R$780 vs Stylis 1.67; cilíndrico Stylis 1.74 até -8.00,delta_vs_base,Stylis 1.67; cilíndrico Stylis 1.74 até -8.00,+R$780,,780.0
+PVC,Essilor,12,Lentes Essilor,VS Essilor Surfaçada,Surfaçada,Orma,1.50,Xperio Cinza,Xperio,Bloco solar; Crizal Sapphire HR Face Interna incluso,note,,,Bloco solar; Crizal Sapphire HR Face Interna incluso,
+PVC,Essilor,12,Lentes Essilor,VS Essilor Surfaçada,Surfaçada,Orma,1.50,Xperio Marrom,Xperio,Bloco solar; Crizal Sapphire HR Face Interna incluso,note,,,Bloco solar; Crizal Sapphire HR Face Interna incluso,
+PVC,Essilor,12,Lentes Essilor,VS Essilor Surfaçada,Surfaçada,Orma,1.50,Xperio Verde,Xperio,Bloco solar; Crizal Sapphire HR Face Interna incluso,note,,,Bloco solar; Crizal Sapphire HR Face Interna incluso,
+PVC,Essilor,12,Lentes Essilor,VS Essilor Surfaçada,Surfaçada,Airwear,1.59,Xperio Cinza,Xperio,Bloco solar; Crizal Sapphire HR Face Interna incluso,note,,,Bloco solar; Crizal Sapphire HR Face Interna incluso,
+PVC,Essilor,12,Lentes Essilor,VS Essilor Surfaçada,Surfaçada,Airwear,1.59,Xperio Marrom,Xperio,Bloco solar; Crizal Sapphire HR Face Interna incluso,note,,,Bloco solar; Crizal Sapphire HR Face Interna incluso,
+PVC,Essilor,12,Lentes Essilor,VS Essilor Surfaçada,Surfaçada,Airwear,1.59,Xperio Verde,Xperio,Bloco solar; Crizal Sapphire HR Face Interna incluso,note,,,Bloco solar; Crizal Sapphire HR Face Interna incluso,
+PVO,Essilor,12,Lentes Essilor,VS Essilor Surfaçada,Surfaçada,Orma,1.50,Xperio Cinza,Xperio,Bloco solar,note,,,Bloco solar,
+PVO,Essilor,12,Lentes Essilor,VS Essilor Surfaçada,Surfaçada,Airwear,1.59,Xperio Cinza,Xperio,Bloco solar,note,,,Bloco solar,

@@ -264,3 +264,165 @@ export async function updateStoreSettings(storeId: number, newSettings: Partial<
         return { success: false, message: toErrorMessage(error, 'Erro ao atualizar recursos.') }
     }
 }
+
+import {
+    AiSuggestionConfig, AiConfigCatalogInfo, AiConfigBrandsByCategory,
+    AI_SUGGESTION_CONFIG_DEFAULTS, CLINICAL_CATEGORY_LABELS, AiStoreProfileLevel, AiStoreInvestmentProfile
+} from '@/lib/types/ai-config.types'
+
+// ================================================================
+// AI SUGGESTION CONFIG
+// ================================================================
+
+export async function getAiSuggestionConfig(storeId: number): Promise<AiSuggestionConfig> {
+    const store = await getStoreProfile(storeId)
+    if (!store) return { ...AI_SUGGESTION_CONFIG_DEFAULTS }
+
+    const settings = (store.settings || {}) as StoreSettings
+    const saved = settings.ai_suggestion_config as AiSuggestionConfig | undefined
+
+    const legacyProfile = saved?.store_profile as Record<string, unknown> | undefined
+    const legacySensitivity = legacyProfile?.price_sensitivity as AiStoreProfileLevel | undefined
+    const legacyPremium = legacyProfile?.premium_preference as AiStoreProfileLevel | undefined
+
+    let investmentProfile: AiStoreInvestmentProfile = AI_SUGGESTION_CONFIG_DEFAULTS.store_profile.investment_profile
+    if (legacySensitivity || legacyPremium) {
+        if (legacySensitivity === 'alto') investmentProfile = 'economico'
+        if (legacyPremium === 'alto') investmentProfile = 'premium'
+        if (legacySensitivity === 'baixo' && legacyPremium === 'baixo') investmentProfile = 'equilibrado'
+    }
+
+    return {
+        lab_preferences: saved?.lab_preferences ?? [],
+        store_profile: {
+            investment_profile: (legacyProfile?.investment_profile as AiStoreInvestmentProfile) || investmentProfile,
+            tech_adoption: (legacyProfile?.tech_adoption as AiStoreProfileLevel) || 'medio',
+            aesthetic_priority: (legacyProfile?.aesthetic_priority as AiStoreProfileLevel) || 'medio',
+        },
+        category_brand_preferences: saved?.category_brand_preferences ?? {},
+    }
+}
+
+export async function saveAiSuggestionConfig(
+    storeId: number,
+    config: AiSuggestionConfig
+): Promise<StoreActionResult> {
+    const clampWeight = (w: number) => Math.max(0, Math.min(5, Math.round(w)))
+    const validLevels: AiStoreProfileLevel[] = ['baixo', 'medio', 'alto']
+    const clampLevel = (v: string): AiStoreProfileLevel =>
+        validLevels.includes(v as AiStoreProfileLevel) ? v as AiStoreProfileLevel : 'medio'
+    const validInvestment: AiStoreInvestmentProfile[] = ['economico', 'equilibrado', 'premium']
+    const clampInvestment = (v: string): AiStoreInvestmentProfile =>
+        validInvestment.includes(v as AiStoreInvestmentProfile) ? v as AiStoreInvestmentProfile : 'equilibrado'
+
+    const sanitized: AiSuggestionConfig = {
+        lab_preferences: (config.lab_preferences || []).map(lp => ({
+            versionId: lp.versionId,
+            laboratorio: lp.laboratorio,
+            weight: clampWeight(lp.weight),
+        })),
+        store_profile: {
+            investment_profile: clampInvestment(config.store_profile?.investment_profile || 'equilibrado'),
+            tech_adoption: clampLevel(config.store_profile?.tech_adoption || 'medio'),
+            aesthetic_priority: clampLevel(config.store_profile?.aesthetic_priority || 'medio'),
+        },
+        category_brand_preferences: Object.fromEntries(
+            Object.entries(config.category_brand_preferences || {}).map(([cat, brands]) => [
+                cat,
+                (brands || []).map(b => ({ brand: b.brand, weight: clampWeight(b.weight) })),
+            ])
+        ),
+    }
+
+    return updateStoreSettings(storeId, { ai_suggestion_config: sanitized as unknown as Json })
+}
+
+export async function getAiConfigCatalogData(storeId: number): Promise<{
+    catalogs: AiConfigCatalogInfo[]
+    brandsByCategory: AiConfigBrandsByCategory[]
+}> {
+    const supabaseAdmin = createAdminClient() as any
+
+    const { data: activations } = await supabaseAdmin
+        .from('tenant_catalog_activations')
+        .select('id,global_version_id')
+        .eq('store_id', storeId)
+        .eq('status', 'active')
+
+    if (!activations?.length) return { catalogs: [], brandsByCategory: [] }
+
+    const versionIds = [...new Set(activations.map((a: any) => a.global_version_id))] as string[]
+    const { data: versions } = await supabaseAdmin
+        .from('global_catalog_versions')
+        .select('id,laboratorio,versao')
+        .in('id', versionIds)
+
+    const catalogs: AiConfigCatalogInfo[] = (versions || []).map((v: any) => ({
+        versionId: v.id,
+        laboratorio: v.laboratorio,
+        versao: v.versao,
+    }))
+
+    const activationIds = activations.map((a: any) => a.id)
+    const { data: tenantOffers } = await supabaseAdmin
+        .from('tenant_commercial_offers')
+        .select('global_offer_id')
+        .in('activation_id', activationIds)
+
+    const globalOfferIds = [...new Set((tenantOffers || []).map((o: any) => o.global_offer_id))] as string[]
+    if (!globalOfferIds.length) return { catalogs, brandsByCategory: [] }
+
+    const CHUNK = 150
+    let allOffers: any[] = []
+    for (let i = 0; i < globalOfferIds.length; i += CHUNK) {
+        const chunk = globalOfferIds.slice(i, i + CHUNK)
+        const { data } = await supabaseAdmin
+            .from('global_lens_offers')
+            .select('family_id,clinical_category')
+            .in('id', chunk)
+        allOffers.push(...(data || []))
+    }
+
+    const familyIds = [...new Set(allOffers.map((o: any) => o.family_id))] as string[]
+    let allFamilies: any[] = []
+    for (let i = 0; i < familyIds.length; i += CHUNK) {
+        const chunk = familyIds.slice(i, i + CHUNK)
+        const { data } = await supabaseAdmin
+            .from('global_lens_families')
+            .select('id,nome,clinical_category')
+            .in('id', chunk)
+        allFamilies.push(...(data || []))
+    }
+
+    const familyById = new Map(allFamilies.map((f: any) => [f.id, f]))
+    const brandsByCat = new Map<string, Set<string>>()
+
+    for (const offer of allOffers) {
+        const family = familyById.get(offer.family_id)
+        if (!family) continue
+
+        const effectiveCategory = offer.clinical_category !== 'indefinida'
+            ? offer.clinical_category
+            : family.clinical_category !== 'mista'
+                ? family.clinical_category
+                : null
+
+        if (!effectiveCategory || effectiveCategory === 'mista' || effectiveCategory === 'indefinida') continue
+
+        if (!brandsByCat.has(effectiveCategory)) {
+            brandsByCat.set(effectiveCategory, new Set())
+        }
+        brandsByCat.get(effectiveCategory)!.add(family.nome)
+    }
+
+    const targetCategories = ['multifocal', 'ocupacional', 'controle_miopia', 'visao_simples', 'bifocal', 'plana_solar']
+    const brandsByCategory: AiConfigBrandsByCategory[] = targetCategories
+        .filter(cat => brandsByCat.has(cat))
+        .map(cat => ({
+            category: cat,
+            categoryLabel: CLINICAL_CATEGORY_LABELS[cat] || cat,
+            brands: Array.from(brandsByCat.get(cat)!).sort(),
+        }))
+
+    return { catalogs, brandsByCategory }
+}

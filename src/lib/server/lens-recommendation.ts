@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSharedFamilySemanticProfile } from '@/lib/server/shared-lens-semantics'
+import type { AiSuggestionConfig, AiStoreProfileLevel } from '@/lib/types/ai-config.types'
 
 export type BudgetMode = 'economico' | 'intermediario' | 'premium'
 export type ClinicalCategory =
@@ -25,6 +26,7 @@ export type RecommendationCaseInput = {
   desired_benefits?: string[]
   preferred_features?: string[]
   budget_mode?: BudgetMode
+  budget_signal?: 'informado' | 'nao_informado'
   adaptation_difficulty?: AdaptationDifficulty | null
   notes?: string | null
 }
@@ -40,6 +42,7 @@ export type RecommendationOption = {
   treatmentType: string | null
   sourceLaboratorio: string | null
   sourceVersao: string | null
+  sourceVersionId?: string | null
   clinicalCategory: ClinicalCategory
   finalPrice: number
   basePrice: number | null
@@ -57,6 +60,7 @@ export type RecommendationConversationState = {
   versionId: string
   versionIds?: string[]
   caseInput: RecommendationCaseInput
+  aiConfig?: AiSuggestionConfig
   forcedClinicalCategories?: ClinicalCategory[]
   requiredFeatures?: string[]
   budgetModeOverride?: BudgetMode | null
@@ -89,6 +93,7 @@ type CatalogFamily = {
   clinical_category: ClinicalCategory
   sourceLaboratorio?: string | null
   sourceVersao?: string | null
+  sourceVersionId?: string | null
 }
 
 type CatalogOffer = {
@@ -106,6 +111,7 @@ type CatalogOffer = {
   source_page_reference: string | null
   sourceLaboratorio?: string | null
   sourceVersao?: string | null
+  sourceVersionId?: string | null
 }
 
 type CatalogGrid = {
@@ -219,6 +225,10 @@ function normalizeBudgetMode(value: unknown): BudgetMode {
   return 'intermediario'
 }
 
+function normalizeBudgetSignal(value: unknown): 'informado' | 'nao_informado' {
+  return value === 'informado' ? 'informado' : 'nao_informado'
+}
+
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)))
 }
@@ -319,6 +329,144 @@ function normalizeFeatureFlags(features: Record<string, unknown> = {}): Record<s
   return normalized
 }
 
+function levelToScore(level: AiStoreProfileLevel): number {
+  if (level === 'alto') return 1
+  if (level === 'baixo') return -1
+  return 0
+}
+
+function percentile(values: number[], percentileValue: number): number {
+  if (!values.length) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.round((sorted.length - 1) * percentileValue)))
+  return sorted[index]
+}
+
+function getPriceTier(price: number, peerPrices: number[]): 'economico' | 'intermediario' | 'premium' {
+  if (!peerPrices.length) return 'intermediario'
+  const p33 = percentile(peerPrices, 0.33)
+  const p66 = percentile(peerPrices, 0.66)
+  if (price <= p33) return 'economico'
+  if (price >= p66) return 'premium'
+  return 'intermediario'
+}
+
+function findLabWeight(
+  aiConfig: AiSuggestionConfig | undefined,
+  family: CatalogFamily,
+  offer: CatalogOffer,
+): number | null {
+  if (!aiConfig?.lab_preferences?.length) return null
+
+  const versionId = family.sourceVersionId || offer.sourceVersionId
+  if (versionId) {
+    const match = aiConfig.lab_preferences.find((pref) => pref.versionId === versionId)
+    if (match) return match.weight
+  }
+
+  const laboratorio = (family.sourceLaboratorio || offer.sourceLaboratorio || '').toLowerCase()
+  if (!laboratorio) return null
+  const fallback = aiConfig.lab_preferences.find((pref) => pref.laboratorio?.toLowerCase() === laboratorio)
+  return fallback ? fallback.weight : null
+}
+
+function resolveBrandWeight(
+  aiConfig: AiSuggestionConfig | undefined,
+  category: ClinicalCategory,
+  family: CatalogFamily,
+  offer: CatalogOffer,
+): { weight: number | null; brand: string | null } {
+  if (!aiConfig?.category_brand_preferences) return { weight: null, brand: null }
+  const prefs = aiConfig.category_brand_preferences as Record<string, { brand: string; weight: number }[] | undefined>
+  const list = prefs[category] || []
+  if (!list.length) return { weight: null, brand: null }
+
+  const descriptor = withoutAccents(
+    `${family.nome} ${offer.raw_label} ${offer.canonical_label || ''}`.toLowerCase(),
+  )
+
+  let best: { weight: number; brand: string } | null = null
+  for (const entry of list) {
+    const brand = withoutAccents(String(entry.brand || '').toLowerCase()).trim()
+    if (!brand) continue
+    if (!descriptor.includes(brand)) continue
+    if (!best || entry.weight > best.weight) {
+      best = { weight: entry.weight, brand: entry.brand }
+    }
+  }
+
+  return best ? { weight: best.weight, brand: best.brand } : { weight: null, brand: null }
+}
+
+function scoreStoreProfile(params: {
+  aiConfig?: AiSuggestionConfig
+  input: RecommendationCaseInput
+  offer: CatalogOffer
+  family: CatalogFamily
+  offerFeatures: Record<string, boolean>
+  finalPrice: number
+  peerPrices: number[]
+  seeksThinness: boolean
+  resistancePriority: number
+  thinnessPriority: number
+}): { score: number; reasons: string[] } {
+  const {
+    aiConfig,
+    input,
+    offer,
+    family,
+    offerFeatures,
+    finalPrice,
+    peerPrices,
+    seeksThinness,
+    resistancePriority,
+    thinnessPriority,
+  } = params
+
+  if (!aiConfig?.store_profile) return { score: 0, reasons: [] }
+
+  const profile = aiConfig.store_profile
+  const reasons: string[] = []
+  let score = 0
+
+  const budgetSignal = normalizeBudgetSignal(input.budget_signal)
+  const priceTier = getPriceTier(finalPrice, peerPrices)
+
+  if (budgetSignal === 'nao_informado') {
+    if (profile.investment_profile === 'economico') {
+      if (priceTier === 'economico') score += 2
+      if (priceTier === 'premium') score -= 2
+      reasons.push('perfil_loja:investimento_economico')
+    }
+    if (profile.investment_profile === 'premium') {
+      if (priceTier === 'premium') score += 2
+      if (priceTier === 'economico') score -= 1.5
+      reasons.push('perfil_loja:investimento_premium')
+    }
+    if (profile.investment_profile === 'equilibrado') {
+      reasons.push('perfil_loja:investimento_equilibrado')
+    }
+  }
+
+  const descriptor = withoutAccents(
+    `${family.nome} ${offer.raw_label} ${offer.canonical_label || ''} ${offer.material || ''}`.toLowerCase(),
+  )
+
+  const techSignal = levelToScore(profile.tech_adoption)
+  if (techSignal !== 0 && /(digital|freeform|4k|id\b|ai\b|individual|plus|3d|high\s*definition)/.test(descriptor)) {
+    score += 1.5 * techSignal
+    reasons.push(`perfil_loja:tech_${profile.tech_adoption}`)
+  }
+
+  const aestheticSignal = levelToScore(profile.aesthetic_priority)
+  if (aestheticSignal !== 0 && (seeksThinness || thinnessPriority > 0.4)) {
+    score += 1.5 * aestheticSignal
+    reasons.push(`perfil_loja:estetica_${profile.aesthetic_priority}`)
+  }
+
+  return { score: Number(score.toFixed(2)), reasons }
+}
+
 function uniqueValues<T>(values: T[]): T[] {
   return Array.from(new Set(values))
 }
@@ -362,6 +510,7 @@ function enrichCaseInput(input: RecommendationCaseInput): RecommendationCaseInpu
     rotina_tags: uniqueStrings(rotinaTags),
     preferred_features: uniqueStrings(preferredFeatures),
     budget_mode: normalizeBudgetMode(input.budget_mode),
+    budget_signal: normalizeBudgetSignal(input.budget_signal),
   }
 }
 
@@ -1154,6 +1303,7 @@ function sameCategories(a: ClinicalCategory[] | undefined, b: ClinicalCategory[]
 function rankRecommendationOptions(params: {
   catalog: RecommendationCatalog
   input: RecommendationCaseInput
+  aiConfig?: AiSuggestionConfig
   forcedClinicalCategories?: ClinicalCategory[]
   requiredFeatures?: string[]
   maxPrice?: number | null
@@ -1164,6 +1314,7 @@ function rankRecommendationOptions(params: {
   const {
     catalog,
     input,
+    aiConfig,
     forcedClinicalCategories,
     requiredFeatures = [],
     maxPrice,
@@ -1275,8 +1426,45 @@ function rankRecommendationOptions(params: {
       input,
     })
 
+    const offerFeatures = normalizeFeatureFlags(entry.offer.features)
+    const labWeight = findLabWeight(aiConfig, entry.family, entry.offer)
+    const labBonus = labWeight != null ? (labWeight - 3) * 10 : 0
+    const labReasons = labWeight != null && labBonus !== 0 ? [`preferencia_lab:${labWeight}`] : []
+
+    const brandWeight = resolveBrandWeight(
+      aiConfig,
+      entry.clinicalEvaluation.effectiveCategory,
+      entry.family,
+      entry.offer,
+    )
+    const brandBonus = brandWeight.weight != null ? (brandWeight.weight - 3) * 8 : 0
+    const brandReasons =
+      brandWeight.weight != null && brandBonus !== 0 && brandWeight.brand
+        ? [`preferencia_marca:${brandWeight.brand}:${brandWeight.weight}`]
+        : []
+
+    const profileScoring = scoreStoreProfile({
+      aiConfig,
+      input,
+      offer: entry.offer,
+      family: entry.family,
+      offerFeatures,
+      finalPrice: entry.finalPrice,
+      peerPrices,
+      seeksThinness: wantsThinLens(input),
+      resistancePriority: getResistancePriority(input),
+      thinnessPriority: getThinnessPriority(input),
+    })
+
     const totalScore = Number(
-      (offerScoring.score + treatmentScoring.score + embeddedScoring.score).toFixed(2),
+      (
+        offerScoring.score +
+        treatmentScoring.score +
+        embeddedScoring.score +
+        labBonus +
+        brandBonus +
+        profileScoring.score
+      ).toFixed(2),
     )
     const sourceLabel =
       entry.family.sourceLaboratorio ||
@@ -1297,10 +1485,18 @@ function rankRecommendationOptions(params: {
       treatmentType: entry.treatment?.tipo || embeddedTreatment?.type || null,
       sourceLaboratorio: entry.family.sourceLaboratorio || entry.offer.sourceLaboratorio || null,
       sourceVersao: entry.family.sourceVersao || entry.offer.sourceVersao || null,
+      sourceVersionId: entry.family.sourceVersionId || entry.offer.sourceVersionId || null,
       clinicalCategory: entry.clinicalEvaluation.effectiveCategory,
       finalPrice: entry.finalPrice,
       basePrice: entry.offer.base_price,
-      reasons: [...offerScoring.reasons, ...treatmentScoring.reasons, ...embeddedScoring.reasons],
+      reasons: uniqueStrings([
+        ...offerScoring.reasons,
+        ...treatmentScoring.reasons,
+        ...embeddedScoring.reasons,
+        ...labReasons,
+        ...brandReasons,
+        ...profileScoring.reasons,
+      ]),
       score: totalScore,
       sourcePageReference: entry.offer.source_page_reference,
       commercialSummary:
@@ -1394,6 +1590,7 @@ export async function loadRecommendationCatalog(versionId: string): Promise<Reco
       clinical_category: normalizeCategory(family.clinical_category),
       sourceLaboratorio: versionMeta?.laboratorio ? String(versionMeta.laboratorio) : null,
       sourceVersao: versionMeta?.versao ? String(versionMeta.versao) : null,
+      sourceVersionId: versionMeta?.id ? String(versionMeta.id) : null,
     })),
     offers: (offers || []).map((offer: Record<string, unknown>) => ({
       id: String(offer.id),
@@ -1410,6 +1607,7 @@ export async function loadRecommendationCatalog(versionId: string): Promise<Reco
       source_page_reference: offer.source_page_reference ? String(offer.source_page_reference) : null,
       sourceLaboratorio: versionMeta?.laboratorio ? String(versionMeta.laboratorio) : null,
       sourceVersao: versionMeta?.versao ? String(versionMeta.versao) : null,
+      sourceVersionId: versionMeta?.id ? String(versionMeta.id) : null,
     })),
     grids: (grids || []).map((grid: Record<string, unknown>) => ({
       offer_id: String(grid.offer_id),
@@ -1472,6 +1670,7 @@ export async function recommendLensConfigurations(params: {
     targetPrice?: number | null
     excludedConfigKeys?: string[]
     catalog?: RecommendationCatalog
+    aiConfig?: AiSuggestionConfig
 }): Promise<RecommendationOption[]> {
   const {
     versionId,
@@ -1503,6 +1702,7 @@ export async function recommendLensConfigurations(params: {
   const strictRanked = rankRecommendationOptions({
     catalog,
     input,
+    aiConfig: params.aiConfig,
     forcedClinicalCategories: strictCategories,
     requiredFeatures,
     maxPrice,
@@ -1524,6 +1724,7 @@ export async function recommendLensConfigurations(params: {
       rankRecommendationOptions({
         catalog,
         input,
+        aiConfig: params.aiConfig,
         forcedClinicalCategories: exploratoryCategories,
         requiredFeatures,
         maxPrice,
@@ -1706,6 +1907,7 @@ export async function continueRecommendationConversation(params: {
     versionId: nextState.versionId,
     versionIds: nextState.versionIds,
     caseInput: nextState.caseInput,
+    aiConfig: nextState.aiConfig,
     topN: params.topN || 3,
     forcedClinicalCategories: nextState.forcedClinicalCategories,
     requiredFeatures: nextState.requiredFeatures,
@@ -1730,6 +1932,7 @@ export async function startRecommendationConversation(params: {
   versionIds?: string[]
   caseInput: RecommendationCaseInput
   topN?: number
+  aiConfig?: AiSuggestionConfig
 }): Promise<{
   state: RecommendationConversationState
   recommendations: RecommendationOption[]
@@ -1738,6 +1941,7 @@ export async function startRecommendationConversation(params: {
     versionId: params.versionId,
     versionIds: params.versionIds,
     caseInput: enrichCaseInput(params.caseInput),
+    aiConfig: params.aiConfig,
     requiredFeatures: [],
     excludedConfigKeys: [],
     targetPrice: null,
@@ -1748,6 +1952,7 @@ export async function startRecommendationConversation(params: {
     versionId: params.versionId,
     versionIds: params.versionIds,
     caseInput: state.caseInput,
+    aiConfig: params.aiConfig,
     topN: params.topN || 3,
   })
 
