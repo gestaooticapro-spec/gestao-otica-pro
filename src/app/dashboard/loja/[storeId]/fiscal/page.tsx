@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { getFiscalInvoices } from "@/lib/actions/fiscal-db.actions";
 import { consultarNFCe, cancelarNota } from "@/lib/actions/fiscal.actions";
 import {
     FileText, Plus, Search, Loader2, AlertCircle,
-    CheckCircle, XCircle, Clock, Download, RefreshCw, Ban, MessageCircle, FileArchive
+    CheckCircle, XCircle, Clock, Download, RefreshCw, Ban, MessageCircle, FileArchive, ArrowLeft, Printer
 } from "lucide-react";
 import Link from "next/link";
 
@@ -31,6 +32,7 @@ type Invoice = {
 
 export default function FiscalDashboard({ params }: { params: { storeId: string } }) {
     const storeId = parseInt(params.storeId);
+    const router = useRouter();
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
@@ -142,8 +144,24 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
         }
     };
 
+    const handlePrint = (invoiceId: string) => {
+        const url = `/api/fiscal/print/${invoiceId}`;
+        const iframe = document.createElement("iframe");
+        iframe.style.display = "none";
+        iframe.src = url;
+        document.body.appendChild(iframe);
+        iframe.onload = () => {
+            try {
+                iframe.contentWindow?.print();
+            } catch (e) {
+                window.open(url, "_blank");
+            }
+            setTimeout(() => document.body.removeChild(iframe), 60000);
+        };
+    };
+
     const handleWhatsApp = (inv: Invoice) => {
-        const pdfLink = inv.pdf_url || "";
+        const pdfLink = `${window.location.origin}/api/fiscal/print/${inv.id}?download=true`;
         const firstName = inv.destinatario_nome?.split(" ")[0] || "";
         const tipoText = inv.tipo_documento === "NFSe" ? "Nota Fiscal de Serviço (NFS-e)" : "Nota Fiscal de Consumidor (NFC-e)";
         const text = `Olá${firstName ? `, ${firstName}` : ""}! Segue o link para baixar sua ${tipoText}:\n\n${pdfLink}`;
@@ -197,9 +215,18 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
         <div className="space-y-6 pb-32 p-6">
             {/* CABEÇALHO */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h1 className="text-3xl font-black text-[#1A1A1A] tracking-tight uppercase">Fiscal (NFC-e)</h1>
-                    <p className="text-stone-500 text-[10px] font-black uppercase tracking-[0.2em]">Gerencie suas notas fiscais de consumidor.</p>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => router.back()}
+                        className="p-2 rounded-full bg-white border border-stone-200 hover:border-stone-400 text-stone-500 hover:text-stone-800 shadow-sm transition hover:scale-105"
+                        title="Voltar"
+                    >
+                        <ArrowLeft size={18} />
+                    </button>
+                    <div>
+                        <h1 className="text-3xl font-black text-[#1A1A1A] tracking-tight uppercase">Fiscal (NFC-e)</h1>
+                        <p className="text-stone-500 text-[10px] font-black uppercase tracking-[0.2em]">Gerencie suas notas fiscais de consumidor.</p>
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -367,10 +394,21 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
                                             </td>
                                             <td className="px-5 py-4 text-right">
                                                 <div className="flex justify-end gap-1.5">
+                                                    {/* Imprimir PDF */}
+                                                    {(inv.status === "authorized" || inv.status === "cancelled") && (
+                                                        <button
+                                                            onClick={() => handlePrint(inv.id)}
+                                                            className="p-2 bg-stone-50 hover:bg-stone-100 text-stone-600 rounded-lg transition"
+                                                            title="Imprimir DANFE"
+                                                        >
+                                                            <Printer size={15} />
+                                                        </button>
+                                                    )}
+
                                                     {/* Download PDF */}
-                                                    {inv.pdf_url && (inv.status === "authorized" || inv.status === "cancelled") && (
+                                                    {(inv.status === "authorized" || inv.status === "cancelled") && (
                                                         <a
-                                                            href={inv.pdf_url}
+                                                            href={`/api/fiscal/print/${inv.id}?download=true`}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
                                                             className="p-2 bg-stone-50 hover:bg-stone-100 text-stone-600 rounded-lg transition"
@@ -381,7 +419,7 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
                                                     )}
 
                                                     {/* WhatsApp */}
-                                                    {inv.pdf_url && inv.status === "authorized" && (
+                                                    {inv.status === "authorized" && (
                                                         <button
                                                             onClick={() => handleWhatsApp(inv)}
                                                             className="p-2 bg-green-50 hover:bg-green-100 text-green-600 rounded-lg transition"

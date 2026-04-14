@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { Loader2, AlertTriangle, CheckCircle2, X, FileText, Save } from 'lucide-react'
+import { Loader2, AlertTriangle, CheckCircle2, X, FileText, Save, ExternalLink, UserX } from 'lucide-react'
+import Link from 'next/link'
 import { emitirNFCe } from '@/lib/actions/fiscal.actions'
 import { getTenantIdByStore, getProductFiscalData, updateCustomerCpf } from '@/lib/actions/fiscal-db.actions'
 
@@ -57,6 +58,7 @@ export default function FiscalEmissionModal({
     const [cpfInput, setCpfInput] = useState(existingCpf)
     const [cpfSaving, setCpfSaving] = useState(false)
     const [cpfSaved, setCpfSaved] = useState(false)
+    const [identificarCliente, setIdentificarCliente] = useState(true)
 
     const cpfDigits = cpfInput.replace(/\D/g, '')
     const cpfIsValid = validaCPF(cpfInput)
@@ -125,7 +127,9 @@ export default function FiscalEmissionModal({
                 })
             )
 
-            const cpfFinal = cpfEditable ? (cpfIsValid ? cpfDigits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '') : existingCpf
+            const cpfFinal = identificarCliente
+                ? (cpfEditable ? (cpfIsValid ? cpfDigits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '') : existingCpf)
+                : ''
 
             const result = await emitirNFCe({
                 organization_id: tenantId,
@@ -133,8 +137,8 @@ export default function FiscalEmissionModal({
                 work_order_id: venda.id,
                 cliente: {
                     cpf_cnpj: cpfFinal,
-                    nome: customer?.full_name || customer?.nome || 'Consumidor Final',
-                    email: customer?.email,
+                    nome: identificarCliente ? (customer?.full_name || customer?.nome || 'Consumidor Final') : 'Consumidor Final',
+                    email: identificarCliente ? customer?.email : undefined,
                 },
                 itens: itensMapeados,
                 valor_total: valorTotal,
@@ -144,10 +148,7 @@ export default function FiscalEmissionModal({
 
             if (result.success) {
                 setSuccessMsg("NFC-e emitida com sucesso!")
-                setTimeout(() => {
-                    onSuccess()
-                    onClose()
-                }, 2000)
+                onSuccess()
             } else {
                 setError(result.error || "Erro desconhecido na emissão.")
             }
@@ -183,16 +184,34 @@ export default function FiscalEmissionModal({
                 <div className="p-6 space-y-4">
 
                     {error && (
-                        <div className="bg-red-500/10 border border-red-500/30 text-red-300 px-4 py-3 rounded-lg text-sm flex items-start gap-2">
-                            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-red-400" />
-                            <span>{error}</span>
+                        <div className="bg-red-500/10 border border-red-500/30 text-red-300 px-4 py-3 rounded-lg text-sm space-y-2">
+                            <div className="flex items-start gap-2">
+                                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-red-400" />
+                                <span>{error}</span>
+                            </div>
+                            <Link
+                                href={`/dashboard/loja/${venda.store_id}/fiscal`}
+                                className="flex items-center gap-1.5 text-xs font-bold text-red-300 hover:text-red-100 underline underline-offset-2 transition-colors"
+                            >
+                                <ExternalLink className="h-3 w-3" />
+                                Ver notas fiscais emitidas
+                            </Link>
                         </div>
                     )}
 
                     {successMsg && (
-                        <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
-                            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                            <span>{successMsg}</span>
+                        <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 px-4 py-3 rounded-lg text-sm space-y-2">
+                            <div className="flex items-center gap-2">
+                                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                                <span>{successMsg}</span>
+                            </div>
+                            <Link
+                                href={`/dashboard/loja/${venda.store_id}/fiscal`}
+                                className="flex items-center gap-1.5 text-xs font-bold text-emerald-300 hover:text-emerald-100 underline underline-offset-2 transition-colors"
+                            >
+                                <ExternalLink className="h-3 w-3" />
+                                Ver notas fiscais emitidas
+                            </Link>
                         </div>
                     )}
 
@@ -230,54 +249,79 @@ export default function FiscalEmissionModal({
                     <div className="text-sm bg-white/5 border border-white/10 p-4 rounded-lg space-y-2">
                         <div className="flex justify-between">
                             <span className="text-slate-400">Cliente:</span>
-                            <span className="font-semibold text-slate-200">{customer?.full_name || customer?.nome || 'Consumidor Final'}</span>
+                            <span className="font-semibold text-slate-200">
+                                {identificarCliente ? (customer?.full_name || customer?.nome || 'Consumidor Final') : 'Consumidor Final'}
+                            </span>
+                        </div>
+
+                        {/* Toggle identificação */}
+                        <div className="flex items-center justify-between gap-2 py-1">
+                            <div className="flex items-center gap-1.5 text-slate-400">
+                                <UserX className="h-3.5 w-3.5" />
+                                <span className="text-xs">Identificar cliente na nota</span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIdentificarCliente(v => !v)}
+                                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                                    identificarCliente ? 'bg-blue-500' : 'bg-slate-600'
+                                }`}
+                                role="switch"
+                                aria-checked={identificarCliente}
+                            >
+                                <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ${
+                                    identificarCliente ? 'translate-x-4' : 'translate-x-0'
+                                }`} />
+                            </button>
                         </div>
 
                         {/* CPF */}
-                        <div className="flex items-center justify-between gap-2">
-                            <span className="text-slate-400 shrink-0">CPF:</span>
-                            {cpfEditable ? (
-                                <div className="flex items-center gap-2 flex-1 justify-end">
-                                    <div className="relative">
-                                        <input
-                                            type="text"
-                                            value={cpfInput}
-                                            onChange={e => {
-                                                setCpfInput(formatCPF(e.target.value))
-                                                setCpfSaved(false)
-                                            }}
-                                            placeholder="000.000.000-00"
-                                            maxLength={14}
-                                            className={`w-36 bg-slate-800 border rounded px-2 py-1 text-sm font-mono text-slate-200 outline-none transition-colors ${
-                                                cpfDigits.length === 0 ? 'border-white/20' :
-                                                cpfIsValid ? 'border-emerald-500/60' : 'border-red-500/60'
-                                            }`}
-                                        />
+                        {identificarCliente && (
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="text-slate-400 shrink-0">CPF:</span>
+                                {cpfEditable ? (
+                                    <div className="flex items-center gap-2 flex-1 justify-end">
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                value={cpfInput}
+                                                onChange={e => {
+                                                    setCpfInput(formatCPF(e.target.value))
+                                                    setCpfSaved(false)
+                                                }}
+                                                placeholder="000.000.000-00"
+                                                maxLength={14}
+                                                className={`w-36 bg-slate-800 border rounded px-2 py-1 text-sm font-mono text-slate-200 outline-none transition-colors ${
+                                                    cpfDigits.length === 0 ? 'border-white/20' :
+                                                    cpfIsValid ? 'border-emerald-500/60' : 'border-red-500/60'
+                                                }`}
+                                            />
+                                        </div>
+                                        {cpfIsValid && !cpfSaved && (
+                                            <button
+                                                onClick={handleSaveCpf}
+                                                disabled={cpfSaving}
+                                                title="Salvar CPF no cadastro do cliente"
+                                                className="flex items-center gap-1 px-2 py-1 text-xs font-bold rounded bg-emerald-600/20 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-600/30 transition-colors disabled:opacity-50"
+                                            >
+                                                {cpfSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                                                Salvar
+                                            </button>
+                                        )}
+                                        {cpfSaved && (
+                                            <span className="flex items-center gap-1 text-xs text-emerald-400 font-bold">
+                                                <CheckCircle2 className="h-3 w-3" /> Salvo
+                                            </span>
+                                        )}
+                                        {cpfDigits.length > 0 && !cpfIsValid && (
+                                            <span className="text-xs text-red-400 font-bold">Inválido</span>
+                                        )}
                                     </div>
-                                    {cpfIsValid && !cpfSaved && (
-                                        <button
-                                            onClick={handleSaveCpf}
-                                            disabled={cpfSaving}
-                                            title="Salvar CPF no cadastro do cliente"
-                                            className="flex items-center gap-1 px-2 py-1 text-xs font-bold rounded bg-emerald-600/20 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-600/30 transition-colors disabled:opacity-50"
-                                        >
-                                            {cpfSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                                            Salvar
-                                        </button>
-                                    )}
-                                    {cpfSaved && (
-                                        <span className="flex items-center gap-1 text-xs text-emerald-400 font-bold">
-                                            <CheckCircle2 className="h-3 w-3" /> Salvo
-                                        </span>
-                                    )}
-                                    {cpfDigits.length > 0 && !cpfIsValid && (
-                                        <span className="text-xs text-red-400 font-bold">Inválido</span>
-                                    )}
-                                </div>
-                            ) : (
-                                <span className="font-semibold text-slate-200 font-mono">{existingCpf}</span>
-                            )}
-                        </div>
+                                ) : (
+                                    <span className="font-semibold text-slate-200 font-mono">{existingCpf}</span>
+                                )}
+                            </div>
+                        )}
 
                         <div className="flex justify-between border-t border-white/10 pt-2 mt-2">
                             <span className="text-slate-400">Valor Total:</span>
