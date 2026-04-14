@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { Loader2, AlertTriangle, CheckCircle2, X, FileText, Save, ExternalLink, UserX } from 'lucide-react'
 import Link from 'next/link'
 import { emitirNFCe } from '@/lib/actions/fiscal.actions'
-import { getTenantIdByStore, getProductFiscalData, updateCustomerCpf } from '@/lib/actions/fiscal-db.actions'
+import { getTenantIdByStore, getProductFiscalData, updateCustomerCpf, getEmissoesByVenda } from '@/lib/actions/fiscal-db.actions'
 
 function validaCPF(cpf: string): boolean {
     const stripped = cpf.replace(/\D/g, '')
@@ -37,7 +37,7 @@ interface FiscalEmissionModalProps {
     venda: any
     vendaItens: any[]
     customer: any
-    onSuccess: () => void
+    onSuccess: (environment: 'production' | 'homologation') => void
 }
 
 export default function FiscalEmissionModal({
@@ -53,6 +53,7 @@ export default function FiscalEmissionModal({
     const [error, setError] = useState<string | null>(null)
     const [successMsg, setSuccessMsg] = useState<string | null>(null)
     const [mounted, setMounted] = useState(false)
+    const [emissoesExistentes, setEmissoesExistentes] = useState<{ id: number; environment: string; status: string }[]>([])
 
     const existingCpf = customer?.cpf || customer?.cpf_cnpj || ''
     const [cpfInput, setCpfInput] = useState(existingCpf)
@@ -66,9 +67,19 @@ export default function FiscalEmissionModal({
 
     useEffect(() => {
         setMounted(true)
+        getEmissoesByVenda(venda.id).then(setEmissoesExistentes)
     }, [])
 
     if (!isOpen || !mounted) return null
+
+    const temProducaoEmitida = emissoesExistentes.some(e => e.environment === 'production')
+    const temHomologacaoEmitida = emissoesExistentes.some(e => e.environment === 'homologation')
+
+    // Produção emitida → bloqueia tudo. Homologação emitida → bloqueia só homologação.
+    const producaoDesabilitada = temProducaoEmitida
+    const homologacaoDesabilitada = temHomologacaoEmitida || temProducaoEmitida
+    const emissaoBloqueada = (environment === 'production' && producaoDesabilitada) ||
+                             (environment === 'homologation' && homologacaoDesabilitada)
 
     const valorTotal = venda.valor_final ?? venda.total_amount ?? 0
 
@@ -148,7 +159,7 @@ export default function FiscalEmissionModal({
 
             if (result.success) {
                 setSuccessMsg("NFC-e emitida com sucesso!")
-                onSuccess()
+                onSuccess(environment)
             } else {
                 setError(result.error || "Erro desconhecido na emissão.")
             }
@@ -219,30 +230,55 @@ export default function FiscalEmissionModal({
                     <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ambiente</label>
                         <div className="flex gap-2">
-                            <label className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-lg border cursor-pointer transition-all ${environment === 'production' ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300' : 'border-white/10 bg-white/5 text-slate-400 hover:bg-white/10'}`}>
+                            <label className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-lg border transition-all ${
+                                producaoDesabilitada
+                                    ? 'border-white/5 bg-white/[0.02] text-slate-600 cursor-not-allowed opacity-50'
+                                    : environment === 'production'
+                                        ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300 cursor-pointer'
+                                        : 'border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 cursor-pointer'
+                            }`}>
                                 <input
                                     type="radio"
                                     name="environment"
                                     value="production"
                                     checked={environment === 'production'}
-                                    onChange={() => setEnvironment('production')}
+                                    onChange={() => !producaoDesabilitada && setEnvironment('production')}
+                                    disabled={producaoDesabilitada}
                                     className="sr-only"
                                 />
                                 <span className="text-sm font-bold uppercase tracking-wide">Produção</span>
+                                {temProducaoEmitida && <span className="text-[10px] font-black text-red-400 uppercase">Emitida</span>}
                             </label>
 
-                            <label className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-lg border cursor-pointer transition-all ${environment === 'homologation' ? 'border-blue-500/50 bg-blue-500/10 text-blue-300' : 'border-white/10 bg-white/5 text-slate-400 hover:bg-white/10'}`}>
+                            <label className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-lg border transition-all ${
+                                homologacaoDesabilitada
+                                    ? 'border-white/5 bg-white/[0.02] text-slate-600 cursor-not-allowed opacity-50'
+                                    : environment === 'homologation'
+                                        ? 'border-blue-500/50 bg-blue-500/10 text-blue-300 cursor-pointer'
+                                        : 'border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 cursor-pointer'
+                            }`}>
                                 <input
                                     type="radio"
                                     name="environment"
                                     value="homologation"
                                     checked={environment === 'homologation'}
-                                    onChange={() => setEnvironment('homologation')}
+                                    onChange={() => !homologacaoDesabilitada && setEnvironment('homologation')}
+                                    disabled={homologacaoDesabilitada}
                                     className="sr-only"
                                 />
                                 <span className="text-sm font-bold uppercase tracking-wide">Homologação</span>
+                                {temHomologacaoEmitida && <span className="text-[10px] font-black text-red-400 uppercase">Emitida</span>}
                             </label>
                         </div>
+
+                        {emissaoBloqueada && (
+                            <div className="bg-red-500/10 border border-red-500/30 text-red-300 px-3 py-2 rounded-lg text-xs flex items-center gap-2">
+                                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-400" />
+                                {temProducaoEmitida
+                                    ? 'Nota de produção já emitida para esta venda. Não é possível emitir novamente.'
+                                    : 'Nota de homologação já emitida. Selecione Produção para emitir a nota oficial.'}
+                            </div>
+                        )}
                     </div>
 
                     {/* Resumo */}
@@ -352,7 +388,7 @@ export default function FiscalEmissionModal({
                     </button>
                     <button
                         onClick={handleEmission}
-                        disabled={isLoading || !!successMsg}
+                        disabled={isLoading || !!successMsg || emissaoBloqueada}
                         className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wide"
                     >
                         {isLoading ? (

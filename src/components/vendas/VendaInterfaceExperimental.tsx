@@ -232,9 +232,16 @@ export default function VendaInterfaceExperimental({
         setIsSavingObs(false)
     }
 
-    const handleNFCeSuccess = async () => {
-        setNfEmitida(true)
-        await updateVendaExperimentalFields(venda.id, venda.store_id, { nf_emitida: true })
+    const handleNFCeSuccess = async (environment: 'production' | 'homologation') => {
+        if (environment === 'production') {
+            setNfEmitida(true)
+            await updateVendaExperimentalFields(venda.id, venda.store_id, { nf_emitida: true })
+        }
+        // onDataReload() deliberadamente omitido aqui: revalidatePath desmontaria o modal
+        // antes da mensagem de sucesso ser exibida. O reload acontece ao fechar o modal.
+    }
+
+    const handleNFCeModalClose = async () => {
         await onDataReload()
     }
 
@@ -424,6 +431,7 @@ export default function VendaInterfaceExperimental({
                         onPrint={() => setIsPrintModalOpen(true)}
                         nfEmitida={nfEmitida}
                         onNFCeSuccess={handleNFCeSuccess}
+                        onNFCeModalClose={handleNFCeModalClose}
                     />
                 </div>
             </div>

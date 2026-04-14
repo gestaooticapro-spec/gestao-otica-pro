@@ -24,7 +24,8 @@ interface VendaActionsProps {
     isVendaFechada: boolean
     onPrint: () => void
     nfEmitida: boolean
-    onNFCeSuccess: () => Promise<void>
+    onNFCeSuccess: (environment: 'production' | 'homologation') => Promise<void>
+    onNFCeModalClose: () => Promise<void>
 }
 
 export default function VendaActions({
@@ -36,6 +37,7 @@ export default function VendaActions({
     onPrint,
     nfEmitida,
     onNFCeSuccess,
+    onNFCeModalClose,
 }: VendaActionsProps) {
     const [isReturnModalOpen, setIsReturnModalOpen] = useState(false)
     const [isAuthOpen, setIsAuthOpen] = useState(false)
@@ -252,13 +254,12 @@ export default function VendaActions({
             {isFiscalModalOpen && (
                 <FiscalEmissionModal
                     isOpen={isFiscalModalOpen}
-                    onClose={() => setIsFiscalModalOpen(false)}
+                    onClose={async () => { setIsFiscalModalOpen(false); await onNFCeModalClose() }}
                     venda={venda}
                     vendaItens={vendaItens}
                     customer={customer}
-                    onSuccess={async () => {
-                        setIsFiscalModalOpen(false)
-                        await onNFCeSuccess()
+                    onSuccess={async (env) => {
+                        await onNFCeSuccess(env)
                     }}
                 />
             )}

@@ -176,6 +176,19 @@ export async function getFechamentoData(storeId: number, month: number, year: nu
     return all;
 }
 
+export async function getEmissoesByVenda(vendaId: number) {
+    const supabase = createAdminClient() as any;
+    const { data, error } = await supabase
+        .from("fiscal_invoices")
+        .select("id, environment, status, tipo_documento")
+        .eq("work_order_id", vendaId)
+        .in("status", ["authorized", "processing"])
+        .order("created_at", { ascending: false });
+
+    if (error) return [];
+    return data as { id: number; environment: string; status: string; tipo_documento: string }[];
+}
+
 export async function updateCustomerCpf(customerId: number, cpf: string) {
     const supabase = createClient();
     const { error } = await supabase

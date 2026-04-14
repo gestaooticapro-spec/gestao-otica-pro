@@ -166,7 +166,7 @@ export default function VendasListInterface({ vendas, storeId, mode, startDate, 
                                                         </div>
                                                     ))}
                                                     {venda.nf_emitida && (
-                                                        <span className="text-[9px] font-black bg-blue-500/20 text-blue-400 px-1 rounded border border-blue-500/30" title="Nota Fiscal Emitida">NF</span>
+                                                        <span className="text-[9px] font-black bg-blue-500/20 text-blue-400 px-1 rounded border border-blue-500/30" title="NFC-e emitida">NFC-e</span>
                                                     )}
                                                 </div>
                                                 <div className="text-[10px] text-slate-500 flex items-center gap-1 mt-1 font-medium">
