@@ -46,6 +46,9 @@ type StoreData = {
     csc_id_homologacao?: string | null;
     csc_producao?: string | null;
     csc_id_producao?: string | null;
+    nfce_serie?: number | null;
+    codigo_municipio_ibge?: string | null;
+    regime_tributario?: string | null;
     certificate_thumbprint?: string | null;
     certificate_valid_until?: string | null;
     settings: StoreFeatureSettings | null;
@@ -153,13 +156,17 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                         <label className={labelStyle}>CEP</label>
                         <input name="cep" defaultValue={data.cep ?? ''} className={inputStyle} />
                     </div>
-                    <div className="col-span-3">
+                    <div className="col-span-2">
                         <label className={labelStyle}>Cidade</label>
                         <input name="city" defaultValue={data.city ?? ''} className={inputStyle} />
                     </div>
                     <div className="col-span-1">
                         <label className={labelStyle}>UF</label>
                         <input name="state" defaultValue={data.state ?? ''} className={inputStyle} maxLength={2} />
+                    </div>
+                    <div className="col-span-1">
+                        <label className={labelStyle}>Cód. IBGE</label>
+                        <input name="codigo_municipio_ibge" defaultValue={data.codigo_municipio_ibge ?? ''} className={inputStyle} placeholder="Ex: 4108809" title="Código IBGE do município (obrigatório para NFCe)" />
                     </div>
                     <div className="col-span-4">
                         <label className={labelStyle}>Logradouro</label>
@@ -213,6 +220,39 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                                 <div className="col-span-2">
                                     <label className={labelStyle}>CSC (Código)</label>
                                     <input name="csc_producao" defaultValue={data.csc_producao ?? ''} className={inputStyle} placeholder="Ex: XYZ789..." />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-indigo-500/10 p-3 rounded-lg border border-indigo-500/20">
+                            <p className="text-[10px] font-bold text-indigo-300 uppercase mb-2">Numeração & Regime</p>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className={labelStyle}>Série NFCe</label>
+                                    <input
+                                        name="nfce_serie"
+                                        type="number"
+                                        min="1"
+                                        max="999"
+                                        defaultValue={data.nfce_serie ?? 1}
+                                        className={inputStyle}
+                                        placeholder="Ex: 1"
+                                    />
+                                    <p className="text-[9px] text-indigo-400/60 mt-1 leading-tight">
+                                        Use séries diferentes para lojas do mesmo CNPJ.
+                                    </p>
+                                </div>
+                                <div>
+                                    <label className={labelStyle}>Regime Tributário</label>
+                                    <select
+                                        name="regime_tributario"
+                                        defaultValue={data.regime_tributario ?? '1'}
+                                        className={inputStyle}
+                                    >
+                                        <option value="1">1 – Simples Nacional</option>
+                                        <option value="2">2 – Lucro Presumido</option>
+                                        <option value="3">3 – Lucro Real</option>
+                                    </select>
                                 </div>
                             </div>
                         </div>

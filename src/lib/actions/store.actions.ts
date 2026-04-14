@@ -29,6 +29,9 @@ const StoreProfileSchema = z.object({
     csc_id_homologacao: z.string().optional().nullable(),
     csc_producao: z.string().optional().nullable(),
     csc_id_producao: z.string().optional().nullable(),
+    nfce_serie: z.coerce.number().int().min(1).max(999).optional().nullable(),
+    codigo_municipio_ibge: z.string().optional().nullable(),
+    regime_tributario: z.string().optional().nullable(),
 })
 
 export type StoreActionResult = {
@@ -131,6 +134,9 @@ export async function updateStoreProfile(
         csc_id_homologacao: formData.get('csc_id_homologacao'),
         csc_producao: formData.get('csc_producao'),
         csc_id_producao: formData.get('csc_id_producao'),
+        nfce_serie: formData.get('nfce_serie'),
+        codigo_municipio_ibge: formData.get('codigo_municipio_ibge'),
+        regime_tributario: formData.get('regime_tributario'),
     }
     const preSaleAnalysisEnabled = formData.get('pre_sale_analysis_enabled') === 'on'
 

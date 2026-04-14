@@ -1,8 +1,10 @@
 'use client'
 
-import { useState } from 'react'
-import { Loader2, AlertTriangle, CheckCircle2, X } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import { Loader2, AlertTriangle, CheckCircle2, X, FileText } from 'lucide-react'
 import { emitirNFCe } from '@/lib/actions/fiscal.actions'
+import { getTenantIdByStore, getProductFiscalData } from '@/lib/actions/fiscal-db.actions'
 
 interface FiscalEmissionModalProps {
     isOpen: boolean
@@ -25,8 +27,15 @@ export default function FiscalEmissionModal({
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [successMsg, setSuccessMsg] = useState<string | null>(null)
+    const [mounted, setMounted] = useState(false)
+
+    useEffect(() => {
+        setMounted(true)
+    }, [])
 
     if (!isOpen) return null
+
+    const valorTotal = venda.valor_final ?? venda.total_amount ?? 0
 
     const handleEmission = async () => {
         setIsLoading(true)
@@ -34,36 +43,62 @@ export default function FiscalEmissionModal({
         setSuccessMsg(null)
 
         try {
-            const payload = {
-                organization_id: venda.store_id,
-                cliente: {
-                    cpf_cnpj: customer?.cpf_cnpj || '',
-                    nome: customer?.full_name || 'Consumidor Final',
-                    email: customer?.email,
-                    endereco: customer?.address ? {
-                        logradouro: customer.address,
-                        numero: customer.address_number || 'S/N',
-                        bairro: customer.neighborhood || '',
-                        codigo_municipio: '0000000', // TODO: Ajustar
-                        cep: customer.zip_code
-                    } : undefined
-                },
-                itens: vendaItens.map((item: any) => ({
-                    codigo: item.product_id?.toString() || '0',
-                    descricao: item.product_name || 'Item',
-                    ncm: '00000000', // TODO: Ajustar
-                    cfop: '5102',
-                    unidade: 'UN',
-                    quantidade: item.quantity,
-                    valor_unitario: item.unit_price,
-                    valor_total: item.total_price
-                })),
-                valor_total: venda.total_amount,
-                meio_pagamento: '01',
-                environment: environment
+            const storeId: number = venda.store_id
+
+            // Buscar tenant_id (organization_id real — UUID do dono)
+            const tenantId = await getTenantIdByStore(storeId)
+            if (!tenantId) {
+                setError("Organização não encontrada para esta loja.")
+                return
             }
 
-            const result = await emitirNFCe(payload as any)
+            // Enriquecer itens com NCM/CFOP do cadastro de produtos
+            const itensMapeados = await Promise.all(
+                vendaItens.map(async (item: any) => {
+                    let ncm = '00000000'
+                    let cfop = '5102'
+                    let unidade = 'UN'
+
+                    if (item.product_id) {
+                        const fiscal = await getProductFiscalData(item.product_id)
+                        if (fiscal) {
+                            ncm = fiscal.ncm || '00000000'
+                            cfop = fiscal.cfop || '5102'
+                            unidade = fiscal.unidade || 'UN'
+                        }
+                    }
+
+                    const quant = item.quantidade ?? item.quantity ?? 1;
+                    const vUnit = item.valor_unitario ?? item.unit_price ?? 0;
+                    const vTot = item.valor_total_item ?? item.total_price ?? item.valor_total ?? (quant * vUnit);
+
+                    return {
+                        codigo: item.product_id?.toString() || '0',
+                        descricao: item.descricao || item.product_name || item.nome || 'Item',
+                        ncm,
+                        cfop,
+                        unidade,
+                        quantidade: quant,
+                        valor_unitario: vUnit,
+                        valor_total: vTot,
+                    }
+                })
+            )
+
+            const result = await emitirNFCe({
+                organization_id: tenantId,
+                store_id: storeId,
+                work_order_id: venda.id,
+                cliente: {
+                    cpf_cnpj: customer?.cpf || customer?.cpf_cnpj || '',
+                    nome: customer?.full_name || customer?.nome || 'Consumidor Final',
+                    email: customer?.email,
+                },
+                itens: itensMapeados,
+                valor_total: valorTotal,
+                meio_pagamento: '01',
+                environment,
+            })
 
             if (result.success) {
                 setSuccessMsg("NFC-e emitida com sucesso!")
@@ -82,17 +117,24 @@ export default function FiscalEmissionModal({
         }
     }
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+    if (!isOpen || !mounted) return null
+
+    return createPortal(
+        <div className="fixed inset-0 z-[100] grid place-items-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto custom-scrollbar animate-in fade-in duration-300">
+            <div className="bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300">
 
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-                    <div>
-                        <h2 className="text-lg font-bold text-gray-900">Emitir NFC-e</h2>
-                        <p className="text-sm text-gray-500">Confirme os dados para emissão.</p>
+                <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-blue-500/20 p-2 rounded-lg">
+                            <FileText className="h-5 w-5 text-blue-400" />
+                        </div>
+                        <div>
+                            <h2 className="text-base font-bold text-slate-100">Emitir NFC-e</h2>
+                            <p className="text-xs text-slate-400">Confirme os dados para emissão</p>
+                        </div>
                     </div>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+                    <button onClick={onClose} disabled={isLoading} className="text-slate-400 hover:text-slate-200 transition-colors disabled:opacity-50">
                         <X className="h-5 w-5" />
                     </button>
                 </div>
@@ -101,83 +143,96 @@ export default function FiscalEmissionModal({
                 <div className="p-6 space-y-4">
 
                     {error && (
-                        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md text-sm flex items-start gap-2">
-                            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                        <div className="bg-red-500/10 border border-red-500/30 text-red-300 px-4 py-3 rounded-lg text-sm flex items-start gap-2">
+                            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-red-400" />
                             <span>{error}</span>
                         </div>
                     )}
 
                     {successMsg && (
-                        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md text-sm flex items-center gap-2">
-                            <CheckCircle2 className="h-4 w-4" />
+                        <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
+                            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
                             <span>{successMsg}</span>
                         </div>
                     )}
 
+                    {/* Ambiente */}
                     <div className="space-y-2">
-                        <label className="text-sm font-semibold text-gray-700">Ambiente de Emissão</label>
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ambiente de Emissão</label>
                         <div className="flex flex-col gap-2">
-                            <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${environment === 'homologation' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-gray-200 hover:bg-gray-50'}`}>
+                            <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${environment === 'homologation' ? 'border-blue-500/50 bg-blue-500/10' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}>
                                 <input
                                     type="radio"
                                     name="environment"
                                     value="homologation"
                                     checked={environment === 'homologation'}
                                     onChange={() => setEnvironment('homologation')}
-                                    className="w-4 h-4 text-blue-600"
+                                    className="w-4 h-4 text-blue-500"
                                 />
                                 <div>
-                                    <span className="block text-sm font-medium text-gray-900">Homologação (Teste)</span>
-                                    <span className="block text-xs text-gray-500">Sem valor fiscal, para testes.</span>
+                                    <span className="block text-sm font-semibold text-slate-200">Homologação (Teste)</span>
+                                    <span className="block text-xs text-slate-400">Sem valor fiscal, para testes.</span>
                                 </div>
                             </label>
 
-                            <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${environment === 'production' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-gray-200 hover:bg-gray-50'}`}>
+                            <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${environment === 'production' ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}>
                                 <input
                                     type="radio"
                                     name="environment"
                                     value="production"
                                     checked={environment === 'production'}
                                     onChange={() => setEnvironment('production')}
-                                    className="w-4 h-4 text-blue-600"
+                                    className="w-4 h-4 text-emerald-500"
                                 />
                                 <div>
-                                    <span className="block text-sm font-medium text-gray-900">Produção (Valendo)</span>
-                                    <span className="block text-xs text-gray-500">Nota fiscal válida com valor legal.</span>
+                                    <span className="block text-sm font-semibold text-slate-200">Produção (Valendo)</span>
+                                    <span className="block text-xs text-slate-400">Nota fiscal válida com valor legal.</span>
                                 </div>
                             </label>
                         </div>
                     </div>
 
-                    <div className="text-sm text-gray-500 bg-gray-50 p-3 rounded-md space-y-1">
+                    {/* Resumo */}
+                    <div className="text-sm bg-white/5 border border-white/10 p-4 rounded-lg space-y-2">
                         <div className="flex justify-between">
-                            <span>Cliente:</span>
-                            <span className="font-medium text-gray-900">{customer?.full_name || 'Consumidor Final'}</span>
+                            <span className="text-slate-400">Cliente:</span>
+                            <span className="font-semibold text-slate-200">{customer?.full_name || customer?.nome || 'Consumidor Final'}</span>
                         </div>
                         <div className="flex justify-between">
-                            <span>Valor Total:</span>
-                            <span className="font-medium text-gray-900">R$ {venda.total_amount?.toFixed(2)}</span>
+                            <span className="text-slate-400">CPF:</span>
+                            <span className="font-semibold text-slate-200">{customer?.cpf || customer?.cpf_cnpj || '—'}</span>
+                        </div>
+                        <div className="flex justify-between border-t border-white/10 pt-2 mt-2">
+                            <span className="text-slate-400">Valor Total:</span>
+                            <span className="font-bold text-emerald-400">R$ {valorTotal.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between">
-                            <span>Itens:</span>
-                            <span className="font-medium text-gray-900">{vendaItens.length}</span>
+                            <span className="text-slate-400">Itens:</span>
+                            <span className="font-semibold text-slate-200">{vendaItens.length}</span>
                         </div>
                     </div>
+
+                    {environment === 'production' && (
+                        <div className="bg-amber-500/10 border border-amber-500/30 text-amber-300 px-4 py-3 rounded-lg text-xs flex items-start gap-2">
+                            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                            <span>Você está emitindo em <strong>PRODUÇÃO</strong>. Esta nota terá valor legal e não poderá ser cancelada após 30 minutos.</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Footer */}
-                <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+                <div className="px-6 py-4 bg-white/5 border-t border-white/10 flex justify-end gap-3">
                     <button
                         onClick={onClose}
                         disabled={isLoading}
-                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                        className="px-4 py-2 text-sm font-bold text-slate-300 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors disabled:opacity-50 uppercase tracking-wide"
                     >
                         Cancelar
                     </button>
                     <button
                         onClick={handleEmission}
                         disabled={isLoading || !!successMsg}
-                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wide"
                     >
                         {isLoading ? (
                             <>
@@ -185,11 +240,15 @@ export default function FiscalEmissionModal({
                                 Emitindo...
                             </>
                         ) : (
-                            'Emitir Nota'
+                            <>
+                                <FileText className="h-4 w-4" />
+                                Emitir NFC-e
+                            </>
                         )}
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     )
 }

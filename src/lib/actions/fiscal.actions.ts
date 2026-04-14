@@ -1,10 +1,12 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getNuvemFiscalToken } from "@/lib/nuvemfiscal";
 
 type EmissionPayload = {
     organization_id: string;
+    store_id?: number; // Necessário para buscar a série NFCe configurada na loja
     work_order_id?: number;
     cliente: {
         cpf_cnpj: string;
@@ -30,40 +32,153 @@ type EmissionPayload = {
     environment?: 'production' | 'homologation';
 };
 
+function normalizeDocument(value?: string | null) {
+    const normalized = value?.replace(/\D/g, "") || "";
+    return normalized || null;
+}
+
+function buildOutputInvoiceSnapshot(
+    payload: EmissionPayload,
+    company: any,
+    issuedAt: string
+) {
+    return {
+        direction: "output",
+        data_emissao: issuedAt,
+        valor_total: payload.valor_total,
+        emitente_nome: company.razao_social || company.nome_fantasia || null,
+        emitente_cnpj: normalizeDocument(company.cnpj || company.cpf_cnpj),
+        destinatario_nome: payload.cliente.nome || null,
+        destinatario_cnpj: normalizeDocument(payload.cliente.cpf_cnpj),
+    };
+}
+
+async function tryFetchXmlContent(xmlUrl?: string | null) {
+    if (!xmlUrl) return null;
+    try {
+        const response = await fetch(xmlUrl);
+        if (!response.ok) return null;
+        return await response.text();
+    } catch (error) {
+        console.warn("[Fiscal] Nao foi possivel baixar XML automaticamente:", error);
+        return null;
+    }
+}
+
+async function ensureNoActiveInvoiceForWorkOrder(
+    supabase: any,
+    payload: EmissionPayload,
+    tipoDocumento: "NFCe" | "NFSe",
+    environment: "production" | "homologation"
+) {
+    if (!payload.work_order_id) return null;
+
+    const { data: existingInvoice, error } = await supabase
+        .from("fiscal_invoices")
+        .select("id, status")
+        .eq("organization_id", payload.organization_id)
+        .eq("work_order_id", payload.work_order_id)
+        .eq("tipo_documento", tipoDocumento)
+        .eq("direction", "output")
+        .eq("environment", environment)
+        .in("status", ["draft", "processing", "authorized"])
+        .limit(1)
+        .maybeSingle();
+
+    if (error) {
+        throw new Error(`Nao foi possivel validar duplicidade de ${tipoDocumento}.`);
+    }
+
+    if (!existingInvoice) return null;
+
+    return `Ja existe ${tipoDocumento} ${environment === "production" ? "de producao" : "de homologacao"} para esta OS.`;
+}
+
 export async function emitirNFCe(payload: EmissionPayload) {
     const supabase = createClient();
+    const adminSupabase = createAdminClient();
     let invoiceId: number | null = null;
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     console.log("[emitirNFCe] User ID:", user?.id, "Auth Error:", authError?.message);
 
     try {
-        // 1. Buscar Token Nuvem Fiscal
         const env = payload.environment || 'production';
+
+        // 1. Validar duplicidade antes de qualquer operação
+        const duplicateError = await ensureNoActiveInvoiceForWorkOrder(adminSupabase, payload, "NFCe", env);
+        if (duplicateError) {
+            return { success: false, error: duplicateError };
+        }
+
+        // 2. Buscar Token Nuvem Fiscal
         const token = await getNuvemFiscalToken(env);
 
-        // 2. Buscar Configurações da Empresa (Emissor)
-        const { data: company } = await supabase
-            .from("company_settings")
-            .select("*")
-            .eq("organization_id", payload.organization_id)
+        // 3. Buscar dados da loja (fonte de dados fiscais na ótica)
+        if (!payload.store_id) {
+            throw new Error("store_id ausente no payload. Não é possível emitir sem identificar a loja.");
+        }
+
+        const { data: store } = await adminSupabase
+            .from("stores")
+            .select("id, name, razao_social, cnpj, inscricao_estadual, street, number, neighborhood, city, state, cep, phone, whatsapp, email, nfce_serie, codigo_municipio_ibge, regime_tributario")
+            .eq("id", payload.store_id)
             .single();
 
-        if (!company) {
-            console.error("Empresa não encontrada para org:", payload.organization_id);
-            throw new Error("Configurações da empresa não encontradas.");
+        if (!store) {
+            console.error("Loja não encontrada para store_id:", payload.store_id);
+            throw new Error("Configurações da loja não encontradas.");
         }
 
-        console.log("[emitirNFCe] Dados da empresa:", JSON.stringify(company, null, 2));
+        // Mapear campos da tabela stores para o formato esperado pelo payload NFCe
+        const company = {
+            cnpj: store.cnpj,
+            cpf_cnpj: store.cnpj,
+            razao_social: store.razao_social || store.name,
+            nome_fantasia: store.name,
+            logradouro: store.street,
+            numero: store.number,
+            complemento: null,
+            bairro: store.neighborhood,
+            codigo_municipio_ibge: store.codigo_municipio_ibge,
+            cidade: store.city,
+            uf: store.state,
+            cep: store.cep,
+            inscricao_estadual: store.inscricao_estadual,
+            regime_tributario: store.regime_tributario || "1",
+            email_contato: store.email,
+            telefone: store.phone || store.whatsapp,
+        };
 
-        // Compatibilidade: Verifica cnpj ou cpf_cnpj
-        const cnpj = company.cnpj || company.cpf_cnpj;
+        console.log("[emitirNFCe] Dados da loja:", JSON.stringify(company, null, 2));
 
+        const cnpj = company.cnpj;
         if (!cnpj) {
-            throw new Error("Dados da empresa incompletos para emissão (CNPJ ausente).");
+            throw new Error("CNPJ não configurado na loja. Preencha nas configurações.");
         }
 
-        // 3. Montar JSON para Nuvem Fiscal (NFC-e)
+        if (!company.codigo_municipio_ibge) {
+            throw new Error("Código IBGE do município não configurado na loja. Preencha nas configurações.");
+        }
+
+        // 4. Buscar série NFCe configurada na loja
+        const currentSerie = store.nfce_serie || 1;
+
+        // 5. Obter próxima numeração sequencial de forma atômica via RPC
+        // Usa admin client para garantir permissão de execução independente de RLS
+        const { data: nextNumber, error: rpcError } = await adminSupabase.rpc("get_next_nfce_number", {
+            p_org_id: payload.organization_id,
+            p_serie: currentSerie
+        });
+
+        if (rpcError || !nextNumber) {
+            console.error("Erro ao obter numeração NFCe:", rpcError);
+            throw new Error("Não foi possível obter a numeração sequencial para a NFCe.");
+        }
+
+        const issuedAt = new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }).replace(' ', 'T') + '-03:00';
+
+        // 6. Montar JSON para Nuvem Fiscal (NFC-e)
         // Documentação: https://dev.nuvemfiscal.com.br/docs/api#tag/Nfe/operation/EmitirNfe
         const nfePayload = {
             ambiente: env === 'production' ? 'producao' : 'homologacao',
@@ -73,9 +188,9 @@ export async function emitirNFCe(payload: EmissionPayload) {
                     cUF: Number(company.codigo_municipio_ibge?.substring(0, 2)),
                     natOp: "VENDA DE MERCADORIA",
                     mod: 65, // 65 = NFC-e
-                    serie: 1,
-                    nNF: Math.floor(Math.random() * 100000) + 1, // TODO: Controle sequencial real
-                    dhEmi: new Date().toISOString(),
+                    serie: currentSerie,
+                    nNF: nextNumber,
+                    dhEmi: issuedAt,
                     tpNF: 1, // 1 = Saída
                     idDest: 1, // 1 = Interna
                     cMunFG: Number(company.codigo_municipio_ibge),
@@ -89,38 +204,42 @@ export async function emitirNFCe(payload: EmissionPayload) {
                     verProc: "GestaoOticaPro 1.0"
                 },
                 emit: {
-                    CNPJ: company.cnpj.replace(/\D/g, ""),
+                    CNPJ: cnpj.replace(/\D/g, ""),
                     xNome: company.razao_social,
                     xFant: company.nome_fantasia,
                     enderEmit: {
-                        xLgr: company.logradouro,
-                        nro: company.numero,
-                        xCpl: company.complemento || undefined,
-                        xBairro: company.bairro,
+                        xLgr: company.logradouro?.trim() || "Não Informado",
+                        nro: (company.numero?.trim() && company.numero.trim() !== "") ? company.numero.trim() : "S/N",
+                        xCpl: company.complemento?.trim() || undefined,
+                        xBairro: company.bairro?.trim() && company.bairro.trim().length >= 2 ? company.bairro.trim() : "Não Informado",
                         cMun: Number(company.codigo_municipio_ibge),
-                        xMun: company.cidade,
+                        xMun: company.cidade?.trim() || "Não Informado",
                         UF: company.uf,
                         CEP: company.cep?.replace(/\D/g, ""),
                         cPais: "1058",
                         xPais: "BRASIL"
                     },
-                    IE: company.inscricao_estadual?.replace(/\D/g, ""),
+                    IE: company.inscricao_estadual?.replace(/\D/g, "") || "ISENTO",
                     CRT: Number(company.regime_tributario || "1") // 1 = Simples Nacional
                 },
-                dest: payload.cliente.cpf_cnpj ? {
-                    CNPJ: payload.cliente.cpf_cnpj.length > 11 ? payload.cliente.cpf_cnpj.replace(/\D/g, "") : undefined,
-                    CPF: payload.cliente.cpf_cnpj.length <= 11 ? payload.cliente.cpf_cnpj.replace(/\D/g, "") : undefined,
-                    xNome: payload.cliente.nome,
-                    indIEDest: 9, // 9 = Não Contribuinte
-                    email: payload.cliente.email
-                } : undefined, // Consumidor não identificado se não tiver CPF
+                dest: (() => {
+                    const cleanDoc = payload.cliente.cpf_cnpj ? payload.cliente.cpf_cnpj.replace(/\D/g, "") : "";
+                    if (!cleanDoc) return undefined;
+                    return {
+                        CNPJ: cleanDoc.length > 11 ? cleanDoc : undefined,
+                        CPF: cleanDoc.length <= 11 ? cleanDoc : undefined,
+                        xNome: payload.cliente.nome,
+                        indIEDest: 9, // 9 = Não Contribuinte
+                        email: payload.cliente.email || undefined
+                    };
+                })(),
                 det: payload.itens.map((item, index) => ({
                     nItem: index + 1,
                     prod: {
                         cProd: item.codigo,
                         cEAN: "SEM GTIN",
                         xProd: item.descricao,
-                        NCM: item.ncm || "00000000", // Fallback perigoso, ideal validar antes
+                        NCM: item.ncm || "00000000",
                         CFOP: item.cfop || "5102",
                         uCom: item.unidade,
                         qCom: item.quantidade,
@@ -191,16 +310,23 @@ export async function emitirNFCe(payload: EmissionPayload) {
                             vPag: payload.valor_total
                         }
                     ]
+                },
+                infRespTec: {
+                    CNPJ: cnpj.replace(/\D/g, ""),
+                    xContato: company.razao_social ? company.razao_social.substring(0, 60) : "Responsavel Tecnico",
+                    email: company.email_contato || "email@exemplo.com",
+                    fone: company.telefone ? company.telefone.replace(/\D/g, "") : "0000000000"
                 }
             }
         };
 
-        // 4. Salvar Rascunho no Banco (Status: Processing)
-        const { data: invoice, error: dbError } = await supabase
+        // 7. Salvar Rascunho no Banco (Status: Processing)
+        const { data: invoice, error: dbError } = await adminSupabase
             .from("fiscal_invoices")
             .insert({
                 organization_id: payload.organization_id,
                 work_order_id: payload.work_order_id || null,
+                ...buildOutputInvoiceSnapshot(payload, company, issuedAt),
                 tipo_documento: "NFCe",
                 status: "processing",
                 environment: env,
@@ -209,13 +335,18 @@ export async function emitirNFCe(payload: EmissionPayload) {
             .select()
             .single();
 
-        if (dbError) throw dbError;
+        if (dbError) {
+            if (dbError.code === "23505") {
+                return { success: false, error: "Ja existe NFCe ativa para esta OS neste ambiente." };
+            }
+            throw dbError;
+        }
+
         invoiceId = invoice.id;
 
-        // 5. Enviar para Nuvem Fiscal
+        // 8. Enviar para Nuvem Fiscal
         console.log("[NuvemFiscal] Enviando NFE Payload:", JSON.stringify(nfePayload, null, 2));
 
-        // CORREÇÃO: Endpoint correto para NFC-e é /nfce (POST)
         const baseUrl = env === 'production'
             ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
             : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
@@ -239,43 +370,101 @@ export async function emitirNFCe(payload: EmissionPayload) {
             result = responseText ? JSON.parse(responseText) : {};
         } catch (e) {
             console.error("[NuvemFiscal] Erro ao fazer parse da resposta:", responseText);
+            // Atualizar banco para não deixar nota em estado inconsistente
+            if (invoice?.id) {
+                await adminSupabase.from("fiscal_invoices").update({
+                    status: "error",
+                    error_message: `Resposta inválida da API (Status ${response.status}). Provável timeout.`
+                }).eq("id", invoice.id);
+            }
             return { success: false, error: `Erro na resposta da Nuvem Fiscal (Status ${response.status}). Verifique os logs.` };
         }
 
         if (!response.ok) {
-            // Erro na API
-            await supabase
+            const detailedError = result.error?.errors ? `Detalhes: ${JSON.stringify(result.error.errors)}` : '';
+            const errorMsg = `${result.error?.message || "Erro na emissão"}. ${detailedError}`;
+            
+            await adminSupabase
                 .from("fiscal_invoices")
                 .update({
                     status: "error",
-                    error_message: result.error?.message || JSON.stringify(result)
+                    error_message: errorMsg
                 })
                 .eq("id", invoice.id);
 
-            return { success: false, error: result.error?.message || "Erro na emissão" };
+            return { success: false, error: errorMsg };
         }
 
-        // 6. Sucesso - Atualizar Banco
-        await supabase
-            .from("fiscal_invoices")
-            .update({
-                status: "authorized", // Idealmente verificar status real, mas assumindo sincrono por enquanto
+        // 9. Verificar status REAL retornado pela Nuvem Fiscal
+        const realStatus = result.status;
+        console.log("[NuvemFiscal] Status real retornado:", realStatus);
+
+        if (realStatus === 'rejeitado') {
+            const codigoErro = result.autorizacao?.codigo_status || 'N/A';
+            const motivoErro = result.autorizacao?.motivo_status || 'Motivo não informado';
+
+            await adminSupabase
+                .from("fiscal_invoices")
+                .update({
+                    status: "rejected",
+                    nuvemfiscal_uuid: result.id,
+                    chave_acesso: result.chave,
+                    numero: result.numero,
+                    serie: result.serie,
+                    motivo_rejeicao: `Erro ${codigoErro}: ${motivoErro}`
+                })
+                .eq("id", invoice.id);
+
+            return {
+                success: false,
+                error: `NFC-e Rejeitada: Erro ${codigoErro} - ${motivoErro}`,
+                invoiceId: invoice.id
+            };
+        }
+
+        if (realStatus === 'autorizado') {
+            const xmlContent = await tryFetchXmlContent(result.xml_url);
+            const authorizedUpdate: Record<string, any> = {
+                status: "authorized",
                 nuvemfiscal_uuid: result.id,
                 chave_acesso: result.chave,
                 numero: result.numero,
                 serie: result.serie,
-                xml_url: result.xml_url, // Ajustar conforme resposta real
-                pdf_url: result.pdf_url  // Ajustar conforme resposta real
+                xml_url: result.xml_url,
+                pdf_url: result.pdf_url
+            };
+
+            if (xmlContent) {
+                authorizedUpdate.xml_content = xmlContent;
+            }
+
+            await adminSupabase
+                .from("fiscal_invoices")
+                .update(authorizedUpdate)
+                .eq("id", invoice.id);
+
+            return { success: true, invoiceId: invoice.id };
+        }
+
+        // Status "processando" ou outro — manter como processing
+        await adminSupabase
+            .from("fiscal_invoices")
+            .update({
+                status: "processing",
+                nuvemfiscal_uuid: result.id,
+                chave_acesso: result.chave,
+                numero: result.numero,
+                serie: result.serie
             })
             .eq("id", invoice.id);
 
-        return { success: true, invoiceId: invoice.id };
+        return { success: true, invoiceId: invoice.id, message: "Nota em processamento" };
 
     } catch (error: any) {
         console.error("Erro na emissão:", error);
 
         if (invoiceId) {
-            await supabase
+            await adminSupabase
                 .from("fiscal_invoices")
                 .update({
                     status: "error",
@@ -290,6 +479,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
 export async function emitirNFSe(payload: EmissionPayload) {
     const supabase = createClient();
+    const adminSupabase = createAdminClient();
     let invoiceId: number | null = null;
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -344,7 +534,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
                         cTribNac: "140102",
                         cTribMun: "4520007", // CNAE Principal
                         CNAE: "4520007",
-                        cSitTrib: "0", // 0 = Tributada Integralmente (IPM). Se der erro 00060, verificar cadastro na prefeitura ou bug na integração Nuvem Fiscal.
+                        cSitTrib: "0",
                         xDescServ: payload.itens.map(i => `${i.descricao} (R$ ${i.valor_total.toFixed(2)})`).join("; ")
                     }
                 },
@@ -354,9 +544,9 @@ export async function emitirNFSe(payload: EmissionPayload) {
                     },
                     trib: {
                         tribMun: {
-                            tribISSQN: 1, // 1 - Tributável (Com alíquota > 0 para forçar aceite)
+                            tribISSQN: 1, // 1 - Tributável
                             tpRetISSQN: 2, // 2 - Não Retido
-                            pAliq: servicoPrincipal.aliquota_iss || 2.01, // Alíquota efetiva
+                            pAliq: servicoPrincipal.aliquota_iss || 2.01,
                             vISSQN: Number(((payload.valor_total * (servicoPrincipal.aliquota_iss || 2.01)) / 100).toFixed(2))
                         }
                     }
@@ -365,7 +555,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
         };
 
         // 4. Salvar Rascunho no Banco
-        const { data: invoice, error: dbError } = await supabase
+        const { data: invoice, error: dbError } = await adminSupabase
             .from("fiscal_invoices")
             .insert({
                 organization_id: payload.organization_id,
@@ -413,7 +603,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
             const errorDetails = result.error?.message || JSON.stringify(result);
             console.error("[NuvemFiscal] Erro detalhado:", errorDetails);
 
-            await supabase
+            await adminSupabase
                 .from("fiscal_invoices")
                 .update({
                     status: "error",
@@ -425,12 +615,12 @@ export async function emitirNFSe(payload: EmissionPayload) {
         }
 
         // 6. Sucesso
-        await supabase
+        await adminSupabase
             .from("fiscal_invoices")
             .update({
-                status: "processing", // NFS-e é assíncrono, fica processando até consultar depois
+                status: "processing", // NFS-e é assíncrono
                 nuvemfiscal_uuid: result.id,
-                numero: result.numero, // Pode não vir imediato
+                numero: result.numero,
                 serie: result.serie
             })
             .eq("id", invoice.id);
@@ -440,7 +630,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
     } catch (error: any) {
         console.error("Erro na emissão NFS-e:", error);
         if (invoiceId) {
-            await supabase
+            await adminSupabase
                 .from("fiscal_invoices")
                 .update({ status: "error", error_message: error.message })
                 .eq("id", invoiceId);
@@ -450,7 +640,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
 }
 
 export async function consultarNFCe(invoiceId: string) {
-    const supabase = createClient();
+    const supabase = createAdminClient();
 
     try {
         const { data: invoice } = await supabase
@@ -489,23 +679,42 @@ export async function consultarNFCe(invoiceId: string) {
         let errorMessage = null;
 
         if (result.status === 'autorizado') novoStatus = 'authorized';
-        else if (result.status === 'erro' || result.status === 'rejeitado' || result.status === 'negado') {
+        else if (result.status === 'rejeitado') {
+            novoStatus = 'rejected';
+            errorMessage = result.autorizacao?.motivo_status || result.motivo_status || "Rejeitada pela SEFAZ";
+        }
+        else if (result.status === 'erro' || result.status === 'negado') {
             novoStatus = 'error';
             errorMessage = result.motivo_status || "Erro na autorização";
         }
         else if (result.status === 'cancelado') novoStatus = 'cancelled';
 
+        const updatePayload: Record<string, any> = {
+            status: novoStatus,
+            numero: result.numero,
+            serie: result.serie,
+            chave_acesso: result.chave || result.codigo_verificacao,
+            xml_url: result.xml_url,
+            pdf_url: result.pdf_url || result.link_url,
+            error_message: errorMessage
+        };
+
+        // Salvar XML localmente se autorizado
+        if (novoStatus === 'authorized' && result.xml_url && !invoice.xml_content) {
+            try {
+                const xmlResponse = await fetch(result.xml_url);
+                if (xmlResponse.ok) {
+                    updatePayload.xml_content = await xmlResponse.text();
+                    console.log(`[NFCe] XML salvo localmente para nota ${result.numero || invoiceId}`);
+                }
+            } catch (xmlErr) {
+                console.warn('[NFCe] Não foi possível baixar o XML agora.', xmlErr);
+            }
+        }
+
         await supabase
             .from("fiscal_invoices")
-            .update({
-                status: novoStatus,
-                numero: result.numero,
-                serie: result.serie,
-                chave_acesso: result.chave,
-                xml_url: result.xml_url, // Verificar se a API retorna direto ou em objeto aninhado
-                pdf_url: result.pdf_url,
-                error_message: errorMessage
-            })
+            .update(updatePayload)
             .eq("id", invoiceId);
 
         return { success: true, status: novoStatus, data: result };
@@ -517,10 +726,9 @@ export async function consultarNFCe(invoiceId: string) {
 }
 
 export async function consultarNFSe(invoiceId: string) {
-    const supabase = createClient();
+    const supabase = createAdminClient();
 
     try {
-        // 1. Buscar a nota no banco para pegar o ID da NuvemFiscal
         const { data: invoice } = await supabase
             .from("fiscal_invoices")
             .select("*")
@@ -531,12 +739,9 @@ export async function consultarNFSe(invoiceId: string) {
             return { success: false, error: "Nota não encontrada ou sem ID da NuvemFiscal." };
         }
 
-        // 2. Buscar Token
         const env = (invoice.environment as 'production' | 'homologation') || 'production';
         const token = await getNuvemFiscalToken(env);
 
-        // 3. Consultar na NuvemFiscal
-        // Endpoint: GET /nfce/{id} ou /nfse/{id}
         const baseUrl = env === 'production'
             ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
             : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
@@ -556,8 +761,6 @@ export async function consultarNFSe(invoiceId: string) {
             return { success: false, error: result.error?.message || "Erro ao consultar status." };
         }
 
-        // 4. Atualizar status no banco
-        // Mapeamento de status NuvemFiscal -> Nosso Banco
         let novoStatus = invoice.status;
         let errorMessage = null;
 
@@ -574,9 +777,9 @@ export async function consultarNFSe(invoiceId: string) {
                 status: novoStatus,
                 numero: result.numero,
                 serie: result.serie,
-                chave_acesso: result.chave,
-                xml_url: result.xml_url, // Verificar se a API retorna direto ou em objeto aninhado
-                pdf_url: result.pdf_url,
+                chave_acesso: result.chave || result.codigo_verificacao,
+                xml_url: result.xml_url,
+                pdf_url: result.pdf_url || result.link_url,
                 error_message: errorMessage
             })
             .eq("id", invoiceId);
@@ -588,11 +791,11 @@ export async function consultarNFSe(invoiceId: string) {
         return { success: false, error: error.message };
     }
 }
+
 export async function updateCompanyCredentials(organizationId: string, environment: 'production' | 'homologation' = 'production') {
     const supabase = createClient();
 
     try {
-        // 1. Buscar Configurações
         const { data: company } = await supabase
             .from("company_settings")
             .select("*")
@@ -606,8 +809,6 @@ export async function updateCompanyCredentials(organizationId: string, environme
         const cnpj = (company.cnpj || company.cpf_cnpj).replace(/\D/g, "");
         const token = await getNuvemFiscalToken(environment);
 
-        // 2. Atualizar na NuvemFiscal - Endpoint Específico de NFS-e
-        // PUT /empresas/{cpf_cnpj}/nfse
         const payload = {
             ambiente: environment === 'production' ? 'producao' : 'homologacao',
             rps: {
@@ -616,7 +817,7 @@ export async function updateCompanyCredentials(organizationId: string, environme
                 numero: 1
             },
             prefeitura: {
-                login: cnpj, // Usando CNPJ como login
+                login: cnpj,
                 senha: company.nfse_password
             }
         };
@@ -640,7 +841,6 @@ export async function updateCompanyCredentials(organizationId: string, environme
         console.log("[Update Company] Resultado:", JSON.stringify(result, null, 2));
 
         if (!response.ok) {
-            // Se der 404, pode ser que precise criar a configuração primeiro com POST
             if (response.status === 404) {
                 console.log("[Update Company] Tentando POST...");
                 const responsePost = await fetch(`${baseUrl}/empresas/${cnpj}/nfse`, {
@@ -669,10 +869,9 @@ export async function updateCompanyCredentials(organizationId: string, environme
 }
 
 export async function cancelarNota(invoiceId: string, justificativa: string = "Erro de preenchimento") {
-    const supabase = createClient();
+    const supabase = createAdminClient();
 
     try {
-        // 1. Buscar a nota
         const { data: invoice } = await supabase
             .from("fiscal_invoices")
             .select("*")
@@ -686,7 +885,7 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
         const env = (invoice.environment as 'production' | 'homologation') || 'production';
         const token = await getNuvemFiscalToken(env);
 
-        // 2. Verificar prazo de cancelamento para NFC-e (30 minutos)
+        // Verificar prazo de cancelamento para NFC-e (30 minutos)
         if (invoice.tipo_documento === 'NFCe') {
             const emissionTime = new Date(invoice.created_at).getTime();
             const now = Date.now();
@@ -700,8 +899,6 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
             }
         }
 
-        // 3. Cancelar na NuvemFiscal
-        // Endpoint: POST /nfce/{id}/cancelar ou /nfse/{id}/cancelar
         let endpoint = "";
         let body: any = { justificativa };
 
@@ -737,12 +934,11 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
             return { success: false, error: result.error?.message || "Erro ao cancelar nota." };
         }
 
-        // 3. Atualizar Banco
         await supabase
             .from("fiscal_invoices")
             .update({
                 status: "cancelled",
-                error_message: null // Limpar erro se houver
+                error_message: null
             })
             .eq("id", invoiceId);
 
@@ -768,14 +964,12 @@ export async function syncStoreFiscalData(
         try {
             console.log(`[Sync Fiscal] Processando ambiente: ${env.toUpperCase()}`);
 
-            // 1. Autenticar
             const token = await getNuvemFiscalToken(env);
             const cnpj = storeData.cnpj.replace(/\D/g, "");
             const baseUrl = env === 'production'
                 ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
                 : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
 
-            // 2. Criar/Atualizar Empresa
             const companyPayload = {
                 cpf_cnpj: cnpj,
                 nome_razao_social: storeData.razao_social,
@@ -786,7 +980,7 @@ export async function syncStoreFiscalData(
                     numero: storeData.number,
                     complemento: null,
                     bairro: storeData.neighborhood,
-                    codigo_municipio: "0000000", // TODO: IBGE
+                    codigo_municipio: "0000000", // TODO: IBGE real
                     cidade: storeData.city,
                     uf: storeData.state,
                     cep: storeData.cep?.replace(/\D/g, ""),
@@ -794,20 +988,17 @@ export async function syncStoreFiscalData(
                 }
             };
 
-            // Check existence
             const checkResponse = await fetch(`${baseUrl}/empresas/${cnpj}`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
 
             if (checkResponse.ok) {
-                // Update
                 await fetch(`${baseUrl}/empresas/${cnpj}`, {
                     method: "PUT",
                     headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
                     body: JSON.stringify(companyPayload)
                 });
             } else if (checkResponse.status === 404) {
-                // Create
                 const createResponse = await fetch(`${baseUrl}/empresas`, {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
@@ -816,7 +1007,6 @@ export async function syncStoreFiscalData(
                 if (!createResponse.ok) throw new Error(`Falha ao criar empresa em ${env}`);
             }
 
-            // 3. Upload Certificado (se fornecido)
             let certResult = null;
             if (certificateFile && certificatePassword) {
                 console.log(`[Sync Fiscal] Enviando certificado para ${env}...`);
@@ -845,7 +1035,6 @@ export async function syncStoreFiscalData(
         }
     }
 
-    // Retorna sucesso se pelo menos um ambiente funcionou ou se foi parcial
     const prodResult = results.find(r => r.env === 'production');
 
     return {

@@ -1,9 +1,11 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function getTenantIdByStore(storeId: number) {
-    const supabase = createClient();
+    // Usa admin client para ignorar RLS da tabela stores
+    const supabase = createAdminClient();
     const { data, error } = await supabase
         .from("stores")
         .select("tenant_id")
@@ -15,7 +17,7 @@ export async function getTenantIdByStore(storeId: number) {
 }
 
 export async function getFiscalInvoices(storeId: number) {
-    const supabase = createClient();
+    const supabase = createAdminClient();
     const tenantId = await getTenantIdByStore(storeId);
 
     if (!tenantId) return [];
@@ -135,6 +137,42 @@ export async function searchProducts(query: string) {
         cfop: p.cfop,
         unidade: p.unidade_medida
     }));
+}
+
+type FechamentoInvoice = {
+    id: string;
+    numero: string | null;
+    status: string;
+    valor_total: number | null;
+    chave_acesso: string | null;
+    xml_content: string | null;
+    xml_url: string | null;
+    data_emissao: string | null;
+    created_at: string;
+};
+
+export async function getFechamentoData(storeId: number, month: number, year: number): Promise<FechamentoInvoice[] | null> {
+    const supabase = createAdminClient();
+    const tenantId = await getTenantIdByStore(storeId);
+    if (!tenantId) return null;
+
+    const startDate = new Date(year, month, 1).toISOString();
+    const endDate = new Date(year, month + 1, 1).toISOString();
+    const fields = "id, numero, status, valor_total, chave_acesso, xml_content, xml_url, data_emissao, created_at";
+
+    const [{ data: byEmission }, { data: byCreation }] = await Promise.all([
+        supabase.from("fiscal_invoices").select(fields)
+            .eq("organization_id", tenantId).eq("environment", "production").eq("tipo_documento", "NFCe")
+            .gte("data_emissao", startDate).lt("data_emissao", endDate),
+        supabase.from("fiscal_invoices").select(fields)
+            .eq("organization_id", tenantId).eq("environment", "production").eq("tipo_documento", "NFCe")
+            .is("data_emissao", null).gte("created_at", startDate).lt("created_at", endDate),
+    ]);
+
+    const all = [...(byEmission || []), ...(byCreation || [])]
+        .filter((doc, i, arr) => arr.findIndex(d => d.id === doc.id) === i);
+
+    return all;
 }
 
 export async function getProductFiscalData(productId: number) {

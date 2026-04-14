@@ -147,6 +147,7 @@ export default function EmitirNotaPage({ params }: { params: { storeId: string }
 
             const resNFCe = await emitirNFCe({
                 organization_id: tenantId,
+                store_id: storeId, // Necessário para buscar a série NFCe da loja
                 work_order_id: selectedSale?.id, // Mapeado para work_order_id no banco, mas é venda_id
                 cliente: { nome: clienteNome || "CONSUMIDOR FINAL", cpf_cnpj: clienteDoc },
                 itens: itens,

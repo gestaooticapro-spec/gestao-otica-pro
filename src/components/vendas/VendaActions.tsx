@@ -8,7 +8,7 @@ import { Loader2, Check, X, Printer, RefreshCcw, CheckCircle2, Lock, Unlock, Fil
 import ReturnModal from '@/components/modals/ReturnModal'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import AbandonoModal from '@/components/modals/AbandonoModal'
-// import FiscalEmissionModal from '@/components/modals/FiscalEmissionModal'
+import FiscalEmissionModal from '@/components/modals/FiscalEmissionModal'
 
 type Venda = Database['public']['Tables']['vendas']['Row']
 type VendaWithMeta = Venda & { data_fechamento?: string | null }
@@ -39,12 +39,10 @@ export default function VendaActions({
     isSavingNF,
     onToggleNF,
 }: VendaActionsProps) {
-    void customer
-
     const [isReturnModalOpen, setIsReturnModalOpen] = useState(false)
     const [isAuthOpen, setIsAuthOpen] = useState(false)
     const [isAbandonoModalOpen, setIsAbandonoModalOpen] = useState(false)
-    // const [isFiscalModalOpen, setIsFiscalModalOpen] = useState(false)
+    const [isFiscalModalOpen, setIsFiscalModalOpen] = useState(false)
     const [authAction, setAuthAction] = useState<'Finalizar' | 'Reabrir' | null>(null)
 
     const [isPending, startTransition] = useTransition()
@@ -228,18 +226,15 @@ export default function VendaActions({
                 <span>Recibos</span>
             </button>
 
-            {/* BOTÃO NFC-e (TEMPORARIAMENTE BLOQUEADO) */}
+            {/* BOTÃO NFC-e */}
             <button
                 type="button"
-                disabled
-                className="flex items-center gap-2 px-4 h-9 text-sm rounded-lg bg-white/5 text-slate-500 font-bold transition-colors border border-white/10 cursor-not-allowed uppercase tracking-wide"
-                title="Funcionalidade em desenvolvimento"
+                onClick={() => setIsFiscalModalOpen(true)}
+                className="flex items-center gap-2 px-4 h-9 text-sm rounded-lg bg-blue-600/20 border border-blue-500/40 text-blue-400 hover:bg-blue-600/30 font-bold transition-colors uppercase tracking-wide"
+                title="Emitir Nota Fiscal de Consumidor (NFC-e)"
             >
-                <FileText className="h-4 w-4 opacity-50" />
-                <div className="flex flex-col items-start leading-none justify-center h-full">
-                    <span className="opacity-50">NFC-e</span>
-                    <span className="text-[8px] text-amber-500/80 font-black tracking-widest mt-0.5">EM BREVE</span>
-                </div>
+                <FileText className="h-4 w-4" />
+                <span>NFC-e</span>
             </button>
 
             {/* MODAIS */}
@@ -274,19 +269,19 @@ export default function VendaActions({
                 />
             )}
 
-            {/* MODAL FISCAL (NOVO) */}
-            {/* isFiscalModalOpen && (
+            {/* MODAL FISCAL */}
+            {isFiscalModalOpen && (
                 <FiscalEmissionModal
                     isOpen={isFiscalModalOpen}
                     onClose={() => setIsFiscalModalOpen(false)}
                     venda={venda}
                     vendaItens={vendaItens}
-                    customer={customer} // Passando customer corretamente
+                    customer={customer}
                     onSuccess={() => {
                         onStatusChange()
                     }}
                 />
-            ) */}
+            )}
         </div>
     )
 }
