@@ -9,7 +9,7 @@ import {
 import { Database } from '@/lib/database.types'
 import {
     ScanBarcode, Search, ShoppingCart, Loader2,
-    Trash2, ArrowRight, Package, Plus, UserCircle, AlertTriangle, SearchX, Image as ImageIcon
+    Trash2, ArrowRight, Package, Plus, UserCircle, AlertTriangle, SearchX
 } from 'lucide-react'
 import PaymentModal from '@/components/modals/PaymentModal'
 
@@ -92,8 +92,6 @@ export default function PdvExpressInterface({ storeId, employees }: Props) {
 
     const searchInputRef = useRef<HTMLInputElement>(null)
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
-    // NOVO ESTADO: Controle da imagem de fundo
-    const [showBackground, setShowBackground] = useState(true)
 
     useEffect(() => { searchInputRef.current?.focus() }, [])
 
@@ -183,13 +181,6 @@ export default function PdvExpressInterface({ storeId, employees }: Props) {
 
     return (
         <div className="flex flex-col h-full bg-transparent overflow-hidden relative">
-            {/* Background Image Layer */}
-            {showBackground && (
-                <div
-                    className="absolute inset-0 z-0 pointer-events-none opacity-40 bg-cover bg-center"
-                    style={{ backgroundImage: "url('/pdvexpress.jpg')" }}
-                />
-            )}
 
             <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 overflow-hidden min-h-0 relative z-10">
 
@@ -204,14 +195,6 @@ export default function PdvExpressInterface({ storeId, employees }: Props) {
                                 <ScanBarcode className="h-5 w-5" />
                             </div>
                             <h2 className="text-base font-black text-white tracking-tight uppercase">Mesa de Operação</h2>
-
-                            <button
-                                onClick={() => setShowBackground(!showBackground)}
-                                className="ml-auto p-1.5 text-slate-500 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
-                                title={showBackground ? "Ocultar Imagem" : "Mostrar Imagem"}
-                            >
-                                {showBackground ? <Trash2 className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}
-                            </button>
                         </div>
                         <div className="space-y-5">
                             <div>

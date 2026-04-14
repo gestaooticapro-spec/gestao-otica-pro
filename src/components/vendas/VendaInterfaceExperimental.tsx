@@ -202,7 +202,6 @@ export default function VendaInterfaceExperimental({
     const [obsGeral, setObsGeral] = useState(venda.obs_geral || '')
     const [nfEmitida, setNfEmitida] = useState(venda.nf_emitida || false)
     const [isSavingObs, setIsSavingObs] = useState(false)
-    const [isSavingNF, setIsSavingNF] = useState(false)
 
     const vendedorNome = employee?.full_name || 'N/A'
     const employeeIdFinanceiro = employee?.id || 0
@@ -233,18 +232,10 @@ export default function VendaInterfaceExperimental({
         setIsSavingObs(false)
     }
 
-    const handleToggleNF = async (checked: boolean) => {
-        setNfEmitida(checked)
-        setIsSavingNF(true)
-        const res = await updateVendaExperimentalFields(venda.id, venda.store_id, { nf_emitida: checked })
-        if (res.success) {
-            toast.success(checked ? "Nota marcada como emitida" : "Nota desmarcada")
-            await onDataReload()
-        } else {
-            toast.error("Erro ao atualizar status da nota")
-            setNfEmitida(!checked)
-        }
-        setIsSavingNF(false)
+    const handleNFCeSuccess = async () => {
+        setNfEmitida(true)
+        await updateVendaExperimentalFields(venda.id, venda.store_id, { nf_emitida: true })
+        await onDataReload()
     }
 
     return (
@@ -432,8 +423,7 @@ export default function VendaInterfaceExperimental({
                         isVendaFechada={isVendaFechadaOuCancelada}
                         onPrint={() => setIsPrintModalOpen(true)}
                         nfEmitida={nfEmitida}
-                        isSavingNF={isSavingNF}
-                        onToggleNF={handleToggleNF}
+                        onNFCeSuccess={handleNFCeSuccess}
                     />
                 </div>
             </div>

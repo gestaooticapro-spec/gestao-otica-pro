@@ -44,6 +44,31 @@ function getClinicalLabel(category: string): string {
   return map[category] || category
 }
 
+const FEATURE_LABELS: Record<string, string> = {
+  'uso:dirigir_a_noite': 'Dirigir a noite',
+  'uso:uso_noturno': 'Uso noturno',
+  'uso:uso_telas': 'Uso em telas',
+  'uso:conforto_visual_telas': 'Conforto em telas',
+  'beneficio:reduzir_ofuscamento': 'Reduzir ofuscamento',
+}
+
+function formatFeatureLabel(feature: string): string {
+  if (FEATURE_LABELS[feature]) return FEATURE_LABELS[feature]
+  const normalized = feature.replace(/^uso:/, '').replace(/^beneficio:/, '')
+  return normalized.replace(/_/g, ' ')
+}
+
+function extractSemanticTags(features: Record<string, unknown> | null | undefined): string[] {
+  if (!features) return []
+  const profile = (features as any).semantic_profile || {}
+  const usage = Array.isArray(profile.usage_tags) ? profile.usage_tags : []
+  const benefits = Array.isArray(profile.benefit_tags) ? profile.benefit_tags : []
+  return [
+    ...usage.filter(Boolean).map((tag: string) => `uso:${tag}`),
+    ...benefits.filter(Boolean).map((tag: string) => `beneficio:${tag}`),
+  ]
+}
+
 function FilterPill({
   label,
   active,
@@ -136,6 +161,35 @@ export default function PriceTableLensSearchInterface({
     return map
   }, [data.compatibilities])
 
+  const treatmentById = useMemo(
+    () => new Map((data.treatments || []).map((t) => [t.id, t])),
+    [data.treatments],
+  )
+
+  const semanticTagsByOfferId = useMemo(() => {
+    const map = new Map<string, Set<string>>()
+    for (const compat of data.compatibilities) {
+      const treatment = treatmentById.get(compat.treatmentId)
+      if (!treatment) continue
+      const tags = extractSemanticTags(treatment.features || null)
+      if (!tags.length) continue
+      let set = map.get(compat.offerId)
+      if (!set) {
+        set = new Set()
+        map.set(compat.offerId, set)
+      }
+      for (const tag of tags) set.add(tag)
+    }
+    return map
+  }, [data.compatibilities, treatmentById])
+
+  const offerHasFeature = (offer: PriceTableMixedOffer, feature: string) => {
+    const feat = offer.features as Record<string, unknown>
+    if (feat?.[feature]) return true
+    const semanticTags = semanticTagsByOfferId.get(offer.globalOfferId)
+    return Boolean(semanticTags?.has(feature))
+  }
+
   const filterOptions = useMemo(() => {
     const laboratorios = new Set<string>()
     const families = new Set<string>()
@@ -153,8 +207,7 @@ export default function PriceTableLensSearchInterface({
       if (familyFilter && offer.familyName !== familyFilter) return false
       if (clinicalFilter && offer.clinicalCategory !== clinicalFilter) return false
       if (featureFilter.length > 0) {
-        const feat = offer.features as Record<string, unknown>
-        if (!featureFilter.every((key) => feat?.[key])) return false
+        if (!featureFilter.every((key) => offerHasFeature(offer, key))) return false
       }
       if (!opts.ignoreMaterial && materialFilter && offer.material !== materialFilter) return false
       if (!opts.ignoreIndice && indiceFilter != null && offer.indiceRefracao !== indiceFilter) return false
@@ -171,6 +224,12 @@ export default function PriceTableLensSearchInterface({
       const feat = offer.features || {}
       for (const [key, val] of Object.entries(feat)) {
         if (val === true) features.add(key)
+      }
+      const semanticTags = semanticTagsByOfferId.get(offer.globalOfferId)
+      if (semanticTags) {
+        for (const tag of semanticTags) {
+          features.add(tag)
+        }
       }
     }
 
@@ -201,6 +260,7 @@ export default function PriceTableLensSearchInterface({
     indiceFilter,
     laboratorioFilter,
     materialFilter,
+    semanticTagsByOfferId,
   ])
 
   const activeFilterCount = [
@@ -224,8 +284,7 @@ export default function PriceTableLensSearchInterface({
         if (familyFilter && offer.familyName !== familyFilter) return false
         if (clinicalFilter && offer.clinicalCategory !== clinicalFilter) return false
         if (featureFilter.length > 0) {
-          const feat = offer.features as Record<string, unknown>
-          if (!featureFilter.every((key) => feat?.[key])) return false
+          if (!featureFilter.every((key) => offerHasFeature(offer, key))) return false
         }
         if (materialFilter && offer.material !== materialFilter) return false
         if (indiceFilter != null && offer.indiceRefracao !== indiceFilter) return false
@@ -250,6 +309,7 @@ export default function PriceTableLensSearchInterface({
     indiceFilter,
     laboratorioFilter,
     materialFilter,
+    semanticTagsByOfferId,
   ])
 
   const clearFilters = () => {
@@ -428,7 +488,7 @@ export default function PriceTableLensSearchInterface({
                     {filterOptions.features.map((feature) => (
                       <FilterPill
                         key={feature}
-                        label={feature.replace(/_/g, ' ')}
+                        label={formatFeatureLabel(feature)}
                         active={featureFilter.includes(feature)}
                         onClick={() =>
                           setFeatureFilter((current) =>

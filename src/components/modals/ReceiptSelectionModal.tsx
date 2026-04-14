@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { X, Printer, CheckSquare, Square, Loader2, Eye, FileText } from 'lucide-react'
 import { Database } from '@/lib/database.types'
 import { markPaymentsAsPrinted } from '@/lib/actions/vendas.actions'
@@ -20,8 +21,13 @@ const formatMoney = (v: number) => v.toLocaleString('pt-BR', { style: 'currency'
 export default function ReceiptSelectionModal({ isOpen, onClose, pagamentos, onReload }: Props) {
     const [selectedIds, setSelectedIds] = useState<number[]>([])
     const [isProcessing, setIsProcessing] = useState<string | null>(null) // 'view' | 'print' | null
+    const [mounted, setMounted] = useState(false)
 
-    if (!isOpen) return null
+    useEffect(() => {
+        setMounted(true)
+    }, [])
+
+    if (!isOpen || !mounted) return null
 
     const toggleSelection = (id: number) => {
         setSelectedIds(prev => 
@@ -117,8 +123,8 @@ export default function ReceiptSelectionModal({ isOpen, onClose, pagamentos, onR
         }
     }
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+    return createPortal(
+        <div className="fixed inset-0 z-[70] grid place-items-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto custom-scrollbar animate-in fade-in">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
                 
                 <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
@@ -212,6 +218,7 @@ export default function ReceiptSelectionModal({ isOpen, onClose, pagamentos, onR
 
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     )
 }

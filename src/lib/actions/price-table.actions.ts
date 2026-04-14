@@ -33,6 +33,7 @@ export type PriceTableTreatment = {
   id: string
   nome: string
   tipo: string | null
+  features?: Record<string, unknown> | null
 }
 
 export type PriceTableCompatibility = {
@@ -50,6 +51,12 @@ export type PriceTableGrid = {
   cylMax: number | null
   addMin: number | null
   addMax: number | null
+  metadata?: Record<string, unknown> | null
+}
+
+function normalizeRange(min: number | null, max: number | null): { min: number | null; max: number | null } {
+  if (min == null || max == null) return { min, max }
+  return min <= max ? { min, max } : { min: max, max: min }
 }
 
 export type PriceTableCatalogOption = {
@@ -97,6 +104,7 @@ export type PriceTableAllActiveOffersData = {
   activeCatalogs: PriceTableCatalogOption[]
   offers: PriceTableMixedOffer[]
   compatibilities: PriceTableCompatibility[]
+  treatments: PriceTableTreatment[]
 }
 
 type TenantOfferRow = {
@@ -263,7 +271,10 @@ export async function getStorePriceTableData(
         .select('offer_id,sph_min,sph_max,cyl_min,cyl_max,add_min,add_max,metadata')
         .in('offer_id', chunk),
     ),
-    supabaseAdmin.from('global_treatments').select('id,nome,tipo').eq('version_id', versionId),
+    supabaseAdmin
+      .from('global_treatments')
+      .select('id,nome,tipo,features')
+      .eq('version_id', versionId),
   ])
 
   if (treatmentsResult.error) throw treatmentsResult.error
@@ -336,6 +347,7 @@ export async function getStorePriceTableData(
       id: t.id,
       nome: t.nome,
       tipo: t.tipo || null,
+      features: t.features || null,
     })),
     compatibilities: (compatibilities || []).map((c: any) => ({
       offerId: c.offer_id,
@@ -343,15 +355,30 @@ export async function getStorePriceTableData(
       specialPrice: c.special_price ? Number(c.special_price) : null,
       priceMode: c.price_mode === 'surcharge' ? 'surcharge' as const : 'final' as const,
     })),
-    grids: (gridsRaw || []).map((g: any) => ({
-      offerId: g.offer_id,
-      sphMin: g.sph_min ? Number(g.sph_min) : null,
-      sphMax: g.sph_max ? Number(g.sph_max) : null,
-      cylMin: g.cyl_min ? Number(g.cyl_min) : null,
-      cylMax: g.cyl_max ? Number(g.cyl_max) : null,
-      addMin: g.add_min ? Number(g.add_min) : null,
-      addMax: g.add_max ? Number(g.add_max) : null,
-    })),
+    grids: (gridsRaw || []).map((g: any) => {
+      const sph = normalizeRange(
+        g.sph_min != null ? Number(g.sph_min) : null,
+        g.sph_max != null ? Number(g.sph_max) : null,
+      )
+      const cyl = normalizeRange(
+        g.cyl_min != null ? Number(g.cyl_min) : null,
+        g.cyl_max != null ? Number(g.cyl_max) : null,
+      )
+      const add = normalizeRange(
+        g.add_min != null ? Number(g.add_min) : null,
+        g.add_max != null ? Number(g.add_max) : null,
+      )
+      return {
+        offerId: g.offer_id,
+        sphMin: sph.min,
+        sphMax: sph.max,
+        cylMin: cyl.min,
+        cylMax: cyl.max,
+        addMin: add.min,
+        addMax: add.max,
+        metadata: g.metadata || null,
+      }
+    }),
   }
 }
 
@@ -433,7 +460,7 @@ export async function getStorePriceTableAllActiveOffersData(
     }
   }
 
-  const [globalOffers, compatibilities] = await Promise.all([
+  const [globalOffers, compatibilities, treatmentsResult] = await Promise.all([
     runChunkedQuery<any>(globalOfferIds, (chunk) =>
       supabaseAdmin
         .from('global_lens_offers')
@@ -448,7 +475,13 @@ export async function getStorePriceTableAllActiveOffersData(
         .select('offer_id,treatment_id,special_price,price_mode')
         .in('offer_id', chunk),
     ),
+    supabaseAdmin
+      .from('global_treatments')
+      .select('id,nome,tipo,features,version_id')
+      .in('version_id', versionIds),
   ])
+  if (treatmentsResult.error) throw treatmentsResult.error
+  const treatments = treatmentsResult.data || []
 
   const familyIds = [...new Set((globalOffers || []).map((offer: any) => offer.family_id))]
   const { data: families, error: familiesError } = familyIds.length
@@ -504,6 +537,12 @@ export async function getStorePriceTableAllActiveOffersData(
       specialPrice:
         compatibility.special_price != null ? Number(compatibility.special_price) : null,
       priceMode: compatibility.price_mode === 'surcharge' ? 'surcharge' as const : 'final' as const,
+    })),
+    treatments: (treatments || []).map((t: any) => ({
+      id: t.id,
+      nome: t.nome,
+      tipo: t.tipo || null,
+      features: t.features || null,
     })),
   }
 }

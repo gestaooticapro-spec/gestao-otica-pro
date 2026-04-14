@@ -1,5 +1,6 @@
 'use client'
 
+import { createPortal } from 'react-dom'
 import {
   useState,
   useEffect,
@@ -118,12 +119,17 @@ export default function EmployeeAuthModal({
   title = 'Autorizar Pagamento',
   description = 'Insira seu PIN para confirmar o recebimento.',
 }: EmployeeAuthModalProps) {
+  const [mounted, setMounted] = useState(false)
 
-  if (!isOpen) return null
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
-  return (
+  if (!isOpen || !mounted) return null
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 z-[110] grid place-items-center bg-slate-950/80 backdrop-blur-md p-4 overflow-y-auto custom-scrollbar animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div
@@ -148,6 +154,7 @@ export default function EmployeeAuthModal({
           description={description}
         />
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

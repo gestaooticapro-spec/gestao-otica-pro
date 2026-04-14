@@ -175,6 +175,20 @@ export async function getFechamentoData(storeId: number, month: number, year: nu
     return all;
 }
 
+export async function updateCustomerCpf(customerId: number, cpf: string) {
+    const supabase = createClient();
+    const { error } = await supabase
+        .from("customers")
+        .update({ cpf })
+        .eq("id", customerId);
+
+    if (error) {
+        console.error("Erro ao atualizar CPF:", error);
+        return { success: false, error: error.message };
+    }
+    return { success: true };
+}
+
 export async function getProductFiscalData(productId: number) {
     const supabase = createClient();
 

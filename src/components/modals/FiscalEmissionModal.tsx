@@ -2,9 +2,33 @@
 
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { Loader2, AlertTriangle, CheckCircle2, X, FileText } from 'lucide-react'
+import { Loader2, AlertTriangle, CheckCircle2, X, FileText, Save } from 'lucide-react'
 import { emitirNFCe } from '@/lib/actions/fiscal.actions'
-import { getTenantIdByStore, getProductFiscalData } from '@/lib/actions/fiscal-db.actions'
+import { getTenantIdByStore, getProductFiscalData, updateCustomerCpf } from '@/lib/actions/fiscal-db.actions'
+
+function validaCPF(cpf: string): boolean {
+    const stripped = cpf.replace(/\D/g, '')
+    if (stripped.length !== 11) return false
+    if (/^(\d)\1{10}$/.test(stripped)) return false
+    let sum = 0
+    for (let i = 0; i < 9; i++) sum += parseInt(stripped[i]) * (10 - i)
+    let rev = 11 - (sum % 11)
+    if (rev >= 10) rev = 0
+    if (rev !== parseInt(stripped[9])) return false
+    sum = 0
+    for (let i = 0; i < 10; i++) sum += parseInt(stripped[i]) * (11 - i)
+    rev = 11 - (sum % 11)
+    if (rev >= 10) rev = 0
+    return rev === parseInt(stripped[10])
+}
+
+function formatCPF(value: string): string {
+    const digits = value.replace(/\D/g, '').slice(0, 11)
+    return digits
+        .replace(/(\d{3})(\d)/, '$1.$2')
+        .replace(/(\d{3})(\d)/, '$1.$2')
+        .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
+}
 
 interface FiscalEmissionModalProps {
     isOpen: boolean
@@ -23,19 +47,37 @@ export default function FiscalEmissionModal({
     customer,
     onSuccess
 }: FiscalEmissionModalProps) {
-    const [environment, setEnvironment] = useState<'homologation' | 'production'>('homologation')
+    const [environment, setEnvironment] = useState<'homologation' | 'production'>('production')
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [successMsg, setSuccessMsg] = useState<string | null>(null)
     const [mounted, setMounted] = useState(false)
 
+    const existingCpf = customer?.cpf || customer?.cpf_cnpj || ''
+    const [cpfInput, setCpfInput] = useState(existingCpf)
+    const [cpfSaving, setCpfSaving] = useState(false)
+    const [cpfSaved, setCpfSaved] = useState(false)
+
+    const cpfDigits = cpfInput.replace(/\D/g, '')
+    const cpfIsValid = validaCPF(cpfInput)
+    const cpfEditable = !existingCpf
+
     useEffect(() => {
         setMounted(true)
     }, [])
 
-    if (!isOpen) return null
+    if (!isOpen || !mounted) return null
 
     const valorTotal = venda.valor_final ?? venda.total_amount ?? 0
+
+    const handleSaveCpf = async () => {
+        if (!cpfIsValid || !customer?.id) return
+        setCpfSaving(true)
+        const result = await updateCustomerCpf(customer.id, cpfDigits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'))
+        setCpfSaving(false)
+        if (result.success) setCpfSaved(true)
+        else setError('Não foi possível salvar o CPF.')
+    }
 
     const handleEmission = async () => {
         setIsLoading(true)
@@ -45,14 +87,12 @@ export default function FiscalEmissionModal({
         try {
             const storeId: number = venda.store_id
 
-            // Buscar tenant_id (organization_id real — UUID do dono)
             const tenantId = await getTenantIdByStore(storeId)
             if (!tenantId) {
                 setError("Organização não encontrada para esta loja.")
                 return
             }
 
-            // Enriquecer itens com NCM/CFOP do cadastro de produtos
             const itensMapeados = await Promise.all(
                 vendaItens.map(async (item: any) => {
                     let ncm = '00000000'
@@ -85,12 +125,14 @@ export default function FiscalEmissionModal({
                 })
             )
 
+            const cpfFinal = cpfEditable ? (cpfIsValid ? cpfDigits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '') : existingCpf
+
             const result = await emitirNFCe({
                 organization_id: tenantId,
                 store_id: storeId,
                 work_order_id: venda.id,
                 cliente: {
-                    cpf_cnpj: customer?.cpf || customer?.cpf_cnpj || '',
+                    cpf_cnpj: cpfFinal,
                     nome: customer?.full_name || customer?.nome || 'Consumidor Final',
                     email: customer?.email,
                 },
@@ -116,8 +158,6 @@ export default function FiscalEmissionModal({
             setIsLoading(false)
         }
     }
-
-    if (!isOpen || !mounted) return null
 
     return createPortal(
         <div className="fixed inset-0 z-[100] grid place-items-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto custom-scrollbar animate-in fade-in duration-300">
@@ -158,36 +198,30 @@ export default function FiscalEmissionModal({
 
                     {/* Ambiente */}
                     <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ambiente de Emissão</label>
-                        <div className="flex flex-col gap-2">
-                            <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${environment === 'homologation' ? 'border-blue-500/50 bg-blue-500/10' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}>
-                                <input
-                                    type="radio"
-                                    name="environment"
-                                    value="homologation"
-                                    checked={environment === 'homologation'}
-                                    onChange={() => setEnvironment('homologation')}
-                                    className="w-4 h-4 text-blue-500"
-                                />
-                                <div>
-                                    <span className="block text-sm font-semibold text-slate-200">Homologação (Teste)</span>
-                                    <span className="block text-xs text-slate-400">Sem valor fiscal, para testes.</span>
-                                </div>
-                            </label>
-
-                            <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${environment === 'production' ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}>
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ambiente</label>
+                        <div className="flex gap-2">
+                            <label className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-lg border cursor-pointer transition-all ${environment === 'production' ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300' : 'border-white/10 bg-white/5 text-slate-400 hover:bg-white/10'}`}>
                                 <input
                                     type="radio"
                                     name="environment"
                                     value="production"
                                     checked={environment === 'production'}
                                     onChange={() => setEnvironment('production')}
-                                    className="w-4 h-4 text-emerald-500"
+                                    className="sr-only"
                                 />
-                                <div>
-                                    <span className="block text-sm font-semibold text-slate-200">Produção (Valendo)</span>
-                                    <span className="block text-xs text-slate-400">Nota fiscal válida com valor legal.</span>
-                                </div>
+                                <span className="text-sm font-bold uppercase tracking-wide">Produção</span>
+                            </label>
+
+                            <label className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-lg border cursor-pointer transition-all ${environment === 'homologation' ? 'border-blue-500/50 bg-blue-500/10 text-blue-300' : 'border-white/10 bg-white/5 text-slate-400 hover:bg-white/10'}`}>
+                                <input
+                                    type="radio"
+                                    name="environment"
+                                    value="homologation"
+                                    checked={environment === 'homologation'}
+                                    onChange={() => setEnvironment('homologation')}
+                                    className="sr-only"
+                                />
+                                <span className="text-sm font-bold uppercase tracking-wide">Homologação</span>
                             </label>
                         </div>
                     </div>
@@ -198,10 +232,53 @@ export default function FiscalEmissionModal({
                             <span className="text-slate-400">Cliente:</span>
                             <span className="font-semibold text-slate-200">{customer?.full_name || customer?.nome || 'Consumidor Final'}</span>
                         </div>
-                        <div className="flex justify-between">
-                            <span className="text-slate-400">CPF:</span>
-                            <span className="font-semibold text-slate-200">{customer?.cpf || customer?.cpf_cnpj || '—'}</span>
+
+                        {/* CPF */}
+                        <div className="flex items-center justify-between gap-2">
+                            <span className="text-slate-400 shrink-0">CPF:</span>
+                            {cpfEditable ? (
+                                <div className="flex items-center gap-2 flex-1 justify-end">
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            value={cpfInput}
+                                            onChange={e => {
+                                                setCpfInput(formatCPF(e.target.value))
+                                                setCpfSaved(false)
+                                            }}
+                                            placeholder="000.000.000-00"
+                                            maxLength={14}
+                                            className={`w-36 bg-slate-800 border rounded px-2 py-1 text-sm font-mono text-slate-200 outline-none transition-colors ${
+                                                cpfDigits.length === 0 ? 'border-white/20' :
+                                                cpfIsValid ? 'border-emerald-500/60' : 'border-red-500/60'
+                                            }`}
+                                        />
+                                    </div>
+                                    {cpfIsValid && !cpfSaved && (
+                                        <button
+                                            onClick={handleSaveCpf}
+                                            disabled={cpfSaving}
+                                            title="Salvar CPF no cadastro do cliente"
+                                            className="flex items-center gap-1 px-2 py-1 text-xs font-bold rounded bg-emerald-600/20 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-600/30 transition-colors disabled:opacity-50"
+                                        >
+                                            {cpfSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                                            Salvar
+                                        </button>
+                                    )}
+                                    {cpfSaved && (
+                                        <span className="flex items-center gap-1 text-xs text-emerald-400 font-bold">
+                                            <CheckCircle2 className="h-3 w-3" /> Salvo
+                                        </span>
+                                    )}
+                                    {cpfDigits.length > 0 && !cpfIsValid && (
+                                        <span className="text-xs text-red-400 font-bold">Inválido</span>
+                                    )}
+                                </div>
+                            ) : (
+                                <span className="font-semibold text-slate-200 font-mono">{existingCpf}</span>
+                            )}
                         </div>
+
                         <div className="flex justify-between border-t border-white/10 pt-2 mt-2">
                             <span className="text-slate-400">Valor Total:</span>
                             <span className="font-bold text-emerald-400">R$ {valorTotal.toFixed(2)}</span>

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { AlertTriangle, Loader2, PackageX, ArchiveRestore, ArchiveX } from 'lucide-react'
 import { declararVendaAbandonada } from '@/lib/actions/venda-abandono.actions'
 
@@ -16,8 +17,13 @@ export default function AbandonoModal({ isOpen, onClose, vendaId, onSuccess }: A
     const [devolveArmacao, setDevolveArmacao] = useState(true)
     const [acaoLente, setAcaoLente] = useState<'estoque' | 'perda' | 'nenhuma'>('estoque')
     const [motivo, setMotivo] = useState('')
+    const [mounted, setMounted] = useState(false)
 
-    if (!isOpen) return null
+    useEffect(() => {
+        setMounted(true)
+    }, [])
+
+    if (!isOpen || !mounted) return null
 
     const handleConfirm = () => {
         if (!motivo.trim()) {
@@ -43,8 +49,8 @@ export default function AbandonoModal({ isOpen, onClose, vendaId, onSuccess }: A
         })
     }
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+    return createPortal(
+        <div className="fixed inset-0 z-[100] grid place-items-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto custom-scrollbar animate-in fade-in duration-200">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
                 
                 {/* Header */}
@@ -168,6 +174,7 @@ export default function AbandonoModal({ isOpen, onClose, vendaId, onSuccess }: A
                 </div>
 
             </div>
-        </div>
+        </div>,
+        document.body
     )
 }

@@ -7,6 +7,7 @@ import {
   ChevronRight,
   ChevronUp,
   Filter,
+  Info,
   Layers3,
   LayoutGrid,
   List,
@@ -32,6 +33,27 @@ type InitialFilters = {
 function formatCurrency(value: number | null): string {
   if (value == null || !Number.isFinite(value)) return '—'
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+function formatNumber(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return '—'
+  return value.toFixed(2).replace('.', ',')
+}
+
+function formatRange(min: number | null, max: number | null): string | null {
+  if (min == null && max == null) return null
+  if (min != null && max != null && min === max) return formatNumber(min)
+  return `${formatNumber(min)} a ${formatNumber(max)}`
+}
+
+type OfferGridSummary = {
+  sphMin: number | null
+  sphMax: number | null
+  cylMin: number | null
+  cylMax: number | null
+  addMin: number | null
+  addMax: number | null
+  metadata?: Record<string, unknown> | null
 }
 
 function resolvePrice(
@@ -63,6 +85,69 @@ function getClinicalLabel(category: string): string {
   return map[category] || category
 }
 
+const FEATURE_LABELS: Record<string, string> = {
+  'uso:dirigir_a_noite': 'Dirigir a noite',
+  'uso:uso_noturno': 'Uso noturno',
+  'uso:uso_telas': 'Uso em telas',
+  'uso:conforto_visual_telas': 'Conforto em telas',
+  'beneficio:reduzir_ofuscamento': 'Reduzir ofuscamento',
+}
+
+function formatFeatureLabel(feature: string): string {
+  if (FEATURE_LABELS[feature]) return FEATURE_LABELS[feature]
+  const normalized = feature.replace(/^uso:/, '').replace(/^beneficio:/, '')
+  return normalized.replace(/_/g, ' ')
+}
+
+function extractSemanticTags(features: Record<string, unknown> | null | undefined): string[] {
+  if (!features) return []
+  const profile = (features as any).semantic_profile || {}
+  const usage = Array.isArray(profile.usage_tags) ? profile.usage_tags : []
+  const benefits = Array.isArray(profile.benefit_tags) ? profile.benefit_tags : []
+  return [
+    ...usage.filter(Boolean).map((tag: string) => `uso:${tag}`),
+    ...benefits.filter(Boolean).map((tag: string) => `beneficio:${tag}`),
+  ]
+}
+
+function extractDiameter(metadata?: Record<string, unknown> | null): string | null {
+  if (!metadata) return null
+  const value =
+    (metadata as any).diametro ||
+    (metadata as any).diameter ||
+    (metadata as any).diametro_mm ||
+    (metadata as any).diametroMin ||
+    (metadata as any).diametroMax
+  if (value == null) return null
+  return String(value)
+}
+
+function buildOfferDetailTitle(summary: OfferGridSummary | null): string {
+  if (!summary) return 'Sem grade informada'
+  const parts: string[] = []
+  const sph = formatRange(summary.sphMin, summary.sphMax)
+  if (sph) parts.push(`Esférico: ${sph}`)
+  const cyl = formatRange(summary.cylMin, summary.cylMax)
+  if (cyl) parts.push(`Cilíndrico: ${cyl}`)
+  const add = formatRange(summary.addMin, summary.addMax)
+  if (add) parts.push(`Adição: ${add}`)
+  const diam = extractDiameter(summary.metadata)
+  if (diam) parts.push(`Diâmetro: ${diam}`)
+  return parts.length ? parts.join(' | ') : 'Sem grade informada'
+}
+
+function mergeMin(a: number | null, b: number | null): number | null {
+  if (a == null) return b
+  if (b == null) return a
+  return Math.min(a, b)
+}
+
+function mergeMax(a: number | null, b: number | null): number | null {
+  if (a == null) return b
+  if (b == null) return a
+  return Math.max(a, b)
+}
+
 function FilterPill({
   label,
   active,
@@ -91,10 +176,12 @@ function MatrixTable({
   offers,
   treatments,
   compatibilityMap,
+  gridSummaryByOffer,
 }: {
   offers: PriceTableOffer[]
   treatments: { id: string; nome: string }[]
   compatibilityMap: Map<string, Map<string, { specialPrice: number | null; priceMode: 'final' | 'surcharge' }>>
+  gridSummaryByOffer: Map<string, OfferGridSummary>
 }) {
   if (!offers.length) return null
 
@@ -169,7 +256,32 @@ function MatrixTable({
                 }`}
               >
                 <td className="sticky left-0 z-10 bg-slate-900/95 px-4 py-3 backdrop-blur-sm">
-                  <p className="font-bold text-white">{getOfferLabel(offer)}</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="font-bold text-white">{getOfferLabel(offer)}</p>
+                    <button
+                      type="button"
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/10 text-[10px] font-black text-slate-400 transition hover:border-white/25 hover:text-white"
+                      title={buildOfferDetailTitle(gridSummaryByOffer.get(offer.globalOfferId) || null)}
+                    >
+                      ?
+                    </button>
+                  </div>
+                  {(() => {
+                    const summary = gridSummaryByOffer.get(offer.globalOfferId)
+                    const sph = formatRange(summary?.sphMin ?? null, summary?.sphMax ?? null)
+                    const cyl = formatRange(summary?.cylMin ?? null, summary?.cylMax ?? null)
+                    const add = formatRange(summary?.addMin ?? null, summary?.addMax ?? null)
+                    const diameter = extractDiameter(summary?.metadata || null)
+                    const items = [
+                      sph ? `Sph ${sph}` : null,
+                      cyl ? `Cyl ${cyl}` : null,
+                      add ? `Add ${add}` : null,
+                      diameter ? `Ø ${diameter}` : null,
+                    ].filter(Boolean)
+                    return items.length ? (
+                      <p className="mt-1 text-[10px] text-slate-500">{items.join(' â€¢ ')}</p>
+                    ) : null
+                  })()}
                   <p className="text-[10px] text-slate-500">
                     {[offer.material, offer.indiceRefracao].filter(Boolean).join(' • ')}
                   </p>
@@ -246,6 +358,7 @@ function FamilySection({
   atomicOffers,
   treatments,
   compatibilityMap,
+  gridSummaryByOffer,
   viewMode,
 }: {
   familyName: string
@@ -253,6 +366,7 @@ function FamilySection({
   atomicOffers: PriceTableOffer[]
   treatments: { id: string; nome: string }[]
   compatibilityMap: Map<string, Map<string, { specialPrice: number | null; priceMode: 'final' | 'surcharge' }>>
+  gridSummaryByOffer: Map<string, OfferGridSummary>
   viewMode: ViewMode
 }) {
   const [isOpen, setIsOpen] = useState(true)
@@ -313,6 +427,7 @@ function FamilySection({
                       offers={sectionOffers}
                       treatments={treatments}
                       compatibilityMap={compatibilityMap}
+                      gridSummaryByOffer={gridSummaryByOffer}
                     />
                   </div>
                 ))
@@ -346,6 +461,22 @@ function FamilySection({
                               .filter(Boolean)
                               .join(' • ')}
                           </p>
+                          {(() => {
+                            const summary = gridSummaryByOffer.get(offer.globalOfferId)
+                            const sph = formatRange(summary?.sphMin ?? null, summary?.sphMax ?? null)
+                            const cyl = formatRange(summary?.cylMin ?? null, summary?.cylMax ?? null)
+                            const add = formatRange(summary?.addMin ?? null, summary?.addMax ?? null)
+                            const diameter = extractDiameter(summary?.metadata || null)
+                            const items = [
+                              sph ? `Sph ${sph}` : null,
+                              cyl ? `Cyl ${cyl}` : null,
+                              add ? `Add ${add}` : null,
+                              diameter ? `Ø ${diameter}` : null,
+                            ].filter(Boolean)
+                            return items.length ? (
+                              <p className="mt-1 text-[10px] text-slate-500">{items.join(' â€¢ ')}</p>
+                            ) : null
+                          })()}
                         </div>
                         <div className="text-right">
                           {minPrice != null && maxPrice != null && minPrice !== maxPrice ? (
@@ -427,7 +558,62 @@ export default function PriceTableInterface({
     return map
   }, [data.compatibilities])
 
+  const gridSummaryByOffer = useMemo(() => {
+    const map = new Map<string, OfferGridSummary>()
+    for (const grid of data.grids) {
+      const current = map.get(grid.offerId)
+      if (!current) {
+        map.set(grid.offerId, {
+          sphMin: grid.sphMin,
+          sphMax: grid.sphMax,
+          cylMin: grid.cylMin,
+          cylMax: grid.cylMax,
+          addMin: grid.addMin,
+          addMax: grid.addMax,
+          metadata: grid.metadata || null,
+        })
+        continue
+      }
+      current.sphMin = mergeMin(current.sphMin, grid.sphMin)
+      current.sphMax = mergeMax(current.sphMax, grid.sphMax)
+      current.cylMin = mergeMin(current.cylMin, grid.cylMin)
+      current.cylMax = mergeMax(current.cylMax, grid.cylMax)
+      current.addMin = mergeMin(current.addMin, grid.addMin)
+      current.addMax = mergeMax(current.addMax, grid.addMax)
+      if (!current.metadata && grid.metadata) current.metadata = grid.metadata
+    }
+    return map
+  }, [data.grids])
+
   const familyMap = useMemo(() => new Map(data.families.map((f) => [f.id, f])), [data.families])
+  const treatmentById = useMemo(
+    () => new Map(data.treatments.map((t) => [t.id, t])),
+    [data.treatments],
+  )
+
+  const semanticTagsByOfferId = useMemo(() => {
+    const map = new Map<string, Set<string>>()
+    for (const compat of data.compatibilities) {
+      const treatment = treatmentById.get(compat.treatmentId)
+      if (!treatment) continue
+      const tags = extractSemanticTags(treatment.features || null)
+      if (!tags.length) continue
+      let set = map.get(compat.offerId)
+      if (!set) {
+        set = new Set()
+        map.set(compat.offerId, set)
+      }
+      for (const tag of tags) set.add(tag)
+    }
+    return map
+  }, [data.compatibilities, treatmentById])
+
+  const offerHasFeature = (offer: PriceTableOffer, feature: string) => {
+    const feat = offer.features as Record<string, unknown>
+    if (feat?.[feature]) return true
+    const semanticTags = semanticTagsByOfferId.get(offer.globalOfferId)
+    return Boolean(semanticTags?.has(feature))
+  }
 
   // Extract unique filter values
   const filterOptions = useMemo(() => {
@@ -449,8 +635,7 @@ export default function PriceTableInterface({
       }
       if (clinicalFilter && offer.clinicalCategory !== clinicalFilter) return false
       if (!opts.ignoreFeature && featureFilter.length > 0) {
-        const feat = offer.features as Record<string, unknown>
-        if (!featureFilter.every((key) => feat?.[key])) return false
+        if (!featureFilter.every((key) => offerHasFeature(offer, key))) return false
       }
       if (!opts.ignoreMaterial && materialFilter && offer.material !== materialFilter) return false
       if (!opts.ignoreIndice && indiceFilter && offer.indiceRefracao !== indiceFilter) return false
@@ -473,6 +658,12 @@ export default function PriceTableInterface({
       const feat = offer.features || {}
       for (const [key, val] of Object.entries(feat)) {
         if (val === true) features.add(key)
+      }
+      const semanticTags = semanticTagsByOfferId.get(offer.globalOfferId)
+      if (semanticTags) {
+        for (const tag of semanticTags) {
+          features.add(tag)
+        }
       }
     }
 
@@ -517,8 +708,7 @@ export default function PriceTableInterface({
       if (materialFilter && offer.material !== materialFilter) return false
       if (indiceFilter && offer.indiceRefracao !== indiceFilter) return false
       if (featureFilter.length > 0) {
-        const feat = offer.features as Record<string, unknown>
-        if (!featureFilter.every((key) => feat?.[key])) return false
+        if (!featureFilter.every((key) => offerHasFeature(offer, key))) return false
       }
       if (sectionFilter && offer.sectionName !== sectionFilter) return false
       return true
@@ -532,6 +722,7 @@ export default function PriceTableInterface({
     indiceFilter,
     featureFilter,
     sectionFilter,
+    semanticTagsByOfferId,
   ])
 
   // Group by family
@@ -821,7 +1012,7 @@ export default function PriceTableInterface({
                     {filterOptions.features.map((feat) => (
                       <FilterPill
                         key={feat}
-                        label={feat.replace(/_/g, ' ')}
+                        label={formatFeatureLabel(feat)}
                         active={featureFilter.includes(feat)}
                         onClick={() =>
                           setFeatureFilter((current) =>
@@ -874,6 +1065,7 @@ export default function PriceTableInterface({
               atomicOffers={group.atomic}
               treatments={data.treatments}
               compatibilityMap={compatibilityMap}
+              gridSummaryByOffer={gridSummaryByOffer}
               viewMode={viewMode}
             />
           ))}

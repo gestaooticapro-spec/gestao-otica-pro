@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useRef, useTransition } from 'react'
+import { useState, useRef, useTransition, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { X, RefreshCcw, AlertTriangle, CheckCircle2, Wallet, CreditCard, ArrowRight, Loader2 } from 'lucide-react'
 import { Database } from '@/lib/database.types'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
@@ -133,11 +134,16 @@ export default function ReturnModal({ isOpen, onClose, vendaId, storeId, custome
         })
     }
 
-    if (!isOpen) return null
+    const [mounted, setMounted] = useState(false)
+    useEffect(() => {
+        setMounted(true)
+    }, [])
 
-    return (
+    if (!isOpen || !mounted) return null
+
+    return createPortal(
         <>
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-[70] grid place-items-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto custom-scrollbar animate-in fade-in">
             <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
                 
                 {/* Header */}
@@ -287,6 +293,7 @@ export default function ReturnModal({ isOpen, onClose, vendaId, storeId, custome
                 description={refundMethod === 'Estorno' ? "Para estornos financeiros, é necessário o PIN de um gerente." : "Insira seu PIN para confirmar a devolução."}
             />
         )}
-        </>
+        </>,
+        document.body
     )
 }
