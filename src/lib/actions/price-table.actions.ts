@@ -457,6 +457,7 @@ export async function getStorePriceTableAllActiveOffersData(
       activeCatalogs,
       offers: [],
       compatibilities: [],
+      treatments: [],
     }
   }
 

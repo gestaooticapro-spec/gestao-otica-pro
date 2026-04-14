@@ -3,6 +3,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getNuvemFiscalToken } from "@/lib/nuvemfiscal";
+import { Database } from "@/lib/database.types";
+
+type StoreRow = Database['public']['Tables']['stores']['Row'];
 
 type EmissionPayload = {
     organization_id: string;
@@ -96,7 +99,7 @@ async function ensureNoActiveInvoiceForWorkOrder(
 
 export async function emitirNFCe(payload: EmissionPayload) {
     const supabase = createClient();
-    const adminSupabase = createAdminClient();
+    const adminSupabase = createAdminClient() as any;
     let invoiceId: number | null = null;
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -121,9 +124,9 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
         const { data: store } = await adminSupabase
             .from("stores")
-            .select("id, name, razao_social, cnpj, inscricao_estadual, street, number, neighborhood, city, state, cep, phone, whatsapp, email, nfce_serie, codigo_municipio_ibge, regime_tributario")
+            .select("*")
             .eq("id", payload.store_id)
-            .single();
+            .single() as unknown as { data: StoreRow | null; error: unknown };
 
         if (!store) {
             console.error("Loja não encontrada para store_id:", payload.store_id);
@@ -138,7 +141,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
             nome_fantasia: store.name,
             logradouro: store.street,
             numero: store.number,
-            complemento: null,
+            complemento: null as string | null,
             bairro: store.neighborhood,
             codigo_municipio_ibge: store.codigo_municipio_ibge,
             cidade: store.city,
@@ -166,7 +169,8 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
         // 5. Obter próxima numeração sequencial de forma atômica via RPC
         // Usa admin client para garantir permissão de execução independente de RLS
-        const { data: nextNumber, error: rpcError } = await adminSupabase.rpc("get_next_nfce_number", {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: nextNumber, error: rpcError } = await (adminSupabase as any).rpc("get_next_nfce_number", {
             p_org_id: payload.organization_id,
             p_serie: currentSerie
         });
@@ -479,7 +483,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
 export async function emitirNFSe(payload: EmissionPayload) {
     const supabase = createClient();
-    const adminSupabase = createAdminClient();
+    const adminSupabase = createAdminClient() as any;
     let invoiceId: number | null = null;
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -640,7 +644,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
 }
 
 export async function consultarNFCe(invoiceId: string) {
-    const supabase = createAdminClient();
+    const supabase = createAdminClient() as any;
 
     try {
         const { data: invoice } = await supabase
@@ -726,7 +730,7 @@ export async function consultarNFCe(invoiceId: string) {
 }
 
 export async function consultarNFSe(invoiceId: string) {
-    const supabase = createAdminClient();
+    const supabase = createAdminClient() as any;
 
     try {
         const { data: invoice } = await supabase
@@ -869,7 +873,7 @@ export async function updateCompanyCredentials(organizationId: string, environme
 }
 
 export async function cancelarNota(invoiceId: string, justificativa: string = "Erro de preenchimento") {
-    const supabase = createAdminClient();
+    const supabase = createAdminClient() as any;
 
     try {
         const { data: invoice } = await supabase

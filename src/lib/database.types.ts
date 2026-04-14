@@ -107,6 +107,9 @@ export interface Database {
           neighborhood: string | null
           city: string | null
           state: string | null
+          nfce_serie: number | null
+          codigo_municipio_ibge: string | null
+          regime_tributario: string | null
         }
         Insert: {
           id?: number
@@ -128,6 +131,9 @@ export interface Database {
           neighborhood?: string | null
           city?: string | null
           state?: string | null
+          nfce_serie?: number | null
+          codigo_municipio_ibge?: string | null
+          regime_tributario?: string | null
         }
         Update: {
           id?: number
@@ -149,7 +155,92 @@ export interface Database {
           neighborhood?: string | null
           city?: string | null
           state?: string | null
+          nfce_serie?: number | null
+          codigo_municipio_ibge?: string | null
+          regime_tributario?: string | null
         }
+      }
+
+      fiscal_invoices: {
+        Row: {
+          id: number
+          organization_id: string
+          work_order_id: number | null
+          tipo_documento: string | null
+          status: string | null
+          environment: string | null
+          payload_json: Json | null
+          nuvemfiscal_uuid: string | null
+          chave_acesso: string | null
+          numero: string | null
+          serie: string | null
+          xml_url: string | null
+          pdf_url: string | null
+          error_message: string | null
+          created_at: string
+          direction: string | null
+          data_emissao: string | null
+          emitente_nome: string | null
+          emitente_cnpj: string | null
+          destinatario_nome: string | null
+          destinatario_cnpj: string | null
+          motivo_rejeicao: string | null
+          xml_content: string | null
+          valor_total: number | null
+        }
+        Insert: {
+          id?: number
+          organization_id: string
+          work_order_id?: number | null
+          tipo_documento?: string | null
+          status?: string | null
+          environment?: string | null
+          payload_json?: Json | null
+          nuvemfiscal_uuid?: string | null
+          chave_acesso?: string | null
+          numero?: string | null
+          serie?: string | null
+          xml_url?: string | null
+          pdf_url?: string | null
+          error_message?: string | null
+          created_at?: string
+          direction?: string | null
+          data_emissao?: string | null
+          emitente_nome?: string | null
+          emitente_cnpj?: string | null
+          destinatario_nome?: string | null
+          destinatario_cnpj?: string | null
+          motivo_rejeicao?: string | null
+          xml_content?: string | null
+          valor_total?: number | null
+        }
+        Update: {
+          id?: number
+          organization_id?: string
+          work_order_id?: number | null
+          tipo_documento?: string | null
+          status?: string | null
+          environment?: string | null
+          payload_json?: Json | null
+          nuvemfiscal_uuid?: string | null
+          chave_acesso?: string | null
+          numero?: string | null
+          serie?: string | null
+          xml_url?: string | null
+          pdf_url?: string | null
+          error_message?: string | null
+          created_at?: string
+          direction?: string | null
+          data_emissao?: string | null
+          emitente_nome?: string | null
+          emitente_cnpj?: string | null
+          destinatario_nome?: string | null
+          destinatario_cnpj?: string | null
+          motivo_rejeicao?: string | null
+          xml_content?: string | null
+          valor_total?: number | null
+        }
+        Relationships: []
       }
 
       suppliers: {
@@ -1232,6 +1323,10 @@ export interface Database {
       increment_stock: {
         Args: { p_product_id: number, p_quantity: number, p_new_cost: number | null }
         Returns: void
+      }
+      get_next_nfce_number: {
+        Args: { p_org_id: string; p_serie: string | number }
+        Returns: number
       }
     }
     Enums: {

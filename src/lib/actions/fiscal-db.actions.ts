@@ -5,19 +5,20 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function getTenantIdByStore(storeId: number) {
     // Usa admin client para ignorar RLS da tabela stores
-    const supabase = createAdminClient();
-    const { data, error } = await supabase
+    const supabase = createAdminClient() as any;
+    const { data: rawData, error } = await supabase
         .from("stores")
         .select("tenant_id")
         .eq("id", storeId)
         .single();
 
-    if (error || !data) return null;
+    if (error || !rawData) return null;
+    const data = rawData as unknown as { tenant_id: string };
     return data.tenant_id;
 }
 
 export async function getFiscalInvoices(storeId: number) {
-    const supabase = createAdminClient();
+    const supabase = createAdminClient() as any;
     const tenantId = await getTenantIdByStore(storeId);
 
     if (!tenantId) return [];
@@ -152,7 +153,7 @@ type FechamentoInvoice = {
 };
 
 export async function getFechamentoData(storeId: number, month: number, year: number): Promise<FechamentoInvoice[] | null> {
-    const supabase = createAdminClient();
+    const supabase = createAdminClient() as any;
     const tenantId = await getTenantIdByStore(storeId);
     if (!tenantId) return null;
 
@@ -167,7 +168,7 @@ export async function getFechamentoData(storeId: number, month: number, year: nu
         supabase.from("fiscal_invoices").select(fields)
             .eq("organization_id", tenantId).eq("environment", "production").eq("tipo_documento", "NFCe")
             .is("data_emissao", null).gte("created_at", startDate).lt("created_at", endDate),
-    ]);
+    ]) as [{ data: FechamentoInvoice[] | null }, { data: FechamentoInvoice[] | null }];
 
     const all = [...(byEmission || []), ...(byCreation || [])]
         .filter((doc, i, arr) => arr.findIndex(d => d.id === doc.id) === i);
