@@ -233,7 +233,8 @@ export default function VendaInterface({
                         isVendaFechada={isVendaFechadaOuCancelada}
                         onPrint={() => setIsPrintModalOpen(true)}
                         nfEmitida={(venda as any).nf_emitida ?? false}
-                        onNFCeSuccess={onDataReload}
+                        onNFCeSuccess={async () => { await onDataReload() }}
+                        onNFCeModalClose={async () => { await onDataReload() }}
                     />
                 </div>
             </div>
