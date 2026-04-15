@@ -207,7 +207,9 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
     });
 
     const envInvoices = invoices.filter((i) => i.environment === environment);
-    const countAuthorized = envInvoices.filter((i) => i.status === "authorized").length;
+    const authorizedInvoices = envInvoices.filter((i) => i.status === "authorized");
+    const countAuthorized = authorizedInvoices.length;
+    const sumAuthorized = authorizedInvoices.reduce((acc, inv) => acc + (inv.valor_total || 0), 0);
     const countError = envInvoices.filter((i) => i.status === "error" || i.status === "rejected").length;
     const countPending = envInvoices.filter((i) => i.status === "processing" || i.status === "draft").length;
 
@@ -263,8 +265,13 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white p-5 rounded-[20px] border border-stone-100 shadow-sm flex items-center gap-4">
                     <div className="w-11 h-11 rounded-full bg-green-50 flex items-center justify-center text-green-600 shrink-0"><CheckCircle size={22} /></div>
-                    <div>
-                        <p className="text-2xl font-bold text-[#1A1A1A]">{countAuthorized}</p>
+                    <div className="flex-1">
+                        <div className="flex items-baseline justify-between">
+                            <p className="text-2xl font-bold text-[#1A1A1A]">{countAuthorized}</p>
+                            <p className="font-bold text-green-600 text-sm">
+                                {sumAuthorized.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            </p>
+                        </div>
                         <p className="text-xs text-stone-500 font-bold uppercase">Autorizadas</p>
                     </div>
                 </div>
