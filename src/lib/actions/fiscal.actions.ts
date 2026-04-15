@@ -7,6 +7,11 @@ import { Database } from "@/lib/database.types";
 
 type StoreRow = Database['public']['Tables']['stores']['Row'];
 
+type PagamentoItem = {
+    meio: string; // '01' Dinheiro, '03' Cartão Crédito, '04' Débito, '17' PIX, etc.
+    valor: number;
+};
+
 type EmissionPayload = {
     organization_id: string;
     store_id?: number; // Necessário para buscar a série NFCe configurada na loja
@@ -31,7 +36,7 @@ type EmissionPayload = {
         aliquota_iss?: number;
     }[];
     valor_total: number;
-    meio_pagamento: string; // '01' Dinheiro, '03' Cartão Crédito, etc.
+    pagamentos: PagamentoItem[]; // Múltiplas formas de pagamento
     environment?: 'production' | 'homologation';
 };
 
@@ -308,12 +313,27 @@ export async function emitirNFCe(payload: EmissionPayload) {
                     modFrete: 9 // 9 = Sem Ocorrência de Transporte
                 },
                 pag: {
-                    detPag: [
-                        {
-                            tPag: payload.meio_pagamento || "01", // 01 = Dinheiro
-                            vPag: payload.valor_total
+                    detPag: (() => {
+                        const pagamentos = payload.pagamentos && payload.pagamentos.length > 0
+                            ? payload.pagamentos
+                            : [{ meio: '01', valor: payload.valor_total }]; // Fallback: Dinheiro
+
+                        const detPagList = pagamentos.map(p => ({
+                            tPag: p.meio || '99',
+                            vPag: Number(p.valor.toFixed(2))
+                        }));
+
+                        // Ajuste de arredondamento: soma dos pagamentos deve bater com vNF
+                        const somaPag = detPagList.reduce((acc, p) => acc + p.vPag, 0);
+                        const diff = Number((payload.valor_total - somaPag).toFixed(2));
+                        if (diff !== 0 && detPagList.length > 0) {
+                            detPagList[detPagList.length - 1].vPag = Number(
+                                (detPagList[detPagList.length - 1].vPag + diff).toFixed(2)
+                            );
                         }
-                    ]
+
+                        return detPagList;
+                    })()
                 },
                 infRespTec: {
                     CNPJ: cnpj.replace(/\D/g, ""),

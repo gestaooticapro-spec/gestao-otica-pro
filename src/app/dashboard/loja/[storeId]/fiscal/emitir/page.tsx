@@ -152,7 +152,7 @@ export default function EmitirNotaPage({ params }: { params: { storeId: string }
                 cliente: { nome: clienteNome || "CONSUMIDOR FINAL", cpf_cnpj: clienteDoc },
                 itens: itens,
                 valor_total: totalProdutos,
-                meio_pagamento: '01', // Dinheiro por padrão por enquanto
+                pagamentos: [{ meio: '01', valor: totalProdutos }], // Dinheiro por padrão na emissão avulsa
                 environment
             });
 

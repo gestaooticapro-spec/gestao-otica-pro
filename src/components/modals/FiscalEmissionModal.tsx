@@ -142,8 +142,7 @@ export default function FiscalEmissionModal({
                 ? (cpfEditable ? (cpfIsValid ? cpfDigits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '') : existingCpf)
                 : ''
 
-            // Detectar meio de pagamento a partir dos pagamentos registrados
-            const formaPagtoTexto = venda.pagamentos?.[0]?.forma_pagamento || ''
+            // Mapear TODOS os pagamentos registrados na venda
             const meioPagamentoMap: Record<string, string> = {
                 'PIX Remoto': '17',
                 'PIX na maquininha': '17',
@@ -155,8 +154,28 @@ export default function FiscalEmissionModal({
                 'Cheque': '02',
                 'Crédito Loja': '05',
                 'Boleto': '15',
+                'Transferência': '17',
             }
-            const meioPagamento = meioPagamentoMap[formaPagtoTexto] || '99'
+
+            const pagamentosRaw = venda.pagamentos || []
+            const pagamentosMapeados = pagamentosRaw
+                .filter((p: any) => p.valor && p.valor > 0)
+                .map((p: any) => ({
+                    meio: meioPagamentoMap[p.forma_pagamento] || '99',
+                    valor: Number(p.valor),
+                }))
+
+            // Se não há pagamentos registrados, usar Dinheiro como fallback
+            if (pagamentosMapeados.length === 0) {
+                pagamentosMapeados.push({ meio: '01', valor: valorTotal })
+            }
+
+            // Se a soma dos pagamentos for menor que o total, lançar diferença como Crédito Loja (05)
+            const somaPagamentos = pagamentosMapeados.reduce((acc: number, p: any) => acc + p.valor, 0)
+            const diferenca = Number((valorTotal - somaPagamentos).toFixed(2))
+            if (diferenca > 0.01) {
+                pagamentosMapeados.push({ meio: '05', valor: diferenca })
+            }
 
             const result = await emitirNFCe({
                 organization_id: tenantId,
@@ -169,7 +188,7 @@ export default function FiscalEmissionModal({
                 },
                 itens: itensMapeados,
                 valor_total: valorTotal,
-                meio_pagamento: meioPagamento,
+                pagamentos: pagamentosMapeados,
                 environment,
             })
 
