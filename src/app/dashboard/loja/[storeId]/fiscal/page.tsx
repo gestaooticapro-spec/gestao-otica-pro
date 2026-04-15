@@ -206,12 +206,11 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
         return matchesStatus && matchesDate && matchesSearch;
     });
 
-    const envInvoices = invoices.filter((i) => i.environment === environment);
-    const authorizedInvoices = envInvoices.filter((i) => i.status === "authorized");
+    const authorizedInvoices = filteredInvoices.filter((i) => i.status === "authorized");
     const countAuthorized = authorizedInvoices.length;
     const sumAuthorized = authorizedInvoices.reduce((acc, inv) => acc + (inv.valor_total || 0), 0);
-    const countError = envInvoices.filter((i) => i.status === "error" || i.status === "rejected").length;
-    const countPending = envInvoices.filter((i) => i.status === "processing" || i.status === "draft").length;
+    const countError = filteredInvoices.filter((i) => i.status === "error" || i.status === "rejected").length;
+    const countPending = filteredInvoices.filter((i) => i.status === "processing" || i.status === "draft").length;
 
     return (
         <div className="space-y-6 pb-32 p-6">
