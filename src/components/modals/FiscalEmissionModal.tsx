@@ -142,6 +142,22 @@ export default function FiscalEmissionModal({
                 ? (cpfEditable ? (cpfIsValid ? cpfDigits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '') : existingCpf)
                 : ''
 
+            // Detectar meio de pagamento a partir dos pagamentos registrados
+            const formaPagtoTexto = venda.pagamentos?.[0]?.forma_pagamento || ''
+            const meioPagamentoMap: Record<string, string> = {
+                'PIX Remoto': '17',
+                'PIX na maquininha': '17',
+                'Pix': '17',
+                'PIX': '17',
+                'Dinheiro': '01',
+                'Cartão Crédito': '03',
+                'Cartão Débito': '04',
+                'Cheque': '02',
+                'Crédito Loja': '05',
+                'Boleto': '15',
+            }
+            const meioPagamento = meioPagamentoMap[formaPagtoTexto] || '99'
+
             const result = await emitirNFCe({
                 organization_id: tenantId,
                 store_id: storeId,
@@ -153,7 +169,7 @@ export default function FiscalEmissionModal({
                 },
                 itens: itensMapeados,
                 valor_total: valorTotal,
-                meio_pagamento: '01',
+                meio_pagamento: meioPagamento,
                 environment,
             })
 

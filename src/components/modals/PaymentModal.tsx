@@ -4,12 +4,14 @@ import { useState, useTransition } from 'react'
 import { X, CheckCircle, Printer, Plus, CreditCard, FileText, Loader2, Search } from 'lucide-react'
 import FinanciamentoBox from '@/components/vendas/FinanciamentoBox'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
+import FiscalEmissionModal from '@/components/modals/FiscalEmissionModal'
 import {
     finalizarVendaExpress,
     criarVendaParcialCarnê,
     searchCustomersByName,
     type CustomerSearchResult
 } from '@/lib/actions/vendas.actions'
+import { getSaleData } from '@/lib/actions/fiscal-db.actions'
 import { getReceiptPDFBase64 } from '@/lib/actions/print-remote'
 import { type CartItem } from '@/components/vendas/PdvExpressInterface'
 import { Database } from '@/lib/database.types'
@@ -58,6 +60,13 @@ export default function PaymentModal({
     const [customersFound, setCustomersFound] = useState<CustomerSearchResult[]>([])
     const [selectedCustomer, setSelectedCustomer] = useState<CustomerSearchResult | null>(null)
     const [vendaParcialId, setVendaParcialId] = useState<number | null>(null)
+
+    // Estados da NFC-e
+    const [isFiscalModalOpen, setIsFiscalModalOpen] = useState(false)
+    const [vendaCompleta, setVendaCompleta] = useState<any>(null)
+    const [vendaItens, setVendaItens] = useState<any[]>([])
+    const [isLoadingFiscal, setIsLoadingFiscal] = useState(false)
+    const [nfceEmitida, setNfceEmitida] = useState(false)
 
     // 3. Validação antes de abrir a senha
     const handlePrePayment = () => {
@@ -132,6 +141,27 @@ export default function PaymentModal({
         })
     }
 
+    const handleOpenFiscalModal = async () => {
+        if (!vendaIdGerada) return
+        setIsLoadingFiscal(true)
+        const venda = await getSaleData(vendaIdGerada)
+        if (venda) {
+            setVendaCompleta(venda)
+            setVendaItens(venda.venda_itens || [])
+            setIsFiscalModalOpen(true)
+        } else {
+            alert("Não foi possível carregar os dados da venda.")
+        }
+        setIsLoadingFiscal(false)
+    }
+
+    const handleFiscalSuccess = async (_environment: 'production' | 'homologation') => {
+        setIsFiscalModalOpen(false)
+        setVendaCompleta(null)
+        setVendaItens([])
+        setNfceEmitida(true)
+    }
+
     if (!isOpen) return null
 
     // Estilos
@@ -160,6 +190,18 @@ export default function PaymentModal({
                                     <p className="text-slate-400 font-bold tracking-wide">Venda #{vendaIdGerada} registrada com sucesso.</p>
                                 </div>
                                 <div className="flex flex-col sm:flex-row gap-4 mt-8 w-full max-w-md">
+                                    <button
+                                        onClick={handleOpenFiscalModal}
+                                        disabled={isLoadingFiscal || nfceEmitida}
+                                        className={`flex-1 py-4 rounded-xl border font-bold transition-all flex flex-col items-center gap-2 disabled:cursor-not-allowed ${
+                                            nfceEmitida
+                                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                                                : 'border-white/10 bg-white/5 hover:bg-white/10 text-white disabled:opacity-50'
+                                        }`}
+                                    >
+                                        {isLoadingFiscal ? <Loader2 className="h-6 w-6 animate-spin text-blue-400" /> : nfceEmitida ? <CheckCircle className="h-6 w-6 text-emerald-400" /> : <FileText className="h-6 w-6 text-blue-400" />}
+                                        {nfceEmitida ? 'NFC-e Emitida ✓' : 'Emitir NFC-e'}
+                                    </button>
                                     <button
                                         onClick={async () => {
                                             try {
@@ -321,6 +363,18 @@ export default function PaymentModal({
                     onSuccess={handleAuthSuccess}
                     title="Autorizar Pagamento"
                     description="Insira seu PIN para confirmar o recebimento."
+                />
+            )}
+
+            {/* 7. MODAL FISCAL (NFC-e) */}
+            {isFiscalModalOpen && vendaCompleta && (
+                <FiscalEmissionModal
+                    isOpen={isFiscalModalOpen}
+                    onClose={() => { setIsFiscalModalOpen(false); setVendaCompleta(null); setVendaItens([]) }}
+                    venda={vendaCompleta}
+                    vendaItens={vendaItens}
+                    customer={vendaCompleta.customers}
+                    onSuccess={handleFiscalSuccess}
                 />
             )}
         </>

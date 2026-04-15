@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import {
@@ -53,15 +53,33 @@ interface VendaInterfaceProps {
 // Componente de Modal Simples Local
 function SimpleModal({ isOpen, onClose, title, children, headerClass = "bg-white/5 text-slate-200" }: { isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode, headerClass?: string }) {
     const [mounted, setMounted] = useState(false)
-    
+    const mouseDownTargetRef = useRef<EventTarget | null>(null)
+
     useEffect(() => {
         setMounted(true)
     }, [])
 
     if (!isOpen || !mounted) return null;
 
+    const handleMouseDown = (e: React.MouseEvent) => {
+        mouseDownTargetRef.current = e.target
+    }
+
+    const handleClick = (e: React.MouseEvent) => {
+        // Se o mousedown e click foram no mesmo elemento (overlay), fecha o modal
+        // Isso evita que o modal feche quando o usuário está selecionando texto
+        if (e.target === mouseDownTargetRef.current) {
+            onClose()
+        }
+        mouseDownTargetRef.current = null
+    }
+
     return createPortal(
-        <div className="fixed inset-0 z-[100] grid place-items-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto custom-scrollbar animate-in fade-in duration-200" onClick={onClose}>
+        <div 
+            className="fixed inset-0 z-[100] grid place-items-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto custom-scrollbar animate-in fade-in duration-200" 
+            onMouseDown={handleMouseDown}
+            onClick={handleClick}
+        >
             <div className="bg-slate-900 border border-white/10 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
                 <div className={`${headerClass} px-4 py-3 border-b border-white/10 flex justify-between items-center shadow-sm`}>
                     <h3 className="font-bold flex items-center gap-2 text-sm uppercase tracking-wide text-white">

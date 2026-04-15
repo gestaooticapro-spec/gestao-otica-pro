@@ -47,11 +47,24 @@ export default function VendaActions({
 
     const [isPending, startTransition] = useTransition()
 
-    const today = new Date().toDateString()
-    const isSameDayCreated = new Date(venda.created_at).toDateString() === today
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    
+    const isSameDayCreated = new Date(venda.created_at).toDateString() === today.toDateString()
     const vendaWithMeta = venda as VendaWithMeta
-    const isSameDayClosed = vendaWithMeta.data_fechamento ? new Date(vendaWithMeta.data_fechamento).toDateString() === today : false
-    const canReopen = isSameDayCreated || isSameDayClosed
+    
+    // Calcula se está dentro do prazo de 2 dias após o fechamento
+    let canReopen = isSameDayCreated
+    if (vendaWithMeta.data_fechamento) {
+        const fechamentoDate = new Date(vendaWithMeta.data_fechamento)
+        fechamentoDate.setHours(0, 0, 0, 0)
+        
+        const diffTime = today.getTime() - fechamentoDate.getTime()
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
+        
+        // Permite reabertura até 2 dias após o fechamento (0, 1 ou 2 dias)
+        canReopen = canReopen || (diffDays >= 0 && diffDays <= 2)
+    }
 
     const hasRemaining = (venda.valor_restante ?? 0) > 0.01
     const hasFinance = !!venda.financiamento_id

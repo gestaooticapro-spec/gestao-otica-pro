@@ -106,7 +106,8 @@ export async function getSaleData(saleId: number) {
         .select(`
             *,
             customers (*),
-            venda_itens (*)
+            venda_itens (*),
+            pagamentos (*)
         `)
         .eq("id", saleId)
         .single();
