@@ -369,7 +369,7 @@ function FamilySection({
   gridSummaryByOffer: Map<string, OfferGridSummary>
   viewMode: ViewMode
 }) {
-  const [isOpen, setIsOpen] = useState(true)
+  const [isOpen, setIsOpen] = useState(false)
 
   // Group composable by section
   const sections = useMemo(() => {

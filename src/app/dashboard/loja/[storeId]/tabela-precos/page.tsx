@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { Building2, Search, ShieldAlert, Tag } from 'lucide-react'
+import { ShieldAlert, Tag } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getProfileByAdmin } from '@/lib/supabase/admin'
 import { getStoreGlobalCatalogOverview } from '@/lib/actions/global-catalog.actions'
@@ -8,7 +8,7 @@ import {
   getStorePriceTableAllActiveOffersData,
   getStorePriceTableData,
 } from '@/lib/actions/price-table.actions'
-import PriceTableCatalogCards from '@/components/catalog/PriceTableCatalogCards'
+import PriceTableHeader from '@/components/catalog/PriceTableHeader'
 import PriceTableInterface from '@/components/catalog/PriceTableInterface'
 import PriceTableLensSearchInterface from '@/components/catalog/PriceTableLensSearchInterface'
 
@@ -98,61 +98,12 @@ export default async function StorePriceTablePage({
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
-        <div className="rounded-[2rem] border border-white/10 bg-gradient-to-br from-slate-900 via-slate-950 to-cyan-950/30 p-6 shadow-[0_25px_80px_rgba(2,6,23,0.45)] sm:p-7">
-          <PriceTableCatalogCards overview={overview} canManage={canManage} embedded />
-        </div>
-
-        <div className="rounded-3xl border border-white/10 bg-slate-900/60 p-4 backdrop-blur-md">
-          <div className="border-b border-white/10 px-1">
-            <div className="flex flex-wrap items-end gap-1.5">
-              <Link
-                href={`/dashboard/loja/${storeId}/tabela-precos?scope=laboratorio`}
-                aria-current={scope === 'laboratorio' ? 'page' : undefined}
-                className={`relative -mb-px inline-flex items-center gap-2 rounded-t-2xl border px-4 py-3 transition ${
-                  scope === 'laboratorio'
-                    ? 'border-white/15 border-b-slate-900 bg-slate-950 text-white shadow-[0_-1px_0_rgba(255,255,255,0.04)]'
-                    : 'border-transparent bg-slate-800/70 text-slate-400 hover:bg-slate-800 hover:text-white'
-                }`}
-              >
-                <span
-                  className={`flex h-8 w-8 items-center justify-center rounded-xl ${
-                    scope === 'laboratorio'
-                      ? 'bg-cyan-400/15 text-cyan-200'
-                      : 'bg-black/20 text-slate-500'
-                  }`}
-                >
-                  <Building2 className="h-4 w-4" />
-                </span>
-                <span className="text-xs font-black uppercase tracking-[0.18em]">
-                  Por laboratorio
-                </span>
-              </Link>
-
-              <Link
-                href={`/dashboard/loja/${storeId}/tabela-precos?scope=lente`}
-                aria-current={scope === 'lente' ? 'page' : undefined}
-                className={`relative -mb-px inline-flex items-center gap-2 rounded-t-2xl border px-4 py-3 transition ${
-                  scope === 'lente'
-                    ? 'border-white/15 border-b-slate-900 bg-slate-950 text-white shadow-[0_-1px_0_rgba(255,255,255,0.04)]'
-                    : 'border-transparent bg-slate-800/70 text-slate-400 hover:bg-slate-800 hover:text-white'
-                }`}
-              >
-                <span
-                  className={`flex h-8 w-8 items-center justify-center rounded-xl ${
-                    scope === 'lente'
-                      ? 'bg-cyan-400/15 text-cyan-200'
-                      : 'bg-black/20 text-slate-500'
-                  }`}
-                >
-                  <Search className="h-4 w-4" />
-                </span>
-                <span className="text-xs font-black uppercase tracking-[0.18em]">
-                  Por lente
-                </span>
-              </Link>
-            </div>
-          </div>
-        </div>
+        <PriceTableHeader
+          storeId={storeId}
+          scope={scope}
+          overview={overview}
+          canManage={canManage}
+        />
 
         {scope === 'laboratorio' && !labData ? (
           <div className="flex items-center justify-center px-2 py-4 text-white">
