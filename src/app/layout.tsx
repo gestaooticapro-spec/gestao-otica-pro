@@ -2,6 +2,7 @@
 import type { Metadata, Viewport } from 'next' // <--- Importe Viewport
 import { Inter } from 'next/font/google'
 import { Toaster } from 'sonner'
+import SupabaseCookieHygiene from '@/components/SupabaseCookieHygiene'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -61,6 +62,7 @@ export default function RootLayout({
       <body
         className={`${inter.className} flex flex-col min-h-screen bg-gray-100 text-slate-800`}
       >
+        <SupabaseCookieHygiene />
         {children}
         <Toaster position="top-center" richColors />
       </body>

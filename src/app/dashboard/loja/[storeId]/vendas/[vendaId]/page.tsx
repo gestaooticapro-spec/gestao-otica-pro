@@ -44,7 +44,7 @@ export default async function VendaPage({ params, searchParams }: Props) {
     revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}`)
   }
 
-  const isVendaFechadaOuCancelada = ['Fechada', 'Cancelada'].includes(venda.status)
+  const isVendaFechadaOuCancelada = ['Fechada', 'Cancelada', 'Devolvida'].includes(venda.status)
   const isQuitado = (venda.valor_restante ?? 0) <= 0.01;
 
   return (

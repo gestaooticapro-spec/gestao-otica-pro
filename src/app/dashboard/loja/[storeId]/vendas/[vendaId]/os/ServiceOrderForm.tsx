@@ -287,6 +287,8 @@ export default function ServiceOrderFormContent({
     const [localDependentes, setLocalDependentes] = useState<Dependente[]>(initialDependentes)
 
     const lastSuccessRef = useRef<number | undefined>(0);
+    const formRef = useRef<HTMLFormElement>(null);
+    const pendingWhatsAppRef = useRef(false);
 
     // --- STATES DO FORM ---
     const [protocolo, setProtocolo] = useState('')
@@ -401,7 +403,6 @@ export default function ServiceOrderFormContent({
 
     useEffect(() => {
         if (saveState.success && saveState.data && saveState.timestamp !== lastSuccessRef.current) {
-            alert(saveState.message)
             const savedOS = saveState.data as ServiceOrderWithLinks
             let newList = [...existingOrders]
             const idx = newList.findIndex(o => o.id === savedOS.id)
@@ -410,6 +411,48 @@ export default function ServiceOrderFormContent({
             onListChange(newList)
             setCurrentIndex(newList.findIndex(o => o.id === savedOS.id))
             lastSuccessRef.current = saveState.timestamp;
+
+            if (pendingWhatsAppRef.current) {
+                pendingWhatsAppRef.current = false;
+                const lenteOdDesc = vendaItens.find(i => i.id === parseInt(lenteOdItemId))?.descricao || 'Não informado';
+                const lenteOeDesc = vendaItens.find(i => i.id === parseInt(lenteOeItemId))?.descricao || 'Não informado';
+                const medico = oftalmosList.find(o => o.id === parseInt(oftalmologistaId));
+                const medicoTexto = medico ? `${medico.nome_completo} ${medico.crm ? 'CRM ' + medico.crm : ''}` : 'Não informado';
+                const pacienteNome = dependenteId
+                    ? localDependentes.find(d => d.id === parseInt(dependenteId))?.full_name || customer?.full_name
+                    : customer?.full_name || 'Paciente';
+                const prometidoPara = dtPrometido ? formatDate(dtPrometido) : 'A combinar';
+                const msg = `
+*Pedido de Lentes*
+
+Protocolo/OS #${savedOS.protocolo || protocolo || 'Nova'}
+Prometido para: ${prometidoPara}
+
+--Receita--
+Lente OD: ${lenteOdDesc}
+Lente OE: ${lenteOeDesc}
+OD: ${longeOdEsf} ${longeOdCil} ${longeOdEixo}
+OE: ${longeOeEsf} ${longeOeCil} ${longeOeEixo}
+AD: ${adicao}
+
+--Medidas--
+Hor: ${medH}
+Vert: ${medV}
+Diag: ${medDiag}
+Ponte: ${medPonte}
+DP: ${dnpOd}/${dnpOe}
+Diam: ${diametro}
+Alt: ${altOd}/${altOe}
+
+--Dados Pessoais--
+Cliente: ${pacienteNome}
+Médico: ${medicoTexto}
+
+Obs.: ${obsOs}`.trim();
+                window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+            } else {
+                alert(saveState.message);
+            }
         }
     }, [saveState, onListChange, existingOrders])
 
@@ -477,54 +520,16 @@ export default function ServiceOrderFormContent({
     }
 
     const sendWhatsAppPedido = () => {
-        const lenteOdDesc = vendaItens.find(i => i.id === parseInt(lenteOdItemId))?.descricao || 'Não informado';
-        const lenteOeDesc = vendaItens.find(i => i.id === parseInt(lenteOeItemId))?.descricao || 'Não informado';
-        const medico = oftalmosList.find(o => o.id === parseInt(oftalmologistaId));
-        const medicoTexto = medico ? `${medico.nome_completo} ${medico.crm ? 'CRM ' + medico.crm : ''}` : 'Não informado';
-        // Usa o nome do paciente (dependente se selecionado, senão o titular)
-        const pacienteNome = dependenteId
-            ? localDependentes.find(d => d.id === parseInt(dependenteId))?.full_name || customer?.full_name
-            : customer?.full_name || 'Paciente';
-        const prometidoPara = dtPrometido ? formatDate(dtPrometido) : 'A combinar';
-
-        const msg = `
-*Pedido de Lentes*
-
-Protocolo/OS #${protocolo || 'Nova'}
-Prometido para: ${prometidoPara}
-
---Receita--
-Lente OD: ${lenteOdDesc}
-Lente OE: ${lenteOeDesc}
-OD: ${longeOdEsf} ${longeOdCil} ${longeOdEixo}
-OE: ${longeOeEsf} ${longeOeCil} ${longeOeEixo}
-AD: ${adicao}
-
---Medidas--
-Hor: ${medH}
-Vert: ${medV}
-Diag: ${medDiag}
-Ponte: ${medPonte}
-DP: ${dnpOd}/${dnpOe}
-Diam: ${diametro}
-Alt: ${altOd}/${altOe}
-
---Dados Pessoais--
-Cliente: ${pacienteNome}
-Médico: ${medicoTexto}
-
-Obs.: ${obsOs}
-`.trim();
-
-        const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
-        window.open(url, '_blank');
+        if (!formRef.current) return;
+        pendingWhatsAppRef.current = true;
+        formRef.current.requestSubmit();
     }
 
     if (!customer) return <div className="p-4">Carregando dados do cliente...</div>
 
     return (
         <>
-            <form action={dispatch} className="flex-1 flex flex-col h-[calc(100vh-64px)]">
+            <form ref={formRef} action={dispatch} className="flex-1 flex flex-col h-[calc(100vh-64px)]">
 
                 {/* ÁREA DE SCROLL (HEADER + CONTEÚDO) */}
                 <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 custom-scrollbar">

@@ -795,7 +795,14 @@ async function importPayload(payload) {
       if (IMPORT_LOG_OFFERS) {
         console.log(`[import] oferta: ${offer.canonical_label || offer.raw_label}`)
       }
-      const offerClinicalCategory = offer.clinical_category || inferOfferClinicalCategory(offer, family, familyClinicalCategory)
+      // IMPORTANT:
+      // We compute "incoming semantic" (embedded treatment flags inferred from the label)
+      // and must persist it. Otherwise, stale-cleanup will delete offers whose signature
+      // only matches after enrichment (e.g. labels containing "Antirreflexo", "Transitions",
+      // "Blue UV", etc.).
+      const semanticOffer = buildIncomingOfferSemantic(offer)
+      const offerClinicalCategory =
+        offer.clinical_category || inferOfferClinicalCategory(semanticOffer, family, familyClinicalCategory)
       const offerRow = {
         family_id: savedFamily.id,
         import_key: buildOfferImportKey(offer),
@@ -803,12 +810,12 @@ async function importPayload(payload) {
         canonical_label: offer.canonical_label || null,
         clinical_category: offerClinicalCategory,
         material: offer.material || null,
-        indice_refracao: normalizeOfferIndex(offer),
+        indice_refracao: semanticOffer.indice_refracao ?? normalizeOfferIndex(offer),
         is_atomic_offer: offer.is_atomic_offer === true,
         allows_composition: offer.allows_composition !== false,
         already_includes_treatment: offer.already_includes_treatment === true,
         features: {
-          ...(offer.features || {}),
+          ...(semanticOffer.features || offer.features || {}),
           ...(normalizeOfferCost(offer) != null ? { cost_price: normalizeOfferCost(offer) } : {}),
         },
         base_price: offer.base_price ?? null,

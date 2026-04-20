@@ -41,7 +41,7 @@ export default async function VendaPageExperimental({ params }: Props) {
         revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`)
     }
 
-    const isVendaFechadaOuCancelada = ['Fechada', 'Cancelada'].includes(venda.status)
+    const isVendaFechadaOuCancelada = ['Fechada', 'Cancelada', 'Devolvida'].includes(venda.status)
 
     // FIX: Quitado = valor restante zerado E (não tem carnê OU todas parcelas do carnê pagas)
     const temParcelasPendentes = financiamento?.financiamento_parcelas.some(p => p.status !== 'Pago') ?? false;

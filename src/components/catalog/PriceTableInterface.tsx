@@ -28,6 +28,7 @@ type InitialFilters = {
   indiceFilter?: number | null
   featureFilter?: string[]
   sectionFilter?: string | null
+  alturaFilter?: number | null
 }
 
 function formatCurrency(value: number | null): string {
@@ -122,7 +123,7 @@ function extractDiameter(metadata?: Record<string, unknown> | null): string | nu
   return String(value)
 }
 
-function buildOfferDetailTitle(summary: OfferGridSummary | null): string {
+function buildOfferDetailTitle(summary: OfferGridSummary | null, minFittingHeight?: number | null): string {
   if (!summary) return 'Sem grade informada'
   const parts: string[] = []
   const sph = formatRange(summary.sphMin, summary.sphMax)
@@ -133,6 +134,7 @@ function buildOfferDetailTitle(summary: OfferGridSummary | null): string {
   if (add) parts.push(`Adição: ${add}`)
   const diam = extractDiameter(summary.metadata)
   if (diam) parts.push(`Diâmetro: ${diam}`)
+  if (minFittingHeight != null) parts.push(`Alt. mínima: ${minFittingHeight}mm`)
   return parts.length ? parts.join(' | ') : 'Sem grade informada'
 }
 
@@ -261,7 +263,10 @@ function MatrixTable({
                     <button
                       type="button"
                       className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/10 text-[10px] font-black text-slate-400 transition hover:border-white/25 hover:text-white"
-                      title={buildOfferDetailTitle(gridSummaryByOffer.get(offer.globalOfferId) || null)}
+                      title={buildOfferDetailTitle(
+                        gridSummaryByOffer.get(offer.globalOfferId) || null,
+                        (offer.features as any)?.min_fitting_height ?? null,
+                      )}
                     >
                       ?
                     </button>
@@ -311,6 +316,248 @@ function MatrixTable({
           })}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+type AtomicMatrixPhotoMode = 'normal' | 'foto'
+
+function getFeatureString(features: Record<string, unknown>, key: string): string | null {
+  const val = features?.[key]
+  return typeof val === 'string' && val.trim() ? val.trim() : null
+}
+
+function getFeatureBoolean(features: Record<string, unknown>, key: string): boolean | null {
+  const val = features?.[key]
+  if (val === true) return true
+  if (val === false) return false
+  return null
+}
+
+function getFeatureNumber(features: Record<string, unknown>, key: string): number | null {
+  const val = features?.[key]
+  if (typeof val === 'number' && Number.isFinite(val)) return val
+  if (typeof val === 'string' && val.trim() && !isNaN(Number(val))) return Number(val)
+  return null
+}
+
+function getAtomicOfferTreatmentColumn(offer: PriceTableOffer): string | null {
+  const explicit = getFeatureString(offer.features || {}, 'treatment_column')
+  if (explicit) return explicit
+
+  // Best-effort fallback: parse label tail.
+  const label = getOfferLabel(offer)
+  const normalized = label.replace(/\s+/g, ' ').trim()
+  const withoutPhoto = normalized.replace(/\s+Fotossensivel\b/i, '').trim()
+  const m = withoutPhoto.match(/\b(Verniz\s+Anti\s+Risco|Antirreflexo\s+.+)$/i)
+  if (m) return m[1].trim()
+  return null
+}
+
+function isAtomicOfferPhoto(offer: PriceTableOffer): boolean {
+  const explicit = getFeatureBoolean(offer.features || {}, 'photo')
+  if (explicit === true) return true
+  if (explicit === false) return false
+  return /\b(fotossensivel|transitions|foto)\b/i.test(getOfferLabel(offer))
+}
+
+function getAtomicOfferIndexLabel(offer: PriceTableOffer): string {
+  if (offer.indiceRefracao != null) {
+    // Keep local style, but preserve 1.5 vs 1.50 (most tables show 1.50).
+    const v = Number(offer.indiceRefracao)
+    if (Number.isFinite(v)) {
+      const asText = v.toFixed(2).replace(/\.00$/, '').replace(/0$/, '')
+      return asText
+    }
+  }
+  return 'N/I'
+}
+
+function AtomicMatrixTable({
+  offers,
+  gridSummaryByOffer,
+}: {
+  offers: PriceTableOffer[]
+  gridSummaryByOffer: Map<string, OfferGridSummary>
+}) {
+  const [photoMode, setPhotoMode] = useState<AtomicMatrixPhotoMode>('normal')
+
+  const matrix = useMemo(() => {
+    const rows = new Map<string, { indexLabel: string; indexValue: number | null }>()
+    const cols = new Map<string, { key: string }>()
+    const cells = new Map<string, PriceTableOffer>()
+    const rowSampleOffer = new Map<string, PriceTableOffer>()
+
+    for (const offer of offers) {
+      const col = getAtomicOfferTreatmentColumn(offer)
+      if (!col) continue
+
+      const isFoto = isAtomicOfferPhoto(offer)
+      if (photoMode === 'normal' && isFoto) continue
+      if (photoMode === 'foto' && !isFoto) continue
+
+      const idxLabel = getAtomicOfferIndexLabel(offer)
+      const idxValue = offer.indiceRefracao != null && Number.isFinite(Number(offer.indiceRefracao)) ? Number(offer.indiceRefracao) : null
+
+      rows.set(idxLabel, { indexLabel: idxLabel, indexValue: idxValue })
+      cols.set(col, { key: col })
+      if (!rowSampleOffer.has(idxLabel)) rowSampleOffer.set(idxLabel, offer)
+
+      const cellKey = `${idxLabel}__${col}`
+      const existing = cells.get(cellKey)
+      if (!existing) {
+        cells.set(cellKey, offer)
+        continue
+      }
+      // If we ever have duplicates, keep the one with defined price (then the highest price as tie-breaker)
+      const p0 = existing.basePrice
+      const p1 = offer.basePrice
+      if (p0 == null && p1 != null) cells.set(cellKey, offer)
+      else if (p0 != null && p1 != null && p1 > p0) cells.set(cellKey, offer)
+    }
+
+    const rowItems = Array.from(rows.values()).sort((a, b) => {
+      const av = a.indexValue ?? Number.POSITIVE_INFINITY
+      const bv = b.indexValue ?? Number.POSITIVE_INFINITY
+      if (av !== bv) return av - bv
+      return a.indexLabel.localeCompare(b.indexLabel)
+    })
+
+    const preferredOrder = [
+      'Verniz Anti Risco',
+      'Antirreflexo Clear',
+      'Antirreflexo Clear Pro',
+      'Antirreflexo Optifog',
+      'Antirreflexo Clear Premium',
+      'Antirreflexo Supra',
+      'Antirreflexo Blue',
+      'Antirreflexo Blue Premium',
+    ]
+    const colItems = Array.from(cols.values()).sort((a, b) => {
+      const ai = preferredOrder.indexOf(a.key)
+      const bi = preferredOrder.indexOf(b.key)
+      const ar = ai === -1 ? 999 : ai
+      const br = bi === -1 ? 999 : bi
+      if (ar !== br) return ar - br
+      return a.key.localeCompare(b.key)
+    })
+
+    return { rowItems, colItems, cells, rowSampleOffer }
+  }, [offers, photoMode])
+
+  if (!matrix.colItems.length) {
+    return (
+      <div className="rounded-2xl border border-white/8 bg-black/20 p-4 text-sm text-slate-400">
+        NÃ£o foi possÃ­vel montar matriz para estas ofertas (sem colunas detectÃ¡veis).
+      </div>
+    )
+  }
+
+  const displayColName = (raw: string) => {
+    const cleaned = raw.replace(/^Antirreflexo\s+/i, '').trim()
+    if (/^verniz\s+anti\s+risco$/i.test(raw)) return 'Anti-risco'
+    return cleaned || raw
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+          Matriz por Ã­ndice e tratamento embutido
+        </p>
+        <div className="flex items-center gap-1 rounded-2xl border border-white/8 bg-black/10 p-1">
+          <button
+            type="button"
+            onClick={() => setPhotoMode('normal')}
+            className={`rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] transition-all ${
+              photoMode === 'normal' ? 'bg-cyan-500/12 text-cyan-200' : 'text-slate-500 hover:text-white'
+            }`}
+          >
+            Normal
+          </button>
+          <button
+            type="button"
+            onClick={() => setPhotoMode('foto')}
+            className={`rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] transition-all ${
+              photoMode === 'foto' ? 'bg-cyan-500/12 text-cyan-200' : 'text-slate-500 hover:text-white'
+            }`}
+          >
+            Foto
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded-2xl border border-white/8">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-white/8 bg-black/30">
+              <th className="sticky left-0 z-10 bg-slate-900/95 px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 backdrop-blur-sm">
+                Ãndice
+              </th>
+              {matrix.colItems.map((col) => (
+                <th
+                  key={col.key}
+                  className="min-w-[130px] px-3 py-3 text-left text-[10px] font-black uppercase tracking-[0.12em] text-slate-500"
+                  title={displayColName(col.key)}
+                >
+                  <span className="block truncate">{displayColName(col.key)}</span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {matrix.rowItems.map((row, idx) => (
+              <tr
+                key={row.indexLabel}
+                className={`border-b border-white/5 transition-colors hover:bg-white/5 ${
+                  idx % 2 === 0 ? 'bg-black/10' : ''
+                }`}
+              >
+                <td className="sticky left-0 z-10 bg-slate-900/95 px-4 py-3 text-left backdrop-blur-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-xs font-bold text-slate-200">{row.indexLabel}</span>
+                    {(() => {
+                      const sample = matrix.rowSampleOffer.get(row.indexLabel) || null
+                      if (!sample) return null
+                      const summary = gridSummaryByOffer.get(sample.globalOfferId) || null
+                      const tooltip = buildOfferDetailTitle(
+                        summary,
+                        getFeatureNumber(sample.features || {}, 'min_fitting_height'),
+                      )
+                      return (
+                        <span
+                          title={tooltip}
+                          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/10 text-[10px] font-black text-slate-400 transition hover:border-white/25 hover:text-white"
+                        >
+                          ?
+                        </span>
+                      )
+                    })()}
+                  </div>
+                </td>
+                {matrix.colItems.map((col) => {
+                  const cellKey = `${row.indexLabel}__${col.key}`
+                  const offer = matrix.cells.get(cellKey) || null
+                  if (!offer) {
+                    return (
+                      <td key={col.key} className="px-3 py-3 text-left">
+                        <span className="text-slate-600">â€”</span>
+                      </td>
+                    )
+                  }
+                  return (
+                    <td key={col.key} className="px-3 py-3 text-left">
+                      <span className="font-mono text-xs font-black text-white">
+                        {formatCurrency(offer.basePrice)}
+                      </span>
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
@@ -507,9 +754,11 @@ function FamilySection({
                   Ofertas Fechadas
                 </p>
               )}
-              {atomicOffers.map((offer) => (
-                <AtomicOfferCard key={offer.globalOfferId} offer={offer} />
-              ))}
+              {viewMode === 'matrix' && composableOffers.length === 0 ? (
+                <AtomicMatrixTable offers={atomicOffers} gridSummaryByOffer={gridSummaryByOffer} />
+              ) : (
+                atomicOffers.map((offer) => <AtomicOfferCard key={offer.globalOfferId} offer={offer} />)
+              )}
             </div>
           )}
         </div>
@@ -543,6 +792,14 @@ export default function PriceTableInterface({
   const [sectionFilter, setSectionFilter] = useState<string | null>(
     initialFilters?.sectionFilter || null,
   )
+  const [alturaFilter, setAlturaFilter] = useState<number | null>(
+    initialFilters?.alturaFilter ?? null,
+  )
+
+  const getMinFittingHeight = (offer: PriceTableOffer): number | null => {
+    const val = (offer.features as any)?.min_fitting_height
+    return val != null && !isNaN(Number(val)) ? Number(val) : null
+  }
 
   // Build compatibility lookup: offerId -> treatmentId -> compat
   const compatibilityMap = useMemo(() => {
@@ -622,11 +879,17 @@ export default function PriceTableInterface({
     const indices = new Set<number>()
     const features = new Set<string>()
     const sections = new Set<string>()
+    const alturas = new Set<number>()
 
     const term = search.trim().toLowerCase()
     const matchesBase = (
       offer: PriceTableOffer,
-      opts: { ignoreMaterial?: boolean; ignoreIndice?: boolean; ignoreFeature?: boolean } = {},
+      opts: {
+        ignoreMaterial?: boolean
+        ignoreIndice?: boolean
+        ignoreFeature?: boolean
+        ignoreAltura?: boolean
+      } = {},
     ) => {
       if (term) {
         const label = getOfferLabel(offer).toLowerCase()
@@ -640,6 +903,10 @@ export default function PriceTableInterface({
       if (!opts.ignoreMaterial && materialFilter && offer.material !== materialFilter) return false
       if (!opts.ignoreIndice && indiceFilter && offer.indiceRefracao !== indiceFilter) return false
       if (sectionFilter && offer.sectionName !== sectionFilter) return false
+      if (!opts.ignoreAltura && alturaFilter != null) {
+        const minH = getMinFittingHeight(offer)
+        if (minH != null && minH > alturaFilter) return false
+      }
       return true
     }
 
@@ -650,7 +917,6 @@ export default function PriceTableInterface({
         clinicals.add(offer.clinicalCategory)
       }
       if (offer.sectionName) sections.add(offer.sectionName)
-
     }
 
     for (const offer of data.offers) {
@@ -677,14 +943,23 @@ export default function PriceTableInterface({
       if (offer.indiceRefracao) indices.add(offer.indiceRefracao)
     }
 
+    // Coleta alturas disponíveis de qualquer oferta com min_fitting_height definido
+    for (const offer of data.offers) {
+      if (!matchesBase(offer, { ignoreAltura: true })) continue
+      const minH = getMinFittingHeight(offer)
+      if (minH != null) alturas.add(minH)
+    }
+
     return {
       clinicals: Array.from(clinicals).sort(),
       materials: Array.from(materials).sort(),
       indices: Array.from(indices).sort((a, b) => a - b),
       features: Array.from(features).sort(),
       sections: Array.from(sections).sort(),
+      alturas: Array.from(alturas).sort((a, b) => a - b),
     }
   }, [
+    alturaFilter,
     clinicalFilter,
     data.offers,
     familyMap,
@@ -711,9 +986,14 @@ export default function PriceTableInterface({
         if (!featureFilter.every((key) => offerHasFeature(offer, key))) return false
       }
       if (sectionFilter && offer.sectionName !== sectionFilter) return false
+      if (alturaFilter != null) {
+        const minH = getMinFittingHeight(offer)
+        if (minH != null && minH > alturaFilter) return false
+      }
       return true
     })
   }, [
+    alturaFilter,
     data.offers,
     familyMap,
     search,
@@ -755,6 +1035,7 @@ export default function PriceTableInterface({
     indiceFilter,
     sectionFilter,
     featureFilter.length > 0 ? 'feature' : null,
+    alturaFilter,
   ]
     .filter(Boolean)
     .length
@@ -765,6 +1046,7 @@ export default function PriceTableInterface({
     setIndiceFilter(null)
     setFeatureFilter([])
     setSectionFilter(null)
+    setAlturaFilter(null)
     setSearch('')
   }
 
@@ -787,6 +1069,12 @@ export default function PriceTableInterface({
       setFeatureFilter(next)
     }
   }, [featureFilter, filterOptions.features])
+
+  useEffect(() => {
+    if (alturaFilter != null && !filterOptions.alturas.includes(alturaFilter)) {
+      setAlturaFilter(null)
+    }
+  }, [filterOptions.alturas, alturaFilter])
 
   const activeQueryString = useMemo(() => {
     const params = new URLSearchParams()
@@ -996,6 +1284,28 @@ export default function PriceTableInterface({
                         label={String(idx)}
                         active={indiceFilter === idx}
                         onClick={() => setIndiceFilter(indiceFilter === idx ? null : idx)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Altura mínima */}
+              {filterOptions.alturas.length > 0 && (
+                <div>
+                  <p className="mb-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                    Altura mínima
+                  </p>
+                  <p className="mb-2 text-[10px] text-slate-600">
+                    Mostra lentes com altura mínima até o valor selecionado
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {filterOptions.alturas.map((altura) => (
+                      <FilterPill
+                        key={altura}
+                        label={`${altura} mm`}
+                        active={alturaFilter === altura}
+                        onClick={() => setAlturaFilter(alturaFilter === altura ? null : altura)}
                       />
                     ))}
                   </div>

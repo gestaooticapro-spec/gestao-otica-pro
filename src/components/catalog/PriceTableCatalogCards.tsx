@@ -68,12 +68,29 @@ export default function PriceTableCatalogCards({
     if (!window.confirm(question)) return
 
     startTransition(async () => {
-      const result = isActive
-        ? await deactivateGlobalCatalogForStore(overview.storeId, versionId)
-        : await activateGlobalCatalogForStore(overview.storeId, versionId)
+      let result:
+        | { success: boolean; message: string }
+        | undefined
+        | null = null
+
+      try {
+        result = isActive
+          ? await deactivateGlobalCatalogForStore(overview.storeId, versionId)
+          : await activateGlobalCatalogForStore(overview.storeId, versionId)
+      } catch (error) {
+        console.error('Erro ao alternar catalogo global:', error)
+        toast.error('Falha ao alternar a tabela. Verifique os logs do servidor.')
+        return
+      }
+
+      if (!result || typeof result !== 'object' || typeof result.success !== 'boolean') {
+        console.error('Retorno inesperado ao alternar catalogo global:', result)
+        toast.error('Falha ao alternar a tabela. Retorno inesperado da API.')
+        return
+      }
 
       if (!result.success) {
-        toast.error(result.message)
+        toast.error(result.message || 'Falha ao alternar a tabela.')
         return
       }
 

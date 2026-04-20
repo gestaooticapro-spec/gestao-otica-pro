@@ -187,7 +187,7 @@ export async function saveLente(prevState: CatalogActionResult, formData: FormDa
 
 export async function saveArmacao(prevState: CatalogActionResult, formData: FormData): Promise<CatalogActionResult> {
   try {
-    const { profile, supabaseAdmin } = await getContext()
+    const { user, profile, supabaseAdmin } = await getContext()
     const nullIfEmpty = (v: any) => (v === '' ? null : v)
 
     const validated = ArmacaoSchema.safeParse({
@@ -242,7 +242,28 @@ export async function saveArmacao(prevState: CatalogActionResult, formData: Form
     if (id) {
       await (supabaseAdmin.from('products') as any).update(payload).eq('id', id)
     } else {
-      await (supabaseAdmin.from('products') as any).insert(payload)
+      const { data: inserted } = await (supabaseAdmin.from('products') as any).insert(payload).select('id').single()
+      if (inserted && data.quantidade_estoque > 0) {
+        const { data: firstEmployee } = await (supabaseAdmin.from('employees') as any)
+          .select('id')
+          .eq('store_id', profile.store_id)
+          .eq('is_active', true)
+          .order('id', { ascending: true })
+          .limit(1)
+          .single()
+        await (supabaseAdmin.from('stock_movements') as any).insert({
+          tenant_id: profile.tenant_id,
+          store_id: profile.store_id,
+          product_id: inserted.id,
+          tipo: 'Entrada',
+          quantidade: data.quantidade_estoque,
+          motivo: 'Estoque inicial no cadastro',
+          custo_unitario_momento: data.preco_custo ?? null,
+          registrado_por_id: user.id,
+          employee_id: firstEmployee?.id ?? null,
+          created_at: new Date().toISOString()
+        })
+      }
     }
 
     revalidatePath(`/dashboard/loja/${profile.store_id}/cadastros`)
@@ -252,7 +273,7 @@ export async function saveArmacao(prevState: CatalogActionResult, formData: Form
 
 export async function saveProdutoGeral(prevState: CatalogActionResult, formData: FormData): Promise<CatalogActionResult> {
   try {
-    const { profile, supabaseAdmin } = await getContext()
+    const { user, profile, supabaseAdmin } = await getContext()
     const nullIfEmpty = (v: any) => (v === '' ? null : v)
 
     const validated = ProdutoGeralSchema.safeParse({
@@ -292,7 +313,28 @@ export async function saveProdutoGeral(prevState: CatalogActionResult, formData:
     if (id) {
       await (supabaseAdmin.from('products') as any).update(payload).eq('id', id)
     } else {
-      await (supabaseAdmin.from('products') as any).insert(payload)
+      const { data: inserted } = await (supabaseAdmin.from('products') as any).insert(payload).select('id').single()
+      if (inserted && data.estoque_atual > 0) {
+        const { data: firstEmployee } = await (supabaseAdmin.from('employees') as any)
+          .select('id')
+          .eq('store_id', profile.store_id)
+          .eq('is_active', true)
+          .order('id', { ascending: true })
+          .limit(1)
+          .single()
+        await (supabaseAdmin.from('stock_movements') as any).insert({
+          tenant_id: profile.tenant_id,
+          store_id: profile.store_id,
+          product_id: inserted.id,
+          tipo: 'Entrada',
+          quantidade: data.estoque_atual,
+          motivo: 'Estoque inicial no cadastro',
+          custo_unitario_momento: data.preco_custo ?? null,
+          registrado_por_id: user.id,
+          employee_id: firstEmployee?.id ?? null,
+          created_at: new Date().toISOString()
+        })
+      }
     }
 
     revalidatePath(`/dashboard/loja/${profile.store_id}/cadastros`)

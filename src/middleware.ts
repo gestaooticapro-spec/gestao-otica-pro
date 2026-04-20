@@ -37,11 +37,7 @@ export async function middleware(request: NextRequest) {
           })
         },
         remove(name: string, options: CookieOptions) {
-          request.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
+          request.cookies.delete(name)
           response = NextResponse.next({
             request: {
               headers: request.headers,
@@ -51,6 +47,8 @@ export async function middleware(request: NextRequest) {
             name,
             value: '',
             ...options,
+            maxAge: 0,
+            expires: new Date(0),
           })
         },
       },

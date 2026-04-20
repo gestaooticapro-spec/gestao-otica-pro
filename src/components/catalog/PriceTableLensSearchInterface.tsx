@@ -149,6 +149,7 @@ export default function PriceTableLensSearchInterface({
   const [featureFilter, setFeatureFilter] = useState<string[]>([])
   const [materialFilter, setMaterialFilter] = useState<string | null>(null)
   const [indiceFilter, setIndiceFilter] = useState<number | null>(null)
+  const [alturaFilter, setAlturaFilter] = useState<number | null>(null)
   const deferredSearch = useDeferredValue(search.trim().toLowerCase())
 
   const compatibilityMap = useMemo(() => {
@@ -190,6 +191,11 @@ export default function PriceTableLensSearchInterface({
     return Boolean(semanticTags?.has(feature))
   }
 
+  const getMinFittingHeight = (offer: PriceTableMixedOffer): number | null => {
+    const val = (offer.features as any)?.min_fitting_height
+    return val != null && !isNaN(Number(val)) ? Number(val) : null
+  }
+
   const filterOptions = useMemo(() => {
     const laboratorios = new Set<string>()
     const families = new Set<string>()
@@ -197,10 +203,11 @@ export default function PriceTableLensSearchInterface({
     const materials = new Set<string>()
     const indices = new Set<number>()
     const features = new Set<string>()
+    const alturas = new Set<number>()
 
     const matchesBase = (
       offer: PriceTableMixedOffer,
-      opts: { ignoreMaterial?: boolean; ignoreIndice?: boolean } = {},
+      opts: { ignoreMaterial?: boolean; ignoreIndice?: boolean; ignoreAltura?: boolean } = {},
     ) => {
       if (deferredSearch.length >= 2 && !matchesSearch(offer, deferredSearch)) return false
       if (laboratorioFilter && offer.sourceLaboratorio !== laboratorioFilter) return false
@@ -211,6 +218,10 @@ export default function PriceTableLensSearchInterface({
       }
       if (!opts.ignoreMaterial && materialFilter && offer.material !== materialFilter) return false
       if (!opts.ignoreIndice && indiceFilter != null && offer.indiceRefracao !== indiceFilter) return false
+      if (!opts.ignoreAltura && alturaFilter != null) {
+        const minH = getMinFittingHeight(offer)
+        if (minH != null && minH > alturaFilter) return false
+      }
       return true
     }
 
@@ -243,6 +254,13 @@ export default function PriceTableLensSearchInterface({
       if (offer.indiceRefracao != null) indices.add(offer.indiceRefracao)
     }
 
+    // Coleta alturas disponíveis de qualquer oferta com min_fitting_height definido
+    for (const offer of data.offers) {
+      if (!matchesBase(offer, { ignoreAltura: true })) continue
+      const minH = getMinFittingHeight(offer)
+      if (minH != null) alturas.add(minH)
+    }
+
     return {
       laboratorios: Array.from(laboratorios).sort(),
       families: Array.from(families).sort(),
@@ -250,8 +268,10 @@ export default function PriceTableLensSearchInterface({
       materials: Array.from(materials).sort(),
       indices: Array.from(indices).sort((a, b) => a - b),
       features: Array.from(features).sort(),
+      alturas: Array.from(alturas).sort((a, b) => a - b),
     }
   }, [
+    alturaFilter,
     clinicalFilter,
     data.offers,
     deferredSearch,
@@ -270,6 +290,7 @@ export default function PriceTableLensSearchInterface({
     featureFilter.length > 0 ? 'feature' : null,
     materialFilter,
     indiceFilter,
+    alturaFilter,
   ].filter(Boolean).length
 
   const hasSearchOrFilter = deferredSearch.length >= 2 || activeFilterCount > 0
@@ -288,6 +309,10 @@ export default function PriceTableLensSearchInterface({
         }
         if (materialFilter && offer.material !== materialFilter) return false
         if (indiceFilter != null && offer.indiceRefracao !== indiceFilter) return false
+        if (alturaFilter != null) {
+          const minH = getMinFittingHeight(offer)
+          if (minH != null && minH > alturaFilter) return false
+        }
         return true
       })
       .sort((left, right) => {
@@ -300,6 +325,7 @@ export default function PriceTableLensSearchInterface({
         return left.sourceLaboratorio.localeCompare(right.sourceLaboratorio)
       })
   }, [
+    alturaFilter,
     clinicalFilter,
     data.offers,
     deferredSearch,
@@ -319,6 +345,7 @@ export default function PriceTableLensSearchInterface({
     setFeatureFilter([])
     setMaterialFilter(null)
     setIndiceFilter(null)
+    setAlturaFilter(null)
   }
 
   useEffect(() => {
@@ -332,6 +359,12 @@ export default function PriceTableLensSearchInterface({
       setIndiceFilter(null)
     }
   }, [filterOptions.indices, indiceFilter])
+
+  useEffect(() => {
+    if (alturaFilter != null && !filterOptions.alturas.includes(alturaFilter)) {
+      setAlturaFilter(null)
+    }
+  }, [filterOptions.alturas, alturaFilter])
 
   useEffect(() => {
     if (featureFilter.length === 0) return
@@ -478,6 +511,27 @@ export default function PriceTableLensSearchInterface({
                   ))}
                 </div>
               </div>
+
+              {filterOptions.alturas.length > 0 ? (
+                <div>
+                  <p className="mb-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                    Altura minima
+                  </p>
+                  <p className="mb-2 text-[10px] text-slate-600">
+                    Mostra lentes com altura minima ate o valor selecionado
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {filterOptions.alturas.map((altura) => (
+                      <FilterPill
+                        key={altura}
+                        label={`${altura} mm`}
+                        active={alturaFilter === altura}
+                        onClick={() => setAlturaFilter(alturaFilter === altura ? null : altura)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               {filterOptions.features.length > 0 ? (
                 <div>
