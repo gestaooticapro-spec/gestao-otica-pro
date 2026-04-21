@@ -5,6 +5,16 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizeLensName } from '@/lib/utils/lens'
 import type { PostgrestError } from '@supabase/supabase-js'
 
+export type LensPins = {
+  distance: Array<{ x: number; y: number }>
+  corridor: Array<{ x: number; y: number }>
+  near: Array<{ x: number; y: number }>
+  lineA: Array<{ x: number; y: number }>
+  lineB: Array<{ x: number; y: number }>
+  lensRim: Array<{ x: number; y: number }>
+  fitting_height: number
+}
+
 export type LensGeometry = {
   id: string
   family_name: string
@@ -22,6 +32,20 @@ export type LensGeometry = {
   distance_reference_height: number | null
   near_reference_height: number | null
   fitting_height: number | null
+  pins: LensPins | null
+}
+
+function mergePins(
+  submitted: LensPins | null | undefined,
+  fromDb: LensPins | null | undefined,
+): LensPins {
+  const base: LensPins = {
+    distance: [], corridor: [], near: [],
+    lineA: [], lineB: [],
+    lensRim: [],
+    fitting_height: 0.5,
+  }
+  return { ...base, ...(submitted ?? {}), ...(fromDb ?? {}) }
 }
 
 function normalizeLensGeometry(geometry: LensGeometry): LensGeometry {
@@ -49,6 +73,7 @@ const LENS_GEOMETRY_COLUMNS = [
   'near_present', 'near_width',
   'corridor_length', 'lateral_blur', 'inset',
   'distance_reference_height', 'near_reference_height', 'fitting_height',
+  'pins',
 ].join(', ')
 
 const LENS_GEOMETRY_COLUMNS_WITH_CORRIDOR = LENS_GEOMETRY_COLUMNS + ', corridor_opening'
@@ -71,7 +96,6 @@ export async function getAllLensGeometries(): Promise<LensGeometry[]> {
     error = fallback.error
   }
 
-  console.log('[getAllLensGeometries] error:', error, 'rows:', data?.length, data?.[0])
   if (error) throw new Error(error.message)
   return ((data ?? []) as unknown as LensGeometry[]).map(normalizeLensGeometry)
 }
@@ -178,11 +202,15 @@ export async function upsertLensGeometry(
       .single()
 
     if (legacyError) throw new Error(legacyError.message)
-    return normalizeLensGeometry(legacyData as LensGeometry)
+    const legacyResult = legacyData as LensGeometry
+    legacyResult.pins = mergePins(geometry.pins, legacyResult.pins)
+    return normalizeLensGeometry(legacyResult)
   }
 
   if (error) throw new Error(error.message)
-  return normalizeLensGeometry(data as LensGeometry)
+  const result = data as LensGeometry
+  result.pins = mergePins(geometry.pins, result.pins)
+  return normalizeLensGeometry(result)
 }
 
 function isMissingCorridorOpeningColumnError(error: PostgrestError): boolean {

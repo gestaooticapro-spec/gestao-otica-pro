@@ -1,0 +1,12 @@
+Coloque as fotos aqui com os seguintes nomes:
+
+foto1.jpg — Praia: revista (perto) + criança na areia (médio) + mar com navios (longe)
+foto2.jpg — Escritório: teclado/caneta (perto) + monitor (médio) + fundo desfocado
+foto3.jpg — Livro: livro/texto ocupando o frame (perto)
+foto4.jpg — Cidade: vista de prédio com skyline ao longe (longe)
+
+Recomendações:
+- Formato 16:9 landscape
+- Mínimo 1280x720px
+- Mesma composição vertical entre fotos (elementos de perto embaixo, longe em cima)
+- Geradas com IA ou fotografadas

@@ -15,6 +15,14 @@ OUTPUT = Path("tmp/vision_catalog_draft_2025_09.json")
 REPORT = Path("tmp/vision_catalog_build_report_2025_09.md")
 
 
+# Charles confirmed:
+# - Vision Office and Vision Drive are sourced from another lab, but should use the same prices as "vision plus HD".
+# We clone the price matrix (no CSV edits needed) so these families exist in the catalog for search/suggestion.
+EXTRA_PRODUCT_CLONES: dict[str, list[str]] = {
+    "vision plus hd": ["vision office", "vision drive"],
+}
+
+
 def _sha256_of_paths(paths: list[Path]) -> str:
     h = hashlib.sha256()
     for p in paths:
@@ -198,7 +206,10 @@ def _build_diopter_grid_from_hayteck(profile: HayteckProfile, index: Optional[fl
     sph = profile.sph_by_index.get(key) or {}
     sph_min = sph.get("sph_min")
     sph_max = sph.get("sph_max")
-    if sph_min is None and sph_max is None and profile.add_min is None and profile.cyl_min is None:
+    # Our DB schema requires sph_min/sph_max. If the PDF extraction didn't yield
+    # the spherical range for this index, omit the grid entirely (UI will show
+    # "grade nao informada" until we refine the mapping/extraction).
+    if sph_min is None or sph_max is None:
         return []
     return [
         {
@@ -218,6 +229,27 @@ def main():
         raise SystemExit(f"Arquivo nao encontrado: {PRICE_MATRIX}")
 
     price = json.loads(PRICE_MATRIX.read_text(encoding="utf-8"))
+
+    # Inject clones (e.g. Office/Drive) before building families/offers.
+    by_product = {(_norm(p.get("product") or "")).lower(): p for p in (price.get("products") or [])}
+    clones_added = []
+    for src, clones in EXTRA_PRODUCT_CLONES.items():
+        src_key = _norm(src).lower()
+        src_block = by_product.get(src_key)
+        if not src_block:
+            continue
+        for clone_name in clones:
+            clone_key = _norm(clone_name).lower()
+            if clone_key in by_product:
+                continue
+            cloned = json.loads(json.dumps(src_block))
+            cloned["product"] = clone_name
+            for e in cloned.get("entries", []) or []:
+                e["product"] = clone_name
+            price.setdefault("products", []).append(cloned)
+            by_product[clone_key] = cloned
+            clones_added.append((src_block.get("product"), clone_name))
+
     hayteck_profiles = _load_hayteck_profiles()
     name_map = _load_name_map()
 
@@ -289,7 +321,12 @@ def main():
                 "usage_tags": [],
                 "benefit_tags": [],
                 "source_page_reference": "CSV Charles",
-                "clinical_category": (profile.clinical_category if profile else "indefinida"),
+                # If we don't have a profile yet, keep "indefinida" unless it's one of our explicit clones.
+                "clinical_category": (
+                    profile.clinical_category
+                    if profile
+                    else ("multifocal" if family_name_raw.lower() in {"vision office", "vision drive"} else "indefinida")
+                ),
                 "offers": offers,
             }
         )
@@ -335,6 +372,9 @@ def main():
     report_lines.append(f"- Treatments created: {len(treatments)}")
     report_lines.append(f"- Hayteck profiles loaded: {len(hayteck_profiles)}")
     report_lines.append(f"- Vision->Hayteck mappings loaded: {mapped}")
+    if clones_added:
+        report_lines.append("\n## Clones adicionados (preco igual ao produto fonte)\n")
+        report_lines.extend([f"- {src} -> {dst}" for src, dst in clones_added])
     if missing_profile_for:
         report_lines.append("\n## Mapeamentos sem perfil encontrado\n")
         report_lines.extend([f"- {x}" for x in missing_profile_for])
@@ -353,4 +393,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
