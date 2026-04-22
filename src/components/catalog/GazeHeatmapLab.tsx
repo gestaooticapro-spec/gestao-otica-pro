@@ -937,16 +937,13 @@ export default function GazeHeatmapLab({
     </div>
   )
 
-  if (isFocusMode) {
-    return (
-      <div className="fixed inset-0 z-50 bg-slate-950">
-        {stageNode}
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-slate-950 text-white">
+      {isFocusMode && (
+        <div className="fixed inset-0 z-50 bg-slate-950">
+          {stageNode}
+        </div>
+      )}
       <div className="border-b border-white/10 bg-slate-900/90 px-5 py-4 backdrop-blur">
         <div className="flex flex-wrap items-center gap-3">
           <Link
@@ -1028,7 +1025,7 @@ export default function GazeHeatmapLab({
           )}
 
           <div className="space-y-4">
-            {stageNode}
+            {!isFocusMode && stageNode}
 
             <div className="grid gap-4 xl:grid-cols-[340px_1fr]">
               <div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-slate-900">
