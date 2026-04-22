@@ -911,6 +911,9 @@ export default function GazeHeatmapLab({
   const stageClassName = isFocusMode
     ? 'relative h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_50%_20%,_rgba(59,130,246,0.18),_rgba(2,6,23,0.94)_55%),linear-gradient(180deg,_rgba(15,23,42,0.98),_rgba(2,6,23,1))]'
     : 'relative h-[56vh] min-h-[420px] max-h-[760px] overflow-hidden rounded-[32px] border border-white/10 bg-[radial-gradient(circle_at_50%_20%,_rgba(59,130,246,0.18),_rgba(2,6,23,0.94)_55%),linear-gradient(180deg,_rgba(15,23,42,0.95),_rgba(2,6,23,1))] lg:h-[64vh]'
+  const cameraPanelClassName = isFocusMode
+    ? 'pointer-events-none fixed -left-[200vw] top-0 h-px w-px overflow-hidden opacity-0'
+    : 'relative overflow-hidden rounded-[28px] border border-white/10 bg-slate-900'
   const targetClassName = isFocusMode
     ? 'absolute z-20 h-16 w-16 -translate-x-1/2 -translate-y-1/2 transition-all duration-700'
     : 'absolute z-20 h-12 w-12 -translate-x-1/2 -translate-y-1/2 transition-all duration-700'
@@ -1039,23 +1042,21 @@ export default function GazeHeatmapLab({
           )}
 
           <div className="space-y-4">
-            {!isFocusMode && (
-              <div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-slate-900">
-                <video
-                  ref={videoRef}
-                  className="aspect-video w-full object-cover scale-x-[-1]"
-                  playsInline
-                  muted
-                  autoPlay
-                />
-                <canvas
-                  ref={overlayRef}
-                  width={VIDEO_W}
-                  height={VIDEO_H}
-                  className="absolute inset-0 h-full w-full scale-x-[-1]"
-                />
-              </div>
-            )}
+            <div className={cameraPanelClassName}>
+              <video
+                ref={videoRef}
+                className="aspect-video w-full object-cover scale-x-[-1]"
+                playsInline
+                muted
+                autoPlay
+              />
+              <canvas
+                ref={overlayRef}
+                width={VIDEO_W}
+                height={VIDEO_H}
+                className="absolute inset-0 h-full w-full scale-x-[-1]"
+              />
+            </div>
 
             {!isFocusMode && stageNode}
 
