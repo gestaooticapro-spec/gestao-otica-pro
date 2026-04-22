@@ -1,8 +1,9 @@
 ﻿'use client'
 
 import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Camera, CircleDot, Loader2, Play, RotateCcw, ScanFace, StopCircle } from 'lucide-react'
+import type { LensGeometry, LensPins } from '@/lib/actions/lens-geometry.actions'
 
 type NormalizedPoint = { x: number; y: number }
 type FaceMetrics = {
@@ -64,6 +65,8 @@ const EYE_RESPONSE_X = 0.58
 const EYE_RESPONSE_Y = 0.52
 const HEAD_RESPONSE_X = 0.64
 const HEAD_RESPONSE_Y = 0.58
+const ENVELOPE_BINS = 72
+const CUTOUT = { x: 0.24, y: 0.22, w: 0.52, h: 0.46 }
 
 const LANDMARKS = {
   nose: 1,
@@ -195,6 +198,24 @@ function computeFaceMetrics(landmarks: NormalizedPoint[]): FaceMetrics {
 
 function makeHeatmap() {
   return new Float32Array(HEAT_COLS * HEAT_ROWS)
+}
+
+function normalizePins(p: LensPins | null | undefined): LensPins {
+  return { distance: [], corridor: [], near: [], lineA: [], lineB: [], lensRim: [], fitting_height: 0.5, ...p }
+}
+
+function remapPins(pins: LensPins): LensPins {
+  const remap = (arr: Array<{ x: number; y: number }>) =>
+    arr.map((p) => ({ x: (p.x - CUTOUT.x) / CUTOUT.w, y: (p.y - CUTOUT.y) / CUTOUT.h }))
+  return {
+    distance: remap(pins.distance),
+    corridor: remap(pins.corridor),
+    near: remap(pins.near),
+    lineA: remap(pins.lineA),
+    lineB: remap(pins.lineB),
+    lensRim: remap(pins.lensRim),
+    fitting_height: pins.fitting_height,
+  }
 }
 
 function addHeatPoint(
@@ -414,6 +435,46 @@ function buildLensPath(width: number, height: number) {
   return path
 }
 
+function buildPinPath(pins: Array<{ x: number; y: number }>, width: number, height: number) {
+  const path = new Path2D()
+  if (pins.length < 3) return path
+  const abs = pins.map((pt) => ({ x: pt.x * width, y: pt.y * height }))
+  const last = abs[abs.length - 1]
+  const first = abs[0]
+  path.moveTo((last.x + first.x) / 2, (last.y + first.y) / 2)
+  for (let i = 0; i < abs.length; i += 1) {
+    const current = abs[i]
+    const next = abs[(i + 1) % abs.length]
+    path.quadraticCurveTo(current.x, current.y, (current.x + next.x) / 2, (current.y + next.y) / 2)
+  }
+  path.closePath()
+  return path
+}
+
+function buildOpenLinePath(pins: Array<{ x: number; y: number }>, width: number, height: number) {
+  const path = new Path2D()
+  if (pins.length < 2) return path
+  const abs = pins.map((pt) => ({ x: pt.x * width, y: pt.y * height }))
+  path.moveTo(abs[0].x, abs[0].y)
+  if (abs.length === 2) {
+    path.lineTo(abs[1].x, abs[1].y)
+    return path
+  }
+  path.lineTo((abs[0].x + abs[1].x) / 2, (abs[0].y + abs[1].y) / 2)
+  for (let i = 1; i < abs.length - 1; i += 1) {
+    const current = abs[i]
+    const next = abs[i + 1]
+    path.quadraticCurveTo(current.x, current.y, (current.x + next.x) / 2, (current.y + next.y) / 2)
+  }
+  path.lineTo(abs[abs.length - 1].x, abs[abs.length - 1].y)
+  return path
+}
+
+function getRenderablePins(geometry?: LensGeometry | null) {
+  if (!geometry?.pins) return null
+  return remapPins(normalizePins(geometry.pins))
+}
+
 function getRiskInsetAtY(y: number, profile: ProfileDescriptor) {
   const topBlend = smoothstep(0, 0.42, y)
   const bottomBlend = smoothstep(0.48, 1, y)
@@ -456,11 +517,73 @@ function colorForHeat(value: number) {
   return `hsla(${hue}, 100%, ${60 - t * 10}%, ${alpha})`
 }
 
+function getEnvelopeRadii(samples: SessionSample[]) {
+  const bins = new Float32Array(ENVELOPE_BINS)
+
+  for (const sample of samples) {
+    const projection = projectSampleToLens(sample)
+    const dx = (projection.point.x - 0.5) / 0.46
+    const dy = (projection.point.y - 0.52) / 0.44
+    const angle = Math.atan2(dy, dx)
+    const normalized = ((angle + Math.PI) / (Math.PI * 2)) * ENVELOPE_BINS
+    const bin = Math.max(0, Math.min(ENVELOPE_BINS - 1, Math.round(normalized) % ENVELOPE_BINS))
+    const radial = clamp(Math.hypot(dx, dy), 0, 1.2)
+    const demandedRadius = clamp(
+      radial * (0.58 + projection.demandWeight * 0.28 + projection.eyeDominance * 0.14),
+      0.08,
+      1,
+    )
+    bins[bin] = Math.max(bins[bin], demandedRadius)
+  }
+
+  const smoothed = new Float32Array(ENVELOPE_BINS)
+  for (let i = 0; i < ENVELOPE_BINS; i += 1) {
+    const prev = bins[(i - 1 + ENVELOPE_BINS) % ENVELOPE_BINS]
+    const current = bins[i]
+    const next = bins[(i + 1) % ENVELOPE_BINS]
+    smoothed[i] = Math.max(current, (prev + current + next) / 3)
+  }
+  return smoothed
+}
+
+function getEnvelopeRadiusForAngle(radii: Float32Array, angle: number) {
+  if (!radii.length) return 0
+  const normalized = ((angle + Math.PI) / (Math.PI * 2)) * radii.length
+  const base = ((Math.floor(normalized) % radii.length) + radii.length) % radii.length
+  const next = (base + 1) % radii.length
+  const t = normalized - Math.floor(normalized)
+  return radii[base] * (1 - t) + radii[next] * t
+}
+
+function buildEnvelopePath(width: number, height: number, radii: Float32Array) {
+  const path = new Path2D()
+  if (!radii.length) return path
+
+  const centerX = width * 0.5
+  const centerY = height * 0.52
+  const radiusX = width * 0.45
+  const radiusY = height * 0.43
+
+  for (let i = 0; i < radii.length; i += 1) {
+    const angle = -Math.PI + (i / radii.length) * Math.PI * 2
+    const radius = clamp(radii[i], 0.04, 1)
+    const x = centerX + Math.cos(angle) * radiusX * radius
+    const y = centerY + Math.sin(angle) * radiusY * radius
+    if (i === 0) path.moveTo(x, y)
+    else path.lineTo(x, y)
+  }
+  path.closePath()
+  return path
+}
+
 function drawLensHeatmap(
   canvas: HTMLCanvasElement,
   grid: Float32Array,
   profile?: ProfileDescriptor,
   title?: string,
+  geometry?: LensGeometry | null,
+  samples: SessionSample[] = [],
+  mode: 'grid' | 'normalized' | 'contour' = 'grid',
 ) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
@@ -482,7 +605,12 @@ function drawLensHeatmap(
   }
 
   const maxValue = getHeatMax(grid)
-  const lensPath = buildLensPath(lensWidth, lensHeight)
+  const renderablePins = getRenderablePins(geometry)
+  const lensPath = renderablePins?.lensRim.length
+    ? buildPinPath(renderablePins.lensRim, lensWidth, lensHeight)
+    : buildLensPath(lensWidth, lensHeight)
+  const envelopeRadii = samples.length ? getEnvelopeRadii(samples) : new Float32Array(0)
+  const envelopePath = envelopeRadii.length ? buildEnvelopePath(lensWidth, lensHeight, envelopeRadii) : null
 
   ctx.save()
   ctx.translate(lensX, lensY)
@@ -502,7 +630,37 @@ function drawLensHeatmap(
     drawRiskZones(ctx, lensWidth, lensHeight, profile)
   }
 
-  if (maxValue > 0) {
+  if (mode === 'normalized' && envelopePath) {
+    const radial = ctx.createRadialGradient(
+      lensWidth * 0.5,
+      lensHeight * 0.52,
+      lensWidth * 0.04,
+      lensWidth * 0.5,
+      lensHeight * 0.52,
+      lensWidth * 0.42,
+    )
+    radial.addColorStop(0, 'rgba(255, 237, 213, 0.18)')
+    radial.addColorStop(0.46, 'rgba(253, 186, 116, 0.34)')
+    radial.addColorStop(0.74, 'rgba(251, 146, 60, 0.54)')
+    radial.addColorStop(1, 'rgba(239, 68, 68, 0.78)')
+
+    ctx.save()
+    ctx.clip(envelopePath)
+    ctx.fillStyle = radial
+    ctx.fillRect(0, 0, lensWidth, lensHeight)
+    ctx.restore()
+
+    ctx.strokeStyle = 'rgba(249, 115, 22, 0.95)'
+    ctx.lineWidth = 2.6
+    ctx.stroke(envelopePath)
+  } else if (mode === 'contour' && envelopePath) {
+    ctx.strokeStyle = 'rgba(239, 68, 68, 0.92)'
+    ctx.lineWidth = 4
+    ctx.stroke(envelopePath)
+    ctx.strokeStyle = 'rgba(251, 146, 60, 0.56)'
+    ctx.lineWidth = 10
+    ctx.stroke(envelopePath)
+  } else if (maxValue > 0) {
     for (let row = 0; row < HEAT_ROWS; row += 1) {
       for (let col = 0; col < HEAT_COLS; col += 1) {
         const value = grid[row * HEAT_COLS + col] / maxValue
@@ -517,6 +675,31 @@ function drawLensHeatmap(
         ctx.fill()
       }
     }
+  }
+
+  if (renderablePins?.lineA.length && renderablePins?.lineB.length) {
+    ctx.strokeStyle = 'rgba(250, 204, 21, 0.95)'
+    ctx.lineWidth = 3
+    ctx.lineCap = 'round'
+    ctx.stroke(buildOpenLinePath(renderablePins.lineA, lensWidth, lensHeight))
+    ctx.stroke(buildOpenLinePath(renderablePins.lineB, lensWidth, lensHeight))
+  }
+
+  if (mode === 'normalized' && envelopeRadii.length) {
+    ctx.save()
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.18)'
+    ctx.lineWidth = 1
+    for (let i = 0; i < 8; i += 1) {
+      const angle = (-Math.PI + i * Math.PI) / 4
+      const radius = getEnvelopeRadiusForAngle(envelopeRadii, angle)
+      const x = lensWidth * 0.5 + Math.cos(angle) * lensWidth * 0.45 * radius
+      const y = lensHeight * 0.52 + Math.sin(angle) * lensHeight * 0.43 * radius
+      ctx.beginPath()
+      ctx.moveTo(lensWidth * 0.5, lensHeight * 0.52)
+      ctx.lineTo(x, y)
+      ctx.stroke()
+    }
+    ctx.restore()
   }
 
   ctx.restore()
@@ -685,13 +868,16 @@ function summarizeSession(samples: SessionSample[]): SessionSummary {
 export default function GazeHeatmapLab({
   storeId,
   backPath,
+  geometry,
 }: {
   storeId: number
   backPath: string
+  geometry?: LensGeometry | null
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
   const mainHeatmapRef = useRef<HTMLCanvasElement>(null)
+  const contourHeatmapRef = useRef<HTMLCanvasElement>(null)
   const wideHeatmapRef = useRef<HTMLCanvasElement>(null)
   const narrowHeatmapRef = useRef<HTMLCanvasElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
@@ -730,21 +916,60 @@ export default function GazeHeatmapLab({
   const [secureContextWarning, setSecureContextWarning] = useState(false)
   const isFocusMode = phase === 'calibrating' || phase === 'running'
 
+  const redrawHeatmaps = useCallback(() => {
+    if (mainHeatmapRef.current) {
+      drawLensHeatmap(
+        mainHeatmapRef.current,
+        heatmapRef.current,
+        undefined,
+        geometry ? `Campo exigido normalizado · ${geometry.family_name}` : 'Campo exigido normalizado',
+        geometry,
+        samplesRef.current,
+        'normalized',
+      )
+    }
+    if (contourHeatmapRef.current) {
+      drawLensHeatmap(
+        contourHeatmapRef.current,
+        heatmapRef.current,
+        undefined,
+        geometry ? `Contorno máximo · ${geometry.family_name}` : 'Contorno máximo de alcance',
+        geometry,
+        samplesRef.current,
+        'contour',
+      )
+    }
+    if (wideHeatmapRef.current) {
+      drawLensHeatmap(
+        wideHeatmapRef.current,
+        heatmapRef.current,
+        COMPARISON_PROFILES[0],
+        COMPARISON_PROFILES[0].name,
+        geometry,
+        samplesRef.current,
+        'normalized',
+      )
+    }
+    if (narrowHeatmapRef.current) {
+      drawLensHeatmap(
+        narrowHeatmapRef.current,
+        heatmapRef.current,
+        COMPARISON_PROFILES[1],
+        COMPARISON_PROFILES[1].name,
+        geometry,
+        samplesRef.current,
+        'normalized',
+      )
+    }
+  }, [geometry])
+
   useEffect(() => {
     setSecureContextWarning(typeof window !== 'undefined' && !window.isSecureContext)
   }, [])
 
   useEffect(() => {
-    if (mainHeatmapRef.current) {
-      drawLensHeatmap(mainHeatmapRef.current, heatmapRef.current, undefined, 'Mapa de calor da lente')
-    }
-    if (wideHeatmapRef.current) {
-      drawLensHeatmap(wideHeatmapRef.current, heatmapRef.current, COMPARISON_PROFILES[0], COMPARISON_PROFILES[0].name)
-    }
-    if (narrowHeatmapRef.current) {
-      drawLensHeatmap(narrowHeatmapRef.current, heatmapRef.current, COMPARISON_PROFILES[1], COMPARISON_PROFILES[1].name)
-    }
-  }, [])
+    redrawHeatmaps()
+  }, [redrawHeatmaps])
 
   useEffect(() => {
     phaseRef.current = phase
@@ -885,15 +1110,7 @@ export default function GazeHeatmapLab({
     setPhase('idle')
     setSummary(null)
     setStatus(cameraReady ? 'CÃ¢mera pronta. FaÃ§a uma nova calibraÃ§Ã£o quando quiser.' : 'Abra a cÃ¢mera frontal e alinhe o rosto ao centro.')
-    if (mainHeatmapRef.current) {
-      drawLensHeatmap(mainHeatmapRef.current, heatmapRef.current, undefined, 'Mapa de calor da lente')
-    }
-    if (wideHeatmapRef.current) {
-      drawLensHeatmap(wideHeatmapRef.current, heatmapRef.current, COMPARISON_PROFILES[0], COMPARISON_PROFILES[0].name)
-    }
-    if (narrowHeatmapRef.current) {
-      drawLensHeatmap(narrowHeatmapRef.current, heatmapRef.current, COMPARISON_PROFILES[1], COMPARISON_PROFILES[1].name)
-    }
+    redrawHeatmaps()
   }
 
   function randomTarget() {
@@ -1038,15 +1255,7 @@ export default function GazeHeatmapLab({
 
       if (now - lastUiTickRef.current > 120) {
         setLiveMetrics(metrics)
-        if (mainHeatmapRef.current) {
-          drawLensHeatmap(mainHeatmapRef.current, heatmapRef.current, undefined, 'Mapa de calor da lente')
-        }
-        if (wideHeatmapRef.current) {
-          drawLensHeatmap(wideHeatmapRef.current, heatmapRef.current, COMPARISON_PROFILES[0], COMPARISON_PROFILES[0].name)
-        }
-        if (narrowHeatmapRef.current) {
-          drawLensHeatmap(narrowHeatmapRef.current, heatmapRef.current, COMPARISON_PROFILES[1], COMPARISON_PROFILES[1].name)
-        }
+        redrawHeatmaps()
         lastUiTickRef.current = now
       }
 
@@ -1223,25 +1432,25 @@ export default function GazeHeatmapLab({
               <div className="rounded-[28px] border border-white/10 bg-slate-900/80 p-4">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl bg-slate-800/90 p-3">
-                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Uso dos olhos</p>
+                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Ao vivo agora · olhos</p>
                     <p className="mt-2 text-2xl font-black text-cyan-300">
                       {Math.round(Math.abs(liveMetrics.eyeX) * 100)}%
                     </p>
-                    <p className="text-xs text-slate-500">Amplitude lateral instantÃ¢nea da Ã­ris.</p>
+                    <p className="text-xs text-slate-500">Leitura instantÃ¢nea, nÃ£o Ã© o resumo final da sessÃ£o.</p>
                   </div>
                   <div className="rounded-2xl bg-slate-800/90 p-3">
-                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Uso da cabeÃ§a</p>
+                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Ao vivo agora · cabeÃ§a</p>
                     <p className="mt-2 text-2xl font-black text-emerald-300">
                       {Math.round(Math.abs(liveMetrics.headX) * 100)}%
                     </p>
-                    <p className="text-xs text-slate-500">CompensaÃ§Ã£o lateral da cabeÃ§a.</p>
+                    <p className="text-xs text-slate-500">Serve para checar captura no momento, nÃ£o para comparar com o resultado final.</p>
                   </div>
                 </div>
                 <div className="mt-3 rounded-2xl border border-cyan-400/15 bg-cyan-500/5 p-3 text-xs leading-5 text-slate-300">
                   Para o tablet ficar mais realista, esta fase agora ocupa bem mais tela. O ideal ÃƒÂ© segurar o aparelho entre 35 e 45 cm dos olhos do cliente e deixar a bolinha cruzar quase toda a largura.
                 </div>
                 <p className="mt-3 text-xs text-slate-500">
-                  Neste MVP, o mapa de calor da lente Ã© alimentado principalmente pelo deslocamento relativo da Ã­ris dentro dos olhos.
+                  O bloco acima Ã© sÃ³ monitoramento instantÃ¢neo. O que vale para a lente Ã© a leitura consolidada e os mapas abaixo.
                 </p>
               </div>
             </div>
@@ -1309,7 +1518,14 @@ export default function GazeHeatmapLab({
           <div className="rounded-[28px] border border-white/10 bg-slate-900/90 p-5 shadow-[0_25px_70px_rgba(2,6,23,0.38)]">
             <canvas ref={mainHeatmapRef} width={620} height={360} className="h-auto w-full" />
             <p className="mt-3 text-xs leading-5 text-slate-500">
-              A ideia aqui Ã© enxergar se o uso real do campo visual fica concentrado no centro ou escapa para zonas mais sensÃ­veis das bordas.
+              Este agora Ã© o mapa principal: um campo exigido normalizado por direÃ§Ã£o. Ele tenta mostrar atÃ© onde a lente foi realmente exigida, sem deixar a repetiÃ§Ã£o aleatÃ³ria dos pontos distorcer o resultado.
+            </p>
+          </div>
+
+          <div className="rounded-[28px] border border-white/10 bg-slate-900/90 p-5 shadow-[0_25px_70px_rgba(2,6,23,0.38)]">
+            <canvas ref={contourHeatmapRef} width={620} height={300} className="h-auto w-full" />
+            <p className="mt-3 text-xs leading-5 text-slate-500">
+              Este contorno mostra o alcance mÃ¡ximo capturado em cada direÃ§Ã£o. Ele ajuda a separar “frequÃªncia” de “limite realmente exigido”.
             </p>
           </div>
 
