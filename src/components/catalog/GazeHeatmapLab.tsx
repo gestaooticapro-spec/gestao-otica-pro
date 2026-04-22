@@ -201,31 +201,40 @@ function normalizeTargetOffset(targetX: number, targetY: number) {
   }
 }
 
+function getAxisEyeShare(eye: number, head: number, headPenalty: number) {
+  const eyeStrength = clamp(Math.abs(eye) / 0.52, 0, 1.6)
+  const headStrength = clamp(Math.abs(head) / 0.48, 0, 1.6) * headPenalty
+  const rawShare = eyeStrength / Math.max(eyeStrength + headStrength, 0.0001)
+  return smoothstep(0.1, 0.9, rawShare)
+}
+
 function projectSampleToLens(sample: SessionSample) {
   const eyeMag = Math.hypot(sample.eyeX, sample.eyeY)
-  const headMag = Math.hypot(sample.headX, sample.headY)
   const target = normalizeTargetOffset(sample.targetX, sample.targetY)
-  const headNorm = clamp(headMag / 0.42, 0, 1)
   const eyeNorm = clamp(eyeMag / 0.5, 0, 1.25)
-  const eyeDominance = eyeMag / Math.max(eyeMag + headMag * 0.9, 0.0001)
-  const targetUnlock = clamp((1 - headNorm) * 0.72 + eyeDominance * 0.48, 0.18, 1.06)
-  const headCentering = clamp(headNorm * 0.55, 0, 0.45)
-  const edgeSpread = clamp(0.55 + eyeDominance * 0.9 + (1 - headNorm) * 0.5 + eyeNorm * 0.25, 0.5, 1.9)
+  const eyeShareX = getAxisEyeShare(sample.eyeX, sample.headX, 1.05)
+  const eyeShareY = getAxisEyeShare(sample.eyeY, sample.headY, 1.2)
+  const demandX = Math.abs(target.x)
+  const demandY = Math.abs(target.y)
+  const demandedWeight = Math.max(demandX + demandY, 0.0001)
+  const eyeDemandShare = clamp((eyeShareX * demandX + eyeShareY * demandY) / demandedWeight, 0, 1)
+  const headDemandShare = 1 - eyeDemandShare
+  const lensDemandX = target.x * eyeShareX
+  const lensDemandY = target.y * eyeShareY
+  const edgeSpread = clamp(0.42 + eyeDemandShare * 1.35 + eyeNorm * 0.18, 0.42, 1.95)
 
   const point = {
     x: clamp(
       0.5 +
-        sample.eyeX * 0.12 +
-        target.x * 0.36 * targetUnlock -
-        sample.headX * 0.03 * headCentering,
+        lensDemandX * 0.42 +
+        sample.eyeX * 0.055,
       0.03,
       0.97,
     ),
     y: clamp(
       0.52 +
-        sample.eyeY * 0.09 +
-        target.y * 0.28 * targetUnlock -
-        sample.headY * 0.02 * headCentering,
+        lensDemandY * 0.3 +
+        sample.eyeY * 0.045,
       0.05,
       0.95,
     ),
@@ -233,12 +242,14 @@ function projectSampleToLens(sample: SessionSample) {
 
   return {
     point,
-    radius: 2 + edgeSpread * 1.35,
-    spreadX: 0.01 + Math.abs(target.x) * 0.035 * edgeSpread,
-    spreadY: 0.008 + Math.abs(target.y) * 0.026 * edgeSpread,
-    weight: 1 + eyeDominance * 0.18,
-    eyeDominance,
-    headDominance: 1 - eyeDominance,
+    radius: 1.8 + edgeSpread * 1.22,
+    spreadX: 0.006 + demandX * 0.055 * eyeShareX + eyeDemandShare * 0.02,
+    spreadY: 0.005 + demandY * 0.04 * eyeShareY + eyeDemandShare * 0.016,
+    weight: 1 + eyeDemandShare * 0.22,
+    eyeDominance: eyeDemandShare,
+    headDominance: headDemandShare,
+    eyeShareX,
+    eyeShareY,
   }
 }
 
@@ -498,8 +509,8 @@ function summarizeSession(samples: SessionSample[]): SessionSummary {
   const points = samples.map((sample) => {
     const projection = projectSampleToLens(sample)
     const { x, y } = projection.point
-    eyeTotal += Math.hypot(sample.eyeX, sample.eyeY)
-    headTotal += Math.hypot(sample.headX, sample.headY)
+    eyeTotal += projection.eyeDominance
+    headTotal += projection.headDominance
     sumX += x
     sumY += y
     if (isRiskPoint(x, y, COMPARISON_PROFILES[0])) riskWide += 1
