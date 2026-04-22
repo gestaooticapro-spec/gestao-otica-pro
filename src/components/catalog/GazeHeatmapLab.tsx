@@ -67,6 +67,7 @@ const HEAD_RESPONSE_X = 0.64
 const HEAD_RESPONSE_Y = 0.58
 const ENVELOPE_BINS = 72
 const CUTOUT = { x: 0.24, y: 0.22, w: 0.52, h: 0.46 }
+const HEATMAP_LAB_BUILD = 'heatmap-v4-fixed-seq-2026-04-22'
 
 const LANDMARKS = {
   nose: 1,
@@ -241,26 +242,8 @@ function addHeatPoint(
   }
 }
 
-function shufflePoints(points: NormalizedPoint[]) {
-  const next = [...points]
-  for (let i = next.length - 1; i > 0; i -= 1) {
-    const swapIndex = Math.floor(Math.random() * (i + 1))
-    const tmp = next[i]
-    next[i] = next[swapIndex]
-    next[swapIndex] = tmp
-  }
-  return next
-}
-
-function jitterPoint(point: NormalizedPoint, amountX = 0.025, amountY = 0.03) {
-  return {
-    x: clamp(point.x + (Math.random() * 2 - 1) * amountX, SAFE_TARGET_MARGIN_X, 1 - SAFE_TARGET_MARGIN_X),
-    y: clamp(point.y + (Math.random() * 2 - 1) * amountY, SAFE_TARGET_MARGIN_Y, 1 - SAFE_TARGET_MARGIN_Y),
-  }
-}
-
 function buildTargetSequence() {
-  const anchors: NormalizedPoint[] = [
+  return [
     { x: 0.5, y: 0.5 },
     { x: 0.08, y: 0.5 },
     { x: 0.92, y: 0.5 },
@@ -278,15 +261,7 @@ function buildTargetSequence() {
     { x: 0.5, y: 0.76 },
     { x: 0.24, y: 0.5 },
     { x: 0.76, y: 0.5 },
-  ]
-
-  const requiredExtremes = anchors.slice(1, 9)
-  const exploratoryBand = anchors.slice(9)
-
-  return [
     { x: 0.5, y: 0.5 },
-    ...shufflePoints(requiredExtremes).map((point) => jitterPoint(point, 0.018, 0.024)),
-    ...shufflePoints(exploratoryBand).map((point) => jitterPoint(point, 0.028, 0.034)),
   ]
 }
 
@@ -302,6 +277,21 @@ function getAxisEyeShare(eye: number, head: number, headPenalty: number) {
   const headStrength = clamp(Math.abs(head) / 0.48, 0, 1.6) * headPenalty
   const rawShare = eyeStrength / Math.max(eyeStrength + headStrength, 0.0001)
   return smoothstep(0.1, 0.9, rawShare)
+}
+
+function suppressHeadAxis(head: number, eye: number, demand: number, axis: 'x' | 'y') {
+  const absHead = Math.abs(head)
+  const absEye = Math.abs(eye)
+  const floor = axis === 'x' ? 0.16 : 0.18
+  const demandBoost = axis === 'x' ? 0.03 : 0.05
+  const eyeAllowance = axis === 'x' ? 0.95 : 1.1
+  if (absHead < floor + demand * demandBoost && absHead <= absEye * eyeAllowance) {
+    return 0
+  }
+  if (absHead < floor * 1.25 && absEye > absHead * 1.35) {
+    return 0
+  }
+  return head
 }
 
 function projectSampleToLens(sample: SessionSample) {
@@ -365,7 +355,7 @@ function projectSampleToLens(sample: SessionSample) {
 
 function stampHeatSample(grid: Float32Array, sample: SessionSample) {
   const projection = projectSampleToLens(sample)
-  addHeatPoint(grid, projection.point, projection.weight, projection.radius, 'max')
+  addHeatPoint(grid, projection.point, projection.weight * 1.2, projection.radius * 0.95, 'sum')
 
   const satelliteWeight = projection.weight * 0.56
   const satelliteRadius = projection.radius * 0.92
@@ -377,7 +367,7 @@ function stampHeatSample(grid: Float32Array, sample: SessionSample) {
     },
     satelliteWeight,
     satelliteRadius,
-    'max',
+    'sum',
   )
   addHeatPoint(
     grid,
@@ -387,7 +377,7 @@ function stampHeatSample(grid: Float32Array, sample: SessionSample) {
     },
     satelliteWeight,
     satelliteRadius,
-    'max',
+    'sum',
   )
   addHeatPoint(
     grid,
@@ -397,7 +387,7 @@ function stampHeatSample(grid: Float32Array, sample: SessionSample) {
     },
     projection.weight * 0.34,
     projection.radius * 0.78,
-    'max',
+    'sum',
   )
   addHeatPoint(
     grid,
@@ -407,7 +397,7 @@ function stampHeatSample(grid: Float32Array, sample: SessionSample) {
     },
     projection.weight * 0.3,
     projection.radius * 0.72,
-    'max',
+    'sum',
   )
 }
 
@@ -517,6 +507,27 @@ function colorForHeat(value: number) {
   return `hsla(${hue}, 100%, ${60 - t * 10}%, ${alpha})`
 }
 
+function drawContinuousHeat(ctx: CanvasRenderingContext2D, grid: Float32Array, width: number, height: number, maxValue: number) {
+  for (let row = 0; row < HEAT_ROWS; row += 1) {
+    for (let col = 0; col < HEAT_COLS; col += 1) {
+      const value = grid[row * HEAT_COLS + col] / maxValue
+      if (value < 0.08) continue
+      const centerX = ((col + 0.5) / HEAT_COLS) * width
+      const centerY = ((row + 0.5) / HEAT_ROWS) * height
+      const radius = (width / HEAT_COLS) * (0.85 + value * 1.9)
+      const gradient = ctx.createRadialGradient(centerX, centerY, radius * 0.12, centerX, centerY, radius)
+      gradient.addColorStop(0, `rgba(239, 68, 68, ${0.14 + value * 0.44})`)
+      gradient.addColorStop(0.35, `rgba(249, 115, 22, ${0.1 + value * 0.34})`)
+      gradient.addColorStop(0.72, `rgba(251, 191, 36, ${0.06 + value * 0.18})`)
+      gradient.addColorStop(1, 'rgba(255, 255, 255, 0)')
+      ctx.fillStyle = gradient
+      ctx.beginPath()
+      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+}
+
 function getEnvelopeRadii(samples: SessionSample[]) {
   const bins = new Float32Array(ENVELOPE_BINS)
 
@@ -583,7 +594,7 @@ function drawLensHeatmap(
   title?: string,
   geometry?: LensGeometry | null,
   samples: SessionSample[] = [],
-  mode: 'grid' | 'normalized' | 'contour' = 'grid',
+  mode: 'grid' | 'normalized' | 'contour' | 'continuous' = 'grid',
 ) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
@@ -660,6 +671,8 @@ function drawLensHeatmap(
     ctx.strokeStyle = 'rgba(251, 146, 60, 0.56)'
     ctx.lineWidth = 10
     ctx.stroke(envelopePath)
+  } else if (mode === 'continuous' && maxValue > 0) {
+    drawContinuousHeat(ctx, grid, lensWidth, lensHeight, maxValue)
   } else if (maxValue > 0) {
     for (let row = 0; row < HEAT_ROWS; row += 1) {
       for (let col = 0; col < HEAT_COLS; col += 1) {
@@ -922,10 +935,10 @@ export default function GazeHeatmapLab({
         mainHeatmapRef.current,
         heatmapRef.current,
         undefined,
-        geometry ? `Campo exigido normalizado · ${geometry.family_name}` : 'Campo exigido normalizado',
+        geometry ? `Mapa de calor sobreposto · ${geometry.family_name}` : 'Mapa de calor sobreposto',
         geometry,
         samplesRef.current,
-        'normalized',
+        'continuous',
       )
     }
     if (contourHeatmapRef.current) {
@@ -947,7 +960,7 @@ export default function GazeHeatmapLab({
         COMPARISON_PROFILES[0].name,
         geometry,
         samplesRef.current,
-        'normalized',
+        'continuous',
       )
     }
     if (narrowHeatmapRef.current) {
@@ -958,7 +971,7 @@ export default function GazeHeatmapLab({
         COMPARISON_PROFILES[1].name,
         geometry,
         samplesRef.current,
-        'normalized',
+        'continuous',
       )
     }
   }, [geometry])
@@ -1239,8 +1252,11 @@ export default function GazeHeatmapLab({
       if (phaseRef.current === 'running' && metrics.faceDetected && now - targetStartedAtRef.current > 260) {
         const relativeEyeX = clamp(metrics.eyeX - baselineRef.current.eyeX, -1.2, 1.2)
         const relativeEyeY = clamp(metrics.eyeY - baselineRef.current.eyeY, -1.2, 1.2)
-        const relativeHeadX = clamp(metrics.headX - baselineRef.current.headX, -1.2, 1.2)
-        const relativeHeadY = clamp(metrics.headY - baselineRef.current.headY, -1.2, 1.2)
+        const rawHeadX = clamp(metrics.headX - baselineRef.current.headX, -1.2, 1.2)
+        const rawHeadY = clamp(metrics.headY - baselineRef.current.headY, -1.2, 1.2)
+        const targetOffset = normalizeTargetOffset(currentTargetRef.current.x, currentTargetRef.current.y)
+        const relativeHeadX = suppressHeadAxis(rawHeadX, relativeEyeX, Math.abs(targetOffset.x), 'x')
+        const relativeHeadY = suppressHeadAxis(rawHeadY, relativeEyeY, Math.abs(targetOffset.y), 'y')
         const sample = {
           eyeX: relativeEyeX,
           eyeY: relativeEyeY,
@@ -1344,6 +1360,9 @@ export default function GazeHeatmapLab({
               Loja {storeId} Â· MVP para Chrome em tablet usando cÃ¢mera frontal e alvo guiado.
             </p>
           </div>
+          <div className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-3 py-1 text-xs font-black tracking-[0.18em] text-cyan-200">
+            {HEATMAP_LAB_BUILD}
+          </div>
         </div>
       </div>
 
@@ -1353,7 +1372,7 @@ export default function GazeHeatmapLab({
             <div>
               <p className="text-xs font-black uppercase tracking-[0.24em] text-cyan-300/80">Teste guiado</p>
               <p className="text-sm text-slate-400">
-                O ponto vermelho induz sacadas na tela enquanto medimos cabeÃ§a e Ã­ris.
+                A mira segue uma sequÃªncia fixa de pontos enquanto medimos olhos e cabeÃ§a.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1400,7 +1419,12 @@ export default function GazeHeatmapLab({
           </div>
 
           <div className="mb-4 rounded-3xl border border-white/10 bg-slate-900/80 px-4 py-3 text-sm text-slate-300">
-            {status}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span>{status}</span>
+              <span className="rounded-full bg-slate-800 px-2.5 py-1 text-[10px] font-black tracking-[0.16em] text-cyan-200">
+                BUILD {HEATMAP_LAB_BUILD}
+              </span>
+            </div>
           </div>
 
           {secureContextWarning && (
@@ -1518,7 +1542,7 @@ export default function GazeHeatmapLab({
           <div className="rounded-[28px] border border-white/10 bg-slate-900/90 p-5 shadow-[0_25px_70px_rgba(2,6,23,0.38)]">
             <canvas ref={mainHeatmapRef} width={620} height={360} className="h-auto w-full" />
             <p className="mt-3 text-xs leading-5 text-slate-500">
-              Este agora Ã© o mapa principal: um campo exigido normalizado por direÃ§Ã£o. Ele tenta mostrar atÃ© onde a lente foi realmente exigida, sem deixar a repetiÃ§Ã£o aleatÃ³ria dos pontos distorcer o resultado.
+              Este Ã© o mapa principal da sessÃ£o: um heatmap contÃ­nuo sobreposto Ã  lente real. Como a sequÃªncia de pontos agora Ã© fixa, a leitura fica mais comparÃ¡vel de um teste para outro.
             </p>
           </div>
 
