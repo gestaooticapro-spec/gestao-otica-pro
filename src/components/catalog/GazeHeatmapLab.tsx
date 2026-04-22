@@ -704,6 +704,19 @@ export default function GazeHeatmapLab({
     }
   }
 
+  function stopCamera() {
+    streamRef.current?.getTracks().forEach((track) => track.stop())
+    streamRef.current = null
+    const video = videoRef.current
+    if (video) {
+      video.pause()
+      video.srcObject = null
+    }
+    const overlay = overlayRef.current
+    overlay?.getContext('2d')?.clearRect(0, 0, overlay.width, overlay.height)
+    setCameraReady(false)
+  }
+
   function stopSessionTimers() {
     if (targetTimerRef.current) {
       window.clearInterval(targetTimerRef.current)
@@ -791,7 +804,8 @@ export default function GazeHeatmapLab({
     setPhase('finished')
     const nextSummary = summarizeSession(samplesRef.current)
     setSummary(nextSummary)
-    setStatus('SessÃ£o concluÃ­da. Agora vale comparar o mapa contra geometrias de lente mais estreitas e mais amplas.')
+    stopCamera()
+    setStatus('SessÃ£o concluÃ­da. A cÃ¢mera foi desligada para aliviar o tablet. Reabra a cÃ¢mera quando quiser uma nova leitura.')
   }
 
   function startSession() {
@@ -1025,9 +1039,7 @@ export default function GazeHeatmapLab({
           )}
 
           <div className="space-y-4">
-            {!isFocusMode && stageNode}
-
-            <div className="grid gap-4 xl:grid-cols-[340px_1fr]">
+            {!isFocusMode && (
               <div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-slate-900">
                 <video
                   ref={videoRef}
@@ -1043,7 +1055,11 @@ export default function GazeHeatmapLab({
                   className="absolute inset-0 h-full w-full scale-x-[-1]"
                 />
               </div>
+            )}
 
+            {!isFocusMode && stageNode}
+
+            <div className="grid gap-4 xl:grid-cols-[1fr]">
               <div className="rounded-[28px] border border-white/10 bg-slate-900/80 p-4">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl bg-slate-800/90 p-3">
