@@ -260,6 +260,7 @@ function drawVisualizerLens(
   tracePoint: { x: number; y: number } | null = null,
   traceZone: BlurZone | null = null,
   fx: LensRenderFx = {},
+  fallbackLensRim: Array<{ x: number; y: number }> | null = null,
 ) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
@@ -267,7 +268,8 @@ function drawVisualizerLens(
   ctx.clearRect(0, 0, W, H)
 
   const pins = remapPins(normalizePins(g.pins))
-  const lensPath = pins.lensRim.length >= 3 ? buildPinPath(pins.lensRim, W, H) : buildLensPath(W, H)
+  const rimPins = pins.lensRim.length >= 3 ? pins.lensRim : (fallbackLensRim ?? [])
+  const lensPath = rimPins.length >= 3 ? buildPinPath(rimPins, W, H) : buildLensPath(W, H)
   const scale = W / 560
   const lensScale = fx.lensScale ?? 1
   const lensOffsetX = fx.lensOffsetX ?? 0
@@ -383,6 +385,7 @@ function drawRightAnimFrame(
   sharpZones: BlurZone[], zone: BlurZone, t: number,
   cachedPhoto: HTMLCanvasElement | null,
   cachedFinal: HTMLCanvasElement | null,
+  fallbackLensRim: Array<{ x: number; y: number }> | null = null,
 ) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
@@ -393,7 +396,8 @@ function drawRightAnimFrame(
   const et = 1 - Math.pow(1 - t, 3)
 
   const pins = remapPins(normalizePins(g.pins))
-  const lensPath = pins.lensRim.length >= 3 ? buildPinPath(pins.lensRim, W, H) : buildLensPath(W, H)
+  const rimPins = pins.lensRim.length >= 3 ? pins.lensRim : (fallbackLensRim ?? [])
+  const lensPath = rimPins.length >= 3 ? buildPinPath(rimPins, W, H) : buildLensPath(W, H)
   const scale = W / 560
 
   // ── Photo: crossfade from initial (zone-composite) → final (target blur) ──
@@ -450,6 +454,12 @@ function drawRightAnimFrame(
   }
 }
 
+function getDesignLabel(g: LensGeometry): string {
+  return g.visual_design_type === 'occupational' ? 'Ocupacional' :
+    g.visual_design_type === 'personalized' ? 'Personalizada' :
+    g.visual_design_type === 'single_vision_standard' ? 'Visão Simples' : 'Progressiva'
+}
+
 function getEyetraceFx(nx: number, ny: number): LensRenderFx {
   return {
     lensScale: EYETRACE_LENS_SCALE,
@@ -464,9 +474,9 @@ function getEyetraceFx(nx: number, ny: number): LensRenderFx {
 // Component
 // ---------------------------------------------------------------------------
 export default function LensVisualizerView({
-  geometry, backPath,
+  geometry, backPath, allGeometries,
 }: {
-  geometry: LensGeometry; backPath: string
+  geometry: LensGeometry; backPath: string; allGeometries: LensGeometry[]
 }) {
   const router = useRouter()
   const [activePhoto, setActivePhoto] = useState(0)
@@ -474,10 +484,16 @@ export default function LensVisualizerView({
   const [mode, setMode] = useState<Mode>('normal')
   const [loaded, setLoaded] = useState<boolean[]>([false, false, false, false])
 
-  const canvasRef      = useRef<HTMLCanvasElement>(null)
-  const rightCanvasRef = useRef<HTMLCanvasElement>(null)
-  const avatarCanvasRef = useRef<HTMLCanvasElement>(null)
-  const imgRefs        = useRef<(HTMLImageElement | null)[]>([null, null, null, null])
+  const [compareMode, setCompareMode] = useState(false)
+  const [compareGeometry, setCompareGeometry] = useState<LensGeometry | null>(null)
+  const [showCompareDropdown, setShowCompareDropdown] = useState(false)
+
+  const canvasRef         = useRef<HTMLCanvasElement>(null)
+  const rightCanvasRef    = useRef<HTMLCanvasElement>(null)
+  const avatarCanvasRef   = useRef<HTMLCanvasElement>(null)
+  const compareCanvasRef  = useRef<HTMLCanvasElement>(null)
+  const compareDropdownRef = useRef<HTMLDivElement>(null)
+  const imgRefs           = useRef<(HTMLImageElement | null)[]>([null, null, null, null])
 
   // Eyetrace
   const tracePointRef  = useRef<{ x: number; y: number } | null>(null)
@@ -502,13 +518,19 @@ export default function LensVisualizerView({
   const modeRef = useRef(mode)
   useEffect(() => { modeRef.current = mode }, [mode])
 
+  // Rim from whichever geometry has lensRim configured — used as fallback for all lenses
+  const fallbackLensRim = (() => {
+    const src = allGeometries.find((g) => g.pins?.lensRim && g.pins.lensRim.length >= 3)
+    return src ? remapPins(normalizePins(src.pins)).lensRim : null
+  })()
+
   // ── Left canvas redraw ────────────────────────────────────────────────────
   const redraw = useCallback(() => {
     if (!canvasRef.current) return
     const fx = mode === 'eyetrace' ? leftFxRef.current : {}
     drawVisualizerLens(canvasRef.current, geometry, imgRefs.current[activePhoto],
-      PHOTOS[activePhoto].sharpZones, showZoneLines, null, null, fx)
-  }, [geometry, activePhoto, showZoneLines, mode])
+      PHOTOS[activePhoto].sharpZones, showZoneLines, null, null, fx, fallbackLensRim)
+  }, [geometry, activePhoto, showZoneLines, mode, fallbackLensRim])
 
   // ── Load photos ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -532,12 +554,40 @@ export default function LensVisualizerView({
 
   useEffect(() => { redraw() }, [redraw, loaded])
 
+  // ── Compare panel redraw ──────────────────────────────────────────────────
+  const redrawCompare = useCallback(() => {
+    if (!compareCanvasRef.current || !compareGeometry) return
+    drawVisualizerLens(
+      compareCanvasRef.current, compareGeometry,
+      imgRefs.current[activePhoto],
+      PHOTOS[activePhoto].sharpZones,
+      showZoneLines,
+      null, null, {}, fallbackLensRim,
+    )
+  }, [compareGeometry, activePhoto, showZoneLines, fallbackLensRim])
+
+  useEffect(() => {
+    if (!compareMode) return
+    redrawCompare()
+  }, [redrawCompare, compareMode, loaded])
+
+  // ── Close compare dropdown when clicking outside ───────────────────────────
+  useEffect(() => {
+    if (!showCompareDropdown) return
+    const handler = (e: MouseEvent) => {
+      if (compareDropdownRef.current && !compareDropdownRef.current.contains(e.target as Node))
+        setShowCompareDropdown(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showCompareDropdown])
+
   // ── Draw right lens (initial state) ───────────────────────────────────────
   const drawRightLens = useCallback(() => {
     if (!rightCanvasRef.current) return
     drawVisualizerLens(rightCanvasRef.current, geometry, imgRefs.current[activePhoto],
-      PHOTOS[activePhoto].sharpZones, showZoneLines)
-  }, [geometry, activePhoto, showZoneLines])
+      PHOTOS[activePhoto].sharpZones, showZoneLines, null, null, {}, fallbackLensRim)
+  }, [geometry, activePhoto, showZoneLines, fallbackLensRim])
 
   // ── Reset right panel when mode activates or photo changes ────────────────
   useEffect(() => {
@@ -638,7 +688,7 @@ export default function LensVisualizerView({
       const t = Math.min(1, (now - animStartRef.current) / ANIM_DURATION)
       if (rightCanvasRef.current)
         drawRightAnimFrame(rightCanvasRef.current, geometry, img, PHOTOS[activePhoto].sharpZones,
-          zone, t, animCacheRef.current, animFinalRef.current)
+          zone, t, animCacheRef.current, animFinalRef.current, fallbackLensRim)
       if (t < 1) {
         animRafRef.current = requestAnimationFrame(tick)
       } else {
@@ -650,7 +700,7 @@ export default function LensVisualizerView({
       }
     }
     animRafRef.current = requestAnimationFrame(tick)
-  }, [geometry, activePhoto])
+  }, [geometry, activePhoto, fallbackLensRim])
 
   // ── Eyetrace pointer move ─────────────────────────────────────────────────
   const handlePointerMove = useCallback((clientX: number, clientY: number) => {
@@ -671,7 +721,7 @@ export default function LensVisualizerView({
       const fx = getEyetraceFx(nx, ny)
       leftFxRef.current = fx
       drawVisualizerLens(canvas, geometry, imgRefs.current[activePhoto],
-        PHOTOS[activePhoto].sharpZones, showZoneLines, { x, y }, zone, fx)
+        PHOTOS[activePhoto].sharpZones, showZoneLines, { x, y }, zone, fx, fallbackLensRim)
       // Avatar: mouse y→pitch (bottom=chin up), mouse x→yaw inverse
       if (avatarCanvasRef.current) {
         // ny: -1 = topo (longe, neutro), +1 = base (perto, queixo ergue)
@@ -691,7 +741,7 @@ export default function LensVisualizerView({
     const blurPx = 5 + ((geometry.lateral_blur ?? 50) / 100) * 14
     if (canvasRef.current)
       drawVisualizerLens(canvasRef.current, geometry, imgRefs.current[activePhoto],
-        PHOTOS[activePhoto].sharpZones, showZoneLines, null, null, leftFxRef.current)
+        PHOTOS[activePhoto].sharpZones, showZoneLines, null, null, leftFxRef.current, fallbackLensRim)
     if (rightStateRef.current === 'photo') animateRightBlur(blurPx)
     // Return avatar to center
     if (avatarReturnRafRef.current) cancelAnimationFrame(avatarReturnRafRef.current)
@@ -723,10 +773,17 @@ export default function LensVisualizerView({
     geometry.pins.corridor.length >= 3 ||
     geometry.pins.near.length >= 3
   )
-  const designLabel =
-    geometry.visual_design_type === 'occupational' ? 'Ocupacional' :
-    geometry.visual_design_type === 'personalized' ? 'Personalizada' :
-    geometry.visual_design_type === 'single_vision_standard' ? 'Visão Simples' : 'Progressiva'
+  const designLabel = getDesignLabel(geometry)
+
+  const compareHasPins = !!compareGeometry?.pins && (
+    compareGeometry.pins.distance.length >= 3 ||
+    compareGeometry.pins.corridor.length >= 3 ||
+    compareGeometry.pins.near.length >= 3
+  )
+  const compareDesignLabel = compareGeometry ? getDesignLabel(compareGeometry) : ''
+
+  const otherGeometries = allGeometries.filter((g) => g.id !== geometry.id)
+
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-slate-950 text-white overflow-hidden select-none">
@@ -737,10 +794,6 @@ export default function LensVisualizerView({
           className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-2 text-sm font-bold text-slate-300 hover:bg-slate-700 transition shrink-0">
           ← Voltar
         </button>
-        <div className="flex flex-col min-w-0">
-          <p className="text-lg font-black leading-tight truncate">{geometry.family_name}</p>
-          <p className="text-[10px] uppercase tracking-widest text-slate-500">{designLabel}</p>
-        </div>
         <div className="ml-auto flex items-center gap-2 shrink-0">
           {mode === 'normal' && (
             <button onClick={() => setShowZoneLines((v) => !v)}
@@ -753,7 +806,59 @@ export default function LensVisualizerView({
               {showZoneLines ? 'Ocultar linhas' : 'Mostrar linhas'}
             </button>
           )}
-          <button onClick={() => setMode((m) => m === 'eyetrace' ? 'normal' : 'eyetrace')}
+          {/* Compare button + dropdown */}
+          <div className="relative" ref={compareDropdownRef}>
+            {compareMode ? (
+              <div className="flex items-center gap-1 rounded-lg bg-violet-500/20 ring-1 ring-violet-500/40 px-3 py-2">
+                <span className="text-sm font-bold text-violet-300 max-w-[140px] truncate">
+                  ⊞ {compareGeometry?.family_name}
+                </span>
+                <button
+                  onClick={() => { setCompareMode(false); setCompareGeometry(null) }}
+                  className="ml-1 rounded px-1 text-violet-400 hover:text-white hover:bg-violet-500/30 transition text-sm font-black leading-none">
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowCompareDropdown((v) => !v)}
+                disabled={otherGeometries.length === 0}
+                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition ${
+                  showCompareDropdown
+                    ? 'bg-violet-500/20 text-violet-300 ring-1 ring-violet-500/40'
+                    : otherGeometries.length === 0
+                    ? 'bg-slate-800 text-slate-600 cursor-not-allowed opacity-50'
+                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
+                }`}>
+                ⊞ Comparar lentes
+              </button>
+            )}
+            {showCompareDropdown && (
+              <div className="absolute right-0 top-full mt-2 z-50 w-72 rounded-xl bg-slate-800 ring-1 ring-white/10 shadow-2xl overflow-hidden">
+                <p className="px-4 pt-3 pb-2 text-[10px] uppercase tracking-widest text-slate-500 font-bold">Escolha uma lente</p>
+                <div className="max-h-64 overflow-y-auto">
+                  {otherGeometries.map((g) => {
+                    const gHasPins = !!g.pins && (g.pins.distance.length >= 3 || g.pins.corridor.length >= 3 || g.pins.near.length >= 3)
+                    return (
+                      <button key={g.id}
+                        onClick={() => { setCompareGeometry(g); setCompareMode(true); setMode('normal'); setShowCompareDropdown(false) }}
+                        className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-slate-700 transition">
+                        <div>
+                          <p className="text-sm font-bold text-white leading-tight">{g.family_name}</p>
+                          <p className="text-[10px] text-slate-400 uppercase tracking-wider">{getDesignLabel(g)}</p>
+                        </div>
+                        {!gHasPins && (
+                          <span className="text-[9px] uppercase tracking-wider text-amber-500 bg-amber-500/10 rounded px-1.5 py-0.5">sem calibração</span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => { setMode((m) => m === 'eyetrace' ? 'normal' : 'eyetrace'); setCompareMode(false) }}
             className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition ${
               mode === 'eyetrace'
                 ? 'bg-indigo-500/20 text-indigo-300 ring-1 ring-indigo-500/40 hover:bg-indigo-500/30'
@@ -765,10 +870,16 @@ export default function LensVisualizerView({
       </div>
 
       {/* ── Canvases ─────────────────────────────────────────────────────────── */}
-      <div className={`flex-1 min-h-0 flex overflow-hidden ${mode === 'eyetrace' ? 'flex-row' : 'items-center justify-center'}`}>
+      <div className={`flex-1 min-h-0 flex overflow-hidden ${compareMode || mode === 'eyetrace' ? 'flex-row' : 'items-center justify-center'}`}>
 
         {/* Left: lens (always) */}
-        <div className={`relative flex items-center justify-center overflow-hidden ${mode === 'eyetrace' ? 'flex-1 border-r border-white/10' : 'flex-1'}`}>
+        <div className={`flex flex-col overflow-hidden ${compareMode || mode === 'eyetrace' ? 'flex-1 border-r border-white/10' : 'flex-1'}`}>
+          {/* Lens name — outside and above the canvas */}
+          <div className="shrink-0 text-center pt-4 pb-2 pointer-events-none">
+            <p className={`font-black text-white leading-tight ${compareMode ? 'text-xl' : 'text-3xl'}`}>{geometry.family_name}</p>
+            <p className="text-xs uppercase tracking-widest text-slate-400 mt-0.5">{designLabel}</p>
+          </div>
+          <div className="relative flex-1 flex items-center justify-center overflow-hidden">
           {!hasPins && (
             <div className="absolute z-10">
               <div className="rounded-2xl border border-amber-500/30 bg-slate-900/95 px-6 py-4 text-center shadow-2xl">
@@ -777,7 +888,7 @@ export default function LensVisualizerView({
               </div>
             </div>
           )}
-          {mode === 'eyetrace' && (
+{mode === 'eyetrace' && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 rounded-full bg-indigo-900/80 px-4 py-1.5 text-xs font-bold text-indigo-200 ring-1 ring-indigo-500/40 pointer-events-none">
               Toque na zona para ver a simulação
             </div>
@@ -798,6 +909,7 @@ export default function LensVisualizerView({
               <p className="text-center text-[9px] text-teal-400/50 pb-1.5 -mt-0.5 font-mono tracking-widest">POSTURA</p>
             </div>
           )} */}
+          </div>
         </div>
 
         {/* Right: animation + photo (eyetrace mode only) */}
@@ -808,6 +920,28 @@ export default function LensVisualizerView({
             </div>
             <canvas ref={rightCanvasRef} width={VW} height={VH}
               className="aspect-video max-w-full max-h-full w-auto h-auto" />
+          </div>
+        )}
+
+        {/* Right: compare panel */}
+        {compareMode && compareGeometry && (
+          <div className="flex flex-col flex-1 overflow-hidden">
+            <div className="shrink-0 text-center pt-4 pb-2 pointer-events-none">
+              <p className="text-xl font-black text-white leading-tight">{compareGeometry.family_name}</p>
+              <p className="text-xs uppercase tracking-widest text-slate-400 mt-0.5">{compareDesignLabel}</p>
+            </div>
+            <div className="relative flex-1 flex items-center justify-center overflow-hidden">
+              {!compareHasPins && (
+                <div className="absolute z-10">
+                  <div className="rounded-2xl border border-amber-500/30 bg-slate-900/95 px-6 py-4 text-center shadow-2xl">
+                    <p className="text-sm font-black text-amber-400">Lente sem calibração</p>
+                    <p className="mt-1 text-xs text-slate-400">Configure os alfinetes na tela de calibração para ver a simulação.</p>
+                  </div>
+                </div>
+              )}
+              <canvas ref={compareCanvasRef} width={VW} height={VH}
+                className="aspect-video max-w-full max-h-full w-auto h-auto" />
+            </div>
           </div>
         )}
       </div>

@@ -10,3 +10,6 @@ Recomendações:
 - Mínimo 1280x720px
 - Mesma composição vertical entre fotos (elementos de perto embaixo, longe em cima)
 - Geradas com IA ou fotografadas
+http://localhost:3000/dashboard/loja/1/catalogo-global/geometria
+http://localhost:3000/dashboard/loja/1/lentes/visualizar/Kodak%20Network%20UHD
+http://localhost:3000/dashboard/loja/1/lentes/mapa-calor

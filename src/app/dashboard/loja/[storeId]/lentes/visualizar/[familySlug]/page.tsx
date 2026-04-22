@@ -26,6 +26,7 @@ export default async function LensVisualizerPage({
     <LensVisualizerView
       geometry={geometry}
       backPath={`/dashboard/loja/${storeId}/tabela-precos`}
+      allGeometries={geometries}
     />
   )
 }
