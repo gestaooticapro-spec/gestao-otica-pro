@@ -25,6 +25,10 @@ type ProfileDescriptor = {
 type SessionSummary = {
   eyeShare: number
   headShare: number
+  eyeShareX: number
+  headShareX: number
+  eyeShareY: number
+  headShareY: number
   heatSpreadX: number
   heatSpreadY: number
   sampleCount: number
@@ -49,10 +53,17 @@ const VIDEO_H = 540
 const HEAT_COLS = 44
 const HEAT_ROWS = 28
 const TARGET_INTERVAL_MS = 1450
-const SESSION_DURATION_MS = 30000
 const CALIBRATION_DURATION_MS = 3000
 const SAFE_TARGET_MARGIN_X = 0.04
 const SAFE_TARGET_MARGIN_Y = 0.08
+const EYE_DEADZONE_X = 0.035
+const EYE_DEADZONE_Y = 0.04
+const HEAD_DEADZONE_X = 0.09
+const HEAD_DEADZONE_Y = 0.11
+const EYE_RESPONSE_X = 0.58
+const EYE_RESPONSE_Y = 0.52
+const HEAD_RESPONSE_X = 0.64
+const HEAD_RESPONSE_Y = 0.58
 
 const LANDMARKS = {
   nose: 1,
@@ -97,6 +108,13 @@ const clamp = (value: number, min: number, max: number) =>
 const smoothstep = (edge0: number, edge1: number, x: number) => {
   const t = clamp((x - edge0) / (edge1 - edge0), 0, 1)
   return t * t * (3 - 2 * t)
+}
+
+const applyDeadzone = (value: number, deadzone: number, limit = 1.2) => {
+  const absValue = Math.abs(value)
+  if (absValue <= deadzone) return 0
+  const normalized = clamp((absValue - deadzone) / Math.max(limit - deadzone, 0.0001), 0, 1)
+  return Math.sign(value) * normalized
 }
 
 function distance(a: NormalizedPoint, b: NormalizedPoint) {
@@ -179,7 +197,13 @@ function makeHeatmap() {
   return new Float32Array(HEAT_COLS * HEAT_ROWS)
 }
 
-function addHeatPoint(grid: Float32Array, point: NormalizedPoint, weight = 1, radius = 2.2) {
+function addHeatPoint(
+  grid: Float32Array,
+  point: NormalizedPoint,
+  weight = 1,
+  radius = 2.2,
+  mode: 'sum' | 'max' = 'sum',
+) {
   const px = clamp(point.x, 0.01, 0.99) * (HEAT_COLS - 1)
   const py = clamp(point.y, 0.01, 0.99) * (HEAT_ROWS - 1)
 
@@ -189,9 +213,60 @@ function addHeatPoint(grid: Float32Array, point: NormalizedPoint, weight = 1, ra
       const dy = row - py
       const value = Math.exp(-(dx * dx + dy * dy) / (2 * radius * radius)) * weight
       if (value < 0.015) continue
-      grid[row * HEAT_COLS + col] += value
+      const index = row * HEAT_COLS + col
+      if (mode === 'max') grid[index] = Math.max(grid[index], value)
+      else grid[index] += value
     }
   }
+}
+
+function shufflePoints(points: NormalizedPoint[]) {
+  const next = [...points]
+  for (let i = next.length - 1; i > 0; i -= 1) {
+    const swapIndex = Math.floor(Math.random() * (i + 1))
+    const tmp = next[i]
+    next[i] = next[swapIndex]
+    next[swapIndex] = tmp
+  }
+  return next
+}
+
+function jitterPoint(point: NormalizedPoint, amountX = 0.025, amountY = 0.03) {
+  return {
+    x: clamp(point.x + (Math.random() * 2 - 1) * amountX, SAFE_TARGET_MARGIN_X, 1 - SAFE_TARGET_MARGIN_X),
+    y: clamp(point.y + (Math.random() * 2 - 1) * amountY, SAFE_TARGET_MARGIN_Y, 1 - SAFE_TARGET_MARGIN_Y),
+  }
+}
+
+function buildTargetSequence() {
+  const anchors: NormalizedPoint[] = [
+    { x: 0.5, y: 0.5 },
+    { x: 0.08, y: 0.5 },
+    { x: 0.92, y: 0.5 },
+    { x: 0.5, y: 0.1 },
+    { x: 0.5, y: 0.9 },
+    { x: 0.08, y: 0.1 },
+    { x: 0.92, y: 0.1 },
+    { x: 0.08, y: 0.9 },
+    { x: 0.92, y: 0.9 },
+    { x: 0.24, y: 0.24 },
+    { x: 0.76, y: 0.24 },
+    { x: 0.24, y: 0.76 },
+    { x: 0.76, y: 0.76 },
+    { x: 0.5, y: 0.24 },
+    { x: 0.5, y: 0.76 },
+    { x: 0.24, y: 0.5 },
+    { x: 0.76, y: 0.5 },
+  ]
+
+  const requiredExtremes = anchors.slice(1, 9)
+  const exploratoryBand = anchors.slice(9)
+
+  return [
+    { x: 0.5, y: 0.5 },
+    ...shufflePoints(requiredExtremes).map((point) => jitterPoint(point, 0.018, 0.024)),
+    ...shufflePoints(exploratoryBand).map((point) => jitterPoint(point, 0.028, 0.034)),
+  ]
 }
 
 function normalizeTargetOffset(targetX: number, targetY: number) {
@@ -209,53 +284,67 @@ function getAxisEyeShare(eye: number, head: number, headPenalty: number) {
 }
 
 function projectSampleToLens(sample: SessionSample) {
-  const eyeMag = Math.hypot(sample.eyeX, sample.eyeY)
   const target = normalizeTargetOffset(sample.targetX, sample.targetY)
-  const eyeNorm = clamp(eyeMag / 0.5, 0, 1.25)
-  const eyeShareX = getAxisEyeShare(sample.eyeX, sample.headX, 1.05)
-  const eyeShareY = getAxisEyeShare(sample.eyeY, sample.headY, 1.2)
   const demandX = Math.abs(target.x)
   const demandY = Math.abs(target.y)
+  const normalizedEyeX = applyDeadzone(sample.eyeX, EYE_DEADZONE_X)
+  const normalizedEyeY = applyDeadzone(sample.eyeY, EYE_DEADZONE_Y)
+  const normalizedHeadX = applyDeadzone(sample.headX, HEAD_DEADZONE_X)
+  const normalizedHeadY = applyDeadzone(sample.headY, HEAD_DEADZONE_Y)
+  const eyeMag = Math.hypot(normalizedEyeX, normalizedEyeY)
+  const eyeNorm = clamp(eyeMag / 0.48, 0, 1.35)
+  const eyeShareX = getAxisEyeShare(
+    normalizedEyeX * (0.55 + demandX * EYE_RESPONSE_X),
+    normalizedHeadX * (0.38 + demandX * HEAD_RESPONSE_X),
+    1.18,
+  )
+  const eyeShareY = getAxisEyeShare(
+    normalizedEyeY * (0.5 + demandY * EYE_RESPONSE_Y),
+    normalizedHeadY * (0.34 + demandY * HEAD_RESPONSE_Y),
+    1.34,
+  )
   const demandedWeight = Math.max(demandX + demandY, 0.0001)
   const eyeDemandShare = clamp((eyeShareX * demandX + eyeShareY * demandY) / demandedWeight, 0, 1)
   const headDemandShare = 1 - eyeDemandShare
   const lensDemandX = target.x * eyeShareX
   const lensDemandY = target.y * eyeShareY
-  const edgeSpread = clamp(0.42 + eyeDemandShare * 1.35 + eyeNorm * 0.18, 0.42, 1.95)
+  const edgeSpread = clamp(0.42 + eyeDemandShare * 1.25 + eyeNorm * 0.22, 0.42, 1.98)
+  const verticalBias = clamp(0.82 + demandY * 0.95 + eyeShareY * 0.3, 0.82, 1.75)
 
   const point = {
     x: clamp(
       0.5 +
         lensDemandX * 0.42 +
-        sample.eyeX * 0.055,
+        normalizedEyeX * 0.05,
       0.03,
       0.97,
     ),
     y: clamp(
       0.52 +
-        lensDemandY * 0.3 +
-        sample.eyeY * 0.045,
-      0.05,
+        lensDemandY * 0.42 * verticalBias +
+        normalizedEyeY * 0.08,
+      0.03,
       0.95,
     ),
   }
 
   return {
     point,
-    radius: 1.8 + edgeSpread * 1.22,
-    spreadX: 0.006 + demandX * 0.055 * eyeShareX + eyeDemandShare * 0.02,
-    spreadY: 0.005 + demandY * 0.04 * eyeShareY + eyeDemandShare * 0.016,
+    radius: 1.7 + edgeSpread * 1.18,
+    spreadX: 0.006 + demandX * 0.052 * eyeShareX + eyeDemandShare * 0.018,
+    spreadY: 0.012 + demandY * 0.085 * eyeShareY + eyeDemandShare * 0.026 + headDemandShare * 0.008,
     weight: 1 + eyeDemandShare * 0.22,
     eyeDominance: eyeDemandShare,
     headDominance: headDemandShare,
     eyeShareX,
     eyeShareY,
+    demandWeight: demandedWeight,
   }
 }
 
 function stampHeatSample(grid: Float32Array, sample: SessionSample) {
   const projection = projectSampleToLens(sample)
-  addHeatPoint(grid, projection.point, projection.weight, projection.radius)
+  addHeatPoint(grid, projection.point, projection.weight, projection.radius, 'max')
 
   const satelliteWeight = projection.weight * 0.56
   const satelliteRadius = projection.radius * 0.92
@@ -267,6 +356,7 @@ function stampHeatSample(grid: Float32Array, sample: SessionSample) {
     },
     satelliteWeight,
     satelliteRadius,
+    'max',
   )
   addHeatPoint(
     grid,
@@ -276,6 +366,7 @@ function stampHeatSample(grid: Float32Array, sample: SessionSample) {
     },
     satelliteWeight,
     satelliteRadius,
+    'max',
   )
   addHeatPoint(
     grid,
@@ -285,6 +376,17 @@ function stampHeatSample(grid: Float32Array, sample: SessionSample) {
     },
     projection.weight * 0.34,
     projection.radius * 0.78,
+    'max',
+  )
+  addHeatPoint(
+    grid,
+    {
+      x: clamp(projection.point.x, 0.02, 0.98),
+      y: clamp(projection.point.y - projection.spreadY * 0.92, 0.02, 0.98),
+    },
+    projection.weight * 0.3,
+    projection.radius * 0.72,
+    'max',
   )
 }
 
@@ -489,6 +591,10 @@ function summarizeSession(samples: SessionSample[]): SessionSummary {
     return {
       eyeShare: 0,
       headShare: 0,
+      eyeShareX: 0,
+      headShareX: 0,
+      eyeShareY: 0,
+      headShareY: 0,
       heatSpreadX: 0,
       heatSpreadY: 0,
       sampleCount: 0,
@@ -501,6 +607,10 @@ function summarizeSession(samples: SessionSample[]): SessionSummary {
 
   let eyeTotal = 0
   let headTotal = 0
+  let eyeTotalX = 0
+  let headTotalX = 0
+  let eyeTotalY = 0
+  let headTotalY = 0
   let sumX = 0
   let sumY = 0
   let riskWide = 0
@@ -509,8 +619,12 @@ function summarizeSession(samples: SessionSample[]): SessionSummary {
   const points = samples.map((sample) => {
     const projection = projectSampleToLens(sample)
     const { x, y } = projection.point
-    eyeTotal += projection.eyeDominance
-    headTotal += projection.headDominance
+    eyeTotal += projection.eyeDominance * projection.demandWeight
+    headTotal += projection.headDominance * projection.demandWeight
+    eyeTotalX += projection.eyeShareX * Math.max(Math.abs(normalizeTargetOffset(sample.targetX, sample.targetY).x), 0.0001)
+    headTotalX += (1 - projection.eyeShareX) * Math.max(Math.abs(normalizeTargetOffset(sample.targetX, sample.targetY).x), 0.0001)
+    eyeTotalY += projection.eyeShareY * Math.max(Math.abs(normalizeTargetOffset(sample.targetX, sample.targetY).y), 0.0001)
+    headTotalY += (1 - projection.eyeShareY) * Math.max(Math.abs(normalizeTargetOffset(sample.targetX, sample.targetY).y), 0.0001)
     sumX += x
     sumY += y
     if (isRiskPoint(x, y, COMPARISON_PROFILES[0])) riskWide += 1
@@ -529,6 +643,10 @@ function summarizeSession(samples: SessionSample[]): SessionSummary {
 
   const eyeShare = eyeTotal / Math.max(eyeTotal + headTotal, 0.0001)
   const headShare = headTotal / Math.max(eyeTotal + headTotal, 0.0001)
+  const eyeShareX = eyeTotalX / Math.max(eyeTotalX + headTotalX, 0.0001)
+  const headShareX = headTotalX / Math.max(eyeTotalX + headTotalX, 0.0001)
+  const eyeShareY = eyeTotalY / Math.max(eyeTotalY + headTotalY, 0.0001)
+  const headShareY = headTotalY / Math.max(eyeTotalY + headTotalY, 0.0001)
   const heatSpreadX = Math.sqrt(varianceX / points.length)
   const heatSpreadY = Math.sqrt(varianceY / points.length)
   const wideScore = 1 - riskWide / points.length
@@ -536,17 +654,24 @@ function summarizeSession(samples: SessionSample[]): SessionSummary {
 
   let label = 'Perfil misto'
   let message = 'O cliente alterna bem entre olhos e cabeÃ§a. Vale comparar conforto percebido entre campos mÃ©dios e amplos.'
-  if (headShare >= 0.58 && heatSpreadX < 0.11) {
+  if (headShareX >= 0.62 && eyeShareY >= 0.56 && heatSpreadX < 0.11) {
     label = 'Perfil centralizado'
-    message = 'A amostra ficou concentrada no centro da lente. Esse comportamento tende a tolerar designs mais compactos com bom conforto.'
-  } else if (eyeShare >= 0.58 || heatSpreadX >= 0.145) {
+    message = 'Lateralmente o cliente leva bem a cabeÃ§a, mas no eixo vertical ainda usa os olhos com boa disciplina. Esse padrÃ£o tende a tolerar desenhos mais compactos.'
+  } else if (eyeShareX >= 0.58 || heatSpreadX >= 0.145) {
     label = 'Perfil explorador com olhos'
-    message = 'O mapa se espalhou mais pelas bordas. Esse padrÃ£o favorece campos mais generosos para reduzir sensaÃ§Ã£o de distorÃ§Ã£o.'
+    message = 'O mapa se espalhou mais nas laterais, indicando maior exigÃªncia do campo visual da lente. Esse padrÃ£o favorece campos mais generosos.'
+  } else if (headShareY >= 0.58) {
+    label = 'Perfil vertical com cabeÃ§a'
+    message = 'Na vertical o cliente tende a levar a cabeÃ§a junto, o que pode atrapalhar o uso do perto em progressivas mais exigentes.'
   }
 
   return {
     eyeShare,
     headShare,
+    eyeShareX,
+    headShareX,
+    eyeShareY,
+    headShareY,
     heatSpreadX,
     heatSpreadY,
     sampleCount: points.length,
@@ -585,6 +710,8 @@ export default function GazeHeatmapLab({
   const baselineRef = useRef({ eyeX: 0, eyeY: 0, headX: 0, headY: 0 })
   const currentTargetRef = useRef<NormalizedPoint>({ x: 0.5, y: 0.5 })
   const targetStartedAtRef = useRef<number>(0)
+  const targetSequenceRef = useRef<NormalizedPoint[]>([])
+  const targetIndexRef = useRef<number>(0)
 
   const [cameraReady, setCameraReady] = useState(false)
   const [loadingModel, setLoadingModel] = useState(false)
@@ -748,6 +875,8 @@ export default function GazeHeatmapLab({
     heatmapRef.current = makeHeatmap()
     samplesRef.current = []
     calibrationSamplesRef.current = []
+    targetSequenceRef.current = []
+    targetIndexRef.current = 0
     baselineRef.current = { eyeX: 0, eyeY: 0, headX: 0, headY: 0 }
     currentTargetRef.current = { x: 0.5, y: 0.5 }
     targetStartedAtRef.current = 0
@@ -778,6 +907,23 @@ export default function GazeHeatmapLab({
     currentTargetRef.current = point
     targetStartedAtRef.current = performance.now()
     setTarget(point)
+  }
+
+  function advanceSequenceTarget() {
+    const sequence = targetSequenceRef.current
+    if (!sequence.length) {
+      moveTarget()
+      return
+    }
+
+    if (targetIndexRef.current >= sequence.length) {
+      finishSession()
+      return
+    }
+
+    const point = sequence[targetIndexRef.current]
+    moveTarget(point)
+    targetIndexRef.current += 1
   }
 
   function startCalibration() {
@@ -828,18 +974,16 @@ export default function GazeHeatmapLab({
 
     heatmapRef.current = makeHeatmap()
     samplesRef.current = []
+    targetSequenceRef.current = buildTargetSequence()
+    targetIndexRef.current = 0
     setSummary(null)
     setPhase('running')
-    setStatus('SessÃ£o em andamento. O cliente deve seguir a bolinha vermelha sem instruÃ§Ã£o extra sobre mexer a cabeÃ§a.')
-    moveTarget()
+    setStatus('SessÃ£o em andamento. O roteiro do alvo agora garante passagem por extremos, cantos e eixos para medir o campo realmente exigido.')
+    advanceSequenceTarget()
 
     targetTimerRef.current = window.setInterval(() => {
-      moveTarget()
+      advanceSequenceTarget()
     }, TARGET_INTERVAL_MS)
-
-    sessionTimerRef.current = window.setTimeout(() => {
-      finishSession()
-    }, SESSION_DURATION_MS)
   }
 
   function startTrackingLoop() {
@@ -916,6 +1060,10 @@ export default function GazeHeatmapLab({
   const narrowProfile = summary ? Math.round(summary.narrowScore * 100) : 0
   const headPercent = Math.round((summary?.headShare ?? 0) * 100)
   const eyePercent = Math.round((summary?.eyeShare ?? 0) * 100)
+  const eyePercentX = Math.round((summary?.eyeShareX ?? 0) * 100)
+  const headPercentX = Math.round((summary?.headShareX ?? 0) * 100)
+  const eyePercentY = Math.round((summary?.eyeShareY ?? 0) * 100)
+  const headPercentY = Math.round((summary?.headShareY ?? 0) * 100)
   const phaseIsRunning = phase === 'running'
   const phaseIsCalibrating = phase === 'calibrating'
   const phaseLabel = phaseIsRunning ? 'SessÃ£o ativa' : phaseIsCalibrating ? 'CalibraÃ§Ã£o' : 'Aguardando'
@@ -1120,6 +1268,24 @@ export default function GazeHeatmapLab({
                   <div className="rounded-2xl bg-slate-800 p-4">
                     <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">CabeÃ§a</p>
                     <p className="mt-2 text-3xl font-black text-emerald-300">{headPercent}%</p>
+                  </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-cyan-400/15 bg-cyan-500/10 p-4">
+                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-cyan-100">Lateral: olhos x cabeÃ§a</p>
+                    <p className="mt-2 text-xl font-black text-cyan-300">{eyePercentX}% olhos</p>
+                    <p className="text-sm font-bold text-emerald-300">{headPercentX}% cabeÃ§a</p>
+                    <p className="mt-2 text-xs leading-5 text-slate-400">
+                      Na horizontal, levar a cabeÃ§a pode ajudar a manter o uso mais central do campo.
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-fuchsia-400/15 bg-fuchsia-500/10 p-4">
+                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-fuchsia-100">Vertical: olhos x cabeÃ§a</p>
+                    <p className="mt-2 text-xl font-black text-cyan-300">{eyePercentY}% olhos</p>
+                    <p className="text-sm font-bold text-emerald-300">{headPercentY}% cabeÃ§a</p>
+                    <p className="mt-2 text-xs leading-5 text-slate-400">
+                      Na vertical, queremos mais olhos e menos cabeÃ§a para facilitar o acesso ao perto e ao corredor.
+                    </p>
                   </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
