@@ -2,10 +2,11 @@
 
 import { useState, useTransition, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Search, Calendar, Loader2, Wallet, ArrowLeft, ShoppingBag, CheckCircle2, AlertTriangle, ArrowDownCircle, Banknote, CreditCard } from 'lucide-react'
+import { X, Search, Calendar, Loader2, Wallet, ArrowLeft, ShoppingBag, CheckCircle2, AlertTriangle, ArrowDownCircle, Printer } from 'lucide-react'
 import { searchPendenciasCliente, receberParcela } from '@/lib/actions/vendas.actions'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
-import { PrintParcelaButton } from '@/components/financeiro/PrintParcelaButton'
+import { printParcela } from '@/components/financeiro/PrintParcelaButton'
+
 
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const formatDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
@@ -70,6 +71,7 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
 
     const [isAuthOpen, setIsAuthOpen] = useState(false)
     const [isProcessing, startProcess] = useTransition()
+    const [isPrinting, setIsPrinting] = useState(false)
     const searchInputRef = useRef<HTMLInputElement>(null)
 
     useEffect(() => {
@@ -189,8 +191,11 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
 
                 if (res.success) {
                     console.log("[DEBUG] Sucesso! Mudando step para 'success'")
-                    setPaidParcelaId(selectedParcela.id)
+                    const parcelaId = selectedParcela.id
+                    setPaidParcelaId(parcelaId)
                     setStep('success')
+                    setIsPrinting(true)
+                    printParcela(parcelaId).catch(console.error).finally(() => setIsPrinting(false))
                 } else {
                     console.error("[DEBUG] Erro retornado pelo servidor:", res.message)
                     alert(`Erro: ${res.message}`)
@@ -414,19 +419,26 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
                         {step === 'success' && (
                             <div className="p-10 flex flex-col items-center justify-center text-center animate-in zoom-in-50">
                                 <div className="w-24 h-24 bg-emerald-500/10 border border-emerald-500/20 rounded-full flex items-center justify-center mb-6 text-emerald-500 shadow-xl shadow-emerald-500/10">
-                                    <CheckCircle2 className="h-12 w-12" />
+                                    {isPrinting ? <Loader2 className="h-12 w-12 animate-spin" /> : <CheckCircle2 className="h-12 w-12" />}
                                 </div>
                                 <h2 className="text-2xl font-black text-white mb-2">Pagamento Confirmado!</h2>
-                                <p className="text-slate-400 mb-8 max-w-xs mx-auto">O recebimento foi registrado no sistema.</p>
+                                <p className="text-slate-400 mb-8 max-w-xs mx-auto">
+                                    {isPrinting ? 'Enviando recibo para impressora...' : 'O recebimento foi registrado no sistema.'}
+                                </p>
 
                                 <div className="w-full max-w-sm space-y-3">
-                                    {paidParcelaId && (
-                                        <PrintParcelaButton parcelaId={paidParcelaId} variant="full" />
-                                    )}
-
-                                    <button onClick={onClose} className="w-full py-3 text-slate-400 font-bold hover:bg-white/5 hover:text-white rounded-xl transition-colors uppercase text-sm tracking-wide">
-                                        Fechar Janela
+                                    <button onClick={onClose} className="w-full py-4 bg-emerald-700/30 text-emerald-300 font-bold hover:bg-emerald-700/50 rounded-xl transition-colors uppercase text-sm tracking-wide">
+                                        Fechar
                                     </button>
+                                    {paidParcelaId && (
+                                        <button
+                                            onClick={() => { setIsPrinting(true); printParcela(paidParcelaId).catch(console.error).finally(() => setIsPrinting(false)) }}
+                                            disabled={isPrinting}
+                                            className="w-full py-3 text-slate-500 font-bold hover:bg-white/5 hover:text-slate-300 rounded-xl transition-colors flex items-center justify-center gap-2 text-sm"
+                                        >
+                                            <Printer className="h-4 w-4" /> Reimprimir Recibo
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         )}

@@ -2557,7 +2557,7 @@ export async function finalizarVendaExpress(formData: FormData) {
   await (supabaseAdmin.from('venda_itens') as any).insert(itensToInsert)
 
   // 5. INSERÃ‡ÃƒO (Pagamento)
-  await (supabaseAdmin.from('pagamentos') as any).insert({
+  const { data: novoPagamento } = await (supabaseAdmin.from('pagamentos') as any).insert({
     tenant_id: (profile as any).tenant_id,
     store_id: storeId,
     venda_id: novaVenda.id,
@@ -2567,7 +2567,7 @@ export async function finalizarVendaExpress(formData: FormData) {
     parcelas: data.pagamento.parcelas,
     data_pagamento: data.pagamento.data,
     obs: data.cpf_nota ? `CPF Nota: ${data.cpf_nota}` : null
-  })
+  }).select('id').single()
 
   await calcularERegistrarComissao(novaVenda.id)
   await calcularComissaoMedico(novaVenda.id)
@@ -2577,7 +2577,7 @@ export async function finalizarVendaExpress(formData: FormData) {
 
   revalidatePath(`/dashboard/loja/${storeId}/vendas`)
   revalidatePath(`/dashboard/loja/${storeId}/financeiro/comissoes`)
-  return { success: true, message: 'Venda finalizada!', vendaId: novaVenda.id }
+  return { success: true, message: 'Venda finalizada!', vendaId: novaVenda.id, pagamentoId: novoPagamento?.id as number | undefined }
 }
 
 // ================================================================

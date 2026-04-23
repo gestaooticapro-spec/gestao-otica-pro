@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Printer, CheckSquare, Square, Loader2, Eye, FileText } from 'lucide-react'
+import { X, Printer, CheckSquare, Square, Loader2 } from 'lucide-react'
 import { Database } from '@/lib/database.types'
 import { markPaymentsAsPrinted } from '@/lib/actions/vendas.actions'
 import { getReceiptPDFBase64 } from '@/lib/actions/print-remote'
@@ -20,7 +20,7 @@ const formatMoney = (v: number) => v.toLocaleString('pt-BR', { style: 'currency'
 
 export default function ReceiptSelectionModal({ isOpen, onClose, pagamentos, onReload }: Props) {
     const [selectedIds, setSelectedIds] = useState<number[]>([])
-    const [isProcessing, setIsProcessing] = useState<string | null>(null) // 'view' | 'print' | null
+    const [isProcessing, setIsProcessing] = useState(false)
     const [mounted, setMounted] = useState(false)
 
     useEffect(() => {
@@ -59,26 +59,9 @@ export default function ReceiptSelectionModal({ isOpen, onClose, pagamentos, onR
         return new Blob([byteArray], { type: 'application/pdf' })
     }
 
-    // OPÇÃO 1: VISUALIZAR (Abre Nova Aba)
-    const handlePreview = async () => {
-        if (selectedIds.length === 0) return
-        setIsProcessing('view')
-        try {
-            const blob = await generateBlob()
-            const fileURL = URL.createObjectURL(blob)
-            window.open(fileURL, '_blank')
-            // Não marcamos como impresso aqui, pois é só visualização
-        } catch (error: any) {
-            alert(error.message)
-        } finally {
-            setIsProcessing(null)
-        }
-    }
-
-    // OPÇÃO 2: IMPRIMIR (Iframe Oculto)
     const handleDirectPrint = async () => {
         if (selectedIds.length === 0) return
-        setIsProcessing('print')
+        setIsProcessing(true)
         try {
             const blob = await generateBlob()
             const fileURL = URL.createObjectURL(blob)
@@ -119,7 +102,7 @@ export default function ReceiptSelectionModal({ isOpen, onClose, pagamentos, onR
         } catch (error: any) {
             alert(error.message)
         } finally {
-            setIsProcessing(null)
+            setIsProcessing(false)
         }
     }
 
@@ -185,37 +168,15 @@ export default function ReceiptSelectionModal({ isOpen, onClose, pagamentos, onR
                     </div>
                 </div>
 
-                {/* RODAPÉ COM DOIS BOTÕES */}
-                <div className="p-4 bg-gray-50 border-t border-gray-100 flex gap-3">
-                    
-                    {/* BOTÃO 1: VISUALIZAR */}
-                    <button 
-                        onClick={handlePreview}
-                        disabled={selectedIds.length === 0 || isProcessing !== null}
-                        className="flex-1 py-3 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl font-bold shadow-sm flex items-center justify-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
-                    >
-                        {isProcessing === 'view' ? (
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                        ) : (
-                            <Eye className="h-5 w-5" />
-                        )}
-                        Visualizar
-                    </button>
-
-                    {/* BOTÃO 2: IMPRIMIR DIRETO */}
-                    <button 
+                <div className="p-4 bg-gray-50 border-t border-gray-100">
+                    <button
                         onClick={handleDirectPrint}
-                        disabled={selectedIds.length === 0 || isProcessing !== null}
-                        className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
+                        disabled={selectedIds.length === 0 || isProcessing}
+                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
                     >
-                        {isProcessing === 'print' ? (
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                        ) : (
-                            <Printer className="h-5 w-5" />
-                        )}
+                        {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Printer className="h-5 w-5" />}
                         Imprimir
                     </button>
-
                 </div>
             </div>
         </div>,

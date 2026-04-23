@@ -273,6 +273,85 @@ export async function advanceLabStage(
     return { success: true, message: 'Etapa atualizada.' }
 }
 
+// 4B. REGREDIR ETAPA DO LABORATÓRIO (desfazer lançamento errado)
+export async function regressLabStage(
+    osId: number,
+    storeId: number,
+    field: 'dt_pedido_em' | 'dt_lente_chegou' | 'dt_montado_em'
+) {
+    const supabase = createAdminClient()
+
+    const { error } = await (supabase.from('service_orders') as any)
+        .update({ [field]: null })
+        .eq('id', osId)
+        .eq('store_id', storeId)
+
+    if (error) {
+        console.error("Erro ao regredir etapa do laboratório:", error)
+        return { success: false, message: 'Erro ao voltar etapa do laboratório.' }
+    }
+
+    revalidatePath(`/dashboard/loja/${storeId}`)
+    revalidatePath(`/dashboard/loja/${storeId}/laboratorio`)
+    revalidatePath(`/dashboard/loja/${storeId}/entrega`)
+    return { success: true, message: 'Etapa revertida.' }
+}
+
+// 7. BUSCAR PRODUTOS COM GRADE CADASTRADA
+export type LensProductSimple = {
+    id: number
+    nome: string
+}
+
+export async function getLensProductsWithGrade(storeId: number): Promise<LensProductSimple[]> {
+    const supabase = createAdminClient()
+
+    // Passo 1: buscar product_ids distintos que têm grade cadastrada
+    const { data: variantRows } = await (supabase.from('product_variants') as any)
+        .select('product_id')
+        .eq('store_id', storeId)
+        .not('esferico', 'is', null)
+        .not('cilindrico', 'is', null)
+
+    if (!variantRows?.length) return []
+
+    const productIds = [...new Set<number>(variantRows.map((r: any) => r.product_id))]
+
+    // Passo 2: buscar os nomes dos produtos
+    const { data: productRows } = await (supabase.from('products') as any)
+        .select('id, nome')
+        .in('id', productIds)
+        .eq('store_id', storeId)
+        .order('nome', { ascending: true })
+
+    if (!productRows) return []
+
+    return productRows.map((p: any) => ({ id: p.id, nome: p.nome }))
+}
+
+// 8. BUSCAR VARIANTES DA GRADE DE UMA LENTE
+export type LensVariantGrade = {
+    id: number
+    esferico: number
+    cilindrico: number
+    estoque_atual: number
+}
+
+export async function getLensGradeVariants(productId: number, storeId: number): Promise<LensVariantGrade[]> {
+    const supabase = createAdminClient()
+
+    const { data } = await (supabase.from('product_variants') as any)
+        .select('id, esferico, cilindrico, estoque_atual')
+        .eq('product_id', productId)
+        .eq('store_id', storeId)
+        .not('esferico', 'is', null)
+        .not('cilindrico', 'is', null)
+        .order('esferico', { ascending: true })
+        .order('cilindrico', { ascending: true })
+
+    return data || []
+}
+
 // 5. SALVAR ATUALIZAÇÃO DO LABORATÓRIO
 export async function updateLabTracking(osId: number, storeId: number, formData: FormData) {
     const supabase = createAdminClient()

@@ -8,6 +8,7 @@ import {
     Calendar,
     CheckCircle2,
     Clock3,
+    Grid3X3,
     GripVertical,
     Loader2,
     MessageCircle,
@@ -28,8 +29,10 @@ import {
     advanceLabStage,
     getEmployees,
     getOpenLabOS,
+    regressLabStage,
     updateLabTracking
 } from '@/lib/actions/lab.actions'
+import LensGradeMonitorModal from '@/components/modals/LensGradeMonitorModal'
 
 type LabStage = 'falta_pedir' | 'lentes_pedidas' | 'lentes_chegaram' | 'oculos_montado'
 
@@ -104,10 +107,22 @@ function getNextStage(currentStage: LabStage): LabStage | null {
     return STAGE_ORDER[currentIndex + 1] || null
 }
 
+function getPrevStage(currentStage: LabStage): LabStage | null {
+    const currentIndex = STAGE_ORDER.indexOf(currentStage)
+    return STAGE_ORDER[currentIndex - 1] || null
+}
+
 function getAutoAdvanceField(currentStage: LabStage): 'dt_pedido_em' | 'dt_lente_chegou' | 'dt_montado_em' | null {
     if (currentStage === 'falta_pedir') return 'dt_pedido_em'
     if (currentStage === 'lentes_pedidas') return 'dt_lente_chegou'
     if (currentStage === 'lentes_chegaram') return 'dt_montado_em'
+    return null
+}
+
+function getRegressField(currentStage: LabStage): 'dt_pedido_em' | 'dt_lente_chegou' | 'dt_montado_em' | null {
+    if (currentStage === 'lentes_pedidas') return 'dt_pedido_em'
+    if (currentStage === 'lentes_chegaram') return 'dt_lente_chegou'
+    if (currentStage === 'oculos_montado') return 'dt_montado_em'
     return null
 }
 
@@ -125,6 +140,7 @@ export default function LaboratorioPage() {
     const [draggedId, setDraggedId] = useState<number | null>(null)
     const [dropStage, setDropStage] = useState<LabStage | null>(null)
     const [isPending, startTransition] = useTransition()
+    const [gradeModalOpen, setGradeModalOpen] = useState(false)
 
     async function loadData() {
         setLoading(true)
@@ -199,34 +215,51 @@ export default function LaboratorioPage() {
 
         const currentStage = getLabStage(draggedItem)
         const nextStage = getNextStage(currentStage)
-        const field = getAutoAdvanceField(currentStage)
+        const prevStage = getPrevStage(currentStage)
 
         setDropStage(null)
         setDraggedId(null)
 
-        if (!field || !nextStage) {
-            toast.error('Esta OS já está na última etapa do laboratório.')
+        if (targetStage === nextStage) {
+            const field = getAutoAdvanceField(currentStage)
+            if (!field) return
+            startTransition(async () => {
+                const result = await advanceLabStage(draggedItem.id, storeId, field)
+                if (!result.success) {
+                    toast.error(result.message)
+                    return
+                }
+                toast.success(result.message)
+                await loadData()
+            })
             return
         }
 
-        if (targetStage !== nextStage) {
-            toast.error('Arraste apenas para a próxima coluna.')
+        if (targetStage === prevStage) {
+            const field = getRegressField(currentStage)
+            if (!field) return
+            startTransition(async () => {
+                const result = await regressLabStage(draggedItem.id, storeId, field)
+                if (!result.success) {
+                    toast.error(result.message)
+                    return
+                }
+                toast.success(result.message)
+                await loadData()
+            })
             return
         }
 
-        startTransition(async () => {
-            const result = await advanceLabStage(draggedItem.id, storeId, field)
-            if (!result.success) {
-                toast.error(result.message)
-                return
-            }
-
-            toast.success(result.message)
-            await loadData()
-        })
+        toast.error('Arraste apenas para a coluna anterior ou a próxima.')
     }
 
     return (
+        <>
+        <LensGradeMonitorModal
+            isOpen={gradeModalOpen}
+            onClose={() => setGradeModalOpen(false)}
+            storeId={storeId}
+        />
         <div className="relative min-h-[calc(100vh-64px)] flex flex-col bg-slate-950 overflow-hidden">
             <div className={`absolute inset-0 z-0 transition-opacity duration-1000 pointer-events-none ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
                 <div className="absolute inset-0 bg-[url('/vendasos.jpg')] bg-cover bg-center opacity-30 fixed" />
@@ -250,13 +283,21 @@ export default function LaboratorioPage() {
                                 Fluxo de Laboratório
                             </h1>
                             <p className="text-slate-400 font-medium mt-1">
-                                Arraste os cards para a próxima etapa ou clique para editar as datas manualmente.
+                                Arraste para avançar ou voltar etapas. Clique no card para editar manualmente.
                             </p>
                         </div>
                     </div>
 
                     <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
                         <BackgroundToggle />
+                        <button
+                            type="button"
+                            onClick={() => setGradeModalOpen(true)}
+                            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 hover:bg-emerald-500/20 transition-colors shadow-[0_0_20px_rgba(52,211,153,0.06)]"
+                        >
+                            <Grid3X3 className="h-4 w-4" />
+                            Grade de Estoque
+                        </button>
                         <div className="bg-sky-500/10 border border-sky-500/20 text-sky-200 px-4 py-2 rounded-2xl font-bold flex items-center gap-3 shadow-[0_0_20px_rgba(56,189,248,0.08)]">
                             <span className="text-2xl">{items.length}</span>
                             <span className="text-xs uppercase tracking-widest opacity-70">OS abertas</span>
@@ -277,7 +318,7 @@ export default function LaboratorioPage() {
                             />
                         </div>
                         <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 px-1">
-                            Drag and drop sequencial entre colunas
+                            Arraste para avançar ou voltar uma coluna
                         </div>
                     </div>
                 </div>
@@ -342,7 +383,7 @@ export default function LaboratorioPage() {
                                                     const customerName = item.customer_name || patientName
                                                     const customerPhone = item.customer_phone || ''
                                                     const currentStage = getLabStage(item)
-                                                    const canDrag = currentStage !== 'oculos_montado'
+                                                    const canDrag = true
                                                     const isSelected = selectedOS?.id === item.id
                                                     const waitDate =
                                                         currentStage === 'falta_pedir'
@@ -577,5 +618,6 @@ export default function LaboratorioPage() {
                 )}
             </div>
         </div>
+        </>
     )
 }

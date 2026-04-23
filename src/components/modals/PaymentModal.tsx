@@ -9,6 +9,7 @@ import {
     finalizarVendaExpress,
     criarVendaParcialCarnê,
     searchCustomersByName,
+    markPaymentsAsPrinted,
     type CustomerSearchResult
 } from '@/lib/actions/vendas.actions'
 import { getSaleData } from '@/lib/actions/fiscal-db.actions'
@@ -45,6 +46,8 @@ export default function PaymentModal({
     const [activeTab, setActiveTab] = useState<'pagamento' | 'carne'>('pagamento')
     const [isCompleted, setIsCompleted] = useState(false)
     const [vendaIdGerada, setVendaIdGerada] = useState<number | null>(null)
+    const [pagamentoIdGerado, setPagamentoIdGerado] = useState<number | null>(null)
+    const [isPrinting, setIsPrinting] = useState(false)
 
     // Estados do Pagamento
     const [valorPago, setValorPago] = useState(formatCurrency(valorTotal))
@@ -67,6 +70,38 @@ export default function PaymentModal({
     const [vendaItens, setVendaItens] = useState<any[]>([])
     const [isLoadingFiscal, setIsLoadingFiscal] = useState(false)
     const [nfceEmitida, setNfceEmitida] = useState(false)
+
+    const triggerPrint = async (pagamentoId: number): Promise<boolean> => {
+        try {
+            const res = await getReceiptPDFBase64([pagamentoId])
+            if (!res.success || !res.pdfBase64) {
+                alert('Não foi possível gerar o recibo. Tente reimprimir.')
+                return false
+            }
+            const byteChars = atob(res.pdfBase64)
+            const byteArray = new Uint8Array(byteChars.length)
+            for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i)
+            const blob = new Blob([byteArray], { type: 'application/pdf' })
+            const blobUrl = URL.createObjectURL(blob)
+            const iframe = document.createElement('iframe')
+            iframe.style.display = 'none'
+            iframe.src = blobUrl
+            document.body.appendChild(iframe)
+            await new Promise<void>(resolve => {
+                iframe.onload = () => {
+                    if (iframe.contentWindow) iframe.contentWindow.print()
+                    resolve()
+                }
+            })
+            setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(blobUrl) }, 60000)
+            await markPaymentsAsPrinted([pagamentoId])
+            return true
+        } catch (err) {
+            console.error('Erro na impressão:', err)
+            alert('Erro ao enviar para impressora. Tente reimprimir.')
+            return false
+        }
+    }
 
     // 3. Validação antes de abrir a senha
     const handlePrePayment = () => {
@@ -109,7 +144,12 @@ export default function PaymentModal({
             const res = await finalizarVendaExpress(formData)
             if (res.success) {
                 setVendaIdGerada(res.vendaId!)
+                setPagamentoIdGerado(res.pagamentoId ?? null)
                 setIsCompleted(true)
+                if (res.pagamentoId) {
+                    setIsPrinting(true)
+                    triggerPrint(res.pagamentoId).finally(() => setIsPrinting(false))
+                }
             } else {
                 alert(res.message)
             }
@@ -183,11 +223,13 @@ export default function PaymentModal({
                         {isCompleted ? (
                             <div className="h-full flex flex-col items-center justify-center space-y-6 py-10 animate-in zoom-in duration-300">
                                 <div className="w-24 h-24 bg-emerald-500/20 rounded-[2rem] border border-emerald-500/20 flex items-center justify-center mb-4 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
-                                    <CheckCircle className="w-12 h-12 text-emerald-400" />
+                                    {isPrinting ? <Loader2 className="w-12 h-12 text-emerald-400 animate-spin" /> : <CheckCircle className="w-12 h-12 text-emerald-400" />}
                                 </div>
                                 <div className="text-center space-y-2">
                                     <h3 className="text-3xl font-black text-white tracking-tight">Venda Realizada!</h3>
-                                    <p className="text-slate-400 font-bold tracking-wide">Venda #{vendaIdGerada} registrada com sucesso.</p>
+                                    <p className="text-slate-400 font-bold tracking-wide">
+                                        {isPrinting ? 'Enviando recibo para impressora...' : `Venda #${vendaIdGerada} registrada com sucesso.`}
+                                    </p>
                                 </div>
                                 <div className="flex flex-col sm:flex-row gap-4 mt-8 w-full max-w-md">
                                     <button
@@ -202,32 +244,19 @@ export default function PaymentModal({
                                         {isLoadingFiscal ? <Loader2 className="h-6 w-6 animate-spin text-blue-400" /> : nfceEmitida ? <CheckCircle className="h-6 w-6 text-emerald-400" /> : <FileText className="h-6 w-6 text-blue-400" />}
                                         {nfceEmitida ? 'NFC-e Emitida ✓' : 'Emitir NFC-e'}
                                     </button>
-                                    <button
-                                        onClick={async () => {
-                                            try {
-                                                const res = await getReceiptPDFBase64([vendaIdGerada!])
-                                                if (!res.success || !res.pdfBase64) {
-                                                    // Fallback: tenta abrir a rota HTML
-                                                    window.open(`/print/recibo/${vendaIdGerada}`, '_blank')
-                                                    return
-                                                }
-                                                const byteChars = atob(res.pdfBase64)
-                                                const byteNums = new Array(byteChars.length)
-                                                for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i)
-                                                const blob = new Blob([new Uint8Array(byteNums)], { type: 'application/pdf' })
-                                                window.open(URL.createObjectURL(blob), '_blank')
-                                            } catch {
-                                                window.open(`/print/recibo/${vendaIdGerada}`, '_blank')
-                                            }
-                                        }}
-                                        className="flex-1 py-4 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-white font-bold transition-all flex flex-col items-center gap-2"
-                                    >
-                                        <Printer className="h-6 w-6 text-cyan-400" /> Imprimir Recibo
-                                    </button>
                                     <button onClick={onReset} className="flex-1 py-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-emerald-950 shadow-emerald-500/20 shadow-lg font-black tracking-widest uppercase transition-all flex flex-col items-center gap-2">
                                         <Plus className="h-6 w-6" /> Nova Venda (Sair)
                                     </button>
                                 </div>
+                                {pagamentoIdGerado && (
+                                    <button
+                                        onClick={() => { setIsPrinting(true); triggerPrint(pagamentoIdGerado).finally(() => setIsPrinting(false)) }}
+                                        disabled={isPrinting}
+                                        className="text-slate-500 hover:text-slate-300 font-bold text-sm flex items-center gap-2 transition-colors disabled:opacity-50"
+                                    >
+                                        <Printer className="h-4 w-4" /> Reimprimir Recibo
+                                    </button>
+                                )}
                             </div>
                         ) : (
                             <div className="flex flex-col h-full gap-6">
