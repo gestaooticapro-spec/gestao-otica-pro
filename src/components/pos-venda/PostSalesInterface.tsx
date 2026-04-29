@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import SaleDetailsModal from '@/components/modals/SaleDetailsModal'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
+import { getWhatsAppLink } from '@/lib/utils'
 
 // Helpers
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -107,9 +108,6 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
 
     const handleWhatsApp = () => {
         if (!selectedItem || !selectedItem.titular_tel) return alert("Telefone não cadastrado. Clique em 'Sem fone' ao lado do nome do titular para cadastrar.")
-        const rawPhone = selectedItem.titular_tel.trim()
-        const num = rawPhone.replace(/\D/g, '')
-        const phoneForWhatsApp = rawPhone.startsWith('+') ? num : `55${num}`
         const nomeTitular = selectedItem.titular_nome.split(' ')[0]
         const dias = selectedItem.dias_desde_entrega
         const ehProprio = selectedItem.dependente_nome === selectedItem.titular_nome || !selectedItem.dependente_nome || selectedItem.dependente_nome === 'Mesmo'
@@ -118,7 +116,7 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
             ? `Olá ${nomeTitular}, aqui é da Ótica. Já faz ${dias} dias que vc buscou seu óculos. Como está a adaptação?`
             : `Olá ${nomeTitular}, aqui é da Ótica. Já faz ${dias} dias que ${selectedItem.dependente_nome?.split(' ')[0]} retirou os óculos. Como está a adaptação, você sabe?`
 
-        window.open(`https://wa.me/${phoneForWhatsApp}?text=${encodeURIComponent(msg)}`, '_blank')
+        window.open(getWhatsAppLink(selectedItem.titular_tel, msg), '_blank')
     }
 
     const handleSaveInteraction = (formData: FormData) => {
@@ -297,7 +295,7 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
                                                             type="tel"
                                                             value={newPhoneValue}
                                                             onChange={(e) => setNewPhoneValue(e.target.value)}
-                                                            placeholder="(99) 99999-9999"
+                                                            placeholder="(99) 99999-9999 ou +595..."
                                                             className="w-36 px-2 py-1 text-sm bg-slate-900/50 border border-white/10 rounded-lg text-white placeholder:text-slate-600 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50"
                                                             autoFocus
                                                         />

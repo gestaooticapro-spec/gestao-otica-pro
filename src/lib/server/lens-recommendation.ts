@@ -13,6 +13,8 @@ export type ClinicalCategory =
   | 'mista'
   | 'indefinida'
 
+export type FulfillmentMode = 'pronta' | 'sob_demanda'
+
 export type AdaptationDifficulty = 'baixa' | 'media' | 'alta'
 
 export type RecommendationCaseInput = {
@@ -88,6 +90,7 @@ export type ConversationIntent = {
 type CatalogFamily = {
   id: string
   nome: string
+  design?: string | null
   tags_uso: string[]
   tags_beneficios: string[]
   clinical_category: ClinicalCategory
@@ -327,6 +330,24 @@ function normalizeFeatureFlags(features: Record<string, unknown> = {}): Record<s
   }
 
   return normalized
+}
+
+function resolveFulfillmentMode(offer: CatalogOffer, family: CatalogFamily | null = null): FulfillmentMode {
+  const mode = offer.features?.fulfillment_mode
+  if (mode === 'pronta' || mode === 'sob_demanda') return mode
+
+  const descriptor = withoutAccents(
+    `${family?.design || ''} ${family?.nome || ''} ${offer.raw_label || ''} ${offer.canonical_label || ''} ${offer.source_page_reference || ''}`.toLowerCase(),
+  )
+
+  const hasProntaSignals = /(pronta|stock|acabada|acabado|lentes prontas|pronta entrega)/.test(descriptor)
+  const hasSobDemandaSignals = /(surfac|surfa|sob demanda|digital)/.test(descriptor)
+
+  if (offer.allows_composition && !offer.is_atomic_offer) return 'sob_demanda'
+  if (offer.is_atomic_offer || offer.already_includes_treatment) return 'pronta'
+  if (hasSobDemandaSignals && !hasProntaSignals) return 'sob_demanda'
+  if (hasProntaSignals) return 'pronta'
+  return 'pronta'
 }
 
 function levelToScore(level: AiStoreProfileLevel): number {
@@ -928,10 +949,27 @@ function scoreOffer(params: {
   const seeksThinness = wantsThinLens(input)
   const resistancePriority = getResistancePriority(input)
   const thinnessPriority = getThinnessPriority(input)
+  const fulfillmentMode = resolveFulfillmentMode(offer, family)
+  const desiredBenefits = input.desired_benefits || []
+  const routineTags = input.rotina_tags || []
   const wantsMiopiaControl =
-    (input.rotina_tags || []).includes('controle_miopia') ||
-    (input.desired_benefits || []).includes('controle_miopia') ||
+    routineTags.includes('controle_miopia') ||
+    desiredBenefits.includes('controle_miopia') ||
     (input.objetivo_tags || []).includes('controle_miopia')
+  const wantsFastDelivery = desiredBenefits.includes('pronta_entrega') || routineTags.includes('pronta_entrega')
+  const surfacingDemandSignals = [
+    'lente_fina',
+    'estetica',
+    'conforto_superior',
+    'conforto_visual',
+    'alta_nitidez',
+    'qualidade_optica',
+    'personalizacao',
+  ]
+  const surfacingDemandLevel =
+    surfacingDemandSignals.reduce((acc, signal) => acc + (desiredBenefits.includes(signal) ? 0.25 : 0), 0) +
+    (prescriptionStrength >= 6 ? 0.7 : prescriptionStrength >= 4 ? 0.45 : 0) +
+    (input.adicao != null && input.adicao <= 1.5 ? 0.4 : 0)
 
   if (clinicalEvaluation.effectiveCategory !== 'indefinida') {
     score += 5
@@ -966,9 +1004,31 @@ function scoreOffer(params: {
   }
 
   for (const preferredFeature of input.preferred_features || []) {
-    if (offerFeatures[preferredFeature] === true) {
+    const matchesFulfillment =
+      (preferredFeature === 'sob_demanda' && fulfillmentMode === 'sob_demanda') ||
+      (preferredFeature === 'pronta' && fulfillmentMode === 'pronta')
+    if (offerFeatures[preferredFeature] === true || matchesFulfillment) {
       score += 3
       reasons.push(`feature:${preferredFeature}`)
+    }
+  }
+
+  if (wantsFastDelivery) {
+    if (fulfillmentMode === 'pronta') {
+      score += 2
+      reasons.push('fulfillment:pronta_entrega')
+    } else {
+      score -= 2
+      reasons.push('fulfillment:prazo_maior')
+    }
+  } else {
+    if (surfacingDemandLevel >= 0.7 && fulfillmentMode === 'sob_demanda') {
+      score += Number((1.5 + Math.min(surfacingDemandLevel, 1.8)).toFixed(2))
+      reasons.push('fulfillment:sob_demanda_exigencia')
+    }
+    if (surfacingDemandLevel >= 0.9 && fulfillmentMode === 'pronta') {
+      score -= Number(Math.min(surfacingDemandLevel, 1.8).toFixed(2))
+      reasons.push('fulfillment:pronta_limite_personalizacao')
     }
   }
 
@@ -1359,7 +1419,15 @@ function rankRecommendationOptions(params: {
       if (!matchesGrid(input, offerGrids)) return null
 
       const offerFeatures = normalizeFeatureFlags(offer.features)
-      if (requiredFeatures.some((feature) => offerFeatures[feature] !== true)) {
+      const fulfillmentMode = resolveFulfillmentMode(offer, family)
+      if (
+        requiredFeatures.some((feature) => {
+          if (feature === 'sob_demanda' || feature === 'pronta') {
+            return fulfillmentMode !== feature
+          }
+          return offerFeatures[feature] !== true
+        })
+      ) {
         return null
       }
 
@@ -1540,7 +1608,7 @@ export async function loadRecommendationCatalog(versionId: string): Promise<Reco
 
   const { data: families, error: familiesError } = await supabaseAdmin
     .from('global_lens_families')
-    .select('id,nome,tags_uso,tags_beneficios,clinical_category')
+    .select('id,nome,design,tags_uso,tags_beneficios,clinical_category')
     .eq('version_id', versionId)
 
   if (familiesError) throw familiesError
@@ -1585,6 +1653,7 @@ export async function loadRecommendationCatalog(versionId: string): Promise<Reco
     families: (families || []).map((family: Record<string, unknown>) => ({
       id: String(family.id),
       nome: String(family.nome || ''),
+      design: family.design ? String(family.design) : null,
       tags_uso: normalizeStringArray(family.tags_uso),
       tags_beneficios: normalizeStringArray(family.tags_beneficios),
       clinical_category: normalizeCategory(family.clinical_category),

@@ -119,6 +119,50 @@ function buildComparableOfferFeatures(offer) {
   }
 }
 
+function inferFulfillmentMode(offer) {
+  const existing = offer.features?.fulfillment_mode
+  if (existing === 'pronta' || existing === 'sob_demanda') {
+    return existing
+  }
+
+  const descriptor = normalizeText(
+    [offer.raw_label, offer.canonical_label, offer.material, offer.source_page_reference]
+      .filter(Boolean)
+      .join(' ')
+  )
+
+  const hasProntaSignals = /(pronta|stock|acabada|acabado|lentes prontas|pronta entrega)/.test(descriptor)
+  const hasSobDemandaSignals = /(surfac|surfa|sob demanda|digital)/.test(descriptor)
+
+  if (offer.allows_composition === true && offer.is_atomic_offer !== true) {
+    return 'sob_demanda'
+  }
+  if (offer.is_atomic_offer === true || offer.already_includes_treatment === true) {
+    return 'pronta'
+  }
+  if (hasSobDemandaSignals && !hasProntaSignals) {
+    return 'sob_demanda'
+  }
+  if (hasProntaSignals) {
+    return 'pronta'
+  }
+
+  return 'pronta'
+}
+
+function enrichFulfillmentFeatures(offer, features) {
+  const mode = inferFulfillmentMode(offer)
+  return {
+    ...features,
+    fulfillment_mode: mode,
+    pronta: mode === 'pronta',
+    sob_demanda: mode === 'sob_demanda',
+    potential_thinner_lighter: mode === 'sob_demanda',
+    longer_lead_time: mode === 'sob_demanda',
+    pronta_entrega: mode === 'pronta',
+  }
+}
+
 function enrichEmbeddedTreatmentFeatures(offer, features) {
   const descriptor = normalizeText(
     [offer.raw_label, offer.canonical_label, offer.material, offer.source_page_reference]
@@ -168,9 +212,10 @@ function buildIncomingOfferSemantic(offer) {
     indice_refracao: normalizeOfferIndex(offer),
     features: buildComparableOfferFeatures(offer),
   }
+  const enrichedFeatures = enrichEmbeddedTreatmentFeatures(offer, base.features || {})
   return {
     ...base,
-    features: enrichEmbeddedTreatmentFeatures(offer, base.features || {}),
+    features: enrichFulfillmentFeatures(offer, enrichedFeatures),
   }
 }
 

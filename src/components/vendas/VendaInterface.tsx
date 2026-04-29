@@ -17,6 +17,7 @@ import VendaActions from '@/components/vendas/VendaActions'
 import ListaOS from '@/components/vendas/ListaOS'
 import ReceiptSelectionModal from '@/components/modals/ReceiptSelectionModal'
 import TransferVendaModal from '@/components/modals/TransferVendaModal'
+import CustomerQuickInfoModal from '@/components/modals/CustomerQuickInfoModal'
 
 import { Database } from '@/lib/database.types'
 
@@ -54,9 +55,9 @@ export default function VendaInterface({
     const router = useRouter()
     const [activeTab, setActiveTab] = useState<'produtos' | 'pagamento' | 'carne'>('produtos')
 
-    // NOVO: Estado para controlar o modal de impressão e de transferência
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false)
     const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
+    const [isCustomerInfoModalOpen, setIsCustomerInfoModalOpen] = useState(false)
 
     const vendedorNome = employee?.full_name || 'N/A'
     const employeeIdFinanceiro = employee?.id || 0
@@ -85,8 +86,14 @@ export default function VendaInterface({
                 <div className="ml-auto flex items-center gap-3 text-[10px]">
                     <div className="flex items-center gap-1 font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100 group relative">
                         <User className="h-3 w-3" />
-                        <span className="truncate max-w-[200px]" title={customer?.full_name}>{customer?.full_name}</span>
-                        <button 
+                        <button
+                            onClick={() => customer && setIsCustomerInfoModalOpen(true)}
+                            className="truncate max-w-[200px] hover:underline underline-offset-2 cursor-pointer"
+                            title="Ver / editar dados do cliente"
+                        >
+                            {customer?.full_name}
+                        </button>
+                        <button
                             className="ml-1 opacity-60 hover:opacity-100 hover:text-amber-600 transition-opacity p-0.5 rounded"
                             title="Transferir Titularidade"
                             onClick={() => setIsTransferModalOpen(true)}
@@ -256,6 +263,16 @@ export default function VendaInterface({
                     storeId={venda.store_id}
                     currentCustomerId={customer.id}
                     onSuccess={onDataReload}
+                />
+            )}
+
+            {/* 6. MODAL DE DADOS RÁPIDOS DO CLIENTE */}
+            {customer && (
+                <CustomerQuickInfoModal
+                    isOpen={isCustomerInfoModalOpen}
+                    onClose={() => setIsCustomerInfoModalOpen(false)}
+                    customer={customer}
+                    storeId={venda.store_id}
                 />
             )}
 

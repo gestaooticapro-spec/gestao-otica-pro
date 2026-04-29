@@ -385,7 +385,71 @@ export async function getCustomerProfile(storeId: number, query: string) {
 }
 
 // ================================================================
-// 5. ACTION: ATUALIZAR DADOS CRÍTICOS (CPF/FONE)
+// 5a. ACTION: ATUALIZAÇÃO RÁPIDA (NOME, CPF, CELULAR, ENDEREÇO)
+// ================================================================
+export async function updateCustomerQuickInfo(
+  customerId: number,
+  storeId: number,
+  data: {
+    full_name: string
+    cpf: string
+    fone_movel: string
+    rua: string
+    numero: string
+    bairro: string
+    cidade: string
+    uf: string
+    cep: string
+  }
+): Promise<{ success: boolean; message: string }> {
+  const supabaseAdmin = createAdminClient()
+
+  if (!data.full_name || data.full_name.trim().length < 2) {
+    return { success: false, message: 'Nome inválido.' }
+  }
+
+  const cpfLimpo = data.cpf.replace(/\D/g, '')
+  if (cpfLimpo && !validaCPF(cpfLimpo)) {
+    return { success: false, message: 'CPF inválido.' }
+  }
+
+  if (cpfLimpo) {
+    const { data: dup } = await (supabaseAdmin.from('customers') as any)
+      .select('id')
+      .eq('store_id', storeId)
+      .eq('cpf', cpfLimpo)
+      .neq('id', customerId)
+      .limit(1)
+    if (dup && dup.length > 0) {
+      return { success: false, message: 'Este CPF já está cadastrado para outro cliente.' }
+    }
+  }
+
+  const { error } = await (supabaseAdmin.from('customers') as any)
+    .update({
+      full_name: data.full_name.trim(),
+      cpf: cpfLimpo || null,
+      fone_movel: data.fone_movel.trim() || null,
+      rua: data.rua.trim() || null,
+      numero: data.numero.trim() ? parseInt(data.numero) : null,
+      bairro: data.bairro.trim() || null,
+      cidade: data.cidade.trim() || null,
+      uf: data.uf.trim() || null,
+      cep: data.cep.replace(/\D/g, '') || null,
+    })
+    .eq('id', customerId)
+
+  if (error) {
+    if (error.code === '23505') return { success: false, message: 'CPF já cadastrado nesta rede.' }
+    return { success: false, message: `Erro: ${error.message}` }
+  }
+
+  revalidatePath(`/dashboard/loja/${storeId}/vendas`)
+  return { success: true, message: 'Dados atualizados.' }
+}
+
+// ================================================================
+// 5b. ACTION: ATUALIZAR DADOS CRÍTICOS (CPF/FONE)
 // ================================================================
 export async function updateCustomerCriticalData(
   customerId: number,

@@ -22,6 +22,7 @@ import { toast } from 'sonner'
 import ReceiptSelectionModal from '@/components/modals/ReceiptSelectionModal'
 import UpdateCpfModal from '@/components/modals/UpdateCpfModal'
 import TransferVendaModal from '@/components/modals/TransferVendaModal'
+import CustomerQuickInfoModal from '@/components/modals/CustomerQuickInfoModal'
 
 import { Database } from '@/lib/database.types'
 
@@ -215,6 +216,7 @@ export default function VendaInterfaceExperimental({
     const [activeModal, setActiveModal] = useState<'none' | 'produto' | 'pagamento' | 'parcelamento'>('none')
     const [isCpfModalOpen, setIsCpfModalOpen] = useState(false)
     const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
+    const [isCustomerInfoModalOpen, setIsCustomerInfoModalOpen] = useState(false)
 
     // Novos campos experimentais
     const [obsGeral, setObsGeral] = useState(venda.obs_geral || '')
@@ -297,7 +299,13 @@ export default function VendaInterfaceExperimental({
                 <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center z-0 w-full pointer-events-none">
                     <div className="pointer-events-auto flex items-center gap-2 font-bold text-blue-200 bg-blue-500/10 px-4 py-1.5 rounded-full border border-blue-500/20 backdrop-blur-md shadow-lg hover:bg-blue-500/20 transition-colors">
                         <User className="h-3.5 w-3.5 text-blue-400" />
-                        <span className="truncate max-w-[350px] text-sm">{customer?.full_name}</span>
+                        <button
+                            onClick={() => customer && setIsCustomerInfoModalOpen(true)}
+                            className="truncate max-w-[350px] text-sm hover:underline underline-offset-2 cursor-pointer"
+                            title="Ver / editar dados do cliente"
+                        >
+                            {customer?.full_name}
+                        </button>
                         <button
                             className="ml-1 p-1 rounded-full hover:bg-amber-500/20 text-blue-300/50 hover:text-amber-300 transition-all"
                             title="Transferir Titularidade"
@@ -545,6 +553,16 @@ export default function VendaInterfaceExperimental({
                     storeId={venda.store_id}
                     currentCustomerId={customer.id}
                     onSuccess={onDataReload}
+                />
+            )}
+
+            {/* Modal de Dados Rápidos do Cliente */}
+            {customer && (
+                <CustomerQuickInfoModal
+                    isOpen={isCustomerInfoModalOpen}
+                    onClose={() => setIsCustomerInfoModalOpen(false)}
+                    customer={customer}
+                    storeId={venda.store_id}
                 />
             )}
 

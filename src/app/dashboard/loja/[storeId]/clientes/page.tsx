@@ -41,7 +41,38 @@ const validaCPF = (strCPF: string) => {
 const formatDate = (dateString: string | null | undefined) => { try { return dateString?.split('T')[0] || ''; } catch (e) { return ''; } };
 const formatDateTime = (dateString: string | null | undefined) => { try { return dateString ? new Date(dateString).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR'); } catch (e) { return 'Data inválida'; } };
 const maskCPF = (value: string) => value.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2').substring(0, 14);
-const maskPhone = (value: string) => value.replace(/\D/g, '').replace(/^(\d{2})(\d)/g, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2').substring(0, 15);
+const detectPhoneCountry = (digits: string): 'PY' | 'BR' => {
+    if (digits.startsWith('595')) return 'PY';
+    if (digits.startsWith('09') && digits.length <= 10) return 'PY';
+    return 'BR';
+};
+const maskPhone = (value: string) => {
+    const hasPlus = value.trimStart().startsWith('+');
+    let digits = value.replace(/\D/g, '');
+    if (!digits) return '';
+
+    // Detect country
+    const country = hasPlus ? (digits.startsWith('595') ? 'PY' : 'BR') : detectPhoneCountry(digits);
+
+    if (country === 'PY') {
+        // Normalize: if starts with 0, convert to 595 (e.g. 0981 -> 595981)
+        if (digits.startsWith('0')) digits = '595' + digits.substring(1);
+        // If doesn't start with 595, add it
+        if (!digits.startsWith('595')) digits = '595' + digits;
+        // Mask: +595 XXX XXX XXX
+        return ('+' + digits
+            .replace(/^(595)(\d)/, '$1 $2')
+            .replace(/^(595 \d{3})(\d)/, '$1 $2')
+            .replace(/^(595 \d{3} \d{3})(\d)/, '$1 $2')
+        ).substring(0, 16);
+    }
+
+    // Brazilian format: (XX) XXXXX-XXXX or (XX) XXXX-XXXX
+    return digits
+        .replace(/^(\d{2})(\d)/g, '($1) $2')
+        .replace(/(\d{5})(\d)/, '$1-$2')
+        .substring(0, 15);
+};
 const formatRenda = (value: string) => { let v = value.replace(/\D/g, ''); if (!v) return '0,00'; let i = v.slice(0, -2); let d = v.slice(-2); if (i.length > 3) i = i.replace(/\B(?=(\d{3})+(?!\d))/g, "."); return `${i || '0'},${d}`; };
 
 // --- DESIGN SYSTEM DOCTAS GLASS ---

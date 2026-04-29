@@ -448,7 +448,7 @@ function AtomicMatrixTable({
   if (!matrix.colItems.length) {
     return (
       <div className="rounded-2xl border border-white/8 bg-black/20 p-4 text-sm text-slate-400">
-        NÃ£o foi possÃ­vel montar matriz para estas ofertas (sem colunas detectÃ¡veis).
+        Não foi possível montar matriz para estas ofertas (sem colunas detectáveis).
       </div>
     )
   }
@@ -463,7 +463,7 @@ function AtomicMatrixTable({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
-          Matriz por Ã­ndice e tratamento embutido
+          Matriz por índice e tratamento embutido
         </p>
         <div className="flex items-center gap-1 rounded-2xl border border-white/8 bg-black/10 p-1">
           <button

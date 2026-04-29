@@ -293,6 +293,59 @@ export async function getParcelamentoMetrics(storeId: number) {
   };
 }
 
+export interface ParcelaAtrasadaItem {
+  id: number
+  numero_parcela: number
+  valor_parcela: number
+  data_vencimento: string
+  customer_id: number | null
+  customer_name: string
+  venda_id: number | null
+  dias_atraso: number
+}
+
+export async function getParcelasAtrasadas(storeId: number): Promise<ParcelaAtrasadaItem[]> {
+  const supabase = createAdminClient()
+  const today = startOfDay(new Date())
+  const todayStr = today.toISOString()
+  const ninetyDaysAgoStr = startOfDay(addDays(new Date(), -90)).toISOString()
+
+  const { data, error } = await (supabase.from('financiamento_parcelas') as any)
+    .select(`
+      id,
+      numero_parcela,
+      valor_parcela,
+      data_vencimento,
+      customer_id,
+      customers ( full_name ),
+      financiamento_loja ( venda_id )
+    `)
+    .eq('store_id', storeId)
+    .eq('status', 'Pendente')
+    .lt('data_vencimento', todayStr)
+    .gte('data_vencimento', ninetyDaysAgoStr)
+    .order('data_vencimento', { ascending: true })
+
+  if (error) throw new Error(error.message)
+
+  return ((data || []) as any[]).map((item: any) => {
+    const dueDate = startOfDay(new Date(item.data_vencimento))
+    const diffMs = today.getTime() - dueDate.getTime()
+    const daysLate = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)))
+
+    return {
+      id: Number(item.id),
+      numero_parcela: Number(item.numero_parcela || 0),
+      valor_parcela: Number(item.valor_parcela || 0),
+      data_vencimento: item.data_vencimento,
+      customer_id: item.customer_id ?? null,
+      customer_name: item.customers?.full_name || 'Cliente nao identificado',
+      venda_id: item.financiamento_loja?.venda_id ?? null,
+      dias_atraso: daysLate
+    }
+  })
+}
+
 export interface FinanceiroExpenseItem {
   id: number;
   description: string;

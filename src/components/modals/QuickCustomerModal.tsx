@@ -21,12 +21,32 @@ export default function QuickCustomerModal({ isOpen, onClose, onSuccess, storeId
     const [isPending, startTransition] = useTransition()
     const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-    // Mascara simples de telefone
+    // Mascara inteligente: detecta BR ou PY
     const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        let v = e.target.value.replace(/\D/g, '')
-        v = v.replace(/^(\d{2})(\d)/g, '($1) $2')
-        v = v.replace(/(\d)(\d{4})$/, '$1-$2')
-        setPhone(v.substring(0, 15))
+        const raw = e.target.value
+        const hasPlus = raw.trimStart().startsWith('+')
+        let digits = raw.replace(/\D/g, '')
+        if (!digits) { setPhone(''); return }
+
+        const isPY = hasPlus
+            ? digits.startsWith('595')
+            : (digits.startsWith('595') || (digits.startsWith('09') && digits.length <= 10))
+
+        if (isPY) {
+            if (digits.startsWith('0')) digits = '595' + digits.substring(1)
+            if (!digits.startsWith('595')) digits = '595' + digits
+            const masked = ('+' + digits
+                .replace(/^(595)(\d)/, '$1 $2')
+                .replace(/^(595 \d{3})(\d)/, '$1 $2')
+                .replace(/^(595 \d{3} \d{3})(\d)/, '$1 $2')
+            ).substring(0, 16)
+            setPhone(masked)
+        } else {
+            let v = digits
+            v = v.replace(/^(\d{2})(\d)/g, '($1) $2')
+            v = v.replace(/(\d{5})(\d)/, '$1-$2')
+            setPhone(v.substring(0, 15))
+        }
     }
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -99,7 +119,7 @@ export default function QuickCustomerModal({ isOpen, onClose, onSuccess, storeId
                             type="text" 
                             value={phone} 
                             onChange={handlePhoneChange} 
-                            placeholder="(00) 90000-0000"
+                            placeholder="(00) 90000-0000 ou +595 9XX XXX XXX"
                             className={inputStyle}
                         />
                     </div>

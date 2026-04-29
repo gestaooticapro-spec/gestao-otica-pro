@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { upsertLensGeometry, deleteLensGeometry, type LensGeometry, type LensPins } from '@/lib/actions/lens-geometry.actions'
 import { normalizeLensName } from '@/lib/utils/lens'
 
@@ -18,6 +18,7 @@ type PinZone = 'distance' | 'corridor' | 'near' | 'lineA' | 'lineB' | 'lensRim'
 type DragTarget = 'lens' | 'reference'
 type TransformDragState = { active: boolean; startX: number; startY: number; ox: number; oy: number }
 type PinDragState = { active: boolean; zone: PinZone; index: number }
+type GuideVisibility = { zonePins: boolean; lensContour: boolean; visualLines: boolean }
 
 const ZONE_COLOR: Record<PinZone, string> = {
   distance: '#60a5fa',
@@ -39,6 +40,11 @@ const BLUR_ZONES: PinZone[] = ['distance', 'corridor', 'near']
 const LINE_ZONES: PinZone[] = ['lineA', 'lineB']
 const RIM_ZONES: PinZone[] = ['lensRim']
 const ALL_ZONES: PinZone[] = [...BLUR_ZONES, ...LINE_ZONES, ...RIM_ZONES]
+const DEFAULT_SHARED_LENS_RIM: Array<{ x: number; y: number }> = [
+  { x: 0.10, y: 0.24 }, { x: 0.18, y: 0.12 }, { x: 0.50, y: 0.07 }, { x: 0.82, y: 0.12 }, { x: 0.90, y: 0.24 },
+  { x: 0.94, y: 0.50 }, { x: 0.90, y: 0.76 }, { x: 0.82, y: 0.88 }, { x: 0.50, y: 0.93 }, { x: 0.18, y: 0.88 },
+  { x: 0.10, y: 0.76 }, { x: 0.06, y: 0.50 },
+]
 
 function emptyPins(): LensPins {
   return { distance: [], corridor: [], near: [], lineA: [], lineB: [], lensRim: [], fitting_height: 0.5 }
@@ -48,6 +54,30 @@ function normalizePins(p: LensPins | null | undefined): LensPins {
   const base = emptyPins()
   if (!p) return base
   return { ...base, ...p }
+}
+
+function clonePoints(points: Array<{ x: number; y: number }>): Array<{ x: number; y: number }> {
+  return points.map((pt) => ({ x: pt.x, y: pt.y }))
+}
+
+function resolveSharedLensRim(geometries: LensGeometry[]): Array<{ x: number; y: number }> {
+  for (const geometry of geometries) {
+    const rim = normalizePins(geometry.pins).lensRim
+    if (rim.length >= 3) return clonePoints(rim)
+  }
+  return clonePoints(DEFAULT_SHARED_LENS_RIM)
+}
+
+function withSharedLensRimFallback(geometries: LensGeometry[]): LensGeometry[] {
+  const sharedLensRim = resolveSharedLensRim(geometries)
+  let changed = false
+  const next = geometries.map((geometry) => {
+    const pins = normalizePins(geometry.pins)
+    if (pins.lensRim.length >= 3) return geometry
+    changed = true
+    return { ...geometry, pins: { ...pins, lensRim: clonePoints(sharedLensRim) } }
+  })
+  return changed ? next : geometries
 }
 
 // ---------------------------------------------------------------------------
@@ -106,10 +136,10 @@ function buildLensPath(W: number, H: number): Path2D {
 }
 
 function buildCutoutRect(W: number, H: number) {
-  const rectW = W * 0.52
-  const rectH = H * 0.46
+  const rectW = W * 0.68
+  const rectH = H * 0.62
   const rectX = (W - rectW) / 2
-  const rectY = H * 0.22
+  const rectY = H * 0.15
   return { x: rectX, y: rectY, w: rectW, h: rectH }
 }
 
@@ -171,6 +201,8 @@ function drawLens(
   showCutoutGuide = true,
   activePinZone: PinZone | null = null,
   showZoneLines = false,
+  guideVisibility: GuideVisibility = { zonePins: true, lensContour: true, visualLines: true },
+  showReference = true,
 ) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
@@ -180,6 +212,7 @@ function drawLens(
   ctx.clearRect(0, 0, W, H)
 
   const pins = normalizePins(g.pins)
+  const hasReference = !!referenceImg && showReference
   const lensPath = pins.lensRim.length >= 3
     ? buildPinPath(pins.lensRim, W, H)
     : buildLensPath(W, H)
@@ -190,7 +223,7 @@ function drawLens(
   // ── 1: sharp base ─────────────────────────────────────────────────────────
   ctx.save()
   ctx.clip(lensPath)
-  if (referenceImg && compareMode === 'split') {
+  if (hasReference && compareMode === 'split') {
     ctx.save()
     ctx.beginPath(); ctx.rect(0, 0, W * splitPosition, H); ctx.clip()
     if (cropReferenceToCutout) {
@@ -216,13 +249,13 @@ function drawLens(
       ctx.fillStyle = '#1e293b'; ctx.fillRect(0, 0, W, H); ctx.restore()
     }
   } else {
-    if (referenceImg) {
+    if (hasReference) {
       ctx.save()
       ctx.globalAlpha = referenceOpacity
       if (cropReferenceToCutout) {
         ctx.beginPath(); ctx.rect(cutoutRect.x, cutoutRect.y, cutoutRect.w, cutoutRect.h); ctx.clip()
       }
-      drawContainImage(ctx, referenceImg, W, H, referenceTransform)
+      drawContainImage(ctx, referenceImg!, W, H, referenceTransform)
       ctx.restore()
     }
     if (img && showBackground) {
@@ -232,7 +265,7 @@ function drawLens(
       } else {
         drawImageSection(ctx, img, W, H, t)
       }
-    } else if (!referenceImg) {
+    } else if (!hasReference) {
       ctx.fillStyle = '#1e293b'; ctx.fillRect(0, 0, W, H)
     }
   }
@@ -278,7 +311,7 @@ function drawLens(
   ctx.restore()
 
   // ── 3: split divider label ─────────────────────────────────────────────────
-  if (referenceImg && compareMode === 'split') {
+  if (hasReference && compareMode === 'split') {
     const dividerX = W * splitPosition
     ctx.save()
     ctx.clip(lensPath)
@@ -322,7 +355,7 @@ function drawLens(
   ctx.restore()
 
   // ── 6: visual lines (lineA / lineB) — shown in final result ──────────────
-  if (showZoneLines) {
+  if (showZoneLines && guideVisibility.visualLines) {
     ctx.save()
     ctx.clip(lensPath)
     for (const zone of LINE_ZONES) {
@@ -337,11 +370,18 @@ function drawLens(
     ctx.restore()
   }
 
-  // ── 7: calibration overlay (all zone pins + dashed blur outlines) ─────────
+  // ── 7: calibration overlay (grouped by visibility) ───────────────────────
   if (showOverlay) {
+    const isZoneVisible = (zone: PinZone) => {
+      if (BLUR_ZONES.includes(zone)) return guideVisibility.zonePins
+      if (LINE_ZONES.includes(zone)) return guideVisibility.visualLines
+      if (RIM_ZONES.includes(zone)) return guideVisibility.lensContour
+      return true
+    }
+
     ctx.save()
     // Dashed outlines for blur zones
-    for (const zone of BLUR_ZONES) {
+    if (guideVisibility.zonePins) for (const zone of BLUR_ZONES) {
       if (pins[zone].length >= 3) {
         ctx.strokeStyle = ZONE_COLOR[zone] + (zone === activePinZone ? 'cc' : '55')
         ctx.lineWidth = zone === activePinZone ? 2 : 1.2
@@ -351,7 +391,7 @@ function drawLens(
       }
     }
     // Solid preview for line zones
-    for (const zone of LINE_ZONES) {
+    if (guideVisibility.visualLines) for (const zone of LINE_ZONES) {
       if (pins[zone].length >= 2) {
         ctx.strokeStyle = ZONE_COLOR[zone] + (zone === activePinZone ? 'dd' : '66')
         ctx.lineWidth = zone === activePinZone ? 2.5 : 1.5
@@ -361,6 +401,7 @@ function drawLens(
     }
     // Pin dots + numbers for all zones
     for (const zone of ALL_ZONES) {
+      if (!isZoneVisible(zone)) continue
       const isActive = zone === activePinZone
       for (let i = 0; i < pins[zone].length; i++) {
         const x = pins[zone][i].x * W
@@ -382,10 +423,12 @@ function drawLens(
   }
 
   // ── 7: lens rim ───────────────────────────────────────────────────────────
-  ctx.save()
-  ctx.strokeStyle = 'rgba(60,80,120,0.8)'; ctx.lineWidth = 3
-  ctx.stroke(lensPath)
-  ctx.restore()
+  if (guideVisibility.lensContour) {
+    ctx.save()
+    ctx.strokeStyle = 'rgba(60,80,120,0.8)'; ctx.lineWidth = 3
+    ctx.stroke(lensPath)
+    ctx.restore()
+  }
 
   // ── 8: type label ─────────────────────────────────────────────────────────
   ctx.save()
@@ -426,7 +469,7 @@ const DESIGN_LABELS: Record<string, string> = {
   personalized: 'Personalizada', single_vision_standard: 'Visão Simples',
 }
 
-function blankGeometry(name: string): LensGeometry {
+function blankGeometry(name: string, sharedLensRim: Array<{ x: number; y: number }>): LensGeometry {
   return {
     id: `new-${Date.now()}`,
     family_name: name,
@@ -441,7 +484,7 @@ function blankGeometry(name: string): LensGeometry {
     distance_reference_height: 50,
     near_reference_height: 50,
     fitting_height: 50,
-    pins: null,
+    pins: { ...emptyPins(), lensRim: clonePoints(sharedLensRim) },
   }
 }
 
@@ -455,9 +498,10 @@ export default function LensGeometryCalibrationInterface({
   geometries: LensGeometry[]
   catalogFamilyNames: string[]
 }) {
-  const [localGeometries, setLocalGeometries] = useState<LensGeometry[]>(geometries)
-  const [selected, setSelected]      = useState<LensGeometry | undefined>(geometries[0])
-  const [draft, setDraft]            = useState<LensGeometry | undefined>(geometries[0])
+  const initialGeometries = useMemo(() => withSharedLensRimFallback(geometries), [geometries])
+  const [localGeometries, setLocalGeometries] = useState<LensGeometry[]>(() => initialGeometries)
+  const [selected, setSelected]      = useState<LensGeometry | undefined>(() => initialGeometries[0])
+  const [draft, setDraft]            = useState<LensGeometry | undefined>(() => initialGeometries[0])
   const [isDirty, setIsDirty]        = useState(false)
   const [isPending, startTransition] = useTransition()
   const [savedMsg, setSavedMsg]      = useState(false)
@@ -473,6 +517,12 @@ export default function LensGeometryCalibrationInterface({
   const [cropBackgroundToCutout, setCropBackgroundToCutout] = useState(false)
   const [activePinZone, setActivePinZone]       = useState<PinZone | null>(null)
   const [showZoneLines, setShowZoneLines]       = useState(true)
+  const [showReference, setShowReference]       = useState(true)
+  const [guideVisibility, setGuideVisibility]   = useState<GuideVisibility>({
+    zonePins: true,
+    lensContour: true,
+    visualLines: true,
+  })
 
   const canvasRef           = useRef<HTMLCanvasElement>(null)
   const resultCanvasRef     = useRef<HTMLCanvasElement>(null)
@@ -496,6 +546,8 @@ export default function LensGeometryCalibrationInterface({
   const cropReferenceToCutoutRef  = useRef(cropReferenceToCutout)
   const cropBackgroundToCutoutRef = useRef(cropBackgroundToCutout)
   const showZoneLinesRef          = useRef(showZoneLines)
+  const showReferenceRef          = useRef(showReference)
+  const guideVisibilityRef        = useRef(guideVisibility)
 
   useEffect(() => { draftRef.current = draft }, [draft])
   useEffect(() => { activePinZoneRef.current = activePinZone }, [activePinZone])
@@ -508,6 +560,8 @@ export default function LensGeometryCalibrationInterface({
   useEffect(() => { cropReferenceToCutoutRef.current = cropReferenceToCutout }, [cropReferenceToCutout])
   useEffect(() => { cropBackgroundToCutoutRef.current = cropBackgroundToCutout }, [cropBackgroundToCutout])
   useEffect(() => { showZoneLinesRef.current = showZoneLines }, [showZoneLines])
+  useEffect(() => { showReferenceRef.current = showReference }, [showReference])
+  useEffect(() => { guideVisibilityRef.current = guideVisibility }, [guideVisibility])
   useEffect(() => {
     referenceTransformRef.current = { ...referenceTransformRef.current, scale: referenceZoom / 100 }
   }, [referenceZoom])
@@ -516,21 +570,21 @@ export default function LensGeometryCalibrationInterface({
     const g = draftRef.current
     if (canvasRef.current)
       drawLens(
-        canvasRef.current, g ?? blankGeometry(''),
+        canvasRef.current, g ?? blankGeometry('', DEFAULT_SHARED_LENS_RIM),
         imgRef.current, referenceRef.current,
         transformRef.current, referenceTransformRef.current,
         showOverlayRef.current, showBackgroundRef.current,
         compareModeRef.current, referenceOpacityRef.current,
         splitPositionRef.current, cropReferenceToCutoutRef.current,
         cropBackgroundToCutoutRef.current, true,
-        activePinZoneRef.current, showZoneLinesRef.current,
+        activePinZoneRef.current, showZoneLinesRef.current, guideVisibilityRef.current, showReferenceRef.current,
       )
     if (resultCanvasRef.current && g) {
       const src = document.createElement('canvas')
       src.width = CW * RESULT_SCALE; src.height = CH * RESULT_SCALE
       drawLens(src, g, imgRef.current, null, transformRef.current, referenceTransformRef.current,
         false, showBackgroundRef.current, 'overlay', 0, 0.5, false, false, false, null,
-        showZoneLinesRef.current)
+        showZoneLinesRef.current, guideVisibilityRef.current, false)
       const resultCtx = resultCanvasRef.current.getContext('2d')
       if (resultCtx) {
         const W = resultCanvasRef.current.width
@@ -555,7 +609,7 @@ export default function LensGeometryCalibrationInterface({
   useEffect(() => {
     redraw()
   }, [draft, showOverlay, showBackground, compareMode, referenceOpacity, splitPosition,
-      referenceZoom, activeTarget, cropReferenceToCutout, cropBackgroundToCutout, activePinZone, showZoneLines, redraw])
+      referenceZoom, activeTarget, cropReferenceToCutout, cropBackgroundToCutout, activePinZone, showZoneLines, showReference, guideVisibility, redraw])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -596,16 +650,19 @@ export default function LensGeometryCalibrationInterface({
     }
   }
 
-  const hitTestPin = (cx: number, cy: number): { zone: PinZone; index: number } | null => {
+  const hitTestPin = (
+    cx: number,
+    cy: number,
+    onlyZone: PinZone | null = activePinZoneRef.current,
+  ): { zone: PinZone; index: number } | null => {
+    if (!onlyZone) return null
     const g = draftRef.current
     if (!g) return null
     const pins = normalizePins(g.pins)
-    for (const zone of ALL_ZONES) {
-      for (let i = 0; i < pins[zone].length; i++) {
-        const px = pins[zone][i].x * CW
-        const py = pins[zone][i].y * CH
-        if ((cx - px) ** 2 + (cy - py) ** 2 < PIN_HIT ** 2) return { zone, index: i }
-      }
+    for (let i = 0; i < pins[onlyZone].length; i++) {
+      const px = pins[onlyZone][i].x * CW
+      const py = pins[onlyZone][i].y * CH
+      if ((cx - px) ** 2 + (cy - py) ** 2 < PIN_HIT ** 2) return { zone: onlyZone, index: i }
     }
     return null
   }
@@ -704,7 +761,8 @@ export default function LensGeometryCalibrationInterface({
 
   const addFromCatalog = (family_name: string) => {
     if (!family_name) return
-    const blank = blankGeometry(family_name)
+    const sharedLensRim = resolveSharedLensRim(localGeometries)
+    const blank = blankGeometry(family_name, sharedLensRim)
     setLocalGeometries((prev) => [...prev, blank])
     setSelected(blank); setDraft(blank); setIsDirty(true)
   }
@@ -720,6 +778,7 @@ export default function LensGeometryCalibrationInterface({
   const clearReference = useCallback(() => {
     if (referenceUrlRef.current) { URL.revokeObjectURL(referenceUrlRef.current); referenceUrlRef.current = null }
     referenceRef.current = null; setReferenceName(null)
+    setShowReference(true)
     setActiveTarget('lens'); setCropReferenceToCutout(false); setCropBackgroundToCutout(false)
     resetReferenceTransform(); redraw()
   }, [redraw, resetReferenceTransform])
@@ -733,6 +792,7 @@ export default function LensGeometryCalibrationInterface({
     const refImg = new Image()
     refImg.onload = () => {
       referenceRef.current = refImg; setShowBackground(false)
+      setShowReference(true)
       setActiveTarget('reference'); resetReferenceTransform(); redraw()
     }
     refImg.src = url
@@ -779,7 +839,7 @@ export default function LensGeometryCalibrationInterface({
       // the server may not have returned (e.g. lineA/lineB on older rows).
       const mergedSaved = {
         ...saved,
-        pins: { ...normalizePins(draft.pins), ...normalizePins(saved.pins) },
+        pins: { ...normalizePins(draft.pins), ...(saved.pins ?? {}) },
       }
       setLocalGeometries((prev) => {
         const exists = prev.some((g) => g.family_name === mergedSaved.family_name)
@@ -812,13 +872,21 @@ export default function LensGeometryCalibrationInterface({
     setIsDirty(true)
   }
 
+  const toggleGuideGroup = (group: keyof GuideVisibility) => {
+    setGuideVisibility((prev) => {
+      const nextValue = !prev[group]
+      if (group === 'visualLines') setShowZoneLines(nextValue)
+      return { ...prev, [group]: nextValue }
+    })
+  }
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
   const pins = normalizePins(draft?.pins)
 
   return (
-    <div className="min-h-screen bg-slate-950 p-6 text-white">
+    <div className="min-h-screen bg-slate-950 p-6 pb-28 text-white">
       <h1 className="mb-1 text-xl font-black uppercase tracking-tight">Calibração de Geometria de Lentes</h1>
       <p className="mb-6 text-sm text-slate-400">Selecione uma família, posicione os alfinetes e salve.</p>
 
@@ -933,6 +1001,12 @@ export default function LensGeometryCalibrationInterface({
                   Carregar gabarito
                 </button>
                 {referenceName && (
+                  <button onClick={() => setShowReference((v) => !v)}
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold transition ${showReference ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
+                    {showReference ? 'Ocultar gabarito' : 'Mostrar gabarito'}
+                  </button>
+                )}
+                {referenceName && (
                   <button onClick={clearReference}
                     className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-400 hover:bg-slate-700 transition">
                     Limpar gabarito
@@ -1024,6 +1098,14 @@ export default function LensGeometryCalibrationInterface({
                 </button>
               ))}
             </div>
+
+            <div className="w-full rounded-2xl border border-white/10 bg-slate-900 p-4">
+              <p className="mb-3 text-[10px] font-black uppercase tracking-widest text-indigo-400">Ajustes rápidos</p>
+              <div className="space-y-3">
+                <SliderRow label="Intensidade blur" value={draft.lateral_blur ?? 50} onChange={(v) => updateField('lateral_blur', v)} />
+                <SliderRow label="Ponto de montagem" value={Math.round((pins.fitting_height ?? 0.5) * 100)} onChange={(v) => updateFittingHeight(v / 100)} />
+              </div>
+            </div>
           </div>
 
           {/* Right column */}
@@ -1051,17 +1133,38 @@ export default function LensGeometryCalibrationInterface({
                 Selecione uma zona → clique no canvas para adicionar → duplo-clique para remover.
               </p>
 
+              <div className="mb-5 rounded-xl border border-white/10 bg-slate-950/40 p-3">
+                <p className="mb-2 text-[9px] font-black uppercase tracking-widest text-slate-500">Grupos de visualização</p>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => toggleGuideGroup('zonePins')}
+                    className={`rounded-full px-2 py-0.5 text-[9px] font-bold transition ${guideVisibility.zonePins ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                    {guideVisibility.zonePins ? 'Grupo 1 visível' : 'Grupo 1 oculto'}
+                  </button>
+                  <button onClick={() => toggleGuideGroup('lensContour')}
+                    className={`rounded-full px-2 py-0.5 text-[9px] font-bold transition ${guideVisibility.lensContour ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                    {guideVisibility.lensContour ? 'Grupo 2 visível' : 'Grupo 2 oculto'}
+                  </button>
+                  <button onClick={() => toggleGuideGroup('visualLines')}
+                    className={`rounded-full px-2 py-0.5 text-[9px] font-bold transition ${guideVisibility.visualLines ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                    {guideVisibility.visualLines ? 'Grupo 3 visível' : 'Grupo 3 oculto'}
+                  </button>
+                </div>
+                <p className="mt-2 text-[10px] text-slate-500">
+                  G1: longe/corredor/perto · G2: contorno da lente · G3: linhas visuais
+                </p>
+              </div>
+
               {/* Blur zones */}
               <p className="mb-2 text-[9px] font-black uppercase tracking-widest text-slate-500">Desfoque</p>
-              <div className="flex flex-col gap-2 mb-5">
+              <div className="mb-5 flex flex-wrap gap-2">
                 {BLUR_ZONES.map((zone) => {
                   const count = pins[zone].length
                   const isActive = activePinZone === zone
                   return (
-                    <div key={zone} className="flex items-center gap-3">
+                    <div key={zone} className="min-w-[170px] rounded-xl border border-white/10 bg-slate-950/40 p-2">
                       <button
                         onClick={() => setActivePinZone(isActive ? null : zone)}
-                        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-[11px] font-bold transition min-w-[100px] ${isActive ? 'ring-2 ring-offset-1 ring-offset-slate-900' : 'opacity-80 hover:opacity-100'}`}
+                        className={`flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-[11px] font-bold transition ${isActive ? 'ring-2 ring-offset-1 ring-offset-slate-900' : 'opacity-80 hover:opacity-100'}`}
                         style={{ background: isActive ? ZONE_COLOR[zone] + '22' : '#1e293b', border: `1px solid ${ZONE_COLOR[zone]}`, color: ZONE_COLOR[zone] }}
                       >
                         <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: ZONE_COLOR[zone] }} />
@@ -1083,12 +1186,12 @@ export default function LensGeometryCalibrationInterface({
               {/* Rim zone */}
               <div className="border-t border-white/10 pt-4">
                 <p className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-2">Contorno da lente</p>
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap gap-2">
                   {RIM_ZONES.map((zone) => {
                     const count = pins[zone].length
                     const isActive = activePinZone === zone
                     return (
-                      <div key={zone} className="flex items-center gap-3">
+                      <div key={zone} className="flex min-w-[220px] items-center gap-3 rounded-xl border border-white/10 bg-slate-950/40 px-2 py-1.5">
                         <button
                           onClick={() => setActivePinZone(isActive ? null : zone)}
                           className={`flex items-center gap-2 rounded-xl px-3 py-2 text-[11px] font-bold transition min-w-[100px] ${isActive ? 'ring-2 ring-offset-1 ring-offset-slate-900' : 'opacity-80 hover:opacity-100'}`}
@@ -1115,17 +1218,17 @@ export default function LensGeometryCalibrationInterface({
               <div className="border-t border-white/10 pt-4">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Linhas visuais</p>
-                  <button onClick={() => setShowZoneLines((v) => !v)}
-                    className={`rounded-full px-2 py-0.5 text-[9px] font-bold transition ${showZoneLines ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
-                    {showZoneLines ? 'Visíveis' : 'Ocultas'}
+                  <button onClick={() => toggleGuideGroup('visualLines')}
+                    className={`rounded-full px-2 py-0.5 text-[9px] font-bold transition ${guideVisibility.visualLines ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                    {guideVisibility.visualLines ? 'Visíveis' : 'Ocultas'}
                   </button>
                 </div>
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap gap-2">
                   {LINE_ZONES.map((zone) => {
                     const count = pins[zone].length
                     const isActive = activePinZone === zone
                     return (
-                      <div key={zone} className="flex items-center gap-3">
+                      <div key={zone} className="flex min-w-[220px] items-center gap-3 rounded-xl border border-white/10 bg-slate-950/40 px-2 py-1.5">
                         <button
                           onClick={() => setActivePinZone(isActive ? null : zone)}
                           className={`flex items-center gap-2 rounded-xl px-3 py-2 text-[11px] font-bold transition min-w-[100px] ${isActive ? 'ring-2 ring-offset-1 ring-offset-slate-900' : 'opacity-80 hover:opacity-100'}`}
@@ -1147,11 +1250,6 @@ export default function LensGeometryCalibrationInterface({
                 </div>
               </div>
 
-              <div className="mt-5 border-t border-white/10 pt-4 space-y-3">
-                <SliderRow label="Intensidade blur" value={draft.lateral_blur ?? 50} onChange={(v) => updateField('lateral_blur', v)} />
-                <SliderRow label="Ponto de montagem" value={Math.round((pins.fitting_height ?? 0.5) * 100)} onChange={(v) => updateFittingHeight(v / 100)} />
-              </div>
-
               {activePinZone && (
                 <p className="mt-4 rounded-xl bg-indigo-950 px-3 py-2 text-[10px] text-indigo-300">
                   Modo <strong>{ZONE_LABEL[activePinZone]}</strong> ativo — clique no canvas para adicionar. Clique no botão novamente ou pressione Esc para sair.
@@ -1162,7 +1260,7 @@ export default function LensGeometryCalibrationInterface({
 
         </div>
 
-        <div className="mt-6 flex items-center gap-4">
+        <div className="fixed bottom-4 left-4 right-4 z-50 flex items-center gap-4 rounded-2xl border border-white/10 bg-slate-950/90 p-3 shadow-2xl backdrop-blur-md md:left-auto md:right-6 md:w-auto">
           <button onClick={handleSave} disabled={!isDirty || isPending}
             className="rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-black text-white transition hover:bg-indigo-500 disabled:opacity-40">
             {isPending ? 'Salvando…' : 'Salvar'}

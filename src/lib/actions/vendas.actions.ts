@@ -821,6 +821,28 @@ export async function getVendaPageData(
     if (financiamentoRes.error) console.error('[DEBUG] Erro Financiamento:', financiamentoRes.error)
     if (pagamentosRes.error) console.error('[DEBUG] Erro Pagamentos:', pagamentosRes.error)
 
+    let financiamentoData: any = financiamentoRes.data as any
+
+    // Fallback defensivo: em alguns cenários o embed `financiamento_parcelas(*)`
+    // pode vir vazio mesmo havendo parcelas. Nessa situação, busca direto pela tabela.
+    if (
+      financiamentoData?.id &&
+      (!Array.isArray(financiamentoData.financiamento_parcelas) || financiamentoData.financiamento_parcelas.length === 0)
+    ) {
+      const { data: parcelasDiretas, error: parcelasDiretasError } = await (supabaseAdmin
+        .from('financiamento_parcelas') as any)
+        .select('*')
+        .eq('financiamento_id', financiamentoData.id)
+        .order('numero_parcela', { ascending: true })
+
+      if (!parcelasDiretasError && Array.isArray(parcelasDiretas)) {
+        financiamentoData = {
+          ...financiamentoData,
+          financiamento_parcelas: parcelasDiretas
+        }
+      }
+    }
+
     const data: VendaPageData = {
       venda,
       customer: customerRes.data,
@@ -828,7 +850,7 @@ export async function getVendaPageData(
       vendaItens: itensRes.data || [],
       serviceOrders: osRes.data || [],
       pagamentos: pagamentosRes.data as any || [], // Cast as any para aceitar o campo employee extra
-      financiamento: financiamentoRes.data as any,
+      financiamento: financiamentoData,
       lentes: lentesRes.data || [],
       armacoes: armacoesRes.data || [],
       tratamentos: tratamentosRes.data || [],
@@ -2996,7 +3018,11 @@ export async function searchPendenciasCliente(storeId: number, termo: string) {
       return []
     }
 
-    const parcelasPendentes = parcelas?.filter((p: any) => p.status === 'Pendente') || []
+    const parcelasPendentes = parcelas?.filter((p: any) => {
+      const status = String(p.status || '').trim().toLowerCase()
+      // Considera "em aberto" qualquer status que não represente parcela quitada/cancelada.
+      return status !== 'pago' && status !== 'quitado' && status !== 'cancelado' && status !== 'cancelada'
+    }) || []
     console.log(`ðŸ“¦ [DEBUG] Parcelas pendentes encontradas:`, parcelasPendentes.length)
 
     // PASSO 3: Agrupamento
@@ -3198,7 +3224,7 @@ export async function transferirTitularidadeVenda(
 
     // 1. Validar a Venda e checar permissão via employee_id (PIN)
     const { data: venda, error: vendaError } = await (supabaseAdmin.from('vendas') as any)
-      .select('customer_id, employee_id, created_by_user_id')
+      .select('customer_id, employee_id, created_by_user_id, financiamento_id')
       .eq('id', vendaId)
       .eq('store_id', storeId)
       .single()
@@ -3240,10 +3266,19 @@ export async function transferirTitularidadeVenda(
       .eq('venda_id', vendaId)
       .eq('store_id', storeId)
 
-    await (supabaseAdmin.from('financiamento_parcelas') as any)
-      .update({ customer_id: novoCustomerId })
+    const { data: financiamentos } = await (supabaseAdmin.from('financiamento_loja') as any)
+      .select('id')
       .eq('venda_id', vendaId)
       .eq('store_id', storeId)
+
+    const financiamentoIds = (financiamentos || []).map((f: any) => f.id)
+
+    if (financiamentoIds.length > 0) {
+      await (supabaseAdmin.from('financiamento_parcelas') as any)
+        .update({ customer_id: novoCustomerId })
+        .in('financiamento_id', financiamentoIds)
+        .eq('store_id', storeId)
+    }
 
     // Log Auditoria no novo cliente
     if (profile?.tenant_id) {
@@ -3259,9 +3294,9 @@ export async function transferirTitularidadeVenda(
         })
     }
 
-    revalidatePath(`/dashboard/loja/$` + `{storeId}/vendas/$` + `{vendaId}`)
-    revalidatePath(`/dashboard/loja/$` + `{storeId}/vendas/$` + `{vendaId}/experimental`)
-    revalidatePath(`/dashboard/loja/$` + `{storeId}/vendas`)
+    revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}`)
+    revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`)
+    revalidatePath(`/dashboard/loja/${storeId}/vendas`)
     
     return { success: true, message: 'Titularidade transferida com sucesso! Lembre-se de revisar os dependentes manualmente dentro de cada OS.' }
   } catch (error: any) {

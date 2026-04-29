@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -797,7 +797,7 @@ function summarizeSession(samples: SessionSample[]): SessionSummary {
       wideScore: 0,
       narrowScore: 0,
       label: 'Sem amostras suficientes',
-      message: 'A sessÃ£o ainda nÃ£o coletou dados estÃ¡veis do rosto.',
+      message: 'A sessão ainda não coletou dados estáveis do rosto.',
     }
   }
 
@@ -849,16 +849,16 @@ function summarizeSession(samples: SessionSample[]): SessionSummary {
   const narrowScore = 1 - riskNarrow / points.length
 
   let label = 'Perfil misto'
-  let message = 'O cliente alterna bem entre olhos e cabeÃ§a. Vale comparar conforto percebido entre campos mÃ©dios e amplos.'
+  let message = 'O cliente alterna bem entre olhos e cabeça. Vale comparar conforto percebido entre campos médios e amplos.'
   if (headShareX >= 0.62 && eyeShareY >= 0.56 && heatSpreadX < 0.11) {
     label = 'Perfil centralizado'
-    message = 'Lateralmente o cliente leva bem a cabeÃ§a, mas no eixo vertical ainda usa os olhos com boa disciplina. Esse padrÃ£o tende a tolerar desenhos mais compactos.'
+    message = 'Lateralmente o cliente leva bem a cabeça, mas no eixo vertical ainda usa os olhos com boa disciplina. Esse padrão tende a tolerar desenhos mais compactos.'
   } else if (eyeShareX >= 0.58 || heatSpreadX >= 0.145) {
     label = 'Perfil explorador com olhos'
-    message = 'O mapa se espalhou mais nas laterais, indicando maior exigÃªncia do campo visual da lente. Esse padrÃ£o favorece campos mais generosos.'
+    message = 'O mapa se espalhou mais nas laterais, indicando maior exigência do campo visual da lente. Esse padrão favorece campos mais generosos.'
   } else if (headShareY >= 0.58) {
-    label = 'Perfil vertical com cabeÃ§a'
-    message = 'Na vertical o cliente tende a levar a cabeÃ§a junto, o que pode atrapalhar o uso do perto em progressivas mais exigentes.'
+    label = 'Perfil vertical com cabeça'
+    message = 'Na vertical o cliente tende a levar a cabeça junto, o que pode atrapalhar o uso do perto em progressivas mais exigentes.'
   }
 
   return {
@@ -916,7 +916,7 @@ export default function GazeHeatmapLab({
   const [loadingModel, setLoadingModel] = useState(false)
   const [phase, setPhase] = useState<SessionPhase>('idle')
   const [hasCalibration, setHasCalibration] = useState(false)
-  const [status, setStatus] = useState('Abra a cÃ¢mera frontal e alinhe o rosto ao centro.')
+  const [status, setStatus] = useState('Abra a câmera frontal e alinhe o rosto ao centro.')
   const [target, setTarget] = useState<NormalizedPoint>({ x: 0.5, y: 0.5 })
   const [liveMetrics, setLiveMetrics] = useState<FaceMetrics>({
     faceDetected: false,
@@ -1041,7 +1041,7 @@ export default function GazeHeatmapLab({
         outputFacialTransformationMatrixes: false,
       })
 
-      setStatus('Modelo pronto. Agora podemos abrir a cÃ¢mera frontal.')
+      setStatus('Modelo pronto. Agora podemos abrir a câmera frontal.')
       return landmarkerRef.current
     } finally {
       setLoadingModel(false)
@@ -1051,7 +1051,7 @@ export default function GazeHeatmapLab({
   async function startCamera() {
     try {
       await ensureLandmarker()
-      setStatus('Solicitando acesso Ã  cÃ¢mera frontal...')
+      setStatus('Solicitando acesso à câmera frontal...')
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
@@ -1072,11 +1072,11 @@ export default function GazeHeatmapLab({
       video.srcObject = stream
       await video.play()
       setCameraReady(true)
-      setStatus('CÃ¢mera ativa. Deixe o rosto centralizado e inicie a calibraÃ§Ã£o.')
+      setStatus('Câmera ativa. Deixe o rosto centralizado e inicie a calibração.')
       startTrackingLoop()
     } catch (error) {
       console.error(error)
-      setStatus('NÃ£o foi possÃ­vel abrir a cÃ¢mera. No tablet, use HTTPS ou uma origem segura.')
+      setStatus('Não foi possível abrir a câmera. No tablet, use HTTPS ou uma origem segura.')
     }
   }
 
@@ -1122,7 +1122,7 @@ export default function GazeHeatmapLab({
     setTarget({ x: 0.5, y: 0.5 })
     setPhase('idle')
     setSummary(null)
-    setStatus(cameraReady ? 'CÃ¢mera pronta. FaÃ§a uma nova calibraÃ§Ã£o quando quiser.' : 'Abra a cÃ¢mera frontal e alinhe o rosto ao centro.')
+    setStatus(cameraReady ? 'Câmera pronta. Faça uma nova calibração quando quiser.' : 'Abra a câmera frontal e alinhe o rosto ao centro.')
     redrawHeatmaps()
   }
 
@@ -1163,11 +1163,11 @@ export default function GazeHeatmapLab({
     setPhase('calibrating')
     setSummary(null)
     moveTarget({ x: 0.5, y: 0.5 })
-    setStatus('CalibraÃ§Ã£o rÃ¡pida: peÃ§a para o cliente olhar para o ponto central por 3 segundos.')
+    setStatus('Calibração rápida: peça para o cliente olhar para o ponto central por 3 segundos.')
     calibrationTimerRef.current = window.setTimeout(() => {
       const samples = calibrationSamplesRef.current
       if (!samples.length) {
-        setStatus('NÃ£o houve rastreamento suficiente na calibraÃ§Ã£o. Tente aproximar o rosto e melhorar a luz.')
+        setStatus('Não houve rastreamento suficiente na calibração. Tente aproximar o rosto e melhorar a luz.')
         setPhase('idle')
         return
       }
@@ -1182,7 +1182,7 @@ export default function GazeHeatmapLab({
       )
       setHasCalibration(true)
       setPhase('idle')
-      setStatus('CalibraÃ§Ã£o concluÃ­da. Agora jÃ¡ podemos rodar a sessÃ£o com alvo mÃ³vel.')
+      setStatus('Calibração concluída. Agora já podemos rodar a sessão com alvo móvel.')
     }, CALIBRATION_DURATION_MS)
   }
 
@@ -1192,13 +1192,13 @@ export default function GazeHeatmapLab({
     const nextSummary = summarizeSession(samplesRef.current)
     setSummary(nextSummary)
     stopCamera()
-    setStatus('SessÃ£o concluÃ­da. A cÃ¢mera foi desligada para aliviar o tablet. Reabra a cÃ¢mera quando quiser uma nova leitura.')
+    setStatus('Sessão concluída. A câmera foi desligada para aliviar o tablet. Reabra a câmera quando quiser uma nova leitura.')
   }
 
   function startSession() {
     if (!cameraReady) return
     if (!hasCalibration) {
-      setStatus('FaÃ§a a calibraÃ§Ã£o central antes de iniciar a sessÃ£o.')
+      setStatus('Faça a calibração central antes de iniciar a sessão.')
       return
     }
 
@@ -1208,7 +1208,7 @@ export default function GazeHeatmapLab({
     targetIndexRef.current = 0
     setSummary(null)
     setPhase('running')
-    setStatus('SessÃ£o em andamento. O roteiro do alvo agora garante passagem por extremos, cantos e eixos para medir o campo realmente exigido.')
+    setStatus('Sessão em andamento. O roteiro do alvo agora garante passagem por extremos, cantos e eixos para medir o campo realmente exigido.')
     advanceSequenceTarget()
 
     targetTimerRef.current = window.setInterval(() => {
@@ -1291,7 +1291,7 @@ export default function GazeHeatmapLab({
   const headPercentY = Math.round((summary?.headShareY ?? 0) * 100)
   const phaseIsRunning = phase === 'running'
   const phaseIsCalibrating = phase === 'calibrating'
-  const phaseLabel = phaseIsRunning ? 'SessÃ£o ativa' : phaseIsCalibrating ? 'CalibraÃ§Ã£o' : 'Aguardando'
+  const phaseLabel = phaseIsRunning ? 'Sessão ativa' : phaseIsCalibrating ? 'Calibração' : 'Aguardando'
   const stageClassName = isFocusMode
     ? 'relative h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_50%_20%,_rgba(59,130,246,0.18),_rgba(2,6,23,0.94)_55%),linear-gradient(180deg,_rgba(15,23,42,0.98),_rgba(2,6,23,1))]'
     : 'relative h-[56vh] min-h-[420px] max-h-[760px] overflow-hidden rounded-[32px] border border-white/10 bg-[radial-gradient(circle_at_50%_20%,_rgba(59,130,246,0.18),_rgba(2,6,23,0.94)_55%),linear-gradient(180deg,_rgba(15,23,42,0.95),_rgba(2,6,23,1))] lg:h-[64vh]'
@@ -1355,9 +1355,9 @@ export default function GazeHeatmapLab({
             Voltar
           </Link>
           <div className="min-w-0">
-            <p className="text-xl font-black tracking-tight">LaboratÃ³rio de mapa de calor ocular</p>
+            <p className="text-xl font-black tracking-tight">Laboratório de mapa de calor ocular</p>
             <p className="text-sm text-slate-400">
-              Loja {storeId} Â· MVP para Chrome em tablet usando cÃ¢mera frontal e alvo guiado.
+              Loja {storeId} · MVP para Chrome em tablet usando câmera frontal e alvo guiado.
             </p>
           </div>
           <div className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-3 py-1 text-xs font-black tracking-[0.18em] text-cyan-200">
@@ -1372,7 +1372,7 @@ export default function GazeHeatmapLab({
             <div>
               <p className="text-xs font-black uppercase tracking-[0.24em] text-cyan-300/80">Teste guiado</p>
               <p className="text-sm text-slate-400">
-                A mira segue uma sequÃªncia fixa de pontos enquanto medimos olhos e cabeÃ§a.
+                A mira segue uma sequência fixa de pontos enquanto medimos olhos e cabeça.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1382,7 +1382,7 @@ export default function GazeHeatmapLab({
                 className="inline-flex items-center gap-2 rounded-2xl bg-cyan-500 px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-300"
               >
                 {loadingModel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-                Abrir cÃ¢mera
+                Abrir câmera
               </button>
               <button
                 onClick={startCalibration}
@@ -1398,7 +1398,7 @@ export default function GazeHeatmapLab({
                 className="inline-flex items-center gap-2 rounded-2xl border border-rose-400/30 bg-rose-500/15 px-4 py-2.5 text-sm font-black text-rose-200 transition hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:text-slate-500"
               >
                 <Play className="h-4 w-4" />
-                Iniciar sessÃ£o
+                Iniciar sessão
               </button>
               <button
                 onClick={finishSession}
@@ -1429,7 +1429,7 @@ export default function GazeHeatmapLab({
 
           {secureContextWarning && (
             <div className="mb-4 rounded-3xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-              O navegador nÃ£o estÃ¡ em contexto seguro. No tablet Samsung, `getUserMedia` costuma exigir HTTPS ou origem confiÃ¡vel.
+              O navegador não está em contexto seguro. No tablet Samsung, `getUserMedia` costuma exigir HTTPS ou origem confiável.
             </div>
           )}
 
@@ -1460,21 +1460,21 @@ export default function GazeHeatmapLab({
                     <p className="mt-2 text-2xl font-black text-cyan-300">
                       {Math.round(Math.abs(liveMetrics.eyeX) * 100)}%
                     </p>
-                    <p className="text-xs text-slate-500">Leitura instantÃ¢nea, nÃ£o Ã© o resumo final da sessÃ£o.</p>
+                    <p className="text-xs text-slate-500">Leitura instantânea, não é o resumo final da sessão.</p>
                   </div>
                   <div className="rounded-2xl bg-slate-800/90 p-3">
-                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Ao vivo agora · cabeÃ§a</p>
+                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Ao vivo agora · cabeça</p>
                     <p className="mt-2 text-2xl font-black text-emerald-300">
                       {Math.round(Math.abs(liveMetrics.headX) * 100)}%
                     </p>
-                    <p className="text-xs text-slate-500">Serve para checar captura no momento, nÃ£o para comparar com o resultado final.</p>
+                    <p className="text-xs text-slate-500">Serve para checar captura no momento, não para comparar com o resultado final.</p>
                   </div>
                 </div>
                 <div className="mt-3 rounded-2xl border border-cyan-400/15 bg-cyan-500/5 p-3 text-xs leading-5 text-slate-300">
-                  Para o tablet ficar mais realista, esta fase agora ocupa bem mais tela. O ideal ÃƒÂ© segurar o aparelho entre 35 e 45 cm dos olhos do cliente e deixar a bolinha cruzar quase toda a largura.
+                  Para o tablet ficar mais realista, esta fase agora ocupa bem mais tela. O ideal é segurar o aparelho entre 35 e 45 cm dos olhos do cliente e deixar a bolinha cruzar quase toda a largura.
                 </div>
                 <p className="mt-3 text-xs text-slate-500">
-                  O bloco acima Ã© sÃ³ monitoramento instantÃ¢neo. O que vale para a lente Ã© a leitura consolidada e os mapas abaixo.
+                  O bloco acima é só monitoramento instantâneo. O que vale para a lente é a leitura consolidada e os mapas abaixo.
                 </p>
               </div>
             </div>
@@ -1485,7 +1485,7 @@ export default function GazeHeatmapLab({
           <div className="rounded-[28px] border border-white/10 bg-slate-900/90 p-5 shadow-[0_25px_70px_rgba(2,6,23,0.38)]">
             <div className="mb-3 flex items-center gap-2">
               <CircleDot className="h-4 w-4 text-amber-300" />
-              <p className="text-sm font-black text-white">Leitura da sessÃ£o</p>
+              <p className="text-sm font-black text-white">Leitura da sessão</p>
             </div>
             {summary ? (
               <div className="space-y-3">
@@ -1499,42 +1499,42 @@ export default function GazeHeatmapLab({
                     <p className="mt-2 text-3xl font-black text-cyan-300">{eyePercent}%</p>
                   </div>
                   <div className="rounded-2xl bg-slate-800 p-4">
-                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">CabeÃ§a</p>
+                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Cabeça</p>
                     <p className="mt-2 text-3xl font-black text-emerald-300">{headPercent}%</p>
                   </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl border border-cyan-400/15 bg-cyan-500/10 p-4">
-                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-cyan-100">Lateral: olhos x cabeÃ§a</p>
+                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-cyan-100">Lateral: olhos x cabeça</p>
                     <p className="mt-2 text-xl font-black text-cyan-300">{eyePercentX}% olhos</p>
-                    <p className="text-sm font-bold text-emerald-300">{headPercentX}% cabeÃ§a</p>
+                    <p className="text-sm font-bold text-emerald-300">{headPercentX}% cabeça</p>
                     <p className="mt-2 text-xs leading-5 text-slate-400">
-                      Na horizontal, levar a cabeÃ§a pode ajudar a manter o uso mais central do campo.
+                      Na horizontal, levar a cabeça pode ajudar a manter o uso mais central do campo.
                     </p>
                   </div>
                   <div className="rounded-2xl border border-fuchsia-400/15 bg-fuchsia-500/10 p-4">
-                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-fuchsia-100">Vertical: olhos x cabeÃ§a</p>
+                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-fuchsia-100">Vertical: olhos x cabeça</p>
                     <p className="mt-2 text-xl font-black text-cyan-300">{eyePercentY}% olhos</p>
-                    <p className="text-sm font-bold text-emerald-300">{headPercentY}% cabeÃ§a</p>
+                    <p className="text-sm font-bold text-emerald-300">{headPercentY}% cabeça</p>
                     <p className="mt-2 text-xs leading-5 text-slate-400">
-                      Na vertical, queremos mais olhos e menos cabeÃ§a para facilitar o acesso ao perto e ao corredor.
+                      Na vertical, queremos mais olhos e menos cabeça para facilitar o acesso ao perto e ao corredor.
                     </p>
                   </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4">
-                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-emerald-100">CompatÃ­vel com campo amplo</p>
+                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-emerald-100">Compatível com campo amplo</p>
                     <p className="mt-2 text-3xl font-black text-emerald-300">{wideProfile}%</p>
                   </div>
                   <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4">
-                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-100">CompatÃ­vel com campo compacto</p>
+                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-100">Compatível com campo compacto</p>
                     <p className="mt-2 text-3xl font-black text-amber-300">{narrowProfile}%</p>
                   </div>
                 </div>
               </div>
             ) : (
               <p className="text-sm leading-6 text-slate-400">
-                Assim que a sessÃ£o terminar, este painel vai resumir quanto o cliente centraliza o olhar e o quanto ele tende a explorar as bordas da lente.
+                Assim que a sessão terminar, este painel vai resumir quanto o cliente centraliza o olhar e o quanto ele tende a explorar as bordas da lente.
               </p>
             )}
           </div>
@@ -1542,14 +1542,14 @@ export default function GazeHeatmapLab({
           <div className="rounded-[28px] border border-white/10 bg-slate-900/90 p-5 shadow-[0_25px_70px_rgba(2,6,23,0.38)]">
             <canvas ref={mainHeatmapRef} width={620} height={360} className="h-auto w-full" />
             <p className="mt-3 text-xs leading-5 text-slate-500">
-              Este Ã© o mapa principal da sessÃ£o: um heatmap contÃ­nuo sobreposto Ã  lente real. Como a sequÃªncia de pontos agora Ã© fixa, a leitura fica mais comparÃ¡vel de um teste para outro.
+              Este é o mapa principal da sessão: um heatmap contínuo sobreposto à lente real. Como a sequência de pontos agora é fixa, a leitura fica mais comparável de um teste para outro.
             </p>
           </div>
 
           <div className="rounded-[28px] border border-white/10 bg-slate-900/90 p-5 shadow-[0_25px_70px_rgba(2,6,23,0.38)]">
             <canvas ref={contourHeatmapRef} width={620} height={300} className="h-auto w-full" />
             <p className="mt-3 text-xs leading-5 text-slate-500">
-              Este contorno mostra o alcance mÃ¡ximo capturado em cada direÃ§Ã£o. Ele ajuda a separar “frequÃªncia” de “limite realmente exigido”.
+              Este contorno mostra o alcance máximo capturado em cada direção. Ele ajuda a separar “frequência” de “limite realmente exigido”.
             </p>
           </div>
 
