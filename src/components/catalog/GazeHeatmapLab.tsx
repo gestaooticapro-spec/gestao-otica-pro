@@ -69,7 +69,7 @@ const HEAD_RESPONSE_X = 0.64
 const HEAD_RESPONSE_Y = 0.58
 const ENVELOPE_BINS = 72
 const CUTOUT = { x: 0.24, y: 0.22, w: 0.52, h: 0.46 }
-const HEATMAP_LAB_BUILD = 'heatmap-v6-balanced-random-2026-04-30'
+const HEATMAP_LAB_BUILD = 'heatmap-v7-balanced-clean-2026-04-30'
 
 const LANDMARKS = {
   nose: 1,
@@ -255,7 +255,6 @@ function shuffleTargetPoints(points: NormalizedPoint[]) {
 
 function buildTargetSequence() {
   const requiredCoverage = [
-    { x: 0.5, y: 0.5 },
     { x: 0.08, y: 0.5 },
     { x: 0.92, y: 0.5 },
     { x: 0.5, y: 0.1 },
@@ -272,13 +271,11 @@ function buildTargetSequence() {
     { x: 0.5, y: 0.76 },
     { x: 0.24, y: 0.5 },
     { x: 0.76, y: 0.5 },
-    { x: 0.5, y: 0.5 },
   ]
 
   return [
     { x: 0.5, y: 0.5 },
-    ...shuffleTargetPoints(requiredCoverage.slice(1, -1)),
-    { x: 0.5, y: 0.5 },
+    ...shuffleTargetPoints(requiredCoverage),
   ]
 }
 
@@ -372,10 +369,10 @@ function projectSampleToLens(sample: SessionSample) {
 
 function stampHeatSample(grid: Float32Array, sample: SessionSample) {
   const projection = projectSampleToLens(sample)
-  addHeatPoint(grid, projection.point, projection.weight * 1.2, projection.radius * 0.95, 'sum')
+  addHeatPoint(grid, projection.point, projection.weight, projection.radius * 1.05, 'sum')
 
-  const satelliteWeight = projection.weight * 0.56
-  const satelliteRadius = projection.radius * 0.92
+  const satelliteWeight = projection.weight * 0.34
+  const satelliteRadius = projection.radius * 0.82
   addHeatPoint(
     grid,
     {
@@ -394,26 +391,6 @@ function stampHeatSample(grid: Float32Array, sample: SessionSample) {
     },
     satelliteWeight,
     satelliteRadius,
-    'sum',
-  )
-  addHeatPoint(
-    grid,
-    {
-      x: clamp(projection.point.x, 0.02, 0.98),
-      y: clamp(projection.point.y + projection.spreadY, 0.02, 0.98),
-    },
-    projection.weight * 0.34,
-    projection.radius * 0.78,
-    'sum',
-  )
-  addHeatPoint(
-    grid,
-    {
-      x: clamp(projection.point.x, 0.02, 0.98),
-      y: clamp(projection.point.y - projection.spreadY * 0.92, 0.02, 0.98),
-    },
-    projection.weight * 0.3,
-    projection.radius * 0.72,
     'sum',
   )
 }
