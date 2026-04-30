@@ -29,6 +29,7 @@ export type RecommendationCaseInput = {
   preferred_features?: string[]
   budget_mode?: BudgetMode
   budget_signal?: 'informado' | 'nao_informado'
+  targetPrice?: number | null
   adaptation_difficulty?: AdaptationDifficulty | null
   notes?: string | null
 }
@@ -837,11 +838,13 @@ function scoreBudget(mode: BudgetMode, price: number, prices: number[]): number 
   const normalized = (price - min) / (max - min)
 
   if (mode === 'economico') {
-    return (1 - normalized) * 2
+    // Cheapest = +5, mid = 0, most expensive = -5
+    return (0.5 - normalized) * 10
   }
 
   if (mode === 'premium') {
-    return normalized * 2
+    // Most expensive = +5, mid = 0, cheapest = -5
+    return (normalized - 0.5) * 10
   }
 
   return 1 - Math.abs(normalized - 0.5) * 2
@@ -1220,6 +1223,7 @@ function selectDiverseTopEntries(
   const selectedConfigKeys = new Set<string>()
   const selectedFamilies = new Set<string>()
   const selectedOffers = new Set<string>()
+  const selectedLabs = new Set<string>()
 
   const trySelect = (entry: RecommendationOption) => {
     if (selected.length >= topN) return
@@ -1228,14 +1232,27 @@ function selectDiverseTopEntries(
     selectedConfigKeys.add(entry.configKey)
     selectedFamilies.add(entry.familyId)
     selectedOffers.add(entry.offerId)
+    if (entry.sourceLaboratorio) selectedLabs.add(entry.sourceLaboratorio)
   }
 
+  // Pass 1: best entry per unique lab (promotes catalog diversity)
   for (const entry of entries) {
+    if (selected.length >= topN) break
+    const lab = entry.sourceLaboratorio
+    if (lab && !selectedLabs.has(lab) && !selectedFamilies.has(entry.familyId)) {
+      trySelect(entry)
+    }
+  }
+
+  // Pass 2: fill remaining with different families (any lab)
+  for (const entry of entries) {
+    if (selected.length >= topN) break
     if (!selectedFamilies.has(entry.familyId)) {
       trySelect(entry)
     }
   }
 
+  // Pass 3: fill remaining with different offers
   for (const entry of entries) {
     if (selected.length >= topN) break
     if (!selectedOffers.has(entry.offerId)) {
@@ -1243,6 +1260,7 @@ function selectDiverseTopEntries(
     }
   }
 
+  // Pass 4: fill any remaining slots
   for (const entry of entries) {
     if (selected.length >= topN) break
     trySelect(entry)
@@ -1261,6 +1279,7 @@ function appendPrioritizedEntries(
   const selectedConfigKeys = new Set(selected.map((entry) => entry.configKey))
   const selectedFamilies = new Set(selected.map((entry) => entry.familyId))
   const selectedOffers = new Set(selected.map((entry) => entry.offerId))
+  const selectedLabs = new Set(selected.map((entry) => entry.sourceLaboratorio).filter(Boolean) as string[])
 
   const trySelect = (entry: RecommendationOption) => {
     if (selected.length >= topN) return
@@ -1269,8 +1288,19 @@ function appendPrioritizedEntries(
     selectedConfigKeys.add(entry.configKey)
     selectedFamilies.add(entry.familyId)
     selectedOffers.add(entry.offerId)
+    if (entry.sourceLaboratorio) selectedLabs.add(entry.sourceLaboratorio)
   }
 
+  // Pass 1: prefer entries from labs not yet represented
+  for (const entry of pool) {
+    if (selected.length >= topN) break
+    const lab = entry.sourceLaboratorio
+    if (lab && !selectedLabs.has(lab) && !selectedFamilies.has(entry.familyId)) {
+      trySelect(entry)
+    }
+  }
+
+  // Pass 2: fill remaining with different families
   for (const entry of pool) {
     if (selected.length >= topN) break
     if (!selectedFamilies.has(entry.familyId)) {
@@ -1278,6 +1308,7 @@ function appendPrioritizedEntries(
     }
   }
 
+  // Pass 3: fill remaining with different offers
   for (const entry of pool) {
     if (selected.length >= topN) break
     if (!selectedOffers.has(entry.offerId)) {
@@ -1285,6 +1316,7 @@ function appendPrioritizedEntries(
     }
   }
 
+  // Pass 4: fill any remaining slots
   for (const entry of pool) {
     if (selected.length >= topN) break
     trySelect(entry)
@@ -1496,7 +1528,7 @@ function rankRecommendationOptions(params: {
 
     const offerFeatures = normalizeFeatureFlags(entry.offer.features)
     const labWeight = findLabWeight(aiConfig, entry.family, entry.offer)
-    const labBonus = labWeight != null ? (labWeight - 3) * 10 : 0
+    const labBonus = labWeight != null ? (labWeight - 3) * 3 : 0
     const labReasons = labWeight != null && labBonus !== 0 ? [`preferencia_lab:${labWeight}`] : []
 
     const brandWeight = resolveBrandWeight(
@@ -1505,7 +1537,7 @@ function rankRecommendationOptions(params: {
       entry.family,
       entry.offer,
     )
-    const brandBonus = brandWeight.weight != null ? (brandWeight.weight - 3) * 8 : 0
+    const brandBonus = brandWeight.weight != null ? (brandWeight.weight - 3) * 3 : 0
     const brandReasons =
       brandWeight.weight != null && brandBonus !== 0 && brandWeight.brand
         ? [`preferencia_marca:${brandWeight.brand}:${brandWeight.weight}`]
@@ -2023,6 +2055,7 @@ export async function startRecommendationConversation(params: {
     caseInput: state.caseInput,
     aiConfig: params.aiConfig,
     topN: params.topN || 3,
+    targetPrice: params.caseInput.targetPrice ?? null,
   })
 
   state.lastRecommendations = recommendations

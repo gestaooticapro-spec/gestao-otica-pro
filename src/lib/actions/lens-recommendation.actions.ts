@@ -27,6 +27,7 @@ const RecommendationCaseSchema = z.object({
   budget_signal: z.enum(['informado', 'nao_informado']).optional(),
   adaptation_difficulty: z.enum(['baixa', 'media', 'alta']).optional().nullable(),
   notes: z.string().optional().nullable(),
+  targetPrice: z.number().optional().nullable(),
   topN: z.number().int().min(1).max(10).optional().default(3),
 })
 
@@ -68,6 +69,7 @@ function toCaseInput(payload: z.infer<typeof RecommendationCaseSchema>): Recomme
     budget_signal: payload.budget_signal,
     adaptation_difficulty: payload.adaptation_difficulty,
     notes: payload.notes,
+    targetPrice: payload.targetPrice ?? null,
   }
 }
 

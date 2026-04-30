@@ -53,7 +53,9 @@ const VIDEO_W = 960
 const VIDEO_H = 540
 const HEAT_COLS = 44
 const HEAT_ROWS = 28
-const TARGET_INTERVAL_MS = 1450
+const TARGET_INTERVAL_MS = 2200
+const TARGET_SETTLE_MS = 700
+const TARGET_CAPTURE_END_MS = 1850
 const CALIBRATION_DURATION_MS = 3000
 const SAFE_TARGET_MARGIN_X = 0.04
 const SAFE_TARGET_MARGIN_Y = 0.08
@@ -67,7 +69,7 @@ const HEAD_RESPONSE_X = 0.64
 const HEAD_RESPONSE_Y = 0.58
 const ENVELOPE_BINS = 72
 const CUTOUT = { x: 0.24, y: 0.22, w: 0.52, h: 0.46 }
-const HEATMAP_LAB_BUILD = 'heatmap-v4-fixed-seq-2026-04-22'
+const HEATMAP_LAB_BUILD = 'heatmap-v5-stable-capture-2026-04-30'
 
 const LANDMARKS = {
   nose: 1,
@@ -1135,8 +1137,10 @@ export default function GazeHeatmapLab({
 
   function moveTarget(point = randomTarget()) {
     currentTargetRef.current = point
-    targetStartedAtRef.current = performance.now()
     setTarget(point)
+    window.requestAnimationFrame(() => {
+      targetStartedAtRef.current = performance.now()
+    })
   }
 
   function advanceSequenceTarget() {
@@ -1249,7 +1253,10 @@ export default function GazeHeatmapLab({
         calibrationSamplesRef.current.push(metrics)
       }
 
-      if (phaseRef.current === 'running' && metrics.faceDetected && now - targetStartedAtRef.current > 260) {
+      const targetElapsed = now - targetStartedAtRef.current
+      const isStableCaptureWindow = targetElapsed > TARGET_SETTLE_MS && targetElapsed < TARGET_CAPTURE_END_MS
+
+      if (phaseRef.current === 'running' && metrics.faceDetected && isStableCaptureWindow) {
         const relativeEyeX = clamp(metrics.eyeX - baselineRef.current.eyeX, -1.2, 1.2)
         const relativeEyeY = clamp(metrics.eyeY - baselineRef.current.eyeY, -1.2, 1.2)
         const rawHeadX = clamp(metrics.headX - baselineRef.current.headX, -1.2, 1.2)

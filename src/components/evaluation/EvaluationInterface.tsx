@@ -916,6 +916,8 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>) 
     desiredBenefits.push('antirreflexo', 'conforto_visual')
   }
 
+  const budgetExplicit = targetBudget !== null || form.faixaOrcamento !== 'nao_informado'
+
   return {
     idade: age,
     marca_atual: form.marcaAtual.trim() || null,
@@ -927,6 +929,8 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>) 
     desired_benefits: Array.from(new Set(desiredBenefits)),
     preferred_features: Array.from(new Set(preferredFeatures)),
     budget_mode: budgetMode,
+    budget_signal: budgetExplicit ? 'informado' : 'nao_informado',
+    targetPrice: targetBudget && targetBudget > 0 ? targetBudget : null,
     adaptation_difficulty:
       form.dificuldadeAdaptacao === 'nao_informado'
         ? null
@@ -1379,6 +1383,7 @@ export default function EvaluationInterface({
           activeCatalogs.length > 0
             ? activeCatalogs.map((catalog) => catalog.versionId)
             : undefined,
+        storeId,
         ...aiCaseInput,
         topN: 3
       })
@@ -1803,8 +1808,7 @@ export default function EvaluationInterface({
   const canGenerateAi =
     hasCatalogForAi &&
     isSubjectChosen &&
-    aiCaseInput.esferico !== null &&
-    aiCaseInput.cilindrico !== null
+    aiCaseInput.esferico !== null
   const showManualSuggestionBlock = !hasCatalogForAi
   const aiTopRecommendation = aiRecommendations[0] || null
   const showIvisionReference = isIvisionMode && !!ivisionReferenceSuggestion
