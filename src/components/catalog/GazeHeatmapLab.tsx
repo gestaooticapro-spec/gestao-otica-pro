@@ -69,7 +69,7 @@ const HEAD_RESPONSE_X = 0.64
 const HEAD_RESPONSE_Y = 0.58
 const ENVELOPE_BINS = 72
 const CUTOUT = { x: 0.24, y: 0.22, w: 0.52, h: 0.46 }
-const HEATMAP_LAB_BUILD = 'heatmap-v5-stable-capture-2026-04-30'
+const HEATMAP_LAB_BUILD = 'heatmap-v6-balanced-random-2026-04-30'
 
 const LANDMARKS = {
   nose: 1,
@@ -244,8 +244,17 @@ function addHeatPoint(
   }
 }
 
+function shuffleTargetPoints(points: NormalizedPoint[]) {
+  const shuffled = [...points]
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+  }
+  return shuffled
+}
+
 function buildTargetSequence() {
-  return [
+  const requiredCoverage = [
     { x: 0.5, y: 0.5 },
     { x: 0.08, y: 0.5 },
     { x: 0.92, y: 0.5 },
@@ -263,6 +272,12 @@ function buildTargetSequence() {
     { x: 0.5, y: 0.76 },
     { x: 0.24, y: 0.5 },
     { x: 0.76, y: 0.5 },
+    { x: 0.5, y: 0.5 },
+  ]
+
+  return [
+    { x: 0.5, y: 0.5 },
+    ...shuffleTargetPoints(requiredCoverage.slice(1, -1)),
     { x: 0.5, y: 0.5 },
   ]
 }
@@ -907,6 +922,7 @@ export default function GazeHeatmapLab({
   const phaseRef = useRef<SessionPhase>('idle')
   const heatmapRef = useRef<Float32Array>(makeHeatmap())
   const samplesRef = useRef<SessionSample[]>([])
+  const targetSamplesRef = useRef<SessionSample[]>([])
   const calibrationSamplesRef = useRef<FaceMetrics[]>([])
   const baselineRef = useRef({ eyeX: 0, eyeY: 0, headX: 0, headY: 0 })
   const currentTargetRef = useRef<NormalizedPoint>({ x: 0.5, y: 0.5 })
@@ -1114,6 +1130,7 @@ export default function GazeHeatmapLab({
     stopSessionTimers()
     heatmapRef.current = makeHeatmap()
     samplesRef.current = []
+    targetSamplesRef.current = []
     calibrationSamplesRef.current = []
     targetSequenceRef.current = []
     targetIndexRef.current = 0
@@ -1143,7 +1160,31 @@ export default function GazeHeatmapLab({
     })
   }
 
+  function flushTargetHeatSample() {
+    const samples = targetSamplesRef.current
+    if (!samples.length) return
+
+    const averagedSample = samples.reduce(
+      (acc, sample) => ({
+        eyeX: acc.eyeX + sample.eyeX / samples.length,
+        eyeY: acc.eyeY + sample.eyeY / samples.length,
+        headX: acc.headX + sample.headX / samples.length,
+        headY: acc.headY + sample.headY / samples.length,
+        targetX: acc.targetX + sample.targetX / samples.length,
+        targetY: acc.targetY + sample.targetY / samples.length,
+      }),
+      { eyeX: 0, eyeY: 0, headX: 0, headY: 0, targetX: 0, targetY: 0 },
+    )
+
+    stampHeatSample(heatmapRef.current, averagedSample)
+    targetSamplesRef.current = []
+  }
+
   function advanceSequenceTarget() {
+    if (phaseRef.current === 'running') {
+      flushTargetHeatSample()
+    }
+
     const sequence = targetSequenceRef.current
     if (!sequence.length) {
       moveTarget()
@@ -1191,6 +1232,7 @@ export default function GazeHeatmapLab({
   }
 
   function finishSession() {
+    flushTargetHeatSample()
     stopSessionTimers()
     setPhase('finished')
     const nextSummary = summarizeSession(samplesRef.current)
@@ -1208,6 +1250,7 @@ export default function GazeHeatmapLab({
 
     heatmapRef.current = makeHeatmap()
     samplesRef.current = []
+    targetSamplesRef.current = []
     targetSequenceRef.current = buildTargetSequence()
     targetIndexRef.current = 0
     setSummary(null)
@@ -1273,7 +1316,7 @@ export default function GazeHeatmapLab({
           targetY: currentTargetRef.current.y,
         }
         samplesRef.current.push(sample)
-        stampHeatSample(heatmapRef.current, sample)
+        targetSamplesRef.current.push(sample)
       }
 
       if (now - lastUiTickRef.current > 120) {

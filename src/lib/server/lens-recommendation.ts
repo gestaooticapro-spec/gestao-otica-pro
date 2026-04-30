@@ -862,9 +862,11 @@ function scorePriceTarget(params: {
   if (maxPrice != null && price > maxPrice) return 0
   if (minPrice != null && price < minPrice) return 0
 
-  const distance = Math.abs(targetPrice - price)
-  const normalizedDistance = Math.min(distance / targetPrice, 1)
-  return (1 - normalizedDistance) * 3
+  const ratio = price / targetPrice
+  if (ratio > 1.2) return -6   // above 20% over target (safety; maxPrice filter handles this)
+  if (ratio >= 0.8) return 5   // sweet spot: within ±20% of target
+  if (ratio >= 0.6) return 1   // up to 40% below target: acceptable
+  return -2                    // more than 40% below target
 }
 
 function getPrescriptionStrength(input: RecommendationCaseInput): number {
@@ -1528,7 +1530,7 @@ function rankRecommendationOptions(params: {
 
     const offerFeatures = normalizeFeatureFlags(entry.offer.features)
     const labWeight = findLabWeight(aiConfig, entry.family, entry.offer)
-    const labBonus = labWeight != null ? (labWeight - 3) * 3 : 0
+    const labBonus = labWeight != null ? (labWeight - 3) * 5 : 0
     const labReasons = labWeight != null && labBonus !== 0 ? [`preferencia_lab:${labWeight}`] : []
 
     const brandWeight = resolveBrandWeight(
@@ -1537,7 +1539,7 @@ function rankRecommendationOptions(params: {
       entry.family,
       entry.offer,
     )
-    const brandBonus = brandWeight.weight != null ? (brandWeight.weight - 3) * 3 : 0
+    const brandBonus = brandWeight.weight != null ? (brandWeight.weight - 3) * 5 : 0
     const brandReasons =
       brandWeight.weight != null && brandBonus !== 0 && brandWeight.brand
         ? [`preferencia_marca:${brandWeight.brand}:${brandWeight.weight}`]
@@ -2049,13 +2051,15 @@ export async function startRecommendationConversation(params: {
     lastRecommendations: [],
   }
 
+  const tPrice = params.caseInput.targetPrice ?? null
   const recommendations = await recommendLensConfigurations({
     versionId: params.versionId,
     versionIds: params.versionIds,
     caseInput: state.caseInput,
     aiConfig: params.aiConfig,
     topN: params.topN || 3,
-    targetPrice: params.caseInput.targetPrice ?? null,
+    targetPrice: tPrice,
+    maxPrice: tPrice ? tPrice * 1.2 : undefined,
   })
 
   state.lastRecommendations = recommendations

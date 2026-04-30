@@ -874,7 +874,7 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>) 
   const targetBudget = parseNullableNumber(form.budgetTarget)
   if (targetBudget !== null) {
     if (targetBudget <= 1500) budgetMode = 'economico'
-    if (targetBudget >= 5000) budgetMode = 'premium'
+    if (targetBudget >= 12000) budgetMode = 'premium'
   }
 
   if (form.aceitaPremium === 'nao' && budgetMode === 'premium') {
