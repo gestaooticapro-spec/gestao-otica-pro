@@ -39,6 +39,10 @@ import {
   continueLensRecommendationConversationAction,
   generateLensRecommendationsAction
 } from '@/lib/actions/lens-recommendation.actions'
+import {
+  generateLensNarrativesAction,
+  type PatientNarrativeContext,
+} from '@/lib/actions/gemini-narratives.actions'
 import { Database } from '@/lib/database.types'
 import { EvaluationDashboard } from './EvaluationDashboard'
 import { getRecentEvaluationsForEmployee, updateEvaluationPanicReason, updateEvaluationExportedVendaId, updateEvaluationOutcomeStatus } from '@/lib/actions/evaluation.actions'
@@ -550,6 +554,43 @@ const buildAiOptionNarrative = (
     : ''
 
   return [categoryShift, priceTradeoff, whyWorthIt, reasonWrap, supportText].filter(Boolean).join(' ')
+}
+
+function buildPatientNarrativeContext(
+  form: ReturnType<typeof createEmptyForm>,
+  aiCaseInput: ReturnType<typeof inferRecommendationCaseInput>
+): PatientNarrativeContext {
+  const queixas: string[] = []
+  if (form.queixaDirigirNoite === 'sim') queixas.push('dificuldade ao dirigir à noite')
+  if (form.queixaSensibilidadeLuz === 'sim') queixas.push('sensibilidade à luz')
+  if (form.queixaQuebraOculos === 'sim') queixas.push('histórico de quebra de óculos')
+  if (form.queixaCriancaAtiva === 'sim') queixas.push('criança muito ativa')
+  if (form.queixaProgressaoRapida === 'sim') queixas.push('progressão rápida de miopia')
+  if (form.dificuldadeAdaptacao !== 'nao_informado') queixas.push(`dificuldade de adaptação ${form.dificuldadeAdaptacao}`)
+  if (form.principalIncomodoAtual !== 'nao_informado') {
+    const incomodoMap: Record<string, string> = {
+      longe: 'dificuldade para enxergar de longe',
+      perto: 'dificuldade para enxergar de perto',
+      peso_espessura: 'incômodo com peso/espessura da lente',
+      reflexo: 'reflexo/ofuscamento',
+      adaptacao: 'dificuldade de adaptação',
+    }
+    const label = incomodoMap[form.principalIncomodoAtual]
+    if (label) queixas.push(label)
+  }
+
+  return {
+    age: aiCaseInput.idade ?? null,
+    esferico: aiCaseInput.esferico,
+    cilindrico: aiCaseInput.cilindrico,
+    adicao: aiCaseInput.adicao ?? null,
+    rotinaTags: aiCaseInput.rotina_tags ?? [],
+    queixas,
+    beneficiosDesejados: aiCaseInput.desired_benefits ?? [],
+    marcaAtual: form.marcaAtual.trim() || null,
+    targetPrice: aiCaseInput.targetPrice ?? null,
+    adaptationDifficulty: aiCaseInput.adaptation_difficulty ?? null,
+  }
 }
 
 const buildAiCommercialSummary = (option: RecommendationOption) => {
@@ -1107,6 +1148,8 @@ export default function EvaluationInterface({
   const [aiRecommendations, setAiRecommendations] = useState<RecommendationOption[]>([])
   const [aiFeedback, setAiFeedback] = useState<string | null>(null)
   const [aiConversationInput, setAiConversationInput] = useState('')
+  const [lensNarratives, setLensNarratives] = useState<string[] | null>(null)
+  const [isGeneratingNarratives, setIsGeneratingNarratives] = useState(false)
   const [quickRetentionReply, setQuickRetentionReply] = useState<string | null>(null)
   const [ivisionReferenceSuggestion, setIvisionReferenceSuggestion] = useState<string | null>(null)
   const [ivisionReferenceSummary, setIvisionReferenceSummary] = useState<string | null>(null)
@@ -1185,6 +1228,8 @@ export default function EvaluationInterface({
     setAiRecommendations([])
     setAiFeedback(null)
     setAiConversationInput('')
+    setLensNarratives(null)
+    setIsGeneratingNarratives(false)
     setIvisionReferenceSuggestion(null)
     setIvisionReferenceSummary(null)
     setFormError(null)
@@ -1272,6 +1317,8 @@ export default function EvaluationInterface({
     setAiRecommendations([])
     setAiFeedback(null)
     setAiConversationInput('')
+    setLensNarratives(null)
+    setIsGeneratingNarratives(false)
     setIvisionReferenceSuggestion(null)
     setIvisionReferenceSummary(null)
     setFormError(null)
@@ -1405,6 +1452,23 @@ export default function EvaluationInterface({
     setSyncStatus('idle')
     setManualSuggestion(null)
       setAiFeedback('Sugestão por IA gerada com base no catálogo ativo da loja.')
+
+      // Gera narrativas com Gemini de forma assíncrona (não bloqueia o ranking)
+      if (payload.recommendations.length > 0) {
+        setLensNarratives(null)
+        setIsGeneratingNarratives(true)
+        generateLensNarrativesAction(
+          buildPatientNarrativeContext(form, aiCaseInput),
+          payload.recommendations,
+        ).then((narrativeResult) => {
+          if (narrativeResult.success && narrativeResult.narratives) {
+            setLensNarratives(narrativeResult.narratives)
+          }
+          setIsGeneratingNarratives(false)
+        }).catch(() => {
+          setIsGeneratingNarratives(false)
+        })
+      }
     })
   }
 
@@ -2790,7 +2854,10 @@ export default function EvaluationInterface({
                                     <AiOptionInfoButton option={aiTopRecommendation} />
                                   </div>
                                   <p className="mt-3 rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-3 text-sm leading-6 text-cyan-100">
-                                    {buildAiOptionNarrative(aiTopRecommendation, 0, aiTopRecommendation)}
+                                    {isGeneratingNarratives && !lensNarratives
+                                      ? <span className="flex items-center gap-2 text-cyan-400/70 italic"><Loader2 className="h-3 w-3 animate-spin" />Gerando argumentos...</span>
+                                      : (lensNarratives?.[0] || buildAiOptionNarrative(aiTopRecommendation, 0, aiTopRecommendation))
+                                    }
                                   </p>
                                   <button
                                     type="button"
@@ -2857,7 +2924,10 @@ export default function EvaluationInterface({
                                       <AiOptionInfoButton option={option} />
                                     </div>
                                     <p className="mt-3 rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-3 text-sm leading-6 text-cyan-100">
-                                      {buildAiOptionNarrative(option, index, aiRecommendations[0] || option)}
+                                      {isGeneratingNarratives && !lensNarratives
+                                        ? <span className="flex items-center gap-2 text-cyan-400/70 italic"><Loader2 className="h-3 w-3 animate-spin" />Gerando argumentos...</span>
+                                        : (lensNarratives?.[index] || buildAiOptionNarrative(option, index, aiRecommendations[0] || option))
+                                      }
                                     </p>
                                   </div>
                                   <div className="flex lg:min-w-[220px] lg:max-w-sm lg:flex-col lg:justify-end">
