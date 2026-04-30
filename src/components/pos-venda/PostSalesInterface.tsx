@@ -393,6 +393,10 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
                                                     </div>
                                                 ) : selectedItem.status_venda === 'Fechada' ? (
                                                     <span className="text-emerald-400 font-bold text-lg">✓ Venda Fechada</span>
+                                                ) : selectedItem.status_venda === 'Devolvida' ? (
+                                                    <span className="text-purple-400 font-bold text-lg">↩ Devolvida</span>
+                                                ) : selectedItem.status_venda === 'Cancelada' ? (
+                                                    <span className="text-red-400 font-bold text-lg">✕ Cancelada</span>
                                                 ) : (
                                                     <span className="text-amber-400 font-medium text-sm">⚠ Lembre-se de fechar essa venda</span>
                                                 )}

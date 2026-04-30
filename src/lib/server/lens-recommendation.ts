@@ -27,6 +27,7 @@ export type RecommendationCaseInput = {
   objetivo_tags?: string[]
   desired_benefits?: string[]
   preferred_features?: string[]
+  rejected_features?: string[]
   budget_mode?: BudgetMode
   budget_signal?: 'informado' | 'nao_informado'
   targetPrice?: number | null
@@ -312,7 +313,7 @@ function normalizeFeatureFlags(features: Record<string, unknown> = {}): Record<s
   const normalized: Record<string, boolean> = { ...base }
 
   if (base.blue_control || base.bluecontrol) normalized.blue_uv = true
-  if (base.fotossensivel || base.sensity || base.photochromic || base.photofusion) {
+  if (base.fotossensivel || base.sensity || base.photochromic || base.photofusion || base.foto) {
     normalized.transitions = true
   }
   if (base.solar || base.polarizado) normalized.solar = true
@@ -685,17 +686,19 @@ function resolveEmbeddedTreatment(
 
   const flags = normalizeFeatureFlags(offer.features)
   const preferred = input.preferred_features || []
+  const rejected = input.rejected_features || []
 
   const pickIf = (key: string) => (flags[key] ? EMBEDDED_TREATMENT_SEMANTICS[key] : null)
+  const pickIfAllowed = (key: string) => (rejected.includes(key) ? null : pickIf(key))
 
-  if (preferred.includes('transitions')) return pickIf('transitions')
-  if (preferred.includes('blue_uv')) return pickIf('blue_uv')
+  if (preferred.includes('transitions') && !rejected.includes('transitions')) return pickIf('transitions')
+  if (preferred.includes('blue_uv') && !rejected.includes('blue_uv')) return pickIf('blue_uv')
   if (preferred.includes('polarizado')) return pickIf('polarizado')
   if (preferred.includes('solar')) return pickIf('solar')
 
   return (
-    pickIf('transitions') ||
-    pickIf('blue_uv') ||
+    pickIfAllowed('transitions') ||
+    pickIfAllowed('blue_uv') ||
     pickIf('polarizado') ||
     pickIf('solar') ||
     pickIf('antirreflexo') ||
@@ -1058,10 +1061,13 @@ function scoreOffer(params: {
 
   if (indexValue != null) {
     if (prescriptionStrength < 2 && indexValue >= 1.67) {
-      score -= 3
+      score -= 4
       reasons.push('material:indice_alto_pouco_ganho')
     } else if (prescriptionStrength < 3 && indexValue >= 1.67) {
-      score -= 1
+      score -= 2.5
+      reasons.push('material:indice_alto_pouco_ganho')
+    } else if (prescriptionStrength < 4 && indexValue >= 1.67) {
+      score -= 0.5
       reasons.push('material:indice_alto_pouco_ganho')
     }
 
@@ -1215,6 +1221,10 @@ function dedupeRankedEntries(entries: RecommendationOption[]): RecommendationOpt
   )
 }
 
+function normalizeFamilyName(name: string): string {
+  return withoutAccents(name.toLowerCase().replace(/[®™©°]/g, '').replace(/\s+/g, ' ').trim())
+}
+
 function selectDiverseTopEntries(
   entries: RecommendationOption[],
   topN: number,
@@ -1226,6 +1236,7 @@ function selectDiverseTopEntries(
   const selectedFamilies = new Set<string>()
   const selectedOffers = new Set<string>()
   const selectedLabs = new Set<string>()
+  const selectedFamilyNames = new Set<string>() // cross-catalog dedupe by normalized name
 
   const trySelect = (entry: RecommendationOption) => {
     if (selected.length >= topN) return
@@ -1235,29 +1246,31 @@ function selectDiverseTopEntries(
     selectedFamilies.add(entry.familyId)
     selectedOffers.add(entry.offerId)
     if (entry.sourceLaboratorio) selectedLabs.add(entry.sourceLaboratorio)
+    selectedFamilyNames.add(normalizeFamilyName(entry.familyName))
   }
 
-  // Pass 1: best entry per unique lab (promotes catalog diversity)
+  // Pass 1: best entry per unique lab, different product per slot
   for (const entry of entries) {
     if (selected.length >= topN) break
     const lab = entry.sourceLaboratorio
-    if (lab && !selectedLabs.has(lab) && !selectedFamilies.has(entry.familyId)) {
+    const nameNorm = normalizeFamilyName(entry.familyName)
+    if (lab && !selectedLabs.has(lab) && !selectedFamilyNames.has(nameNorm)) {
       trySelect(entry)
     }
   }
 
-  // Pass 2: fill remaining with different families (any lab)
+  // Pass 2: fill remaining — different product name (any lab)
+  for (const entry of entries) {
+    if (selected.length >= topN) break
+    if (!selectedFamilyNames.has(normalizeFamilyName(entry.familyName))) {
+      trySelect(entry)
+    }
+  }
+
+  // Pass 3: fill remaining — different family id
   for (const entry of entries) {
     if (selected.length >= topN) break
     if (!selectedFamilies.has(entry.familyId)) {
-      trySelect(entry)
-    }
-  }
-
-  // Pass 3: fill remaining with different offers
-  for (const entry of entries) {
-    if (selected.length >= topN) break
-    if (!selectedOffers.has(entry.offerId)) {
       trySelect(entry)
     }
   }
@@ -1282,6 +1295,7 @@ function appendPrioritizedEntries(
   const selectedFamilies = new Set(selected.map((entry) => entry.familyId))
   const selectedOffers = new Set(selected.map((entry) => entry.offerId))
   const selectedLabs = new Set(selected.map((entry) => entry.sourceLaboratorio).filter(Boolean) as string[])
+  const selectedFamilyNames = new Set(selected.map((entry) => normalizeFamilyName(entry.familyName)))
 
   const trySelect = (entry: RecommendationOption) => {
     if (selected.length >= topN) return
@@ -1291,29 +1305,31 @@ function appendPrioritizedEntries(
     selectedFamilies.add(entry.familyId)
     selectedOffers.add(entry.offerId)
     if (entry.sourceLaboratorio) selectedLabs.add(entry.sourceLaboratorio)
+    selectedFamilyNames.add(normalizeFamilyName(entry.familyName))
   }
 
-  // Pass 1: prefer entries from labs not yet represented
+  // Pass 1: prefer entries from labs not yet represented, different product
   for (const entry of pool) {
     if (selected.length >= topN) break
     const lab = entry.sourceLaboratorio
-    if (lab && !selectedLabs.has(lab) && !selectedFamilies.has(entry.familyId)) {
+    const nameNorm = normalizeFamilyName(entry.familyName)
+    if (lab && !selectedLabs.has(lab) && !selectedFamilyNames.has(nameNorm)) {
       trySelect(entry)
     }
   }
 
-  // Pass 2: fill remaining with different families
+  // Pass 2: fill remaining — different product name
+  for (const entry of pool) {
+    if (selected.length >= topN) break
+    if (!selectedFamilyNames.has(normalizeFamilyName(entry.familyName))) {
+      trySelect(entry)
+    }
+  }
+
+  // Pass 3: fill remaining — different family id
   for (const entry of pool) {
     if (selected.length >= topN) break
     if (!selectedFamilies.has(entry.familyId)) {
-      trySelect(entry)
-    }
-  }
-
-  // Pass 3: fill remaining with different offers
-  for (const entry of pool) {
-    if (selected.length >= topN) break
-    if (!selectedOffers.has(entry.offerId)) {
       trySelect(entry)
     }
   }
@@ -1463,6 +1479,26 @@ function rankRecommendationOptions(params: {
         })
       ) {
         return null
+      }
+
+      const rejectedFeatures = input.rejected_features || []
+      if (rejectedFeatures.length > 0) {
+        const offerDescriptor = withoutAccents(
+          `${family.nome} ${offer.raw_label} ${offer.canonical_label || ''}`.toLowerCase()
+        )
+        const isRejected = rejectedFeatures.some((feature) => {
+          if (feature === 'transitions') {
+            return (
+              offerFeatures.transitions === true ||
+              /(transitions|fotossens|photochrom|sensity|photofusion)/.test(offerDescriptor)
+            )
+          }
+          if (feature === 'blue_uv') {
+            return offerFeatures.blue_uv === true || offerFeatures.bluecontrol === true
+          }
+          return offerFeatures[feature] === true
+        })
+        if (isRejected) return null
       }
 
       return {

@@ -30,6 +30,7 @@ export default async function StoreLensHeatmapLabPage({
       storeId={storeId}
       backPath={`/dashboard/loja/${storeId}/recomendacao-lentes`}
       geometry={geometry}
+      geometries={geometries}
     />
   )
 }

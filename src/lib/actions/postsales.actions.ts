@@ -68,6 +68,8 @@ export async function getFilaPosVenda(storeId: number) {
     const fila: PostSaleQueueItem[] = (oss as any[])
       .filter((os: any) => {
         const ps = os.post_sales?.[0]
+        const vendaStatus = os.vendas?.status
+        if (vendaStatus === 'Devolvida' || vendaStatus === 'Cancelada') return false
         return ps?.status !== 'Concluido'
       })
       .map((os: any) => {

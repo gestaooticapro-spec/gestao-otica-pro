@@ -69,7 +69,7 @@ const HEAD_RESPONSE_X = 0.64
 const HEAD_RESPONSE_Y = 0.58
 const ENVELOPE_BINS = 72
 const CUTOUT = { x: 0.24, y: 0.22, w: 0.52, h: 0.46 }
-const HEATMAP_LAB_BUILD = 'heatmap-v7-balanced-clean-2026-04-30'
+const HEATMAP_LAB_BUILD = 'heatmap-v10-geometry-picker-2026-04-30'
 
 const LANDMARKS = {
   nose: 1,
@@ -333,6 +333,8 @@ function projectSampleToLens(sample: SessionSample) {
   const headDemandShare = 1 - eyeDemandShare
   const lensDemandX = target.x * eyeShareX
   const lensDemandY = target.y * eyeShareY
+  const heatDemandX = target.x * (0.62 + eyeShareX * 0.24)
+  const heatDemandY = target.y * (0.6 + eyeShareY * 0.24)
   const edgeSpread = clamp(0.42 + eyeDemandShare * 1.25 + eyeNorm * 0.22, 0.42, 1.98)
   const verticalBias = clamp(0.82 + demandY * 0.95 + eyeShareY * 0.3, 0.82, 1.75)
 
@@ -352,9 +354,14 @@ function projectSampleToLens(sample: SessionSample) {
       0.95,
     ),
   }
+  const heatPoint = {
+    x: clamp(0.5 + heatDemandX * 0.42 + normalizedEyeX * 0.025, 0.03, 0.97),
+    y: clamp(0.52 + heatDemandY * 0.38 * verticalBias + normalizedEyeY * 0.035, 0.03, 0.95),
+  }
 
   return {
     point,
+    heatPoint,
     radius: 1.7 + edgeSpread * 1.18,
     spreadX: 0.006 + demandX * 0.052 * eyeShareX + eyeDemandShare * 0.018,
     spreadY: 0.012 + demandY * 0.085 * eyeShareY + eyeDemandShare * 0.026 + headDemandShare * 0.008,
@@ -369,15 +376,15 @@ function projectSampleToLens(sample: SessionSample) {
 
 function stampHeatSample(grid: Float32Array, sample: SessionSample) {
   const projection = projectSampleToLens(sample)
-  addHeatPoint(grid, projection.point, projection.weight, projection.radius * 1.05, 'sum')
+  addHeatPoint(grid, projection.heatPoint, projection.weight, projection.radius * 1.05, 'sum')
 
   const satelliteWeight = projection.weight * 0.34
   const satelliteRadius = projection.radius * 0.82
   addHeatPoint(
     grid,
     {
-      x: clamp(projection.point.x + projection.spreadX, 0.02, 0.98),
-      y: clamp(projection.point.y + projection.spreadY * 0.35, 0.02, 0.98),
+      x: clamp(projection.heatPoint.x + projection.spreadX, 0.02, 0.98),
+      y: clamp(projection.heatPoint.y + projection.spreadY * 0.35, 0.02, 0.98),
     },
     satelliteWeight,
     satelliteRadius,
@@ -386,8 +393,8 @@ function stampHeatSample(grid: Float32Array, sample: SessionSample) {
   addHeatPoint(
     grid,
     {
-      x: clamp(projection.point.x - projection.spreadX, 0.02, 0.98),
-      y: clamp(projection.point.y - projection.spreadY * 0.35, 0.02, 0.98),
+      x: clamp(projection.heatPoint.x - projection.spreadX, 0.02, 0.98),
+      y: clamp(projection.heatPoint.y - projection.spreadY * 0.35, 0.02, 0.98),
     },
     satelliteWeight,
     satelliteRadius,
@@ -876,10 +883,12 @@ export default function GazeHeatmapLab({
   storeId,
   backPath,
   geometry,
+  geometries = [],
 }: {
   storeId: number
   backPath: string
   geometry?: LensGeometry | null
+  geometries?: LensGeometry[]
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
@@ -913,6 +922,7 @@ export default function GazeHeatmapLab({
   const [hasCalibration, setHasCalibration] = useState(false)
   const [status, setStatus] = useState('Abra a câmera frontal e alinhe o rosto ao centro.')
   const [target, setTarget] = useState<NormalizedPoint>({ x: 0.5, y: 0.5 })
+  const [selectedGeometryId, setSelectedGeometryId] = useState(() => geometry?.id ?? geometries[0]?.id ?? '')
   const [liveMetrics, setLiveMetrics] = useState<FaceMetrics>({
     faceDetected: false,
     eyeX: 0,
@@ -923,6 +933,7 @@ export default function GazeHeatmapLab({
   const [summary, setSummary] = useState<SessionSummary | null>(null)
   const [secureContextWarning, setSecureContextWarning] = useState(false)
   const isFocusMode = phase === 'calibrating' || phase === 'running'
+  const selectedGeometry = geometries.find((item) => item.id === selectedGeometryId) ?? geometry ?? geometries[0] ?? null
 
   const redrawHeatmaps = useCallback(() => {
     if (mainHeatmapRef.current) {
@@ -930,8 +941,8 @@ export default function GazeHeatmapLab({
         mainHeatmapRef.current,
         heatmapRef.current,
         undefined,
-        geometry ? `Mapa de calor sobreposto · ${geometry.family_name}` : 'Mapa de calor sobreposto',
-        geometry,
+        selectedGeometry ? `Mapa de calor sobreposto · ${selectedGeometry.family_name}` : 'Mapa de calor sobreposto',
+        selectedGeometry,
         samplesRef.current,
         'continuous',
       )
@@ -941,8 +952,8 @@ export default function GazeHeatmapLab({
         contourHeatmapRef.current,
         heatmapRef.current,
         undefined,
-        geometry ? `Contorno máximo · ${geometry.family_name}` : 'Contorno máximo de alcance',
-        geometry,
+        selectedGeometry ? `Contorno máximo · ${selectedGeometry.family_name}` : 'Contorno máximo de alcance',
+        selectedGeometry,
         samplesRef.current,
         'contour',
       )
@@ -953,7 +964,7 @@ export default function GazeHeatmapLab({
         heatmapRef.current,
         COMPARISON_PROFILES[0],
         COMPARISON_PROFILES[0].name,
-        geometry,
+        selectedGeometry,
         samplesRef.current,
         'continuous',
       )
@@ -964,12 +975,12 @@ export default function GazeHeatmapLab({
         heatmapRef.current,
         COMPARISON_PROFILES[1],
         COMPARISON_PROFILES[1].name,
-        geometry,
+        selectedGeometry,
         samplesRef.current,
         'continuous',
       )
     }
-  }, [geometry])
+  }, [selectedGeometry])
 
   useEffect(() => {
     setSecureContextWarning(typeof window !== 'undefined' && !window.isSecureContext)
@@ -1340,10 +1351,30 @@ export default function GazeHeatmapLab({
   const targetCrosshairClassName = isFocusMode
     ? 'absolute left-1/2 top-1/2 bg-cyan-100/90 -translate-x-1/2 -translate-y-1/2'
     : 'absolute left-1/2 top-1/2 bg-cyan-100/90 -translate-x-1/2 -translate-y-1/2'
+  const floatingActionClassName =
+    'absolute top-1/2 z-30 inline-flex -translate-y-1/2 items-center gap-2 rounded-2xl border border-white/15 bg-slate-950/74 px-4 py-3 text-sm font-black text-slate-100 shadow-[0_18px_42px_rgba(2,6,23,0.34)] backdrop-blur transition hover:bg-slate-900/88 disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-slate-950/42 disabled:text-slate-500'
 
   const stageNode = (
     <div ref={stageRef} className={stageClassName}>
       <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.06)_1px,transparent_1px)] bg-[size:32px_32px]" />
+      <button
+        type="button"
+        onClick={startCalibration}
+        disabled={!cameraReady || phaseIsCalibrating}
+        className={`${floatingActionClassName} left-4`}
+      >
+        <ScanFace className="h-4 w-4" />
+        Calibrar
+      </button>
+      <button
+        type="button"
+        onClick={startSession}
+        disabled={!cameraReady || phaseIsRunning || !hasCalibration}
+        className={`${floatingActionClassName} right-4 border-rose-300/30 bg-rose-950/58 text-rose-100 hover:bg-rose-900/72 disabled:border-white/5 disabled:bg-slate-950/42 disabled:text-slate-500`}
+      >
+        <Play className="h-4 w-4" />
+        Iniciar sessão
+      </button>
       <div
         className={targetClassName}
         style={{
@@ -1446,11 +1477,29 @@ export default function GazeHeatmapLab({
           </div>
 
           <div className="mb-4 rounded-3xl border border-white/10 bg-slate-900/80 px-4 py-3 text-sm text-slate-300">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <span>{status}</span>
-              <span className="rounded-full bg-slate-800 px-2.5 py-1 text-[10px] font-black tracking-[0.16em] text-cyan-200">
-                BUILD {HEATMAP_LAB_BUILD}
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-2 text-xs font-bold text-slate-400">
+                  Geometria
+                  <select
+                    value={selectedGeometry?.id ?? ''}
+                    onChange={(event) => setSelectedGeometryId(event.target.value)}
+                    disabled={!geometries.length}
+                    className="min-w-[220px] rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-100 outline-none transition focus:border-cyan-300/60 disabled:cursor-not-allowed disabled:text-slate-500"
+                  >
+                    {!geometries.length && <option value="">Nenhuma geometria cadastrada</option>}
+                    {geometries.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.family_name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <span className="rounded-full bg-slate-800 px-2.5 py-1 text-[10px] font-black tracking-[0.16em] text-cyan-200">
+                  BUILD {HEATMAP_LAB_BUILD}
+                </span>
+              </div>
             </div>
           </div>
 

@@ -285,10 +285,12 @@ export default function VendaInterfaceExperimental({
                     <div className="flex flex-col">
                         <h1 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-3">
                             Venda #{venda.id}
-                            <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold border shadow-lg backdrop-blur-md ${venda.status === 'Fechada' ? 'bg-green-500/20 text-green-300 border-green-500/30' :
+                            <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold border shadow-lg backdrop-blur-md ${
+                                venda.status === 'Fechada' ? 'bg-green-500/20 text-green-300 border-green-500/30' :
                                 venda.status === 'Cancelada' ? 'bg-red-500/20 text-red-300 border-red-500/30' :
-                                    'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                                }`}>
+                                venda.status === 'Devolvida' ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' :
+                                'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                            }`}>
                                 {venda.status}
                             </span>
                         </h1>

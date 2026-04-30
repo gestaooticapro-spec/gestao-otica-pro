@@ -40,8 +40,8 @@ import {
   generateLensRecommendationsAction
 } from '@/lib/actions/lens-recommendation.actions'
 import {
-  generateLensNarrativesAction,
-  type PatientNarrativeContext,
+  generateLensAuditAction,
+  type PatientAuditContext,
 } from '@/lib/actions/gemini-narratives.actions'
 import { Database } from '@/lib/database.types'
 import { EvaluationDashboard } from './EvaluationDashboard'
@@ -556,40 +556,43 @@ const buildAiOptionNarrative = (
   return [categoryShift, priceTradeoff, whyWorthIt, reasonWrap, supportText].filter(Boolean).join(' ')
 }
 
-function buildPatientNarrativeContext(
+function buildPatientAuditContext(
   form: ReturnType<typeof createEmptyForm>,
   aiCaseInput: ReturnType<typeof inferRecommendationCaseInput>
-): PatientNarrativeContext {
-  const queixas: string[] = []
-  if (form.queixaDirigirNoite === 'sim') queixas.push('dificuldade ao dirigir à noite')
-  if (form.queixaSensibilidadeLuz === 'sim') queixas.push('sensibilidade à luz')
-  if (form.queixaQuebraOculos === 'sim') queixas.push('histórico de quebra de óculos')
-  if (form.queixaCriancaAtiva === 'sim') queixas.push('criança muito ativa')
-  if (form.queixaProgressaoRapida === 'sim') queixas.push('progressão rápida de miopia')
-  if (form.dificuldadeAdaptacao !== 'nao_informado') queixas.push(`dificuldade de adaptação ${form.dificuldadeAdaptacao}`)
-  if (form.principalIncomodoAtual !== 'nao_informado') {
-    const incomodoMap: Record<string, string> = {
-      longe: 'dificuldade para enxergar de longe',
-      perto: 'dificuldade para enxergar de perto',
-      peso_espessura: 'incômodo com peso/espessura da lente',
-      reflexo: 'reflexo/ofuscamento',
-      adaptacao: 'dificuldade de adaptação',
-    }
-    const label = incomodoMap[form.principalIncomodoAtual]
-    if (label) queixas.push(label)
-  }
-
+): PatientAuditContext {
+  const n = (v: string) => { const p = parseFloat(v.replace(',', '.')); return isNaN(p) ? null : p }
   return {
     age: aiCaseInput.idade ?? null,
     esferico: aiCaseInput.esferico,
     cilindrico: aiCaseInput.cilindrico,
     adicao: aiCaseInput.adicao ?? null,
-    rotinaTags: aiCaseInput.rotina_tags ?? [],
-    queixas,
-    beneficiosDesejados: aiCaseInput.desired_benefits ?? [],
+    horasComputador: n(form.estiloVidaUsoComputadorHoras),
+    horasDirigir: n(form.estiloVidaDirigirHoras),
+    horasLeitura: n(form.estiloVidaLeituraHoras),
+    horasCelular: n(form.estiloVidaUsoCelularHoras),
+    horasSol: n(form.estiloVidaExposicaoSolHoras),
+    horasTv: n(form.estiloVidaAssistirTvHoras),
     marcaAtual: form.marcaAtual.trim() || null,
+    tipoLenteAtual: form.tipoLenteAtual || null,
+    usaMultifocalHoje: form.usaMultifocalHoje || null,
+    historicoTrocasRecentes: form.historicoTrocasRecentes || null,
+    dificuldadeAdaptacao: form.dificuldadeAdaptacao !== 'nao_informado' ? form.dificuldadeAdaptacao : null,
+    queixaDirigirNoite: form.queixaDirigirNoite === 'sim',
+    queixaSensibilidadeLuz: form.queixaSensibilidadeLuz === 'sim',
+    queixaQuebraOculos: form.queixaQuebraOculos === 'sim',
+    queixaProgressaoRapida: form.queixaProgressaoRapida === 'sim',
+    queixaCriancaAtiva: form.queixaCriancaAtiva === 'sim',
+    principalIncomodoAtual: form.principalIncomodoAtual !== 'nao_informado' ? form.principalIncomodoAtual : null,
+    prioridadePrincipal: form.prioridadePrincipal !== 'nao_informado' ? form.prioridadePrincipal : null,
+    objetivoCompra: form.objetivoCompra !== 'nao_informado' ? form.objetivoCompra : null,
+    faixaOrcamento: form.faixaOrcamento !== 'nao_informado' ? form.faixaOrcamento : null,
     targetPrice: aiCaseInput.targetPrice ?? null,
-    adaptationDifficulty: aiCaseInput.adaptation_difficulty ?? null,
+    aceitaPremium: form.aceitaPremium !== 'nao_informado' ? form.aceitaPremium : null,
+    importanciaEstetica: form.importanciaEstetica !== 'nao_informado' ? form.importanciaEstetica : null,
+    importanciaResistencia: form.importanciaResistencia !== 'nao_informado' ? form.importanciaResistencia : null,
+    prefereTransitions: form.prefereTransitions !== 'nao_informado' ? form.prefereTransitions : null,
+    prefereBlueUv: form.prefereBlueUv !== 'nao_informado' ? form.prefereBlueUv : null,
+    observacoesConsultor: form.observacoesConsultor.trim() || null,
   }
 }
 
@@ -857,6 +860,15 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>) 
 
   if (form.dificuldadeAdaptacao === 'alta') {
     desiredBenefits.push('adaptacao_rapida')
+    objetivoTags.push('adaptacao_critica')
+  }
+
+  // Histórico de trocas com dificuldade alta = caso crítico de adaptação
+  const historicoComFalha = ['uma', 'duas', 'mais_de_duas'].includes(form.historicoTrocasRecentes)
+  if (form.dificuldadeAdaptacao === 'alta' && historicoComFalha) {
+    desiredBenefits.push('adaptacao_rapida', 'conforto_visual')
+    objetivoTags.push('adaptacao_critica')
+    rotinaTags.push('adaptacao_critica')
   }
 
   if (form.queixaDirigirNoite === 'sim') {
@@ -865,7 +877,10 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>) 
 
   if (form.queixaSensibilidadeLuz === 'sim') {
     desiredBenefits.push('conforto_luz')
-    preferredFeatures.push('transitions')
+    // só sugere transitions se o paciente não recusou explicitamente
+    if (form.prefereTransitions !== 'nao') {
+      preferredFeatures.push('transitions')
+    }
   }
 
   if (form.prefereTransitions === 'sim') {
@@ -972,11 +987,15 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>) 
     budget_mode: budgetMode,
     budget_signal: budgetExplicit ? 'informado' : 'nao_informado',
     targetPrice: targetBudget && targetBudget > 0 ? targetBudget : null,
+    rejected_features: [
+      ...(form.prefereTransitions === 'nao' ? ['transitions'] : []),
+      ...(form.prefereBlueUv === 'nao' ? ['blue_uv'] : []),
+    ],
     adaptation_difficulty:
       form.dificuldadeAdaptacao === 'nao_informado'
         ? null
         : form.dificuldadeAdaptacao,
-    notes: form.sourceExamType || null
+    notes: [form.sourceExamType, form.observacoesConsultor.trim()].filter(Boolean).join(' | ') || null
   }
 }
 
@@ -1148,8 +1167,8 @@ export default function EvaluationInterface({
   const [aiRecommendations, setAiRecommendations] = useState<RecommendationOption[]>([])
   const [aiFeedback, setAiFeedback] = useState<string | null>(null)
   const [aiConversationInput, setAiConversationInput] = useState('')
-  const [lensNarratives, setLensNarratives] = useState<string[] | null>(null)
-  const [isGeneratingNarratives, setIsGeneratingNarratives] = useState(false)
+  const [lensAudit, setLensAudit] = useState<string | null>(null)
+  const [isGeneratingAudit, setIsGeneratingAudit] = useState(false)
   const [quickRetentionReply, setQuickRetentionReply] = useState<string | null>(null)
   const [ivisionReferenceSuggestion, setIvisionReferenceSuggestion] = useState<string | null>(null)
   const [ivisionReferenceSummary, setIvisionReferenceSummary] = useState<string | null>(null)
@@ -1228,8 +1247,8 @@ export default function EvaluationInterface({
     setAiRecommendations([])
     setAiFeedback(null)
     setAiConversationInput('')
-    setLensNarratives(null)
-    setIsGeneratingNarratives(false)
+    setLensAudit(null)
+    setIsGeneratingAudit(false)
     setIvisionReferenceSuggestion(null)
     setIvisionReferenceSummary(null)
     setFormError(null)
@@ -1317,8 +1336,8 @@ export default function EvaluationInterface({
     setAiRecommendations([])
     setAiFeedback(null)
     setAiConversationInput('')
-    setLensNarratives(null)
-    setIsGeneratingNarratives(false)
+    setLensAudit(null)
+    setIsGeneratingAudit(false)
     setIvisionReferenceSuggestion(null)
     setIvisionReferenceSummary(null)
     setFormError(null)
@@ -1453,20 +1472,20 @@ export default function EvaluationInterface({
     setManualSuggestion(null)
       setAiFeedback('Sugestão por IA gerada com base no catálogo ativo da loja.')
 
-      // Gera narrativas com Gemini de forma assíncrona (não bloqueia o ranking)
+      // Auditoria Gemini assíncrona (não bloqueia o ranking)
       if (payload.recommendations.length > 0) {
-        setLensNarratives(null)
-        setIsGeneratingNarratives(true)
-        generateLensNarrativesAction(
-          buildPatientNarrativeContext(form, aiCaseInput),
+        setLensAudit(null)
+        setIsGeneratingAudit(true)
+        generateLensAuditAction(
+          buildPatientAuditContext(form, aiCaseInput),
           payload.recommendations,
-        ).then((narrativeResult) => {
-          if (narrativeResult.success && narrativeResult.narratives) {
-            setLensNarratives(narrativeResult.narratives)
+        ).then((auditResult) => {
+          if (auditResult.success && auditResult.audit) {
+            setLensAudit(auditResult.audit)
           }
-          setIsGeneratingNarratives(false)
+          setIsGeneratingAudit(false)
         }).catch(() => {
-          setIsGeneratingNarratives(false)
+          setIsGeneratingAudit(false)
         })
       }
     })
@@ -2823,6 +2842,18 @@ export default function EvaluationInterface({
                           </div>
                         )}
 
+                        {(isGeneratingAudit || lensAudit) && (
+                          <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+                            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-amber-400 flex items-center gap-2">
+                              <Sparkles className="h-3 w-3" /> Debug IA — Auditoria da Indicação
+                            </p>
+                            {isGeneratingAudit && !lensAudit
+                              ? <span className="flex items-center gap-2 text-amber-400/70 text-sm italic"><Loader2 className="h-3 w-3 animate-spin" />Analisando indicações...</span>
+                              : <p className="text-sm leading-6 text-amber-100/90 whitespace-pre-wrap">{lensAudit}</p>
+                            }
+                          </div>
+                        )}
+
                         {showIvisionReference && (
                           <div className="mt-4 grid grid-cols-12 gap-4">
                             <div className="col-span-12 lg:col-span-6 rounded-2xl border border-indigo-500/20 bg-indigo-500/10 p-4">
@@ -2854,10 +2885,7 @@ export default function EvaluationInterface({
                                     <AiOptionInfoButton option={aiTopRecommendation} />
                                   </div>
                                   <p className="mt-3 rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-3 text-sm leading-6 text-cyan-100">
-                                    {isGeneratingNarratives && !lensNarratives
-                                      ? <span className="flex items-center gap-2 text-cyan-400/70 italic"><Loader2 className="h-3 w-3 animate-spin" />Gerando argumentos...</span>
-                                      : (lensNarratives?.[0] || buildAiOptionNarrative(aiTopRecommendation, 0, aiTopRecommendation))
-                                    }
+                                    {buildAiOptionNarrative(aiTopRecommendation, 0, aiTopRecommendation)}
                                   </p>
                                   <button
                                     type="button"
@@ -2924,10 +2952,7 @@ export default function EvaluationInterface({
                                       <AiOptionInfoButton option={option} />
                                     </div>
                                     <p className="mt-3 rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-3 text-sm leading-6 text-cyan-100">
-                                      {isGeneratingNarratives && !lensNarratives
-                                        ? <span className="flex items-center gap-2 text-cyan-400/70 italic"><Loader2 className="h-3 w-3 animate-spin" />Gerando argumentos...</span>
-                                        : (lensNarratives?.[index] || buildAiOptionNarrative(option, index, aiRecommendations[0] || option))
-                                      }
+                                      {buildAiOptionNarrative(option, index, aiRecommendations[0] || option)}
                                     </p>
                                   </div>
                                   <div className="flex lg:min-w-[220px] lg:max-w-sm lg:flex-col lg:justify-end">

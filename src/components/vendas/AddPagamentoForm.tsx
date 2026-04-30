@@ -12,6 +12,7 @@ import {
 } from '@/lib/actions/vendas.actions'
 import { Loader2, DollarSign, X, AlertCircle, CheckCircle2, Wallet } from 'lucide-react'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
+import { toast } from 'sonner'
 import { Database } from '@/lib/database.types'
 
 type Employee = Database['public']['Tables']['employees']['Row']
@@ -92,6 +93,10 @@ export default function AddPagamentoForm({
       setAuthedEmployee(null);
       setObs('');
       onPaymentAdded();
+      toast.success('Pagamento registrado!', {
+        description: 'Para imprimir o recibo, use o botão "Recibos" na barra inferior.',
+        duration: 5000,
+      });
     }
   }, [saveState, onPaymentAdded])
 

@@ -11,103 +11,168 @@ const GEMINI_KEYS = [
   process.env.GEMINI_SECRET_KEY_5,
 ].filter(Boolean) as string[]
 
-export type PatientNarrativeContext = {
+export type PatientAuditContext = {
+  // Prescrição
   age: number | null
   esferico: number | null
   cilindrico: number | null
   adicao: number | null
-  rotinaTags: string[]
-  queixas: string[]
-  beneficiosDesejados: string[]
+  // Rotina (horas/dia)
+  horasComputador: number | null
+  horasDirigir: number | null
+  horasLeitura: number | null
+  horasCelular: number | null
+  horasSol: number | null
+  horasTv: number | null
+  // Perfil
   marcaAtual: string | null
+  tipoLenteAtual: string | null
+  usaMultifocalHoje: string | null
+  historicoTrocasRecentes: string | null
+  dificuldadeAdaptacao: string | null
+  // Queixas
+  queixaDirigirNoite: boolean
+  queixaSensibilidadeLuz: boolean
+  queixaQuebraOculos: boolean
+  queixaProgressaoRapida: boolean
+  queixaCriancaAtiva: boolean
+  principalIncomodoAtual: string | null
+  // Preferências e orçamento
+  prioridadePrincipal: string | null
+  objetivoCompra: string | null
+  faixaOrcamento: string | null
   targetPrice: number | null
-  adaptationDifficulty: string | null
+  aceitaPremium: string | null
+  importanciaEstetica: string | null
+  importanciaResistencia: string | null
+  prefereTransitions: string | null
+  prefereBlueUv: string | null
+  // Observações livres
+  observacoesConsultor: string | null
 }
 
-export type NarrativesResult = {
+export type AuditResult = {
   success: boolean
-  narratives: string[] | null
+  audit: string | null
   error?: string
 }
 
-function buildPrompt(ctx: PatientNarrativeContext, recommendations: RecommendationOption[]): string {
+function buildAuditPrompt(ctx: PatientAuditContext, recommendations: RecommendationOption[]): string {
   const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
   const sig = (n: number) => (n > 0 ? `+${n.toFixed(2)}` : n.toFixed(2))
+  const hora = (h: number | null, label: string) => h && h > 0 ? `${label}: ${h}h/dia` : null
+  const sim = (v: boolean, label: string) => v ? label : null
 
-  const patientLines: string[] = []
-  if (ctx.age) patientLines.push(`Idade: ${ctx.age} anos`)
+  const lines: string[] = []
+
+  // Prescrição
   const rx = [
     ctx.esferico != null ? `Esf ${sig(ctx.esferico)}` : null,
     ctx.cilindrico != null && ctx.cilindrico !== 0 ? `Cil ${sig(ctx.cilindrico)}` : null,
-    ctx.adicao != null ? `Adição +${ctx.adicao.toFixed(2)}` : null,
+    ctx.adicao != null ? `Add +${ctx.adicao.toFixed(2)}` : null,
   ].filter(Boolean)
-  if (rx.length) patientLines.push(`Grau: ${rx.join(' | ')}`)
-  if (ctx.rotinaTags.length) patientLines.push(`Rotina: ${ctx.rotinaTags.join(', ')}`)
-  if (ctx.queixas.length) patientLines.push(`Queixas: ${ctx.queixas.join(', ')}`)
-  if (ctx.beneficiosDesejados.length) patientLines.push(`Prioridades: ${ctx.beneficiosDesejados.join(', ')}`)
-  if (ctx.marcaAtual) patientLines.push(`Marca atual: ${ctx.marcaAtual}`)
-  if (ctx.targetPrice) patientLines.push(`Orçamento alvo: ${fmt.format(ctx.targetPrice)}`)
-  if (ctx.adaptationDifficulty) patientLines.push(`Adaptação prévia: dificuldade ${ctx.adaptationDifficulty}`)
+  if (ctx.age) lines.push(`Idade: ${ctx.age} anos`)
+  if (rx.length) lines.push(`Grau: ${rx.join(' | ')}`)
 
+  // Rotina
+  const rotina = [
+    hora(ctx.horasComputador, 'computador'),
+    hora(ctx.horasDirigir, 'dirigir'),
+    hora(ctx.horasLeitura, 'leitura'),
+    hora(ctx.horasCelular, 'celular'),
+    hora(ctx.horasSol, 'exposição ao sol'),
+    hora(ctx.horasTv, 'TV'),
+  ].filter(Boolean)
+  if (rotina.length) lines.push(`Rotina: ${rotina.join(', ')}`)
+
+  // Histórico de lentes
+  if (ctx.tipoLenteAtual && ctx.tipoLenteAtual !== 'nao_informado') lines.push(`Lente atual: ${ctx.tipoLenteAtual}`)
+  if (ctx.usaMultifocalHoje && ctx.usaMultifocalHoje !== 'nao_informado') lines.push(`Usa multifocal hoje: ${ctx.usaMultifocalHoje}`)
+  if (ctx.historicoTrocasRecentes && ctx.historicoTrocasRecentes !== 'nao_informado') lines.push(`Trocas recentes: ${ctx.historicoTrocasRecentes}`)
+  if (ctx.marcaAtual) lines.push(`Marca atual: ${ctx.marcaAtual}`)
+
+  // Queixas
+  const queixas = [
+    sim(ctx.queixaDirigirNoite, 'dificuldade ao dirigir à noite'),
+    sim(ctx.queixaSensibilidadeLuz, 'sensibilidade à luz'),
+    sim(ctx.queixaQuebraOculos, 'histórico de quebra'),
+    sim(ctx.queixaProgressaoRapida, 'progressão rápida de miopia'),
+    sim(ctx.queixaCriancaAtiva, 'criança muito ativa'),
+    ctx.principalIncomodoAtual && ctx.principalIncomodoAtual !== 'nao_informado' ? `incômodo principal: ${ctx.principalIncomodoAtual}` : null,
+    ctx.dificuldadeAdaptacao && ctx.dificuldadeAdaptacao !== 'nao_informado' ? `dificuldade de adaptação ${ctx.dificuldadeAdaptacao}` : null,
+  ].filter(Boolean)
+  if (queixas.length) lines.push(`Queixas: ${queixas.join(', ')}`)
+
+  // Preferências
+  const prefs = [
+    ctx.prioridadePrincipal && ctx.prioridadePrincipal !== 'nao_informado' ? `prioridade: ${ctx.prioridadePrincipal}` : null,
+    ctx.objetivoCompra && ctx.objetivoCompra !== 'nao_informado' ? `objetivo: ${ctx.objetivoCompra}` : null,
+    ctx.faixaOrcamento && ctx.faixaOrcamento !== 'nao_informado' ? `faixa: ${ctx.faixaOrcamento}` : null,
+    ctx.targetPrice ? `alvo: ${fmt.format(ctx.targetPrice)}` : null,
+    ctx.aceitaPremium && ctx.aceitaPremium !== 'nao_informado' ? `aceita premium: ${ctx.aceitaPremium}` : null,
+    ctx.importanciaEstetica && ctx.importanciaEstetica !== 'nao_informado' ? `estética: ${ctx.importanciaEstetica}` : null,
+    ctx.importanciaResistencia && ctx.importanciaResistencia !== 'nao_informado' ? `resistência: ${ctx.importanciaResistencia}` : null,
+    ctx.prefereTransitions && ctx.prefereTransitions !== 'nao_informado' ? `transitions: ${ctx.prefereTransitions}` : null,
+    ctx.prefereBlueUv && ctx.prefereBlueUv !== 'nao_informado' ? `blue/UV: ${ctx.prefereBlueUv}` : null,
+  ].filter(Boolean)
+  if (prefs.length) lines.push(`Preferências/orçamento: ${prefs.join(', ')}`)
+
+  if (ctx.observacoesConsultor) lines.push(`Obs. consultor: "${ctx.observacoesConsultor}"`)
+
+  // Opções rankeadas com score
   const optionsText = recommendations.slice(0, 3).map((opt, i) => {
-    const parts = [
-      `${i + 1}. ${opt.familyName}`,
-      opt.offerLabel ? opt.offerLabel : null,
-      fmt.format(opt.finalPrice),
-      opt.clinicalCategory,
-      opt.treatmentName ?? null,
-    ].filter(Boolean).join(' — ')
-    const reasons = opt.reasons.slice(0, 6).join(', ')
-    return `${parts}\n   Sinais: ${reasons}`
-  }).join('\n')
+    const label = [opt.familyName, opt.offerLabel, opt.treatmentName].filter(Boolean).join(' — ')
+    const reasons = opt.reasons.join(', ')
+    return `${i + 1}. ${label}\n   Preço: ${fmt.format(opt.finalPrice)} | Categoria: ${opt.clinicalCategory} | Score: ${opt.score.toFixed(1)}\n   Sinais do motor: ${reasons}`
+  }).join('\n\n')
 
-  return `Você é um especialista em vendas de ótica. Gere argumentos de apoio para o VENDEDOR (não para ler ao cliente).
+  return `Você é um especialista em óptica clínica e comercial avaliando se um motor de recomendação acertou nas indicações. Este é um DEBUG técnico para calibração do sistema — seja completamente honesto e direto, sem diplomacia.
 
-PACIENTE:
-${patientLines.join('\n')}
+ANAMNESE COMPLETA DO PACIENTE:
+${lines.join('\n')}
 
-OPÇÕES RANKEADAS PELO SISTEMA:
+INDICAÇÕES DO MOTOR (em ordem de ranking):
 ${optionsText}
 
-Para cada opção, escreva 2-3 frases que conectem as necessidades reais deste paciente às vantagens desta lente específica. Seja concreto — cite rotina, queixas ou grau quando relevante. Português brasileiro, tom profissional.
+Analise:
+1. Para cada opção: a indicação faz sentido clínico e comercial para este paciente? O que está correto? O que parece estranho, desnecessário ou errado?
+2. A ordem do ranking parece coerente com o perfil?
+3. Há alguma informação importante da anamnese que o motor aparentemente ignorou ou subponderou?
+4. Alguma indicação que deveria ter entrado mas não entrou?
 
-Responda APENAS com JSON válido:
-{"narratives": ["argumento 1", "argumento 2", "argumento 3"]}`
+Responda em texto corrido, em português, de forma técnica e direta. Não use títulos ou listas — escreva como um colega especialista dando um parecer rápido.`
 }
 
-export async function generateLensNarrativesAction(
-  patientContext: PatientNarrativeContext,
+export async function generateLensAuditAction(
+  patientContext: PatientAuditContext,
   recommendations: RecommendationOption[],
-): Promise<NarrativesResult> {
+): Promise<AuditResult> {
   if (!GEMINI_KEYS.length) {
-    return { success: false, narratives: null, error: 'Nenhuma chave Gemini configurada' }
+    return { success: false, audit: null, error: 'Nenhuma chave Gemini configurada' }
   }
   if (!recommendations.length) {
-    return { success: false, narratives: null, error: 'Sem recomendações' }
+    return { success: false, audit: null, error: 'Sem recomendações' }
   }
 
-  const prompt = buildPrompt(patientContext, recommendations)
+  const prompt = buildAuditPrompt(patientContext, recommendations)
 
-  for (const key of GEMINI_KEYS) {
+  for (let i = 0; i < GEMINI_KEYS.length; i++) {
+    const key = GEMINI_KEYS[i]
+    const keyLabel = `GEMINI_SECRET_KEY_${i + 1}`
     try {
       const genAI = new GoogleGenerativeAI(key)
-      const model = genAI.getGenerativeModel({
-        model: 'gemini-2.5-flash',
-        generationConfig: { responseMimeType: 'application/json' },
-      })
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 
       const result = await model.generateContent(prompt)
-      const text = result.response.text()
+      const usage = result.response.usageMetadata
+      const tokensIn = usage?.promptTokenCount ?? '?'
+      const tokensOut = usage?.candidatesTokenCount ?? '?'
+      console.log(`[Gemini Audit] ✓ ${keyLabel} | entrada: ${tokensIn} tokens | saída: ${tokensOut} tokens`)
 
-      const jsonMatch = text.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) throw new Error('JSON não encontrado na resposta')
+      const audit = result.response.text().trim()
+      if (!audit) throw new Error('Resposta vazia')
 
-      const parsed = JSON.parse(jsonMatch[0])
-      if (!Array.isArray(parsed.narratives) || !parsed.narratives.length) {
-        throw new Error('Formato inválido')
-      }
-
-      return { success: true, narratives: parsed.narratives }
+      return { success: true, audit }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       const isQuota =
@@ -115,12 +180,15 @@ export async function generateLensNarrativesAction(
         msg.includes('quota') ||
         msg.includes('RESOURCE_EXHAUSTED') ||
         msg.includes('rateLimitExceeded')
-      if (!isQuota) {
-        return { success: false, narratives: null, error: msg }
+      if (isQuota) {
+        console.warn(`[Gemini Audit] ✗ ${keyLabel} — cota esgotada, tentando próxima chave...`)
+      } else {
+        console.error(`[Gemini Audit] ✗ ${keyLabel} — erro: ${msg}`)
+        return { success: false, audit: null, error: msg }
       }
-      // cota esgotada: tenta a próxima chave
     }
   }
 
-  return { success: false, narratives: null, error: 'Cota esgotada em todas as chaves Gemini' }
+  console.error('[Gemini Audit] ✗ Todas as chaves esgotaram a cota.')
+  return { success: false, audit: null, error: 'Cota esgotada em todas as chaves Gemini' }
 }

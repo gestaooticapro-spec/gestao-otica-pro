@@ -166,16 +166,6 @@ export default function VendaActions({
             {isVendaFechada && (
                 <div className="flex gap-3 items-center">
 
-                    {venda.status === 'Fechada' ? (
-                        <div className="flex items-center gap-2 text-emerald-400 bg-emerald-500/10 px-3 h-9 rounded-lg text-sm font-bold border border-emerald-500/20 cursor-default uppercase tracking-wide">
-                            <CheckCircle2 className="h-4 w-4" /> Finalizada
-                        </div>
-                    ) : venda.status === 'Cancelada' ? (
-                        <div className="flex items-center gap-2 text-red-400 bg-red-500/10 px-3 h-9 rounded-lg text-sm font-bold border border-red-500/20 cursor-default uppercase tracking-wide">
-                            <X className="h-4 w-4" /> Cancelada
-                        </div>
-                    ) : null}
-
                     {canReopen && (
                         <button
                             type="button"
@@ -189,14 +179,16 @@ export default function VendaActions({
                         </button>
                     )}
 
-                    <button
-                        type="button"
-                        onClick={() => setIsReturnModalOpen(true)}
-                        className="flex items-center gap-2 px-4 h-9 text-sm rounded-lg bg-red-500/10 border border-red-500/50 text-red-500 hover:bg-red-500/20 font-bold transition-colors uppercase tracking-wide"
-                    >
-                        <RefreshCcw className="h-4 w-4" />
-                        <span>Devolução</span>
-                    </button>
+                    {venda.status === 'Fechada' && (
+                        <button
+                            type="button"
+                            onClick={() => setIsReturnModalOpen(true)}
+                            className="flex items-center gap-2 px-4 h-9 text-sm rounded-lg bg-red-500/10 border border-red-500/50 text-red-500 hover:bg-red-500/20 font-bold transition-colors uppercase tracking-wide"
+                        >
+                            <RefreshCcw className="h-4 w-4" />
+                            <span>Devolução</span>
+                        </button>
+                    )}
                 </div>
             )}
 
