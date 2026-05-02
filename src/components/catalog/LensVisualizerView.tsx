@@ -492,6 +492,7 @@ export default function LensVisualizerView({
   const rightCanvasRef    = useRef<HTMLCanvasElement>(null)
   const avatarCanvasRef   = useRef<HTMLCanvasElement>(null)
   const compareCanvasRef  = useRef<HTMLCanvasElement>(null)
+  const lensTouchAreaRef  = useRef<HTMLDivElement>(null)
   const compareDropdownRef = useRef<HTMLDivElement>(null)
   const imgRefs           = useRef<(HTMLImageElement | null)[]>([null, null, null, null])
 
@@ -500,6 +501,7 @@ export default function LensVisualizerView({
   const traceZoneRef   = useRef<BlurZone | null>(null)
   const rafRef         = useRef<number | null>(null)
   const leftFxRef      = useRef<LensRenderFx>(getEyetraceFx(0, 0))
+  const eyetraceTouchActiveRef = useRef(false)
 
   // Avatar
   const avatarRotRef       = useRef({ x: 0, y: 0 })
@@ -768,6 +770,71 @@ export default function LensVisualizerView({
     startZoneAnimation(zone)
   }, [geometry, startZoneAnimation])
 
+  useEffect(() => {
+    if (mode !== 'eyetrace') return
+
+    const area = lensTouchAreaRef.current
+    if (!area) return
+
+    const stopViewportGesture = (event: TouchEvent) => {
+      if (event.cancelable) event.preventDefault()
+    }
+
+    const handleNativeTouchStart = (event: TouchEvent) => {
+      eyetraceTouchActiveRef.current = true
+      stopViewportGesture(event)
+      const touch = event.touches[0]
+      if (touch) handlePointerMove(touch.clientX, touch.clientY)
+    }
+
+    const handleNativeTouchMove = (event: TouchEvent) => {
+      if (!eyetraceTouchActiveRef.current) return
+      stopViewportGesture(event)
+      const touch = event.touches[0]
+      if (touch) handlePointerMove(touch.clientX, touch.clientY)
+    }
+
+    const handleNativeTouchEnd = (event: TouchEvent) => {
+      if (!eyetraceTouchActiveRef.current) return
+      stopViewportGesture(event)
+      eyetraceTouchActiveRef.current = false
+      const touch = event.changedTouches[0]
+      if (touch) handleZoneClick(touch.clientX, touch.clientY)
+    }
+
+    const handleNativeTouchCancel = (event: TouchEvent) => {
+      if (!eyetraceTouchActiveRef.current) return
+      stopViewportGesture(event)
+      eyetraceTouchActiveRef.current = false
+      handlePointerLeave()
+    }
+
+    const previousHtmlOverscroll = document.documentElement.style.overscrollBehavior
+    const previousBodyOverscroll = document.body.style.overscrollBehavior
+    const previousBodyOverflow = document.body.style.overflow
+    document.documentElement.style.overscrollBehavior = 'none'
+    document.body.style.overscrollBehavior = 'none'
+    document.body.style.overflow = 'hidden'
+
+    const startOptions: AddEventListenerOptions = { passive: false }
+    const documentOptions: AddEventListenerOptions = { passive: false, capture: true }
+    area.addEventListener('touchstart', handleNativeTouchStart, startOptions)
+    document.addEventListener('touchmove', handleNativeTouchMove, documentOptions)
+    document.addEventListener('touchend', handleNativeTouchEnd, documentOptions)
+    document.addEventListener('touchcancel', handleNativeTouchCancel, documentOptions)
+
+    return () => {
+      eyetraceTouchActiveRef.current = false
+      document.documentElement.style.overscrollBehavior = previousHtmlOverscroll
+      document.body.style.overscrollBehavior = previousBodyOverscroll
+      document.body.style.overflow = previousBodyOverflow
+      area.removeEventListener('touchstart', handleNativeTouchStart, startOptions)
+      document.removeEventListener('touchmove', handleNativeTouchMove, documentOptions)
+      document.removeEventListener('touchend', handleNativeTouchEnd, documentOptions)
+      document.removeEventListener('touchcancel', handleNativeTouchCancel, documentOptions)
+    }
+  }, [mode, handlePointerMove, handlePointerLeave, handleZoneClick])
+
   const hasPins = !!geometry.pins && (
     geometry.pins.distance.length >= 3 ||
     geometry.pins.corridor.length >= 3 ||
@@ -880,6 +947,7 @@ export default function LensVisualizerView({
             <p className="text-xs uppercase tracking-widest text-slate-400 mt-0.5">{designLabel}</p>
           </div>
           <div
+            ref={lensTouchAreaRef}
             className="relative flex-1 flex items-center justify-center overflow-hidden"
             style={mode === 'eyetrace' ? { touchAction: 'none', overscrollBehavior: 'contain' } : undefined}
           >
@@ -979,4 +1047,3 @@ export default function LensVisualizerView({
     </div>
   )
 }
-
