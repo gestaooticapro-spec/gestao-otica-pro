@@ -68,11 +68,11 @@ const maskPhone = (value: string) => {
         ).substring(0, 16);
     }
 
-    // BR: Normalize legacy numbers
+    // BR: Normalize legacy numbers (only when no leading 9 already after DDD)
     // 8 digits (no DDD, no leading 9) -> prepend 44 + 9
-    if (digits.length === 8) digits = '449' + digits;
+    if (digits.length === 8 && digits[2] !== '9') digits = '449' + digits;
     // 10 digits (has DDD but no leading 9) -> insert 9 after DDD
-    else if (digits.length === 10) digits = digits.slice(0, 2) + '9' + digits.slice(2);
+    else if (digits.length === 10 && digits[2] !== '9') digits = digits.slice(0, 2) + '9' + digits.slice(2);
 
     // Brazilian format: (XX) XXXXX-XXXX
     return digits

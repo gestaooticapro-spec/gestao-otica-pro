@@ -474,9 +474,9 @@ function getEyetraceFx(nx: number, ny: number): LensRenderFx {
 // Component
 // ---------------------------------------------------------------------------
 export default function LensVisualizerView({
-  geometry, backPath, allGeometries,
+  geometry, backPath, allGeometries, storeId,
 }: {
-  geometry: LensGeometry; backPath: string; allGeometries: LensGeometry[]
+  geometry: LensGeometry; backPath: string; allGeometries: LensGeometry[]; storeId: number
 }) {
   const router = useRouter()
   const [activePhoto, setActivePhoto] = useState(0)
@@ -850,6 +850,13 @@ export default function LensVisualizerView({
   const compareDesignLabel = compareGeometry ? getDesignLabel(compareGeometry) : ''
 
   const otherGeometries = allGeometries.filter((g) => g.id !== geometry.id)
+  const currentGeometryIndex = Math.max(0, allGeometries.findIndex((g) => g.id === geometry.id))
+  const canNavigateGeometries = allGeometries.length > 1
+  const previousGeometry = allGeometries[(currentGeometryIndex - 1 + allGeometries.length) % allGeometries.length]
+  const nextGeometry = allGeometries[(currentGeometryIndex + 1) % allGeometries.length]
+  const navigateToGeometry = useCallback((familyName: string) => {
+    router.push(`/dashboard/loja/${storeId}/lentes/visualizar/${encodeURIComponent(familyName)}`)
+  }, [router, storeId])
 
 
   return (
@@ -937,13 +944,46 @@ export default function LensVisualizerView({
       </div>
 
       {/* ── Canvases ─────────────────────────────────────────────────────────── */}
-      <div className={`flex-1 min-h-0 flex overflow-hidden ${compareMode || mode === 'eyetrace' ? 'flex-row' : 'items-center justify-center'}`}>
+      <div className={`relative flex-1 min-h-0 flex overflow-hidden ${compareMode || mode === 'eyetrace' ? 'flex-row' : 'items-center justify-center'}`}>
+        {canNavigateGeometries && (
+          <>
+            <button
+              type="button"
+              aria-label="Lente anterior"
+              onClick={() => navigateToGeometry(previousGeometry.family_name)}
+              className="absolute left-4 bottom-4 z-30 flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-slate-900/85 text-2xl font-black text-slate-300 shadow-2xl backdrop-blur-md transition hover:border-indigo-400/50 hover:bg-indigo-500/20 hover:text-white"
+            >
+              ‹
+            </button>
+            <button
+              type="button"
+              aria-label="Próxima lente"
+              onClick={() => navigateToGeometry(nextGeometry.family_name)}
+              className="absolute right-4 bottom-4 z-30 flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-slate-900/85 text-2xl font-black text-slate-300 shadow-2xl backdrop-blur-md transition hover:border-indigo-400/50 hover:bg-indigo-500/20 hover:text-white"
+            >
+              ›
+            </button>
+          </>
+        )}
 
         {/* Left: lens (always) */}
         <div className={`flex flex-col overflow-hidden ${compareMode || mode === 'eyetrace' ? 'flex-1 border-r border-white/10' : 'flex-1'}`}>
           {/* Lens name — outside and above the canvas */}
-          <div className="shrink-0 text-center pt-4 pb-2 pointer-events-none">
-            <p className={`font-black text-white leading-tight ${compareMode ? 'text-xl' : 'text-3xl'}`}>{geometry.family_name}</p>
+          <div className="shrink-0 text-center pt-4 pb-2">
+            <select
+              aria-label="Escolher lente"
+              value={geometry.family_name}
+              onChange={(event) => navigateToGeometry(event.target.value)}
+              className={`max-w-[min(92vw,620px)] appearance-none rounded-xl border border-white/10 bg-slate-900/70 px-5 py-2 text-center font-black leading-tight text-white outline-none transition hover:border-indigo-400/40 focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/20 ${
+                compareMode ? 'text-xl' : 'text-3xl'
+              }`}
+            >
+              {allGeometries.map((g) => (
+                <option key={g.id} value={g.family_name} className="bg-slate-900 text-white">
+                  {g.family_name}
+                </option>
+              ))}
+            </select>
             <p className="text-xs uppercase tracking-widest text-slate-400 mt-0.5">{designLabel}</p>
           </div>
           <div

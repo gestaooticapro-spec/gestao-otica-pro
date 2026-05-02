@@ -3,12 +3,19 @@ import { createClient } from '@/lib/supabase/server'
 import { getAllLensGeometries } from '@/lib/actions/lens-geometry.actions'
 import LensVisualizerView from '@/components/catalog/LensVisualizerView'
 
-export default async function LensVisualizerPage({
+function hasConfiguredPins(geometry: Awaited<ReturnType<typeof getAllLensGeometries>>[number]) {
+  return !!geometry.pins && (
+    geometry.pins.distance.length >= 3 ||
+    geometry.pins.corridor.length >= 3 ||
+    geometry.pins.near.length >= 3
+  )
+}
+
+export default async function OpenLensVisualizerPage({
   params,
 }: {
-  params: { storeId: string; familySlug: string }
+  params: { storeId: string }
 }) {
-  const familyName = decodeURIComponent(params.familySlug)
   const storeId = parseInt(params.storeId, 10)
 
   const supabase = createClient()
@@ -18,7 +25,7 @@ export default async function LensVisualizerPage({
   if (!user) return redirect('/login')
 
   const geometries = await getAllLensGeometries()
-  const geometry = geometries.find((g) => g.family_name === familyName)
+  const geometry = geometries.find(hasConfiguredPins) ?? geometries[0]
 
   if (!geometry) return redirect(`/dashboard/loja/${storeId}`)
 

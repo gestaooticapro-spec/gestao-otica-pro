@@ -37,9 +37,9 @@ const maskPhone = (value: string) => {
             .replace(/^(595 \d{3} \d{3})(\d)/, '$1 $2')
         ).substring(0, 16)
     }
-    // BR: Normalize legacy numbers
-    if (digits.length === 8) digits = '449' + digits
-    else if (digits.length === 10) digits = digits.slice(0, 2) + '9' + digits.slice(2)
+    // BR: Normalize legacy numbers (only when no leading 9 already after DDD)
+    if (digits.length === 8 && digits[2] !== '9') digits = '449' + digits
+    else if (digits.length === 10 && digits[2] !== '9') digits = digits.slice(0, 2) + '9' + digits.slice(2)
     return digits
         .replace(/^(\d{2})(\d)/g, '($1) $2')
         .replace(/(\d{5})(\d)/, '$1-$2')
