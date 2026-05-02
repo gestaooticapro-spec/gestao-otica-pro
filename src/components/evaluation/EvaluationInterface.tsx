@@ -1341,7 +1341,7 @@ export default function EvaluationInterface({
     if (!storeId) return
     await updateEvaluationOutcomeStatus(evaluationId, storeId, 'cliente_pesquisa')
     // Recarrega o mural removendo o card encerrado
-    setRecentEvaluations((prev) => prev.filter((ev) => ev.id !== evaluationId))
+    setAllRecentEvaluations((prev) => prev.filter((ev) => ev.id !== evaluationId))
   }
 
   const handleSelectCustomer = (customer: CustomerSearchResult) => {
