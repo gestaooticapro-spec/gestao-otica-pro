@@ -2,10 +2,11 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
     Printer, Trash2, Plus, Minus, Package, Tag,
     AlertTriangle, ArrowRight, Sparkles, X, Settings2,
-    FileDown, RotateCcw, ChevronDown, ChevronUp
+    FileDown, RotateCcw, ChevronDown, ChevronUp, ArrowLeft
 } from 'lucide-react'
 import { LabelQueueItem, addToLabelQueue, removeFromLabelQueue, updateLabelQuantity, clearLabelQueue } from '@/lib/actions/labels.actions'
 import { LABEL_TEMPLATES } from '@/lib/label-generator'
@@ -122,6 +123,13 @@ export default function EtiquetasInterface({ storeId, initialQueue, suggestions 
                 <div className="bg-gradient-to-br from-teal-500/10 to-cyan-600/10 p-4 border-b border-white/5 flex-shrink-0">
                     <div className="flex items-center justify-between mb-3">
                         <h2 className="font-black text-sm flex items-center gap-2 uppercase tracking-wide text-teal-400">
+                            <Link
+                                href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                                className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-all active:scale-95"
+                                title="Voltar para o Painel"
+                            >
+                                <ArrowLeft className="h-4 w-4" />
+                            </Link>
                             <Tag className="h-4 w-4" /> Fila de Etiquetas
                         </h2>
                         <div className="flex gap-1.5">

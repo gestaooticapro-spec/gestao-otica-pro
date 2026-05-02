@@ -68,7 +68,7 @@ export default function VendaInterface({
             {/* 1. CABEÇALHO SUPERIOR */}
             <div className="bg-white border-b border-gray-200 px-4 py-1.5 flex items-center shrink-0 shadow-sm z-30 h-10">
                 <div className="flex items-center gap-2">
-                    <button onClick={() => router.back()} className="p-1 hover:bg-gray-100 rounded-full text-gray-500 transition-colors" title="Voltar">
+                    <button onClick={() => router.push(`/dashboard/loja/${venda.store_id}/vendas`)} className="p-1 hover:bg-gray-100 rounded-full text-gray-500 transition-colors" title="Voltar para lista de vendas">
                         <ArrowLeft className="h-4 w-4" />
                     </button>
                     <div className="h-5 w-px bg-gray-300 mx-1"></div>

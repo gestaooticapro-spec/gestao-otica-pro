@@ -35,7 +35,7 @@ export default function BuscaUniversal({ storeId }: { storeId: number }) {
         <div className="w-full space-y-6 pb-10">
 
             {/* 1. CARD DE BUSCA (HERO SECTION) */}
-            <div className="bg-gradient-to-r from-indigo-600/60 to-sky-700/60 p-6 rounded-3xl shadow-xl shadow-indigo-500/10 border border-white/10 relative overflow-hidden backdrop-blur-xl">
+            <div className="bg-white/5 backdrop-blur-xl p-6 rounded-3xl shadow-2xl shadow-black/20 border border-white/10 relative overflow-hidden">
 
                 <div className="relative z-10 max-w-3xl mx-auto text-center">
                     <h2 className="text-xl font-black text-white mb-4 tracking-tight drop-shadow-sm">
@@ -43,24 +43,24 @@ export default function BuscaUniversal({ storeId }: { storeId: number }) {
                     </h2>
 
                     <div className="relative group">
-                        <div className="absolute -inset-1 bg-gradient-to-r from-indigo-400/30 to-sky-400/30 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-200"></div>
+                        <div className="absolute -inset-1 bg-white/5 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-200"></div>
                         <div className="relative">
                             <input
                                 type="text"
                                 value={termo}
                                 onChange={handleSearch}
                                 placeholder="Digite nome, CPF, código de barras ou número da OS..."
-                                className="w-full h-12 pl-12 pr-14 rounded-xl border border-white/20 bg-black/40 backdrop-blur-md shadow-2xl text-lg font-bold text-white placeholder-white/40 focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-400/50 transition-all outline-none"
+                                className="w-full h-12 pl-12 pr-14 rounded-xl border border-white/10 bg-black/40 backdrop-blur-md shadow-inner text-lg font-bold text-white placeholder-slate-500 focus:ring-2 focus:ring-slate-400/30 focus:border-slate-400/30 transition-all outline-none"
                                 autoFocus
                             />
-                            <div className="absolute left-4 top-3 text-white/50">
+                            <div className="absolute left-4 top-3 text-slate-400">
                                 <Search className="h-6 w-6" />
                             </div>
                             <div className="absolute right-4 top-3">
                                 {isSearching ? (
-                                    <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />
+                                    <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
                                 ) : (
-                                    <span className="bg-white/10 text-white/50 text-[10px] font-black px-2 py-1 rounded border border-white/10">AUTO</span>
+                                    <span className="bg-white/5 text-slate-400 text-[10px] font-black px-2 py-1 rounded border border-white/10">AUTO</span>
                                 )}
                             </div>
                         </div>

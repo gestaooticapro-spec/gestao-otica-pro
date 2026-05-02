@@ -6,6 +6,7 @@
 
 import { useState, useTransition, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
     searchCustomersByName,
     createNewVenda,
@@ -18,7 +19,7 @@ import {
     Loader2, Search, X, PlusCircle, UserCircle,
     History, ChevronDown, ChevronUp, Eye, Wallet,
     AlertTriangle, CheckCircle2, User, Briefcase,
-    ShoppingCart, UserPlus, Ban
+    ShoppingCart, UserPlus, Ban, ArrowLeft
 } from 'lucide-react'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { Database } from '@/lib/database.types'
@@ -285,6 +286,13 @@ export default function AtendimentoPage() {
             {/* Header Glassmorphic Superior */}
             <div className="relative z-30 bg-white/5 backdrop-blur-xl border-b border-white/10 px-6 py-3 flex items-center shrink-0 shadow-2xl h-14">
                 <div className="flex items-center gap-3">
+                    <Link
+                        href={`/dashboard/loja/${storeId}/vendas`}
+                        className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
+                        title="Voltar para Vendas"
+                    >
+                        <ArrowLeft className="h-5 w-5" />
+                    </Link>
                     <div className="p-2 bg-cyan-500/20 text-cyan-400 rounded-xl border border-white/10 shadow-[0_0_15px_rgba(34,211,238,0.2)]">
                         <ShoppingCart className="h-5 w-5" />
                     </div>

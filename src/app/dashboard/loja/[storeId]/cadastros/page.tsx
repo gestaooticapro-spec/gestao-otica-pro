@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import {
   Search, Plus, Save, Trash2, Loader2, UploadCloud,
   Glasses, Eye, Sparkles, Stethoscope, ShoppingBag, ScanBarcode,
-  ArrowRightLeft, Lock, Truck, ChevronRight, Grid3X3, Sun, Printer
+  ArrowRightLeft, Lock, Truck, ChevronRight, Grid3X3, Sun, Printer, ArrowLeft
 } from 'lucide-react';
 import {
   fetchCatalogItems,
@@ -235,6 +235,13 @@ export default function CatalogPage() {
           <div className="bg-gradient-to-br from-indigo-900/60 to-blue-900/40 p-4 flex flex-col gap-3 shadow-md z-20 border-b border-white/5 backdrop-blur-md">
             <div className="flex justify-between items-center text-white">
               <h2 className="font-black text-sm flex items-center gap-2 uppercase tracking-wide text-indigo-300">
+                <Link
+                  href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                  className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-all active:scale-95"
+                  title="Voltar para o Painel"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Link>
                 <ScanBarcode className="h-4 w-4" /> Catálogo
               </h2>
               <div className="flex gap-2">

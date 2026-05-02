@@ -497,6 +497,14 @@ function uniqueValues<T>(values: T[]): T[] {
 function getDesiredClinicalCategories(input: RecommendationCaseInput): ClinicalCategory[] {
   const rotinaTags = input.rotina_tags || []
   const desiredBenefits = input.desired_benefits || []
+  const objetivoTags = input.objetivo_tags || []
+
+  // Explicit occupational request from UI (e.g. "óculos para trabalho/escritório")
+  if (objetivoTags.includes('ocupacional')) {
+    return input.adicao != null
+      ? ['ocupacional', 'multifocal', 'bifocal']
+      : ['ocupacional', 'visao_simples']
+  }
 
   if (input.adicao != null) {
     return ['multifocal', 'bifocal']
@@ -991,6 +999,9 @@ function scoreOffer(params: {
     if (['multifocal', 'bifocal'].includes(clinicalEvaluation.effectiveCategory)) {
       score += 3
       reasons.push('beneficio:adicao_presente')
+    } else if (clinicalEvaluation.effectiveCategory === 'ocupacional') {
+      score += 1
+      reasons.push('beneficio:adicao_ocupacional')
     } else {
       score -= 4
       reasons.push('opcao:adicao_incompativel')
@@ -1011,6 +1022,7 @@ function scoreOffer(params: {
     }
   }
 
+  const PENALIZABLE_FEATURES = new Set(['blue_uv', 'transitions'])
   for (const preferredFeature of input.preferred_features || []) {
     const matchesFulfillment =
       (preferredFeature === 'sob_demanda' && fulfillmentMode === 'sob_demanda') ||
@@ -1018,6 +1030,9 @@ function scoreOffer(params: {
     if (offerFeatures[preferredFeature] === true || matchesFulfillment) {
       score += 3
       reasons.push(`feature:${preferredFeature}`)
+    } else if (PENALIZABLE_FEATURES.has(preferredFeature)) {
+      score -= 2
+      reasons.push(`feature:ausente_${preferredFeature}`)
     }
   }
 
@@ -1060,15 +1075,30 @@ function scoreOffer(params: {
   }
 
   if (indexValue != null) {
-    if (prescriptionStrength < 2 && indexValue >= 1.67) {
-      score -= 4
-      reasons.push('material:indice_alto_pouco_ganho')
-    } else if (prescriptionStrength < 3 && indexValue >= 1.67) {
-      score -= 2.5
-      reasons.push('material:indice_alto_pouco_ganho')
-    } else if (prescriptionStrength < 4 && indexValue >= 1.67) {
-      score -= 0.5
-      reasons.push('material:indice_alto_pouco_ganho')
+    if (prescriptionStrength < 2) {
+      if (indexValue >= 1.74) {
+        score -= 8
+        reasons.push('material:indice_alto_pouco_ganho')
+      } else if (indexValue >= 1.67) {
+        score -= 4
+        reasons.push('material:indice_alto_pouco_ganho')
+      }
+    } else if (prescriptionStrength < 3) {
+      if (indexValue >= 1.74) {
+        score -= 5
+        reasons.push('material:indice_alto_pouco_ganho')
+      } else if (indexValue >= 1.67) {
+        score -= 2.5
+        reasons.push('material:indice_alto_pouco_ganho')
+      }
+    } else if (prescriptionStrength < 4) {
+      if (indexValue >= 1.74) {
+        score -= 2
+        reasons.push('material:indice_alto_pouco_ganho')
+      } else if (indexValue >= 1.67) {
+        score -= 0.5
+        reasons.push('material:indice_alto_pouco_ganho')
+      }
     }
 
     if (prescriptionStrength >= 4 && indexValue <= 1.56) {
@@ -1499,6 +1529,20 @@ function rankRecommendationOptions(params: {
           return offerFeatures[feature] === true
         })
         if (isRejected) return null
+      }
+
+      // Hard filter: solar/polarized lenses are secondary products (sun glasses with Rx),
+      // never appropriate as primary daily lens recommendations
+      {
+        const offerDescriptorForSolar = withoutAccents(
+          `${family.nome} ${offer.raw_label} ${offer.canonical_label || ''}`.toLowerCase()
+        )
+        const offerFeaturesForSolar = normalizeFeatureFlags(offer.features)
+        const isSolarOffer =
+          offerFeaturesForSolar.solar === true ||
+          offerFeaturesForSolar.polarizado === true ||
+          /\b(solar|polarizado)\b/.test(offerDescriptorForSolar)
+        if (isSolarOffer) return null
       }
 
       return {

@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { getFechamentoData } from "@/lib/actions/fiscal-db.actions";
+import { getStoreProfile } from "@/lib/actions/store.actions";
 import {
     Download, Loader2, FileArchive, FileText,
     CheckCircle, XCircle, ArrowLeft
@@ -42,6 +43,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
     const [loading, setLoading] = useState(false);
     const [summary, setSummary] = useState<FiscalSummary | null>(null);
     const [exporting, setExporting] = useState(false);
+    const [storeInfo, setStoreInfo] = useState<{ name: string; razao_social: string | null; cnpj: string | null } | null>(null);
 
     const fetchXmlText = useCallback(async (xmlUrl?: string | null) => {
         if (!xmlUrl) return null;
@@ -58,8 +60,14 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
         setLoading(true);
         setSummary(null);
         try {
-            const all = await getFechamentoData(storeId, month, year);
+            const [all, profile] = await Promise.all([
+                getFechamentoData(storeId, month, year),
+                getStoreProfile(storeId),
+            ]);
             if (!all) throw new Error("Loja não encontrada.");
+            if (profile) {
+                setStoreInfo({ name: profile.name, razao_social: profile.razao_social ?? null, cnpj: profile.cnpj ?? null });
+            }
 
             const autorizadas = all.filter(d => d.status === "authorized");
             const canceladas = all.filter(d => d.status === "cancelled");
@@ -99,7 +107,9 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
             const csvRows = [
                 ["RELATÓRIO DE FECHAMENTO MENSAL - NFC-e"],
                 ["Período", `${MONTHS[month]} / ${year}`],
-                ["Loja ID", storeId.toString()],
+                ["Nome Fantasia", storeInfo?.name ?? storeId.toString()],
+                ["Razão Social", storeInfo?.razao_social ?? ""],
+                ["CNPJ", storeInfo?.cnpj ?? ""],
                 [""],
                 ["RESUMO FISCAL"],
                 ["NFC-e Autorizadas", summary.autorizadas.toString()],
@@ -114,12 +124,14 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
             doc.setFontSize(16);
             doc.text("Fechamento Mensal — NFC-e", 14, 20);
             doc.setFontSize(10);
-            doc.text(`Período: ${MONTHS[month]} / ${year}`, 14, 28);
-            doc.text(`Loja ID: ${storeId}`, 14, 34);
-            doc.text(`Gerado em: ${new Date().toLocaleDateString("pt-BR")} às ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`, 14, 40);
+            doc.text(`Período: ${MONTHS[month]} / ${year}`, 14, 30);
+            if (storeInfo?.name) doc.text(`Nome Fantasia: ${storeInfo.name}`, 14, 37);
+            if (storeInfo?.razao_social) doc.text(`Razão Social: ${storeInfo.razao_social}`, 14, 43);
+            if (storeInfo?.cnpj) doc.text(`CNPJ: ${storeInfo.cnpj}`, 14, 49);
+            doc.text(`Gerado em: ${new Date().toLocaleDateString("pt-BR")} às ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`, 14, 56);
 
             autoTable(doc, {
-                startY: 50,
+                startY: 66,
                 head: [["Movimentação Fiscal (NFC-e)", "Qtd / Valor"]],
                 body: [
                     ["NFC-e Autorizadas", `${summary.autorizadas} nota(s)`],

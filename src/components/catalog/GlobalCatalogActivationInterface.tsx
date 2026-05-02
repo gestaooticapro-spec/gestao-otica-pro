@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { toast } from 'sonner'
 import {
   CheckCircle2,
@@ -12,6 +13,7 @@ import {
   ShieldCheck,
   Sparkles,
   Tag,
+  ArrowLeft,
 } from 'lucide-react'
 import {
   activateGlobalCatalogForStore,
@@ -234,9 +236,18 @@ export default function GlobalCatalogActivationInterface({
         <div className="rounded-[2rem] border border-white/10 bg-gradient-to-br from-slate-900 via-slate-950 to-cyan-950/50 p-7 shadow-[0_25px_80px_rgba(2,6,23,0.45)]">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
-              <p className="text-[11px] font-black uppercase tracking-[0.3em] text-cyan-300/80">
-                Catálogo Global
-              </p>
+              <div className="flex items-center gap-3">
+                <Link
+                  href={`/dashboard/loja/${overview.storeId}`}
+                  className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
+                  title="Voltar para o Painel"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Link>
+                <p className="text-[11px] font-black uppercase tracking-[0.3em] text-cyan-300/80">
+                  Catálogo Global
+                </p>
+              </div>
               <h1 className="mt-2 text-4xl font-black tracking-tight text-white">
                 Ative tabelas de laboratório nesta loja
               </h1>

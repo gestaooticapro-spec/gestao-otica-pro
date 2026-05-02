@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { ArrowLeft, Loader2, Megaphone, Calendar, PhoneCall, CheckCircle, TrendingUp, Users } from 'lucide-react';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { getCobrancaMetrics } from '@/lib/actions/reports.actions';
@@ -55,13 +56,13 @@ export default function CobrancaReportPage() {
 
             {/* Cabeçalho */}
             <div className="mb-8 max-w-7xl mx-auto w-full animate-in slide-in-from-top-5 duration-700">
-                <button
-                    onClick={() => router.back()}
-                    className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors mb-6 text-sm font-bold uppercase tracking-wider group"
+                <Link
+                    href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                    className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95 w-fit"
+                    title="Voltar para o Painel"
                 >
-                    <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-                    Voltar
-                </button>
+                    <ArrowLeft className="h-5 w-5" />
+                </Link>
 
                 <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                     <div className="flex items-center gap-4">

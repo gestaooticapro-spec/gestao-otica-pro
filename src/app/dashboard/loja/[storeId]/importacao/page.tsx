@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useRef, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { UploadCloud, FileText, CheckCircle, AlertTriangle, Loader2, Save, ArrowLeft, Package, Search, Link as LinkIcon, Unlink, AlertCircle, X, Check } from 'lucide-react'
 import { parseNfeAndPreview, saveImportedData, type XmlPreviewData } from '@/lib/actions/xml.actions'
 import { ProductSearchCombobox } from '@/components/importacao/ProductSearchCombobox'
@@ -168,7 +169,14 @@ export default function ImportacaoPage() {
         <div className="p-6 max-w-7xl mx-auto h-[calc(100vh-64px)] flex flex-col overflow-hidden">
 
             {/* Header */}
-            <div className="mb-6 flex justify-between items-center flex-shrink-0">
+            <div className="mb-6 flex items-center gap-4 flex-shrink-0">
+                <Link
+                    href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                    className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
+                    title="Voltar para o Painel"
+                >
+                    <ArrowLeft className="h-5 w-5" />
+                </Link>
                 <div>
                     <h1 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
                         <FileText className="h-6 w-6 text-indigo-400" />
@@ -176,12 +184,6 @@ export default function ImportacaoPage() {
                     </h1>
                     <p className="text-sm text-slate-400">Cadastre produtos e estoque automaticamente.</p>
                 </div>
-                <button
-                    onClick={() => router.back()}
-                    className="text-sm text-slate-300 hover:text-white flex items-center gap-1 px-3 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 backdrop-blur-md transition-colors"
-                >
-                    <ArrowLeft className="h-4 w-4" /> Voltar
-                </button>
             </div>
 
             {/* Messages */}

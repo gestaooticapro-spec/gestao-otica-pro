@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Building2, Search, Layers, Power, X } from 'lucide-react'
+import { Building2, Search, Layers, Power, X, ArrowLeft } from 'lucide-react'
 import {
   activateGlobalCatalogForStore,
   deactivateGlobalCatalogForStore,
@@ -104,6 +104,14 @@ export default function PriceTableHeader({
         <div className="flex flex-wrap items-stretch gap-3">
           {/* Tabs — metade esquerda */}
           <div className="flex flex-1 items-end gap-1.5 border-b border-white/10 pb-0">
+            {/* Botão Voltar */}
+            <Link
+              href={`/dashboard/loja/${storeId}`}
+              className="relative -mb-px mr-2 inline-flex items-center justify-center rounded-t-2xl border border-transparent bg-slate-800/70 px-4 py-3 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+              title="Voltar para o Painel"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
             <Link
               href={`/dashboard/loja/${storeId}/tabela-precos?scope=laboratorio`}
               aria-current={scope === 'laboratorio' ? 'page' : undefined}

@@ -1,4 +1,5 @@
 // Caminho: src/app/dashboard/loja/[storeId]/consultas/page.tsx
+import BackButton from '@/components/ui/BackButton'
 import { getAlertasOperacionais, getAniversariantes, getVencimentosProximos } from '@/lib/actions/consultas.actions'
 import PaineisAlertas from '@/components/consultas/PaineisAlertas'
 import BuscaUniversal from '@/components/consultas/BuscaUniversal'
@@ -29,17 +30,22 @@ export default async function ConsultasPage({ params }: { params: { storeId: str
 
   return (
     <ConsultasBackground>
-      <div className="max-w-screen-2xl mx-auto h-full grid grid-cols-12 gap-8">
-
-        {/* COLUNA ESQUERDA (Busca) - Ocupa 8 colunas em telas grandes */}
-        <div className="col-span-12 lg:col-span-8 flex flex-col gap-6 h-full overflow-y-auto pr-2 custom-scrollbar">
-          <div className="mb-2 pl-1">
-            <h1 className="text-3xl font-black text-white tracking-tight drop-shadow-md">Informações Gerais</h1>
-            <p className="text-slate-400 text-sm font-bold opacity-70">Central de inteligência da loja.</p>
+      <div className="max-w-screen-2xl mx-auto h-full flex flex-col gap-6">
+        
+        {/* HEADER FIXO */}
+        <div className="flex items-center gap-4 shrink-0">
+          <BackButton title="Voltar" />
+          <div>
+            <h1 className="text-2xl font-black text-white tracking-tight drop-shadow-md">Informações Gerais</h1>
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] opacity-70">Central de inteligência da loja.</p>
           </div>
-
-          <BuscaUniversal storeId={storeId} />
         </div>
+
+        <div className="grid grid-cols-12 gap-8 flex-1 min-h-0">
+          {/* COLUNA ESQUERDA (Busca) */}
+          <div className="col-span-12 lg:col-span-8 flex flex-col gap-6 h-full overflow-y-auto pr-2 custom-scrollbar">
+            <BuscaUniversal storeId={storeId} />
+          </div>
 
         {/* COLUNA DIREITA (Alertas + Aniversariantes) - Ocupa 4 colunas */}
         <div className="col-span-12 lg:col-span-4 flex flex-col h-full overflow-y-auto custom-scrollbar pb-20 gap-6">
@@ -70,7 +76,8 @@ export default async function ConsultasPage({ params }: { params: { storeId: str
             </div>
           </div>
         </div>
-
+        {/* FIM DA GRID */}
+        </div>
       </div>
     </ConsultasBackground>
   )

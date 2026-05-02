@@ -4,12 +4,13 @@ import { useState, useEffect, useTransition } from 'react';
 import {
     Users, Plus, Save, Power, Loader2, Lock, User,
     ShieldCheck, Briefcase, Wrench, BadgeCheck, Percent, CheckCircle2,
-    Store, MapPin, Phone, QrCode, ArrowLeftToLine, AlertCircle, Sparkles
+    Store, MapPin, Phone, QrCode, ArrowLeft, AlertCircle, Sparkles
 } from 'lucide-react';
 import { getEmployees, saveEmployee, toggleEmployeeStatus } from '@/lib/actions/employee.actions';
 import { getStoreProfile, updateStoreProfile, updateStoreSettings } from '@/lib/actions/store.actions';
 import { Database } from '@/lib/database.types';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import dynamic from 'next/dynamic';
 
@@ -699,13 +700,13 @@ export default function ConfigInterface({ storeId }: { storeId: number }) {
 
             {/* Header de Abas */}
             <div className="relative z-20 bg-slate-900/60 backdrop-blur-xl border-b border-white/10 px-6 flex items-center gap-6 shadow-lg shrink-0">
-                <button
-                    type="button"
-                    onClick={() => router.back()}
-                    className="py-3 text-[10px] font-black text-slate-400 hover:text-white transition-colors flex items-center gap-1.5 mr-2 uppercase tracking-[0.2em]"
+                <Link
+                    href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                    className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
+                    title="Voltar para o Painel"
                 >
-                    <ArrowLeftToLine className="h-4 w-4" /> Voltar
-                </button>
+                    <ArrowLeft className="h-4 w-4" />
+                </Link>
 
                 <div className="w-px h-8 bg-white/10"></div>
 

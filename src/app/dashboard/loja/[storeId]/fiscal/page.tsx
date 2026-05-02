@@ -2,13 +2,13 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { getFiscalInvoices } from "@/lib/actions/fiscal-db.actions";
 import { consultarNFCe, cancelarNota } from "@/lib/actions/fiscal.actions";
 import {
     FileText, Plus, Search, Loader2, AlertCircle,
     CheckCircle, XCircle, Clock, Download, RefreshCw, Ban, MessageCircle, FileArchive, ArrowLeft, Printer
 } from "lucide-react";
-import Link from "next/link";
 
 type Invoice = {
     id: string;
@@ -217,16 +217,16 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
             {/* CABEÇALHO */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => router.back()}
-                        className="p-2 rounded-full bg-white border border-stone-200 hover:border-stone-400 text-stone-500 hover:text-stone-800 shadow-sm transition hover:scale-105"
-                        title="Voltar"
+                    <Link
+                        href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                        className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
+                        title="Voltar para o Painel"
                     >
-                        <ArrowLeft size={18} />
-                    </button>
+                        <ArrowLeft className="h-4 w-4" />
+                    </Link>
                     <div>
-                        <h1 className="text-3xl font-black text-[#1A1A1A] tracking-tight uppercase">Fiscal (NFC-e)</h1>
-                        <p className="text-stone-500 text-[10px] font-black uppercase tracking-[0.2em]">Gerencie suas notas fiscais de consumidor.</p>
+                        <h1 className="text-3xl font-black text-white tracking-tight uppercase">Fiscal (NFC-e)</h1>
+                        <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Gerencie suas notas fiscais de consumidor.</p>
                     </div>
                 </div>
 

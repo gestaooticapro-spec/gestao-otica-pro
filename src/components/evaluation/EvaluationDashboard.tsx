@@ -12,6 +12,8 @@ interface EvaluationDashboardProps {
   onSelectEvaluation: (evaluation: OpticalEvaluationListItem) => void
   onCloseEvaluation?: (evaluationId: number) => void
   isLoading: boolean
+  title?: string
+  subtitle?: string
 }
 
 export function EvaluationDashboard({
@@ -19,7 +21,9 @@ export function EvaluationDashboard({
   evaluations,
   onSelectEvaluation,
   onCloseEvaluation,
-  isLoading
+  isLoading,
+  title = 'Oportunidades em Aberto',
+  subtitle = 'Seus últimos atendimentos não finalizados',
 }: EvaluationDashboardProps) {
   const [dateFilter, setDateFilter] = useState<DateFilter>('recent')
 
@@ -83,10 +87,10 @@ export function EvaluationDashboard({
         <div>
           <h2 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
             <Activity className="h-5 w-5 text-indigo-400" />
-            Oportunidades em Aberto
+            {title}
           </h2>
           <p className="text-xs text-slate-400 mt-1 uppercase tracking-widest font-black">
-            Seus últimos atendimentos não finalizados
+            {subtitle}
           </p>
         </div>
       </div>

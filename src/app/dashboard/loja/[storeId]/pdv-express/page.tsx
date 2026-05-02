@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { getEmployees } from '@/lib/actions/employee.actions'
 import PdvExpressInterface from '@/components/vendas/PdvExpressInterface'
-import { Zap } from 'lucide-react'
+import { Zap, ArrowLeft } from 'lucide-react'
+import Link from 'next/link'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
 
 export default function PdvExpressPage({ params }: { params: { storeId: string } }) {
@@ -45,6 +46,13 @@ export default function PdvExpressPage({ params }: { params: { storeId: string }
       {/* Header */}
       <div className="relative z-10 bg-white/5 backdrop-blur-md border-b border-white/10 px-6 py-4 flex justify-between items-center flex-shrink-0">
         <div className="flex items-center gap-3">
+          <Link
+            href={`/dashboard/loja/${storeId}?menu=atendimento`}
+            className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
+            title="Voltar para o Painel"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
           <div className="p-2 bg-cyan-500/20 text-cyan-400 rounded-xl border border-cyan-500/20 shadow-[0_0_15px_rgba(34,211,238,0.2)]">
             <Zap className="h-5 w-5" />
           </div>

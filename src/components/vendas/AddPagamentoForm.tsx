@@ -10,7 +10,7 @@ import {
   addPagamento,
   type SavePagamentoResult,
 } from '@/lib/actions/vendas.actions'
-import { Loader2, DollarSign, X, AlertCircle, CheckCircle2, Wallet } from 'lucide-react'
+import { Loader2, DollarSign, X, AlertCircle, CheckCircle2, Wallet, Info } from 'lucide-react'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import { toast } from 'sonner'
 import { Database } from '@/lib/database.types'
@@ -241,6 +241,15 @@ export default function AddPagamentoForm({
         )}
 
         <div className="pt-1">
+          {isModal && !isQuitado && !disabled && (
+            <div className="bg-sky-500/10 border border-sky-500/20 text-sky-200 text-[10px] font-bold p-2.5 rounded-lg flex items-start gap-2 mb-3 shadow-inner">
+              <Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+              <p className="leading-tight">
+                Após registrar, o recibo ficará disponível no botão <span className="font-black text-white uppercase bg-white/10 px-1 rounded">Recibos</span> na barra inferior.
+              </p>
+            </div>
+          )}
+          
           {isQuitado ? (
             <div className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs rounded-lg w-full bg-white/20 text-white border border-white/30 font-bold">
               <CheckCircle2 className="h-4 w-4" />

@@ -67,13 +67,13 @@ export default function VendasListInterface({ vendas, storeId, mode, startDate, 
 
             {/* Header Glass */}
             <div className="relative z-10 bg-white/5 backdrop-blur-xl border-b border-white/10 px-6 py-3 flex items-center gap-3 flex-shrink-0 shadow-2xl h-14">
-                <button
-                    onClick={() => router.back()}
-                    className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors text-sm font-medium group"
+                <Link
+                    href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                    className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
+                    title="Voltar para o Painel"
                 >
-                    <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-                    Voltar
-                </button>
+                    <ArrowLeft className="h-5 w-5" />
+                </Link>
                 <div className="h-6 w-px bg-white/10"></div>
                 <div className="p-2 bg-blue-500/20 text-blue-400 rounded-xl border border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.2)]">
                     <ShoppingCart className="h-5 w-5" />

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState, useTransition } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   AlertTriangle,
   Bot,
@@ -23,7 +24,7 @@ import {
   Baby,
   UserRound,
   Briefcase,
-  Trash2, ShoppingCart
+  Trash2, ShoppingCart, ArrowLeft
 } from 'lucide-react'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import QuickCustomerModal from '@/components/modals/QuickCustomerModal'
@@ -45,7 +46,7 @@ import {
 } from '@/lib/actions/gemini-narratives.actions'
 import { Database } from '@/lib/database.types'
 import { EvaluationDashboard } from './EvaluationDashboard'
-import { getRecentEvaluationsForEmployee, updateEvaluationPanicReason, updateEvaluationExportedVendaId, updateEvaluationOutcomeStatus } from '@/lib/actions/evaluation.actions'
+import { getRecentEvaluationsForEmployee, getRecentEvaluationsForStore, updateEvaluationPanicReason, updateEvaluationExportedVendaId, updateEvaluationOutcomeStatus } from '@/lib/actions/evaluation.actions'
 import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/BackgroundToggle'
 import type {
   RecommendationConversationState,
@@ -190,8 +191,8 @@ const TEST_PROFILES = {
     marcaAtual: 'Nenhuma',
     tipoLenteAtual: 'visao_simples',
     usaMultifocalHoje: 'nao',
-    dificuldadeAdaptacao: 'baixa',
-    historicoTrocasRecentes: 'nenhuma',
+    dificuldadeAdaptacao: 'nao_informado',
+    historicoTrocasRecentes: 'nao_informado',
     prioridadePrincipal: 'resistencia',
     principalIncomodoAtual: 'longe',
     objetivoCompra: 'trocar_marca',
@@ -289,9 +290,9 @@ const TEST_PROFILES = {
     estiloVidaAssistirTvHoras: '1',
     marcaAtual: 'Nenhuma',
     tipoLenteAtual: 'nao_informado',
-    usaMultifocalHoje: 'nao',
+    usaMultifocalHoje: 'nao_informado',
     dificuldadeAdaptacao: 'nao_informado',
-    historicoTrocasRecentes: 'nenhuma',
+    historicoTrocasRecentes: 'nao_informado',
     prioridadePrincipal: 'equilibrio',
     principalIncomodoAtual: 'perto',
     objetivoCompra: 'primeira_multifocal',
@@ -918,23 +919,12 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>) 
     objetivoTags.push('primeira_multifocal')
   }
 
-  let budgetMode: 'economico' | 'intermediario' | 'premium' = 'intermediario'
-
-  if (form.faixaOrcamento === 'ate_800' || form.faixaOrcamento === '800_2000') {
-    budgetMode = 'economico'
-  }
-  if (form.faixaOrcamento === 'acima_5000') {
-    budgetMode = 'premium'
-  }
-
   const targetBudget = parseNullableNumber(form.budgetTarget)
-  if (targetBudget !== null) {
-    if (targetBudget <= 1500) budgetMode = 'economico'
-    if (targetBudget >= 12000) budgetMode = 'premium'
-  }
 
-  if (form.aceitaPremium === 'nao' && budgetMode === 'premium') {
-    budgetMode = 'intermediario'
+  let budgetMode: 'economico' | 'intermediario' | 'premium' = 'intermediario'
+  if (targetBudget !== null) {
+    if (targetBudget <= 2000) budgetMode = 'economico'
+    else if (targetBudget > 5000) budgetMode = 'premium'
   }
 
   if (form.prioridadePrincipal === 'economia') {
@@ -956,6 +946,11 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>) 
     objetivoTags.push('controle_miopia')
   }
 
+  if (form.objetivoCompra === 'ocupacional_escritorio') {
+    objetivoTags.push('ocupacional')
+    desiredBenefits.push('conforto_visual', 'conforto_digital')
+  }
+
   if (form.importanciaResistencia === 'alta') {
     desiredBenefits.push('resistencia')
   }
@@ -972,7 +967,7 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>) 
     desiredBenefits.push('antirreflexo', 'conforto_visual')
   }
 
-  const budgetExplicit = targetBudget !== null || form.faixaOrcamento !== 'nao_informado'
+  const budgetExplicit = targetBudget !== null
 
   return {
     idade: age,
@@ -1136,7 +1131,7 @@ export default function EvaluationInterface({
 
   const [query, setQuery] = useState('')
   const [customerResults, setCustomerResults] = useState<CustomerSearchResult[]>([])
-  const [recentEvaluations, setRecentEvaluations] = useState<OpticalEvaluationListItem[]>([])
+  const [allRecentEvaluations, setAllRecentEvaluations] = useState<OpticalEvaluationListItem[]>([])
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerSearchResult | null>(null)
   const [dependentes, setDependentes] = useState<Dependente[]>([])
@@ -1224,12 +1219,40 @@ export default function EvaluationInterface({
   useEffect(() => { // Load Dashboard
     if (authenticatedEmployee && !selectedCustomer && query.length === 0) {
       setIsLoadingDashboard(true)
-      getRecentEvaluationsForEmployee(authenticatedEmployee.id, storeId).then(list => {
-        setRecentEvaluations(list)
+      getRecentEvaluationsForStore(storeId, 30).then(all => {
+        setAllRecentEvaluations(all)
         setIsLoadingDashboard(false)
       })
     }
   }, [authenticatedEmployee, selectedCustomer, query.length, storeId])
+
+  // Auto-derive usaMultifocalHoje from tipoLenteAtual; reset adaptation fields when not applicable
+  useEffect(() => {
+    const derived =
+      form.tipoLenteAtual === 'multifocal' || form.tipoLenteAtual === 'bifocal' ? 'sim'
+      : form.tipoLenteAtual === 'nao_informado' ? 'nao_informado'
+      : 'nao'
+    const used = form.tipoLenteAtual === 'multifocal' || form.tipoLenteAtual === 'bifocal'
+    setForm(prev => {
+      const updates: Partial<ReturnType<typeof createEmptyForm>> = {}
+      if (prev.usaMultifocalHoje !== derived) updates.usaMultifocalHoje = derived
+      if (!used && prev.dificuldadeAdaptacao !== 'nao_informado') updates.dificuldadeAdaptacao = 'nao_informado'
+      if (!used && prev.historicoTrocasRecentes !== 'nao_informado') updates.historicoTrocasRecentes = 'nao_informado'
+      return Object.keys(updates).length ? { ...prev, ...updates } : prev
+    })
+  }, [form.tipoLenteAtual])
+
+  // Reset child-only fields when patient is not a child
+  useEffect(() => {
+    const age = parseNullableInteger(form.ageYears)
+    const childNow = age !== null && age <= 14
+    if (!childNow) {
+      setForm(prev => {
+        if (prev.queixaCriancaAtiva === 'nao' && prev.queixaProgressaoRapida === 'nao') return prev
+        return { ...prev, queixaCriancaAtiva: 'nao', queixaProgressaoRapida: 'nao' }
+      })
+    }
+  }, [form.ageYears])
 
   const clearSubject = () => {
     setSelectedCustomer(null)
@@ -1888,6 +1911,10 @@ export default function EvaluationInterface({
   const isIvisionMode = form.sourceSystem === 'ivision'
   const hasCatalogForAi = activeCatalogs.length > 0 || !!activeCatalog
   const aiCaseInput = inferRecommendationCaseInput(form)
+  const patientAge = aiCaseInput.idade
+  const isChild = patientAge !== null && patientAge <= 14
+  const hasAdicao = aiCaseInput.adicao !== null
+  const usedMultifocalBefore = form.tipoLenteAtual === 'multifocal' || form.tipoLenteAtual === 'bifocal'
   const canGenerateAi =
     hasCatalogForAi &&
     isSubjectChosen &&
@@ -1945,13 +1972,24 @@ export default function EvaluationInterface({
       <div className="relative z-10 flex w-full gap-4 p-4">
         <div className={`w-[360px] ${cardStyle} flex flex-col overflow-hidden`}>
           <div className="border-b border-white/10 bg-gradient-to-br from-indigo-900/50 to-slate-900/60 p-4">
-            <h1 className="flex items-center gap-2 text-lg font-black uppercase tracking-tight text-white">
-              <Sparkles className="h-5 w-5 text-indigo-300" />
-              Avaliação
-            </h1>
-            <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-300/80">
-              Pré-venda e histórico individual
-            </p>
+            <div className="flex items-center gap-3">
+              <Link
+                href={`/dashboard/loja/${storeId}?menu=atendimento`}
+                className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
+                title="Voltar para o Painel"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
+              <div>
+                <h1 className="flex items-center gap-2 text-lg font-black uppercase tracking-tight text-white">
+                  <Sparkles className="h-5 w-5 text-indigo-300" />
+                  Avaliação
+                </h1>
+                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-300/80">
+                  Pré-venda e histórico individual
+                </p>
+              </div>
+            </div>
             {authenticatedEmployee && (
               <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1" title={authenticatedEmployee.full_name}>
                 <div className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -1989,19 +2027,8 @@ export default function EvaluationInterface({
               </div>
 
               
-              {!selectedCustomer && query.length < 2 && (
-                <div className="mt-4 pt-4 border-t border-white/10 flex-1">
-                  <EvaluationDashboard
-                    employeeName={authenticatedEmployee?.full_name || ''}
-                    evaluations={recentEvaluations}
-                    onSelectEvaluation={handleSelectEvaluation}
-                    onCloseEvaluation={handleCloseEvaluation}
-                    isLoading={isLoadingDashboard}
-                  />
-                </div>
-              )}
 
-              {!selectedCustomer && (query.length >= 2 || customerResults.length > 0) && (
+{!selectedCustomer && (query.length >= 2 || customerResults.length > 0) && (
                 <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-slate-900/90 shadow-2xl">
                   <div className="max-h-64 overflow-y-auto custom-scrollbar">
                     {customerResults.length > 0 ? (
@@ -2183,19 +2210,14 @@ export default function EvaluationInterface({
 
           <div className="h-[calc(100%-81px)] overflow-y-auto p-6 custom-scrollbar">
             {!selectedCustomer ? (
-              <div className="flex min-h-[420px] items-center justify-center">
-                <div className="max-w-md text-center">
-                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-indigo-500/20 bg-indigo-500/10">
-                    <FileSearch className="h-6 w-6 text-indigo-300" />
-                  </div>
-                  <h3 className="text-sm font-black uppercase tracking-[0.2em] text-slate-200">
-                    Selecione o paciente
-                  </h3>
-                  <p className="mt-3 text-sm leading-6 text-slate-400">
-                    Escolha primeiro o titular e, se necessário, o dependente avaliado para importar ou preencher a análise.
-                  </p>
-                </div>
-              </div>
+              <EvaluationDashboard
+                employeeName={authenticatedEmployee?.full_name || ''}
+                evaluations={allRecentEvaluations}
+                onSelectEvaluation={handleSelectEvaluation}
+                isLoading={isLoadingDashboard}
+                title="Pacientes Recentes"
+                subtitle="Clique para retomar ou iniciar nova avaliação"
+              />
             ) : !isSubjectChosen ? (
               <div className="flex min-h-[420px] items-center justify-center">
                 <div className="max-w-md text-center">
@@ -2450,44 +2472,36 @@ export default function EvaluationInterface({
                         <option value="bifocal">Bifocal</option>
                       </select>
                     </div>
-                    <div className="col-span-12 md:col-span-4">
-                      <label className={labelStyle}>Usa multifocal hoje?</label>
-                      <select
-                        value={form.usaMultifocalHoje}
-                        onChange={(e) => handleFormChange('usaMultifocalHoje', e.target.value)}
-                        className={selectStyle}
-                      >
-                        <option value="nao_informado">Não informado</option>
-                        <option value="sim">Sim</option>
-                        <option value="nao">Não</option>
-                      </select>
-                    </div>
-                    <div className="col-span-12 md:col-span-4">
-                      <label className={labelStyle}>Adaptação com lentes anteriores</label>
-                      <select
-                        value={form.dificuldadeAdaptacao}
-                        onChange={(e) => handleFormChange('dificuldadeAdaptacao', e.target.value)}
-                        className={selectStyle}
-                      >
-                        <option value="nao_informado">Não informado</option>
-                        <option value="baixa">Boa adaptação</option>
-                        <option value="media">Alguma dificuldade</option>
-                        <option value="alta">Muita dificuldade</option>
-                      </select>
-                    </div>
-                    <div className="col-span-12 md:col-span-4">
-                      <label className={labelStyle}>Trocas recentes de lente</label>
-                      <select
-                        value={form.historicoTrocasRecentes}
-                        onChange={(e) => handleFormChange('historicoTrocasRecentes', e.target.value)}
-                        className={selectStyle}
-                      >
-                        <option value="nao_informado">Não informado</option>
-                        <option value="nenhuma">Nenhuma recente</option>
-                        <option value="uma">Uma troca recente</option>
-                        <option value="varias">Várias trocas / retrabalho</option>
-                      </select>
-                    </div>
+                    {usedMultifocalBefore && !isChild && (
+                      <div className="col-span-12 md:col-span-4">
+                        <label className={labelStyle}>Adaptação com lentes anteriores</label>
+                        <select
+                          value={form.dificuldadeAdaptacao}
+                          onChange={(e) => handleFormChange('dificuldadeAdaptacao', e.target.value)}
+                          className={selectStyle}
+                        >
+                          <option value="nao_informado">Não informado</option>
+                          <option value="baixa">Boa adaptação</option>
+                          <option value="media">Alguma dificuldade</option>
+                          <option value="alta">Muita dificuldade</option>
+                        </select>
+                      </div>
+                    )}
+                    {usedMultifocalBefore && !isChild && (
+                      <div className="col-span-12 md:col-span-4">
+                        <label className={labelStyle}>Trocas recentes de lente</label>
+                        <select
+                          value={form.historicoTrocasRecentes}
+                          onChange={(e) => handleFormChange('historicoTrocasRecentes', e.target.value)}
+                          className={selectStyle}
+                        >
+                          <option value="nao_informado">Não informado</option>
+                          <option value="nenhuma">Nenhuma recente</option>
+                          <option value="uma">Uma troca recente</option>
+                          <option value="mais_de_duas">Várias trocas / retrabalho</option>
+                        </select>
+                      </div>
+                    )}
 
                     {/* SUBSECTION 2: OBJETIVOS E PREFERÃŠNCIAS */}
                     <div className="col-span-12 mt-4">
@@ -2541,29 +2555,18 @@ export default function EvaluationInterface({
                         <option value="resolver_queixa">Resolver queixa específica</option>
                         <option value="economizar">Economizar</option>
                         <option value="trocar_marca">Trocar marca/laboratório</option>
+                        <option value="ocupacional_escritorio">Óculos para trabalho/escritório</option>
                       </select>
                     </div>
                     <div className="col-span-12 md:col-span-4">
-                      <label className={labelStyle}>Faixa de orçamento</label>
-                      <select
-                        value={form.faixaOrcamento}
-                        onChange={(e) => handleFormChange('faixaOrcamento', e.target.value)}
-                        className={selectStyle}
-                      >
-                        <option value="nao_informado">Não informado</option>
-                        <option value="ate_800">Até 800</option>
-                        <option value="800_2000">800 a 2.000</option>
-                        <option value="2000_5000">2.000 a 5.000</option>
-                        <option value="acima_5000">Acima de 5.000</option>
-                      </select>
-                    </div>
-                    <div className="col-span-12 md:col-span-4">
-                      <label className={labelStyle}>Orçamento alvo</label>
+                      <label className={labelStyle}>Orçamento (R$)</label>
                       <input
                         value={form.budgetTarget}
                         onChange={(e) => handleFormChange('budgetTarget', e.target.value)}
                         className={inputStyle}
-                        placeholder="Ex: até 2500"
+                        placeholder="Ex: 2500"
+                        type="number"
+                        min="0"
                       />
                     </div>
                     <div className="col-span-12 md:col-span-4">
@@ -2616,18 +2619,6 @@ export default function EvaluationInterface({
                         <option value="nao">Não</option>
                       </select>
                     </div>
-                    <div className="col-span-12 md:col-span-4">
-                      <label className={labelStyle}>Aceita opção premium?</label>
-                      <select
-                        value={form.aceitaPremium}
-                        onChange={(e) => handleFormChange('aceitaPremium', e.target.value)}
-                        className={selectStyle}
-                      >
-                        <option value="nao_informado">Não informado</option>
-                        <option value="sim">Sim</option>
-                        <option value="nao">Não</option>
-                      </select>
-                    </div>
 
                     {/* SUBSECTION 3: SINTOMAS E COMPORTAMENTOS */}
                     <div className="col-span-12 mt-4">
@@ -2668,28 +2659,32 @@ export default function EvaluationInterface({
                         <option value="sim">Sim</option>
                       </select>
                     </div>
-                    <div className="col-span-12 md:col-span-4">
-                      <label className={labelStyle}>Criança muito ativa</label>
-                      <select
-                        value={form.queixaCriancaAtiva}
-                        onChange={(e) => handleFormChange('queixaCriancaAtiva', e.target.value)}
-                        className={selectStyle}
-                      >
-                        <option value="nao">Não</option>
-                        <option value="sim">Sim</option>
-                      </select>
-                    </div>
-                    <div className="col-span-12 md:col-span-4">
-                      <label className={labelStyle}>Grau aumentando rápido</label>
-                      <select
-                        value={form.queixaProgressaoRapida}
-                        onChange={(e) => handleFormChange('queixaProgressaoRapida', e.target.value)}
-                        className={selectStyle}
-                      >
-                        <option value="nao">Não</option>
-                        <option value="sim">Sim</option>
-                      </select>
-                    </div>
+                    {isChild && (
+                      <div className="col-span-12 md:col-span-4">
+                        <label className={labelStyle}>Criança muito ativa</label>
+                        <select
+                          value={form.queixaCriancaAtiva}
+                          onChange={(e) => handleFormChange('queixaCriancaAtiva', e.target.value)}
+                          className={selectStyle}
+                        >
+                          <option value="nao">Não</option>
+                          <option value="sim">Sim</option>
+                        </select>
+                      </div>
+                    )}
+                    {isChild && (
+                      <div className="col-span-12 md:col-span-4">
+                        <label className={labelStyle}>Grau aumentando rápido</label>
+                        <select
+                          value={form.queixaProgressaoRapida}
+                          onChange={(e) => handleFormChange('queixaProgressaoRapida', e.target.value)}
+                          className={selectStyle}
+                        >
+                          <option value="nao">Não</option>
+                          <option value="sim">Sim</option>
+                        </select>
+                      </div>
+                    )}
 
                     {/* SUBSECTION 4: OBSERVAÃ‡Ã•ES ADICIONAIS */}
                     <div className="col-span-12 mt-4">

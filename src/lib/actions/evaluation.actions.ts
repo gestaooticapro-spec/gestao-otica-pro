@@ -724,14 +724,13 @@ export async function upsertOpticalEvaluation(
 export async function getRecentEvaluationsForEmployee(
   employeeId: number,
   storeId: number,
-  limit: number = 20
+  limit: number = 20,
+  onlyOpen: boolean = false
 ): Promise<OpticalEvaluationListItem[]> {
   try {
     const tableApi = createClient().from('optical_evaluations') as unknown as OpticalEvaluationsTableApi
-    
-    // Create query to fetch recent evaluations that are not converted (exported_venda_id is null)
-    // and status is not concluida, so we can resume them. Also filter by store_id and employee_id.
-    const query = createClient()
+
+    let query = createClient()
       .from('optical_evaluations')
       .select(`
         *,
@@ -740,10 +739,12 @@ export async function getRecentEvaluationsForEmployee(
       `)
       .eq('store_id', storeId)
       .eq('employee_id', employeeId)
-      .is('exported_venda_id', null)
-      .not('status', 'eq', 'concluida')
       .order('created_at', { ascending: false })
       .limit(limit)
+
+    if (onlyOpen) {
+      query = query.is('exported_venda_id', null).not('status', 'eq', 'concluida')
+    }
 
     const { data: records, error } = await query
 
@@ -766,6 +767,39 @@ export async function getRecentEvaluationsForEmployee(
     })) as OpticalEvaluationListItem[]
   } catch (error) {
     console.error('getRecentEvaluationsForEmployee: Unexpected error', error)
+    return []
+  }
+}
+
+export async function getRecentEvaluationsForStore(
+  storeId: number,
+  limit: number = 30
+): Promise<OpticalEvaluationListItem[]> {
+  try {
+    const { data: records, error } = await createAdminClient()
+      .from('optical_evaluations')
+      .select('*')
+      .eq('store_id', storeId)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+
+    if (error) {
+      console.error('getRecentEvaluationsForStore: Query error', error)
+      return []
+    }
+
+    if (!records) return []
+
+    return records.map((record: any) => ({
+      ...record,
+      evaluated_patient_name:
+        record.evaluated_name_snapshot ||
+        record.patient_name_raw || null,
+      responsible_customer_name:
+        record.responsible_name_snapshot || null,
+    })) as OpticalEvaluationListItem[]
+  } catch (error) {
+    console.error('getRecentEvaluationsForStore: Unexpected error', error)
     return []
   }
 }

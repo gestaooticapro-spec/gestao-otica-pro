@@ -563,7 +563,7 @@ Obs.: ${obsOs}`.trim();
                             </span>
                             <button
                                 type="button"
-                                onClick={() => router.push(`/dashboard/loja/${storeId}/vendas/${vendaId}`)}
+                                onClick={() => router.push(`/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`)}
                                 className="ml-2 flex items-center gap-1.5 px-3 py-1 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-lg border border-white/10 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-wider whitespace-nowrap"
                                 title="Voltar para a Venda que gerou esta OS"
                             >
@@ -832,7 +832,7 @@ Obs.: ${obsOs}`.trim();
 
                 {/* FOOTER FIXO */}
                 <div className="shrink-0 bg-white/5 backdrop-blur-xl border-t border-white/10 px-4 py-3 flex justify-end gap-3 z-20 shadow-[0_-5px_20px_rgba(0,0,0,0.2)]">
-                    <button type="button" onClick={() => router.back()} className={`${baseButtonStyle} bg-white/5 text-slate-400 hover:bg-white/10 border border-white/10`}>VOLTAR</button>
+                    <button type="button" onClick={() => router.push(`/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`)} className={`${baseButtonStyle} bg-white/5 text-slate-400 hover:bg-white/10 border border-white/10`}>VOLTAR</button>
 
                     {/* Botão de Impressão */}
                     <PrintProtocoloButton osId={currentOrder?.id} disabled={!currentOrder} />

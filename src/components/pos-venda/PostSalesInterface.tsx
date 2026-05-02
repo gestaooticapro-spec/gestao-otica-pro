@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
     PostSaleQueueItem,
     Interaction,
@@ -14,7 +15,7 @@ import {
 } from '@/lib/actions/postsales.actions'
 import {
     User, Phone, MessageCircle, Star, CheckCircle,
-    Clock, Send, Eye, Wallet, Loader2, Edit3, Check, X, HeartHandshake, Search, BarChart3
+    Clock, Send, Eye, Wallet, Loader2, Edit3, Check, X, HeartHandshake, Search, BarChart3, ArrowLeft
 } from 'lucide-react'
 import SaleDetailsModal from '@/components/modals/SaleDetailsModal'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
@@ -180,6 +181,13 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
 
             {/* Header Glass */}
             <div className="relative z-10 bg-white/5 backdrop-blur-xl border-b border-white/10 px-6 py-3 flex items-center gap-3 flex-shrink-0 shadow-2xl h-14">
+                <Link
+                    href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                    className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
+                    title="Voltar para o Painel"
+                >
+                    <ArrowLeft className="h-5 w-5" />
+                </Link>
                 <div className="p-2 bg-pink-500/20 text-pink-400 rounded-xl border border-pink-500/20 shadow-[0_0_15px_rgba(236,72,153,0.2)]">
                     <HeartHandshake className="h-5 w-5" />
                 </div>

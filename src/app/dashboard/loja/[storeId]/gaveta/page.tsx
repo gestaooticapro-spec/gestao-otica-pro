@@ -47,6 +47,13 @@ export default function GavetaPage({
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400 flex items-center gap-3 tracking-tight">
+              <Link
+                href={`/dashboard/loja/${storeId}`}
+                className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
+                title="Voltar para o Painel"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </Link>
               <Archive className="h-8 w-8 text-amber-500" />
               Gaveta de Prontos
             </h1>

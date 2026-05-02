@@ -1125,7 +1125,7 @@ ${addIf('Obs.', obsOs) || ''}
 
                 {/* 3. RODAPÉ FIXO (Pattern from VendaInterfaceExperimental) */}
                 <div className="relative z-30 bg-black/60 backdrop-blur-xl border-t border-white/10 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] shrink-0 px-4 py-3 flex justify-end gap-3">
-                    <button type="button" onClick={() => router.back()} className="px-4 py-2 text-xs font-bold rounded-lg border border-white/10 text-slate-400 hover:bg-white/5 transition-all flex items-center gap-2">VOLTAR</button>
+                    <button type="button" onClick={() => router.push(`/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`)} className="px-4 py-2 text-xs font-bold rounded-lg border border-white/10 text-slate-400 hover:bg-white/5 transition-all flex items-center gap-2">VOLTAR</button>
 
                     {/* Botão de Impressão (Matching Theme) */}
                     <button

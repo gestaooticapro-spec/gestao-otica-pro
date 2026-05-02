@@ -2,11 +2,12 @@
 
 import { useState, useTransition, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import {
     Search, AlertCircle, Calendar,
     Phone, MessageSquare, Clock, CheckCircle2,
     FileText, Wallet, Ban, ExternalLink, Trash2, Megaphone, BarChart3,
-    Loader2, Edit3, X
+    Loader2, Edit3, X, ArrowLeft
 } from 'lucide-react'
 import {
     DevedorResumo, registrarCobranca,
@@ -214,26 +215,33 @@ export default function CobrancaInterface({
     const formatMoney = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
     const totalAtrasadoLista = filteredCustomers.reduce((acc, curr) => acc + curr.total_atrasado, 0)
-
+ 
     const handleTabChange = (tab: 'cobrar' | 'ja_cobrados') => {
         setActiveTab(tab)
         setSelectedCustomer(null)
         // Usa router.replace para evitar reload total da página (piscada)
         router.replace(`?filtro=${tab}`, { scroll: false })
     }
-
+ 
     return (
         <div className="relative flex flex-col h-full bg-slate-950 overflow-hidden font-sans">
-
+ 
             {/* Background Image + Overlay */}
             <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
                 <div className="absolute inset-0 z-0 bg-[url('/cob.jpeg')] bg-cover bg-center opacity-70 blur-[1px]" />
                 <div className="absolute inset-0 z-0 bg-gradient-to-b from-slate-950/20 via-slate-950/60 to-slate-950/95" />
             </div>
-
+ 
             {/* Header Glass */}
             <div className="relative z-10 bg-white/5 backdrop-blur-xl border-b border-white/10 px-6 py-3 flex items-center justify-between flex-shrink-0 shadow-2xl h-14">
                 <div className="flex items-center gap-3">
+                    <Link
+                        href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                        className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
+                        title="Voltar para o Painel"
+                    >
+                        <ArrowLeft className="h-5 w-5" />
+                    </Link>
                     <div className="p-2 bg-red-500/20 text-red-500 rounded-xl border border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.2)]">
                         <Megaphone className="h-5 w-5" />
                     </div>
@@ -244,12 +252,8 @@ export default function CobrancaInterface({
                         </p>
                     </div>
                 </div>
-
+ 
                 <div className="flex items-center gap-6">
-                    <div className="text-right hidden sm:block">
-                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Total Devedores</p>
-                        <p className="text-xl font-black text-red-500 drop-shadow-sm leading-none">{initialData.length}</p>
-                    </div>
                     <div className="h-8 w-px bg-white/10 hidden sm:block"></div>
                     <button
                         onClick={() => router.push(`/dashboard/loja/${storeId}/reports/cobranca-acoes`)}

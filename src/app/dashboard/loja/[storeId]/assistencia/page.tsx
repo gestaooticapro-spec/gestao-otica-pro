@@ -1,7 +1,8 @@
 // ARQUIVO: src/app/dashboard/loja/[storeId]/assistencia/page.tsx
 import { getAssistanceTickets } from '@/lib/actions/assistance.actions'
 import AssistanceKanban from '@/components/assistencia/AssistanceKanban'
-import { LifeBuoy } from 'lucide-react'
+import Link from 'next/link'
+import { LifeBuoy, ArrowLeft } from 'lucide-react'
 
 export default async function AssistenciaPage({ params }: { params: { storeId: string } }) {
   const storeId = parseInt(params.storeId, 10)
@@ -13,6 +14,13 @@ export default async function AssistenciaPage({ params }: { params: { storeId: s
       {/* Header */}
       <div className="bg-slate-900/50 backdrop-blur-md border-b border-white/10 px-6 py-3 shadow-sm flex-shrink-0 flex justify-between items-center">
         <div className="flex items-center gap-3">
+          <Link
+            href={`/dashboard/loja/${storeId}?menu=atendimento`}
+            className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-all active:scale-95"
+            title="Voltar para o Painel"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
           <div className="p-2 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-lg">
             <LifeBuoy className="h-6 w-6" />
           </div>

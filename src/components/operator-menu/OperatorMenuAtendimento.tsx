@@ -214,17 +214,17 @@ export default function OperatorMenuAtendimento({
                                         onMouseEnter={(e) => handleHover(e, "Abra a tela de Avaliação para registrar análises pré-venda, importar o PDF do iVision e manter histórico individual por titular ou dependente.")}
                                         onMouseMove={handleMove}
                                         onMouseLeave={handleLeave}
-                                        className="group w-full bg-gradient-to-br from-indigo-600/20 via-fuchsia-900/30 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-3 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-fuchsia-500/20 hover:border-fuchsia-500/30"
+                                        className="group w-full bg-gradient-to-br from-indigo-600/20 via-indigo-900/30 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-3 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-indigo-500/20 hover:border-indigo-500/30"
                                     >
-                                        <div className="p-2.5 rounded-full bg-fuchsia-500/20 ring-1 ring-fuchsia-400/30 group-hover:bg-fuchsia-500/40 transition-colors shadow-[0_0_15px_rgba(217,70,239,0.25)]">
-                                            <Sparkles className="w-7 h-7 text-fuchsia-200 group-hover:text-white transition-colors shrink-0" strokeWidth={1.5} />
+                                        <div className="p-2.5 rounded-full bg-indigo-500/20 ring-1 ring-indigo-400/30 group-hover:bg-indigo-500/40 transition-colors shadow-[0_0_15px_rgba(99,102,241,0.25)]">
+                                            <Sparkles className="w-7 h-7 text-indigo-200 group-hover:text-white transition-colors shrink-0" strokeWidth={1.5} />
                                         </div>
                                         <div className="text-left flex-1">
                                             <span className="text-white text-lg font-bold block mb-0.5">Avaliação</span>
-                                            <span className="text-fuchsia-200/70 text-[10px] uppercase tracking-wide group-hover:text-fuchsia-100 transition-colors">Análise pré-venda</span>
+                                            <span className="text-indigo-200/70 text-[10px] uppercase tracking-wide group-hover:text-indigo-100 transition-colors">Análise pré-venda</span>
                                         </div>
                                         <div className="absolute top-1/2 right-4 -translate-y-1/2 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all duration-300">
-                                            <ArrowRight className="w-5 h-5 text-fuchsia-300" />
+                                            <ArrowRight className="w-5 h-5 text-indigo-300" />
                                         </div>
                                     </button>
                                 )}

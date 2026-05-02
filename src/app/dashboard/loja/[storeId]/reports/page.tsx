@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter, useParams } from 'next/navigation';
+import Link from 'next/link';
 import {
     BarChart3,
     Banknote,
@@ -139,13 +140,13 @@ export default function ReportsHubPage() {
                             <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em] mt-1">Inteligência e Análise de Dados</p>
                         </div>
                     </div>
-                    <button
-                        onClick={() => router.push(`/dashboard/loja/${storeId}`)}
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-all duration-200 text-sm font-semibold backdrop-blur-md group"
+                    <Link
+                        href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                        className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
+                        title="Voltar para o Painel"
                     >
-                        <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-                        Voltar
-                    </button>
+                        <ArrowLeft className="h-4 w-4" />
+                    </Link>
                 </div>
             </div>
 

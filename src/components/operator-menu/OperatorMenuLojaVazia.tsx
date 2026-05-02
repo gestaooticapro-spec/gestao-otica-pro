@@ -5,7 +5,7 @@ import {
     DollarSign, HeartHandshake, Megaphone, Archive, Search, Globe, Printer,
     ArrowLeftRight, FileInput, Tag, FileSpreadsheet, ArrowLeft, Clock,
     AlertCircle, Gift, Calendar, Package, ChevronRight, ChevronDown, ChevronUp,
-    MessageCircle, CalendarClock, CalendarCheck, ArrowRight, Send, Users2, UserMinus, Layers3
+    MessageCircle, CalendarClock, CalendarCheck, ArrowRight, Send, Users2, UserMinus, Layers3, Receipt
 } from 'lucide-react';
 import { openWhatsApp } from '@/lib/utils/whatsapp';
 import { getWhatsAppLink } from '@/lib/utils';
@@ -300,6 +300,16 @@ export default function OperatorMenuLojaVazia({
                                             <div className="text-left">
                                                 <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Cobrança</span>
                                                 <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-amber-200/70 transition-colors">Inadimplência</span>
+                                            </div>
+                                        </button>
+                                        {/* Fiscal */}
+                                        <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/fiscal`)} onMouseEnter={(e) => handleHover(e, "Consulte e gerencie as Notas Fiscais de Consumidor (NFC-e) emitidas pela loja. Visualize autorizadas, canceladas e erros, e exporte o pacote mensal para o contador.")} onMouseMove={handleMove} onMouseLeave={handleLeave} className="group bg-gradient-to-br from-amber-600/12 via-orange-900/25 to-slate-900/60 hover:from-amber-500/22 hover:via-orange-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-amber-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(245,158,11,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40">
+                                            <div className="p-2.5 rounded-lg bg-amber-500/20 text-amber-300 group-hover:bg-amber-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+                                                <Receipt className="w-6 h-6" strokeWidth={1.5} />
+                                            </div>
+                                            <div className="text-left">
+                                                <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Fiscal</span>
+                                                <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-amber-200/70 transition-colors">NFC-e</span>
                                             </div>
                                         </button>
                                     </div>

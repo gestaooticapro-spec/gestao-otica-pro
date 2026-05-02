@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useTransition } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import {
     Loader2, Save, Trash2, Search, X,
     ArrowLeftToLine, ArrowRightToLine, ChevronLeft, ChevronRight,
     User, ClipboardList, ScrollText, Users2, UserPlus, Calendar, Pencil,
-    AlertTriangle, Gem, Trophy, Medal
+    AlertTriangle, Gem, Trophy, Medal, ArrowLeft
 } from 'lucide-react';
 import { Database } from '@/lib/database.types';
 import { saveCustomerDetails, deleteCustomer } from '@/lib/actions/customer.actions';
@@ -67,7 +68,13 @@ const maskPhone = (value: string) => {
         ).substring(0, 16);
     }
 
-    // Brazilian format: (XX) XXXXX-XXXX or (XX) XXXX-XXXX
+    // BR: Normalize legacy numbers
+    // 8 digits (no DDD, no leading 9) -> prepend 44 + 9
+    if (digits.length === 8) digits = '449' + digits;
+    // 10 digits (has DDD but no leading 9) -> insert 9 after DDD
+    else if (digits.length === 10) digits = digits.slice(0, 2) + '9' + digits.slice(2);
+
+    // Brazilian format: (XX) XXXXX-XXXX
     return digits
         .replace(/^(\d{2})(\d)/g, '($1) $2')
         .replace(/(\d{5})(\d)/, '$1-$2')
@@ -436,6 +443,7 @@ export default function StoreClientPage() {
                 <div className="bg-gradient-to-br from-indigo-900/60 to-slate-900/60 p-4 flex flex-col gap-3 shadow-md z-20 border-b border-indigo-500/20 backdrop-blur-md">
                     <div className="flex justify-between items-center text-indigo-300">
                         <h2 className="font-bold text-xs flex items-center gap-2 tracking-wider">
+                            <button onClick={() => router.back()} className="p-1 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-md text-indigo-300 hover:text-indigo-200 transition-all active:scale-95" title="Voltar"><ArrowLeft className="h-4 w-4" /></button>
                             <Users2 className="h-4 w-4" /> LISTA DE CLIENTES
                         </h2>
                         <span className="text-[10px] bg-indigo-500/20 px-2 py-0.5 rounded-full font-bold border border-indigo-500/30 text-indigo-200 shadow-sm">
@@ -600,9 +608,6 @@ export default function StoreClientPage() {
                             </div>
 
                             <div className="flex gap-2">
-                                <button type="button" onClick={() => router.back()} className={`${baseButtonStyle} bg-white/5 text-slate-400 hover:text-white hover:bg-white/10 border-white/5`}>
-                                    <ArrowLeftToLine className="h-4 w-4" /> Voltar
-                                </button>
                                 <button type="button" onClick={handleNew} disabled={isSaving} className={`${baseButtonStyle} bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 border-blue-500/30`}>
                                     <UserPlus className="h-4 w-4" /> Novo
                                 </button>

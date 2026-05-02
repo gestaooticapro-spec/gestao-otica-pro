@@ -1,6 +1,7 @@
 import { getStockMovements } from '@/lib/actions/stock.actions'
+import Link from 'next/link'
 import {
-    ArrowRightLeft, Package
+    ArrowRightLeft, Package, ArrowLeft
 } from 'lucide-react'
 import StockMovementForm from './_components/StockMovementForm'
 import HistoryFilters from './_components/HistoryFilters'
@@ -51,6 +52,9 @@ export default async function MovimentacoesPage({
                     {/* KPIs Compactos */}
                     <div className="bg-gradient-to-br from-amber-500/10 to-orange-600/10 p-4 border-b border-white/5 flex-shrink-0">
                         <h2 className="font-black text-sm flex items-center gap-2 uppercase tracking-wide text-amber-400 mb-3">
+                            <Link href={`/dashboard/loja/${storeId}?menu=loja-vazia`} className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-all active:scale-95" title="Voltar para o Painel">
+                                <ArrowLeft className="h-4 w-4" />
+                            </Link>
                             <ArrowRightLeft className="h-4 w-4" /> Movimentações
                         </h2>
                         <div className="grid grid-cols-3 gap-2">

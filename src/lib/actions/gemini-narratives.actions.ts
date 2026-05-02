@@ -138,7 +138,7 @@ Analise:
 1. Para cada opção: a indicação faz sentido clínico e comercial para este paciente? O que está correto? O que parece estranho, desnecessário ou errado?
 2. A ordem do ranking parece coerente com o perfil?
 3. Há alguma informação importante da anamnese que o motor aparentemente ignorou ou subponderou?
-4. Alguma indicação que deveria ter entrado mas não entrou?
+4. Alguma indicação que deveria ter entrado mas não entrou? (Desconsidere marcas Shamir e Zeiss — não estão disponíveis no catálogo deste sistema.)
 
 Responda em texto corrido, em português, de forma técnica e direta. Não use títulos ou listas — escreva como um colega especialista dando um parecer rápido.`
 }
@@ -180,8 +180,14 @@ export async function generateLensAuditAction(
         msg.includes('quota') ||
         msg.includes('RESOURCE_EXHAUSTED') ||
         msg.includes('rateLimitExceeded')
+      const isUnavailable =
+        msg.includes('503') ||
+        msg.includes('Service Unavailable') ||
+        msg.includes('UNAVAILABLE')
       if (isQuota) {
         console.warn(`[Gemini Audit] ✗ ${keyLabel} — cota esgotada, tentando próxima chave...`)
+      } else if (isUnavailable) {
+        console.warn(`[Gemini Audit] ✗ ${keyLabel} — serviço indisponível (503), tentando próxima chave...`)
       } else {
         console.error(`[Gemini Audit] ✗ ${keyLabel} — erro: ${msg}`)
         return { success: false, audit: null, error: msg }
