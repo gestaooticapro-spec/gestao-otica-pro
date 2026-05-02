@@ -47,20 +47,16 @@ const detectPhoneCountry = (digits: string): 'PY' | 'BR' => {
     if (digits.startsWith('09') && digits.length <= 10) return 'PY';
     return 'BR';
 };
-const maskPhone = (value: string) => {
+const maskPhone = (value: string, normalize = false) => {
     const hasPlus = value.trimStart().startsWith('+');
     let digits = value.replace(/\D/g, '');
     if (!digits) return '';
 
-    // Detect country
     const country = hasPlus ? (digits.startsWith('595') ? 'PY' : 'BR') : detectPhoneCountry(digits);
 
     if (country === 'PY') {
-        // Normalize: if starts with 0, convert to 595 (e.g. 0981 -> 595981)
         if (digits.startsWith('0')) digits = '595' + digits.substring(1);
-        // If doesn't start with 595, add it
         if (!digits.startsWith('595')) digits = '595' + digits;
-        // Mask: +595 XXX XXX XXX
         return ('+' + digits
             .replace(/^(595)(\d)/, '$1 $2')
             .replace(/^(595 \d{3})(\d)/, '$1 $2')
@@ -68,13 +64,12 @@ const maskPhone = (value: string) => {
         ).substring(0, 16);
     }
 
-    // BR: Normalize legacy numbers (only when no leading 9 already after DDD)
-    // 8 digits (no DDD, no leading 9) -> prepend 44 + 9
-    if (digits.length === 8 && digits[2] !== '9') digits = '449' + digits;
-    // 10 digits (has DDD but no leading 9) -> insert 9 after DDD
-    else if (digits.length === 10 && digits[2] !== '9') digits = digits.slice(0, 2) + '9' + digits.slice(2);
+    // Normalize legacy numbers only on blur (when normalize=true), not during typing
+    if (normalize) {
+        if (digits.length === 8) digits = '449' + digits;
+        else if (digits.length === 10) digits = digits.slice(0, 2) + '9' + digits.slice(2);
+    }
 
-    // Brazilian format: (XX) XXXXX-XXXX
     return digits
         .replace(/^(\d{2})(\d)/g, '($1) $2')
         .replace(/(\d{5})(\d)/, '$1-$2')
@@ -666,11 +661,11 @@ function AbaPrincipal({ state, handlers, isSaving, inputStyle }: any) {
             </div>
             <div className="col-span-3">
                 <label className={lbl}>Celular</label>
-                <input name="fone_movel" type="text" value={state.foneMovel} onChange={(e) => handlers.setFoneMovel(maskPhone(e.target.value))} className={inputStyle} disabled={isSaving} />
+                <input name="fone_movel" type="text" value={state.foneMovel} onChange={(e) => handlers.setFoneMovel(maskPhone(e.target.value))} onBlur={(e) => handlers.setFoneMovel(maskPhone(e.target.value, true))} className={inputStyle} disabled={isSaving} />
             </div>
             <div className="col-span-3">
                 <label className={lbl}>Fixo</label>
-                <input name="phone" type="text" value={state.phone} onChange={(e) => handlers.setPhone(maskPhone(e.target.value))} className={inputStyle} disabled={isSaving} />
+                <input name="phone" type="text" value={state.phone} onChange={(e) => handlers.setPhone(maskPhone(e.target.value))} onBlur={(e) => handlers.setPhone(maskPhone(e.target.value, true))} className={inputStyle} disabled={isSaving} />
             </div>
 
             <h3 className="col-span-full font-bold text-[10px] text-indigo-400 border-b border-white/5 pb-1 mb-1 mt-3 uppercase tracking-widest flex items-center gap-2 opacity-80">
@@ -762,7 +757,7 @@ function AbaDetalhes({ state, handlers, isSaving, inputStyle }: any) {
             </div>
             <div className="col-span-2">
                 <label className={lbl}>Fone</label>
-                <input name="conjuge_fone" type="text" value={state.conjugeFone} onChange={(e) => handlers.setConjugeFone(maskPhone(e.target.value))} className={inputStyle} disabled={isSaving} />
+                <input name="conjuge_fone" type="text" value={state.conjugeFone} onChange={(e) => handlers.setConjugeFone(maskPhone(e.target.value))} onBlur={(e) => handlers.setConjugeFone(maskPhone(e.target.value, true))} className={inputStyle} disabled={isSaving} />
             </div>
             <div className="col-span-4">
                 <label className={lbl}>Trab. Cônjuge</label>
@@ -786,7 +781,7 @@ function AbaDetalhes({ state, handlers, isSaving, inputStyle }: any) {
             </div>
             <div className="col-span-3">
                 <label className={lbl}>Fone Coml.</label>
-                <input name="comercial_fone" type="text" value={state.comercialFone} onChange={(e) => handlers.setComercialFone(maskPhone(e.target.value))} className={inputStyle} disabled={isSaving} />
+                <input name="comercial_fone" type="text" value={state.comercialFone} onChange={(e) => handlers.setComercialFone(maskPhone(e.target.value))} onBlur={(e) => handlers.setComercialFone(maskPhone(e.target.value, true))} className={inputStyle} disabled={isSaving} />
             </div>
             <div className="col-span-12">
                 <label className={lbl}>Endereço Coml.</label>
