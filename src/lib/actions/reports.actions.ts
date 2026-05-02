@@ -26,8 +26,12 @@ export async function getRelatorioVendas(
   dataFim: string
 ): Promise<VendaRelatorioItem[]> {
   const supabase = createAdminClient()
-  const inicioIso = startOfDay(new Date(dataInicio)).toISOString()
-  const fimIso = endOfDay(new Date(dataFim)).toISOString()
+  // BRT = UTC-3: midnight local = 03:00 UTC
+  const inicioIso = `${dataInicio}T03:00:00.000Z`
+  const fimDate = new Date(`${dataFim}T03:00:00.000Z`)
+  fimDate.setUTCDate(fimDate.getUTCDate() + 1)
+  fimDate.setUTCMilliseconds(fimDate.getUTCMilliseconds() - 1)
+  const fimIso = fimDate.toISOString()
 
   const { data: vendas, error: vendasError } = await (supabase.from('vendas') as any)
     .select(`
@@ -928,8 +932,11 @@ export async function getRankingMedicos(
 ): Promise<MedicoRankingItem[]> {
   const supabase = createAdminClient()
 
-  const inicioIso = startOfDay(new Date(dataInicio)).toISOString()
-  const fimIso = endOfDay(new Date(dataFim)).toISOString()
+  const inicioIso = `${dataInicio}T03:00:00.000Z`
+  const fimDate2 = new Date(`${dataFim}T03:00:00.000Z`)
+  fimDate2.setUTCDate(fimDate2.getUTCDate() + 1)
+  fimDate2.setUTCMilliseconds(fimDate2.getUTCMilliseconds() - 1)
+  const fimIso = fimDate2.toISOString()
 
   const { data: osRaw, error: osErr } = await (supabase.from('service_orders') as any)
     .select(`

@@ -136,6 +136,272 @@ const inputStyle = 'block w-full rounded-xl border border-white/20 bg-slate-900/
 const selectStyle = `${inputStyle} appearance-none bg-[url(data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%2394a3b8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22m6%208%204%204%204-4%22%2F%3E%3C%2Fsvg%3E)] bg-[length:1.25rem_1.25rem] bg-[right_0.5rem_center] bg-no-repeat pr-10`
 const cardStyle = 'bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl shadow-xl'
 
+const AI_SEARCH_STEPS = [
+  'Mapeando campo visual',
+  'Comparando geometrias',
+  'Cruzando rotina e grau',
+  'Ordenando conforto e preco'
+]
+
+function LensSearchAnimation() {
+  return (
+    <div
+      className="mt-4 overflow-hidden rounded-2xl border border-fuchsia-500/20 bg-slate-950/50 p-4"
+      role="status"
+      aria-live="polite"
+      aria-label="IA analisando lentes"
+    >
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_230px] lg:items-center">
+        <div className="relative h-36 overflow-hidden rounded-xl border border-white/10 bg-black/30">
+          <div className="lens-grid" />
+          <div className="scan-line scan-line-a" />
+          <div className="scan-line scan-line-b" />
+          <div className="lens-core">
+            <div className="lens-ring lens-ring-a" />
+            <div className="lens-ring lens-ring-b" />
+            <div className="lens-ring lens-ring-c" />
+            <div className="lens-eye" />
+          </div>
+          <div className="lens-option lens-option-a">AMPLO</div>
+          <div className="lens-option lens-option-b">DIGITAL</div>
+          <div className="lens-option lens-option-c">PROG.</div>
+          <div className="lens-option lens-option-d">UV</div>
+          <div className="target target-a" />
+          <div className="target target-b" />
+          <div className="target target-c" />
+        </div>
+
+        <div>
+          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-200">
+            <Sparkles className="h-3 w-3" />
+            IA em analise
+          </p>
+          <div className="mt-3 space-y-2">
+            {AI_SEARCH_STEPS.map((step, index) => (
+              <div key={step} className="flex items-center gap-2 text-xs font-bold text-slate-300">
+                <span
+                  className="step-dot"
+                  style={{ animationDelay: `${index * 0.22}s` }}
+                />
+                <span>{step}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <style jsx>{`
+        .lens-grid {
+          position: absolute;
+          inset: 0;
+          background:
+            linear-gradient(rgba(34, 211, 238, 0.08) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(217, 70, 239, 0.08) 1px, transparent 1px);
+          background-size: 24px 24px;
+          mask-image: radial-gradient(circle at center, black, transparent 78%);
+          animation: gridRush 0.55s linear infinite;
+        }
+
+        .scan-line {
+          position: absolute;
+          left: -20%;
+          width: 140%;
+          height: 2px;
+          background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.9), transparent);
+          box-shadow: 0 0 16px rgba(34, 211, 238, 0.8);
+          opacity: 0.75;
+        }
+
+        .scan-line-a {
+          top: 34%;
+          animation: scanFast 0.62s ease-in-out infinite;
+        }
+
+        .scan-line-b {
+          top: 68%;
+          animation: scanFast 0.48s ease-in-out infinite reverse;
+        }
+
+        .lens-core {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 92px;
+          height: 92px;
+          transform: translate(-50%, -50%);
+        }
+
+        .lens-ring,
+        .lens-eye {
+          position: absolute;
+          inset: 0;
+          border-radius: 999px;
+        }
+
+        .lens-ring {
+          border: 1px solid rgba(34, 211, 238, 0.45);
+          box-shadow: 0 0 18px rgba(34, 211, 238, 0.18);
+        }
+
+        .lens-ring-a {
+          animation: pulseRing 0.8s ease-in-out infinite;
+        }
+
+        .lens-ring-b {
+          inset: 13px;
+          border-color: rgba(217, 70, 239, 0.55);
+          animation: pulseRing 0.62s ease-in-out infinite reverse;
+        }
+
+        .lens-ring-c {
+          inset: 27px;
+          border-color: rgba(125, 211, 252, 0.65);
+          animation: pulseRing 0.44s ease-in-out infinite;
+        }
+
+        .lens-eye {
+          inset: 35px;
+          background: radial-gradient(circle, #f8fafc 0 18%, #22d3ee 20% 40%, #0f172a 42% 100%);
+          box-shadow: 0 0 24px rgba(217, 70, 239, 0.65);
+          animation: eyeSnap 0.72s steps(4) infinite;
+        }
+
+        .lens-option {
+          position: absolute;
+          min-width: 58px;
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          border-radius: 999px;
+          background: rgba(15, 23, 42, 0.82);
+          padding: 5px 8px;
+          color: rgba(226, 232, 240, 0.9);
+          font-size: 10px;
+          font-weight: 900;
+          letter-spacing: 0.12em;
+          text-align: center;
+          text-transform: uppercase;
+          box-shadow: 0 0 18px rgba(217, 70, 239, 0.12);
+          animation: optionRush 0.76s linear infinite;
+        }
+
+        .lens-option-a {
+          left: 9%;
+          top: 22%;
+        }
+
+        .lens-option-b {
+          right: 12%;
+          top: 16%;
+          animation-delay: -0.18s;
+        }
+
+        .lens-option-c {
+          left: 17%;
+          bottom: 18%;
+          animation-delay: -0.34s;
+        }
+
+        .lens-option-d {
+          right: 18%;
+          bottom: 20%;
+          animation-delay: -0.5s;
+        }
+
+        .target {
+          position: absolute;
+          width: 7px;
+          height: 7px;
+          border-radius: 999px;
+          background: #f0abfc;
+          box-shadow: 0 0 18px #d946ef;
+          animation: targetJump 0.58s steps(4) infinite;
+        }
+
+        .target-a {
+          left: 24%;
+          top: 30%;
+        }
+
+        .target-b {
+          left: 65%;
+          top: 24%;
+          animation-delay: -0.17s;
+        }
+
+        .target-c {
+          left: 72%;
+          top: 72%;
+          animation-delay: -0.31s;
+        }
+
+        .step-dot {
+          width: 8px;
+          height: 8px;
+          flex: 0 0 auto;
+          border-radius: 999px;
+          background: #22d3ee;
+          box-shadow: 0 0 14px rgba(34, 211, 238, 0.85);
+          animation: stepBlink 0.88s ease-in-out infinite;
+        }
+
+        @keyframes gridRush {
+          from { background-position: 0 0, 0 0; }
+          to { background-position: 24px 24px, 24px 0; }
+        }
+
+        @keyframes scanFast {
+          0% { transform: translateY(-44px) skewY(-5deg); opacity: 0; }
+          20% { opacity: 1; }
+          100% { transform: translateY(52px) skewY(-5deg); opacity: 0; }
+        }
+
+        @keyframes pulseRing {
+          0%, 100% { transform: scale(0.88); opacity: 0.5; }
+          50% { transform: scale(1.08); opacity: 1; }
+        }
+
+        @keyframes eyeSnap {
+          0% { transform: translate(0, 0) scale(1); }
+          25% { transform: translate(8px, -3px) scale(0.92); }
+          50% { transform: translate(-7px, 6px) scale(1.04); }
+          75% { transform: translate(4px, 7px) scale(0.96); }
+          100% { transform: translate(0, 0) scale(1); }
+        }
+
+        @keyframes optionRush {
+          0%, 100% { transform: translateX(0) scale(0.96); opacity: 0.45; }
+          35% { transform: translateX(12px) scale(1.05); opacity: 1; }
+          70% { transform: translateX(-10px) scale(0.9); opacity: 0.55; }
+        }
+
+        @keyframes targetJump {
+          0% { transform: translate(0, 0); opacity: 0.2; }
+          25% { transform: translate(18px, 8px); opacity: 1; }
+          50% { transform: translate(-12px, 22px); opacity: 0.55; }
+          75% { transform: translate(22px, -12px); opacity: 1; }
+          100% { transform: translate(0, 0); opacity: 0.2; }
+        }
+
+        @keyframes stepBlink {
+          0%, 100% { transform: scale(0.75); opacity: 0.45; }
+          50% { transform: scale(1.2); opacity: 1; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .lens-grid,
+          .scan-line,
+          .lens-ring,
+          .lens-eye,
+          .lens-option,
+          .target,
+          .step-dot {
+            animation-duration: 2.4s;
+          }
+        }
+      `}</style>
+    </div>
+  )
+}
+
 const normalizePersonName = (value: string | null | undefined) =>
   (value || '')
     .normalize('NFD')
@@ -2837,6 +3103,8 @@ export default function EvaluationInterface({
                           </div>
                         )}
 
+                        {isGeneratingAi && <LensSearchAnimation />}
+
                         {(isGeneratingAudit || lensAudit) && (
                           <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
                             <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-amber-400 flex items-center gap-2">
@@ -3074,7 +3342,7 @@ export default function EvaluationInterface({
                           </div>
                         )}
 
-                        {!aiRecommendations.length && (
+                        {!isGeneratingAi && !aiRecommendations.length && (
                           <div className="mt-4 rounded-xl border border-dashed border-white/10 bg-black/10 px-4 py-4 text-sm text-slate-400">
                             Gere a recomendação por IA para comparar ou aplicar uma opção comercial nesta avaliação.
                           </div>

@@ -41,6 +41,11 @@ export async function calcularERegistrarComissao(vendaId: number) {
             return
         }
 
+        // Só gera comissão para vendas efetivamente fechadas
+        if (venda.status !== 'Fechada') {
+            return
+        }
+
         const emp = venda.employees as any
         const valorVenda = venda.valor_final
 
@@ -273,7 +278,7 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
                 vendas ( valor_final, created_at, data_fechamento )
             `)
             .eq('store_id', storeId)
-            .neq('status', 'Cancelado')
+            .not('status', 'in', '("Cancelado","Estornado")')
             .order('created_at', { ascending: false })
 
         if (error) throw error
@@ -373,7 +378,7 @@ export async function calcularComissaoMedico(vendaId: number) {
         const { data: venda, error } = await (supabase
             .from('vendas') as any)
             .select(`
-                id, valor_final, store_id, tenant_id, data_fechamento,
+                id, valor_final, store_id, tenant_id, data_fechamento, status,
                 service_orders ( oftalmologista_id ),
                 customers ( full_name )
             `)
@@ -381,6 +386,8 @@ export async function calcularComissaoMedico(vendaId: number) {
             .single()
 
         if (error || !venda) return
+
+        if (venda.status !== 'Fechada') return
 
         // Pega o primeiro oftalmologista_id das OS da venda
         const oss = venda.service_orders || []
@@ -455,7 +462,7 @@ export async function getRelatorioComissoesMedicos(storeId: number, inicio: stri
             `)
             .eq('store_id', storeId)
             .not('oftalmologista_id', 'is', null)
-            .neq('status', 'Cancelado')
+            .not('status', 'in', '("Cancelado","Estornado")')
             .order('created_at', { ascending: false })
 
         if (error) throw error

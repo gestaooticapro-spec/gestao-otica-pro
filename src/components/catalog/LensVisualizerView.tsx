@@ -733,7 +733,7 @@ export default function LensVisualizerView({
       if (rightStateRef.current === 'photo')
         animateRightBlur(isSharp ? 0 : blurPx)
     })
-  }, [geometry, activePhoto, showZoneLines, animateRightBlur])
+  }, [geometry, activePhoto, showZoneLines, animateRightBlur, fallbackLensRim])
 
   const handlePointerLeave = useCallback(() => {
     tracePointRef.current = null; traceZoneRef.current = null
@@ -755,7 +755,7 @@ export default function LensVisualizerView({
       else avatarReturnRafRef.current = null
     }
     avatarReturnRafRef.current = requestAnimationFrame(returnStep)
-  }, [geometry, activePhoto, showZoneLines, animateRightBlur])
+  }, [geometry, activePhoto, showZoneLines, animateRightBlur, fallbackLensRim])
 
   // ── Zone click on left canvas → triggers animation on right ───────────────
   const handleZoneClick = useCallback((clientX: number, clientY: number) => {
@@ -879,7 +879,10 @@ export default function LensVisualizerView({
             <p className={`font-black text-white leading-tight ${compareMode ? 'text-xl' : 'text-3xl'}`}>{geometry.family_name}</p>
             <p className="text-xs uppercase tracking-widest text-slate-400 mt-0.5">{designLabel}</p>
           </div>
-          <div className="relative flex-1 flex items-center justify-center overflow-hidden">
+          <div
+            className="relative flex-1 flex items-center justify-center overflow-hidden"
+            style={mode === 'eyetrace' ? { touchAction: 'none', overscrollBehavior: 'contain' } : undefined}
+          >
           {!hasPins && (
             <div className="absolute z-10">
               <div className="rounded-2xl border border-amber-500/30 bg-slate-900/95 px-6 py-4 text-center shadow-2xl">
@@ -896,12 +899,18 @@ export default function LensVisualizerView({
           <canvas
             ref={canvasRef} width={VW} height={VH}
             className="aspect-video max-w-full max-h-full w-auto h-auto"
-            style={{ cursor: mode === 'eyetrace' ? 'none' : 'default' }}
+            style={{
+              cursor: mode === 'eyetrace' ? 'none' : 'default',
+              touchAction: mode === 'eyetrace' ? 'none' : 'auto',
+              overscrollBehavior: mode === 'eyetrace' ? 'contain' : 'auto',
+            }}
             onMouseMove={mode === 'eyetrace' ? (e) => handlePointerMove(e.clientX, e.clientY) : undefined}
             onMouseLeave={mode === 'eyetrace' ? handlePointerLeave : undefined}
             onClick={mode === 'eyetrace' ? (e) => handleZoneClick(e.clientX, e.clientY) : undefined}
+            onTouchStart={mode === 'eyetrace' ? (e) => { e.preventDefault(); const t = e.touches[0]; handlePointerMove(t.clientX, t.clientY) } : undefined}
             onTouchMove={mode === 'eyetrace' ? (e) => { e.preventDefault(); const t = e.touches[0]; handlePointerMove(t.clientX, t.clientY) } : undefined}
             onTouchEnd={mode === 'eyetrace' ? (e) => { e.preventDefault(); const t = e.changedTouches[0]; handleZoneClick(t.clientX, t.clientY) } : undefined}
+            onTouchCancel={mode === 'eyetrace' ? (e) => { e.preventDefault(); handlePointerLeave() } : undefined}
           />
           {/* {mode === 'eyetrace' && (
             <div className="absolute bottom-4 right-4 z-20 rounded-xl overflow-hidden bg-slate-900/80 ring-1 ring-teal-500/20 backdrop-blur-sm">
@@ -970,6 +979,4 @@ export default function LensVisualizerView({
     </div>
   )
 }
-
-
 
