@@ -288,7 +288,8 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
         const comissoesFiltradas = (comissoes || []).filter((c: any) => {
             // Usa data_fechamento da venda como referência.
             // Se não existir (vendas antigas), faz fallback para created_at da comissão.
-            const dataRef = c.vendas?.data_fechamento || c.created_at
+            // Trunca para 19 chars para evitar que o sufixo +00:00 quebre a comparação de strings.
+            const dataRef = (c.vendas?.data_fechamento || c.created_at || '').substring(0, 19)
             return dataRef >= dataInicio && dataRef <= dataFim
         })
 
@@ -469,7 +470,7 @@ export async function getRelatorioComissoesMedicos(storeId: number, inicio: stri
 
         // Filtra pelo período usando data_fechamento da venda
         const filtradas = (comissoes || []).filter((c: any) => {
-            const dataRef = c.vendas?.data_fechamento || c.created_at
+            const dataRef = (c.vendas?.data_fechamento || c.created_at || '').substring(0, 19)
             return dataRef >= dataInicio && dataRef <= dataFim
         })
 

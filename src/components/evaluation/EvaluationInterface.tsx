@@ -144,6 +144,16 @@ const AI_SEARCH_STEPS = [
 ]
 
 function LensSearchAnimation() {
+  const [activeStep, setActiveStep] = useState(0)
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setActiveStep((current) => Math.min(current + 1, AI_SEARCH_STEPS.length - 1))
+    }, 5000)
+
+    return () => window.clearInterval(interval)
+  }, [])
+
   return (
     <div
       className="mt-4 overflow-hidden rounded-2xl border border-fuchsia-500/20 bg-slate-950/50 p-4"
@@ -153,22 +163,30 @@ function LensSearchAnimation() {
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_230px] lg:items-center">
         <div className="relative h-36 overflow-hidden rounded-xl border border-white/10 bg-black/30">
-          <div className="lens-grid" />
-          <div className="scan-line scan-line-a" />
-          <div className="scan-line scan-line-b" />
-          <div className="lens-core">
-            <div className="lens-ring lens-ring-a" />
-            <div className="lens-ring lens-ring-b" />
-            <div className="lens-ring lens-ring-c" />
-            <div className="lens-eye" />
+          <div className="glasses-stage">
+            <div className="glass-lens glass-lens-left">
+              <div className="lens-grid" />
+              <div className="scan-line scan-line-a" />
+              <div className="scan-line scan-line-b" />
+              <div className="scan-axis scan-axis-a" />
+              <div className="lens-option lens-option-a">AMPLO</div>
+              <div className="lens-option lens-option-c">PROG.</div>
+              <div className="target target-a" />
+            </div>
+            <div className="glass-lens glass-lens-right">
+              <div className="lens-grid" />
+              <div className="scan-line scan-line-a" />
+              <div className="scan-line scan-line-b" />
+              <div className="scan-axis scan-axis-b" />
+              <div className="lens-option lens-option-b">DIGITAL</div>
+              <div className="lens-option lens-option-d">UV</div>
+              <div className="target target-b" />
+              <div className="target target-c" />
+            </div>
+            <div className="glasses-bridge" />
+            <div className="glasses-temple glasses-temple-left" />
+            <div className="glasses-temple glasses-temple-right" />
           </div>
-          <div className="lens-option lens-option-a">AMPLO</div>
-          <div className="lens-option lens-option-b">DIGITAL</div>
-          <div className="lens-option lens-option-c">PROG.</div>
-          <div className="lens-option lens-option-d">UV</div>
-          <div className="target target-a" />
-          <div className="target target-b" />
-          <div className="target target-c" />
         </div>
 
         <div>
@@ -178,10 +196,24 @@ function LensSearchAnimation() {
           </p>
           <div className="mt-3 space-y-2">
             {AI_SEARCH_STEPS.map((step, index) => (
-              <div key={step} className="flex items-center gap-2 text-xs font-bold text-slate-300">
+              <div
+                key={step}
+                className={`flex items-center gap-2 text-xs font-bold transition-colors duration-300 ${
+                  index < activeStep
+                    ? 'text-cyan-200'
+                    : index === activeStep
+                      ? 'text-fuchsia-100'
+                      : 'text-slate-500'
+                }`}
+              >
                 <span
-                  className="step-dot"
-                  style={{ animationDelay: `${index * 0.22}s` }}
+                  className={`step-dot ${
+                    index < activeStep
+                      ? 'step-dot-done'
+                      : index === activeStep
+                        ? 'step-dot-active'
+                        : 'step-dot-idle'
+                  }`}
                 />
                 <span>{step}</span>
               </div>
@@ -191,6 +223,73 @@ function LensSearchAnimation() {
       </div>
 
       <style jsx>{`
+        .glasses-stage {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 16px;
+          filter: drop-shadow(0 0 18px rgba(34, 211, 238, 0.16));
+        }
+
+        .glass-lens {
+          position: relative;
+          width: min(40%, 170px);
+          height: 78px;
+          overflow: hidden;
+          border: 7px solid rgba(2, 6, 23, 0.96);
+          background:
+            radial-gradient(circle at 45% 35%, rgba(248, 250, 252, 0.22), transparent 28%),
+            linear-gradient(135deg, rgba(34, 211, 238, 0.18), rgba(217, 70, 239, 0.08) 48%, rgba(15, 23, 42, 0.92));
+          box-shadow:
+            inset 0 0 24px rgba(34, 211, 238, 0.18),
+            inset 0 0 44px rgba(217, 70, 239, 0.1),
+            0 0 0 1px rgba(255, 255, 255, 0.08);
+        }
+
+        .glass-lens-left {
+          border-radius: 20px 28px 42px 34px / 22px 24px 34px 32px;
+          transform: perspective(280px) rotateY(7deg) rotate(-1.5deg);
+        }
+
+        .glass-lens-right {
+          border-radius: 28px 20px 34px 42px / 24px 22px 32px 34px;
+          transform: perspective(280px) rotateY(-7deg) rotate(1.5deg);
+        }
+
+        .glasses-bridge {
+          position: absolute;
+          left: 50%;
+          top: 54px;
+          width: 34px;
+          height: 22px;
+          transform: translateX(-50%);
+          border-top: 8px solid rgba(2, 6, 23, 0.98);
+          border-radius: 50% 50% 0 0;
+          z-index: 4;
+        }
+
+        .glasses-temple {
+          position: absolute;
+          top: 41px;
+          width: 48px;
+          height: 8px;
+          border-radius: 999px;
+          background: rgba(2, 6, 23, 0.98);
+          z-index: 3;
+        }
+
+        .glasses-temple-left {
+          left: 4%;
+          transform: rotate(13deg);
+        }
+
+        .glasses-temple-right {
+          right: 4%;
+          transform: rotate(-13deg);
+        }
+
         .lens-grid {
           position: absolute;
           inset: 0;
@@ -204,7 +303,7 @@ function LensSearchAnimation() {
 
         .scan-line {
           position: absolute;
-          left: -20%;
+          left: -30%;
           width: 140%;
           height: 2px;
           background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.9), transparent);
@@ -222,48 +321,21 @@ function LensSearchAnimation() {
           animation: scanFast 0.48s ease-in-out infinite reverse;
         }
 
-        .lens-core {
+        .scan-axis {
           position: absolute;
           left: 50%;
-          top: 50%;
-          width: 92px;
-          height: 92px;
-          transform: translate(-50%, -50%);
+          top: -28%;
+          width: 2px;
+          height: 156%;
+          background: linear-gradient(transparent, rgba(217, 70, 239, 0.9), transparent);
+          box-shadow: 0 0 14px rgba(217, 70, 239, 0.75);
+          transform-origin: center;
+          animation: axisSweep 0.86s ease-in-out infinite;
         }
 
-        .lens-ring,
-        .lens-eye {
-          position: absolute;
-          inset: 0;
-          border-radius: 999px;
-        }
-
-        .lens-ring {
-          border: 1px solid rgba(34, 211, 238, 0.45);
-          box-shadow: 0 0 18px rgba(34, 211, 238, 0.18);
-        }
-
-        .lens-ring-a {
-          animation: pulseRing 0.8s ease-in-out infinite;
-        }
-
-        .lens-ring-b {
-          inset: 13px;
-          border-color: rgba(217, 70, 239, 0.55);
-          animation: pulseRing 0.62s ease-in-out infinite reverse;
-        }
-
-        .lens-ring-c {
-          inset: 27px;
-          border-color: rgba(125, 211, 252, 0.65);
-          animation: pulseRing 0.44s ease-in-out infinite;
-        }
-
-        .lens-eye {
-          inset: 35px;
-          background: radial-gradient(circle, #f8fafc 0 18%, #22d3ee 20% 40%, #0f172a 42% 100%);
-          box-shadow: 0 0 24px rgba(217, 70, 239, 0.65);
-          animation: eyeSnap 0.72s steps(4) infinite;
+        .scan-axis-b {
+          animation-duration: 0.68s;
+          animation-direction: reverse;
         }
 
         .lens-option {
@@ -285,24 +357,24 @@ function LensSearchAnimation() {
 
         .lens-option-a {
           left: 9%;
-          top: 22%;
+          top: 18%;
         }
 
         .lens-option-b {
-          right: 12%;
-          top: 16%;
+          right: 8%;
+          top: 18%;
           animation-delay: -0.18s;
         }
 
         .lens-option-c {
-          left: 17%;
-          bottom: 18%;
+          left: 16%;
+          bottom: 16%;
           animation-delay: -0.34s;
         }
 
         .lens-option-d {
-          right: 18%;
-          bottom: 20%;
+          right: 16%;
+          bottom: 16%;
           animation-delay: -0.5s;
         }
 
@@ -317,19 +389,19 @@ function LensSearchAnimation() {
         }
 
         .target-a {
-          left: 24%;
-          top: 30%;
+          left: 42%;
+          top: 44%;
         }
 
         .target-b {
-          left: 65%;
-          top: 24%;
+          left: 48%;
+          top: 38%;
           animation-delay: -0.17s;
         }
 
         .target-c {
-          left: 72%;
-          top: 72%;
+          left: 66%;
+          top: 62%;
           animation-delay: -0.31s;
         }
 
@@ -340,7 +412,22 @@ function LensSearchAnimation() {
           border-radius: 999px;
           background: #22d3ee;
           box-shadow: 0 0 14px rgba(34, 211, 238, 0.85);
-          animation: stepBlink 0.88s ease-in-out infinite;
+        }
+
+        .step-dot-active {
+          background: #f0abfc;
+          box-shadow: 0 0 16px rgba(217, 70, 239, 0.9);
+          animation: stepBlink 1.1s ease-in-out infinite;
+        }
+
+        .step-dot-done {
+          background: #22d3ee;
+          box-shadow: 0 0 12px rgba(34, 211, 238, 0.7);
+        }
+
+        .step-dot-idle {
+          background: rgba(100, 116, 139, 0.8);
+          box-shadow: none;
         }
 
         @keyframes gridRush {
@@ -349,22 +436,15 @@ function LensSearchAnimation() {
         }
 
         @keyframes scanFast {
-          0% { transform: translateY(-44px) skewY(-5deg); opacity: 0; }
+          0% { transform: translateY(-44px) rotate(-10deg); opacity: 0; }
           20% { opacity: 1; }
-          100% { transform: translateY(52px) skewY(-5deg); opacity: 0; }
+          100% { transform: translateY(52px) rotate(13deg); opacity: 0; }
         }
 
-        @keyframes pulseRing {
-          0%, 100% { transform: scale(0.88); opacity: 0.5; }
-          50% { transform: scale(1.08); opacity: 1; }
-        }
-
-        @keyframes eyeSnap {
-          0% { transform: translate(0, 0) scale(1); }
-          25% { transform: translate(8px, -3px) scale(0.92); }
-          50% { transform: translate(-7px, 6px) scale(1.04); }
-          75% { transform: translate(4px, 7px) scale(0.96); }
-          100% { transform: translate(0, 0) scale(1); }
+        @keyframes axisSweep {
+          0%, 100% { transform: translateX(-50%) rotate(-52deg); opacity: 0.15; }
+          45% { transform: translateX(-50%) rotate(6deg); opacity: 1; }
+          70% { transform: translateX(-50%) rotate(58deg); opacity: 0.65; }
         }
 
         @keyframes optionRush {
@@ -389,8 +469,7 @@ function LensSearchAnimation() {
         @media (prefers-reduced-motion: reduce) {
           .lens-grid,
           .scan-line,
-          .lens-ring,
-          .lens-eye,
+          .scan-axis,
           .lens-option,
           .target,
           .step-dot {
