@@ -24,6 +24,7 @@ type EmployeeRole = NonNullable<Employee['role']>;
 type StoreFeatureSettings = {
     logo?: string;
     pre_sale_analysis_enabled?: boolean;
+    receipt_type?: 'pre_printed' | 'half_a4';
 };
 type StoreData = {
     id: number;
@@ -350,16 +351,16 @@ function ResourcesForm({ storeId }: { storeId: number }) {
         })
     }, [storeId])
 
-    const handleToggle = (enabled: boolean) => {
+    const handleSettingChange = (settingName: string, value: any) => {
         startTransition(async () => {
-            const res = await updateStoreSettings(storeId, { pre_sale_analysis_enabled: enabled })
+            const res = await updateStoreSettings(storeId, { [settingName]: value })
             if (res.success) {
                 // Atualiza o estado local para refletir a mudança
                 setData(prev => prev ? {
                     ...prev,
                     settings: {
                         ...(prev.settings as any),
-                        pre_sale_analysis_enabled: enabled
+                        [settingName]: value
                     }
                 } : null)
             } else {
@@ -388,7 +389,7 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                     <input
                         type="checkbox"
                         checked={Boolean(data?.settings?.pre_sale_analysis_enabled)}
-                        onChange={(e) => handleToggle(e.target.checked)}
+                        onChange={(e) => handleSettingChange('pre_sale_analysis_enabled', e.target.checked)}
                         disabled={isSaving}
                         className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-900 text-cyan-500 focus:ring-cyan-500 disabled:opacity-50"
                     />
@@ -402,6 +403,43 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                         </p>
                     </div>
                 </label>
+
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4 transition-colors">
+                    <div>
+                        <p className="text-sm font-black text-white uppercase tracking-[0.15em] mb-2">
+                            Formato de Impressão do Recibo
+                        </p>
+                        <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                            Escolha como o recibo financeiro será impresso na impressora padrão (A4).
+                        </p>
+                        <div className="flex flex-col gap-3">
+                            <label className="flex items-center gap-3 cursor-pointer group">
+                                <input
+                                    type="radio"
+                                    name="receipt_type"
+                                    value="pre_printed"
+                                    checked={data?.settings?.receipt_type === 'pre_printed' || !data?.settings?.receipt_type}
+                                    onChange={() => handleSettingChange('receipt_type', 'pre_printed')}
+                                    disabled={isSaving}
+                                    className="h-4 w-4 border-white/20 bg-slate-900 text-cyan-500 focus:ring-cyan-500 disabled:opacity-50"
+                                />
+                                <span className="text-sm text-slate-300 group-hover:text-white font-medium">Formulário Pré-Impresso (Gráfica)</span>
+                            </label>
+                            <label className="flex items-center gap-3 cursor-pointer group">
+                                <input
+                                    type="radio"
+                                    name="receipt_type"
+                                    value="half_a4"
+                                    checked={data?.settings?.receipt_type === 'half_a4'}
+                                    onChange={() => handleSettingChange('receipt_type', 'half_a4')}
+                                    disabled={isSaving}
+                                    className="h-4 w-4 border-white/20 bg-slate-900 text-cyan-500 focus:ring-cyan-500 disabled:opacity-50"
+                                />
+                                <span className="text-sm text-slate-300 group-hover:text-white font-medium">Folha Branca (1/2 A4 com dados da loja)</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {/* CONFIGURAÇÃO DO MOTOR DE IA */}

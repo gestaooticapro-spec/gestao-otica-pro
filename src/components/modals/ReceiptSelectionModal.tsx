@@ -5,7 +5,6 @@ import { createPortal } from 'react-dom'
 import { X, Printer, CheckSquare, Square, Loader2 } from 'lucide-react'
 import { Database } from '@/lib/database.types'
 import { markPaymentsAsPrinted } from '@/lib/actions/vendas.actions'
-import { getReceiptPDFBase64 } from '@/lib/actions/print-remote'
 
 type Pagamento = Database['public']['Tables']['pagamentos']['Row']
 
@@ -43,61 +42,19 @@ export default function ReceiptSelectionModal({ isOpen, onClose, pagamentos, onR
         }
     }
 
-    // --- FUNÇÃO CENTRAL QUE GERA O BLOB ---
-    const generateBlob = async () => {
-        const result = await getReceiptPDFBase64(selectedIds)
-        if (!result.success || !result.pdfBase64) {
-            throw new Error(result.error || 'Erro ao gerar PDF')
-        }
-        
-        const byteCharacters = atob(result.pdfBase64)
-        const byteNumbers = new Array(byteCharacters.length)
-        for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i)
-        }
-        const byteArray = new Uint8Array(byteNumbers)
-        return new Blob([byteArray], { type: 'application/pdf' })
-    }
+
 
     const handleDirectPrint = async () => {
         if (selectedIds.length === 0) return
         setIsProcessing(true)
         try {
-            const blob = await generateBlob()
-            const fileURL = URL.createObjectURL(blob)
-
-            // Iframe Invisível
-            const iframe = document.createElement('iframe')
-            iframe.style.position = 'fixed'
-            iframe.style.right = '0'
-            iframe.style.bottom = '0'
-            iframe.style.width = '0'
-            iframe.style.height = '0'
-            iframe.style.border = '0'
-            iframe.src = fileURL
+            const idsString = selectedIds.join('-')
+            window.open(`/print/recibo/${idsString}`, '_blank')
             
-            document.body.appendChild(iframe)
-
-            iframe.onload = () => {
-                setTimeout(() => {
-                    try {
-                        iframe.contentWindow?.focus()
-                        iframe.contentWindow?.print()
-                    } catch (e) {
-                        window.open(fileURL, '_blank') // Fallback se falhar
-                    } finally {
-                        // Limpa memória após 1 minuto
-                        setTimeout(() => {
-                            document.body.removeChild(iframe)
-                            URL.revokeObjectURL(fileURL)
-                        }, 60000)
-                    }
-                }, 500)
-            }
-
             // Marca como impresso no banco
             await markPaymentsAsPrinted(selectedIds)
             await onReload()
+            onClose()
 
         } catch (error: any) {
             alert(error.message)

@@ -1,13 +1,15 @@
 'use client'
 
-import React, { useEffect, useMemo, useState, useTransition } from 'react'
+import React, { useEffect, useId, useMemo, useRef, useState, useTransition } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   AlertTriangle,
   Bot,
   Calendar,
+  Check,
   CircleHelp,
+  Copy,
   ExternalLink,
   FileSearch,
   History,
@@ -42,6 +44,9 @@ import {
 } from '@/lib/actions/lens-recommendation.actions'
 import {
   generateLensAuditAction,
+  generateLensTechnicalTriageAction,
+  type LensTechnicalTriage,
+  type LensTechnicalTriageSignal,
   type PatientAuditContext,
 } from '@/lib/actions/gemini-narratives.actions'
 import { Database } from '@/lib/database.types'
@@ -49,6 +54,7 @@ import { EvaluationDashboard } from './EvaluationDashboard'
 import { getRecentEvaluationsForEmployee, getRecentEvaluationsForStore, updateEvaluationPanicReason, updateEvaluationExportedVendaId, updateEvaluationOutcomeStatus } from '@/lib/actions/evaluation.actions'
 import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/BackgroundToggle'
 import type {
+  RecommendationCaseInput,
   RecommendationConversationState,
   RecommendationOption
 } from '@/lib/server/lens-recommendation'
@@ -59,6 +65,12 @@ type SubjectType = 'customer' | 'dependente'
 type EvaluationSourceSystem = 'manual' | 'ivision'
 type EvaluationStatus = 'rascunho' | 'em_andamento' | 'pendente' | 'concluida' | 'importada' | 'exportada'
 type EvaluationParseStatus = 'success' | 'partial' | 'failed'
+type LensRimPoint = { x: number; y: number }
+type LensSearchField = {
+  familyName: string
+  lineA: LensRimPoint[]
+  lineB: LensRimPoint[]
+}
 type OpticalEvaluationPreview = {
   source_document_url: string
   source_document_host: string | null
@@ -121,6 +133,77 @@ type LensRecommendationActionPayload = {
   recommendations: RecommendationOption[]
 }
 
+const TRIAGE_SIGNAL_PATCHES: Record<LensTechnicalTriageSignal, Partial<Pick<RecommendationCaseInput, 'rotina_tags' | 'objetivo_tags' | 'desired_benefits' | 'preferred_features'>>> = {
+  risco_espessura_alta: { desired_benefits: ['lente_fina', 'estetica', 'qualidade_optica'] },
+  risco_espessura_moderada: { desired_benefits: ['lente_fina'] },
+  priorizar_indice_alto: { desired_benefits: ['lente_fina', 'estetica'] },
+  evitar_indice_baixo: { desired_benefits: ['lente_fina'] },
+  priorizar_asferica: { desired_benefits: ['qualidade_optica', 'estetica'] },
+  priorizar_resistencia: { desired_benefits: ['resistencia'], rotina_tags: ['risco_quebra'] },
+  priorizar_trivex_policarbonato: { desired_benefits: ['resistencia'], rotina_tags: ['risco_quebra'] },
+  controle_miopia_prioritario: {
+    rotina_tags: ['controle_miopia'],
+    objetivo_tags: ['controle_miopia'],
+    desired_benefits: ['controle_miopia'],
+  },
+  fotossensivel_desejado_mas_secundario: { preferred_features: ['transitions'], desired_benefits: ['conforto_luz'] },
+  blue_uv_desejado_mas_secundario: { preferred_features: ['blue_uv'], desired_benefits: ['conforto_digital'] },
+  risco_adaptacao_multifocal: {
+    rotina_tags: ['adaptacao_critica'],
+    objetivo_tags: ['adaptacao_critica'],
+    desired_benefits: ['adaptacao_rapida', 'conforto_visual'],
+  },
+  priorizar_ar_premium: { desired_benefits: ['ar_premium', 'qualidade_optica', 'conforto_visual'] },
+  evitar_ar_externo: { desired_benefits: ['ar_premium', 'qualidade_optica', 'conforto_visual'] },
+  priorizar_conforto_digital: { desired_benefits: ['conforto_digital'], rotina_tags: ['computador'] },
+  priorizar_dirigir_noite: { desired_benefits: ['conforto_visual', 'qualidade_optica'], rotina_tags: ['dirigir_noite'] },
+  priorizar_campo_perto: { desired_benefits: ['conforto_visual'], rotina_tags: ['leitura', 'computador'] },
+  orcamento_limita_solucao_ideal: {},
+}
+
+const uniqueList = (items: string[]) => Array.from(new Set(items.filter(Boolean)))
+
+const applyTechnicalTriageToCaseInput = (
+  caseInput: RecommendationCaseInput,
+  triage: LensTechnicalTriage | null,
+): RecommendationCaseInput => {
+  if (!triage) return caseInput
+
+  const next: RecommendationCaseInput = {
+    ...caseInput,
+    rotina_tags: [...(caseInput.rotina_tags || [])],
+    objetivo_tags: [...(caseInput.objetivo_tags || [])],
+    desired_benefits: [...(caseInput.desired_benefits || [])],
+    preferred_features: [...(caseInput.preferred_features || [])],
+  }
+
+  for (const signal of uniqueList([...triage.technicalSignals, ...triage.clinicalPriorities]) as LensTechnicalTriageSignal[]) {
+    const patch = TRIAGE_SIGNAL_PATCHES[signal]
+    if (!patch) continue
+    next.rotina_tags = uniqueList([...(next.rotina_tags || []), ...(patch.rotina_tags || [])])
+    next.objetivo_tags = uniqueList([...(next.objetivo_tags || []), ...(patch.objetivo_tags || [])])
+    next.desired_benefits = uniqueList([...(next.desired_benefits || []), ...(patch.desired_benefits || [])])
+    next.preferred_features = uniqueList([...(next.preferred_features || []), ...(patch.preferred_features || [])])
+  }
+
+  const triageNotes = [
+    triage.parecer ? `Triagem IA: ${triage.parecer}` : null,
+    triage.salesContext.tradeoff ? `Tradeoff IA: ${triage.salesContext.tradeoff}` : null,
+    triage.salesContext.caution ? `Cuidado IA: ${triage.salesContext.caution}` : null,
+  ].filter(Boolean)
+
+  if (triageNotes.length > 0) {
+    next.notes = [caseInput.notes, ...triageNotes].filter(Boolean).join(' | ')
+  }
+
+  if (next.rejected_features?.length) {
+    const rejected = new Set(next.rejected_features)
+    next.preferred_features = (next.preferred_features || []).filter((feature) => !rejected.has(feature))
+  }
+
+  return next
+}
+
 type SuggestionGenerationResult =
   | { success: true; suggestion: ManualSuggestion }
   | { success: false }
@@ -142,17 +225,167 @@ const AI_SEARCH_STEPS = [
   'Cruzando rotina e grau',
   'Ordenando conforto e preco'
 ]
+const LENS_SCAN_TERMS = ['PROGRESSIVA', 'CAMPO AMPLO', 'DIGITAL', 'OCUPACIONAL', 'ANTIREFLEXO', 'TRANSITIONS']
 
-function LensSearchAnimation() {
+const DEFAULT_LENS_RIM: LensRimPoint[] = [
+  { x: 0.06, y: 0.42 },
+  { x: 0.11, y: 0.18 },
+  { x: 0.30, y: 0.06 },
+  { x: 0.58, y: 0.05 },
+  { x: 0.82, y: 0.16 },
+  { x: 0.95, y: 0.40 },
+  { x: 0.90, y: 0.70 },
+  { x: 0.65, y: 0.88 },
+  { x: 0.33, y: 0.88 },
+  { x: 0.12, y: 0.70 },
+]
+
+const LENS_RIM_CUTOUT = { x: 0.24, y: 0.22, w: 0.52, h: 0.46 }
+
+function normalizeLensRimForAnimation(points: LensRimPoint[] | null | undefined): LensRimPoint[] {
+  if (!points || points.length < 3) return DEFAULT_LENS_RIM
+
+  const remapped = points.map((point) => ({
+    x: (point.x - LENS_RIM_CUTOUT.x) / LENS_RIM_CUTOUT.w,
+    y: (point.y - LENS_RIM_CUTOUT.y) / LENS_RIM_CUTOUT.h,
+  }))
+
+  const xs = remapped.map((point) => point.x)
+  const ys = remapped.map((point) => point.y)
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+  const minY = Math.min(...ys)
+  const maxY = Math.max(...ys)
+  const width = maxX - minX || 1
+  const height = maxY - minY || 1
+
+  return remapped.map((point) => ({
+    x: 0.04 + ((point.x - minX) / width) * 0.92,
+    y: 0.06 + ((point.y - minY) / height) * 0.88,
+  }))
+}
+
+function buildSmoothSvgPath(points: LensRimPoint[], width: number, height: number): string {
+  if (points.length < 3) return ''
+
+  const abs = points.map((point) => ({ x: point.x * width, y: point.y * height }))
+  const last = abs[abs.length - 1]
+  const first = abs[0]
+  const commands = [`M ${((last.x + first.x) / 2).toFixed(2)} ${((last.y + first.y) / 2).toFixed(2)}`]
+
+  for (let index = 0; index < abs.length; index += 1) {
+    const current = abs[index]
+    const next = abs[(index + 1) % abs.length]
+    commands.push(
+      `Q ${current.x.toFixed(2)} ${current.y.toFixed(2)} ${((current.x + next.x) / 2).toFixed(2)} ${((current.y + next.y) / 2).toFixed(2)}`
+    )
+  }
+
+  commands.push('Z')
+  return commands.join(' ')
+}
+
+function normalizeLensLineForAnimation(points: LensRimPoint[] | null | undefined): LensRimPoint[] {
+  if (!points || points.length < 2) return []
+
+  return points.map((point) => ({
+    x: Math.max(0, Math.min(1, (point.x - LENS_RIM_CUTOUT.x) / LENS_RIM_CUTOUT.w)),
+    y: Math.max(0, Math.min(1, (point.y - LENS_RIM_CUTOUT.y) / LENS_RIM_CUTOUT.h)),
+  }))
+}
+
+function buildOpenSvgPath(points: LensRimPoint[], width: number, height: number): string {
+  if (points.length < 2) return ''
+
+  const abs = points.map((point) => ({ x: point.x * width, y: point.y * height }))
+  const commands = [`M ${abs[0].x.toFixed(2)} ${abs[0].y.toFixed(2)}`]
+
+  if (abs.length === 2) {
+    commands.push(`L ${abs[1].x.toFixed(2)} ${abs[1].y.toFixed(2)}`)
+    return commands.join(' ')
+  }
+
+  commands.push(`L ${((abs[0].x + abs[1].x) / 2).toFixed(2)} ${((abs[0].y + abs[1].y) / 2).toFixed(2)}`)
+  for (let index = 1; index < abs.length - 1; index += 1) {
+    const current = abs[index]
+    const next = abs[index + 1]
+    commands.push(
+      `Q ${current.x.toFixed(2)} ${current.y.toFixed(2)} ${((current.x + next.x) / 2).toFixed(2)} ${((current.y + next.y) / 2).toFixed(2)}`
+    )
+  }
+  commands.push(`L ${abs[abs.length - 1].x.toFixed(2)} ${abs[abs.length - 1].y.toFixed(2)}`)
+  return commands.join(' ')
+}
+
+function buildFieldSvgPath(lineA: LensRimPoint[], lineB: LensRimPoint[], width: number, height: number): string {
+  if (lineA.length < 2 || lineB.length < 2) return ''
+  const a = lineA.map((point) => ({ x: point.x * width, y: point.y * height }))
+  const b = [...lineB].reverse().map((point) => ({ x: point.x * width, y: point.y * height }))
+  const all = [...a, ...b]
+  return `M ${all.map((point) => `${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' L ')} Z`
+}
+
+const FALLBACK_SEARCH_FIELDS: LensSearchField[] = [
+  {
+    familyName: 'Campo amplo',
+    lineA: [{ x: 0.34, y: 0.04 }, { x: 0.45, y: 0.35 }, { x: 0.34, y: 0.94 }],
+    lineB: [{ x: 0.66, y: 0.04 }, { x: 0.55, y: 0.35 }, { x: 0.66, y: 0.94 }],
+  },
+  {
+    familyName: 'Campo medio',
+    lineA: [{ x: 0.42, y: 0.04 }, { x: 0.48, y: 0.44 }, { x: 0.40, y: 0.94 }],
+    lineB: [{ x: 0.58, y: 0.04 }, { x: 0.52, y: 0.44 }, { x: 0.60, y: 0.94 }],
+  },
+]
+
+function LensSearchAnimation({
+  lensRim,
+  searchFields,
+}: {
+  lensRim?: LensRimPoint[] | null
+  searchFields?: LensSearchField[]
+}) {
   const [activeStep, setActiveStep] = useState(0)
+  const [activeFieldIndex, setActiveFieldIndex] = useState(0)
+  const clipId = useId().replace(/:/g, '')
+  const lensPath = useMemo(
+    () => buildSmoothSvgPath(normalizeLensRimForAnimation(lensRim), 120, 78),
+    [lensRim]
+  )
+  const normalizedFields = useMemo(() => {
+    const source = searchFields && searchFields.length > 0 ? searchFields : FALLBACK_SEARCH_FIELDS
+    return source
+      .map((field) => {
+        const lineA = normalizeLensLineForAnimation(field.lineA)
+        const lineB = normalizeLensLineForAnimation(field.lineB)
+        return {
+          familyName: field.familyName,
+          lineAPath: buildOpenSvgPath(lineA, 120, 78),
+          lineBPath: buildOpenSvgPath(lineB, 120, 78),
+          fieldPath: buildFieldSvgPath(lineA, lineB, 120, 78),
+        }
+      })
+      .filter((field) => field.lineAPath && field.lineBPath && field.fieldPath)
+  }, [searchFields])
+  const activeField = normalizedFields[activeFieldIndex % Math.max(1, normalizedFields.length)] || null
 
   useEffect(() => {
     const interval = window.setInterval(() => {
       setActiveStep((current) => Math.min(current + 1, AI_SEARCH_STEPS.length - 1))
-    }, 5000)
+    }, 8000)
 
     return () => window.clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    if (normalizedFields.length <= 1) return undefined
+
+    const interval = window.setInterval(() => {
+      setActiveFieldIndex((current) => (current + 1) % normalizedFields.length)
+    }, 110)
+
+    return () => window.clearInterval(interval)
+  }, [normalizedFields.length])
 
   return (
     <div
@@ -163,30 +396,90 @@ function LensSearchAnimation() {
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_230px] lg:items-center">
         <div className="relative h-36 overflow-hidden rounded-xl border border-white/10 bg-black/30">
-          <div className="glasses-stage">
-            <div className="glass-lens glass-lens-left">
-              <div className="lens-grid" />
-              <div className="scan-line scan-line-a" />
-              <div className="scan-line scan-line-b" />
-              <div className="scan-axis scan-axis-a" />
-              <div className="lens-option lens-option-a">AMPLO</div>
-              <div className="lens-option lens-option-c">PROG.</div>
-              <div className="target target-a" />
-            </div>
-            <div className="glass-lens glass-lens-right">
-              <div className="lens-grid" />
-              <div className="scan-line scan-line-a" />
-              <div className="scan-line scan-line-b" />
-              <div className="scan-axis scan-axis-b" />
-              <div className="lens-option lens-option-b">DIGITAL</div>
-              <div className="lens-option lens-option-d">UV</div>
-              <div className="target target-b" />
-              <div className="target target-c" />
-            </div>
-            <div className="glasses-bridge" />
-            <div className="glasses-temple glasses-temple-left" />
-            <div className="glasses-temple glasses-temple-right" />
-          </div>
+          <svg className="lens-stage" viewBox="0 0 300 130" role="presentation" aria-hidden="true">
+            <defs>
+              <clipPath id={`${clipId}-od`}>
+                <path d={lensPath} />
+              </clipPath>
+              <clipPath id={`${clipId}-oe`}>
+                <path d={lensPath} transform="translate(120 0) scale(-1 1)" />
+              </clipPath>
+              <linearGradient id={`${clipId}-glass`} x1="0" x2="1" y1="0" y2="1">
+                <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.28" />
+                <stop offset="48%" stopColor="#d946ef" stopOpacity="0.13" />
+                <stop offset="100%" stopColor="#020617" stopOpacity="0.92" />
+              </linearGradient>
+              <radialGradient id={`${clipId}-peripheral`} cx="50%" cy="50%" r="64%">
+                <stop offset="0%" stopColor="#020617" stopOpacity="0" />
+                <stop offset="54%" stopColor="#020617" stopOpacity="0.08" />
+                <stop offset="100%" stopColor="#020617" stopOpacity="0.58" />
+              </radialGradient>
+              <linearGradient id={`${clipId}-scanshine`} x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stopColor="white" stopOpacity="0" />
+                <stop offset="50%" stopColor="white" stopOpacity="0.22" />
+                <stop offset="100%" stopColor="white" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+
+            <g transform="translate(25 26)">
+              <path className="lens-shape" d={lensPath} fill={`url(#${clipId}-glass)`} />
+              <g clipPath={`url(#${clipId}-od)`}>
+                <rect className="lens-grid-svg" x="0" y="0" width="120" height="78" />
+                <line className="scan-line-svg scan-line-a" x1="-18" y1="20" x2="138" y2="20" />
+                <line className="scan-line-svg scan-line-b" x1="-18" y1="53" x2="138" y2="53" />
+                <line className="scan-axis-svg scan-axis-a" x1="60" y1="-16" x2="60" y2="96" />
+                {activeField && (
+                  <g key={`od-${activeFieldIndex}`} className="vision-snapshot">
+                    <path className="vision-field" d={activeField.fieldPath} />
+                    <path className="vision-line" d={activeField.lineAPath} />
+                    <path className="vision-line" d={activeField.lineBPath} />
+                  </g>
+                )}
+                <rect className="peripheral-haze" x="0" y="0" width="120" height="78" fill={`url(#${clipId}-peripheral)`} />
+                <rect className="scan-shine-svg" x="0" y="0" width="120" height="18" fill={`url(#${clipId}-scanshine)`} />
+                {/* <circle className="target-svg target-a" cx="70" cy="36" r="3" /> */}
+              </g>
+              <path className="lens-edge" d={lensPath} />
+            </g>
+
+            <g transform="translate(155 26)">
+              <path className="lens-shape" d={lensPath} transform="translate(120 0) scale(-1 1)" fill={`url(#${clipId}-glass)`} />
+              <g clipPath={`url(#${clipId}-oe)`}>
+                <rect className="lens-grid-svg" x="0" y="0" width="120" height="78" />
+                <line className="scan-line-svg scan-line-a" x1="-18" y1="23" x2="138" y2="23" />
+                <line className="scan-line-svg scan-line-b" x1="-18" y1="56" x2="138" y2="56" />
+                <line className="scan-axis-svg scan-axis-b" x1="60" y1="-16" x2="60" y2="96" />
+                {activeField && (
+                  <g transform="translate(120 0) scale(-1 1)">
+                    <g key={`oe-${activeFieldIndex}`} className="vision-snapshot">
+                      <path className="vision-field vision-field-alt" d={activeField.fieldPath} />
+                      <path className="vision-line" d={activeField.lineAPath} />
+                      <path className="vision-line" d={activeField.lineBPath} />
+                    </g>
+                  </g>
+                )}
+                <rect className="peripheral-haze" x="0" y="0" width="120" height="78" fill={`url(#${clipId}-peripheral)`} />
+                <rect className="scan-shine-svg" x="0" y="0" width="120" height="18" fill={`url(#${clipId}-scanshine)`} />
+                {/* <circle className="target-svg target-b" cx="47" cy="44" r="3" /> */}
+                {/* <circle className="target-svg target-c" cx="80" cy="54" r="3" /> */}
+              </g>
+              <path className="lens-edge" d={lensPath} transform="translate(120 0) scale(-1 1)" />
+            </g>
+
+            <g className="term-carousel" transform="translate(0 104)">
+              {LENS_SCAN_TERMS.map((term, index) => (
+                <text
+                  key={term}
+                  className="term-carousel-item"
+                  x="150"
+                  y="7"
+                  style={{ animationDelay: `${index * 0.42}s` }}
+                >
+                  {term}
+                </text>
+              ))}
+            </g>
+          </svg>
         </div>
 
         <div>
@@ -223,112 +516,56 @@ function LensSearchAnimation() {
       </div>
 
       <style jsx>{`
-        .glasses-stage {
+        .lens-stage {
           position: absolute;
           inset: 0;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 16px;
+          width: 100%;
+          height: 100%;
           filter: drop-shadow(0 0 18px rgba(34, 211, 238, 0.16));
         }
 
-        .glass-lens {
-          position: relative;
-          width: min(40%, 170px);
-          height: 78px;
-          overflow: hidden;
-          border: 7px solid rgba(2, 6, 23, 0.96);
-          background:
-            radial-gradient(circle at 45% 35%, rgba(248, 250, 252, 0.22), transparent 28%),
-            linear-gradient(135deg, rgba(34, 211, 238, 0.18), rgba(217, 70, 239, 0.08) 48%, rgba(15, 23, 42, 0.92));
-          box-shadow:
-            inset 0 0 24px rgba(34, 211, 238, 0.18),
-            inset 0 0 44px rgba(217, 70, 239, 0.1),
-            0 0 0 1px rgba(255, 255, 255, 0.08);
+        .lens-shape {
+          opacity: 0.95;
         }
 
-        .glass-lens-left {
-          border-radius: 20px 28px 42px 34px / 22px 24px 34px 32px;
-          transform: perspective(280px) rotateY(7deg) rotate(-1.5deg);
+        .lens-edge {
+          fill: none;
+          stroke: rgba(125, 211, 252, 0.54);
+          stroke-width: 1.8;
+          vector-effect: non-scaling-stroke;
+          filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.45));
         }
 
-        .glass-lens-right {
-          border-radius: 28px 20px 34px 42px / 24px 22px 32px 34px;
-          transform: perspective(280px) rotateY(-7deg) rotate(1.5deg);
-        }
-
-        .glasses-bridge {
-          position: absolute;
-          left: 50%;
-          top: 54px;
-          width: 34px;
-          height: 22px;
-          transform: translateX(-50%);
-          border-top: 8px solid rgba(2, 6, 23, 0.98);
-          border-radius: 50% 50% 0 0;
-          z-index: 4;
-        }
-
-        .glasses-temple {
-          position: absolute;
-          top: 41px;
-          width: 48px;
-          height: 8px;
-          border-radius: 999px;
-          background: rgba(2, 6, 23, 0.98);
-          z-index: 3;
-        }
-
-        .glasses-temple-left {
-          left: 4%;
-          transform: rotate(13deg);
-        }
-
-        .glasses-temple-right {
-          right: 4%;
-          transform: rotate(-13deg);
-        }
-
-        .lens-grid {
-          position: absolute;
-          inset: 0;
-          background:
-            linear-gradient(rgba(34, 211, 238, 0.08) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(217, 70, 239, 0.08) 1px, transparent 1px);
-          background-size: 24px 24px;
-          mask-image: radial-gradient(circle at center, black, transparent 78%);
+        .lens-grid-svg {
+          fill: rgba(15, 23, 42, 0.24);
+          stroke: rgba(34, 211, 238, 0.13);
+          stroke-width: 8;
+          stroke-dasharray: 1 10;
           animation: gridRush 0.55s linear infinite;
         }
 
-        .scan-line {
-          position: absolute;
-          left: -30%;
-          width: 140%;
-          height: 2px;
-          background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.9), transparent);
-          box-shadow: 0 0 16px rgba(34, 211, 238, 0.8);
+        .scan-line-svg {
+          stroke: rgba(34, 211, 238, 0.9);
+          stroke-width: 1.4;
+          filter: drop-shadow(0 0 5px rgba(34, 211, 238, 0.85));
           opacity: 0.75;
+          transform-box: fill-box;
+          transform-origin: center;
         }
 
         .scan-line-a {
-          top: 34%;
           animation: scanFast 0.62s ease-in-out infinite;
         }
 
         .scan-line-b {
-          top: 68%;
           animation: scanFast 0.48s ease-in-out infinite reverse;
         }
 
-        .scan-axis {
-          position: absolute;
-          left: 50%;
-          top: -28%;
-          width: 2px;
-          height: 156%;
-          background: linear-gradient(transparent, rgba(217, 70, 239, 0.9), transparent);
-          box-shadow: 0 0 14px rgba(217, 70, 239, 0.75);
+        .scan-axis-svg {
+          stroke: rgba(217, 70, 239, 0.92);
+          stroke-width: 1.35;
+          filter: drop-shadow(0 0 5px rgba(217, 70, 239, 0.85));
+          transform-box: fill-box;
           transform-origin: center;
           animation: axisSweep 0.86s ease-in-out infinite;
         }
@@ -338,70 +575,64 @@ function LensSearchAnimation() {
           animation-direction: reverse;
         }
 
-        .lens-option {
-          position: absolute;
-          min-width: 58px;
-          border: 1px solid rgba(255, 255, 255, 0.14);
-          border-radius: 999px;
-          background: rgba(15, 23, 42, 0.82);
-          padding: 5px 8px;
-          color: rgba(226, 232, 240, 0.9);
-          font-size: 10px;
-          font-weight: 900;
-          letter-spacing: 0.12em;
-          text-align: center;
-          text-transform: uppercase;
-          box-shadow: 0 0 18px rgba(217, 70, 239, 0.12);
-          animation: optionRush 0.76s linear infinite;
+        .vision-field {
+          fill: rgba(34, 211, 238, 0.08);
+          stroke: rgba(251, 191, 36, 0.28);
+          stroke-width: 0.8;
+          filter: drop-shadow(0 0 7px rgba(251, 191, 36, 0.18));
+          opacity: 0.46;
         }
 
-        .lens-option-a {
-          left: 9%;
-          top: 18%;
+        .vision-field-alt {
+          fill: rgba(217, 70, 239, 0.08);
         }
 
-        .lens-option-b {
-          right: 8%;
-          top: 18%;
-          animation-delay: -0.18s;
+        .vision-line {
+          fill: none;
+          stroke: rgba(251, 191, 36, 0.82);
+          stroke-width: 1.45;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+          vector-effect: non-scaling-stroke;
+          filter: drop-shadow(0 0 5px rgba(251, 191, 36, 0.65));
         }
 
-        .lens-option-c {
-          left: 16%;
-          bottom: 16%;
-          animation-delay: -0.34s;
+        .vision-snapshot {
+          transform-box: fill-box;
+          transform-origin: center;
+          animation: geometryRead 110ms ease-out;
         }
 
-        .lens-option-d {
-          right: 16%;
-          bottom: 16%;
-          animation-delay: -0.5s;
+        .peripheral-haze {
+          mix-blend-mode: multiply;
+          opacity: 0.74;
+          animation: hazeBreath 13s ease-in-out infinite;
         }
 
-        .target {
-          position: absolute;
-          width: 7px;
-          height: 7px;
-          border-radius: 999px;
-          background: #f0abfc;
-          box-shadow: 0 0 18px #d946ef;
+        .target-svg {
+          fill: #f0abfc;
+          filter: drop-shadow(0 0 6px #d946ef);
           animation: targetJump 0.58s steps(4) infinite;
         }
 
-        .target-a {
-          left: 42%;
-          top: 44%;
+        .term-carousel-item {
+          fill: rgba(226, 232, 240, 0.88);
+          font-size: 9px;
+          font-weight: 900;
+          letter-spacing: 0.16em;
+          text-anchor: middle;
+          dominant-baseline: middle;
+          opacity: 0;
+          transform-box: fill-box;
+          transform-origin: center;
+          animation: termCylinder 2.52s linear infinite;
         }
 
         .target-b {
-          left: 48%;
-          top: 38%;
           animation-delay: -0.17s;
         }
 
         .target-c {
-          left: 66%;
-          top: 62%;
           animation-delay: -0.31s;
         }
 
@@ -431,26 +662,20 @@ function LensSearchAnimation() {
         }
 
         @keyframes gridRush {
-          from { background-position: 0 0, 0 0; }
-          to { background-position: 24px 24px, 24px 0; }
+          from { stroke-dashoffset: 0; }
+          to { stroke-dashoffset: 22; }
         }
 
         @keyframes scanFast {
-          0% { transform: translateY(-44px) rotate(-10deg); opacity: 0; }
+          0% { transform: translateY(-32px) rotate(-10deg); opacity: 0; }
           20% { opacity: 1; }
-          100% { transform: translateY(52px) rotate(13deg); opacity: 0; }
+          100% { transform: translateY(42px) rotate(13deg); opacity: 0; }
         }
 
         @keyframes axisSweep {
-          0%, 100% { transform: translateX(-50%) rotate(-52deg); opacity: 0.15; }
-          45% { transform: translateX(-50%) rotate(6deg); opacity: 1; }
-          70% { transform: translateX(-50%) rotate(58deg); opacity: 0.65; }
-        }
-
-        @keyframes optionRush {
-          0%, 100% { transform: translateX(0) scale(0.96); opacity: 0.45; }
-          35% { transform: translateX(12px) scale(1.05); opacity: 1; }
-          70% { transform: translateX(-10px) scale(0.9); opacity: 0.55; }
+          0%, 100% { transform: rotate(-52deg); opacity: 0.15; }
+          45% { transform: rotate(6deg); opacity: 1; }
+          70% { transform: rotate(58deg); opacity: 0.65; }
         }
 
         @keyframes targetJump {
@@ -466,12 +691,45 @@ function LensSearchAnimation() {
           50% { transform: scale(1.2); opacity: 1; }
         }
 
+        @keyframes hazeBreath {
+          0%, 100% { opacity: 0.82; }
+          20% { opacity: 0.38; }
+          42% { opacity: 0.68; }
+          64% { opacity: 0.25; }
+          82% { opacity: 0.74; }
+        }
+
+        @keyframes geometryRead {
+          0% { opacity: 0.08; transform: scale(0.985); }
+          22% { opacity: 1; transform: scale(1); }
+          100% { opacity: 0.78; transform: scale(1); }
+        }
+
+        .scan-shine-svg {
+          animation: scanShine 3s linear infinite alternate;
+        }
+
+        @keyframes scanShine {
+          0%   { transform: translateY(0px); }
+          100% { transform: translateY(60px); }
+        }
+
+        @keyframes termCylinder {
+          0% { opacity: 0; transform: translateY(12px) scaleY(0.55); }
+          8% { opacity: 0.35; transform: translateY(7px) scaleY(0.78); }
+          17% { opacity: 1; transform: translateY(0) scaleY(1); }
+          28% { opacity: 0.35; transform: translateY(-7px) scaleY(0.78); }
+          38%, 100% { opacity: 0; transform: translateY(-12px) scaleY(0.55); }
+        }
+
         @media (prefers-reduced-motion: reduce) {
-          .lens-grid,
-          .scan-line,
-          .scan-axis,
-          .lens-option,
-          .target,
+          .lens-grid-svg,
+          .scan-line-svg,
+          .scan-axis-svg,
+          .vision-snapshot,
+          .peripheral-haze,
+          .term-carousel-item,
+          .target-svg,
           .step-dot {
             animation-duration: 2.4s;
           }
@@ -523,16 +781,16 @@ const getParseStatusLabel = (value: EvaluationParseStatus) => {
 // ==========================================
 const TEST_PROFILES = {
   enzo: {
-    patientNameRaw: 'Enzo Gabriel (Criança Ativa)',
-    ageYears: '8',
+    patientNameRaw: 'Lia Martins (Miopia Infantil Complexa)',
+    ageYears: '9',
     estiloVidaUsoComputadorHoras: '0',
     estiloVidaDirigirHoras: '0',
-    estiloVidaLeituraHoras: '1',
-    estiloVidaUsoCelularHoras: '2',
-    estiloVidaExposicaoSolHoras: '4',
-    estiloVidaAmbienteInternoHoras: '4',
-    estiloVidaAmbienteExternoHoras: '4',
-    estiloVidaAssistirTvHoras: '2',
+    estiloVidaLeituraHoras: '2',
+    estiloVidaUsoCelularHoras: '3',
+    estiloVidaExposicaoSolHoras: '5',
+    estiloVidaAmbienteInternoHoras: '5',
+    estiloVidaAmbienteExternoHoras: '5',
+    estiloVidaAssistirTvHoras: '1',
     marcaAtual: 'Nenhuma',
     tipoLenteAtual: 'visao_simples',
     usaMultifocalHoje: 'nao',
@@ -540,9 +798,9 @@ const TEST_PROFILES = {
     historicoTrocasRecentes: 'nao_informado',
     prioridadePrincipal: 'resistencia',
     principalIncomodoAtual: 'longe',
-    objetivoCompra: 'trocar_marca',
+    objetivoCompra: 'resolver_queixa',
     faixaOrcamento: '800_2000',
-    budgetTarget: '1200',
+    budgetTarget: '1500',
     importanciaEstetica: 'baixa',
     importanciaResistencia: 'alta',
     prefereTransitions: 'sim',
@@ -553,12 +811,12 @@ const TEST_PROFILES = {
     queixaQuebraOculos: 'sim',
     queixaCriancaAtiva: 'sim',
     queixaProgressaoRapida: 'sim',
-    observacoesConsultor: 'Criança muito ativa, quebra óculos na escola. Pais preocupados com aumento rápido do grau.',
-    receitaLongeOdEsferico: '-4,50',
-    receitaLongeOdCilindrico: '-1,50',
+    observacoesConsultor: 'Crianca pratica esportes na escola, fica muito ao ar livre e os pais relatam aumento do grau em menos de um ano. Testa prioridade clinica de controle de miopia mesmo sem foto/blue completo.',
+    receitaLongeOdEsferico: '-5,25',
+    receitaLongeOdCilindrico: '-1,75',
     receitaLongeOdEixo: '180',
-    receitaLongeOeEsferico: '-4,25',
-    receitaLongeOeCilindrico: '-1,25',
+    receitaLongeOeEsferico: '-5,00',
+    receitaLongeOeCilindrico: '-1,50',
     receitaLongeOeEixo: '170',
     receitaAdicao: '',
     receitaPertoOdEsferico: '',
@@ -573,104 +831,104 @@ const TEST_PROFILES = {
     medidaAlturaOe: '16'
   },
   maria: {
-    patientNameRaw: 'Dona Maria (Adaptação Difícil)',
-    ageYears: '62',
-    estiloVidaUsoComputadorHoras: '1',
-    estiloVidaDirigirHoras: '0',
-    estiloVidaLeituraHoras: '4',
-    estiloVidaUsoCelularHoras: '3',
-    estiloVidaExposicaoSolHoras: '1',
-    estiloVidaAmbienteInternoHoras: '10',
-    estiloVidaAmbienteExternoHoras: '2',
-    estiloVidaAssistirTvHoras: '5',
-    marcaAtual: 'Marca Genérica',
-    tipoLenteAtual: 'multifocal',
-    usaMultifocalHoje: 'sim',
-    dificuldadeAdaptacao: 'alta',
+    patientNameRaw: 'Caio Andrade (Alto Grau Ativo)',
+    ageYears: '31',
+    estiloVidaUsoComputadorHoras: '7',
+    estiloVidaDirigirHoras: '1',
+    estiloVidaLeituraHoras: '1',
+    estiloVidaUsoCelularHoras: '5',
+    estiloVidaExposicaoSolHoras: '3',
+    estiloVidaAmbienteInternoHoras: '9',
+    estiloVidaAmbienteExternoHoras: '3',
+    estiloVidaAssistirTvHoras: '1',
+    marcaAtual: 'Nenhuma',
+    tipoLenteAtual: 'visao_simples',
+    usaMultifocalHoje: 'nao',
+    dificuldadeAdaptacao: 'nao_informado',
     historicoTrocasRecentes: 'uma',
-    prioridadePrincipal: 'adaptacao',
-    principalIncomodoAtual: 'adaptacao',
-    objetivoCompra: 'resolver_queixa',
-    faixaOrcamento: 'acima_5000',
-    budgetTarget: '5500',
-    importanciaEstetica: 'media',
-    importanciaResistencia: 'media',
-    prefereTransitions: 'nao',
-    prefereBlueUv: 'sim',
+    prioridadePrincipal: 'equilibrio',
+    principalIncomodoAtual: 'longe',
+    objetivoCompra: 'trocar_marca',
+    faixaOrcamento: '2000_5000',
+    budgetTarget: '2800',
+    importanciaEstetica: 'alta',
+    importanciaResistencia: 'alta',
+    prefereTransitions: 'sim',
+    prefereBlueUv: 'nao',
     aceitaPremium: 'sim',
-    queixaDirigirNoite: 'nao',
+    queixaDirigirNoite: 'sim',
     queixaSensibilidadeLuz: 'sim',
-    queixaQuebraOculos: 'nao',
+    queixaQuebraOculos: 'sim',
     queixaCriancaAtiva: 'nao',
     queixaProgressaoRapida: 'nao',
-    observacoesConsultor: 'Já tentou usar multifocal 2 vezes sem sucesso. Sente tontura e campo lateral muito estreito.',
-    receitaLongeOdEsferico: '+1,50',
-    receitaLongeOdCilindrico: '-0,75',
-    receitaLongeOdEixo: '90',
-    receitaLongeOeEsferico: '+1,75',
-    receitaLongeOeCilindrico: '-0,50',
-    receitaLongeOeEixo: '85',
-    receitaAdicao: '2,50',
+    observacoesConsultor: 'Cliente usa armacao grande, joga futebol nos fins de semana e queixa lente grossa. Testa conflito entre alto indice, resistencia, fotossensivel e direcao noturna.',
+    receitaLongeOdEsferico: '-7,25',
+    receitaLongeOdCilindrico: '-2,00',
+    receitaLongeOdEixo: '15',
+    receitaLongeOeEsferico: '-6,75',
+    receitaLongeOeCilindrico: '-1,75',
+    receitaLongeOeEixo: '165',
+    receitaAdicao: '',
     receitaPertoOdEsferico: '',
     receitaPertoOdCilindrico: '',
     receitaPertoOdEixo: '',
     receitaPertoOeEsferico: '',
     receitaPertoOeCilindrico: '',
     receitaPertoOeEixo: '',
-    medidaDnpOd: '30',
-    medidaDnpOe: '30',
-    medidaAlturaOd: '21',
-    medidaAlturaOe: '21'
+    medidaDnpOd: '32',
+    medidaDnpOe: '32',
+    medidaAlturaOd: '20',
+    medidaAlturaOe: '20'
   },
   roberto: {
-    patientNameRaw: 'Sr. Roberto (Presbita Iniciante)',
-    ageYears: '42',
-    estiloVidaUsoComputadorHoras: '8',
-    estiloVidaDirigirHoras: '2',
-    estiloVidaLeituraHoras: '2',
-    estiloVidaUsoCelularHoras: '6',
+    patientNameRaw: 'Helena Duarte (Executiva Orcamento Apertado)',
+    ageYears: '54',
+    estiloVidaUsoComputadorHoras: '10',
+    estiloVidaDirigirHoras: '3',
+    estiloVidaLeituraHoras: '3',
+    estiloVidaUsoCelularHoras: '4',
     estiloVidaExposicaoSolHoras: '1',
     estiloVidaAmbienteInternoHoras: '12',
     estiloVidaAmbienteExternoHoras: '1',
-    estiloVidaAssistirTvHoras: '1',
-    marcaAtual: 'Nenhuma',
-    tipoLenteAtual: 'nao_informado',
-    usaMultifocalHoje: 'nao_informado',
-    dificuldadeAdaptacao: 'nao_informado',
+    estiloVidaAssistirTvHoras: '2',
+    marcaAtual: 'Varilux antiga',
+    tipoLenteAtual: 'multifocal',
+    usaMultifocalHoje: 'sim',
+    dificuldadeAdaptacao: 'media',
     historicoTrocasRecentes: 'nao_informado',
     prioridadePrincipal: 'equilibrio',
-    principalIncomodoAtual: 'perto',
-    objetivoCompra: 'primeira_multifocal',
-    faixaOrcamento: '2000_5000',
-    budgetTarget: '3500',
-    importanciaEstetica: 'alta',
+    principalIncomodoAtual: 'longe_perto',
+    objetivoCompra: 'resolver_queixa',
+    faixaOrcamento: '800_2000',
+    budgetTarget: '1800',
+    importanciaEstetica: 'media',
     importanciaResistencia: 'baixa',
     prefereTransitions: 'nao',
     prefereBlueUv: 'sim',
-    aceitaPremium: 'sim',
+    aceitaPremium: 'nao',
     queixaDirigirNoite: 'sim',
     queixaSensibilidadeLuz: 'nao',
     queixaQuebraOculos: 'nao',
     queixaCriancaAtiva: 'nao',
     queixaProgressaoRapida: 'nao',
-    observacoesConsultor: 'Empresário. Grande demanda digital. Começou a afastar objetos para ler recentemente.',
-    receitaLongeOdEsferico: '0,00',
-    receitaLongeOdCilindrico: '',
-    receitaLongeOdEixo: '',
-    receitaLongeOeEsferico: '0,00',
-    receitaLongeOeCilindrico: '',
-    receitaLongeOeEixo: '',
-    receitaAdicao: '1,25',
+    observacoesConsultor: 'Executiva com muita tela e reunioes, dirige a noite e reclama de reflexos no multifocal antigo. Quer blue/UV, mas nao aceita premium e tem alvo baixo.',
+    receitaLongeOdEsferico: '+1,25',
+    receitaLongeOdCilindrico: '-0,75',
+    receitaLongeOdEixo: '100',
+    receitaLongeOeEsferico: '+1,00',
+    receitaLongeOeCilindrico: '-0,50',
+    receitaLongeOeEixo: '80',
+    receitaAdicao: '2,25',
     receitaPertoOdEsferico: '',
     receitaPertoOdCilindrico: '',
     receitaPertoOdEixo: '',
     receitaPertoOeEsferico: '',
     receitaPertoOeCilindrico: '',
     receitaPertoOeEixo: '',
-    medidaDnpOd: '33',
-    medidaDnpOe: '33',
-    medidaAlturaOd: '19',
-    medidaAlturaOe: '19'
+    medidaDnpOd: '31',
+    medidaDnpOe: '31',
+    medidaAlturaOd: '18',
+    medidaAlturaOe: '18'
   }
 };
 
@@ -1171,7 +1429,7 @@ const buildComparisonText = (
   return `A IA considerou sinais adicionais do caso, como rotina, adaptação, faixa de preço e features desejadas, e por isso priorizou uma combinação diferente da sugerida pelo iVision. ${humanReasons ? `Os critérios mais fortes foram: ${humanReasons}.` : ''}`.trim()
 }
 
-const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>) => {
+const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>): RecommendationCaseInput => {
   const longeOdEsferico = parseNullableNumber(form.receitaLongeOdEsferico)
   const longeOdCilindrico = parseNullableNumber(form.receitaLongeOdCilindrico)
   const longeOeEsferico = parseNullableNumber(form.receitaLongeOeEsferico)
@@ -1260,8 +1518,12 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>) 
     objetivoTags.push('controle_miopia')
   }
 
-  if (parseNullableNumber(form.receitaAdicao) !== null && form.usaMultifocalHoje === 'nao') {
+  if (
+    parseNullableNumber(form.receitaAdicao) !== null &&
+    (form.usaMultifocalHoje === 'nao' || form.objetivoCompra === 'primeira_multifocal')
+  ) {
     objetivoTags.push('primeira_multifocal')
+    desiredBenefits.push('adaptacao_rapida', 'conforto_visual')
   }
 
   const targetBudget = parseNullableNumber(form.budgetTarget)
@@ -1304,6 +1566,13 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>) 
     desiredBenefits.push('estetica', 'lente_fina')
   }
 
+  if (form.aceitaPremium === 'sim') {
+    desiredBenefits.push('qualidade_optica')
+    if (budgetMode === 'intermediario') {
+      budgetMode = 'premium'
+    }
+  }
+
   if (form.principalIncomodoAtual === 'peso_espessura') {
     desiredBenefits.push('lente_fina', 'estetica')
   }
@@ -1334,7 +1603,7 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>) 
     adaptation_difficulty:
       form.dificuldadeAdaptacao === 'nao_informado'
         ? null
-        : form.dificuldadeAdaptacao,
+        : form.dificuldadeAdaptacao as RecommendationCaseInput['adaptation_difficulty'],
     notes: [form.sourceExamType, form.observacoesConsultor.trim()].filter(Boolean).join(' | ') || null
   }
 }
@@ -1464,10 +1733,14 @@ const createEmptyForm = () => ({
 
 export default function EvaluationInterface({
   activeCatalog,
-  activeCatalogs = []
+  activeCatalogs = [],
+  lensSearchRim = null,
+  lensSearchFields = []
 }: {
   activeCatalog: ActiveCatalogContext
   activeCatalogs?: ActiveCatalogSummary[]
+  lensSearchRim?: LensRimPoint[] | null
+  lensSearchFields?: LensSearchField[]
 }) {
   const params = useParams()
   const router = useRouter()
@@ -1485,6 +1758,7 @@ export default function EvaluationInterface({
   const [history, setHistory] = useState<OpticalEvaluationListItem[]>([])
   const [form, setForm] = useState(createEmptyForm())
   const [evaluationId, setEvaluationId] = useState<number | null>(null)
+  const evaluationIdRef = useRef<number | null>(null)
   const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [searchError, setSearchError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
@@ -1507,8 +1781,11 @@ export default function EvaluationInterface({
   const [aiRecommendations, setAiRecommendations] = useState<RecommendationOption[]>([])
   const [aiFeedback, setAiFeedback] = useState<string | null>(null)
   const [aiConversationInput, setAiConversationInput] = useState('')
+  const [lensTechnicalTriage, setLensTechnicalTriage] = useState<LensTechnicalTriage | null>(null)
   const [lensAudit, setLensAudit] = useState<string | null>(null)
+  const [lensAuditPayload, setLensAuditPayload] = useState<Record<string, unknown> | null>(null)
   const [isGeneratingAudit, setIsGeneratingAudit] = useState(false)
+  const [copiedDebugBox, setCopiedDebugBox] = useState<'audit' | 'payload' | 'triage' | null>(null)
   const [quickRetentionReply, setQuickRetentionReply] = useState<string | null>(null)
   const [ivisionReferenceSuggestion, setIvisionReferenceSuggestion] = useState<string | null>(null)
   const [ivisionReferenceSummary, setIvisionReferenceSummary] = useState<string | null>(null)
@@ -1517,6 +1794,15 @@ export default function EvaluationInterface({
     () => dependentes.find((dep) => dep.id === Number(selectedDependenteId)) || null,
     [dependentes, selectedDependenteId]
   )
+
+  useEffect(() => {
+    evaluationIdRef.current = evaluationId
+  }, [evaluationId])
+
+  const setCurrentEvaluationId = (id: number | null) => {
+    evaluationIdRef.current = id
+    setEvaluationId(id)
+  }
 
   useEffect(() => {
     if (query.trim().length < 2 || selectedCustomer) {
@@ -1608,14 +1894,16 @@ export default function EvaluationInterface({
     setCustomerResults([])
     setHistory([])
     setForm(createEmptyForm())
-    setEvaluationId(null)
+    setCurrentEvaluationId(null)
     setSyncStatus('idle')
     setManualSuggestion(null)
     setAiState(null)
     setAiRecommendations([])
     setAiFeedback(null)
     setAiConversationInput('')
+    setLensTechnicalTriage(null)
     setLensAudit(null)
+    setLensAuditPayload(null)
     setIsGeneratingAudit(false)
     setIvisionReferenceSuggestion(null)
     setIvisionReferenceSummary(null)
@@ -1626,7 +1914,7 @@ export default function EvaluationInterface({
   
   const handleSelectEvaluation = (ev: OpticalEvaluationListItem) => {
     // Restaurar estado da avaliação
-    setEvaluationId(ev.id)
+    setCurrentEvaluationId(ev.id)
     setSyncStatus('saved')
     
     // Configurar sujeito
@@ -1697,14 +1985,16 @@ export default function EvaluationInterface({
     setSelectedSubjectType(null)
     setHistory([])
     setForm(createEmptyForm())
-    setEvaluationId(null)
+    setCurrentEvaluationId(null)
     setSyncStatus('idle')
     setManualSuggestion(null)
     setAiState(null)
     setAiRecommendations([])
     setAiFeedback(null)
     setAiConversationInput('')
+    setLensTechnicalTriage(null)
     setLensAudit(null)
+    setLensAuditPayload(null)
     setIsGeneratingAudit(false)
     setIvisionReferenceSuggestion(null)
     setIvisionReferenceSummary(null)
@@ -1782,6 +2072,9 @@ export default function EvaluationInterface({
     setAiState(null)
     setAiRecommendations([])
     setAiConversationInput('')
+    setLensTechnicalTriage(null)
+    setLensAudit(null)
+    setLensAuditPayload(null)
     setAiFeedback('Sugestão comercial gerada com base nos dados da avaliação.')
     applyManualSuggestion(result.suggestion, 'Sugestão comercial gerada com base nos dados da avaliação.')
     return true
@@ -1798,19 +2091,27 @@ export default function EvaluationInterface({
       return
     }
 
-    if (aiCaseInput.esferico === null || aiCaseInput.cilindrico === null) {
-      setFormError('Preencha pelo menos esférico e cilíndrico para a IA recomendar.')
+    if (aiCaseInput.esferico === null) {
+      setFormError('Preencha pelo menos o esférico para a IA recomendar. Cilíndrico e eixo são opcionais.')
       return
     }
 
     setFormError(null)
     setAiFeedback(null)
     setQuickRetentionReply(null)
-    setEvaluationId(null)
-    setSyncStatus('idle')
     setManualSuggestion(null)
+    setLensTechnicalTriage(null)
+    setLensAudit(null)
+    setLensAuditPayload(null)
 
     startAiGenerationTransition(async () => {
+      const auditPatientContext = buildPatientAuditContext(form, aiCaseInput)
+      const triageResult = await generateLensTechnicalTriageAction(auditPatientContext, aiCaseInput)
+      const technicalTriage = triageResult.success ? triageResult.triage : null
+      const recommendationCaseInput = applyTechnicalTriageToCaseInput(aiCaseInput, technicalTriage)
+
+      setLensTechnicalTriage(technicalTriage)
+
       const result = await generateLensRecommendationsAction({
         versionId: activeCatalog.versionId,
         versionIds:
@@ -1818,7 +2119,7 @@ export default function EvaluationInterface({
             ? activeCatalogs.map((catalog) => catalog.versionId)
             : undefined,
         storeId,
-        ...aiCaseInput,
+        ...recommendationCaseInput,
         topN: 3
       })
 
@@ -1827,6 +2128,9 @@ export default function EvaluationInterface({
           setAiRecommendations([])
           setAiState(null)
           setAiFeedback(null)
+          setLensTechnicalTriage(null)
+          setLensAudit(null)
+          setLensAuditPayload(null)
           setFormError(result.message)
         }
         return
@@ -1835,17 +2139,27 @@ export default function EvaluationInterface({
       const payload = result.data as LensRecommendationActionPayload
       setAiState(payload.state)
       setAiRecommendations(payload.recommendations)
-      setEvaluationId(null)
-    setSyncStatus('idle')
-    setManualSuggestion(null)
-      setAiFeedback('Sugestão por IA gerada com base no catálogo ativo da loja.')
+      setSyncStatus(evaluationIdRef.current ? 'saved' : 'idle')
+      setManualSuggestion(null)
+      setAiFeedback(
+        technicalTriage
+          ? 'Triagem tecnica e sugestao por IA geradas com base no catalogo ativo da loja.'
+          : 'Sugestao por IA gerada com base no catalogo ativo da loja.'
+      )
 
       // Auditoria Gemini assíncrona (não bloqueia o ranking)
       if (payload.recommendations.length > 0) {
         setLensAudit(null)
         setIsGeneratingAudit(true)
+        const auditDebugPayload = {
+          patient: auditPatientContext,
+          technicalTriage,
+          motorInput: recommendationCaseInput,
+          recommendations: payload.recommendations,
+        }
+        setLensAuditPayload(auditDebugPayload)
         generateLensAuditAction(
-          buildPatientAuditContext(form, aiCaseInput),
+          auditPatientContext,
           payload.recommendations,
         ).then((auditResult) => {
           if (auditResult.success && auditResult.audit) {
@@ -1855,6 +2169,8 @@ export default function EvaluationInterface({
         }).catch(() => {
           setIsGeneratingAudit(false)
         })
+      } else {
+        setLensAuditPayload(null)
       }
     })
   }
@@ -1886,9 +2202,8 @@ export default function EvaluationInterface({
       }
       setAiState(payload.nextState)
       setAiRecommendations(payload.recommendations)
-      setEvaluationId(null)
-    setSyncStatus('idle')
-    setManualSuggestion(null)
+      setSyncStatus(evaluationIdRef.current ? 'saved' : 'idle')
+      setManualSuggestion(null)
       setAiFeedback(`Sugestão refinada para: "${currentInput}"`)
     })
   }
@@ -2003,13 +2318,16 @@ export default function EvaluationInterface({
           documentHash: preview.document_hash || '',
           rawPayloadJson: preview.raw_payload_json || {}
         }))
-        setEvaluationId(null)
+        setCurrentEvaluationId(null)
     setSyncStatus('idle')
     setManualSuggestion(null)
         setAiState(null)
         setAiRecommendations([])
         setAiFeedback(null)
         setAiConversationInput('')
+        setLensTechnicalTriage(null)
+        setLensAudit(null)
+        setLensAuditPayload(null)
         setIvisionReferenceSuggestion(preview.recommended_lens_name || null)
         setIvisionReferenceSummary(preview.commercial_recommendation_raw || null)
 
@@ -2068,7 +2386,7 @@ export default function EvaluationInterface({
     startSaveTransition(async () => {
       const derivedStatus: EvaluationStatus = form.sourceSystem === 'ivision' ? 'importada' : 'concluida'
       const result = await upsertOpticalEvaluation({
-        evaluationId: evaluationId || undefined,
+        evaluationId: evaluationIdRef.current || undefined,
         storeId,
         evaluatedCustomerId: selectedSubjectType === 'customer' ? selectedCustomer.id : null,
         evaluatedDependenteId: selectedSubjectType === 'dependente' ? Number(selectedDependenteId) : null,
@@ -2126,26 +2444,34 @@ export default function EvaluationInterface({
       }
 
       setFeedback(result.message)
-      setForm((prev) => ({
-        ...createEmptyForm(),
-        sourceUrl: prev.sourceUrl
-      }))
-      setEvaluationId(null)
-    setSyncStatus('idle')
-    setManualSuggestion(null)
-      setAiState(null)
-      setAiRecommendations([])
-      setAiFeedback(null)
-      setAiConversationInput('')
-      setIvisionReferenceSuggestion(null)
-      setIvisionReferenceSummary(null)
-
       const evaluations = await getOpticalEvaluationsForSubject({
         storeId,
         customerId: selectedSubjectType === 'customer' ? selectedCustomer.id : null,
         dependenteId: selectedSubjectType === 'dependente' ? Number(selectedDependenteId) : null
       })
       setHistory(evaluations)
+      setForm((prev) => ({
+        ...createEmptyForm(),
+        sourceUrl: prev.sourceUrl
+      }))
+      setCurrentEvaluationId(null)
+      setSelectedCustomer(null)
+      setSelectedSubjectType(null)
+      setSelectedDependenteId('')
+      setDependentes([])
+      setQuery('')
+      setCustomerResults([])
+      setSyncStatus('idle')
+      setManualSuggestion(null)
+      setAiState(null)
+      setAiRecommendations([])
+      setAiFeedback(null)
+      setAiConversationInput('')
+      setLensTechnicalTriage(null)
+      setLensAudit(null)
+      setLensAuditPayload(null)
+      setIvisionReferenceSuggestion(null)
+      setIvisionReferenceSummary(null)
     })
   }
 
@@ -2166,6 +2492,35 @@ export default function EvaluationInterface({
     !!form.patientNameRaw &&
     !!selectedSubjectName &&
     normalizePersonName(form.patientNameRaw) !== normalizePersonName(selectedSubjectName)
+  const lensAuditPayloadText = lensAuditPayload
+    ? JSON.stringify(lensAuditPayload, null, 2)
+    : ''
+  const lensTechnicalTriageText = lensTechnicalTriage
+    ? [
+        'Triagem tecnica IA',
+        '',
+        lensTechnicalTriage.parecer,
+        '',
+        ...lensTechnicalTriage.technicalSignals.map((signal) => signal.replace(/_/g, ' ')),
+        lensTechnicalTriage.salesContext.tradeoff ? `\n${lensTechnicalTriage.salesContext.tradeoff}` : null,
+        lensTechnicalTriage.salesContext.caution ? `\n${lensTechnicalTriage.salesContext.caution}` : null,
+      ].filter(Boolean).join('\n')
+    : ''
+
+  const handleCopyDebugText = async (text: string, box: 'audit' | 'payload' | 'triage') => {
+    if (!text) return
+
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedDebugBox(box)
+      window.setTimeout(() => {
+        setCopiedDebugBox((current) => current === box ? null : current)
+      }, 1600)
+    } catch (err) {
+      console.error('Erro ao copiar debug da IA:', err)
+      setFormError('Nao foi possivel copiar o debug da IA.')
+    }
+  }
 
   // CRM Auto-save
   useEffect(() => {
@@ -2182,7 +2537,7 @@ export default function EvaluationInterface({
           const derivedStatus: EvaluationStatus = form.sourceSystem === 'ivision' ? 'importada' : 'em_andamento'
           const payload = {
             storeId,
-            evaluationId: evaluationId || undefined,
+            evaluationId: evaluationIdRef.current || undefined,
             evaluatedCustomerId: selectedSubjectType === 'customer' ? selectedCustomer?.id : null,
             evaluatedDependenteId: selectedSubjectType === 'dependente' ? Number(selectedDependenteId) : null,
             responsibleCustomerId: selectedSubjectType === 'dependente' ? selectedCustomer?.id : null,
@@ -2237,7 +2592,7 @@ export default function EvaluationInterface({
           const result = await upsertOpticalEvaluation(payload)
 
           if (result.success && result.data) {
-            setEvaluationId(result.data.id)
+            setCurrentEvaluationId(result.data.id)
             setSyncStatus('saved')
           } else {
             console.error('Save error:', result.message)
@@ -2256,7 +2611,7 @@ export default function EvaluationInterface({
   const isIvisionMode = form.sourceSystem === 'ivision'
   const hasCatalogForAi = activeCatalogs.length > 0 || !!activeCatalog
   const aiCaseInput = inferRecommendationCaseInput(form)
-  const patientAge = aiCaseInput.idade
+  const patientAge = aiCaseInput.idade ?? null
   const isChild = patientAge !== null && patientAge <= 14
   const hasAdicao = aiCaseInput.adicao !== null
   const usedMultifocalBefore = form.tipoLenteAtual === 'multifocal' || form.tipoLenteAtual === 'bifocal'
@@ -2599,31 +2954,31 @@ export default function EvaluationInterface({
                     type="button"
                     onClick={() => {
                       setForm((prev) => ({ ...prev, ...TEST_PROFILES.enzo }))
-                      setFeedback('Perfil do Enzo (Criança) carregado com sucesso!')
+                      setFeedback('Perfil da Lia (miopia infantil complexa) carregado com sucesso!')
                     }}
                     className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
                   >
-                    <Baby className="h-3.5 w-3.5" /> Enzo (Criança)
+                    <Baby className="h-3.5 w-3.5" /> Lia (Miopia)
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       setForm((prev) => ({ ...prev, ...TEST_PROFILES.maria }))
-                      setFeedback('Perfil da Maria (Adaptação) carregado com sucesso!')
+                      setFeedback('Perfil do Caio (alto grau ativo) carregado com sucesso!')
                     }}
                     className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
                   >
-                    <UserRound className="h-3.5 w-3.5" /> Maria (Adaptação)
+                    <UserRound className="h-3.5 w-3.5" /> Caio (Alto Grau)
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       setForm((prev) => ({ ...prev, ...TEST_PROFILES.roberto }))
-                      setFeedback('Perfil do Roberto (Empresário) carregado com sucesso!')
+                      setFeedback('Perfil da Helena (orcamento apertado) carregado com sucesso!')
                     }}
                     className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
                   >
-                    <Briefcase className="h-3.5 w-3.5" /> Roberto (Empresário)
+                    <Briefcase className="h-3.5 w-3.5" /> Helena (Orcamento)
                   </button>
                   <button
                     type="button"
@@ -3182,17 +3537,97 @@ export default function EvaluationInterface({
                           </div>
                         )}
 
-                        {isGeneratingAi && <LensSearchAnimation />}
+                        {isGeneratingAi && (
+                          <LensSearchAnimation
+                            lensRim={lensSearchRim}
+                            searchFields={lensSearchFields}
+                          />
+                        )}
 
                         {(isGeneratingAudit || lensAudit) && (
                           <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
-                            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-amber-400 flex items-center gap-2">
-                              <Sparkles className="h-3 w-3" /> Debug IA — Auditoria da Indicação
-                            </p>
+                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-400 flex items-center gap-2">
+                                <Sparkles className="h-3 w-3" /> Debug IA — Auditoria da Indicação
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyDebugText(lensAudit || '', 'audit')}
+                                disabled={!lensAudit}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-100 hover:bg-amber-400/20 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                {copiedDebugBox === 'audit' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                                {copiedDebugBox === 'audit' ? 'Copiado' : 'Copiar'}
+                              </button>
+                            </div>
                             {isGeneratingAudit && !lensAudit
                               ? <span className="flex items-center gap-2 text-amber-400/70 text-sm italic"><Loader2 className="h-3 w-3 animate-spin" />Analisando indicações...</span>
                               : <p className="text-sm leading-6 text-amber-100/90 whitespace-pre-wrap">{lensAudit}</p>
                             }
+                          </div>
+                        )}
+
+                        {lensAuditPayload && (
+                          <div className="mt-4 rounded-xl border border-slate-500/30 bg-slate-900/60 p-4">
+                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 flex items-center gap-2">
+                                <FileSearch className="h-3 w-3" /> Debug IA — Payload da Auditoria
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyDebugText(lensAuditPayloadText, 'payload')}
+                                disabled={!lensAuditPayloadText}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-400/30 bg-slate-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-100 hover:bg-slate-400/20 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                {copiedDebugBox === 'payload' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                                {copiedDebugBox === 'payload' ? 'Copiado' : 'Copiar'}
+                              </button>
+                            </div>
+                            <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-white/10 bg-black/20 p-3 text-xs leading-5 text-slate-200">
+                              {lensAuditPayloadText}
+                            </pre>
+                          </div>
+                        )}
+
+                        {lensTechnicalTriage && (
+                          <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-300">
+                                Triagem tecnica IA
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyDebugText(lensTechnicalTriageText, 'triage')}
+                                disabled={!lensTechnicalTriageText}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-50 hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                {copiedDebugBox === 'triage' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                                {copiedDebugBox === 'triage' ? 'Copiado' : 'Copiar'}
+                              </button>
+                            </div>
+                            {lensTechnicalTriage.parecer && (
+                              <p className="mt-2 text-sm leading-6 text-emerald-50">
+                                {lensTechnicalTriage.parecer}
+                              </p>
+                            )}
+                            {lensTechnicalTriage.technicalSignals.length > 0 && (
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {lensTechnicalTriage.technicalSignals.map((signal) => (
+                                  <span
+                                    key={signal}
+                                    className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-100"
+                                  >
+                                    {signal.replace(/_/g, ' ')}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {(lensTechnicalTriage.salesContext.tradeoff || lensTechnicalTriage.salesContext.caution) && (
+                              <div className="mt-3 space-y-2 text-xs leading-5 text-emerald-100">
+                                {lensTechnicalTriage.salesContext.tradeoff && <p>{lensTechnicalTriage.salesContext.tradeoff}</p>}
+                                {lensTechnicalTriage.salesContext.caution && <p>{lensTechnicalTriage.salesContext.caution}</p>}
+                              </div>
+                            )}
                           </div>
                         )}
 

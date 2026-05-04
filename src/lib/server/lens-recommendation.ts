@@ -246,6 +246,18 @@ function withoutAccents(value: string): string {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 }
 
+function rejectsPremiumPreference(input: RecommendationCaseInput): boolean {
+  const budgetMode = normalizeBudgetMode(input.budget_mode)
+  const note = withoutAccents(String(input.notes || '').toLowerCase())
+  if (budgetMode !== 'economico') return false
+
+  return (
+    note.includes('aceita premium: nao') ||
+    note.includes('nao aceita premium') ||
+    note.includes('não aceita premium')
+  )
+}
+
 function normalizeIntentText(value: string): string {
   return withoutAccents(value.toLowerCase()).trim()
 }
@@ -301,8 +313,20 @@ function extractIndexValue(descriptor: string): number | null {
     return Number(match[0].replace(',', '.'))
   }
   if (/(policarbonato|airwear|poly\b)/.test(descriptor)) return 1.59
-  if (/(trivex)/.test(descriptor)) return 1.53
+  if (/(trivex|pnx)/.test(descriptor)) return 1.53
   return null
+}
+
+function stringifyPositiveFeatureValues(features: Record<string, unknown> = {}): string {
+  return Object.entries(features)
+    .filter(([, value]) => {
+      if (value === true) return true
+      if (typeof value === 'string' && value.trim()) return true
+      if (Array.isArray(value) && value.length > 0) return true
+      return false
+    })
+    .map(([key, value]) => `${key} ${Array.isArray(value) ? value.join(' ') : String(value)}`)
+    .join(' ')
 }
 
 function normalizeFeatureFlags(features: Record<string, unknown> = {}): Record<string, boolean> {
@@ -346,6 +370,20 @@ function resolveFulfillmentMode(offer: CatalogOffer, family: CatalogFamily | nul
   const hasSobDemandaSignals = /(surfac|surfa|sob demanda|digital)/.test(descriptor)
 
   if (offer.allows_composition && !offer.is_atomic_offer) return 'sob_demanda'
+
+  const clinicalCat =
+    offer.clinical_category !== 'indefinida' ? offer.clinical_category : family?.clinical_category
+  if (clinicalCat === 'multifocal' || clinicalCat === 'ocupacional' || clinicalCat === 'bifocal') {
+    return hasProntaSignals ? 'pronta' : 'sob_demanda'
+  }
+
+  const isLikelySobDemanda =
+    !hasProntaSignals &&
+    /(varilux|progressiva|multifocal|bifocal|interview|digitime|workstyle|enroute|gamavision|itop|myfocus|sync iii|sync3|eyezen boost|eyezen\+)/.test(
+      descriptor,
+    )
+  if (isLikelySobDemanda) return 'sob_demanda'
+
   if (offer.is_atomic_offer || offer.already_includes_treatment) return 'pronta'
   if (hasSobDemandaSignals && !hasProntaSignals) return 'sob_demanda'
   if (hasProntaSignals) return 'pronta'
@@ -438,11 +476,9 @@ function scoreStoreProfile(params: {
     input,
     offer,
     family,
-    offerFeatures,
     finalPrice,
     peerPrices,
     seeksThinness,
-    resistancePriority,
     thinnessPriority,
   } = params
 
@@ -518,7 +554,11 @@ function getDesiredClinicalCategories(input: RecommendationCaseInput): ClinicalC
     return ['plana_solar', 'visao_simples']
   }
 
-  return ['visao_simples', 'ocupacional']
+  if (objetivoTags.includes('ocupacional') || desiredBenefits.includes('ocupacional')) {
+    return ['ocupacional', 'visao_simples']
+  }
+
+  return ['visao_simples']
 }
 
 function enrichCaseInput(input: RecommendationCaseInput): RecommendationCaseInput {
@@ -562,7 +602,7 @@ function matchesGrid(input: RecommendationCaseInput, grids: CatalogGrid[]): bool
       input.adicao == null
         ? true
         : grid.add_min == null && grid.add_max == null
-          ? false
+          ? true
           : between(input.adicao, grid.add_min, grid.add_max)
     return sphOk && cylOk && addOk
   })
@@ -907,12 +947,20 @@ function getResistancePriority(input: RecommendationCaseInput): number {
 
 function getThinnessPriority(input: RecommendationCaseInput): number {
   const benefits = input.desired_benefits || []
+  const routine = input.rotina_tags || []
   const prescriptionStrength = getPrescriptionStrength(input)
 
   let priority = 0
 
   if (benefits.includes('estetica')) priority += 0.35
   if (benefits.includes('lente_fina')) priority += 0.35
+
+  if (
+    priority === 0 &&
+    (routine.includes('crianca') || routine.includes('crianca_ativa') || routine.includes('risco_quebra'))
+  ) {
+    return 0
+  }
 
   if (prescriptionStrength >= 7) return priority + 1
   if (prescriptionStrength >= 5.5) return priority + 0.8
@@ -959,6 +1007,7 @@ function scoreOffer(params: {
   const offerDescriptor = withoutAccents(
     `${offer.raw_label} ${offer.canonical_label || ''} ${offer.material || ''}`.toLowerCase(),
   )
+  const hasResistantMaterial = /(airwear|poly\b|policarbonato|trivex|pnx|1\.59|1,59)/.test(offerDescriptor)
   const indexValue = extractIndexValue(offerDescriptor)
   const budgetMode = normalizeBudgetMode(input.budget_mode)
   const prescriptionStrength = getPrescriptionStrength(input)
@@ -972,6 +1021,14 @@ function scoreOffer(params: {
     routineTags.includes('controle_miopia') ||
     desiredBenefits.includes('controle_miopia') ||
     (input.objetivo_tags || []).includes('controle_miopia')
+  const isChildCase = (input.idade != null && input.idade <= 14) || routineTags.includes('crianca')
+  const isPediatricMyopiaControlCase = isChildCase && wantsMiopiaControl
+  const isMyopiaControlOption = clinicalEvaluation.effectiveCategory === 'controle_miopia'
+  const highResistanceChildCase =
+    isChildCase &&
+    (desiredBenefits.includes('resistencia') ||
+      routineTags.includes('crianca_ativa') ||
+      routineTags.includes('risco_quebra'))
   const wantsFastDelivery = desiredBenefits.includes('pronta_entrega') || routineTags.includes('pronta_entrega')
   const surfacingDemandSignals = [
     'lente_fina',
@@ -1002,8 +1059,10 @@ function scoreOffer(params: {
     } else if (clinicalEvaluation.effectiveCategory === 'ocupacional') {
       score += 1
       reasons.push('beneficio:adicao_ocupacional')
+    } else if (clinicalEvaluation.effectiveCategory === 'visao_simples' && input.adicao <= 1.5) {
+      reasons.push('opcao:anti_fadiga_adicao_baixa')
     } else {
-      score -= 4
+      score -= input.adicao >= 1.5 ? 24 : 4
       reasons.push('opcao:adicao_incompativel')
     }
   }
@@ -1031,8 +1090,29 @@ function scoreOffer(params: {
       score += 3
       reasons.push(`feature:${preferredFeature}`)
     } else if (PENALIZABLE_FEATURES.has(preferredFeature)) {
-      score -= 2
+      const missingFeaturePenalty =
+        isPediatricMyopiaControlCase && isMyopiaControlOption
+          ? 3
+          : preferredFeature === 'transitions' &&
+        isChildCase &&
+        (routineTags.includes('sol') || desiredBenefits.includes('conforto_luz'))
+          ? 9
+          : preferredFeature === 'blue_uv' &&
+              isChildCase &&
+              ((input.rotina_tags || []).includes('celular') || desiredBenefits.includes('conforto_digital'))
+            ? 8
+          : 5
+      score -= missingFeaturePenalty
       reasons.push(`feature:ausente_${preferredFeature}`)
+      if (preferredFeature === 'transitions' && missingFeaturePenalty > 5) {
+        reasons.push('feature:ausente_transitions_pediatrico')
+      }
+      if (preferredFeature === 'blue_uv' && missingFeaturePenalty > 5) {
+        reasons.push('feature:ausente_blue_uv_pediatrico')
+      }
+      if (isPediatricMyopiaControlCase && isMyopiaControlOption) {
+        reasons.push(`feature:${preferredFeature}_secundario_ao_controle_miopia`)
+      }
     }
   }
 
@@ -1055,26 +1135,67 @@ function scoreOffer(params: {
     }
   }
 
-  if (resistancePriority > 0 && /(airwear|poly\b|policarbonato|trivex)/.test(offerDescriptor)) {
+  if (resistancePriority > 0 && hasResistantMaterial) {
     score += Number((0.5 + resistancePriority * 1.5).toFixed(2))
     reasons.push('material:resistente')
   }
 
+  if (highResistanceChildCase && !hasResistantMaterial) {
+    score -= 5
+    reasons.push('material:resistencia_infantil_nao_atendida')
+  }
+
+  if (highResistanceChildCase && /(1\.67|1,67|1\.74|1,74)/.test(offerDescriptor)) {
+    score -= indexValue != null && indexValue >= 1.74 ? 5 : 3.5
+    reasons.push('material:alto_indice_fraco_crianca')
+  }
+
   if (seeksThinness && /(1\.67|1,67|1\.74|1,74|high[\s-]?index|thin|lite|mr-8|mr8|mr-174)/.test(offerDescriptor)) {
-    score += Number((2 + thinnessPriority * 2.5).toFixed(2))
-    reasons.push('material:lente_fina')
+    if (prescriptionStrength >= 1.5 && thinnessPriority > 0) {
+      score += Number((2 + thinnessPriority * 2.5).toFixed(2))
+      reasons.push('material:lente_fina')
+    }
   }
 
   if (
     seeksThinness &&
-    thinnessPriority >= 0.8 &&
+    thinnessPriority >= 0.6 &&
     /(1\.50|1,50|1\.53|1,53|1\.56|1,56|1\.59|1,59|policarbonato|poly)/.test(offerDescriptor) &&
     !/(1\.67|1,67|1\.74|1,74)/.test(offerDescriptor)
   ) {
     score -= thinnessPriority >= 1 ? 1.5 : 0.75
   }
 
+  if (
+    seeksThinness &&
+    thinnessPriority >= 0.6 &&
+    prescriptionStrength >= 4.5 &&
+    /(1\.50|1,50|orma)/.test(offerDescriptor) &&
+    !/(1\.56|1,56|1\.59|1,59|1\.60|1,60|1\.67|1,67|1\.74|1,74|policarbonato|poly|trivex)/.test(offerDescriptor)
+  ) {
+    score -= 1.5
+    reasons.push('material:orma_estetica_incompativel')
+  }
+
   if (indexValue != null) {
+    if (
+      !highResistanceChildCase &&
+      prescriptionStrength >= 6 &&
+      thinnessPriority >= 0.8 &&
+      indexValue >= 1.74
+    ) {
+      score += 2.5
+      reasons.push('material:indice_174_grau_alto')
+    } else if (
+      !highResistanceChildCase &&
+      prescriptionStrength >= 6 &&
+      thinnessPriority >= 0.8 &&
+      indexValue >= 1.67
+    ) {
+      score += 1
+      reasons.push('material:indice_167_grau_alto')
+    }
+
     if (prescriptionStrength < 2) {
       if (indexValue >= 1.74) {
         score -= 8
@@ -1101,15 +1222,37 @@ function scoreOffer(params: {
       }
     }
 
-    if (prescriptionStrength >= 4 && indexValue <= 1.56) {
+    if (!highResistanceChildCase && prescriptionStrength >= 4 && indexValue <= 1.56) {
       score -= 2
       reasons.push('material:indice_baixo_grau_alto')
     }
 
-    if (prescriptionStrength >= 6 && indexValue <= 1.59) {
+    if (!highResistanceChildCase && prescriptionStrength >= 6 && indexValue <= 1.59) {
       score -= 3
       reasons.push('material:indice_baixo_grau_alto')
     }
+
+    if (
+      !highResistanceChildCase &&
+      prescriptionStrength >= 6 &&
+      indexValue <= 1.56 &&
+      thinnessPriority >= 0.6
+    ) {
+      score -= 6
+      reasons.push('material:indice_baixo_incompativel_estetica')
+    }
+  } else if (seeksThinness && prescriptionStrength >= 4.5) {
+    score -= prescriptionStrength >= 6 ? 5 : 3
+    reasons.push('material:indice_nao_informado_grau_alto')
+  }
+
+  if (
+    /(esferic|sferic)/.test(offerDescriptor) &&
+    prescriptionStrength >= 4.5 &&
+    (desiredBenefits.includes('qualidade_optica') || desiredBenefits.includes('estetica'))
+  ) {
+    score -= prescriptionStrength >= 6 ? 3 : 2
+    reasons.push('design:esferico_limitado_grau_alto')
   }
 
   if (
@@ -1119,12 +1262,13 @@ function scoreOffer(params: {
       offerDescriptor.includes('stellest') ||
       withoutAccents(family.nome.toLowerCase()).includes('stellest'))
   ) {
-    score += 6
+    score += isChildCase ? 16 : 6
     reasons.push('beneficio:controle_miopia')
   }
 
   if (wantsMiopiaControl && clinicalEvaluation.effectiveCategory !== 'controle_miopia') {
-    score -= 6
+    score -= isChildCase ? 10 : 6
+    reasons.push('beneficio:controle_miopia_nao_atendido')
   }
 
   if (
@@ -1145,7 +1289,10 @@ function scoreOffer(params: {
     reasons.push('inclui_tratamento')
   }
 
-  const budgetScore = scoreBudget(budgetMode, Number(offer.base_price || 0), peerPrices)
+  const budgetScore =
+    isPediatricMyopiaControlCase && isMyopiaControlOption && budgetMode === 'economico'
+      ? 0
+      : scoreBudget(budgetMode, Number(offer.base_price || 0), peerPrices)
   score += budgetScore
   if (budgetScore > 0.5) {
     reasons.push(`orcamento:${budgetMode}`)
@@ -1219,7 +1366,7 @@ function scoreTreatment(params: {
     reasons.push('tratamento:conforto_telas')
   }
 
-  if ((input.rotina_tags || []).includes('dirigir_noite') && (name.includes('sapphire') || name.includes('crizal'))) {
+  if ((input.rotina_tags || []).includes('dirigir_noite') && (name.includes('sapphire') || name.includes('rock') || name.includes('prevencia'))) {
     score += 1.5
     reasons.push('tratamento:dirigir_noite')
   }
@@ -1227,6 +1374,129 @@ function scoreTreatment(params: {
   if ((input.rotina_tags || []).includes('sol') && name.includes('transitions')) {
     score += 1
     reasons.push('tratamento:outdoor')
+  }
+
+  return { score, reasons }
+}
+
+function scoreExternalAntireflexoPenalty(params: {
+  offer: CatalogOffer
+  treatment: CatalogTreatment | null
+  input: RecommendationCaseInput
+}): { score: number; reasons: string[] } {
+  const { offer, treatment, input } = params
+  const descriptor = withoutAccents(
+    `${offer.raw_label} ${offer.canonical_label || ''} ${offer.material || ''}`.toLowerCase(),
+  )
+  const treatmentType = withoutAccents(String(treatment?.tipo || '').toLowerCase())
+  const treatmentName = withoutAccents(String(treatment?.nome || '').toLowerCase())
+  const isExternalAr =
+    /\b(antirreflexo|anti[\s-]?reflexo|ar)\s+externo\b/.test(descriptor) ||
+    /\bexterno\b/.test(descriptor) && /\b(antirreflexo|anti[\s-]?reflexo)\b/.test(descriptor)
+  const isArTreatment =
+    treatmentType.includes('antirreflexo') ||
+    treatmentName.includes('sigma') ||
+    treatmentName.includes('antirreflexo') ||
+    /\b(antirreflexo|anti[\s-]?reflexo)\b/.test(descriptor)
+
+  if (!isExternalAr || !isArTreatment) return { score: 0, reasons: [] }
+
+  let penalty = -3
+  const reasons = ['tratamento:ar_externo_limitado']
+
+  if (input.budget_mode === 'premium' || (input.desired_benefits || []).includes('qualidade_optica')) {
+    penalty -= 2
+    reasons.push('tratamento:ar_externo_inadequado_premium')
+  }
+
+  if ((input.rotina_tags || []).includes('dirigir_noite')) {
+    penalty -= 1.5
+    reasons.push('tratamento:ar_externo_pior_dirigir_noite')
+  }
+
+  return { score: penalty, reasons }
+}
+
+function scoreAntireflexoCompleteness(params: {
+  offer: CatalogOffer
+  treatment: CatalogTreatment | null
+  input: RecommendationCaseInput
+}): { score: number; reasons: string[] } {
+  const { offer, treatment, input } = params
+  const featureText = stringifyPositiveFeatureValues(offer.features)
+  const descriptor = withoutAccents(
+    `${offer.raw_label} ${offer.canonical_label || ''} ${offer.material || ''} ${featureText}`.toLowerCase(),
+  )
+  const treatmentName = withoutAccents(`${treatment?.nome || ''} ${treatment?.tipo || ''}`.toLowerCase())
+  const text = `${descriptor} ${treatmentName}`
+  const hasExternalAr =
+    /\b(antirreflexo|anti[\s-]?reflexo|ar)\s+externo\b/.test(descriptor) ||
+    /\bexterno\b/.test(descriptor) && /\b(antirreflexo|anti[\s-]?reflexo)\b/.test(descriptor)
+  const wantsPremiumAr =
+    (input.desired_benefits || []).includes('ar_premium') ||
+    (input.rotina_tags || []).includes('dirigir_noite') ||
+    (input.desired_benefits || []).includes('qualidade_optica')
+  const highPrescription = getPrescriptionStrength(input) >= 4
+
+  if (!wantsPremiumAr && !highPrescription) return { score: 0, reasons: [] }
+
+  if (hasExternalAr) {
+    const penalty =
+      (input.rotina_tags || []).includes('dirigir_noite') ||
+      (input.desired_benefits || []).includes('ar_premium')
+        ? -6
+        : -3
+    return {
+      score: penalty,
+      reasons: ['tratamento:ar_externo_nao_equivale_ar_noite'],
+    }
+  }
+
+  const hasAr =
+    /\b(antirreflexo|anti[\s-]?reflexo)\b/.test(text) ||
+    /(crizal|hi[\s-]?vision|hivision|longlife|meiryo|sigma|trio|vert clair|sapphire|rock|prevencia|easy pro)/.test(text)
+  const hasPremiumAr = /(sapphire|rock|prevencia|longlife|meiryo|hi[\s-]?vision longlife|hivision longlife)/.test(text)
+  const hasBasicAr = hasAr && /(easy pro|trio|vert clair|hi[\s-]?vision hard|hivision hard)/.test(text) && !hasPremiumAr
+
+  if (!hasAr) {
+    const penalty =
+      (input.rotina_tags || []).includes('dirigir_noite') && highPrescription
+        ? -10
+        : (input.rotina_tags || []).includes('dirigir_noite') || highPrescription
+          ? -7
+          : -3
+    return {
+      score: penalty,
+      reasons: ['tratamento:ar_ausente_critico'],
+    }
+  }
+
+  const reasons: string[] = []
+  let score = 0
+
+  if ((input.rotina_tags || []).includes('dirigir_noite')) {
+    if (hasPremiumAr) {
+      score += 2.5
+      reasons.push('tratamento:ar_premium_dirigir_noite')
+    } else if (hasBasicAr && (input.desired_benefits || []).includes('ar_premium')) {
+      score += 0.5
+      reasons.push('tratamento:ar_basico_limitado_dirigir_noite')
+    } else {
+      score += 1
+      reasons.push('tratamento:ar_para_dirigir_noite')
+    }
+  }
+
+  if (hasPremiumAr && (input.desired_benefits || []).includes('ar_premium')) {
+    score += 2
+    reasons.push('tratamento:ar_premium')
+  }
+
+  if (hasBasicAr && (input.desired_benefits || []).includes('ar_premium')) {
+    score -= 1.25
+    if (!(input.rotina_tags || []).includes('dirigir_noite')) {
+      reasons.push('tratamento:ar_basico_limitado')
+    }
   }
 
   return { score, reasons }
@@ -1255,6 +1525,18 @@ function normalizeFamilyName(name: string): string {
   return withoutAccents(name.toLowerCase().replace(/[®™©°]/g, '').replace(/\s+/g, ' ').trim())
 }
 
+function normalizeProductSemanticName(entry: RecommendationOption): string {
+  const descriptor = withoutAccents(
+    `${entry.familyName} ${entry.offerLabel} ${entry.treatmentName || ''}`.toLowerCase(),
+  )
+
+  if (descriptor.includes('stellest')) return 'stellest'
+  if (descriptor.includes('miokids') || descriptor.includes('mio kids')) return 'miokids'
+  if (descriptor.includes('eyezen kids')) return 'eyezen kids'
+
+  return normalizeFamilyName(entry.familyName)
+}
+
 function selectDiverseTopEntries(
   entries: RecommendationOption[],
   topN: number,
@@ -1267,6 +1549,7 @@ function selectDiverseTopEntries(
   const selectedOffers = new Set<string>()
   const selectedLabs = new Set<string>()
   const selectedFamilyNames = new Set<string>() // cross-catalog dedupe by normalized name
+  const selectedProductNames = new Set<string>() // cross-catalog dedupe by actual product
 
   const trySelect = (entry: RecommendationOption) => {
     if (selected.length >= topN) return
@@ -1277,6 +1560,7 @@ function selectDiverseTopEntries(
     selectedOffers.add(entry.offerId)
     if (entry.sourceLaboratorio) selectedLabs.add(entry.sourceLaboratorio)
     selectedFamilyNames.add(normalizeFamilyName(entry.familyName))
+    selectedProductNames.add(normalizeProductSemanticName(entry))
   }
 
   // Pass 1: best entry per unique lab, different product per slot
@@ -1284,7 +1568,8 @@ function selectDiverseTopEntries(
     if (selected.length >= topN) break
     const lab = entry.sourceLaboratorio
     const nameNorm = normalizeFamilyName(entry.familyName)
-    if (lab && !selectedLabs.has(lab) && !selectedFamilyNames.has(nameNorm)) {
+    const productNorm = normalizeProductSemanticName(entry)
+    if (lab && !selectedLabs.has(lab) && !selectedFamilyNames.has(nameNorm) && !selectedProductNames.has(productNorm)) {
       trySelect(entry)
     }
   }
@@ -1292,7 +1577,10 @@ function selectDiverseTopEntries(
   // Pass 2: fill remaining — different product name (any lab)
   for (const entry of entries) {
     if (selected.length >= topN) break
-    if (!selectedFamilyNames.has(normalizeFamilyName(entry.familyName))) {
+    if (
+      !selectedFamilyNames.has(normalizeFamilyName(entry.familyName)) &&
+      !selectedProductNames.has(normalizeProductSemanticName(entry))
+    ) {
       trySelect(entry)
     }
   }
@@ -1300,7 +1588,10 @@ function selectDiverseTopEntries(
   // Pass 3: fill remaining — different family id
   for (const entry of entries) {
     if (selected.length >= topN) break
-    if (!selectedFamilies.has(entry.familyId)) {
+    if (
+      !selectedFamilies.has(entry.familyId) &&
+      !selectedProductNames.has(normalizeProductSemanticName(entry))
+    ) {
       trySelect(entry)
     }
   }
@@ -1308,7 +1599,9 @@ function selectDiverseTopEntries(
   // Pass 4: fill any remaining slots
   for (const entry of entries) {
     if (selected.length >= topN) break
-    trySelect(entry)
+    if (!selectedProductNames.has(normalizeProductSemanticName(entry))) {
+      trySelect(entry)
+    }
   }
 
   return selected
@@ -1326,6 +1619,7 @@ function appendPrioritizedEntries(
   const selectedOffers = new Set(selected.map((entry) => entry.offerId))
   const selectedLabs = new Set(selected.map((entry) => entry.sourceLaboratorio).filter(Boolean) as string[])
   const selectedFamilyNames = new Set(selected.map((entry) => normalizeFamilyName(entry.familyName)))
+  const selectedProductNames = new Set(selected.map((entry) => normalizeProductSemanticName(entry)))
 
   const trySelect = (entry: RecommendationOption) => {
     if (selected.length >= topN) return
@@ -1336,6 +1630,7 @@ function appendPrioritizedEntries(
     selectedOffers.add(entry.offerId)
     if (entry.sourceLaboratorio) selectedLabs.add(entry.sourceLaboratorio)
     selectedFamilyNames.add(normalizeFamilyName(entry.familyName))
+    selectedProductNames.add(normalizeProductSemanticName(entry))
   }
 
   // Pass 1: prefer entries from labs not yet represented, different product
@@ -1343,7 +1638,8 @@ function appendPrioritizedEntries(
     if (selected.length >= topN) break
     const lab = entry.sourceLaboratorio
     const nameNorm = normalizeFamilyName(entry.familyName)
-    if (lab && !selectedLabs.has(lab) && !selectedFamilyNames.has(nameNorm)) {
+    const productNorm = normalizeProductSemanticName(entry)
+    if (lab && !selectedLabs.has(lab) && !selectedFamilyNames.has(nameNorm) && !selectedProductNames.has(productNorm)) {
       trySelect(entry)
     }
   }
@@ -1351,7 +1647,10 @@ function appendPrioritizedEntries(
   // Pass 2: fill remaining — different product name
   for (const entry of pool) {
     if (selected.length >= topN) break
-    if (!selectedFamilyNames.has(normalizeFamilyName(entry.familyName))) {
+    if (
+      !selectedFamilyNames.has(normalizeFamilyName(entry.familyName)) &&
+      !selectedProductNames.has(normalizeProductSemanticName(entry))
+    ) {
       trySelect(entry)
     }
   }
@@ -1359,7 +1658,10 @@ function appendPrioritizedEntries(
   // Pass 3: fill remaining — different family id
   for (const entry of pool) {
     if (selected.length >= topN) break
-    if (!selectedFamilies.has(entry.familyId)) {
+    if (
+      !selectedFamilies.has(entry.familyId) &&
+      !selectedProductNames.has(normalizeProductSemanticName(entry))
+    ) {
       trySelect(entry)
     }
   }
@@ -1367,7 +1669,9 @@ function appendPrioritizedEntries(
   // Pass 4: fill any remaining slots
   for (const entry of pool) {
     if (selected.length >= topN) break
-    trySelect(entry)
+    if (!selectedProductNames.has(normalizeProductSemanticName(entry))) {
+      trySelect(entry)
+    }
   }
 
   return selected.slice(0, topN)
@@ -1415,10 +1719,27 @@ function getExploratoryClinicalCategories(
     : getDesiredClinicalCategories(input)
 
   if (strict.includes('controle_miopia')) {
-    return uniqueCategories(['controle_miopia', 'visao_simples']) || strict
+    return uniqueCategories(['controle_miopia']) || strict
   }
 
   if (strict.includes('multifocal')) {
+    const hasDrivingNeeds = (input.rotina_tags || []).some(
+      (tag) => tag === 'dirigir' || tag === 'dirigir_noite',
+    )
+    const wantsFirstMultifocal = (input.objetivo_tags || []).includes('primeira_multifocal')
+    const adicao = input.adicao ?? 0
+
+    // Presbiopia instalada com objetivo explícito de multifocal:
+    // não abrir visao_simples — o paciente precisa de correção progressiva completa
+    if (wantsFirstMultifocal && adicao >= 1.0) {
+      return hasDrivingNeeds
+        ? uniqueCategories(['multifocal']) || strict
+        : uniqueCategories(['multifocal', 'ocupacional']) || strict
+    }
+
+    if (hasDrivingNeeds) {
+      return uniqueCategories(['multifocal', 'visao_simples']) || strict
+    }
     return uniqueCategories(['multifocal', 'ocupacional', 'visao_simples']) || strict
   }
 
@@ -1427,6 +1748,9 @@ function getExploratoryClinicalCategories(
   }
 
   if (strict.includes('visao_simples')) {
+    if (input.adicao == null && !(input.objetivo_tags || []).includes('ocupacional')) {
+      return uniqueCategories(['visao_simples']) || strict
+    }
     return uniqueCategories(['visao_simples', 'ocupacional']) || strict
   }
 
@@ -1555,7 +1879,11 @@ function rankRecommendationOptions(params: {
     .filter((entry): entry is TechnicallyEligibleEntry => entry !== null)
 
   const candidateConfigs: CandidateConfig[] = technicallyEligible.flatMap((entry): CandidateConfig[] => {
-    const compatRows = compatibilitiesByOfferId.get(entry.offer.id) || []
+    const compatRowsRaw = compatibilitiesByOfferId.get(entry.offer.id) || []
+    const hasNamedTreatment = compatRowsRaw.some((row) => row.treatment_id != null)
+    const compatRows = hasNamedTreatment
+      ? compatRowsRaw.filter((row) => row.treatment_id != null)
+      : compatRowsRaw
     if (!compatRows.length) {
       return [
         {
@@ -1602,6 +1930,16 @@ function rankRecommendationOptions(params: {
       treatment: entry.treatment,
       input,
     })
+    const externalArScoring = scoreExternalAntireflexoPenalty({
+      offer: entry.offer,
+      treatment: entry.treatment,
+      input,
+    })
+    const arCompletenessScoring = scoreAntireflexoCompleteness({
+      offer: entry.offer,
+      treatment: entry.treatment,
+      input,
+    })
     const embeddedTreatment = resolveEmbeddedTreatment(entry.offer, input)
     const embeddedScoring = scoreEmbeddedTreatment({
       embedded: embeddedTreatment,
@@ -1642,12 +1980,23 @@ function rankRecommendationOptions(params: {
       (
         offerScoring.score +
         treatmentScoring.score +
+        externalArScoring.score +
+        arCompletenessScoring.score +
         embeddedScoring.score +
         labBonus +
         brandBonus +
         profileScoring.score
       ).toFixed(2),
     )
+    const premiumRejectionPenalty =
+      rejectsPremiumPreference(input) &&
+      /varilux|xr\s?series|sapphire|crizal\s+rock|crizal\s+prevencia|premium/.test(
+        withoutAccents(
+          `${entry.family.nome} ${entry.offer.raw_label} ${entry.offer.canonical_label || ''} ${entry.treatment?.nome || ''}`.toLowerCase(),
+        ),
+      )
+        ? -5
+        : 0
     const sourceLabel =
       entry.family.sourceLaboratorio ||
       entry.offer.sourceLaboratorio ||
@@ -1674,12 +2023,17 @@ function rankRecommendationOptions(params: {
       reasons: uniqueStrings([
         ...offerScoring.reasons,
         ...treatmentScoring.reasons,
+        ...externalArScoring.reasons,
+        ...arCompletenessScoring.reasons,
         ...embeddedScoring.reasons,
         ...labReasons,
         ...brandReasons,
         ...profileScoring.reasons,
-      ]),
-      score: totalScore,
+        ...(premiumRejectionPenalty < 0 ? ['orcamento:premium_recusado'] : []),
+      ]).filter((reason) =>
+        premiumRejectionPenalty < 0 ? reason !== 'orcamento:economico' : true,
+      ),
+      score: Number((totalScore + premiumRejectionPenalty).toFixed(2)),
       sourcePageReference: entry.offer.source_page_reference,
       commercialSummary:
         entry.usageProfile?.commercial_summary ||
@@ -1710,6 +2064,8 @@ function rankRecommendationOptions(params: {
 }
 
 export async function loadRecommendationCatalog(versionId: string): Promise<RecommendationCatalog> {
+  // The generated Supabase types do not include the global catalog tables yet.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabaseAdmin = createAdminClient() as any
 
   const { data: versionMeta, error: versionMetaError } = await supabaseAdmin
@@ -1919,10 +2275,18 @@ export async function recommendLensConfigurations(params: {
           return entry
         }
 
-      return {
-        ...entry,
-        score: Number((entry.score - 0.75).toFixed(2)),
-          reasons: uniqueStrings([...entry.reasons, 'opcao:alternativa_plausivel']),
+        const isAntiFadiga =
+          entry.clinicalCategory === 'visao_simples' &&
+          input.adicao != null &&
+          input.adicao <= 1.5
+
+        return {
+          ...entry,
+          score: Number((entry.score - 0.75).toFixed(2)),
+          reasons: uniqueStrings([
+            ...entry.reasons,
+            isAntiFadiga ? 'opcao:alternativa_anti_fadiga' : 'opcao:alternativa_plausivel',
+          ]),
         }
       }),
       selected,
@@ -2132,6 +2496,18 @@ export async function startRecommendationConversation(params: {
   }
 
   const tPrice = params.caseInput.targetPrice ?? null
+  const childControlMyopia =
+    (state.caseInput.rotina_tags || []).includes('controle_miopia') &&
+    ((state.caseInput.idade != null && state.caseInput.idade <= 14) ||
+      (state.caseInput.rotina_tags || []).includes('crianca'))
+  const premiumTechnicalStretch =
+    state.caseInput.budget_mode === 'premium' ||
+    (state.caseInput.desired_benefits || []).some((benefit) =>
+      ['lente_fina', 'qualidade_optica', 'ar_premium'].includes(benefit),
+    )
+  const initialMaxPrice = tPrice
+    ? tPrice * (childControlMyopia || premiumTechnicalStretch ? 1.7 : 1.2)
+    : undefined
   const recommendations = await recommendLensConfigurations({
     versionId: params.versionId,
     versionIds: params.versionIds,
@@ -2139,7 +2515,7 @@ export async function startRecommendationConversation(params: {
     aiConfig: params.aiConfig,
     topN: params.topN || 3,
     targetPrice: tPrice,
-    maxPrice: tPrice ? tPrice * 1.2 : undefined,
+    maxPrice: initialMaxPrice,
   })
 
   state.lastRecommendations = recommendations

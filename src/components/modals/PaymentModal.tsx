@@ -13,7 +13,6 @@ import {
     type CustomerSearchResult
 } from '@/lib/actions/vendas.actions'
 import { getSaleData } from '@/lib/actions/fiscal-db.actions'
-import { getReceiptPDFBase64 } from '@/lib/actions/print-remote'
 import { type CartItem } from '@/components/vendas/PdvExpressInterface'
 import { Database } from '@/lib/database.types'
 
@@ -73,27 +72,7 @@ export default function PaymentModal({
 
     const triggerPrint = async (pagamentoId: number): Promise<boolean> => {
         try {
-            const res = await getReceiptPDFBase64([pagamentoId])
-            if (!res.success || !res.pdfBase64) {
-                alert('Não foi possível gerar o recibo. Tente reimprimir.')
-                return false
-            }
-            const byteChars = atob(res.pdfBase64)
-            const byteArray = new Uint8Array(byteChars.length)
-            for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i)
-            const blob = new Blob([byteArray], { type: 'application/pdf' })
-            const blobUrl = URL.createObjectURL(blob)
-            const iframe = document.createElement('iframe')
-            iframe.style.display = 'none'
-            iframe.src = blobUrl
-            document.body.appendChild(iframe)
-            await new Promise<void>(resolve => {
-                iframe.onload = () => {
-                    if (iframe.contentWindow) iframe.contentWindow.print()
-                    resolve()
-                }
-            })
-            setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(blobUrl) }, 60000)
+            window.open(`/print/recibo/${pagamentoId}`, '_blank')
             await markPaymentsAsPrinted([pagamentoId])
             return true
         } catch (err) {

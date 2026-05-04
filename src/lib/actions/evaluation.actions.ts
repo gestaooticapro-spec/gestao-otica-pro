@@ -705,6 +705,46 @@ export async function upsertOpticalEvaluation(
     
     return { success: true, message: 'Avaliacao atualizada com sucesso.', data: updated as OpticalEvaluationRow }
   } else {
+    const subjectColumn = data.evaluatedDependenteId ? 'evaluated_dependente_id' : 'evaluated_customer_id'
+    const subjectId = data.evaluatedDependenteId ?? data.evaluatedCustomerId
+
+    if (!subjectId) {
+      return { success: false, message: 'Selecione exatamente um paciente avaliado.' }
+    }
+
+    const duplicateLookup = createAdminClient()
+      .from('optical_evaluations')
+      .select('id')
+      .eq('tenant_id', auth.tenantId)
+      .eq('store_id', data.storeId)
+      .is('exported_venda_id', null)
+      .not('status', 'eq', 'concluida')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+
+    const { data: existingOpen, error: existingError } = await duplicateLookup
+      .eq(subjectColumn, subjectId)
+      .maybeSingle() as { data: { id: number } | null; error: QueryError | null }
+
+    if (existingError) {
+      return { success: false, message: existingError.message }
+    }
+
+    if (existingOpen?.id) {
+      const { data: updated, error } = await opticalEvaluationsTable
+        .update(payload)
+        .eq('id', existingOpen.id)
+        .eq('store_id', data.storeId)
+        .select('*')
+        .single()
+
+      if (error) {
+        return { success: false, message: error.message }
+      }
+
+      return { success: true, message: 'Avaliacao atualizada com sucesso.', data: updated as OpticalEvaluationRow }
+    }
+
     const insertPayload = payload as OpticalEvaluationInsert
     const { data: inserted, error } = await opticalEvaluationsTable
       .insert(insertPayload)
@@ -855,7 +895,11 @@ export async function updateEvaluationExportedVendaId(
   try {
     const tableApi = createAdminClient().from('optical_evaluations') as any
     const { error } = await tableApi
-      .update({ exported_venda_id: vendaId } as any)
+      .update({
+        exported_venda_id: vendaId,
+        outcome_status: 'venda_fechada',
+        status: 'exportada',
+      } as any)
       .eq('id', evaluationId)
       .eq('store_id', storeId)
 

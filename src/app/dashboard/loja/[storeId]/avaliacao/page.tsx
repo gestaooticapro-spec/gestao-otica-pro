@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation'
 import EvaluationInterface from '@/components/evaluation/EvaluationInterface'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getStoreGlobalCatalogOverview } from '@/lib/actions/global-catalog.actions'
+import { getAllLensGeometries } from '@/lib/actions/lens-geometry.actions'
 import { Database } from '@/lib/database.types'
 
 type StoreSettings = {
@@ -45,5 +46,30 @@ export default async function AvaliacaoPage({
     versao: activation.versao,
   }))
 
-  return <EvaluationInterface activeCatalog={activeCatalog} activeCatalogs={activeCatalogs} />
+  const geometries = await getAllLensGeometries()
+  const kodakNetworkGeometry =
+    geometries.find((geometry) => geometry.family_name === 'Kodak Network UHD') ??
+    geometries.find((geometry) => geometry.pins?.lensRim && geometry.pins.lensRim.length >= 3) ??
+    null
+  const lensSearchFields = geometries
+    .filter((geometry) =>
+      geometry.pins?.lineA &&
+      geometry.pins.lineA.length >= 2 &&
+      geometry.pins?.lineB &&
+      geometry.pins.lineB.length >= 2
+    )
+    .map((geometry) => ({
+      familyName: geometry.family_name,
+      lineA: geometry.pins!.lineA,
+      lineB: geometry.pins!.lineB,
+    }))
+
+  return (
+    <EvaluationInterface
+      activeCatalog={activeCatalog}
+      activeCatalogs={activeCatalogs}
+      lensSearchRim={kodakNetworkGeometry?.pins?.lensRim ?? null}
+      lensSearchFields={lensSearchFields}
+    />
+  )
 }

@@ -285,6 +285,10 @@ def main():
                 "treatment_column": _treatment_display_name(column),
                 "photo": photo,
             }
+            treatment_name = str(features["treatment_column"]).lower()
+            if "blue" in treatment_name:
+                features["blue_uv"] = True
+                features["blue_control"] = True
             if profile and profile.min_fitting_height is not None:
                 features["min_fitting_height"] = profile.min_fitting_height
             if profile and profile.diameter:

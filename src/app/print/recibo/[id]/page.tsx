@@ -3,6 +3,7 @@
 import { notFound } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ReceiptPhantom } from '@/components/print/ReceiptPhantom'
+import { ReceiptBlankHalfA4 } from '@/components/print/ReceiptBlankHalfA4'
 
 export default async function PrintReciboPage({ params, searchParams }: { params: { id: string }, searchParams: { reprint?: string } }) {
     const idsString = params.id
@@ -48,11 +49,22 @@ export default async function PrintReciboPage({ params, searchParams }: { params
 
     const venda = vendaRaw as any
 
+    // 3. Busca a loja
+    const { data: storeRaw } = await (supabase
+        .from('stores') as any)
+        .select('*')
+        .eq('id', venda.store_id)
+        .single()
+        
+    const store = storeRaw as any
+    const receiptType = store?.settings?.receipt_type || 'pre_printed'
+
     const receiptData = {
         pagamentos,
         venda,
         cliente: venda.customers,
         itens: venda.venda_itens || [],
+        store,
         isReprint
     }
 
@@ -61,7 +73,7 @@ export default async function PrintReciboPage({ params, searchParams }: { params
         <div className="w-full h-screen flex items-start justify-center m-0 p-0">
             <style>{`
                 @page { 
-                    size: A4 landscape; 
+                    size: ${receiptType === 'half_a4' ? 'A4 portrait' : 'A4 landscape'}; 
                     margin: 0mm; /* FORÇA MARGEM ZERO NA IMPRESSORA */
                 }
                 body { 
@@ -70,7 +82,11 @@ export default async function PrintReciboPage({ params, searchParams }: { params
                 }
             `}</style>
 
-            <ReceiptPhantom data={receiptData as any} />
+            {receiptType === 'half_a4' ? (
+                <ReceiptBlankHalfA4 data={receiptData as any} />
+            ) : (
+                <ReceiptPhantom data={receiptData as any} />
+            )}
             <PrintTrigger />
         </div>
     )
