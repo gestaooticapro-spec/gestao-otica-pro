@@ -6,6 +6,8 @@ import { ReceiptPhantom } from '@/components/print/ReceiptPhantom'
 import { ReceiptBlankHalfA4 } from '@/components/print/ReceiptBlankHalfA4'
 
 export const dynamic = 'force-dynamic'
+export const revalidate = 0
+export const fetchCache = 'force-no-store'
 
 export default async function PrintReciboPage({ params, searchParams }: { params: { id: string }, searchParams: { reprint?: string } }) {
     const idsString = params.id
