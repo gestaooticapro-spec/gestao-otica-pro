@@ -5,6 +5,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { ReceiptPhantom } from '@/components/print/ReceiptPhantom'
 import { ReceiptBlankHalfA4 } from '@/components/print/ReceiptBlankHalfA4'
 
+export const dynamic = 'force-dynamic'
+
 export default async function PrintReciboPage({ params, searchParams }: { params: { id: string }, searchParams: { reprint?: string } }) {
     const idsString = params.id
     const ids = idsString.split('-').map(id => parseInt(id)).filter(n => !isNaN(n))
