@@ -279,9 +279,9 @@ export default function VendaInterfaceExperimental({
             <div className="relative z-30 bg-white/5 backdrop-blur-xl border-b border-white/10 px-4 py-2 flex items-center justify-between shrink-0 shadow-lg h-14">
                 {/* Esquerda: Voltar e ID */}
                 <div className="flex items-center gap-3 relative z-10">
-                    <Link href={`/dashboard/loja/${venda.store_id}/vendas`} className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95" title="Voltar para lista de vendas">
+                    <button onClick={() => router.back()} className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95" title="Voltar para lista de vendas">
                         <ArrowLeft className="h-4 w-4" />
-                    </Link>
+                    </button>
                     <div className="h-6 w-px bg-white/10 mx-1"></div>
                     <div className="flex flex-col">
                         <h1 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-3">

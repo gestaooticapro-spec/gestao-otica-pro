@@ -17,7 +17,7 @@ export interface ReceiptDataBlank {
 
 const formatMoney = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-export function ReceiptBlankHalfA4({ data }: { data: ReceiptDataBlank }) {
+function Via({ data, label }: { data: ReceiptDataBlank, label: string }) {
     const { pagamentos, cliente, itens, store, isReprint } = data
     const valorTotalRecibo = pagamentos.reduce((acc, p) => acc + p.valor_pago, 0)
 
@@ -27,13 +27,13 @@ export function ReceiptBlankHalfA4({ data }: { data: ReceiptDataBlank }) {
     const containerStyle = {
         position: 'relative' as const,
         width: '210mm',
-        height: '148mm', // Metade de um A4 (A5)
+        height: '148mm', // Metade de um A4
         color: 'black',
         fontFamily: 'Arial, sans-serif',
         backgroundColor: 'white',
         boxSizing: 'border-box' as const,
         padding: '10mm',
-        borderBottom: '1px dashed #ccc' // Linha de corte se impresso em A4 inteira
+        borderBottom: '1px dashed #ccc' // Linha de corte
     }
 
     const formatCnpj = (cnpj: string | null) => {
@@ -41,13 +41,11 @@ export function ReceiptBlankHalfA4({ data }: { data: ReceiptDataBlank }) {
         return cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5")
     }
 
-    // Identificando formas de pagamento agrupadas
     const formas = pagamentos.map(p => p.forma_pagamento)
     const formasUnicas = Array.from(new Set(formas)).join(', ')
 
     return (
         <div style={containerStyle}>
-            {/* Reimpressão */}
             {isReprint && (
                 <div style={{
                     position: 'absolute',
@@ -65,9 +63,14 @@ export function ReceiptBlankHalfA4({ data }: { data: ReceiptDataBlank }) {
                 </div>
             )}
 
+            {/* Marcador da Via */}
+            <div style={{ position: 'absolute', top: '5mm', right: '10mm', fontSize: '10px', color: '#666', fontStyle: 'italic' }}>
+                {label}
+            </div>
+
             <div style={{ position: 'relative', zIndex: 1, height: '100%', display: 'flex', flexDirection: 'column' }}>
                 {/* CABEÇALHO */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px', marginTop: '5px' }}>
                     <div style={{ width: '60%' }}>
                         <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', textTransform: 'uppercase' }}>
                             {store?.name || store?.razao_social || 'LOJA NÃO IDENTIFICADA'}
@@ -129,6 +132,15 @@ export function ReceiptBlankHalfA4({ data }: { data: ReceiptDataBlank }) {
                     </div>
                 </div>
             </div>
+        </div>
+    )
+}
+
+export function ReceiptBlankHalfA4({ data }: { data: ReceiptDataBlank }) {
+    return (
+        <div style={{ margin: 0, padding: 0 }}>
+            <Via data={data} label="1ª Via - Cliente" />
+            <Via data={data} label="2ª Via - Loja" />
         </div>
     )
 }

@@ -2143,8 +2143,8 @@ export default function EvaluationInterface({
       setManualSuggestion(null)
       setAiFeedback(
         technicalTriage
-          ? 'Triagem tecnica e sugestao por IA geradas com base no catalogo ativo da loja.'
-          : 'Sugestao por IA gerada com base no catalogo ativo da loja.'
+          ? 'Triagem técnica e sugestão por IA geradas com base no catálogo ativo da loja.'
+          : 'Sugestão por IA gerada com base no catálogo ativo da loja.'
       )
 
       // Auditoria Gemini assíncrona (não bloqueia o ranking)

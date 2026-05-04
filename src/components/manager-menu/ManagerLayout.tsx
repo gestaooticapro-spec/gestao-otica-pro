@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
     ArrowLeft,
     ArrowRight,
@@ -21,6 +21,7 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { OperatorLayout } from '@/components/operator-menu';
+import { useEffect } from 'react';
 
 type ManualManagerState = 'home' | 'gerencia' | 'operator';
 type ManagerState = ManualManagerState | 'page';
@@ -92,10 +93,18 @@ const GERENCIA_LINKS = [
 export default function ManagerLayout({ children, storeId, storeName, logoUrl }: ManagerLayoutProps) {
     const router = useRouter();
     const pathname = usePathname();
+    const searchParams = useSearchParams();
     const supabase = createClient();
     const { preference } = useBackgroundPreference();
 
+    const menuParam = searchParams.get('menu');
     const [manualState, setManualState] = useState<ManualManagerState>('home');
+
+    useEffect(() => {
+        if (menuParam === 'atendimento' || menuParam === 'loja-vazia') {
+            setManualState('operator');
+        }
+    }, [menuParam]);
 
     const storeHomePath = `/dashboard/loja/${storeId}`;
     const currentState: ManagerState = pathname !== storeHomePath && manualState !== 'operator' ? 'page' : manualState;
@@ -115,7 +124,10 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
                 storeId={storeId}
                 storeName={storeName}
                 logoUrl={logoUrl}
-                onBackToHub={() => setManualState('home')}
+                onBackToHub={() => {
+                    router.replace(`/dashboard/loja/${storeId}`);
+                    setManualState('home');
+                }}
                 hubLabel="Voltar ao Hub"
             >
                 {children}
@@ -199,7 +211,10 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
                 {manualState === 'home' && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
                         <button
-                            onClick={() => setManualState('operator')}
+                            onClick={() => {
+                                router.replace(`/dashboard/loja/${storeId}`);
+                                setManualState('operator');
+                            }}
                             className="group relative h-72 rounded-[2rem] overflow-hidden border border-white/10 bg-black/25 backdrop-blur-md transition-all duration-300 hover:scale-[1.01] hover:shadow-2xl hover:shadow-blue-500/20"
                         >
                             <div className="absolute inset-0 bg-gradient-to-br from-blue-600/20 via-blue-900/30 to-slate-900/60" />
@@ -218,7 +233,10 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
                         </button>
 
                         <button
-                            onClick={() => setManualState('gerencia')}
+                            onClick={() => {
+                                router.replace(`/dashboard/loja/${storeId}`);
+                                setManualState('gerencia');
+                            }}
                             className="group relative h-72 rounded-[2rem] overflow-hidden border border-white/10 bg-black/25 backdrop-blur-md transition-all duration-300 hover:scale-[1.01] hover:shadow-2xl hover:shadow-emerald-500/20"
                         >
                             <div className="absolute inset-0 bg-gradient-to-br from-emerald-600/20 via-emerald-900/30 to-slate-900/60" />

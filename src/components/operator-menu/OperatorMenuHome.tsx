@@ -63,7 +63,7 @@ export default function OperatorMenuHome({
                         {storeName}
                     </h1>
                     <p className="text-slate-400 text-sm font-medium uppercase tracking-[0.2em] bg-white/5 px-4 py-1 rounded-full border border-white/5">
-                        Central de Operacoes
+                        Central de Operações
                     </p>
                 </div>
 
@@ -111,7 +111,7 @@ export default function OperatorMenuHome({
                                 Loja Vazia
                             </h2>
                             <p className="text-amber-200/70 text-sm font-medium uppercase tracking-widest mb-4 group-hover:text-amber-100 transition-colors">
-                                Gestao & Interno
+                                Gestão & Interno
                             </p>
                             <div className="w-12 h-1 bg-amber-500/50 rounded-full group-hover:w-24 group-hover:bg-amber-400 transition-all duration-300" />
                         </div>

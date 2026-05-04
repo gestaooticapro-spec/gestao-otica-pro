@@ -738,13 +738,13 @@ export default function ConfigInterface({ storeId }: { storeId: number }) {
 
             {/* Header de Abas */}
             <div className="relative z-20 bg-slate-900/60 backdrop-blur-xl border-b border-white/10 px-6 flex items-center gap-6 shadow-lg shrink-0">
-                <Link
-                    href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                <button
+                    onClick={() => router.back()}
                     className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
-                    title="Voltar para o Painel"
+                    title="Voltar"
                 >
                     <ArrowLeft className="h-4 w-4" />
-                </Link>
+                </button>
 
                 <div className="w-px h-8 bg-white/10"></div>
 
