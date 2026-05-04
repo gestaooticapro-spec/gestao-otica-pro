@@ -72,7 +72,7 @@ export default function PaymentModal({
 
     const triggerPrint = async (pagamentoId: number): Promise<boolean> => {
         try {
-            window.open(`/print/recibo/${pagamentoId}`, '_blank')
+            window.open(`/print/recibo/${pagamentoId}?t=${Date.now()}`, '_blank')
             await markPaymentsAsPrinted([pagamentoId])
             return true
         } catch (err) {

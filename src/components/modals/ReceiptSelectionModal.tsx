@@ -49,7 +49,7 @@ export default function ReceiptSelectionModal({ isOpen, onClose, pagamentos, onR
         setIsProcessing(true)
         try {
             const idsString = selectedIds.join('-')
-            window.open(`/print/recibo/${idsString}`, '_blank')
+            window.open(`/print/recibo/${idsString}?t=${Date.now()}`, '_blank')
             
             // Marca como impresso no banco
             await markPaymentsAsPrinted(selectedIds)
