@@ -43,8 +43,9 @@ import {
   generateLensRecommendationsAction
 } from '@/lib/actions/lens-recommendation.actions'
 import {
-  generateLensAuditAction,
+  generateLensSalesAssistAction,
   generateLensTechnicalTriageAction,
+  type LensSalesAssist,
   type LensTechnicalTriage,
   type LensTechnicalTriageSignal,
   type PatientAuditContext,
@@ -132,6 +133,9 @@ type LensRecommendationActionPayload = {
   state: RecommendationConversationState
   recommendations: RecommendationOption[]
 }
+
+const LENS_ENGINE_DIAGNOSTIC_SUITE_NAME = 'Dossie Triplice do Motor'
+const LENS_ENGINE_DIAGNOSTIC_SUITE_RESTORE_KEY = 'dossie_triplice_motor'
 
 const TRIAGE_SIGNAL_PATCHES: Record<LensTechnicalTriageSignal, Partial<Pick<RecommendationCaseInput, 'rotina_tags' | 'objetivo_tags' | 'desired_benefits' | 'preferred_features'>>> = {
   risco_espessura_alta: { desired_benefits: ['lente_fina', 'estetica', 'qualidade_optica'] },
@@ -1203,6 +1207,256 @@ const TEST_PROFILES = {
     medidaDnpOe: '32',
     medidaAlturaOd: '19',
     medidaAlturaOe: '19'
+  },
+  ocupacionalVerdadeiro: {
+    patientNameRaw: 'Otavio Rocha (Ocupacional Verdadeiro)',
+    ageYears: '47',
+    estiloVidaUsoComputadorHoras: '10',
+    estiloVidaDirigirHoras: '0',
+    estiloVidaLeituraHoras: '4',
+    estiloVidaUsoCelularHoras: '3',
+    estiloVidaExposicaoSolHoras: '0',
+    estiloVidaAmbienteInternoHoras: '12',
+    estiloVidaAmbienteExternoHoras: '0',
+    estiloVidaAssistirTvHoras: '1',
+    marcaAtual: 'Nenhuma',
+    tipoLenteAtual: 'visao_simples',
+    usaMultifocalHoje: 'nao',
+    dificuldadeAdaptacao: 'nao_informado',
+    historicoTrocasRecentes: 'nao_informado',
+    prioridadePrincipal: 'conforto_digital',
+    principalIncomodoAtual: 'perto',
+    objetivoCompra: 'oculos_escritorio',
+    faixaOrcamento: '800_2000',
+    budgetTarget: '1600',
+    importanciaEstetica: 'baixa',
+    importanciaResistencia: 'baixa',
+    prefereTransitions: 'nao',
+    prefereBlueUv: 'sim',
+    aceitaPremium: 'nao',
+    queixaDirigirNoite: 'nao',
+    queixaSensibilidadeLuz: 'nao',
+    queixaQuebraOculos: 'nao',
+    queixaCriancaAtiva: 'nao',
+    queixaProgressaoRapida: 'nao',
+    observacoesConsultor: 'Paciente trabalha o dia inteiro em computador, quase nao dirige e quer conforto para escritorio/perto/intermediario. Testa se o motor sobe ocupacional verdadeiro quando longe plena nao e prioridade.',
+    receitaLongeOdEsferico: '+0,50',
+    receitaLongeOdCilindrico: '-0,50',
+    receitaLongeOdEixo: '90',
+    receitaLongeOeEsferico: '+0,25',
+    receitaLongeOeCilindrico: '-0,50',
+    receitaLongeOeEixo: '85',
+    receitaAdicao: '1,50',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '31',
+    medidaDnpOe: '31',
+    medidaAlturaOd: '18',
+    medidaAlturaOe: '18'
+  },
+  fotossensivelPrioritario: {
+    patientNameRaw: 'Fabio Menezes (Fotossensivel Prioritario)',
+    ageYears: '39',
+    estiloVidaUsoComputadorHoras: '2',
+    estiloVidaDirigirHoras: '2',
+    estiloVidaLeituraHoras: '1',
+    estiloVidaUsoCelularHoras: '3',
+    estiloVidaExposicaoSolHoras: '6',
+    estiloVidaAmbienteInternoHoras: '5',
+    estiloVidaAmbienteExternoHoras: '6',
+    estiloVidaAssistirTvHoras: '1',
+    marcaAtual: 'Nenhuma',
+    tipoLenteAtual: 'visao_simples',
+    usaMultifocalHoje: 'nao',
+    dificuldadeAdaptacao: 'nao_informado',
+    historicoTrocasRecentes: 'nao_informado',
+    prioridadePrincipal: 'sol',
+    principalIncomodoAtual: 'luz',
+    objetivoCompra: 'resolver_queixa',
+    faixaOrcamento: '800_2000',
+    budgetTarget: '1500',
+    importanciaEstetica: 'media',
+    importanciaResistencia: 'media',
+    prefereTransitions: 'sim',
+    prefereBlueUv: 'nao',
+    aceitaPremium: 'nao',
+    queixaDirigirNoite: 'nao',
+    queixaSensibilidadeLuz: 'sim',
+    queixaQuebraOculos: 'nao',
+    queixaCriancaAtiva: 'nao',
+    queixaProgressaoRapida: 'nao',
+    observacoesConsultor: 'Cliente sente muito incomodo com sol e quer uma lente que escureca automaticamente, mas nao pediu oculos de sol dedicado. Testa se o motor diferencia fotossensivel prioritario de sol grau fixo e de conforto digital.',
+    receitaLongeOdEsferico: '-2,75',
+    receitaLongeOdCilindrico: '-0,75',
+    receitaLongeOdEixo: '10',
+    receitaLongeOeEsferico: '-2,50',
+    receitaLongeOeCilindrico: '-0,50',
+    receitaLongeOeEixo: '170',
+    receitaAdicao: '',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '32',
+    medidaDnpOe: '32',
+    medidaAlturaOd: '19',
+    medidaAlturaOe: '19'
+  },
+  adaptacaoMultifocalDificil: {
+    patientNameRaw: 'Marta Pires (Adaptacao Multifocal Dificil)',
+    ageYears: '57',
+    estiloVidaUsoComputadorHoras: '4',
+    estiloVidaDirigirHoras: '2',
+    estiloVidaLeituraHoras: '3',
+    estiloVidaUsoCelularHoras: '2',
+    estiloVidaExposicaoSolHoras: '1',
+    estiloVidaAmbienteInternoHoras: '9',
+    estiloVidaAmbienteExternoHoras: '1',
+    estiloVidaAssistirTvHoras: '2',
+    marcaAtual: 'Multifocal antigo',
+    tipoLenteAtual: 'multifocal',
+    usaMultifocalHoje: 'sim',
+    dificuldadeAdaptacao: 'alta',
+    historicoTrocasRecentes: 'uma',
+    prioridadePrincipal: 'adaptacao',
+    principalIncomodoAtual: 'longe_perto',
+    objetivoCompra: 'melhorar_conforto',
+    faixaOrcamento: 'acima_5000',
+    budgetTarget: '6200',
+    importanciaEstetica: 'media',
+    importanciaResistencia: 'baixa',
+    prefereTransitions: 'nao',
+    prefereBlueUv: 'nao',
+    aceitaPremium: 'sim',
+    queixaDirigirNoite: 'sim',
+    queixaSensibilidadeLuz: 'nao',
+    queixaQuebraOculos: 'nao',
+    queixaCriancaAtiva: 'nao',
+    queixaProgressaoRapida: 'nao',
+    observacoesConsultor: 'Paciente teve adaptacao ruim em multifocal anterior, mas aceita investir. Testa se o motor prioriza design, campos e adaptacao antes de adicionar features nao solicitadas.',
+    receitaLongeOdEsferico: '+1,50',
+    receitaLongeOdCilindrico: '-0,75',
+    receitaLongeOdEixo: '90',
+    receitaLongeOeEsferico: '+1,25',
+    receitaLongeOeCilindrico: '-0,50',
+    receitaLongeOeEixo: '85',
+    receitaAdicao: '2,25',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '31',
+    medidaDnpOe: '31',
+    medidaAlturaOd: '20',
+    medidaAlturaOe: '20'
+  },
+  hipermetropiaAltaEstetica: {
+    patientNameRaw: 'Claudio Reis (Hipermetropia Alta Estetica)',
+    ageYears: '42',
+    estiloVidaUsoComputadorHoras: '6',
+    estiloVidaDirigirHoras: '1',
+    estiloVidaLeituraHoras: '2',
+    estiloVidaUsoCelularHoras: '4',
+    estiloVidaExposicaoSolHoras: '1',
+    estiloVidaAmbienteInternoHoras: '9',
+    estiloVidaAmbienteExternoHoras: '1',
+    estiloVidaAssistirTvHoras: '1',
+    marcaAtual: 'Nenhuma',
+    tipoLenteAtual: 'visao_simples',
+    usaMultifocalHoje: 'nao',
+    dificuldadeAdaptacao: 'nao_informado',
+    historicoTrocasRecentes: 'nao_informado',
+    prioridadePrincipal: 'estetica',
+    principalIncomodoAtual: 'longe',
+    objetivoCompra: 'resolver_queixa',
+    faixaOrcamento: '2000_5000',
+    budgetTarget: '3200',
+    importanciaEstetica: 'alta',
+    importanciaResistencia: 'media',
+    prefereTransitions: 'nao',
+    prefereBlueUv: 'nao',
+    aceitaPremium: 'sim',
+    queixaDirigirNoite: 'nao',
+    queixaSensibilidadeLuz: 'nao',
+    queixaQuebraOculos: 'nao',
+    queixaCriancaAtiva: 'nao',
+    queixaProgressaoRapida: 'nao',
+    observacoesConsultor: 'Alta hipermetropia com queixa de lente grossa no centro e aumento dos olhos. Testa se o motor aplica logica de alto grau tambem para positivo, sem depender apenas de miopia.',
+    receitaLongeOdEsferico: '+5,75',
+    receitaLongeOdCilindrico: '-1,00',
+    receitaLongeOdEixo: '90',
+    receitaLongeOeEsferico: '+5,50',
+    receitaLongeOeCilindrico: '-0,75',
+    receitaLongeOeEixo: '85',
+    receitaAdicao: '',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '32',
+    medidaDnpOe: '32',
+    medidaAlturaOd: '19',
+    medidaAlturaOe: '19'
+  },
+  add400Disponibilidade: {
+    patientNameRaw: 'Dora Almeida (ADD +4 Disponibilidade)',
+    ageYears: '66',
+    estiloVidaUsoComputadorHoras: '2',
+    estiloVidaDirigirHoras: '1',
+    estiloVidaLeituraHoras: '5',
+    estiloVidaUsoCelularHoras: '2',
+    estiloVidaExposicaoSolHoras: '1',
+    estiloVidaAmbienteInternoHoras: '10',
+    estiloVidaAmbienteExternoHoras: '1',
+    estiloVidaAssistirTvHoras: '2',
+    marcaAtual: 'Multifocal atual',
+    tipoLenteAtual: 'multifocal',
+    usaMultifocalHoje: 'sim',
+    dificuldadeAdaptacao: 'media',
+    historicoTrocasRecentes: 'nao_informado',
+    prioridadePrincipal: 'adaptacao',
+    principalIncomodoAtual: 'perto',
+    objetivoCompra: 'resolver_queixa',
+    faixaOrcamento: 'acima_5000',
+    budgetTarget: '6500',
+    importanciaEstetica: 'media',
+    importanciaResistencia: 'baixa',
+    prefereTransitions: 'nao',
+    prefereBlueUv: 'nao',
+    aceitaPremium: 'sim',
+    queixaDirigirNoite: 'nao',
+    queixaSensibilidadeLuz: 'nao',
+    queixaQuebraOculos: 'nao',
+    queixaCriancaAtiva: 'nao',
+    queixaProgressaoRapida: 'nao',
+    observacoesConsultor: 'Paciente precisa de multifocal com adicao +4.00. Testa disponibilidade de grade: ofertas com add_max menor que +4.00 nao podem aparecer.',
+    receitaLongeOdEsferico: '+2,00',
+    receitaLongeOdCilindrico: '-1,00',
+    receitaLongeOdEixo: '90',
+    receitaLongeOeEsferico: '+1,75',
+    receitaLongeOeCilindrico: '-0,75',
+    receitaLongeOeEixo: '85',
+    receitaAdicao: '4,00',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '31',
+    medidaDnpOe: '31',
+    medidaAlturaOd: '20',
+    medidaAlturaOe: '20'
   }
 };
 
@@ -1432,6 +1686,31 @@ const buildAiOptionNarrative = (
     : ''
 
   return [categoryShift, priceTradeoff, whyWorthIt, reasonWrap, supportText].filter(Boolean).join(' ')
+}
+
+const getSalesAssistOptionText = (
+  option: RecommendationOption,
+  salesAssist: LensSalesAssist | null,
+) => {
+  const argument = salesAssist?.options.find((item) => item.configKey === option.configKey)
+  if (!argument) return null
+
+  return [
+    argument.headline,
+    argument.whyThisLens,
+    argument.sellerArgument,
+    argument.tradeoff ? `Trade-off: ${argument.tradeoff}` : null,
+    argument.closingLine,
+  ].filter(Boolean).join('\n\n')
+}
+
+const buildSellerVisibleOptionNarrative = (
+  option: RecommendationOption,
+  index: number,
+  referenceOption: RecommendationOption | null,
+  salesAssist: LensSalesAssist | null,
+) => {
+  return getSalesAssistOptionText(option, salesAssist) || buildAiOptionNarrative(option, index, referenceOption)
 }
 
 function buildPatientAuditContext(
@@ -2060,7 +2339,9 @@ export default function EvaluationInterface({
   const [lensTechnicalTriage, setLensTechnicalTriage] = useState<LensTechnicalTriage | null>(null)
   const [lensAudit, setLensAudit] = useState<string | null>(null)
   const [lensAuditPayload, setLensAuditPayload] = useState<Record<string, unknown> | null>(null)
+  const [lensSalesAssist, setLensSalesAssist] = useState<LensSalesAssist | null>(null)
   const [isGeneratingAudit, setIsGeneratingAudit] = useState(false)
+  const [isGeneratingSalesAssist, setIsGeneratingSalesAssist] = useState(false)
   const [copiedDebugBox, setCopiedDebugBox] = useState<'audit' | 'payload' | 'triage' | null>(null)
   const [quickRetentionReply, setQuickRetentionReply] = useState<string | null>(null)
   const [ivisionReferenceSuggestion, setIvisionReferenceSuggestion] = useState<string | null>(null)
@@ -2180,7 +2461,10 @@ export default function EvaluationInterface({
     setLensTechnicalTriage(null)
     setLensAudit(null)
     setLensAuditPayload(null)
+    setLensSalesAssist(null)
+    setIsGeneratingSalesAssist(false)
     setIsGeneratingAudit(false)
+    setIsGeneratingSalesAssist(false)
     setIvisionReferenceSuggestion(null)
     setIvisionReferenceSummary(null)
     setFormError(null)
@@ -2271,7 +2555,9 @@ export default function EvaluationInterface({
     setLensTechnicalTriage(null)
     setLensAudit(null)
     setLensAuditPayload(null)
+    setLensSalesAssist(null)
     setIsGeneratingAudit(false)
+    setIsGeneratingSalesAssist(false)
     setIvisionReferenceSuggestion(null)
     setIvisionReferenceSummary(null)
     setFormError(null)
@@ -2351,6 +2637,7 @@ export default function EvaluationInterface({
     setLensTechnicalTriage(null)
     setLensAudit(null)
     setLensAuditPayload(null)
+    setLensSalesAssist(null)
     setAiFeedback('Sugestão comercial gerada com base nos dados da avaliação.')
     applyManualSuggestion(result.suggestion, 'Sugestão comercial gerada com base nos dados da avaliação.')
     return true
@@ -2379,6 +2666,8 @@ export default function EvaluationInterface({
     setLensTechnicalTriage(null)
     setLensAudit(null)
     setLensAuditPayload(null)
+    setLensSalesAssist(null)
+    setIsGeneratingSalesAssist(false)
 
     startAiGenerationTransition(async () => {
       const auditPatientContext = buildPatientAuditContext(form, aiCaseInput)
@@ -2407,6 +2696,7 @@ export default function EvaluationInterface({
           setLensTechnicalTriage(null)
           setLensAudit(null)
           setLensAuditPayload(null)
+          setLensSalesAssist(null)
           setFormError(result.message)
         }
         return
@@ -2426,7 +2716,8 @@ export default function EvaluationInterface({
       // Auditoria Gemini assíncrona (não bloqueia o ranking)
       if (payload.recommendations.length > 0) {
         setLensAudit(null)
-        setIsGeneratingAudit(true)
+        setLensSalesAssist(null)
+        setIsGeneratingSalesAssist(true)
         const auditDebugPayload = {
           patient: auditPatientContext,
           technicalTriage,
@@ -2434,19 +2725,22 @@ export default function EvaluationInterface({
           recommendations: payload.recommendations,
         }
         setLensAuditPayload(auditDebugPayload)
-        generateLensAuditAction(
-          auditPatientContext,
-          payload.recommendations,
-        ).then((auditResult) => {
-          if (auditResult.success && auditResult.audit) {
-            setLensAudit(auditResult.audit)
+        generateLensSalesAssistAction({
+          patientContext: auditPatientContext,
+          technicalTriage,
+          motorInput: recommendationCaseInput,
+          recommendations: payload.recommendations,
+        }).then((assistResult) => {
+          if (assistResult.success && assistResult.assist) {
+            setLensSalesAssist(assistResult.assist)
           }
-          setIsGeneratingAudit(false)
+          setIsGeneratingSalesAssist(false)
         }).catch(() => {
-          setIsGeneratingAudit(false)
+          setIsGeneratingSalesAssist(false)
         })
       } else {
         setLensAuditPayload(null)
+        setLensSalesAssist(null)
       }
     })
   }
@@ -2478,6 +2772,7 @@ export default function EvaluationInterface({
       }
       setAiState(payload.nextState)
       setAiRecommendations(payload.recommendations)
+      setLensSalesAssist(null)
       setSyncStatus(evaluationIdRef.current ? 'saved' : 'idle')
       setManualSuggestion(null)
       setAiFeedback(`Sugestão refinada para: "${currentInput}"`)
@@ -2508,7 +2803,9 @@ export default function EvaluationInterface({
     setForm((prev) => ({
       ...prev,
       recommendedLensName: buildAiRecommendationLabel(option),
-      commercialRecommendationRaw: buildAiCommercialSummary(option)
+      commercialRecommendationRaw:
+        getSalesAssistOptionText(option, lensSalesAssist) ||
+        buildAiCommercialSummary(option)
     }))
     setFeedback('Sugestão da IA aplicada aos campos comerciais. Revise antes de salvar.')
     setFormError(null)
@@ -2773,9 +3070,13 @@ export default function EvaluationInterface({
     : ''
   const lensTechnicalTriageText = lensTechnicalTriage
     ? [
-        'Triagem tecnica IA',
+        LENS_ENGINE_DIAGNOSTIC_SUITE_NAME,
+        `Restore key: ${LENS_ENGINE_DIAGNOSTIC_SUITE_RESTORE_KEY}`,
+        '',
+        'Etapa 1 - Triagem tecnica IA',
         '',
         lensTechnicalTriage.parecer,
+        lensTechnicalTriage.sellerBrief ? `\nLeitura para vendedor: ${lensTechnicalTriage.sellerBrief}` : null,
         '',
         ...lensTechnicalTriage.technicalSignals.map((signal) => signal.replace(/_/g, ' ')),
         lensTechnicalTriage.salesContext.tradeoff ? `\n${lensTechnicalTriage.salesContext.tradeoff}` : null,
@@ -3305,6 +3606,56 @@ export default function EvaluationInterface({
                     className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
                   >
                     <UserRound className="h-3.5 w-3.5" /> Tiago (Alto Grau $)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.ocupacionalVerdadeiro }))
+                      setFeedback('Perfil do Otavio (ocupacional verdadeiro) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <Briefcase className="h-3.5 w-3.5" /> Otavio (Ocupacional)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.fotossensivelPrioritario }))
+                      setFeedback('Perfil do Fabio (fotossensivel prioritario) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <UserRound className="h-3.5 w-3.5" /> Fabio (Foto)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.adaptacaoMultifocalDificil }))
+                      setFeedback('Perfil da Marta (adaptacao multifocal dificil) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <Briefcase className="h-3.5 w-3.5" /> Marta (Adaptacao)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.hipermetropiaAltaEstetica }))
+                      setFeedback('Perfil do Claudio (hipermetropia alta estetica) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <UserRound className="h-3.5 w-3.5" /> Claudio (Hiper +)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.add400Disponibilidade }))
+                      setFeedback('Perfil da Dora (ADD +4 disponibilidade) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <UserRound className="h-3.5 w-3.5" /> Dora (ADD +4)
                   </button>
                   <button
                     type="button"
@@ -3870,8 +4221,49 @@ export default function EvaluationInterface({
                           />
                         )}
 
+                        {lensTechnicalTriage?.sellerBrief && (
+                          <div className="mt-4 rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-4">
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-200">
+                              Leitura rapida para o vendedor
+                            </p>
+                            <p className="mt-2 text-sm leading-6 text-emerald-50">
+                              {lensTechnicalTriage.sellerBrief}
+                            </p>
+                          </div>
+                        )}
+
+                        {isGeneratingSalesAssist && aiRecommendations.length > 0 && (
+                          <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+                            <span className="inline-flex items-center gap-2">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Preparando argumentos de venda para as lentes indicadas...
+                            </span>
+                          </div>
+                        )}
+
+                        {lensSalesAssist?.sellerOpening && (
+                          <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-4">
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">
+                              Como abrir a explicacao
+                            </p>
+                            <p className="mt-2 text-sm leading-6 text-cyan-50">
+                              {lensSalesAssist.sellerOpening}
+                            </p>
+                          </div>
+                        )}
+
+                        <details className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-3">
+                          <summary className="cursor-pointer text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">
+                            Dossie Triplice do Motor (debug)
+                          </summary>
+
+                        {/* Dossie Triplice do Motor (`dossie_triplice_motor`): preserve este conjunto.
+                            Ele junta Triagem IA -> Payload/Motor -> Auditoria IA para calibrar novas tabelas globais. */}
                         {(isGeneratingAudit || lensAudit) && (
                           <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+                            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">
+                              {LENS_ENGINE_DIAGNOSTIC_SUITE_NAME} - Etapa 3: Auditoria IA
+                            </p>
                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-400 flex items-center gap-2">
                                 <Sparkles className="h-3 w-3" /> Debug IA — Auditoria da Indicação
@@ -3895,6 +4287,9 @@ export default function EvaluationInterface({
 
                         {lensAuditPayload && (
                           <div className="mt-4 rounded-xl border border-slate-500/30 bg-slate-900/60 p-4">
+                            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">
+                              {LENS_ENGINE_DIAGNOSTIC_SUITE_NAME} - Etapa 2: Payload/Motor
+                            </p>
                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 flex items-center gap-2">
                                 <FileSearch className="h-3 w-3" /> Debug IA — Payload da Auditoria
@@ -3917,6 +4312,9 @@ export default function EvaluationInterface({
 
                         {lensTechnicalTriage && (
                           <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+                            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-200">
+                              {LENS_ENGINE_DIAGNOSTIC_SUITE_NAME} - Etapa 1: Triagem IA
+                            </p>
                             <div className="flex items-center justify-between gap-3">
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-300">
                                 Triagem tecnica IA
@@ -3957,6 +4355,8 @@ export default function EvaluationInterface({
                           </div>
                         )}
 
+                        </details>
+
                         {showIvisionReference && (
                           <div className="mt-4 grid grid-cols-12 gap-4">
                             <div className="col-span-12 lg:col-span-6 rounded-2xl border border-indigo-500/20 bg-indigo-500/10 p-4">
@@ -3987,8 +4387,8 @@ export default function EvaluationInterface({
                                     </div>
                                     <AiOptionInfoButton option={aiTopRecommendation} />
                                   </div>
-                                  <p className="mt-3 rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-3 text-sm leading-6 text-cyan-100">
-                                    {buildAiOptionNarrative(aiTopRecommendation, 0, aiTopRecommendation)}
+                                  <p className="mt-3 whitespace-pre-line rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-3 text-sm leading-6 text-cyan-100">
+                                    {buildSellerVisibleOptionNarrative(aiTopRecommendation, 0, aiTopRecommendation, lensSalesAssist)}
                                   </p>
                                   <button
                                     type="button"
@@ -4054,8 +4454,8 @@ export default function EvaluationInterface({
                                       </div>
                                       <AiOptionInfoButton option={option} />
                                     </div>
-                                    <p className="mt-3 rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-3 text-sm leading-6 text-cyan-100">
-                                      {buildAiOptionNarrative(option, index, aiRecommendations[0] || option)}
+                                    <p className="mt-3 whitespace-pre-line rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-3 text-sm leading-6 text-cyan-100">
+                                      {buildSellerVisibleOptionNarrative(option, index, aiRecommendations[0] || option, lensSalesAssist)}
                                     </p>
                                   </div>
                                   <div className="flex lg:min-w-[220px] lg:max-w-sm lg:flex-col lg:justify-end">
@@ -4070,6 +4470,14 @@ export default function EvaluationInterface({
                                 </div>
                               </div>
                             ))}
+                            {lensSalesAssist?.comparisonTip && (
+                              <div className="col-span-12 rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-4 text-sm leading-6 text-cyan-50">
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">
+                                  Dica para comparar as opcoes
+                                </p>
+                                <p className="mt-2">{lensSalesAssist.comparisonTip}</p>
+                              </div>
+                            )}
                           </div>
                         )}
 

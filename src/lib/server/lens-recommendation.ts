@@ -17,6 +17,8 @@ export type FulfillmentMode = 'pronta' | 'sob_demanda'
 
 export type AdaptationDifficulty = 'baixa' | 'media' | 'alta'
 
+const MAX_ANTI_FATIGUE_ADDITION = 1.25
+
 export type RecommendationCaseInput = {
   idade?: number | null
   marca_atual?: string | null
@@ -583,13 +585,40 @@ function uniqueValues<T>(values: T[]): T[] {
   return Array.from(new Set(values))
 }
 
+function hasPrimaryOccupationalDemand(input: RecommendationCaseInput): boolean {
+  const rotinaTags = input.rotina_tags || []
+  const desiredBenefits = input.desired_benefits || []
+  const objectiveTags = input.objetivo_tags || []
+  const notes = withoutAccents((input.notes || '').toLowerCase())
+  const hasNearIntermediateFocus =
+    rotinaTags.includes('computador') &&
+    rotinaTags.includes('leitura') &&
+    !rotinaTags.includes('dirigir') &&
+    !rotinaTags.includes('dirigir_noite')
+
+  return (
+    objectiveTags.includes('ocupacional') ||
+    desiredBenefits.includes('ocupacional') ||
+    desiredBenefits.includes('campo_intermediario') ||
+    notes.includes('oculos_escritorio') ||
+    notes.includes('oculos de escritorio') ||
+    notes.includes('escritorio') ||
+    notes.includes('perto/intermediario') ||
+    notes.includes('perto e intermediario') ||
+    (hasNearIntermediateFocus &&
+      input.adicao != null &&
+      input.adicao >= 1.25 &&
+      (notes.includes('nao dirige') || notes.includes('longe plena nao e prioridade')))
+  )
+}
+
 function getDesiredClinicalCategories(input: RecommendationCaseInput): ClinicalCategory[] {
   const rotinaTags = input.rotina_tags || []
   const desiredBenefits = input.desired_benefits || []
   const objetivoTags = input.objetivo_tags || []
 
   // Explicit occupational request from UI (e.g. "óculos para trabalho/escritório")
-  if (objetivoTags.includes('ocupacional')) {
+  if (hasPrimaryOccupationalDemand(input)) {
     return input.adicao != null
       ? ['ocupacional', 'multifocal', 'bifocal']
       : ['ocupacional', 'visao_simples']
@@ -599,7 +628,12 @@ function getDesiredClinicalCategories(input: RecommendationCaseInput): ClinicalC
     return ['multifocal', 'bifocal']
   }
 
-  if (rotinaTags.includes('controle_miopia') || desiredBenefits.includes('controle_miopia')) {
+  if (
+    isPlausibleMyopiaControlCase(input) &&
+    (rotinaTags.includes('controle_miopia') ||
+      desiredBenefits.includes('controle_miopia') ||
+      objetivoTags.includes('controle_miopia'))
+  ) {
     return ['controle_miopia']
   }
 
@@ -618,16 +652,24 @@ function getDesiredClinicalCategories(input: RecommendationCaseInput): ClinicalC
   return ['visao_simples']
 }
 
+function isPlausibleMyopiaControlCase(input: RecommendationCaseInput): boolean {
+  const isYoungPatient = input.idade == null || input.idade <= 21
+  const hasMyopia = input.esferico != null && input.esferico < 0
+  return input.adicao == null && isYoungPatient && hasMyopia
+}
+
 function hasPrimarySunDemand(input: RecommendationCaseInput): boolean {
   const rotinaTags = input.rotina_tags || []
   const desiredBenefits = input.desired_benefits || []
   const objectiveTags = input.objetivo_tags || []
   const preferredFeatures = input.preferred_features || []
   const notes = withoutAccents((input.notes || '').toLowerCase())
-
-  return (
-    (preferredFeatures.includes('transitions') &&
-      (rotinaTags.includes('sol') || desiredBenefits.includes('conforto_luz'))) ||
+  const highThinLensPriority =
+    getPrescriptionStrength(input) >= 6 &&
+    (wantsThinLens(input) || desiredBenefits.includes('estetica') || desiredBenefits.includes('lente_fina'))
+  const secondaryPhotochromicForHighPrescription =
+    objectiveTags.includes('transitions_secundario') && highThinLensPriority
+  const explicitSolarPrimaryDemand =
     objectiveTags.includes('oculos_sol_grau') ||
     objectiveTags.includes('solar') ||
     notes.includes('oculos_sol_grau') ||
@@ -635,9 +677,18 @@ function hasPrimarySunDemand(input: RecommendationCaseInput): boolean {
     notes.includes('sol grau') ||
     notes.includes('trabalha ao ar livre') ||
     notes.includes('conforto no sol') ||
-    notes.includes('sensibilidade a luz') ||
-    notes.includes('incomodo principal: luz') ||
-    notes.includes('prioridade: sol')
+    notes.includes('prioridade: sol') ||
+    notes.includes('incomodo principal: luz')
+
+  if (secondaryPhotochromicForHighPrescription) {
+    return explicitSolarPrimaryDemand
+  }
+
+  return (
+    (preferredFeatures.includes('transitions') &&
+      (rotinaTags.includes('sol') || desiredBenefits.includes('conforto_luz'))) ||
+    explicitSolarPrimaryDemand ||
+    notes.includes('sensibilidade a luz')
   )
 }
 
@@ -689,8 +740,17 @@ function between(value: number | null, min: number | null, max: number | null): 
   return value >= low && value <= high
 }
 
-function matchesGrid(input: RecommendationCaseInput, grids: CatalogGrid[]): boolean {
+function matchesGrid(
+  input: RecommendationCaseInput,
+  grids: CatalogGrid[],
+  effectiveCategory?: ClinicalCategory,
+): boolean {
   if (!grids.length) return true
+  const requiresAddRange =
+    input.adicao != null &&
+    (effectiveCategory === 'multifocal' ||
+      effectiveCategory === 'bifocal' ||
+      effectiveCategory === 'ocupacional')
 
   return grids.some((grid) => {
     const sphOk = between(input.esferico ?? null, grid.sph_min, grid.sph_max)
@@ -699,7 +759,7 @@ function matchesGrid(input: RecommendationCaseInput, grids: CatalogGrid[]): bool
       input.adicao == null
         ? true
         : grid.add_min == null && grid.add_max == null
-          ? true
+          ? !requiresAddRange
           : between(input.adicao, grid.add_min, grid.add_max)
     return sphOk && cylOk && addOk
   })
@@ -1229,7 +1289,9 @@ function scorePriceTarget(params: {
   if (minPrice != null && price < minPrice) return 0
 
   const ratio = price / targetPrice
-  if (ratio > 1.2) return -6   // above 20% over target (safety; maxPrice filter handles this)
+  if (ratio > 1.2) return -6
+  if (ratio > 1.1) return -3
+  if (ratio > 1) return -1
   if (ratio >= 0.8) return 5   // sweet spot: within ±20% of target
   if (ratio >= 0.6) return 1   // up to 40% below target: acceptable
   return -2                    // more than 40% below target
@@ -1334,10 +1396,12 @@ function scoreOffer(params: {
   const desiredBenefits = input.desired_benefits || []
   const routineTags = input.rotina_tags || []
   const objectiveTags = input.objetivo_tags || []
+  const primaryOccupationalDemand = hasPrimaryOccupationalDemand(input)
   const wantsMiopiaControl =
-    routineTags.includes('controle_miopia') ||
-    desiredBenefits.includes('controle_miopia') ||
-    (input.objetivo_tags || []).includes('controle_miopia')
+    isPlausibleMyopiaControlCase(input) &&
+    (routineTags.includes('controle_miopia') ||
+      desiredBenefits.includes('controle_miopia') ||
+      (input.objetivo_tags || []).includes('controle_miopia'))
   const isChildCase = (input.idade != null && input.idade <= 14) || routineTags.includes('crianca')
   const isPediatricMyopiaControlCase = isChildCase && wantsMiopiaControl
   const isMyopiaControlOption = clinicalEvaluation.effectiveCategory === 'controle_miopia'
@@ -1359,7 +1423,7 @@ function scoreOffer(params: {
   const surfacingDemandLevel =
     surfacingDemandSignals.reduce((acc, signal) => acc + (desiredBenefits.includes(signal) ? 0.25 : 0), 0) +
     (prescriptionStrength >= 6 ? 0.7 : prescriptionStrength >= 4 ? 0.45 : 0) +
-    (input.adicao != null && input.adicao <= 1.5 ? 0.4 : 0)
+    (input.adicao != null && input.adicao <= MAX_ANTI_FATIGUE_ADDITION ? 0.4 : 0)
 
   if (clinicalEvaluation.effectiveCategory !== 'indefinida') {
     score += 5
@@ -1374,9 +1438,12 @@ function scoreOffer(params: {
       score += 3
       reasons.push('beneficio:adicao_presente')
     } else if (clinicalEvaluation.effectiveCategory === 'ocupacional') {
-      score += 1
+      score += primaryOccupationalDemand ? 7 : 1
       reasons.push('beneficio:adicao_ocupacional')
-    } else if (clinicalEvaluation.effectiveCategory === 'visao_simples' && input.adicao <= 1.5) {
+    } else if (
+      clinicalEvaluation.effectiveCategory === 'visao_simples' &&
+      input.adicao <= MAX_ANTI_FATIGUE_ADDITION
+    ) {
       reasons.push('opcao:anti_fadiga_adicao_baixa')
     } else {
       score -= input.adicao >= 1.5 ? 24 : 4
@@ -1386,7 +1453,8 @@ function scoreOffer(params: {
 
   if (
     clinicalEvaluation.effectiveCategory === 'ocupacional' &&
-    objectiveTags.includes('primeira_multifocal')
+    objectiveTags.includes('primeira_multifocal') &&
+    !primaryOccupationalDemand
   ) {
     score -= 5
     reasons.push('opcao:ocupacional_nao_substitui_primeira_multifocal')
@@ -1518,6 +1586,17 @@ function scoreOffer(params: {
     }
   }
 
+  if (
+    !highResistanceChildCase &&
+    resistancePriority >= 0.75 &&
+    indexValue != null &&
+    indexValue >= 1.67 &&
+    !hasImpactResistantMaterial
+  ) {
+    score -= indexValue >= 1.74 ? 2.5 : 1.5
+    reasons.push('material:alto_indice_tradeoff_resistencia')
+  }
+
   if (highResistanceChildCase && !hasResistantMaterial) {
     score -= 5
     reasons.push('material:resistencia_infantil_nao_atendida')
@@ -1564,6 +1643,11 @@ function scoreOffer(params: {
     ) {
       score += 2.5
       reasons.push('material:indice_174_grau_alto')
+      if (targetPrice != null && Number.isFinite(finalPrice) && finalPrice <= targetPrice) {
+        const valueBonus = finalPrice <= targetPrice * 0.7 ? 16 : 12
+        score += valueBonus
+        reasons.push('material:indice_174_custo_beneficio')
+      }
     } else if (
       !highResistanceChildCase &&
       prescriptionStrength >= 6 &&
@@ -1606,17 +1690,17 @@ function scoreOffer(params: {
     }
 
     if (!highResistanceChildCase && prescriptionStrength >= 6 && indexValue <= 1.59) {
-      score -= 3
+      score -= thinnessPriority >= 0.8 ? 16 : 8
       reasons.push('material:indice_baixo_grau_alto')
     }
 
     if (
       !highResistanceChildCase &&
       prescriptionStrength >= 6 &&
-      indexValue <= 1.56 &&
+      indexValue <= 1.59 &&
       thinnessPriority >= 0.6
     ) {
-      score -= 6
+      score -= indexValue <= 1.56 ? 8 : 5
       reasons.push('material:indice_baixo_incompativel_estetica')
     }
   } else if (seeksThinness && prescriptionStrength >= 4.5) {
@@ -1634,8 +1718,7 @@ function scoreOffer(params: {
   }
 
   if (
-    ((input.rotina_tags || []).includes('controle_miopia') ||
-      (input.desired_benefits || []).includes('controle_miopia')) &&
+    wantsMiopiaControl &&
     (clinicalEvaluation.effectiveCategory === 'controle_miopia' ||
       offerDescriptor.includes('stellest') ||
       withoutAccents(family.nome.toLowerCase()).includes('stellest'))
@@ -1685,6 +1768,15 @@ function scoreOffer(params: {
   score += targetScore
   if (targetScore > 0.5 && targetPrice != null) {
     reasons.push(`alvo_preco:${targetPrice}`)
+  }
+  if (
+    targetPrice != null &&
+    budgetMode === 'economico' &&
+    finalPrice > targetPrice
+  ) {
+    const overTargetRatio = finalPrice / targetPrice
+    score -= overTargetRatio > 1.1 ? 4 : 2
+    reasons.push('alvo_preco:acima_alvo')
   }
   if (
     targetPrice != null &&
@@ -1892,6 +1984,9 @@ function scoreAntireflexoCompleteness(params: {
     } else if (hasBasicAr && (input.desired_benefits || []).includes('ar_premium')) {
       score += 0.5
       reasons.push('tratamento:ar_basico_limitado_dirigir_noite')
+    } else if (highPrescription && (input.desired_benefits || []).includes('ar_premium')) {
+      score -= 3
+      reasons.push('tratamento:ar_intermediario_limitado_dirigir_noite')
     } else {
       score += 1
       reasons.push('tratamento:ar_para_dirigir_noite')
@@ -1957,7 +2052,7 @@ function isAntiFatigueSupportOption(params: {
 }): boolean {
   const { family, offer, input, clinicalCategory } = params
   if (clinicalCategory !== 'visao_simples') return false
-  if (input.adicao == null || input.adicao > 1.5) return false
+  if (input.adicao == null || input.adicao > MAX_ANTI_FATIGUE_ADDITION) return false
 
   const descriptor = withoutAccents(
     `${family.nome} ${offer.raw_label} ${offer.canonical_label || ''} ${offer.material || ''}`.toLowerCase(),
@@ -2245,6 +2340,8 @@ function selectDiverseTopEntries(
   }
 
   return selected
+    .slice(0, topN)
+    .sort((a, b) => b.score - a.score || a.finalPrice - b.finalPrice)
 }
 
 function appendPrioritizedEntries(
@@ -2314,7 +2411,9 @@ function appendPrioritizedEntries(
     }
   }
 
-  return selected.slice(0, topN)
+  return selected
+    .slice(0, topN)
+    .sort((a, b) => b.score - a.score || a.finalPrice - b.finalPrice)
 }
 
 function applyExploratoryPriceDiscipline(
@@ -2360,10 +2459,44 @@ function isUnsafeTopRecommendation(
     (input.rotina_tags || []).includes('celular') ||
     (input.desired_benefits || []).includes('conforto_digital')
   const firstMultifocal = (input.objetivo_tags || []).includes('primeira_multifocal')
+  const highPrescriptionNightArNeed =
+    getPrescriptionStrength(input) >= 4 &&
+    (input.rotina_tags || []).includes('dirigir_noite') &&
+    (input.desired_benefits || []).includes('ar_premium')
+  const highPrescriptionThinLensNeed =
+    getPrescriptionStrength(input) >= 4.5 &&
+    ((input.desired_benefits || []).includes('lente_fina') ||
+      (input.desired_benefits || []).includes('estetica') ||
+      wantsThinLens(input))
+  const transitionsExplicitlySecondary =
+    (input.objetivo_tags || []).includes('transitions_secundario') && !hasPrimarySunDemand(input)
+  const primaryTransitionsNeed =
+    (input.preferred_features || []).includes('transitions') &&
+    !transitionsExplicitlySecondary &&
+    (normalizeBudgetMode(input.budget_mode) === 'premium' ||
+      (input.rotina_tags || []).includes('sol') ||
+      (input.desired_benefits || []).includes('conforto_luz') ||
+      hasPrimarySunDemand(input))
 
   if (rejectsPremiumPreference(input) && reasons.includes('lens_tier:premium')) return true
   if (reasons.includes('tratamento:ar_ausente_critico') && highDigitalNeed) return true
   if (reasons.includes('tratamento:ar_externo_nao_equivale_ar_noite') && highDigitalNeed) return true
+  if (primaryTransitionsNeed && reasons.includes('feature:ausente_transitions_prioritario')) return true
+  if (
+    reasons.includes('tratamento:ar_intermediario_limitado_dirigir_noite') &&
+    highPrescriptionNightArNeed
+  ) {
+    return true
+  }
+  if (
+    highPrescriptionThinLensNeed &&
+    (reasons.includes('material:indice_nao_informado_grau_alto') ||
+      reasons.includes('design:esferico_limitado_grau_alto') ||
+      reasons.includes('material:indice_baixo_grau_alto') ||
+      reasons.includes('material:indice_baixo_incompativel_estetica'))
+  ) {
+    return true
+  }
   if (
     firstMultifocal &&
     input.adicao != null &&
@@ -2411,6 +2544,9 @@ function getExploratoryClinicalCategories(
   }
 
   if (strict.includes('ocupacional')) {
+    if (input.adicao != null && input.adicao > MAX_ANTI_FATIGUE_ADDITION) {
+      return uniqueCategories(['ocupacional', 'multifocal']) || strict
+    }
     return uniqueCategories(['ocupacional', 'visao_simples', 'multifocal']) || strict
   }
 
@@ -2441,7 +2577,7 @@ function shouldReserveSlotForAntiFadiga(
     exploratoryCategories.includes('visao_simples') &&
     (input.objetivo_tags || []).includes('primeira_multifocal') &&
     input.adicao != null &&
-    input.adicao <= 1.5
+    input.adicao <= MAX_ANTI_FATIGUE_ADDITION
   )
 }
 
@@ -2501,7 +2637,7 @@ function rankRecommendationOptions(params: {
       if (!clinicalEvaluation.eligible) return null
 
       const offerGrids = gridsByOfferId.get(offer.id) || []
-      if (!matchesGrid(input, offerGrids)) return null
+      if (!matchesGrid(input, offerGrids, clinicalEvaluation.effectiveCategory)) return null
 
       const offerFeatures = normalizeFeatureFlags(offer.features)
       const fulfillmentMode = resolveFulfillmentMode(offer, family)
@@ -2998,7 +3134,7 @@ export async function recommendLensConfigurations(params: {
         const isAntiFadiga =
           entry.clinicalCategory === 'visao_simples' &&
           input.adicao != null &&
-          input.adicao <= 1.5
+          input.adicao <= MAX_ANTI_FATIGUE_ADDITION
 
         return {
           ...entry,
@@ -3019,7 +3155,9 @@ export async function recommendLensConfigurations(params: {
     appendPrioritizedEntries(selected, strictRanked, topN)
   }
 
-  return selected.slice(0, topN)
+  return selected
+    .slice(0, topN)
+    .sort((a, b) => b.score - a.score || a.finalPrice - b.finalPrice)
 }
 
 export function inferConversationIntents(message: string): ConversationIntent[] {
@@ -3217,6 +3355,7 @@ export async function startRecommendationConversation(params: {
 
   const tPrice = params.caseInput.targetPrice ?? null
   const childControlMyopia =
+    isPlausibleMyopiaControlCase(state.caseInput) &&
     (state.caseInput.rotina_tags || []).includes('controle_miopia') &&
     ((state.caseInput.idade != null && state.caseInput.idade <= 14) ||
       (state.caseInput.rotina_tags || []).includes('crianca'))

@@ -54,4 +54,19 @@ Essilor,Essilor Abril 2026,Varilux XR Series,Varilux XR Pro,Progressiva Digital,
 - Se algum campo nao existir, deixar vazio (nao inventar).
 - Se nao houver adicao, deixe `adicao_min` e `adicao_max` vazios.
 - Para transicoes, use `transitions=sim` e `transitions_cores=C/M/V` etc.
+- Para multifocal, bifocal e ocupacional, preencha `adicao_min` e `adicao_max` sempre que a tabela trouxer grade. O motor usa esses campos para bloquear ofertas indisponiveis, por exemplo ADD +4.00.
+- Nao marque `solar=sim` como `transitions=sim`. Solar fixo e fotossensivel automatico sao necessidades diferentes no motor.
+- Nao marque `blue_uv=sim` por inferencia comercial vaga; use apenas quando a tabela/tratamento confirmar.
+- Depois da importacao estrutural, ainda e necessario enriquecer semantica de familias e tratamentos. O contrato completo fica em `IMPORTACAO_CATALOGOS_E_SEMANTICA.md`.
 
+## Campos que alimentam a recomendacao
+
+O CSV bruto resolve preco e disponibilidade, mas o motor tambem depende de semantica importada/enriquecida no banco:
+
+- `clinical_category` por familia/oferta: `visao_simples`, `multifocal`, `ocupacional`, `bifocal`, `controle_miopia`, `plana_solar`, `mista`.
+- `tags_uso`: computador, celular, leitura, dirigir, dirigir_noite, sol, crianca, esporte.
+- `tags_beneficios`: adaptacao_rapida, conforto_visual, conforto_digital, qualidade_optica, campo_perto, lente_fina, estetica, resistencia, controle_miopia.
+- `features` da oferta: material/indice, fotossensivel, solar, blue_uv, antirreflexo embutido, design asferico/esferico, alturas/corredor quando disponiveis.
+- `semantic_profile` dos tratamentos: tier, usos, beneficios, resumo comercial e notas de indicacao.
+
+Para uma marca nova como Zeiss, o motor nao deve depender do nome da marca para "adivinhar" desempenho. Ele precisa desses campos estruturados para ranquear e explicar com a mesma coerencia das marcas ja testadas.

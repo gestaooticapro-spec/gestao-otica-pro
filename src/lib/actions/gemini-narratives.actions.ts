@@ -87,6 +87,7 @@ export type LensTechnicalTriageSignal = (typeof ALLOWED_TRIAGE_SIGNALS)[number]
 
 export type LensTechnicalTriage = {
   parecer: string
+  sellerBrief: string | null
   technicalSignals: LensTechnicalTriageSignal[]
   clinicalPriorities: LensTechnicalTriageSignal[]
   salesContext: {
@@ -101,6 +102,27 @@ export type LensTechnicalTriage = {
 export type LensTechnicalTriageResult = {
   success: boolean
   triage: LensTechnicalTriage | null
+  error?: string
+}
+
+export type LensSalesOptionArgument = {
+  configKey: string
+  headline: string
+  whyThisLens: string
+  sellerArgument: string
+  tradeoff: string | null
+  closingLine: string | null
+}
+
+export type LensSalesAssist = {
+  sellerOpening: string | null
+  options: LensSalesOptionArgument[]
+  comparisonTip: string | null
+}
+
+export type LensSalesAssistResult = {
+  success: boolean
+  assist: LensSalesAssist | null
   error?: string
 }
 
@@ -212,7 +234,7 @@ function extractOpenAIUsage(response: OpenAIResponseLike | OpenAIChatCompletionL
 }
 
 function logOpenAISuccess(params: {
-  logTag: 'Audit' | 'Triage'
+  logTag: 'Audit' | 'Triage' | 'Sales Assist'
   endpoint: 'responses' | 'chat'
   modelName: string
   attempt: number
@@ -224,7 +246,7 @@ function logOpenAISuccess(params: {
   )
 }
 
-async function generateWithOpenAI(prompt: string, logTag: 'Audit' | 'Triage'): Promise<string> {
+async function generateWithOpenAI(prompt: string, logTag: 'Audit' | 'Triage' | 'Sales Assist'): Promise<string> {
   if (!OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY nao configurada')
   }
@@ -395,6 +417,7 @@ ${ALLOWED_TRIAGE_SIGNALS.map((signal) => `- ${signal}`).join('\n')}
 Responda apenas JSON valido, sem markdown:
 {
   "parecer": "parecer tecnico curto, sem marca ou produto",
+  "sellerBrief": "texto curto para o vendedor, em linguagem de atendimento, com o ponto mais importante para observar na conversa",
   "technicalSignals": ["um_ou_mais_sinais_da_lista"],
   "clinicalPriorities": ["no_maximo_3_sinais_da_lista"],
   "salesContext": {
@@ -420,6 +443,7 @@ function normalizeTechnicalTriage(raw: Record<string, unknown>): LensTechnicalTr
 
   return {
     parecer: String(raw.parecer || '').trim().slice(0, 900),
+    sellerBrief: raw.sellerBrief ? String(raw.sellerBrief).trim().slice(0, 600) : null,
     technicalSignals: technical.accepted,
     clinicalPriorities: priorities.accepted.slice(0, 3),
     salesContext: {
@@ -530,6 +554,174 @@ Analise:
 Ao apontar problemas, separe claramente o que e erro provavel do motor, ponto de atencao comercial, hipotese baseada em conhecimento externo, ou preferencia subjetiva. Nao transforme superioridade percebida de marca em erro sem evidencia no payload.
 
 Responda em texto corrido, em portugues, de forma tecnica e direta. Escreva como um colega especialista dando um parecer rapido.`
+}
+
+function buildSalesAssistPrompt(params: {
+  patientContext: PatientAuditContext
+  technicalTriage: LensTechnicalTriage | null
+  motorInput: RecommendationCaseInput
+  recommendations: RecommendationOption[]
+}): string {
+  const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
+  const options = params.recommendations.slice(0, 3).map((opt, index) => ({
+    index: index + 1,
+    configKey: opt.configKey,
+    familyName: opt.familyName,
+    offerLabel: opt.offerLabel,
+    treatmentName: opt.treatmentName,
+    treatmentType: opt.treatmentType,
+    clinicalCategory: opt.clinicalCategory,
+    finalPrice: opt.finalPrice,
+    formattedPrice: fmt.format(opt.finalPrice),
+    reasons: opt.reasons,
+    score: opt.score,
+    commercialSummary: opt.commercialSummary,
+    recommendationNotes: opt.recommendationNotes,
+    treatmentSummary: opt.treatmentSummary,
+    treatmentNotes: opt.treatmentNotes,
+    treatmentExplainWhy: opt.treatmentExplainWhy,
+  }))
+
+  return `Voce e um consultor senior de optica ajudando um vendedor durante o atendimento.
+
+Objetivo: transformar o payload tecnico do motor em argumentos comerciais honestos, claros e uteis para o vendedor conversar com o cliente.
+
+Regras:
+- Nao faca auditoria do motor.
+- Nao diga que o motor errou.
+- Nao invente beneficios que nao aparecem no payload.
+- Nao use reputacao externa de marca como argumento.
+- Se houver limitacao ou trade-off, explique com cuidado comercial.
+- Use linguagem natural de balcão, sem parecer laudo medico.
+- O texto deve ajudar o vendedor a vender com seguranca, nao confundir o cliente.
+- Se uma feature foi rejeitada pelo cliente, nao tente vende-la.
+- Se o payload trouxer score/reasons, use isso como evidencia tecnica, mas nao mostre score ao cliente.
+
+Responda apenas JSON valido, sem markdown:
+{
+  "sellerOpening": "frase curta para o vendedor abrir a explicacao, ou null",
+  "options": [
+    {
+      "configKey": "copie exatamente o configKey da opcao",
+      "headline": "titulo curto do argumento",
+      "whyThisLens": "por que esta lente foi indicada para este cliente",
+      "sellerArgument": "texto pronto para o vendedor falar ao cliente",
+      "tradeoff": "trade-off honesto, ou null",
+      "closingLine": "frase curta de fechamento, ou null"
+    }
+  ],
+  "comparisonTip": "dica curta para comparar as opcoes entre si, ou null"
+}
+
+Dados:
+${JSON.stringify({
+    patient: params.patientContext,
+    technicalTriage: params.technicalTriage,
+    motorInput: params.motorInput,
+    recommendations: options,
+  }, null, 2)}`
+}
+
+function normalizeSalesAssist(raw: Record<string, unknown>, recommendations: RecommendationOption[]): LensSalesAssist {
+  const allowedKeys = new Set(recommendations.map((option) => option.configKey))
+  const rawOptions = Array.isArray(raw.options) ? raw.options : []
+
+  const options = rawOptions
+    .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object' && !Array.isArray(item))
+    .map((item) => ({
+      configKey: String(item.configKey || '').trim(),
+      headline: String(item.headline || '').trim().slice(0, 160),
+      whyThisLens: String(item.whyThisLens || '').trim().slice(0, 900),
+      sellerArgument: String(item.sellerArgument || '').trim().slice(0, 1200),
+      tradeoff: item.tradeoff ? String(item.tradeoff).trim().slice(0, 700) : null,
+      closingLine: item.closingLine ? String(item.closingLine).trim().slice(0, 350) : null,
+    }))
+    .filter((item) => allowedKeys.has(item.configKey) && (item.whyThisLens || item.sellerArgument))
+
+  return {
+    sellerOpening: raw.sellerOpening ? String(raw.sellerOpening).trim().slice(0, 700) : null,
+    options,
+    comparisonTip: raw.comparisonTip ? String(raw.comparisonTip).trim().slice(0, 700) : null,
+  }
+}
+
+export async function generateLensSalesAssistAction(params: {
+  patientContext: PatientAuditContext
+  technicalTriage: LensTechnicalTriage | null
+  motorInput: RecommendationCaseInput
+  recommendations: RecommendationOption[]
+}): Promise<LensSalesAssistResult> {
+  if (!GEMINI_KEYS.length && !OPENAI_API_KEY) {
+    return { success: false, assist: null, error: 'Nenhuma chave Gemini/OpenAI configurada' }
+  }
+  if (!params.recommendations.length) {
+    return { success: false, assist: null, error: 'Sem recomendacoes' }
+  }
+
+  const prompt = buildSalesAssistPrompt(params)
+
+  for (let i = 0; i < GEMINI_KEYS.length; i++) {
+    const key = GEMINI_KEYS[i]
+    const keyLabel = `GEMINI_SECRET_KEY_${i + 1}`
+    try {
+      const genAI = new GoogleGenerativeAI(key)
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        const result = await model.generateContent(prompt)
+        const usage = result.response.usageMetadata
+        const tokensIn = usage?.promptTokenCount ?? '?'
+        const tokensOut = usage?.candidatesTokenCount ?? '?'
+        console.log(`[Gemini Sales Assist] ok ${keyLabel}#${attempt} | entrada: ${tokensIn} tokens | saida: ${tokensOut} tokens`)
+
+        const text = extractGeminiText(result.response)
+        const json = text ? extractJsonObject(text) : null
+        if (json) {
+          return { success: true, assist: normalizeSalesAssist(json, params.recommendations) }
+        }
+      }
+
+      throw new Error('Argumentos de venda vazios ou JSON invalido')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      const isRecoverable =
+        msg.includes('429') ||
+        msg.includes('quota') ||
+        msg.includes('Quota') ||
+        msg.includes('503') ||
+        msg.includes('Service Unavailable') ||
+        msg.includes('UNAVAILABLE') ||
+        msg.includes('JSON invalido') ||
+        msg.includes('Argumentos de venda vazios')
+
+      if (isRecoverable) {
+        console.warn(`[Gemini Sales Assist] ${keyLabel} - ${msg}, tentando proxima chave...`)
+        if (msg.includes('503') || msg.includes('Service Unavailable') || msg.includes('UNAVAILABLE')) {
+          await sleep(5000)
+        }
+      } else {
+        console.error(`[Gemini Sales Assist] ${keyLabel} - erro: ${msg}`)
+        return { success: false, assist: null, error: msg }
+      }
+    }
+  }
+
+  if (OPENAI_API_KEY) {
+    try {
+      const text = await generateWithOpenAI(prompt, 'Sales Assist')
+      const json = extractJsonObject(text)
+      if (json) {
+        return { success: true, assist: normalizeSalesAssist(json, params.recommendations) }
+      }
+      throw new Error('OpenAI retornou argumentos sem JSON valido')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[OpenAI Sales Assist] erro: ${msg}`)
+      return { success: false, assist: null, error: msg }
+    }
+  }
+
+  return { success: false, assist: null, error: 'Nenhuma chave Gemini/OpenAI retornou argumentos uteis' }
 }
 
 export async function generateLensAuditAction(
