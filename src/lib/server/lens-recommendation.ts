@@ -160,6 +160,8 @@ type EmbeddedTreatmentInfo = {
   semantic: TreatmentSemanticProfile
 }
 
+type CommercialTier = 'entrada' | 'intermediaria' | 'premium'
+
 type CatalogTreatment = {
   id: string
   nome: string
@@ -252,10 +254,61 @@ function rejectsPremiumPreference(input: RecommendationCaseInput): boolean {
   if (budgetMode !== 'economico') return false
 
   return (
+    (input.objetivo_tags || []).includes('premium_recusado') ||
     note.includes('aceita premium: nao') ||
     note.includes('nao aceita premium') ||
+    note.includes('não aceita premium') ||
+    note.includes('evitar pacote premium') ||
+    note.includes('evitando pacote premium') ||
+    note.includes('evitar pacotes premium') ||
+    note.includes('evitando pacotes premium') ||
+    note.includes('evitar solucoes premium') ||
+    note.includes('evitando solucoes premium') ||
+    note.includes('evitar soluções premium') ||
+    note.includes('evitando soluções premium') ||
     note.includes('não aceita premium')
   )
+}
+
+function normalizeCommercialTier(value: string | null | undefined): CommercialTier {
+  const normalized = withoutAccents(String(value || '').toLowerCase())
+    .replace(/-/g, '_')
+    .replace(/\s+/g, '_')
+  if (normalized === 'entrada') return 'entrada'
+  if (normalized.includes('basico') || normalized.includes('economico')) return 'entrada'
+  if (normalized.includes('intermediaria') || normalized.includes('intermediario') || normalized.includes('equilibrado')) {
+    return 'intermediaria'
+  }
+  if (normalized.startsWith('premium') || normalized.includes('ultra_premium')) return 'premium'
+  return 'intermediaria'
+}
+
+function resolveLensTier(family: CatalogFamily, offer: CatalogOffer): CommercialTier {
+  const shared = getSharedFamilySemanticProfile(family.nome)
+  const sharedTier = normalizeCommercialTier(shared?.positioning || null)
+  if (shared?.positioning) return sharedTier
+
+  const features = toFeatureRecord(offer.features)
+  const semantic = toFeatureRecord(features.semantic_profile)
+  const fromOffer = normalizeCommercialTier(
+    typeof semantic.positioning === 'string' ? semantic.positioning : null,
+  )
+  return fromOffer
+}
+
+function resolveTreatmentTier(
+  treatment: CatalogTreatment | null,
+  embedded: EmbeddedTreatmentInfo | null,
+): CommercialTier {
+  const semantic = getTreatmentSemanticProfile(treatment)
+  const rawTier =
+    semantic?.positioning ||
+    semantic?.price_tier ||
+    embedded?.semantic.positioning ||
+    embedded?.semantic.price_tier ||
+    null
+
+  return normalizeCommercialTier(rawTier)
 }
 
 function normalizeIntentText(value: string): string {
@@ -550,6 +603,10 @@ function getDesiredClinicalCategories(input: RecommendationCaseInput): ClinicalC
     return ['controle_miopia']
   }
 
+  if (hasPrimarySunDemand(input)) {
+    return ['visao_simples', 'plana_solar']
+  }
+
   if (rotinaTags.includes('sol') && rotinaTags.length === 1) {
     return ['plana_solar', 'visao_simples']
   }
@@ -559,6 +616,46 @@ function getDesiredClinicalCategories(input: RecommendationCaseInput): ClinicalC
   }
 
   return ['visao_simples']
+}
+
+function hasPrimarySunDemand(input: RecommendationCaseInput): boolean {
+  const rotinaTags = input.rotina_tags || []
+  const desiredBenefits = input.desired_benefits || []
+  const objectiveTags = input.objetivo_tags || []
+  const preferredFeatures = input.preferred_features || []
+  const notes = withoutAccents((input.notes || '').toLowerCase())
+
+  return (
+    (preferredFeatures.includes('transitions') &&
+      (rotinaTags.includes('sol') || desiredBenefits.includes('conforto_luz'))) ||
+    objectiveTags.includes('oculos_sol_grau') ||
+    objectiveTags.includes('solar') ||
+    notes.includes('oculos_sol_grau') ||
+    notes.includes('oculos de sol') ||
+    notes.includes('sol grau') ||
+    notes.includes('trabalha ao ar livre') ||
+    notes.includes('conforto no sol') ||
+    notes.includes('sensibilidade a luz') ||
+    notes.includes('incomodo principal: luz') ||
+    notes.includes('prioridade: sol')
+  )
+}
+
+function acceptsDedicatedSolarAlternative(input: RecommendationCaseInput): boolean {
+  const objectiveTags = input.objetivo_tags || []
+  const preferredFeatures = input.preferred_features || []
+  const notes = withoutAccents((input.notes || '').toLowerCase())
+
+  return (
+    preferredFeatures.includes('solar') ||
+    objectiveTags.includes('oculos_sol_grau') ||
+    objectiveTags.includes('solar') ||
+    notes.includes('oculos_sol_grau') ||
+    notes.includes('oculos de sol') ||
+    notes.includes('sol grau') ||
+    notes.includes('lente solar') ||
+    notes.includes('solar dedicada')
+  )
 }
 
 function enrichCaseInput(input: RecommendationCaseInput): RecommendationCaseInput {
@@ -726,11 +823,219 @@ const EMBEDDED_TREATMENT_SEMANTICS: Record<string, EmbeddedTreatmentInfo> = {
   },
 }
 
+const EXPLICIT_EMBEDDED_TREATMENTS: Array<{
+  pattern: RegExp
+  treatment: EmbeddedTreatmentInfo
+}> = [
+  {
+    pattern: /\bantirreflexo blue premium\b|\bfiltro de luz azul\b/,
+    treatment: {
+      name: 'Antirreflexo Blue Premium',
+      type: 'Antirreflexo',
+      semantic: {
+        positioning: 'intermediaria',
+        price_tier: 'intermediario',
+        usage_tags: ['uso_diario', 'telas', 'computador', 'celular'],
+        benefit_tags: ['antirreflexo', 'conforto_digital', 'conforto_visual', 'protecao_luz_azul'],
+        commercial_summary: 'Tratamento intermediario com antirreflexo e filtro azul para rotina digital.',
+        recommendation_notes: 'Sobe quando telas, Blue/UV e custo-beneficio sao prioridades.',
+        explain_why: 'Foi escolhido por combinar conforto digital e filtragem de luz azul.',
+      },
+    },
+  },
+  {
+    pattern: /\bcrizal sapphire hr\b/,
+    treatment: {
+      name: 'Crizal Sapphire HR',
+      type: 'Antirreflexo',
+      semantic: {
+        positioning: 'premium',
+        price_tier: 'premium',
+        usage_tags: ['uso_diario', 'telas', 'dirigir_noite', 'computador'],
+        benefit_tags: ['antirreflexo', 'clareza', 'conforto_visual', 'qualidade_optica', 'ar_premium'],
+        commercial_summary: 'Antirreflexo premium com foco em transparência, clareza e desempenho geral.',
+        recommendation_notes: 'Sobe quando o caso pede AR premium, direção noturna e melhor transparência.',
+        explain_why: 'Foi escolhido por entregar antirreflexo premium com boa performance visual geral.',
+      },
+    },
+  },
+  {
+    pattern: /\bcrizal rock\b/,
+    treatment: {
+      name: 'Crizal Rock',
+      type: 'Antirreflexo',
+      semantic: {
+        positioning: 'premium',
+        price_tier: 'premium',
+        usage_tags: ['uso_diario', 'dirigir_noite', 'computador'],
+        benefit_tags: ['antirreflexo', 'durabilidade', 'resistencia_riscos', 'conforto_visual', 'ar_premium'],
+        commercial_summary: 'Antirreflexo premium com foco em durabilidade, riscos e manchas.',
+        recommendation_notes: 'Sobe quando o caso pede AR premium com maior robustez de uso.',
+        explain_why: 'Foi escolhido por combinar antirreflexo com maior proposta de durabilidade.',
+      },
+    },
+  },
+  {
+    pattern: /\bcrizal prevencia\b/,
+    treatment: {
+      name: 'Crizal Prevencia',
+      type: 'Antirreflexo',
+      semantic: {
+        positioning: 'premium',
+        price_tier: 'premium',
+        usage_tags: ['uso_diario', 'telas', 'computador', 'celular'],
+        benefit_tags: ['antirreflexo', 'protecao_luz_azul', 'conforto_digital', 'conforto_visual', 'ar_premium'],
+        commercial_summary: 'Antirreflexo premium com filtragem seletiva de luz azul-violeta.',
+        recommendation_notes: 'Sobe quando blue/UV e uso digital sao prioridades.',
+        explain_why: 'Foi escolhido por unir antirreflexo e filtragem azul-violeta.',
+      },
+    },
+  },
+  {
+    pattern: /\bcrizal easy pro\b/,
+    treatment: {
+      name: 'Crizal Easy Pro',
+      type: 'Antirreflexo',
+      semantic: {
+        positioning: 'intermediaria',
+        price_tier: 'intermediario',
+        usage_tags: ['uso_diario', 'telas', 'computador'],
+        benefit_tags: ['antirreflexo', 'facilidade_limpeza', 'conforto_visual'],
+        commercial_summary: 'Antirreflexo Crizal de acesso/intermediario para rotina diaria.',
+        recommendation_notes: 'Sobe quando o caso pede Crizal com bom custo-beneficio.',
+        explain_why: 'Foi escolhido por equilibrar antirreflexo e custo-beneficio.',
+      },
+    },
+  },
+  {
+    pattern: /\btrio easy clean\b/,
+    treatment: {
+      name: 'Trio Easy Clean',
+      type: 'Antirreflexo',
+      semantic: {
+        positioning: 'entrada',
+        price_tier: 'economico',
+        usage_tags: ['uso_diario'],
+        benefit_tags: ['antirreflexo', 'custo_beneficio'],
+        commercial_summary: 'Antirreflexo de entrada com foco em custo-beneficio.',
+        recommendation_notes: 'Sobe quando o orcamento e o principal limitador.',
+        explain_why: 'Foi escolhido por manter antirreflexo com menor investimento.',
+      },
+    },
+  },
+  {
+    pattern: /\bno reflex\b/,
+    treatment: {
+      name: 'No Reflex',
+      type: 'Antirreflexo',
+      semantic: {
+        positioning: 'entrada',
+        price_tier: 'economico',
+        usage_tags: ['uso_diario'],
+        benefit_tags: ['antirreflexo', 'custo_beneficio'],
+        commercial_summary: 'Antirreflexo de entrada para reduzir reflexos com investimento menor.',
+        recommendation_notes: 'Sobe quando a prioridade e preco controlado.',
+        explain_why: 'Foi escolhido como antirreflexo de entrada.',
+      },
+    },
+  },
+  {
+    pattern: /\bhi[\s-]?vision meiryo\b|\bmeiryo\b/,
+    treatment: {
+      name: 'Hi-Vision Meiryo',
+      type: 'Antirreflexo',
+      semantic: {
+        positioning: 'premium',
+        price_tier: 'premium',
+        usage_tags: ['uso_diario', 'dirigir_noite', 'telas'],
+        benefit_tags: ['antirreflexo', 'clareza', 'conforto_visual', 'qualidade_optica', 'ar_premium'],
+        commercial_summary: 'Coating HOYA premium com foco em clareza, resistencia e facil limpeza.',
+        recommendation_notes: 'Sobe quando o caso pede AR premium e conforto visual superior.',
+        explain_why: 'Foi escolhido por entregar coating premium da HOYA.',
+      },
+    },
+  },
+  {
+    pattern: /\bhi[\s-]?vision longlife bluecontrol\b|\blonglife bluecontrol\b|\blonglife bc\b/,
+    treatment: {
+      name: 'Hi-Vision LongLife BlueControl',
+      type: 'Antirreflexo',
+      semantic: {
+        positioning: 'premium',
+        price_tier: 'premium',
+        usage_tags: ['uso_diario', 'telas', 'computador', 'dirigir_noite'],
+        benefit_tags: ['antirreflexo', 'conforto_digital', 'conforto_visual', 'ar_premium'],
+        commercial_summary: 'Coating HOYA LongLife com BlueControl, acima de No-Risk na hierarquia da tabela.',
+        recommendation_notes: 'Sobe quando o caso une AR forte, durabilidade e demanda digital.',
+        explain_why: 'Foi escolhido por combinar LongLife com BlueControl.',
+      },
+    },
+  },
+  {
+    pattern: /\bno[\s-]?risk bluecontrol\b|\bno[\s-]?risk\b/,
+    treatment: {
+      name: 'No-Risk BlueControl',
+      type: 'Antirreflexo',
+      semantic: {
+        positioning: 'intermediaria',
+        price_tier: 'intermediario',
+        usage_tags: ['uso_diario', 'telas', 'computador'],
+        benefit_tags: ['antirreflexo', 'conforto_digital', 'conforto_visual'],
+        commercial_summary: 'Coating intermediario HOYA com BlueControl.',
+        recommendation_notes: 'Sobe como equilibrio entre custo e conforto digital.',
+        explain_why: 'Foi escolhido como tratamento intermediario com BlueControl.',
+      },
+    },
+  },
+  {
+    pattern: /\bhi[\s-]?vision hard\b|\bhard\b/,
+    treatment: {
+      name: 'Hi-Vision Hard',
+      type: 'Antirreflexo',
+      semantic: {
+        positioning: 'entrada',
+        price_tier: 'economico',
+        usage_tags: ['uso_diario'],
+        benefit_tags: ['antirreflexo', 'custo_beneficio'],
+        commercial_summary: 'Tratamento base HOYA com antirreflexo/endurecimento.',
+        recommendation_notes: 'Sobe quando a proposta e manter tratamento basico.',
+        explain_why: 'Foi escolhido como tratamento de entrada.',
+      },
+    },
+  },
+  {
+    pattern: /\bsigma blue\b/,
+    treatment: {
+      name: 'Sigma Blue',
+      type: 'Antirreflexo',
+      semantic: {
+        positioning: 'premium',
+        price_tier: 'premium',
+        usage_tags: ['uso_diario', 'telas', 'computador', 'dirigir_noite'],
+        benefit_tags: ['antirreflexo', 'conforto_digital', 'conforto_visual', 'ar_premium'],
+        commercial_summary: 'Tratamento Sigma com filtro azul e proposta premium.',
+        recommendation_notes: 'Sobe quando telas e AR mais completo sao relevantes.',
+        explain_why: 'Foi escolhido por unir antirreflexo Sigma e filtro azul.',
+      },
+    },
+  },
+]
+
+function resolveExplicitEmbeddedTreatment(offer: CatalogOffer): EmbeddedTreatmentInfo | null {
+  const descriptor = withoutAccents(
+    `${offer.raw_label || ''} ${offer.canonical_label || ''}`.toLowerCase(),
+  )
+  return EXPLICIT_EMBEDDED_TREATMENTS.find((entry) => entry.pattern.test(descriptor))?.treatment || null
+}
+
 function resolveEmbeddedTreatment(
   offer: CatalogOffer,
   input: RecommendationCaseInput,
 ): EmbeddedTreatmentInfo | null {
   if (!offer.already_includes_treatment) return null
+
+  const explicitTreatment = resolveExplicitEmbeddedTreatment(offer)
+  if (explicitTreatment) return explicitTreatment
 
   const flags = normalizeFeatureFlags(offer.features)
   const preferred = input.preferred_features || []
@@ -774,6 +1079,16 @@ function scoreEmbeddedTreatment(params: {
 }
 
 function resolveOfferClinicalCategory(family: CatalogFamily, offer: CatalogOffer): ClinicalCategory {
+  const sharedSemantic = getSharedFamilySemanticProfile(family.nome)
+  if (sharedSemantic?.category === 'ocupacional') return 'ocupacional'
+
+  const descriptor = withoutAccents(
+    `${family.nome} ${offer.raw_label} ${offer.canonical_label || ''}`.toLowerCase(),
+  )
+  if (/\b(vision office|digitime|interview|softwear|workstyle|worksmart)\b/.test(descriptor)) {
+    return 'ocupacional'
+  }
+
   if (offer.clinical_category !== 'indefinida') return offer.clinical_category
   if (family.clinical_category !== 'mista') return family.clinical_category
   return 'indefinida'
@@ -1008,6 +1323,7 @@ function scoreOffer(params: {
     `${offer.raw_label} ${offer.canonical_label || ''} ${offer.material || ''}`.toLowerCase(),
   )
   const hasResistantMaterial = /(airwear|poly\b|policarbonato|trivex|pnx|1\.59|1,59)/.test(offerDescriptor)
+  const hasImpactResistantMaterial = /(airwear|poly\b|policarbonato|trivex|pnx)/.test(offerDescriptor)
   const indexValue = extractIndexValue(offerDescriptor)
   const budgetMode = normalizeBudgetMode(input.budget_mode)
   const prescriptionStrength = getPrescriptionStrength(input)
@@ -1017,6 +1333,7 @@ function scoreOffer(params: {
   const fulfillmentMode = resolveFulfillmentMode(offer, family)
   const desiredBenefits = input.desired_benefits || []
   const routineTags = input.rotina_tags || []
+  const objectiveTags = input.objetivo_tags || []
   const wantsMiopiaControl =
     routineTags.includes('controle_miopia') ||
     desiredBenefits.includes('controle_miopia') ||
@@ -1067,6 +1384,14 @@ function scoreOffer(params: {
     }
   }
 
+  if (
+    clinicalEvaluation.effectiveCategory === 'ocupacional' &&
+    objectiveTags.includes('primeira_multifocal')
+  ) {
+    score -= 5
+    reasons.push('opcao:ocupacional_nao_substitui_primeira_multifocal')
+  }
+
   for (const need of input.rotina_tags || []) {
     if (familyUsage.includes(need)) {
       score += 4
@@ -1081,18 +1406,59 @@ function scoreOffer(params: {
     }
   }
 
+  if (
+    objectiveTags.includes('adaptacao_critica') &&
+    input.adicao != null &&
+    (input.adicao >= 2 || objectiveTags.includes('primeira_multifocal')) &&
+    familyBenefits.includes('adaptacao_rapida')
+  ) {
+    score += objectiveTags.includes('primeira_multifocal') ? 5 : 2
+    reasons.push('beneficio:adaptacao_rapida_risco_multifocal')
+  }
+
   const PENALIZABLE_FEATURES = new Set(['blue_uv', 'transitions'])
   for (const preferredFeature of input.preferred_features || []) {
     const matchesFulfillment =
       (preferredFeature === 'sob_demanda' && fulfillmentMode === 'sob_demanda') ||
       (preferredFeature === 'pronta' && fulfillmentMode === 'pronta')
-    if (offerFeatures[preferredFeature] === true || matchesFulfillment) {
-      score += 3
-      reasons.push(`feature:${preferredFeature}`)
+    const matchesSolarAlternative =
+      preferredFeature === 'transitions' &&
+      acceptsDedicatedSolarAlternative(input) &&
+      (offerFeatures.solar === true || offerFeatures.polarizado === true)
+    if (offerFeatures[preferredFeature] === true || matchesFulfillment || matchesSolarAlternative) {
+      score += matchesSolarAlternative ? 2 : 3
+      reasons.push(matchesSolarAlternative ? 'feature:solar_grau_alternativa' : `feature:${preferredFeature}`)
+      if (preferredFeature === 'transitions' && hasPrimarySunDemand(input) && !matchesSolarAlternative) {
+        score += 4
+        reasons.push('feature:transitions_prioritario')
+      }
     } else if (PENALIZABLE_FEATURES.has(preferredFeature)) {
+      const isSecondaryFeature =
+        (preferredFeature === 'transitions' &&
+          objectiveTags.includes('transitions_secundario') &&
+          !hasPrimarySunDemand(input)) ||
+        (preferredFeature === 'blue_uv' && objectiveTags.includes('blue_uv_secundario'))
+      const hasPrimaryTransitionsDemand =
+        preferredFeature === 'transitions' && hasPrimarySunDemand(input)
+      const hasPremiumFeatureDemand =
+        budgetMode === 'premium' &&
+        ((preferredFeature === 'transitions' &&
+          (routineTags.includes('sol') || desiredBenefits.includes('conforto_luz'))) ||
+          (preferredFeature === 'blue_uv' &&
+            (routineTags.includes('computador') ||
+              routineTags.includes('celular') ||
+              desiredBenefits.includes('conforto_digital'))))
       const missingFeaturePenalty =
         isPediatricMyopiaControlCase && isMyopiaControlOption
           ? 3
+          : hasPrimaryTransitionsDemand
+            ? 12
+          : isSecondaryFeature && budgetMode !== 'premium'
+            ? 2
+          : hasPremiumFeatureDemand && targetPrice != null && finalPrice > targetPrice
+            ? 12
+          : hasPremiumFeatureDemand
+            ? 9
           : preferredFeature === 'transitions' &&
         isChildCase &&
         (routineTags.includes('sol') || desiredBenefits.includes('conforto_luz'))
@@ -1105,13 +1471,15 @@ function scoreOffer(params: {
       score -= missingFeaturePenalty
       reasons.push(`feature:ausente_${preferredFeature}`)
       if (preferredFeature === 'transitions' && missingFeaturePenalty > 5) {
-        reasons.push('feature:ausente_transitions_pediatrico')
+        reasons.push(isChildCase ? 'feature:ausente_transitions_pediatrico' : 'feature:ausente_transitions_prioritario')
       }
       if (preferredFeature === 'blue_uv' && missingFeaturePenalty > 5) {
-        reasons.push('feature:ausente_blue_uv_pediatrico')
+        reasons.push(isChildCase ? 'feature:ausente_blue_uv_pediatrico' : 'feature:ausente_blue_uv_prioritario')
       }
       if (isPediatricMyopiaControlCase && isMyopiaControlOption) {
         reasons.push(`feature:${preferredFeature}_secundario_ao_controle_miopia`)
+      } else if (isSecondaryFeature) {
+        reasons.push(`feature:${preferredFeature}_secundario_triagem`)
       }
     }
   }
@@ -1138,6 +1506,16 @@ function scoreOffer(params: {
   if (resistancePriority > 0 && hasResistantMaterial) {
     score += Number((0.5 + resistancePriority * 1.5).toFixed(2))
     reasons.push('material:resistente')
+  }
+
+  if (objectiveTags.includes('resistencia_impacto_prioritaria')) {
+    if (hasImpactResistantMaterial) {
+      score += 3
+      reasons.push('material:resistencia_impacto')
+    } else if (!highResistanceChildCase) {
+      score -= 2
+      reasons.push('material:resistencia_impacto_nao_confirmada')
+    }
   }
 
   if (highResistanceChildCase && !hasResistantMaterial) {
@@ -1242,7 +1620,7 @@ function scoreOffer(params: {
       reasons.push('material:indice_baixo_incompativel_estetica')
     }
   } else if (seeksThinness && prescriptionStrength >= 4.5) {
-    score -= prescriptionStrength >= 6 ? 5 : 3
+    score -= prescriptionStrength >= 6 && thinnessPriority >= 0.8 ? 10 : prescriptionStrength >= 6 ? 5 : 3
     reasons.push('material:indice_nao_informado_grau_alto')
   }
 
@@ -1251,7 +1629,7 @@ function scoreOffer(params: {
     prescriptionStrength >= 4.5 &&
     (desiredBenefits.includes('qualidade_optica') || desiredBenefits.includes('estetica'))
   ) {
-    score -= prescriptionStrength >= 6 ? 3 : 2
+    score -= prescriptionStrength >= 6 && thinnessPriority >= 0.8 ? 8 : prescriptionStrength >= 6 ? 3 : 2
     reasons.push('design:esferico_limitado_grau_alto')
   }
 
@@ -1292,7 +1670,7 @@ function scoreOffer(params: {
   const budgetScore =
     isPediatricMyopiaControlCase && isMyopiaControlOption && budgetMode === 'economico'
       ? 0
-      : scoreBudget(budgetMode, Number(offer.base_price || 0), peerPrices)
+      : scoreBudget(budgetMode, finalPrice, peerPrices)
   score += budgetScore
   if (budgetScore > 0.5) {
     reasons.push(`orcamento:${budgetMode}`)
@@ -1307,6 +1685,14 @@ function scoreOffer(params: {
   score += targetScore
   if (targetScore > 0.5 && targetPrice != null) {
     reasons.push(`alvo_preco:${targetPrice}`)
+  }
+  if (
+    targetPrice != null &&
+    objectiveTags.includes('orcamento_limita_solucao_ideal') &&
+    finalPrice > targetPrice * 1.2
+  ) {
+    score -= 2
+    reasons.push('alvo_preco:orcamento_limita_solucao_ideal')
   }
 
   return {
@@ -1398,6 +1784,7 @@ function scoreExternalAntireflexoPenalty(params: {
     treatmentName.includes('sigma') ||
     treatmentName.includes('antirreflexo') ||
     /\b(antirreflexo|anti[\s-]?reflexo)\b/.test(descriptor)
+  const highPrescription = getPrescriptionStrength(input) >= 4
 
   if (!isExternalAr || !isArTreatment) return { score: 0, reasons: [] }
 
@@ -1414,26 +1801,40 @@ function scoreExternalAntireflexoPenalty(params: {
     reasons.push('tratamento:ar_externo_pior_dirigir_noite')
   }
 
+  if ((input.objetivo_tags || []).includes('evitar_ar_externo')) {
+    penalty -= 2
+    reasons.push('tratamento:ar_externo_rejeitado_triagem')
+  }
+
+  if (highPrescription && (input.rotina_tags || []).includes('dirigir_noite')) {
+    penalty -= 3.5
+    reasons.push('tratamento:ar_externo_critico_grau_alto_noite')
+  }
+
   return { score: penalty, reasons }
 }
 
 function scoreAntireflexoCompleteness(params: {
   offer: CatalogOffer
   treatment: CatalogTreatment | null
+  embeddedTreatment: EmbeddedTreatmentInfo | null
   input: RecommendationCaseInput
 }): { score: number; reasons: string[] } {
-  const { offer, treatment, input } = params
+  const { offer, treatment, embeddedTreatment, input } = params
   const featureText = stringifyPositiveFeatureValues(offer.features)
   const descriptor = withoutAccents(
     `${offer.raw_label} ${offer.canonical_label || ''} ${offer.material || ''} ${featureText}`.toLowerCase(),
   )
-  const treatmentName = withoutAccents(`${treatment?.nome || ''} ${treatment?.tipo || ''}`.toLowerCase())
+  const treatmentName = withoutAccents(
+    `${treatment?.nome || ''} ${treatment?.tipo || ''} ${embeddedTreatment?.name || ''} ${embeddedTreatment?.type || ''}`.toLowerCase(),
+  )
   const text = `${descriptor} ${treatmentName}`
   const hasExternalAr =
     /\b(antirreflexo|anti[\s-]?reflexo|ar)\s+externo\b/.test(descriptor) ||
     /\bexterno\b/.test(descriptor) && /\b(antirreflexo|anti[\s-]?reflexo)\b/.test(descriptor)
   const wantsPremiumAr =
     (input.desired_benefits || []).includes('ar_premium') ||
+    (input.objetivo_tags || []).includes('evitar_ar_externo') ||
     (input.rotina_tags || []).includes('dirigir_noite') ||
     (input.desired_benefits || []).includes('qualidade_optica')
   const highPrescription = getPrescriptionStrength(input) >= 4
@@ -1442,7 +1843,9 @@ function scoreAntireflexoCompleteness(params: {
 
   if (hasExternalAr) {
     const penalty =
-      (input.rotina_tags || []).includes('dirigir_noite') ||
+      highPrescription && (input.rotina_tags || []).includes('dirigir_noite')
+        ? -16
+        : (input.rotina_tags || []).includes('dirigir_noite') ||
       (input.desired_benefits || []).includes('ar_premium')
         ? -6
         : -3
@@ -1454,14 +1857,22 @@ function scoreAntireflexoCompleteness(params: {
 
   const hasAr =
     /\b(antirreflexo|anti[\s-]?reflexo)\b/.test(text) ||
-    /(crizal|hi[\s-]?vision|hivision|longlife|meiryo|sigma|trio|vert clair|sapphire|rock|prevencia|easy pro)/.test(text)
+    /(crizal|hi[\s-]?vision|hivision|longlife|meiryo|sigma|trio|vert clair|sapphire|rock|prevencia|easy pro|no[\s-]?risk|bluecontrol)/.test(text)
   const hasPremiumAr = /(sapphire|rock|prevencia|longlife|meiryo|hi[\s-]?vision longlife|hivision longlife)/.test(text)
-  const hasBasicAr = hasAr && /(easy pro|trio|vert clair|hi[\s-]?vision hard|hivision hard)/.test(text) && !hasPremiumAr
+  const hasBasicAr = hasAr && /(easy pro|trio|vert clair|hi[\s-]?vision hard|hivision hard|no[\s-]?risk|bluecontrol)/.test(text) && !hasPremiumAr
 
   if (!hasAr) {
+    const highDigitalNeed =
+      (input.rotina_tags || []).includes('computador') ||
+      (input.rotina_tags || []).includes('celular') ||
+      (input.desired_benefits || []).includes('conforto_digital')
     const penalty =
       (input.rotina_tags || []).includes('dirigir_noite') && highPrescription
-        ? -10
+        ? -16
+        : highDigitalNeed && (input.desired_benefits || []).includes('ar_premium')
+          ? -12
+        : highDigitalNeed
+          ? -8
         : (input.rotina_tags || []).includes('dirigir_noite') || highPrescription
           ? -7
           : -3
@@ -1500,6 +1911,235 @@ function scoreAntireflexoCompleteness(params: {
   }
 
   return { score, reasons }
+}
+
+function hasMeaningfulAntireflexo(params: {
+  offer: CatalogOffer
+  treatment: CatalogTreatment | null
+  embeddedTreatment: EmbeddedTreatmentInfo | null
+}): boolean {
+  const { offer, treatment, embeddedTreatment } = params
+  const featureText = stringifyPositiveFeatureValues(offer.features)
+  const text = withoutAccents(
+    [
+      offer.raw_label,
+      offer.canonical_label,
+      offer.material,
+      featureText,
+      treatment?.nome,
+      treatment?.tipo,
+      embeddedTreatment?.name,
+      embeddedTreatment?.type,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase(),
+  )
+  const hasExternalAr =
+    /\b(antirreflexo|anti[\s-]?reflexo|ar)\s+externo\b/.test(text) ||
+    /\bexterno\b/.test(text) && /\b(antirreflexo|anti[\s-]?reflexo)\b/.test(text)
+
+  if (hasExternalAr) return false
+
+  return (
+    /\b(antirreflexo|anti[\s-]?reflexo)\b/.test(text) ||
+    /(crizal|hi[\s-]?vision|hivision|longlife|meiryo|sigma|trio|vert clair|sapphire|rock|prevencia|easy pro|no[\s-]?risk|bluecontrol|optifog)/.test(
+      text,
+    )
+  )
+}
+
+function isAntiFatigueSupportOption(params: {
+  family: CatalogFamily
+  offer: CatalogOffer
+  input: RecommendationCaseInput
+  clinicalCategory: ClinicalCategory
+}): boolean {
+  const { family, offer, input, clinicalCategory } = params
+  if (clinicalCategory !== 'visao_simples') return false
+  if (input.adicao == null || input.adicao > 1.5) return false
+
+  const descriptor = withoutAccents(
+    `${family.nome} ${offer.raw_label} ${offer.canonical_label || ''} ${offer.material || ''}`.toLowerCase(),
+  )
+
+  return /\b(eyezen boost|eyezen start|dynamic relax|sync iii|sync 3|visao simples digital|visao simples digital|anti[\s-]?fadiga|suporte acomodativo)\b/.test(
+    descriptor,
+  )
+}
+
+function scoreAntiFadigaAlternative(params: {
+  family: CatalogFamily
+  offer: CatalogOffer
+  treatment: CatalogTreatment | null
+  embeddedTreatment: EmbeddedTreatmentInfo | null
+  input: RecommendationCaseInput
+  clinicalCategory: ClinicalCategory
+  finalPrice: number
+  targetPrice?: number | null
+  lensTier: CommercialTier
+}): { score: number; reasons: string[] } {
+  const {
+    family,
+    offer,
+    treatment,
+    embeddedTreatment,
+    input,
+    clinicalCategory,
+    finalPrice,
+    targetPrice,
+    lensTier,
+  } = params
+  const objectiveTags = input.objetivo_tags || []
+  const routineTags = input.rotina_tags || []
+  const desiredBenefits = input.desired_benefits || []
+  const firstMultifocal = objectiveTags.includes('primeira_multifocal')
+  const highDigitalNeed =
+    routineTags.includes('computador') ||
+    routineTags.includes('celular') ||
+    desiredBenefits.includes('conforto_digital')
+
+  if (!firstMultifocal || !highDigitalNeed) return { score: 0, reasons: [] }
+  if (
+    !isAntiFatigueSupportOption({
+      family,
+      offer,
+      input,
+      clinicalCategory,
+    })
+  ) {
+    return { score: 0, reasons: [] }
+  }
+
+  const hasAr = hasMeaningfulAntireflexo({ offer, treatment, embeddedTreatment })
+  if (!hasAr) {
+    return {
+      score: -10,
+      reasons: ['opcao:anti_fadiga_sem_ar_insuficiente'],
+    }
+  }
+
+  const reasons = ['opcao:anti_fadiga_com_ar', 'tratamento:ar_anti_fadiga_digital']
+  let score = 4
+
+  if (targetPrice != null && Number.isFinite(finalPrice) && finalPrice <= targetPrice) {
+    score += 1
+    reasons.push('alvo_preco:anti_fadiga_dentro_alvo')
+  }
+
+  if (lensTier !== 'premium') {
+    score += 1
+    reasons.push('opcao:anti_fadiga_sem_lente_premium')
+  }
+
+  return { score, reasons }
+}
+
+function scoreRejectedFeatureConflicts(params: {
+  offer: CatalogOffer
+  treatment: CatalogTreatment | null
+  embeddedTreatment: EmbeddedTreatmentInfo | null
+  input: RecommendationCaseInput
+  treatmentTier: CommercialTier
+  finalPrice: number
+  targetPrice?: number | null
+}): { score: number; reasons: string[] } {
+  const { offer, treatment, embeddedTreatment, input, treatmentTier, finalPrice, targetPrice } = params
+  const rejectedFeatures = input.rejected_features || []
+  const objectiveTags = input.objetivo_tags || []
+  const descriptor = withoutAccents(
+    `${offer.raw_label} ${offer.canonical_label || ''} ${treatment?.nome || ''} ${embeddedTreatment?.name || ''}`.toLowerCase(),
+  )
+  const semantic = treatment ? getTreatmentSemanticProfile(treatment) : null
+  const embeddedBenefits = embeddedTreatment?.semantic.benefit_tags || []
+  const semanticBenefits = semantic?.benefit_tags || []
+  const budgetMode = normalizeBudgetMode(input.budget_mode)
+  const priceStrict =
+    budgetMode === 'economico' ||
+    objectiveTags.includes('orcamento_limita_solucao_ideal') ||
+    (targetPrice != null && finalPrice > targetPrice)
+  const hasStrongPremiumArNeed =
+    (input.rotina_tags || []).includes('dirigir_noite') ||
+    (input.desired_benefits || []).includes('ar_premium')
+
+  let score = 0
+  const reasons: string[] = []
+
+  if (rejectedFeatures.includes('blue_uv')) {
+    const blueUvIsCentral =
+      descriptor.includes('prevencia') ||
+      descriptor.includes('bluecontrol') ||
+      descriptor.includes('blue uv') ||
+      descriptor.includes('blueuv') ||
+      semanticBenefits.some((benefit) => benefit.includes('azul') || benefit.includes('blue')) ||
+      embeddedBenefits.some((benefit) => benefit.includes('azul') || benefit.includes('blue'))
+
+    if (blueUvIsCentral) {
+      score -= priceStrict ? 6 : 3
+      reasons.push('feature:blue_uv_rejeitado')
+    }
+  }
+
+  if (
+    rejectsPremiumPreference(input) &&
+    treatmentTier === 'premium' &&
+    budgetMode === 'economico' &&
+    !hasStrongPremiumArNeed
+  ) {
+    score -= priceStrict ? 10 : 6
+    reasons.push('tratamento:premium_rejeitado_orcamento')
+  }
+
+  return { score, reasons }
+}
+
+function scoreTreatmentFeatureFulfillment(params: {
+  treatment: CatalogTreatment | null
+  embeddedTreatment: EmbeddedTreatmentInfo | null
+  input: RecommendationCaseInput
+  offerReasons: string[]
+}): { score: number; reasons: string[]; suppressReasons: string[] } {
+  const { treatment, embeddedTreatment, input, offerReasons } = params
+  const preferredFeatures = input.preferred_features || []
+  const treatmentDescriptor = withoutAccents(
+    `${treatment?.nome || ''} ${embeddedTreatment?.name || ''}`.toLowerCase(),
+  )
+  const semantic = treatment ? getTreatmentSemanticProfile(treatment) : null
+  const benefitTags = [
+    ...(semantic?.benefit_tags || []),
+    ...(embeddedTreatment?.semantic.benefit_tags || []),
+  ]
+  const fulfillsBlueUv =
+    treatmentDescriptor.includes('prevencia') ||
+    treatmentDescriptor.includes('bluecontrol') ||
+    treatmentDescriptor.includes('blue uv') ||
+    treatmentDescriptor.includes('blueuv') ||
+    benefitTags.some((benefit) => benefit.includes('azul') || benefit.includes('blue'))
+
+  let score = 0
+  const reasons: string[] = []
+  const suppressReasons: string[] = []
+
+  if (
+    preferredFeatures.includes('blue_uv') &&
+    fulfillsBlueUv &&
+    offerReasons.includes('feature:ausente_blue_uv')
+  ) {
+    const hadPriorityPenalty =
+      offerReasons.includes('feature:ausente_blue_uv_prioritario') ||
+      offerReasons.includes('feature:ausente_blue_uv_pediatrico')
+    const hadSecondaryPenalty = offerReasons.includes('feature:blue_uv_secundario_triagem')
+    score += hadPriorityPenalty ? 12 : hadSecondaryPenalty ? 5 : 8
+    reasons.push('feature:blue_uv')
+    suppressReasons.push(
+      'feature:ausente_blue_uv',
+      'feature:ausente_blue_uv_prioritario',
+      'feature:ausente_blue_uv_pediatrico',
+      'feature:blue_uv_secundario_triagem',
+    )
+  }
+
+  return { score, reasons, suppressReasons }
 }
 
 function dedupeRankedEntries(entries: RecommendationOption[]): RecommendationOption[] {
@@ -1710,6 +2350,33 @@ function applyExploratoryPriceDiscipline(
     .sort((a, b) => b.score - a.score || a.finalPrice - b.finalPrice)
 }
 
+function isUnsafeTopRecommendation(
+  input: RecommendationCaseInput,
+  entry: RecommendationOption,
+): boolean {
+  const reasons = entry.reasons || []
+  const highDigitalNeed =
+    (input.rotina_tags || []).includes('computador') ||
+    (input.rotina_tags || []).includes('celular') ||
+    (input.desired_benefits || []).includes('conforto_digital')
+  const firstMultifocal = (input.objetivo_tags || []).includes('primeira_multifocal')
+
+  if (rejectsPremiumPreference(input) && reasons.includes('lens_tier:premium')) return true
+  if (reasons.includes('tratamento:ar_ausente_critico') && highDigitalNeed) return true
+  if (reasons.includes('tratamento:ar_externo_nao_equivale_ar_noite') && highDigitalNeed) return true
+  if (
+    firstMultifocal &&
+    input.adicao != null &&
+    input.adicao >= 1 &&
+    entry.clinicalCategory === 'visao_simples' &&
+    reasons.includes('tratamento:ar_ausente_critico')
+  ) {
+    return true
+  }
+
+  return false
+}
+
 function getExploratoryClinicalCategories(
   input: RecommendationCaseInput,
   forcedClinicalCategories?: ClinicalCategory[],
@@ -1734,7 +2401,7 @@ function getExploratoryClinicalCategories(
     if (wantsFirstMultifocal && adicao >= 1.0) {
       return hasDrivingNeeds
         ? uniqueCategories(['multifocal']) || strict
-        : uniqueCategories(['multifocal', 'ocupacional']) || strict
+        : uniqueCategories(['multifocal', 'visao_simples']) || strict
     }
 
     if (hasDrivingNeeds) {
@@ -1762,6 +2429,20 @@ function sameCategories(a: ClinicalCategory[] | undefined, b: ClinicalCategory[]
   const right = b || []
   if (left.length !== right.length) return false
   return left.every((value) => right.includes(value))
+}
+
+function shouldReserveSlotForAntiFadiga(
+  input: RecommendationCaseInput,
+  strictCategories: ClinicalCategory[],
+  exploratoryCategories: ClinicalCategory[],
+): boolean {
+  return (
+    strictCategories.includes('multifocal') &&
+    exploratoryCategories.includes('visao_simples') &&
+    (input.objetivo_tags || []).includes('primeira_multifocal') &&
+    input.adicao != null &&
+    input.adicao <= 1.5
+  )
 }
 
 function rankRecommendationOptions(params: {
@@ -1855,8 +2536,8 @@ function rankRecommendationOptions(params: {
         if (isRejected) return null
       }
 
-      // Hard filter: solar/polarized lenses are secondary products (sun glasses with Rx),
-      // never appropriate as primary daily lens recommendations
+      // Solar/polarized lenses are secondary for daily-use cases, but valid when the
+      // customer explicitly asks for prescription sunglasses or strong outdoor comfort.
       {
         const offerDescriptorForSolar = withoutAccents(
           `${family.nome} ${offer.raw_label} ${offer.canonical_label || ''}`.toLowerCase()
@@ -1866,7 +2547,7 @@ function rankRecommendationOptions(params: {
           offerFeaturesForSolar.solar === true ||
           offerFeaturesForSolar.polarizado === true ||
           /\b(solar|polarizado)\b/.test(offerDescriptorForSolar)
-        if (isSolarOffer) return null
+        if (isSolarOffer && !acceptsDedicatedSolarAlternative(input)) return null
       }
 
       return {
@@ -1935,15 +2616,44 @@ function rankRecommendationOptions(params: {
       treatment: entry.treatment,
       input,
     })
+    const embeddedTreatment = resolveEmbeddedTreatment(entry.offer, input)
     const arCompletenessScoring = scoreAntireflexoCompleteness({
       offer: entry.offer,
       treatment: entry.treatment,
+      embeddedTreatment,
       input,
     })
-    const embeddedTreatment = resolveEmbeddedTreatment(entry.offer, input)
     const embeddedScoring = scoreEmbeddedTreatment({
       embedded: embeddedTreatment,
       input,
+    })
+    const lensTier = resolveLensTier(entry.family, entry.offer)
+    const treatmentTier = resolveTreatmentTier(entry.treatment, embeddedTreatment)
+    const antiFadigaScoring = scoreAntiFadigaAlternative({
+      family: entry.family,
+      offer: entry.offer,
+      treatment: entry.treatment,
+      embeddedTreatment,
+      input,
+      clinicalCategory: entry.clinicalEvaluation.effectiveCategory,
+      finalPrice: entry.finalPrice,
+      targetPrice,
+      lensTier,
+    })
+    const rejectedFeatureScoring = scoreRejectedFeatureConflicts({
+      offer: entry.offer,
+      treatment: entry.treatment,
+      embeddedTreatment,
+      input,
+      treatmentTier,
+      finalPrice: entry.finalPrice,
+      targetPrice,
+    })
+    const treatmentFeatureScoring = scoreTreatmentFeatureFulfillment({
+      treatment: entry.treatment,
+      embeddedTreatment,
+      input,
+      offerReasons: offerScoring.reasons,
     })
 
     const offerFeatures = normalizeFeatureFlags(entry.offer.features)
@@ -1983,19 +2693,20 @@ function rankRecommendationOptions(params: {
         externalArScoring.score +
         arCompletenessScoring.score +
         embeddedScoring.score +
+        antiFadigaScoring.score +
+        rejectedFeatureScoring.score +
+        treatmentFeatureScoring.score +
         labBonus +
         brandBonus +
         profileScoring.score
       ).toFixed(2),
     )
+    const violatesPremiumRejection = lensTier === 'premium'
     const premiumRejectionPenalty =
-      rejectsPremiumPreference(input) &&
-      /varilux|xr\s?series|sapphire|crizal\s+rock|crizal\s+prevencia|premium/.test(
-        withoutAccents(
-          `${entry.family.nome} ${entry.offer.raw_label} ${entry.offer.canonical_label || ''} ${entry.treatment?.nome || ''}`.toLowerCase(),
-        ),
-      )
-        ? -5
+      rejectsPremiumPreference(input) && violatesPremiumRejection
+        ? targetPrice != null && entry.finalPrice > targetPrice
+          ? -22
+          : -16
         : 0
     const sourceLabel =
       entry.family.sourceLaboratorio ||
@@ -2026,13 +2737,20 @@ function rankRecommendationOptions(params: {
         ...externalArScoring.reasons,
         ...arCompletenessScoring.reasons,
         ...embeddedScoring.reasons,
+        ...antiFadigaScoring.reasons,
+        ...rejectedFeatureScoring.reasons,
+        ...treatmentFeatureScoring.reasons,
         ...labReasons,
         ...brandReasons,
         ...profileScoring.reasons,
+        `lens_tier:${lensTier}`,
+        `treatment_tier:${treatmentTier}`,
         ...(premiumRejectionPenalty < 0 ? ['orcamento:premium_recusado'] : []),
-      ]).filter((reason) =>
-        premiumRejectionPenalty < 0 ? reason !== 'orcamento:economico' : true,
-      ),
+      ]).filter((reason) => {
+        if (treatmentFeatureScoring.suppressReasons.includes(reason)) return false
+        if (premiumRejectionPenalty < 0 && reason === 'orcamento:economico') return false
+        return true
+      }),
       score: Number((totalScore + premiumRejectionPenalty).toFixed(2)),
       sourcePageReference: entry.offer.source_page_reference,
       commercialSummary:
@@ -2248,15 +2966,17 @@ export async function recommendLensConfigurations(params: {
     minPrice,
     targetPrice,
     excludedConfigKeys,
-  })
+  }).filter((entry) => !isUnsafeTopRecommendation(input, entry))
 
   if (topN <= 2) {
     return selectDiverseTopEntries(strictRanked, topN)
   }
 
-  const strictQuota = Math.min(2, topN)
-  const selected = selectDiverseTopEntries(strictRanked, strictQuota)
   const exploratoryCategories = getExploratoryClinicalCategories(input, strictCategories)
+  const strictQuota = shouldReserveSlotForAntiFadiga(input, strictCategories, exploratoryCategories)
+    ? 1
+    : Math.min(2, topN)
+  const selected = selectDiverseTopEntries(strictRanked, strictQuota)
 
   if (!sameCategories(strictCategories, exploratoryCategories)) {
     const exploratoryRanked = applyExploratoryPriceDiscipline(
@@ -2288,7 +3008,7 @@ export async function recommendLensConfigurations(params: {
             isAntiFadiga ? 'opcao:alternativa_anti_fadiga' : 'opcao:alternativa_plausivel',
           ]),
         }
-      }),
+      }).filter((entry) => !isUnsafeTopRecommendation(input, entry)),
       selected,
     )
 

@@ -10,6 +10,12 @@ const GEMINI_KEYS = [
   process.env.GEMINI_SECRET_KEY_4,
   process.env.GEMINI_SECRET_KEY_5,
 ].filter(Boolean) as string[]
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY
+const OPENAI_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || 'gpt-4.1-nano'
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 export type PatientAuditContext = {
   // Prescricao
@@ -110,6 +116,50 @@ type GeminiResponseLike = {
   }>
 }
 
+type OpenAIResponseLike = {
+  output_text?: string
+  output?: Array<{
+    content?: Array<{
+      type?: string
+      text?: string
+    }>
+  }>
+  error?: {
+    message?: string
+    type?: string
+    code?: string
+    param?: string
+  }
+  usage?: {
+    input_tokens?: number
+    output_tokens?: number
+    total_tokens?: number
+    prompt_tokens?: number
+    completion_tokens?: number
+  }
+}
+
+type OpenAIChatCompletionLike = {
+  choices?: Array<{
+    message?: {
+      content?: string
+    }
+  }>
+  error?: {
+    message?: string
+    type?: string
+    code?: string
+    param?: string
+  }
+  usage?: {
+    prompt_tokens?: number
+    completion_tokens?: number
+    total_tokens?: number
+    input_tokens?: number
+    output_tokens?: number
+  }
+}
+
 function extractGeminiText(response: GeminiResponseLike): string {
   const directText = typeof response.text === 'function' ? String(response.text() || '').trim() : ''
   if (directText) return directText
@@ -128,6 +178,153 @@ function extractGeminiText(response: GeminiResponseLike): string {
   }
 
   return chunks.join('\n').trim()
+}
+
+function extractOpenAIText(response: OpenAIResponseLike): string {
+  const direct = String(response.output_text || '').trim()
+  if (direct) return direct
+
+  const chunks: string[] = []
+  const outputs = Array.isArray(response.output) ? response.output : []
+  for (const output of outputs) {
+    const content = Array.isArray(output.content) ? output.content : []
+    for (const part of content) {
+      if (part.type === 'output_text' && typeof part.text === 'string' && part.text.trim()) {
+        chunks.push(part.text.trim())
+      }
+    }
+  }
+
+  return chunks.join('\n').trim()
+}
+
+function extractOpenAIUsage(response: OpenAIResponseLike | OpenAIChatCompletionLike): {
+  tokensIn: number | '?'
+  tokensOut: number | '?'
+  tokensTotal: number | '?'
+} {
+  const usage = response.usage
+  const tokensIn = usage?.input_tokens ?? usage?.prompt_tokens ?? '?'
+  const tokensOut = usage?.output_tokens ?? usage?.completion_tokens ?? '?'
+  const tokensTotal = usage?.total_tokens ?? '?'
+
+  return { tokensIn, tokensOut, tokensTotal }
+}
+
+function logOpenAISuccess(params: {
+  logTag: 'Audit' | 'Triage'
+  endpoint: 'responses' | 'chat'
+  modelName: string
+  attempt: number
+  usage: ReturnType<typeof extractOpenAIUsage>
+}) {
+  const { logTag, endpoint, modelName, attempt, usage } = params
+  console.log(
+    `[OpenAI ${logTag}] ok endpoint=${endpoint} modelo=${modelName} tentativa=${attempt} | entrada: ${usage.tokensIn} tokens | saida: ${usage.tokensOut} tokens | total: ${usage.tokensTotal} tokens`,
+  )
+}
+
+async function generateWithOpenAI(prompt: string, logTag: 'Audit' | 'Triage'): Promise<string> {
+  if (!OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY nao configurada')
+  }
+
+  const modelCandidates = Array.from(
+    new Set(
+      [
+        OPENAI_TEXT_MODEL,
+        'gpt-4o-mini-2024-07-18',
+        'gpt-4o-mini',
+        'gpt-4.1-mini',
+        'gpt-4.1-nano',
+      ].filter(Boolean),
+    ),
+  )
+  const errors: string[] = []
+
+  const buildError = (status: number, payload: unknown): string => {
+    if (!payload || typeof payload !== 'object') return `OpenAI HTTP ${status}`
+    const err = (payload as { error?: { message?: string; code?: string; type?: string } }).error
+    if (!err) return `OpenAI HTTP ${status}`
+    const bits = [err.message, err.code, err.type].filter(Boolean)
+    return bits.length ? bits.join(' | ') : `OpenAI HTTP ${status}`
+  }
+
+  for (const modelName of modelCandidates) {
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        const responsesRes = await fetch('https://api.openai.com/v1/responses', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: modelName,
+            input: prompt,
+            max_output_tokens: 2200,
+          }),
+        })
+
+        const responsesData = await responsesRes.json() as OpenAIResponseLike
+        if (responsesRes.ok) {
+          const text = extractOpenAIText(responsesData)
+          if (text) {
+            logOpenAISuccess({
+              logTag,
+              endpoint: 'responses',
+              modelName,
+              attempt,
+              usage: extractOpenAIUsage(responsesData),
+            })
+            return text
+          }
+          errors.push(`responses:${modelName}:resposta_vazia`)
+        } else {
+          errors.push(`responses:${modelName}:${buildError(responsesRes.status, responsesData)}`)
+        }
+
+        const chatRes = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: modelName,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.2,
+            max_completion_tokens: 2200,
+          }),
+        })
+
+        const chatData = await chatRes.json() as OpenAIChatCompletionLike
+        if (chatRes.ok) {
+          const text = String(chatData.choices?.[0]?.message?.content || '').trim()
+          if (text) {
+            logOpenAISuccess({
+              logTag,
+              endpoint: 'chat',
+              modelName,
+              attempt,
+              usage: extractOpenAIUsage(chatData),
+            })
+            return text
+          }
+          errors.push(`chat:${modelName}:resposta_vazia`)
+        } else {
+          errors.push(`chat:${modelName}:${buildError(chatRes.status, chatData)}`)
+        }
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        errors.push(`openai:${modelName}:${msg}`)
+      }
+
+      await sleep(900 * attempt)
+    }
+  }
+
+  throw new Error(`OpenAI sem resposta util. Tentativas: ${errors.slice(0, 8).join(' || ')}`)
 }
 
 function extractJsonObject(text: string): Record<string, unknown> | null {
@@ -185,6 +382,12 @@ function buildTechnicalTriagePrompt(ctx: PatientAuditContext, caseInput: Recomme
 Objetivo: transformar nuances tecnicas do caso em sinais estruturados. Nao indique marcas, laboratorios, familias ou produtos. Nao use reputacao de mercado. Nao escreva nomes como Varilux, Hoya, Zeiss, Shamir, Stellest etc. Se precisar falar de produto, fale apenas por categoria tecnica.
 
 Analise grau, cilindro, eixo, adicao, idade, rotina, DNP, altura, queixas, preferencias e observacoes do consultor. Pode inferir riscos tecnicos, mas seja conservador quando a informacao faltar.
+
+Regra importante sobre "aceita premium: nao":
+- Interprete como restricao comercial a pacote/lente claramente premium e ao preco final, nao como veto absoluto a qualquer componente tecnico premium.
+- Se a queixa principal exigir alto desempenho (ex.: reflexos ao dirigir a noite, uso digital intenso) e o orcamento for limitado, descreva o tradeoff como "equilibrar desempenho tecnico com custo", nao como "rejeicao total a tecnologias premium".
+- Evite frases duras como "recusa solucoes premium" quando o caso pode aceitar lente de entrada/intermediaria com tratamento superior dentro do alvo de preco.
+- Em vez disso, prefira "evitar pacote premium ou investimento alto; justificar componentes superiores apenas quando resolvem a queixa principal e cabem no orcamento".
 
 Use SOMENTE estes sinais:
 ${ALLOWED_TRIAGE_SIGNALS.map((signal) => `- ${signal}`).join('\n')}
@@ -299,6 +502,19 @@ function buildAuditPrompt(ctx: PatientAuditContext, recommendations: Recommendat
 
 Seu papel e validar a coerencia interna do motor com base somente nos dados abaixo. Nao reordene por reputacao publica, popularidade de marca, conhecimento de mercado externo ou facilidade de encontrar informacoes na web. Se uma marca conhecida parecer melhor por conhecimento externo, trate isso como hipotese comercial, nao como erro do motor. Marcas proprias ou menos conhecidas podem ser tecnicamente equivalentes quando o payload trouxer sinais de design, beneficios, tratamento e score.
 
+Regra de leitura sobre "aceita premium: nao":
+- Nao trate automaticamente 'treatment_tier:premium' como erro se a lente/pacote nao for premium, o preco final estiver dentro da faixa ou abaixo do alvo, e o tratamento superior resolver uma queixa principal.
+- A recusa a premium deve pesar principalmente contra 'lens_tier:premium', pacote claramente premium ou preco final acima do alvo/faixa.
+- Quando houver 'lens_tier:entrada|intermediaria' + 'treatment_tier:premium', avalie como trade-off comercial: pode ser correto se o AR premium for necessario para dirigir a noite, reflexos, telas ou blue/UV.
+- So marque como erro provavel se o tratamento premium extrapolar o orcamento, contradizer uma rejeicao explicita do componente, ou aparecer sem relacao clara com as queixas.
+
+Regra de leitura sobre features ausentes:
+- Se o payload/triagem sinalizar que uma feature e secundaria (ex.: 'fotossensivel_desejado_mas_secundario', 'blue_uv_desejado_mas_secundario' ou motivo '*_secundario_ao_*'), trate sua ausencia como trade-off comercial, nao como erro provavel automatico.
+- Para casos de alto grau com direcao noturna, ausencia de AR ou AR inadequado e mais grave que ausencia de fotossensivel, porque atinge uma queixa funcional/seguranca.
+- Critique 'feature:ausente_transitions' como erro apenas quando fotossensivel for prioridade principal ou quando nao houver justificativa tecnica/orcamentaria no payload.
+- Se uma opcao sem Transitions entrega alto indice, AR premium para direcao noturna e preco muito abaixo do alvo, descreva como alternativa de custo-beneficio com limitacao em luz/sol, nao como falha grave.
+- Em alta miopia com queixa noturna, 'tratamento:ar_externo_nao_equivale_ar_noite' ou 'tratamento:ar_ausente_critico' deve ser tratado como falha mais severa do que 'feature:ausente_transitions'.
+
 ANAMNESE COMPLETA DO PACIENTE:
 ${lines.join('\n')}
 
@@ -320,8 +536,8 @@ export async function generateLensAuditAction(
   patientContext: PatientAuditContext,
   recommendations: RecommendationOption[],
 ): Promise<AuditResult> {
-  if (!GEMINI_KEYS.length) {
-    return { success: false, audit: null, error: 'Nenhuma chave Gemini configurada' }
+  if (!GEMINI_KEYS.length && !OPENAI_API_KEY) {
+    return { success: false, audit: null, error: 'Nenhuma chave Gemini/OpenAI configurada' }
   }
   if (!recommendations.length) {
     return { success: false, audit: null, error: 'Sem recomendacoes' }
@@ -369,11 +585,12 @@ export async function generateLensAuditAction(
         msg.includes('UNAVAILABLE')
       const isEmptyResponse = msg.includes('Resposta vazia')
       if (isQuota) {
-        console.warn(`[Gemini Audit] ✗ ${keyLabel} - cota esgotada, tentando proxima chave...`)
+        console.warn(`[Gemini Audit] ? ${keyLabel} - cota esgotada, tentando proxima chave...`)
       } else if (isUnavailable) {
-        console.warn(`[Gemini Audit] ✗ ${keyLabel} - servico indisponivel (503), tentando proxima chave...`)
+        console.warn(`[Gemini Audit] ? ${keyLabel} - servico indisponivel (503), tentando proxima chave...`)
+        await sleep(5000)
       } else if (isEmptyResponse) {
-        console.warn(`[Gemini Audit] ✗ ${keyLabel} - resposta vazia, tentando proxima chave...`)
+        console.warn(`[Gemini Audit] ? ${keyLabel} - resposta vazia, tentando proxima chave...`)
       } else {
         console.error(`[Gemini Audit] ✗ ${keyLabel} - erro: ${msg}`)
         return { success: false, audit: null, error: msg }
@@ -381,16 +598,26 @@ export async function generateLensAuditAction(
     }
   }
 
-  console.error('[Gemini Audit] ✗ Nenhuma chave retornou texto util.')
-  return { success: false, audit: null, error: 'Nenhuma chave Gemini retornou texto util na auditoria' }
+  if (OPENAI_API_KEY) {
+    try {
+      const audit = await generateWithOpenAI(prompt, 'Audit')
+      return { success: true, audit }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[OpenAI Audit] erro: ${msg}`)
+    }
+  }
+
+  console.error('[Audit] nenhuma chave retornou texto util.')
+  return { success: false, audit: null, error: 'Nenhuma chave Gemini/OpenAI retornou texto util na auditoria' }
 }
 
 export async function generateLensTechnicalTriageAction(
   patientContext: PatientAuditContext,
   caseInput: RecommendationCaseInput,
 ): Promise<LensTechnicalTriageResult> {
-  if (!GEMINI_KEYS.length) {
-    return { success: false, triage: null, error: 'Nenhuma chave Gemini configurada' }
+  if (!GEMINI_KEYS.length && !OPENAI_API_KEY) {
+    return { success: false, triage: null, error: 'Nenhuma chave Gemini/OpenAI configurada' }
   }
 
   const prompt = buildTechnicalTriagePrompt(patientContext, caseInput)
@@ -436,13 +663,32 @@ export async function generateLensTechnicalTriageAction(
         msg.includes('JSON invalido')
 
       if (isRecoverable) {
-        console.warn(`[Gemini Triage] ✗ ${keyLabel} - ${msg}, tentando proxima chave...`)
+        console.warn(`[Gemini Triage] ? ${keyLabel} - ${msg}, tentando proxima chave...`)
+        if (msg.includes('503') || msg.includes('Service Unavailable') || msg.includes('UNAVAILABLE')) {
+          await sleep(5000)
+        }
       } else {
-        console.error(`[Gemini Triage] ✗ ${keyLabel} - erro: ${msg}`)
+        console.error(`[Gemini Triage] ? ${keyLabel} - erro: ${msg}`)
         return { success: false, triage: null, error: msg }
       }
     }
   }
 
-  return { success: false, triage: null, error: 'Nenhuma chave Gemini retornou triagem util' }
+  if (OPENAI_API_KEY) {
+    try {
+      const text = await generateWithOpenAI(prompt, 'Triage')
+      const json = extractJsonObject(text)
+      if (json) {
+        return { success: true, triage: normalizeTechnicalTriage(json) }
+      }
+      throw new Error('OpenAI retornou triagem sem JSON valido')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[OpenAI Triage] erro: ${msg}`)
+      return { success: false, triage: null, error: msg }
+    }
+  }
+
+  return { success: false, triage: null, error: 'Nenhuma chave Gemini/OpenAI retornou triagem util' }
 }
+

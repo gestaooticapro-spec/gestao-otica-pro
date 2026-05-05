@@ -965,19 +965,6 @@ export async function getResumoCaixaPorData(storeId: number, dataISO: string): P
         .order('created_at', { ascending: false })
         .maybeSingle() as any)
 
-    if (!caixa) return null
-
-    // 2. Movimentos Manuais
-    const { data: movimentos } = await supabaseAdmin
-        .from('caixa_movimentacoes')
-        .select('*')
-        .eq('caixa_id', caixa.id)
-        .order('created_at', { ascending: false })
-    const listaMov = (movimentos || []) as Movimentacao[]
-
-    // 3. Categorias (Autocomplete - reutiliza da loja)
-    const categoriasUnicas: string[] = []
-
     // 4. PAGAMENTOS do dia
     const { data: pagamentosVendas } = await supabaseAdmin
         .from('pagamentos')
@@ -996,6 +983,22 @@ export async function getResumoCaixaPorData(storeId: number, dataISO: string): P
         .gte('data_pagamento', dataRef.toISOString())
         .lte('data_pagamento', dataFim.toISOString())
     const listaParcelas = parcelasPagas || []
+
+    if (!caixa && listaPagamentos.length === 0 && listaParcelas.length === 0) return null
+
+    // 2. Movimentos Manuais
+    let listaMov: Movimentacao[] = []
+    if (caixa) {
+        const { data: movimentos } = await supabaseAdmin
+            .from('caixa_movimentacoes')
+            .select('*')
+            .eq('caixa_id', caixa.id)
+            .order('created_at', { ascending: false })
+        listaMov = (movimentos || []) as Movimentacao[]
+    }
+
+    // 3. Categorias (Autocomplete - reutiliza da loja)
+    const categoriasUnicas: string[] = []
 
     // --- HISTÓRICO UNIFICADO (mesma lógica de getResumoCaixa) ---
     const historicoUnificado: any[] = []
@@ -1076,17 +1079,27 @@ export async function getResumoCaixaPorData(storeId: number, dataISO: string): P
         else manuais.saidas += Number(m.valor)
     })
 
-    const saldoGaveta = Number(caixa.saldo_inicial) + vendas.total_dinheiro + manuais.entradas - manuais.saidas
+    const saldoGaveta = (caixa ? Number(caixa.saldo_inicial) : 0) + vendas.total_dinheiro + manuais.entradas - manuais.saidas
     const saldoGeral = saldoGaveta + vendas.total_pix + vendas.total_cartao + vendas.total_outros
-    const quebraRecalculada = caixa.status === 'Fechado' && caixa.saldo_final !== null
+    const quebraRecalculada = caixa && caixa.status === 'Fechado' && caixa.saldo_final !== null
         ? Number(caixa.saldo_final) - saldoGaveta
-        : Number(caixa.quebra_caixa || 0)
+        : (caixa ? Number(caixa.quebra_caixa || 0) : 0)
+
+    const caixaResult = caixa ? {
+        ...caixa,
+        quebra_caixa: quebraRecalculada
+    } : {
+        id: 0,
+        store_id: storeId,
+        status: 'Não Aberto',
+        data_abertura: dataRef.toISOString(),
+        saldo_inicial: 0,
+        saldo_final: null,
+        quebra_caixa: 0
+    };
 
     return {
-        caixa: {
-            ...caixa,
-            quebra_caixa: quebraRecalculada
-        },
+        caixa: caixaResult,
         movimentacoes: listaMov,
         movimentacoes_detalhadas: historicoUnificado,
         categoriasUsadas: categoriasUnicas,

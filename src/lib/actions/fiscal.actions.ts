@@ -349,6 +349,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
             .from("fiscal_invoices")
             .insert({
                 organization_id: payload.organization_id,
+                store_id: payload.store_id || null,
                 work_order_id: payload.work_order_id || null,
                 ...buildOutputInvoiceSnapshot(payload, company, issuedAt),
                 tipo_documento: "NFCe",

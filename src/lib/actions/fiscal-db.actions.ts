@@ -27,6 +27,7 @@ export async function getFiscalInvoices(storeId: number) {
         .from("fiscal_invoices")
         .select("*")
         .eq("organization_id", tenantId)
+        .eq("store_id", storeId)
         .order("created_at", { ascending: false });
 
     if (error) {
@@ -164,10 +165,10 @@ export async function getFechamentoData(storeId: number, month: number, year: nu
 
     const [{ data: byEmission }, { data: byCreation }] = await Promise.all([
         supabase.from("fiscal_invoices").select(fields)
-            .eq("organization_id", tenantId).eq("environment", "production").eq("tipo_documento", "NFCe")
+            .eq("organization_id", tenantId).eq("store_id", storeId).eq("environment", "production").eq("tipo_documento", "NFCe")
             .gte("data_emissao", startDate).lt("data_emissao", endDate),
         supabase.from("fiscal_invoices").select(fields)
-            .eq("organization_id", tenantId).eq("environment", "production").eq("tipo_documento", "NFCe")
+            .eq("organization_id", tenantId).eq("store_id", storeId).eq("environment", "production").eq("tipo_documento", "NFCe")
             .is("data_emissao", null).gte("created_at", startDate).lt("created_at", endDate),
     ]) as [{ data: FechamentoInvoice[] | null }, { data: FechamentoInvoice[] | null }];
 

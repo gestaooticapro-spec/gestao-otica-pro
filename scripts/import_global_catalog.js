@@ -251,7 +251,13 @@ function inferOfferClinicalCategory(offer, family, familyClinicalCategory) {
     text.includes('visao simples') ||
     text.includes('kodak city') ||
     text.includes('kodak intro') ||
-    text.includes('kodak blue')
+    text.includes('kodak blue') ||
+    (!hasAddGrid &&
+      text.includes('lentes essilor') &&
+      (text.includes('stylis') || text.includes('orma') || text.includes('airwear')) &&
+      !text.includes('interview') &&
+      !text.includes('visao intermediaria') &&
+      !text.includes('solar'))
   ) {
     return 'visao_simples'
   }

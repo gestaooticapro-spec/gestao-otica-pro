@@ -17,7 +17,7 @@ export interface ReceiptDataBlank {
 
 const formatMoney = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-function Via({ data, label }: { data: ReceiptDataBlank, label: string }) {
+function Via({ data, label, isRight }: { data: ReceiptDataBlank, label: string, isRight?: boolean }) {
     const { pagamentos, cliente, itens, store, isReprint } = data
     const valorTotalRecibo = pagamentos.reduce((acc, p) => acc + p.valor_pago, 0)
 
@@ -26,14 +26,15 @@ function Via({ data, label }: { data: ReceiptDataBlank, label: string }) {
 
     const containerStyle = {
         position: 'relative' as const,
-        width: '210mm',
-        height: '148mm', // Metade de um A4
+        width: '105mm',
+        height: '148mm', // Metade de um A4 (altura)
         color: 'black',
         fontFamily: 'Arial, sans-serif',
         backgroundColor: 'white',
         boxSizing: 'border-box' as const,
-        padding: '10mm',
-        borderBottom: '1px dashed #ccc' // Linha de corte
+        padding: '8mm 6mm',
+        borderRight: isRight ? 'none' : '1px dashed #ccc', // Linha de corte vertical
+        overflow: 'hidden'
     }
 
     const formatCnpj = (cnpj: string | null) => {
@@ -49,13 +50,13 @@ function Via({ data, label }: { data: ReceiptDataBlank, label: string }) {
             {isReprint && (
                 <div style={{
                     position: 'absolute',
-                    top: '30mm',
-                    left: '50mm',
-                    fontSize: '40px',
+                    top: '40mm',
+                    left: '10mm',
+                    fontSize: '30px',
                     color: 'rgba(0,0,0,0.05)',
-                    border: '4px solid rgba(0,0,0,0.05)',
-                    padding: '10px',
-                    transform: 'rotate(-20deg)',
+                    border: '3px solid rgba(0,0,0,0.05)',
+                    padding: '5px',
+                    transform: 'rotate(-30deg)',
                     pointerEvents: 'none',
                     zIndex: 0
                 }}>
@@ -64,70 +65,70 @@ function Via({ data, label }: { data: ReceiptDataBlank, label: string }) {
             )}
 
             {/* Marcador da Via */}
-            <div style={{ position: 'absolute', top: '5mm', right: '10mm', fontSize: '10px', color: '#666', fontStyle: 'italic' }}>
+            <div style={{ position: 'absolute', top: '3mm', right: '5mm', fontSize: '9px', color: '#666', fontStyle: 'italic' }}>
                 {label}
             </div>
 
             <div style={{ position: 'relative', zIndex: 1, height: '100%', display: 'flex', flexDirection: 'column' }}>
-                {/* CABEÇALHO */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px', marginTop: '5px' }}>
-                    <div style={{ width: '60%' }}>
-                        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', textTransform: 'uppercase' }}>
-                            {store?.name || store?.razao_social || 'LOJA NÃO IDENTIFICADA'}
-                        </h1>
-                        <p style={{ margin: '5px 0 0 0', fontSize: '12px' }}>
-                            {store?.cnpj && `CNPJ: ${formatCnpj(store.cnpj)}`}
-                            {(store?.cnpj && store?.inscricao_estadual) && ' | '}
-                            {store?.inscricao_estadual && `IE: ${store.inscricao_estadual}`}
-                        </p>
-                        <p style={{ margin: '2px 0 0 0', fontSize: '12px' }}>
-                            {store?.street && `${store.street}, ${store.number || 'S/N'} - ${store.neighborhood || ''}`}
-                            {store?.city && ` - ${store.city}/${store.state || ''}`}
-                        </p>
-                        <p style={{ margin: '2px 0 0 0', fontSize: '12px' }}>
-                            {store?.phone && `Tel: ${store.phone}`}
-                            {(store?.phone && store?.whatsapp) && ' | '}
-                            {store?.whatsapp && `WhatsApp: ${store.whatsapp}`}
-                        </p>
-                    </div>
-                    <div style={{ width: '35%', textAlign: 'right' }}>
-                        <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 'bold', letterSpacing: '2px' }}>RECIBO</h2>
-                        <div style={{ marginTop: '10px', fontSize: '20px', fontWeight: 'bold', padding: '5px', border: '1px solid black', display: 'inline-block' }}>
-                            {formatMoney(valorTotalRecibo)}
-                        </div>
+                
+                {/* CABEÇALHO DA LOJA */}
+                <div style={{ textAlign: 'center', marginBottom: '10px' }}>
+                    <h1 style={{ margin: '0 0 4px 0', fontSize: '14px', fontWeight: 'bold', textTransform: 'uppercase', lineHeight: '1.2' }}>
+                        {store?.name || store?.razao_social || 'LOJA NÃO IDENTIFICADA'}
+                    </h1>
+                    <p style={{ margin: '2px 0', fontSize: '9px', lineHeight: '1.2' }}>
+                        {store?.cnpj && `CNPJ: ${formatCnpj(store.cnpj)}`}
+                        {(store?.cnpj && store?.inscricao_estadual) && ' | '}
+                        {store?.inscricao_estadual && `IE: ${store.inscricao_estadual}`}
+                    </p>
+                    <p style={{ margin: '2px 0', fontSize: '9px', lineHeight: '1.2' }}>
+                        {store?.street && `${store.street}, ${store.number || 'S/N'}`}
+                        {store?.city && ` - ${store.city}/${store.state || ''}`}
+                    </p>
+                    <p style={{ margin: '2px 0', fontSize: '9px', lineHeight: '1.2' }}>
+                        {store?.phone && `Tel: ${store.phone}`}
+                        {(store?.phone && store?.whatsapp) && ' | '}
+                        {store?.whatsapp && `Whats: ${store.whatsapp}`}
+                    </p>
+                </div>
+
+                <div style={{ borderBottom: '1px solid black', marginBottom: '8px' }} />
+
+                {/* TÍTULO RECIBO E VALOR */}
+                <div style={{ textAlign: 'center', marginBottom: '12px' }}>
+                    <h2 style={{ margin: '0 0 5px 0', fontSize: '18px', fontWeight: 'bold', letterSpacing: '1px' }}>RECIBO</h2>
+                    <div style={{ fontSize: '18px', fontWeight: 'bold', padding: '4px 10px', border: '1px solid black', display: 'inline-block', backgroundColor: '#f9f9f9' }}>
+                        {formatMoney(valorTotalRecibo)}
                     </div>
                 </div>
 
                 {/* DADOS DO CLIENTE */}
-                <div style={{ marginBottom: '15px', fontSize: '14px', lineHeight: '1.5' }}>
-                    <div><strong>Recebemos de:</strong> {cliente?.full_name?.toUpperCase()}</div>
+                <div style={{ marginBottom: '12px', fontSize: '10px', lineHeight: '1.4' }}>
+                    <div><strong>Cliente:</strong> {cliente?.full_name?.toUpperCase()}</div>
                     {cliente?.cpf && <div><strong>CPF:</strong> {cliente.cpf}</div>}
-                    <div><strong>A importância de:</strong> {formatMoney(valorTotalRecibo)}</div>
-                    <div><strong>Referente a:</strong> Pagamento da Venda #{pagamentos[0].venda_id}</div>
+                    <div><strong>Referente a:</strong> Venda #{pagamentos[0].venda_id}</div>
                 </div>
 
                 {/* DETALHES DOS ITENS */}
-                <div style={{ marginBottom: '15px', fontSize: '12px', flex: 1 }}>
-                    <div style={{ fontWeight: 'bold', marginBottom: '5px', borderBottom: '1px solid #ccc', paddingBottom: '3px' }}>Resumo da Compra:</div>
-                    <div style={{ color: '#333' }}>
+                <div style={{ marginBottom: '10px', fontSize: '9px', flex: 1 }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: '3px', borderBottom: '1px dashed #ccc', paddingBottom: '2px' }}>Resumo:</div>
+                    <div style={{ color: '#222', lineHeight: '1.3' }}>
                         {resumoItens}
                     </div>
                 </div>
 
                 {/* RODAPÉ E ASSINATURA */}
                 <div style={{ marginTop: 'auto' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                        <div style={{ fontSize: '12px' }}>
-                            <div><strong>Forma de Pagamento:</strong> {formasUnicas.toUpperCase()}</div>
-                            <div style={{ marginTop: '10px' }}>
-                                <strong>Data:</strong> {dataRef.toLocaleDateString('pt-BR')} {dataRef.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                            </div>
+                    <div style={{ fontSize: '10px', marginBottom: '20px' }}>
+                        <div><strong>Forma Pgto:</strong> {formasUnicas.toUpperCase()}</div>
+                        <div style={{ marginTop: '2px' }}>
+                            <strong>Data:</strong> {dataRef.toLocaleDateString('pt-BR')} às {dataRef.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                         </div>
-                        
-                        <div style={{ width: '40%', textAlign: 'center', marginTop: '30px' }}>
-                            <div style={{ borderTop: '1px solid black', paddingTop: '5px', fontSize: '12px' }}>
-                                {store?.name || store?.razao_social || 'Assinatura do Recebedor'}
-                            </div>
+                    </div>
+                    
+                    <div style={{ textAlign: 'center', padding: '0 10px' }}>
+                        <div style={{ borderTop: '1px solid black', paddingTop: '4px', fontSize: '9px' }}>
+                            {store?.name || store?.razao_social || 'Assinatura do Recebedor'}
                         </div>
                     </div>
                 </div>
@@ -138,9 +139,9 @@ function Via({ data, label }: { data: ReceiptDataBlank, label: string }) {
 
 export function ReceiptBlankHalfA4({ data }: { data: ReceiptDataBlank }) {
     return (
-        <div style={{ margin: 0, padding: 0 }}>
+        <div style={{ margin: 0, padding: 0, display: 'flex', width: '210mm', height: '148mm', borderBottom: '1px dashed #ccc' }}>
             <Via data={data} label="1ª Via - Cliente" />
-            <Via data={data} label="2ª Via - Loja" />
+            <Via data={data} label="2ª Via - Loja" isRight />
         </div>
     )
 }

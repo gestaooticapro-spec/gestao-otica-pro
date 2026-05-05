@@ -118,6 +118,9 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
             const res = await adicionarMovimento(null, formData)
             if (res.success) {
                 formRef.current?.reset()
+                if (auditMode && auditDate) {
+                    handleAuditDateChange(auditDate)
+                }
                 router.refresh()
             } else {
                 alert(res.message)
@@ -133,8 +136,12 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
 
         startTransition(async () => {
             const res = await fecharCaixa(null, formData)
-            if (res.success) router.refresh()
-            else alert(res.message)
+            if (res.success) {
+                if (auditMode && auditDate) {
+                    handleAuditDateChange(auditDate)
+                }
+                router.refresh()
+            } else alert(res.message)
         })
     }
 
@@ -146,6 +153,9 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
             const res = await atualizarSaldoInicial(null, formData)
             if (res.success) {
                 setIsSaldoModalOpen(false)
+                if (auditMode && auditDate) {
+                    handleAuditDateChange(auditDate)
+                }
                 router.refresh()
             } else {
                 alert(res.message)
@@ -163,6 +173,9 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
             if (res.success) {
                 setIsMovModalOpen(false)
                 setEditingMov(null)
+                if (auditMode && auditDate) {
+                    handleAuditDateChange(auditDate)
+                }
                 router.refresh()
             } else {
                 alert(res.message)
@@ -175,6 +188,9 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
         startTransition(async () => {
             const res = await deletarMovimento(rawId)
             if (res.success) {
+                if (auditMode && auditDate) {
+                    handleAuditDateChange(auditDate)
+                }
                 router.refresh()
             } else {
                 alert(res.message)
@@ -299,6 +315,9 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                     <button
                         onClick={() => {
                             startTransition(() => {
+                                if (auditMode && auditDate) {
+                                    handleAuditDateChange(auditDate)
+                                }
                                 router.refresh()
                             })
                         }}
@@ -763,8 +782,6 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                         storeId={storeId}
                         isOpen={isPgFormaAuthOpen}
                         onClose={() => {
-                            // Só limpa editingPgForma se não vai abrir o próximo modal
-                            if (!isFormaSelectOpen) setEditingPgForma(null)
                             setIsPgFormaAuthOpen(false)
                         }}
                         title="Alterar Forma de Pagamento"
@@ -825,6 +842,9 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                             if (res.success) {
                                                 setIsFormaSelectOpen(false)
                                                 setEditingPgForma(null)
+                                                if (auditMode && auditDate) {
+                                                    handleAuditDateChange(auditDate)
+                                                }
                                                 router.refresh()
                                             } else {
                                                 alert(res.message)

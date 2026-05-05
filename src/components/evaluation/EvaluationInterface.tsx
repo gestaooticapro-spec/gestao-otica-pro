@@ -140,25 +140,40 @@ const TRIAGE_SIGNAL_PATCHES: Record<LensTechnicalTriageSignal, Partial<Pick<Reco
   evitar_indice_baixo: { desired_benefits: ['lente_fina'] },
   priorizar_asferica: { desired_benefits: ['qualidade_optica', 'estetica'] },
   priorizar_resistencia: { desired_benefits: ['resistencia'], rotina_tags: ['risco_quebra'] },
-  priorizar_trivex_policarbonato: { desired_benefits: ['resistencia'], rotina_tags: ['risco_quebra'] },
+  priorizar_trivex_policarbonato: {
+    desired_benefits: ['resistencia'],
+    rotina_tags: ['risco_quebra'],
+    objetivo_tags: ['resistencia_impacto_prioritaria'],
+  },
   controle_miopia_prioritario: {
     rotina_tags: ['controle_miopia'],
     objetivo_tags: ['controle_miopia'],
     desired_benefits: ['controle_miopia'],
   },
-  fotossensivel_desejado_mas_secundario: { preferred_features: ['transitions'], desired_benefits: ['conforto_luz'] },
-  blue_uv_desejado_mas_secundario: { preferred_features: ['blue_uv'], desired_benefits: ['conforto_digital'] },
+  fotossensivel_desejado_mas_secundario: {
+    preferred_features: ['transitions'],
+    desired_benefits: ['conforto_luz'],
+    objetivo_tags: ['transitions_secundario'],
+  },
+  blue_uv_desejado_mas_secundario: {
+    preferred_features: ['blue_uv'],
+    desired_benefits: ['conforto_digital'],
+    objetivo_tags: ['blue_uv_secundario'],
+  },
   risco_adaptacao_multifocal: {
     rotina_tags: ['adaptacao_critica'],
     objetivo_tags: ['adaptacao_critica'],
     desired_benefits: ['adaptacao_rapida', 'conforto_visual'],
   },
   priorizar_ar_premium: { desired_benefits: ['ar_premium', 'qualidade_optica', 'conforto_visual'] },
-  evitar_ar_externo: { desired_benefits: ['ar_premium', 'qualidade_optica', 'conforto_visual'] },
+  evitar_ar_externo: {
+    desired_benefits: ['qualidade_optica', 'conforto_visual'],
+    objetivo_tags: ['evitar_ar_externo'],
+  },
   priorizar_conforto_digital: { desired_benefits: ['conforto_digital'], rotina_tags: ['computador'] },
   priorizar_dirigir_noite: { desired_benefits: ['conforto_visual', 'qualidade_optica'], rotina_tags: ['dirigir_noite'] },
   priorizar_campo_perto: { desired_benefits: ['conforto_visual'], rotina_tags: ['leitura', 'computador'] },
-  orcamento_limita_solucao_ideal: {},
+  orcamento_limita_solucao_ideal: { objetivo_tags: ['orcamento_limita_solucao_ideal'] },
 }
 
 const uniqueList = (items: string[]) => Array.from(new Set(items.filter(Boolean)))
@@ -199,6 +214,15 @@ const applyTechnicalTriageToCaseInput = (
   if (next.rejected_features?.length) {
     const rejected = new Set(next.rejected_features)
     next.preferred_features = (next.preferred_features || []).filter((feature) => !rejected.has(feature))
+  }
+
+  const explicitlyPreferred = new Set(caseInput.preferred_features || [])
+  if (caseInput.budget_mode === 'premium') {
+    next.objetivo_tags = (next.objetivo_tags || []).filter((tag) => {
+      if (tag === 'transitions_secundario' && explicitlyPreferred.has('transitions')) return false
+      if (tag === 'blue_uv_secundario' && explicitlyPreferred.has('blue_uv')) return false
+      return true
+    })
   }
 
   return next
@@ -929,6 +953,256 @@ const TEST_PROFILES = {
     medidaDnpOe: '31',
     medidaAlturaOd: '18',
     medidaAlturaOe: '18'
+  },
+  baixoGrauEconomico: {
+    patientNameRaw: 'Bruno Lima (Baixo Grau Economico)',
+    ageYears: '28',
+    estiloVidaUsoComputadorHoras: '3',
+    estiloVidaDirigirHoras: '1',
+    estiloVidaLeituraHoras: '1',
+    estiloVidaUsoCelularHoras: '3',
+    estiloVidaExposicaoSolHoras: '1',
+    estiloVidaAmbienteInternoHoras: '9',
+    estiloVidaAmbienteExternoHoras: '1',
+    estiloVidaAssistirTvHoras: '1',
+    marcaAtual: 'Nenhuma',
+    tipoLenteAtual: 'visao_simples',
+    usaMultifocalHoje: 'nao',
+    dificuldadeAdaptacao: 'nao_informado',
+    historicoTrocasRecentes: 'nao_informado',
+    prioridadePrincipal: 'preco',
+    principalIncomodoAtual: 'longe',
+    objetivoCompra: 'primeiro_oculos',
+    faixaOrcamento: 'ate_800',
+    budgetTarget: '600',
+    importanciaEstetica: 'baixa',
+    importanciaResistencia: 'baixa',
+    prefereTransitions: 'nao',
+    prefereBlueUv: 'nao',
+    aceitaPremium: 'nao',
+    queixaDirigirNoite: 'nao',
+    queixaSensibilidadeLuz: 'nao',
+    queixaQuebraOculos: 'nao',
+    queixaCriancaAtiva: 'nao',
+    queixaProgressaoRapida: 'nao',
+    observacoesConsultor: 'Cliente de baixo grau, sem queixas especiais, quer gastar pouco. Testa se o motor evita alto indice, AR premium e tecnologias caras sem necessidade.',
+    receitaLongeOdEsferico: '-1,00',
+    receitaLongeOdCilindrico: '-0,25',
+    receitaLongeOdEixo: '180',
+    receitaLongeOeEsferico: '-0,75',
+    receitaLongeOeCilindrico: '-0,25',
+    receitaLongeOeEixo: '170',
+    receitaAdicao: '',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '31',
+    medidaDnpOe: '31',
+    medidaAlturaOd: '18',
+    medidaAlturaOe: '18'
+  },
+  presbitaPremium: {
+    patientNameRaw: 'Renata Costa (Presbita Premium Adaptavel)',
+    ageYears: '58',
+    estiloVidaUsoComputadorHoras: '4',
+    estiloVidaDirigirHoras: '4',
+    estiloVidaLeituraHoras: '3',
+    estiloVidaUsoCelularHoras: '2',
+    estiloVidaExposicaoSolHoras: '2',
+    estiloVidaAmbienteInternoHoras: '8',
+    estiloVidaAmbienteExternoHoras: '2',
+    estiloVidaAssistirTvHoras: '2',
+    marcaAtual: 'Multifocal atual',
+    tipoLenteAtual: 'multifocal',
+    usaMultifocalHoje: 'sim',
+    dificuldadeAdaptacao: 'baixa',
+    historicoTrocasRecentes: 'nao_informado',
+    prioridadePrincipal: 'premium',
+    principalIncomodoAtual: 'longe_perto',
+    objetivoCompra: 'melhorar_conforto',
+    faixaOrcamento: 'acima_5000',
+    budgetTarget: '5800',
+    importanciaEstetica: 'media',
+    importanciaResistencia: 'media',
+    prefereTransitions: 'sim',
+    prefereBlueUv: 'sim',
+    aceitaPremium: 'sim',
+    queixaDirigirNoite: 'sim',
+    queixaSensibilidadeLuz: 'sim',
+    queixaQuebraOculos: 'nao',
+    queixaCriancaAtiva: 'nao',
+    queixaProgressaoRapida: 'nao',
+    observacoesConsultor: 'Paciente usa multifocal sem dificuldade importante e quer melhorar conforto, campos e direcao. Testa se o motor sobe design multifocal premium quando o orcamento permite.',
+    receitaLongeOdEsferico: '+1,75',
+    receitaLongeOdCilindrico: '-0,75',
+    receitaLongeOdEixo: '90',
+    receitaLongeOeEsferico: '+1,50',
+    receitaLongeOeCilindrico: '-0,50',
+    receitaLongeOeEixo: '85',
+    receitaAdicao: '2,50',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '31',
+    medidaDnpOe: '31',
+    medidaAlturaOd: '20',
+    medidaAlturaOe: '20'
+  },
+  primeiraMultifocal: {
+    patientNameRaw: 'Marina Alves (Primeira Multifocal Medrosa)',
+    ageYears: '44',
+    estiloVidaUsoComputadorHoras: '8',
+    estiloVidaDirigirHoras: '1',
+    estiloVidaLeituraHoras: '2',
+    estiloVidaUsoCelularHoras: '4',
+    estiloVidaExposicaoSolHoras: '1',
+    estiloVidaAmbienteInternoHoras: '11',
+    estiloVidaAmbienteExternoHoras: '1',
+    estiloVidaAssistirTvHoras: '1',
+    marcaAtual: 'Nenhuma',
+    tipoLenteAtual: 'visao_simples',
+    usaMultifocalHoje: 'nao',
+    dificuldadeAdaptacao: 'alta',
+    historicoTrocasRecentes: 'nao_informado',
+    prioridadePrincipal: 'adaptacao',
+    principalIncomodoAtual: 'perto',
+    objetivoCompra: 'primeira_multifocal',
+    faixaOrcamento: '800_2000',
+    budgetTarget: '1600',
+    importanciaEstetica: 'media',
+    importanciaResistencia: 'baixa',
+    prefereTransitions: 'nao',
+    prefereBlueUv: 'sim',
+    aceitaPremium: 'nao',
+    queixaDirigirNoite: 'nao',
+    queixaSensibilidadeLuz: 'nao',
+    queixaQuebraOculos: 'nao',
+    queixaCriancaAtiva: 'nao',
+    queixaProgressaoRapida: 'nao',
+    observacoesConsultor: 'Primeira experiencia com adicao baixa, muito receio de adaptacao e rotina forte de telas. Testa se o motor evita supervender progressivo complexo quando anti-fadiga ou entrada pode resolver.',
+    receitaLongeOdEsferico: '+0,25',
+    receitaLongeOdCilindrico: '-0,50',
+    receitaLongeOdEixo: '100',
+    receitaLongeOeEsferico: '+0,25',
+    receitaLongeOeCilindrico: '-0,25',
+    receitaLongeOeEixo: '90',
+    receitaAdicao: '1,00',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '31',
+    medidaDnpOe: '31',
+    medidaAlturaOd: '18',
+    medidaAlturaOe: '18'
+  },
+  solarOutdoor: {
+    patientNameRaw: 'Sergio Prado (Solar Outdoor)',
+    ageYears: '36',
+    estiloVidaUsoComputadorHoras: '1',
+    estiloVidaDirigirHoras: '3',
+    estiloVidaLeituraHoras: '1',
+    estiloVidaUsoCelularHoras: '2',
+    estiloVidaExposicaoSolHoras: '7',
+    estiloVidaAmbienteInternoHoras: '3',
+    estiloVidaAmbienteExternoHoras: '7',
+    estiloVidaAssistirTvHoras: '1',
+    marcaAtual: 'Nenhuma',
+    tipoLenteAtual: 'visao_simples',
+    usaMultifocalHoje: 'nao',
+    dificuldadeAdaptacao: 'nao_informado',
+    historicoTrocasRecentes: 'nao_informado',
+    prioridadePrincipal: 'sol',
+    principalIncomodoAtual: 'luz',
+    objetivoCompra: 'oculos_sol_grau',
+    faixaOrcamento: '800_2000',
+    budgetTarget: '1700',
+    importanciaEstetica: 'media',
+    importanciaResistencia: 'media',
+    prefereTransitions: 'sim',
+    prefereBlueUv: 'nao',
+    aceitaPremium: 'nao',
+    queixaDirigirNoite: 'nao',
+    queixaSensibilidadeLuz: 'sim',
+    queixaQuebraOculos: 'nao',
+    queixaCriancaAtiva: 'nao',
+    queixaProgressaoRapida: 'nao',
+    observacoesConsultor: 'Cliente trabalha ao ar livre e dirige de dia. Quer conforto no sol, escurecimento ou sol grau. Testa se o motor diferencia solar/outdoor de conforto digital.',
+    receitaLongeOdEsferico: '-2,00',
+    receitaLongeOdCilindrico: '-0,75',
+    receitaLongeOdEixo: '10',
+    receitaLongeOeEsferico: '-1,75',
+    receitaLongeOeCilindrico: '-0,50',
+    receitaLongeOeEixo: '170',
+    receitaAdicao: '',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '32',
+    medidaDnpOe: '32',
+    medidaAlturaOd: '19',
+    medidaAlturaOe: '19'
+  },
+  altaMiopiaBaixoOrcamento: {
+    patientNameRaw: 'Tiago Nunes (Alta Miopia Orcamento Baixo)',
+    ageYears: '34',
+    estiloVidaUsoComputadorHoras: '5',
+    estiloVidaDirigirHoras: '1',
+    estiloVidaLeituraHoras: '1',
+    estiloVidaUsoCelularHoras: '4',
+    estiloVidaExposicaoSolHoras: '2',
+    estiloVidaAmbienteInternoHoras: '9',
+    estiloVidaAmbienteExternoHoras: '2',
+    estiloVidaAssistirTvHoras: '1',
+    marcaAtual: 'Nenhuma',
+    tipoLenteAtual: 'visao_simples',
+    usaMultifocalHoje: 'nao',
+    dificuldadeAdaptacao: 'nao_informado',
+    historicoTrocasRecentes: 'uma',
+    prioridadePrincipal: 'preco',
+    principalIncomodoAtual: 'longe',
+    objetivoCompra: 'resolver_queixa',
+    faixaOrcamento: '800_2000',
+    budgetTarget: '1600',
+    importanciaEstetica: 'alta',
+    importanciaResistencia: 'media',
+    prefereTransitions: 'sim',
+    prefereBlueUv: 'nao',
+    aceitaPremium: 'nao',
+    queixaDirigirNoite: 'sim',
+    queixaSensibilidadeLuz: 'sim',
+    queixaQuebraOculos: 'nao',
+    queixaCriancaAtiva: 'nao',
+    queixaProgressaoRapida: 'nao',
+    observacoesConsultor: 'Alta miopia com queixa de lente grossa, mas cliente tem orcamento baixo e nao aceita premium. Testa se o motor explica limitacao e escolhe melhor compromisso sem prometer 1.74 completo.',
+    receitaLongeOdEsferico: '-8,00',
+    receitaLongeOdCilindrico: '-1,50',
+    receitaLongeOdEixo: '20',
+    receitaLongeOeEsferico: '-7,50',
+    receitaLongeOeCilindrico: '-1,25',
+    receitaLongeOeEixo: '160',
+    receitaAdicao: '',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '32',
+    medidaDnpOe: '32',
+    medidaAlturaOd: '19',
+    medidaAlturaOe: '19'
   }
 };
 
@@ -1571,6 +1845,8 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>):
     if (budgetMode === 'intermediario') {
       budgetMode = 'premium'
     }
+  } else if (form.aceitaPremium === 'nao') {
+    objetivoTags.push('premium_recusado')
   }
 
   if (form.principalIncomodoAtual === 'peso_espessura') {
@@ -2979,6 +3255,56 @@ export default function EvaluationInterface({
                     className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
                   >
                     <Briefcase className="h-3.5 w-3.5" /> Helena (Orcamento)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.baixoGrauEconomico }))
+                      setFeedback('Perfil do Bruno (baixo grau economico) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <UserRound className="h-3.5 w-3.5" /> Bruno (Baixo Grau)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.presbitaPremium }))
+                      setFeedback('Perfil da Renata (presbita premium adaptavel) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <Briefcase className="h-3.5 w-3.5" /> Renata (Premium)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.primeiraMultifocal }))
+                      setFeedback('Perfil da Marina (primeira multifocal) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <UserRound className="h-3.5 w-3.5" /> Marina (1a Multi)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.solarOutdoor }))
+                      setFeedback('Perfil do Sergio (solar outdoor) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <UserRound className="h-3.5 w-3.5" /> Sergio (Solar)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.altaMiopiaBaixoOrcamento }))
+                      setFeedback('Perfil do Tiago (alta miopia com orcamento baixo) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <UserRound className="h-3.5 w-3.5" /> Tiago (Alto Grau $)
                   </button>
                   <button
                     type="button"

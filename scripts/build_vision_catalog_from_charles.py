@@ -326,10 +326,15 @@ def main():
                 "benefit_tags": [],
                 "source_page_reference": "CSV Charles",
                 # If we don't have a profile yet, keep "indefinida" unless it's one of our explicit clones.
+                # Vision Office is an occupational/office lens, not a general progressive.
                 "clinical_category": (
                     profile.clinical_category
                     if profile
-                    else ("multifocal" if family_name_raw.lower() in {"vision office", "vision drive"} else "indefinida")
+                    else (
+                        "ocupacional"
+                        if family_name_raw.lower() == "vision office"
+                        else ("multifocal" if family_name_raw.lower() == "vision drive" else "indefinida")
+                    )
                 ),
                 "offers": offers,
             }

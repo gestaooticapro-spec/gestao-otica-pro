@@ -79,6 +79,7 @@ export default function AddItemFormExperimental({
     const [suggestions, setSuggestions] = useState<ProductSearchResult[]>([])
     const [isDropdownOpen, setIsDropdownOpen] = useState(false)
     const [isSearching, setIsSearching] = useState(false)
+    const [isSelected, setIsSelected] = useState(false)
 
     // NOVO ESTADO: Validação Visual
     const [validationError, setValidationError] = useState<string | null>(null)
@@ -97,6 +98,7 @@ export default function AddItemFormExperimental({
                 setUnidade('Unidade')
                 setValorUnitario('0,00')
                 setSelectedIds({ lente_id: null, armacao_id: null, tratamento_id: null })
+                setIsSelected(false)
                 setValidationError(null)
                 onItemAdded()
             } else if (saveState.message) {
@@ -108,17 +110,13 @@ export default function AddItemFormExperimental({
 
     // LÓGICA DE BUSCA GLOBAL
     useEffect(() => {
+        if (isSelected) return;
+
         if (descricao.trim().length < 2) {
             setSuggestions([])
             setIsDropdownOpen(false)
             return
         }
-
-        const currentId = itemTipo === 'Lente' ? selectedIds.lente_id
-            : (itemTipo === 'Armacao' || itemTipo === 'Solar') ? selectedIds.armacao_id
-                : itemTipo === 'Tratamento' ? selectedIds.tratamento_id : null;
-
-        if (currentId) return;
 
         setIsSearching(true)
         const timer = setTimeout(() => {
@@ -132,12 +130,12 @@ export default function AddItemFormExperimental({
         }, 300)
 
         return () => clearTimeout(timer)
-    }, [descricao, storeId, selectedIds, itemTipo])
+    }, [descricao, storeId, isSelected])
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setDescricao(e.target.value)
-        // Se o usuário voltar a digitar, apagamos a seleção anterior e tiramos o erro
         setSelectedIds({ lente_id: null, armacao_id: null, tratamento_id: null })
+        setIsSelected(false)
         setValidationError(null)
     }
 
@@ -164,6 +162,7 @@ export default function AddItemFormExperimental({
 
         setIsDropdownOpen(false)
         setSuggestions([])
+        setIsSelected(true)
     }
 
     useEffect(() => {
