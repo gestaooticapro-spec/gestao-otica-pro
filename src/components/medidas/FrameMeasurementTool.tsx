@@ -115,7 +115,8 @@ export default function FrameMeasurementTool() {
   const [mpLoading,   setMpLoading]   = useState(false)
   const [confirming,  setConfirming]  = useState(false)
   const [copied,      setCopied]      = useState(false)
-  const [cardMm,      setCardMm]      = useState(85.6)   // tamanho real do cartão (editável)
+  const [cardMm,      setCardMm]      = useState(85.6)   // valor numérico usado nos cálculos
+  const [cardInput,   setCardInput]   = useState('85.6') // string digitada no input
 
   // Refs estáveis para uso dentro de callbacks sem stale closure
   const imgBoundsRef   = useRef(imgBounds)
@@ -697,10 +698,18 @@ export default function FrameMeasurementTool() {
                     <label className="flex items-center gap-1.5 text-xs text-slate-400">
                       referência:
                       <input
-                        type="number"
-                        value={cardMm}
-                        onChange={e => setCardMm(parseFloat(e.target.value) || 85.6)}
-                        step="0.1"
+                        type="text"
+                        inputMode="decimal"
+                        value={cardInput}
+                        onChange={e => {
+                          setCardInput(e.target.value)
+                          const n = parseFloat(e.target.value.replace(',', '.'))
+                          if (n > 0 && !isNaN(n)) setCardMm(n)
+                        }}
+                        onBlur={() => {
+                          // Ao sair do campo, normaliza o display com o valor em uso
+                          setCardInput(String(cardMm))
+                        }}
                         className="w-16 bg-white/10 border border-white/20 rounded px-1.5 py-0.5 text-white text-xs text-center focus:outline-none focus:border-indigo-400"
                       />
                       mm
