@@ -115,6 +115,7 @@ export default function FrameMeasurementTool() {
   const [mpLoading,   setMpLoading]   = useState(false)
   const [confirming,  setConfirming]  = useState(false)
   const [copied,      setCopied]      = useState(false)
+  const [cardMm,      setCardMm]      = useState(85.6)   // tamanho real do cartão (editável)
 
   // Refs estáveis para uso dentro de callbacks sem stale closure
   const imgBoundsRef   = useRef(imgBounds)
@@ -198,7 +199,7 @@ export default function FrameMeasurementTool() {
     const noseBridge = tc(lms[6])
 
     // Escala calibrada: px por mm  (usa o cartão já posicionado pelo usuário)
-    const pxMm = dist(cur.calibA, cur.calibB) / CC_MM
+    const pxMm = dist(cur.calibA, cur.calibB) / cardMm
 
     // Centro horizontal da ponte (entre as duas pupilas)
     const bridgeCX = (irisR.x + irisL.x) / 2
@@ -308,7 +309,7 @@ export default function FrameMeasurementTool() {
 
   // ── Cálculo das medidas ───────────────────────────────────────────────────
   function calc(h: Handles) {
-    const mmpp = CC_MM / dist(h.calibA, h.calibB)
+    const mmpp = cardMm / dist(h.calibA, h.calibB)
     const bCX  = (h.bridgeR.x + h.bridgeL.x) / 2
     return {
       mmpp,
@@ -433,7 +434,7 @@ export default function FrameMeasurementTool() {
 
     // ── ETAPA CALIBRAÇÃO ────────────────────────────────────────────────
     if (step === 'calibrate') {
-      const ok = Math.abs(m.calibMm - CC_MM) < 4
+      const ok = Math.abs(m.calibMm - cardMm) < 4
       ctx.save()
       ctx.strokeStyle = ok ? '#94a3b8' : '#fbbf24'
       ctx.lineWidth = 1.5; ctx.setLineDash([5, 4])
@@ -490,7 +491,7 @@ export default function FrameMeasurementTool() {
         else                   dot(pts[k], k, true)
       })
     }
-  }, [pts, dragging, step, activeGroup, canvasW, canvasH, imgBounds]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pts, dragging, step, activeGroup, canvasW, canvasH, imgBounds, cardMm]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { draw() }, [draw])
 
@@ -585,7 +586,7 @@ export default function FrameMeasurementTool() {
   }
 
   const meas  = pts ? calc(pts) : null
-  const calOk = meas ? Math.abs(meas.calibMm - CC_MM) < 4 : false
+  const calOk = meas ? Math.abs(meas.calibMm - cardMm) < 4 : false
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -688,9 +689,24 @@ export default function FrameMeasurementTool() {
                     Arraste <span className="font-mono text-slate-200">CC1</span> e{' '}
                     <span className="font-mono text-slate-200">CC2</span> para as pontas da borda longa do cartão
                   </p>
-                  <div className={`text-sm flex items-center gap-2 ${calOk ? 'text-emerald-400' : 'text-amber-400'}`}>
-                    <span className={`w-2 h-2 rounded-full ${calOk ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                    {fmt(meas.calibMm)} mm — ref. 85,6 mm {calOk ? '✓' : ''}
+                  <div className="flex items-center gap-3 mt-1">
+                    <div className={`text-sm flex items-center gap-2 ${calOk ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      <span className={`w-2 h-2 rounded-full ${calOk ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                      {fmt(meas.calibMm)} mm medidos {calOk ? '✓' : ''}
+                    </div>
+                    <label className="flex items-center gap-1.5 text-xs text-slate-400">
+                      cartão:
+                      <input
+                        type="number"
+                        value={cardMm}
+                        onChange={e => setCardMm(parseFloat(e.target.value) || 85.6)}
+                        step="0.1"
+                        min="70"
+                        max="100"
+                        className="w-16 bg-white/10 border border-white/20 rounded px-1.5 py-0.5 text-white text-xs text-center focus:outline-none focus:border-indigo-400"
+                      />
+                      mm
+                    </label>
                   </div>
                 </div>
                 <button
