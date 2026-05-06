@@ -6,29 +6,38 @@ import { Camera, Copy, ImageIcon, RotateCcw, Ruler, ScanFace } from 'lucide-reac
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Step = 'capture' | 'calibrate' | 'measure' | 'done'
 interface Pt { x: number; y: number }
-
 interface Handles {
-  calibA: Pt; calibB: Pt        // borda longa do cartão = 85,6 mm
-  pupilR: Pt; pupilL: Pt        // pupilas (R=imagem-esq=OD, L=imagem-dir=OE)
-  bridgeR: Pt; bridgeL: Pt      // bordas internas das lentes na ponte
-  mountR: Pt; mountL: Pt        // base da lente abaixo de cada pupila
-  lensLeft: Pt; lensRight: Pt   // span horizontal (A) — lente OD
-  lensTop: Pt; lensBottom: Pt   // span vertical   (B) — lente OD
-  diagA: Pt; diagB: Pt          // diagonal        (D) — lente OD
+  calibA: Pt; calibB: Pt
+  pupilR: Pt; pupilL: Pt
+  bridgeR: Pt; bridgeL: Pt
+  mountR: Pt; mountL: Pt
+  lensLeft: Pt; lensRight: Pt
+  lensTop: Pt; lensBottom: Pt
+  diagA: Pt; diagB: Pt
 }
 type HKey = keyof Handles
-
 type MPModule = typeof import('@mediapipe/tasks-vision')
 type FaceLandmarkerInstance = Awaited<ReturnType<MPModule['FaceLandmarker']['createFromOptions']>>
-type RawLandmark = { x: number; y: number; z: number }
+type RawLm = { x: number; y: number; z: number }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const CC_MM   = 85.6   // comprimento padrão ISO do cartão de crédito
-const HR      = 15     // raio dos handles de medição
-const HR_CAL  = 4      // raio do ponto de calibração (pequeno para precisão)
-const CAL_ARM = 12     // comprimento dos braços do crosshair de calibração
-const HIT_R   = 28     // raio de toque para handles de calibração
+// ─── Grupos de medição ────────────────────────────────────────────────────────
+interface MGroup {
+  id: string
+  label: string
+  handles: HKey[]   // arrastáveis
+  refs?: HKey[]     // visíveis como referência, não arrastáveis
+}
+const MEASURE_GROUPS: MGroup[] = [
+  { id: 'pupils', label: 'Pupilas / DNP',  handles: ['pupilR', 'pupilL'] },
+  { id: 'bridge', label: 'Ponte',          handles: ['bridgeR', 'bridgeL'] },
+  { id: 'altOD',  label: 'Altura OD',      handles: ['mountR'],  refs: ['pupilR'] },
+  { id: 'altOE',  label: 'Altura OE',      handles: ['mountL'],  refs: ['pupilL'] },
+  { id: 'frameA', label: 'Horizontal A',   handles: ['lensLeft', 'lensRight'] },
+  { id: 'frameB', label: 'Vertical B',     handles: ['lensTop',  'lensBottom'] },
+  { id: 'frameD', label: 'Diagonal D',     handles: ['diagA',    'diagB'] },
+]
 
+// ─── Cores e labels ───────────────────────────────────────────────────────────
 const COLORS: Record<HKey, string> = {
   calibA: '#e2e8f0', calibB: '#e2e8f0',
   pupilR: '#60a5fa', pupilL: '#60a5fa',
@@ -38,28 +47,42 @@ const COLORS: Record<HKey, string> = {
   lensTop: '#c084fc', lensBottom: '#c084fc',
   diagA: '#fbbf24', diagB: '#fbbf24',
 }
-
 const LABELS: Record<HKey, string> = {
   calibA: 'CC1', calibB: 'CC2',
   pupilR: 'OD',  pupilL: 'OE',
   bridgeR: 'P1', bridgeL: 'P2',
   mountR: '↓OD', mountL: '↓OE',
   lensLeft: '←A', lensRight: 'A→',
-  lensTop: 'B↑',  lensBottom: 'B↓',
+  lensTop: '↑B',  lensBottom: 'B↓',
   diagA: 'D1',   diagB: 'D2',
 }
 
+// ─── Constantes visuais ───────────────────────────────────────────────────────
+const CC_MM    = 85.6
+const B_UP     = -72   // balão fica 72 px acima do âncora (padrão)
+const B_DOWN   = 72    // balão fica 72 px abaixo quando âncora está no topo
+const B_R      = 24    // raio do balão (área de toque)
+const A_R      = 5     // raio do ponto âncora
+const CAL_ARM  = 14    // braços do crosshair de calibração
+const CAL_DOT  = 4     // ponto central do crosshair
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function dist(a: Pt, b: Pt) { return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2) }
-function fmt(n: number) { return n.toFixed(1) }
+const dist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y)
+const fmt  = (n: number) => n.toFixed(1)
+
+/** Posição do balão relativa ao âncora — acima por padrão, abaixo perto do topo */
+function balloonOf(anchor: Pt, ib: { y: number; h: number }): Pt {
+  const nearTop = (anchor.y - ib.y) / ib.h < 0.20
+  return { x: anchor.x, y: anchor.y + (nearTop ? B_DOWN : B_UP) }
+}
 
 function pill(ctx: CanvasRenderingContext2D, text: string, cx: number, cy: number, color: string) {
   ctx.save()
-  ctx.font = 'bold 11px monospace'
-  const tw = ctx.measureText(text).width + 10
-  ctx.fillStyle = 'rgba(0,0,0,0.82)'
+  ctx.font = 'bold 12px monospace'
+  const tw = ctx.measureText(text).width + 12
+  ctx.fillStyle = 'rgba(0,0,0,0.84)'
   ctx.beginPath()
-  ctx.roundRect(cx - tw / 2, cy - 9, tw, 18, 3)
+  ctx.roundRect(cx - tw / 2, cy - 10, tw, 20, 4)
   ctx.fill()
   ctx.fillStyle = color
   ctx.textAlign = 'center'
@@ -68,27 +91,35 @@ function pill(ctx: CanvasRenderingContext2D, text: string, cx: number, cy: numbe
   ctx.restore()
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─── Componente ───────────────────────────────────────────────────────────────
 export default function FrameMeasurementTool() {
-  const containerRef   = useRef<HTMLDivElement>(null)
-  const canvasRef      = useRef<HTMLCanvasElement>(null)
-  const fileRef        = useRef<HTMLInputElement>(null)
-  const imgRef         = useRef<HTMLImageElement | null>(null)
-  const landmarkerRef  = useRef<FaceLandmarkerInstance | null>(null)
-  const rawLmsRef      = useRef<RawLandmark[] | null>(null)   // landmarks brutos para aplicar pós-calibração
-  const draggingRef    = useRef<HKey | null>(null)
+  const containerRef  = useRef<HTMLDivElement>(null)
+  const canvasRef     = useRef<HTMLCanvasElement>(null)
+  const fileRef       = useRef<HTMLInputElement>(null)
+  const imgRef        = useRef<HTMLImageElement | null>(null)
+  const landmarkerRef = useRef<FaceLandmarkerInstance | null>(null)
+  const rawLmsRef     = useRef<RawLm[] | null>(null)
+  const draggingRef   = useRef<HKey | null>(null)
+  const dragOffsetRef = useRef<Pt>({ x: 0, y: 0 })  // offset balão→âncora capturado no onDown
 
-  const [step, setStep]         = useState<Step>('capture')
-  const [canvasW, setCanvasW]   = useState(800)
-  const [canvasH, setCanvasH]   = useState(600)
-  const [imgBounds, setImgBounds] = useState({ x: 0, y: 0, w: 800, h: 600 })
-  const [pts, setPts]           = useState<Handles | null>(null)
-  const [dragging, setDragging] = useState<HKey | null>(null)
-  const [autoOk, setAutoOk]     = useState(false)
-  const [mpLoading, setMpLoading] = useState(false)
-  const [copied, setCopied]     = useState(false)
+  const [step,        setStep]        = useState<Step>('capture')
+  const [canvasW,     setCanvasW]     = useState(800)
+  const [canvasH,     setCanvasH]     = useState(600)
+  const [imgBounds,   setImgBounds]   = useState({ x: 0, y: 0, w: 800, h: 600 })
+  const [pts,         setPts]         = useState<Handles | null>(null)
+  const [activeGroup, setActiveGroup] = useState<string | null>(null)
+  const [dragging,    setDragging]    = useState<HKey | null>(null)
+  const [autoOk,      setAutoOk]      = useState(false)
+  const [mpLoading,   setMpLoading]   = useState(false)
+  const [copied,      setCopied]      = useState(false)
 
-  // ── Resize → canvas sempre preenche o container ───────────────────────────
+  // Refs estáveis para uso dentro de callbacks sem stale closure
+  const imgBoundsRef   = useRef(imgBounds)
+  const activeGroupRef = useRef(activeGroup)
+  useEffect(() => { imgBoundsRef.current   = imgBounds   }, [imgBounds])
+  useEffect(() => { activeGroupRef.current = activeGroup }, [activeGroup])
+
+  // ── Resize → canvas preenche o container ─────────────────────────────────
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
@@ -100,7 +131,7 @@ export default function FrameMeasurementTool() {
     return () => ro.disconnect()
   }, [])
 
-  // ── MediaPipe (carrega sob demanda) ───────────────────────────────────────
+  // ── MediaPipe (carga lazy) ────────────────────────────────────────────────
   async function ensureLandmarker() {
     if (landmarkerRef.current) return landmarkerRef.current
     setMpLoading(true)
@@ -116,7 +147,7 @@ export default function FrameMeasurementTool() {
         },
         runningMode: 'IMAGE',
         numFaces: 1,
-        minFaceDetectionConfidence: 0.35,
+        minFaceDetectionConfidence: 0.3,
         outputFaceBlendshapes: false,
         outputFacialTransformationMatrixes: false,
       })
@@ -126,10 +157,9 @@ export default function FrameMeasurementTool() {
     return landmarkerRef.current
   }
 
-  // ── Posições padrão antes da detecção ────────────────────────────────────
+  // ── Posições padrão (fallback sem detecção) ───────────────────────────────
   function defaultHandles(b: typeof imgBounds): Handles {
-    const cx = b.x + b.w / 2
-    const cy = b.y + b.h / 2
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2
     return {
       calibA:     { x: b.x + b.w * 0.05,  y: b.y + b.h * 0.88 },
       calibB:     { x: b.x + b.w * 0.28,  y: b.y + b.h * 0.88 },
@@ -148,63 +178,57 @@ export default function FrameMeasurementTool() {
     }
   }
 
-  // ── Aplica os landmarks do MediaPipe a todos os handles ──────────────────
-  // Chamado APÓS a calibração ser confirmada para preservar a escala correta.
-  function applyLandmarks(lms: RawLandmark[], b: typeof imgBounds, cur: Handles): Handles {
-    const tc = (lm: RawLandmark): Pt => ({ x: b.x + lm.x * b.w, y: b.y + lm.y * b.h })
-
-    // Iris (landmarks 468=OD, 473=OE — em foto normal, imagem-esq=OD)
-    const irisR  = tc(lms[468])
-    const irisL  = tc(lms[473])
-    // Cantos dos olhos
-    const outerR = tc(lms[33])    // externo OD
-    const innerR = tc(lms[133])   // interno OD
-    const topR   = tc(lms[159])   // superior OD
-    const botR   = tc(lms[145])   // inferior OD
-    const outerL = tc(lms[263])   // externo OE
-    const innerL = tc(lms[362])   // interno OE
-    const botL   = tc(lms[374])   // inferior OE
-
-    // Margem estimada do aro (~35% da largura do olho)
-    const eyeW      = Math.abs(outerR.x - innerR.x)
-    const fOuter    = eyeW * 0.40   // aro se estende além do canto externo
-    const fVert     = eyeW * 0.30   // aro se estende além do canto sup/inf
-    const bridgeGap = (innerL.x - innerR.x) * 0.08  // folga interna da ponte
-
-    const brR: Pt = { x: innerR.x + bridgeGap, y: (irisR.y + topR.y) / 2 }
-    const brL: Pt = { x: innerL.x - bridgeGap, y: (irisL.y + tc(lms[386]).y) / 2 }
-
+  // ── Aplica landmarks após calibração confirmada ───────────────────────────
+  function applyLandmarks(lms: RawLm[], b: typeof imgBounds, cur: Handles): Handles {
+    const tc = (lm: RawLm): Pt => ({ x: b.x + lm.x * b.w, y: b.y + lm.y * b.h })
+    const irisR  = tc(lms[468]); const irisL  = tc(lms[473])
+    const outerR = tc(lms[33]);  const innerR  = tc(lms[133])
+    const topR   = tc(lms[159]); const botR    = tc(lms[145])
+    const outerL = tc(lms[263]); const innerL  = tc(lms[362])
+    const topL   = tc(lms[386]); const botL    = tc(lms[374])
+    const eyeW   = Math.abs(outerR.x - innerR.x)
+    const fOut   = eyeW * 0.40   // aro estende além do canto externo
+    const fV     = eyeW * 0.32   // aro estende além do canto superior/inferior
+    const bGap   = (innerL.x - innerR.x) * 0.08
     return {
-      ...cur,           // mantém calibA e calibB intactos
-      pupilR:     irisR,
-      pupilL:     irisL,
-      bridgeR:    brR,
-      bridgeL:    brL,
-      mountR:     { x: irisR.x, y: botR.y + fVert },
-      mountL:     { x: irisL.x, y: botL.y + Math.abs(outerL.x - innerL.x) * 0.30 },
-      lensLeft:   { x: outerR.x - fOuter, y: irisR.y },
-      lensRight:  { x: innerR.x + bridgeGap, y: irisR.y },
-      lensTop:    { x: irisR.x, y: topR.y - fVert },
-      lensBottom: { x: irisR.x, y: botR.y + fVert },
-      diagA:      { x: outerR.x - fOuter,        y: topR.y - fVert },
-      diagB:      { x: innerR.x + bridgeGap,     y: botR.y + fVert },
+      ...cur,    // preserva calibA e calibB
+      pupilR: irisR, pupilL: irisL,
+      bridgeR: { x: innerR.x + bGap, y: (irisR.y + topR.y) / 2 },
+      bridgeL: { x: innerL.x - bGap, y: (irisL.y + topL.y) / 2 },
+      mountR:  { x: irisR.x, y: botR.y + fV },
+      mountL:  { x: irisL.x, y: botL.y + Math.abs(outerL.x - innerL.x) * 0.32 },
+      lensLeft:   { x: outerR.x - fOut, y: irisR.y },
+      lensRight:  { x: innerR.x + bGap, y: irisR.y },
+      lensTop:    { x: irisR.x,         y: topR.y - fV },
+      lensBottom: { x: irisR.x,         y: botR.y + fV },
+      diagA:      { x: outerR.x - fOut, y: topR.y - fV },
+      diagB:      { x: innerR.x + bGap, y: botR.y + fV },
     }
   }
 
-  // ── Roda a detecção (só armazena, não aplica ainda) ──────────────────────
+  // ── Detecção automática via canvas offscreen (mais confiável) ────────────
   async function runDetect(img: HTMLImageElement) {
     const lm = await ensureLandmarker().catch(() => null)
     if (!lm) return
+    // Redimensiona para no máximo 1280px (acelera e melhora detecção)
+    const maxDim = 1280
+    const s   = Math.min(maxDim / img.naturalWidth, maxDim / img.naturalHeight, 1)
+    const oc  = document.createElement('canvas')
+    oc.width  = Math.round(img.naturalWidth  * s)
+    oc.height = Math.round(img.naturalHeight * s)
+    oc.getContext('2d')!.drawImage(img, 0, 0, oc.width, oc.height)
     try {
-      const result = (lm as any).detect(img)
-      const lms: RawLandmark[] | undefined = result?.faceLandmarks?.[0]
-      if (!lms?.length) return
-      rawLmsRef.current = lms
+      const result = (lm as any).detect(oc)
+      const detected: RawLm[] | undefined = result?.faceLandmarks?.[0]
+      if (!detected?.length) return
+      rawLmsRef.current = detected
       setAutoOk(true)
-    } catch { /* usuário refina manualmente */ }
+    } catch (e) {
+      console.warn('[MediaPipe detect]', e)
+    }
   }
 
-  // ── Processa o arquivo de imagem ─────────────────────────────────────────
+  // ── Carrega arquivo ───────────────────────────────────────────────────────
   function processFile(file: File) {
     const reader = new FileReader()
     reader.onload = ev => {
@@ -213,10 +237,9 @@ export default function FrameMeasurementTool() {
         imgRef.current = img
         const cw = containerRef.current?.clientWidth  ?? window.innerWidth
         const ch = containerRef.current?.clientHeight ?? window.innerHeight
-        const scale = Math.min(cw / img.naturalWidth, ch / img.naturalHeight)
-        const dw = img.naturalWidth  * scale
-        const dh = img.naturalHeight * scale
-        const b = { x: (cw - dw) / 2, y: (ch - dh) / 2, w: dw, h: dh }
+        const s  = Math.min(cw / img.naturalWidth, ch / img.naturalHeight)
+        const dw = img.naturalWidth * s, dh = img.naturalHeight * s
+        const b  = { x: (cw - dw) / 2, y: (ch - dh) / 2, w: dw, h: dh }
         setImgBounds(b)
         setPts(defaultHandles(b))
         setStep('calibrate')
@@ -233,11 +256,12 @@ export default function FrameMeasurementTool() {
     e.target.value = ''
   }
 
-  // ── Confirma calibração e aplica landmarks a todos os handles ────────────
+  // ── Confirma calibração e aplica landmarks ────────────────────────────────
   function confirmCalibration() {
     if (rawLmsRef.current && pts) {
       setPts(prev => prev ? applyLandmarks(rawLmsRef.current!, imgBounds, prev) : prev)
     }
+    setActiveGroup(null)
     setStep('measure')
   }
 
@@ -264,137 +288,168 @@ export default function FrameMeasurementTool() {
     const canvas = canvasRef.current
     if (!canvas || !imgRef.current) return
     const ctx = canvas.getContext('2d')!
+    const ib  = imgBounds
 
     ctx.fillStyle = '#0f172a'
     ctx.fillRect(0, 0, canvasW, canvasH)
-    ctx.drawImage(imgRef.current, imgBounds.x, imgBounds.y, imgBounds.w, imgBounds.h)
+    ctx.drawImage(imgRef.current, ib.x, ib.y, ib.w, ib.h)
     if (!pts) return
 
     const m   = calc(pts)
     const bCX = (pts.bridgeR.x + pts.bridgeL.x) / 2
+    const ag  = activeGroup  // capturado no closure do callback
 
-    // Segmento com ticks + label
-    function seg(a: Pt, b: Pt, color: string, label: string) {
+    // ── Segmento de medição com ticks ───────────────────────────────────
+    function seg(a: Pt, b: Pt, color: string, label: string, dim: boolean) {
       ctx.save()
+      ctx.globalAlpha = dim ? 0.18 : 1
       ctx.strokeStyle = color
-      ctx.lineWidth = 2
+      ctx.lineWidth   = 2
       ctx.setLineDash([])
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke()
+      if (!dim) {
+        const ang = Math.atan2(b.y - a.y, b.x - a.x), perp = ang + Math.PI / 2, T = 5;
+        [a, b].forEach(p => {
+          ctx.beginPath()
+          ctx.moveTo(p.x + Math.cos(perp) * T, p.y + Math.sin(perp) * T)
+          ctx.lineTo(p.x - Math.cos(perp) * T, p.y - Math.sin(perp) * T)
+          ctx.stroke()
+        })
+        pill(ctx, label, (a.x + b.x) / 2, (a.y + b.y) / 2 - 13, color)
+      }
+      ctx.restore()
+    }
+
+    // ── Ponto âncora simples (handle inativo) ───────────────────────────
+    function dot(pt: Pt, key: HKey, dim: boolean) {
+      ctx.save()
+      ctx.globalAlpha = dim ? 0.28 : 0.8
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, A_R, 0, Math.PI * 2)
+      ctx.fillStyle = COLORS[key]; ctx.fill()
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke()
+      ctx.restore()
+    }
+
+    // ── Balão (handle arrastável) ────────────────────────────────────────
+    // O âncora fica VISÍVEL; o balão fica deslocado para o dedo não cobrir.
+    function balloon(pt: Pt, key: HKey, isRef: boolean) {
+      const bp     = balloonOf(pt, ib)
+      const active = draggingRef.current === key
+      const color  = COLORS[key]
+      ctx.save()
+      // haste tracejada
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3])
+      ctx.beginPath(); ctx.moveTo(pt.x, pt.y); ctx.lineTo(bp.x, bp.y); ctx.stroke()
+      ctx.setLineDash([])
+      // âncora
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, A_R, 0, Math.PI * 2)
+      ctx.fillStyle = color; ctx.fill()
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke()
+      if (!isRef) {
+        // balão arrastável
+        ctx.beginPath(); ctx.arc(bp.x, bp.y, B_R, 0, Math.PI * 2)
+        ctx.fillStyle = active ? color : color + 'cc'; ctx.fill()
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = active ? 2.5 : 1.5; ctx.stroke()
+        ctx.fillStyle = active ? '#000' : '#fff'
+        ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        ctx.fillText(LABELS[key], bp.x, bp.y)
+      } else {
+        // referência: só âncora + label
+        ctx.fillStyle = color; ctx.font = 'bold 9px sans-serif'
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+        ctx.fillText(LABELS[key], pt.x, pt.y + A_R + 2)
+      }
+      ctx.restore()
+    }
+
+    // ── Crosshair de calibração (CC1/CC2) ───────────────────────────────
+    function calCross(pt: Pt, key: HKey) {
+      const bp     = balloonOf(pt, ib)
+      const active = draggingRef.current === key
+      const color  = COLORS[key]
+      ctx.save()
+      // haste
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3])
+      ctx.beginPath(); ctx.moveTo(pt.x, pt.y); ctx.lineTo(bp.x, bp.y); ctx.stroke()
+      ctx.setLineDash([])
+      // crosshair âncora
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5
       ctx.beginPath()
-      ctx.moveTo(a.x, a.y)
-      ctx.lineTo(b.x, b.y)
+      ctx.moveTo(pt.x - CAL_ARM, pt.y); ctx.lineTo(pt.x + CAL_ARM, pt.y)
+      ctx.moveTo(pt.x, pt.y - CAL_ARM); ctx.lineTo(pt.x, pt.y + CAL_ARM)
       ctx.stroke()
-      const angle = Math.atan2(b.y - a.y, b.x - a.x)
-      const perp  = angle + Math.PI / 2
-      const T = 5;
-      [a, b].forEach(p => {
-        ctx.beginPath()
-        ctx.moveTo(p.x + Math.cos(perp) * T, p.y + Math.sin(perp) * T)
-        ctx.lineTo(p.x - Math.cos(perp) * T, p.y - Math.sin(perp) * T)
-        ctx.stroke()
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, CAL_DOT, 0, Math.PI * 2)
+      ctx.fillStyle = color; ctx.fill()
+      // balão
+      ctx.beginPath(); ctx.arc(bp.x, bp.y, B_R, 0, Math.PI * 2)
+      ctx.fillStyle = active ? color : color + 'cc'; ctx.fill()
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = active ? 2.5 : 1.5; ctx.stroke()
+      ctx.fillStyle = active ? '#000' : '#fff'
+      ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText(LABELS[key], bp.x, bp.y)
+      ctx.restore()
+    }
+
+    // ── ETAPA CALIBRAÇÃO ────────────────────────────────────────────────
+    if (step === 'calibrate') {
+      const ok = Math.abs(m.calibMm - CC_MM) < 4
+      ctx.save()
+      ctx.strokeStyle = ok ? '#94a3b8' : '#fbbf24'
+      ctx.lineWidth = 1.5; ctx.setLineDash([5, 4])
+      ctx.beginPath(); ctx.moveTo(pts.calibA.x, pts.calibA.y); ctx.lineTo(pts.calibB.x, pts.calibB.y); ctx.stroke()
+      ctx.restore()
+      pill(ctx, `${fmt(m.calibMm)} mm`,
+        (pts.calibA.x + pts.calibB.x) / 2,
+        (pts.calibA.y + pts.calibB.y) / 2 - 14,
+        ok ? '#94a3b8' : '#fbbf24')
+      calCross(pts.calibA, 'calibA')
+      calCross(pts.calibB, 'calibB')
+      return
+    }
+
+    // ── ETAPA MEDIÇÃO ───────────────────────────────────────────────────
+    const showAll = ag === null
+    const is = (id: string) => ag === id
+    const dim = (id: string) => !showAll && !is(id)
+
+    // guia vertical da ponte
+    if (showAll || is('pupils') || is('bridge')) {
+      ctx.save()
+      ctx.strokeStyle = 'rgba(129,140,248,0.20)'; ctx.lineWidth = 1; ctx.setLineDash([4, 4])
+      ctx.beginPath(); ctx.moveTo(bCX, ib.y); ctx.lineTo(bCX, ib.y + ib.h); ctx.stroke()
+      ctx.restore()
+    }
+
+    // linhas de medição
+    seg({ x: bCX, y: pts.pupilR.y }, pts.pupilR, '#818cf8', `DNP-OD ${fmt(m.dnpOD)}`, dim('pupils'))
+    seg({ x: bCX, y: pts.pupilL.y }, pts.pupilL, '#818cf8', `DNP-OE ${fmt(m.dnpOE)}`, dim('pupils'))
+    seg(pts.bridgeR, pts.bridgeL,            '#34d399', `Ponte ${fmt(m.ponte)}`,     dim('bridge'))
+    seg(pts.pupilR, { x: pts.pupilR.x, y: pts.mountR.y }, '#fb923c', `Alt-OD ${fmt(m.altOD)}`, dim('altOD'))
+    seg(pts.pupilL, { x: pts.pupilL.x, y: pts.mountL.y }, '#fb923c', `Alt-OE ${fmt(m.altOE)}`, dim('altOE'))
+    seg(pts.lensLeft,  pts.lensRight,        '#f87171', `A ${fmt(m.horizontal)}`,    dim('frameA'))
+    seg(pts.lensTop,   pts.lensBottom,       '#c084fc', `B ${fmt(m.vertical)}`,      dim('frameB'))
+    seg(pts.diagA,     pts.diagB,            '#fbbf24', `D ${fmt(m.diagonal)}`,      dim('frameD'))
+
+    // handles
+    const allKeys: HKey[] = [
+      'pupilR', 'pupilL', 'bridgeR', 'bridgeL',
+      'mountR', 'mountL', 'lensLeft', 'lensRight',
+      'lensTop', 'lensBottom', 'diagA', 'diagB',
+    ]
+
+    if (showAll) {
+      allKeys.forEach(k => dot(pts[k], k, false))
+    } else {
+      const group   = MEASURE_GROUPS.find(g => g.id === ag)
+      const active  = new Set<HKey>(group?.handles ?? [])
+      const refs    = new Set<HKey>(group?.refs    ?? [])
+      allKeys.forEach(k => {
+        if (active.has(k))     balloon(pts[k], k, false)
+        else if (refs.has(k))  balloon(pts[k], k, true)
+        else                   dot(pts[k], k, true)
       })
-      pill(ctx, label, (a.x + b.x) / 2, (a.y + b.y) / 2 - 12, color)
-      ctx.restore()
     }
-
-    // Handle circular (medições)
-    function handle(pt: Pt, key: HKey) {
-      const active = draggingRef.current === key
-      const color  = COLORS[key]
-      ctx.save()
-      ctx.beginPath()
-      ctx.arc(pt.x, pt.y, HR, 0, Math.PI * 2)
-      ctx.fillStyle = active ? color : color + 'bb'
-      ctx.fill()
-      ctx.strokeStyle = '#ffffff'
-      ctx.lineWidth = active ? 2.5 : 1.5
-      ctx.stroke()
-      ctx.fillStyle = '#fff'
-      ctx.font = 'bold 9px sans-serif'
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillText(LABELS[key], pt.x, pt.y)
-      ctx.restore()
-    }
-
-    // Handle de calibração — crosshair pequeno para precisão
-    function calHandle(pt: Pt, key: HKey) {
-      const active = draggingRef.current === key
-      const color  = COLORS[key]
-      ctx.save()
-      ctx.strokeStyle = active ? '#fff' : color
-      ctx.lineWidth = active ? 2 : 1.5
-      ctx.setLineDash([])
-      // crosshair
-      ctx.beginPath()
-      ctx.moveTo(pt.x - CAL_ARM, pt.y)
-      ctx.lineTo(pt.x + CAL_ARM, pt.y)
-      ctx.moveTo(pt.x, pt.y - CAL_ARM)
-      ctx.lineTo(pt.x, pt.y + CAL_ARM)
-      ctx.stroke()
-      // ponto central pequeno
-      ctx.beginPath()
-      ctx.arc(pt.x, pt.y, HR_CAL, 0, Math.PI * 2)
-      ctx.fillStyle = active ? '#fff' : color
-      ctx.fill()
-      // label abaixo
-      ctx.fillStyle = color
-      ctx.font = 'bold 10px monospace'
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'top'
-      ctx.fillText(LABELS[key], pt.x, pt.y + HR_CAL + 3)
-      ctx.restore()
-    }
-
-    // ── Linha de calibração ─────────────────────────────────────────────
-    const calOk = Math.abs(m.calibMm - CC_MM) < 4
-    ctx.save()
-    ctx.strokeStyle = calOk ? '#94a3b8' : '#fbbf24'
-    ctx.lineWidth = 1.5
-    ctx.setLineDash([5, 4])
-    ctx.beginPath()
-    ctx.moveTo(pts.calibA.x, pts.calibA.y)
-    ctx.lineTo(pts.calibB.x, pts.calibB.y)
-    ctx.stroke()
-    ctx.restore()
-    pill(ctx,
-      `${fmt(m.calibMm)} mm`,
-      (pts.calibA.x + pts.calibB.x) / 2,
-      (pts.calibA.y + pts.calibB.y) / 2 - 14,
-      calOk ? '#94a3b8' : '#fbbf24',
-    )
-    calHandle(pts.calibA, 'calibA')
-    calHandle(pts.calibB, 'calibB')
-
-    // ── Linhas de medição (só na etapa measure/done) ────────────────────
-    if (step === 'measure' || step === 'done') {
-      // guia vertical da ponte
-      ctx.save()
-      ctx.strokeStyle = 'rgba(129,140,248,0.22)'
-      ctx.lineWidth = 1
-      ctx.setLineDash([4, 4])
-      ctx.beginPath()
-      ctx.moveTo(bCX, imgBounds.y)
-      ctx.lineTo(bCX, imgBounds.y + imgBounds.h)
-      ctx.stroke()
-      ctx.restore()
-
-      seg({ x: bCX, y: pts.pupilR.y }, pts.pupilR, '#818cf8', `DNP-OD ${fmt(m.dnpOD)}`)
-      seg({ x: bCX, y: pts.pupilL.y }, pts.pupilL, '#818cf8', `DNP-OE ${fmt(m.dnpOE)}`)
-      seg(pts.bridgeR, pts.bridgeL, '#34d399', `Ponte ${fmt(m.ponte)}`)
-      seg(pts.pupilR, { x: pts.pupilR.x, y: pts.mountR.y }, '#fb923c', `Alt-OD ${fmt(m.altOD)}`)
-      seg(pts.pupilL, { x: pts.pupilL.x, y: pts.mountL.y }, '#fb923c', `Alt-OE ${fmt(m.altOE)}`)
-      seg(pts.lensLeft, pts.lensRight, '#f87171', `A ${fmt(m.horizontal)}`)
-      seg(pts.lensTop, pts.lensBottom, '#c084fc', `B ${fmt(m.vertical)}`)
-      seg(pts.diagA, pts.diagB, '#fbbf24', `D ${fmt(m.diagonal)}`)
-
-      const mKeys: HKey[] = [
-        'pupilR', 'pupilL', 'bridgeR', 'bridgeL',
-        'mountR', 'mountL', 'lensLeft', 'lensRight',
-        'lensTop', 'lensBottom', 'diagA', 'diagB',
-      ]
-      mKeys.forEach(k => handle(pts[k], k))
-    }
-  }, [pts, dragging, step, canvasW, canvasH, imgBounds]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pts, dragging, step, activeGroup, canvasW, canvasH, imgBounds]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { draw() }, [draw])
 
@@ -402,8 +457,7 @@ export default function FrameMeasurementTool() {
   function canvasPos(e: React.MouseEvent | React.TouchEvent): Pt {
     const canvas = canvasRef.current!
     const rect = canvas.getBoundingClientRect()
-    const sx = canvasW / rect.width
-    const sy = canvasH / rect.height
+    const sx = canvasW / rect.width, sy = canvasH / rect.height
     if ('touches' in e) {
       const t = (e as React.TouchEvent).touches[0] ?? (e as React.TouchEvent).changedTouches[0]
       return { x: (t.clientX - rect.left) * sx, y: (t.clientY - rect.top) * sy }
@@ -412,38 +466,52 @@ export default function FrameMeasurementTool() {
     return { x: (me.clientX - rect.left) * sx, y: (me.clientY - rect.top) * sy }
   }
 
-  function nearestHandle(pos: Pt): HKey | null {
+  /** Encontra o balão mais próximo da posição tocada */
+  function nearestBalloon(pos: Pt): HKey | null {
     if (!pts) return null
-    const calOnly = step === 'calibrate'
-    const keys: HKey[] = calOnly ? ['calibA', 'calibB'] : (Object.keys(pts) as HKey[])
-    let best: HKey | null = null
-    let minD = Infinity
+    let keys: HKey[]
+    if (step === 'calibrate') {
+      keys = ['calibA', 'calibB']
+    } else if (activeGroupRef.current) {
+      const g = MEASURE_GROUPS.find(g => g.id === activeGroupRef.current)
+      keys = g ? g.handles : []
+    } else {
+      return null
+    }
+    let best: HKey | null = null, minD = Infinity
     for (const k of keys) {
-      const isCalKey = k === 'calibA' || k === 'calibB'
-      const threshold = isCalKey ? HIT_R : HR * 2.5
-      const d = dist(pos, pts[k])
-      if (d < threshold && d < minD) { minD = d; best = k }
+      const bp = balloonOf(pts[k], imgBoundsRef.current)
+      const d  = dist(pos, bp)
+      if (d < B_R * 2.2 && d < minD) { minD = d; best = k }
     }
     return best
   }
 
   function onDown(e: React.MouseEvent | React.TouchEvent) {
     e.preventDefault()
-    const key = nearestHandle(canvasPos(e))
+    const pos = canvasPos(e)
+    const key = nearestBalloon(pos)
+    if (!key || !pts) return
     draggingRef.current = key
     setDragging(key)
+    // Captura o vetor offset (balão - âncora) no momento do toque
+    const anchor = pts[key]
+    const bp     = balloonOf(anchor, imgBoundsRef.current)
+    dragOffsetRef.current = { x: bp.x - anchor.x, y: bp.y - anchor.y }
   }
 
   function onMove(e: React.MouseEvent | React.TouchEvent) {
     e.preventDefault()
     if (!draggingRef.current || !pts) return
-    const pos = canvasPos(e)
-    const { x: bx, y: by, w: bw, h: bh } = imgBounds
-    const p: Pt = {
-      x: Math.max(bx, Math.min(bx + bw, pos.x)),
-      y: Math.max(by, Math.min(by + bh, pos.y)),
+    const fingerPos = canvasPos(e)
+    const offset    = dragOffsetRef.current
+    const ib        = imgBoundsRef.current
+    // âncora = posição do dedo - offset (mantém balão sob o dedo)
+    const newAnchor: Pt = {
+      x: Math.max(ib.x, Math.min(ib.x + ib.w, fingerPos.x - offset.x)),
+      y: Math.max(ib.y, Math.min(ib.y + ib.h, fingerPos.y - offset.y)),
     }
-    setPts(prev => prev ? { ...prev, [draggingRef.current!]: p } : prev)
+    setPts(prev => prev ? { ...prev, [draggingRef.current!]: newAnchor } : prev)
   }
 
   function onUp(e: React.MouseEvent | React.TouchEvent) {
@@ -456,7 +524,7 @@ export default function FrameMeasurementTool() {
   function copyResults() {
     if (!pts) return
     const m = calc(pts)
-    const text = [
+    navigator.clipboard.writeText([
       `DNP OD: ${fmt(m.dnpOD)} mm`,
       `DNP OE: ${fmt(m.dnpOE)} mm`,
       `Altura de montagem OD: ${fmt(m.altOD)} mm`,
@@ -465,49 +533,38 @@ export default function FrameMeasurementTool() {
       `Horizontal (A): ${fmt(m.horizontal)} mm`,
       `Vertical (B): ${fmt(m.vertical)} mm`,
       `Diagonal (D): ${fmt(m.diagonal)} mm`,
-    ].join('\n')
-    navigator.clipboard.writeText(text).catch(() => {})
+    ].join('\n')).catch(() => {})
     setCopied(true)
     setTimeout(() => setCopied(false), 2500)
   }
 
   function reset() {
-    setStep('capture')
-    setPts(null)
-    setAutoOk(false)
-    rawLmsRef.current = null
-    imgRef.current = null
+    setStep('capture'); setPts(null); setActiveGroup(null)
+    setAutoOk(false); rawLmsRef.current = null; imgRef.current = null
   }
 
-  const meas   = pts ? calc(pts) : null
-  const calOk  = meas ? Math.abs(meas.calibMm - CC_MM) < 4 : false
+  const meas  = pts ? calc(pts) : null
+  const calOk = meas ? Math.abs(meas.calibMm - CC_MM) < 4 : false
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    // Container fixo tela-cheia
     <div className="fixed inset-0 bg-slate-950 text-white overflow-hidden">
 
-      {/* Canvas sempre montado (para o ResizeObserver funcionar imediatamente) */}
+      {/* Container do canvas — sempre montado para o ResizeObserver */}
       <div ref={containerRef} className="absolute inset-0">
         {step !== 'capture' && (
           <canvas
             ref={canvasRef}
-            width={canvasW}
-            height={canvasH}
+            width={canvasW} height={canvasH}
             className="absolute inset-0 w-full h-full touch-none"
             style={{ cursor: dragging ? 'grabbing' : 'default' }}
-            onMouseDown={onDown}
-            onMouseMove={onMove}
-            onMouseUp={onUp}
-            onMouseLeave={onUp}
-            onTouchStart={onDown}
-            onTouchMove={onMove}
-            onTouchEnd={onUp}
+            onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
+            onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}
           />
         )}
       </div>
 
-      {/* ── TELA DE CAPTURA ────────────────────────────────────────────── */}
+      {/* ── TELA DE CAPTURA ──────────────────────────────────────────────── */}
       {step === 'capture' && (
         <div className="absolute inset-0 flex items-center justify-center p-8">
           <div className="text-center space-y-6 max-w-sm w-full">
@@ -540,10 +597,10 @@ export default function FrameMeasurementTool() {
         </div>
       )}
 
-      {/* ── OVERLAYS SOBRE O CANVAS ────────────────────────────────────── */}
+      {/* ── OVERLAYS ─────────────────────────────────────────────────────── */}
       {step !== 'capture' && (
         <>
-          {/* Topo-esquerda: título + status IA */}
+          {/* Topo-esquerda: título + badges */}
           <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
             <div className="w-7 h-7 rounded-lg bg-indigo-600/90 backdrop-blur-sm flex items-center justify-center">
               <Ruler className="w-3.5 h-3.5" />
@@ -555,7 +612,7 @@ export default function FrameMeasurementTool() {
               </span>
             )}
             {mpLoading && (
-              <span className="text-xs px-2 py-0.5 rounded bg-black/50 backdrop-blur-sm text-slate-300 flex items-center gap-1.5">
+              <span className="text-xs px-2 py-0.5 rounded bg-black/55 backdrop-blur-sm text-slate-300 flex items-center gap-1.5">
                 <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block" />
                 Analisando...
               </span>
@@ -568,38 +625,31 @@ export default function FrameMeasurementTool() {
               {(['calibrate', 'measure', 'done'] as Step[]).map((s, i) => (
                 <div key={s} className="flex items-center gap-1.5">
                   {i > 0 && <div className="w-3 h-px bg-white/20" />}
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
-                    step === s
-                      ? 'bg-indigo-600 text-white'
-                      : (step === 'measure' && i === 0) || step === 'done'
-                        ? 'bg-emerald-800 text-emerald-200'
-                        : 'bg-white/10 text-slate-400'
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                    step === s ? 'bg-indigo-600 text-white'
+                    : (step === 'measure' && i === 0) || step === 'done' ? 'bg-emerald-800 text-emerald-200'
+                    : 'bg-white/10 text-slate-400'
                   }`}>{i + 1}</div>
                 </div>
               ))}
             </div>
-            <button
-              onClick={reset}
-              className="w-8 h-8 rounded-lg bg-black/55 backdrop-blur-sm flex items-center justify-center hover:bg-white/15 transition-colors"
-              title="Nova foto"
-            >
+            <button onClick={reset} className="w-8 h-8 rounded-lg bg-black/55 backdrop-blur-sm flex items-center justify-center hover:bg-white/15 transition-colors">
               <RotateCcw className="w-4 h-4" />
             </button>
           </div>
 
           {/* ── PAINEL INFERIOR — CALIBRAÇÃO ───────────────────────────── */}
           {step === 'calibrate' && meas && (
-            <div className="absolute bottom-0 left-0 right-0 bg-black/75 backdrop-blur-md border-t border-white/10 px-5 py-4">
+            <div className="absolute bottom-0 left-0 right-0 bg-black/80 backdrop-blur-md border-t border-white/10 px-5 py-4">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-sm font-medium text-white mb-1">
-                    Posicione <span className="font-mono text-slate-200">CC1</span> e{' '}
-                    <span className="font-mono text-slate-200">CC2</span> nas pontas do cartão de crédito
+                  <p className="text-sm font-medium mb-1">
+                    Arraste <span className="font-mono text-slate-200">CC1</span> e{' '}
+                    <span className="font-mono text-slate-200">CC2</span> para as pontas da borda longa do cartão
                   </p>
                   <div className={`text-sm flex items-center gap-2 ${calOk ? 'text-emerald-400' : 'text-amber-400'}`}>
                     <span className={`w-2 h-2 rounded-full ${calOk ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                    {fmt(meas.calibMm)} mm medidos
-                    {calOk ? ' ✓' : ' — referência 85,6 mm'}
+                    {fmt(meas.calibMm)} mm — ref. 85,6 mm {calOk ? '✓' : ''}
                   </div>
                 </div>
                 <button
@@ -614,43 +664,66 @@ export default function FrameMeasurementTool() {
 
           {/* ── PAINEL INFERIOR — MEDIÇÕES ──────────────────────────────── */}
           {(step === 'measure' || step === 'done') && meas && (
-            <div className="absolute bottom-0 left-0 right-0 bg-black/78 backdrop-blur-md border-t border-white/10 px-4 pt-3 pb-4">
-              {/* status calibração */}
-              <div className="flex items-center gap-2 mb-2.5">
-                <span className={`text-xs px-2 py-0.5 rounded-full border ${calOk ? 'border-emerald-700/50 bg-emerald-900/30 text-emerald-400' : 'border-amber-600/50 bg-amber-900/30 text-amber-400'}`}>
-                  Cal: {fmt(meas.calibMm)} mm {calOk ? '✓' : '⚠'}
-                </span>
+            <div className="absolute bottom-0 left-0 right-0 bg-black/80 backdrop-blur-md border-t border-white/10">
+
+              {/* Chips de grupo (seletor) */}
+              <div className="flex gap-2 px-3 pt-3 pb-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+                {MEASURE_GROUPS.map(g => (
+                  <button
+                    key={g.id}
+                    onClick={() => setActiveGroup(prev => prev === g.id ? null : g.id)}
+                    className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap border ${
+                      activeGroup === g.id
+                        ? 'bg-indigo-600 border-indigo-400 text-white'
+                        : 'bg-white/5 border-white/10 text-slate-300 active:bg-white/15'
+                    }`}
+                  >
+                    {g.label}
+                  </button>
+                ))}
               </div>
 
-              {/* grade 2×4 */}
-              <div className="grid grid-cols-2 gap-x-8 gap-y-0.5 mb-3">
-                <MR label="DNP OD"   v={meas.dnpOD}      c="#818cf8" />
-                <MR label="Ponte"    v={meas.ponte}      c="#34d399" />
-                <MR label="DNP OE"   v={meas.dnpOE}      c="#818cf8" />
-                <MR label="A horiz." v={meas.horizontal} c="#f87171" />
-                <MR label="Alt OD"   v={meas.altOD}      c="#fb923c" />
-                <MR label="B vert."  v={meas.vertical}   c="#c084fc" />
-                <MR label="Alt OE"   v={meas.altOE}      c="#fb923c" />
-                <MR label="D diag."  v={meas.diagonal}   c="#fbbf24" />
+              {/* Instrução contextual */}
+              <p className="text-xs text-slate-500 px-4 pt-1 pb-0.5 min-h-[18px]">
+                {activeGroup
+                  ? 'Arraste os balões — o ponto de medição fica visível abaixo do dedo'
+                  : 'Toque em uma medida para ajustar os marcadores'}
+              </p>
+
+              {/* Grade de valores */}
+              <div className="grid grid-cols-2 gap-x-6 gap-y-0.5 px-4 pt-1 pb-2">
+                <MR label="DNP OD"    v={meas.dnpOD}      c="#818cf8" hi={activeGroup === 'pupils'} />
+                <MR label="Ponte"     v={meas.ponte}      c="#34d399" hi={activeGroup === 'bridge'} />
+                <MR label="DNP OE"    v={meas.dnpOE}      c="#818cf8" hi={activeGroup === 'pupils'} />
+                <MR label="A horiz."  v={meas.horizontal} c="#f87171" hi={activeGroup === 'frameA'} />
+                <MR label="Alt OD"    v={meas.altOD}      c="#fb923c" hi={activeGroup === 'altOD'}  />
+                <MR label="B vert."   v={meas.vertical}   c="#c084fc" hi={activeGroup === 'frameB'} />
+                <MR label="Alt OE"    v={meas.altOE}      c="#fb923c" hi={activeGroup === 'altOE'}  />
+                <MR label="D diag."   v={meas.diagonal}   c="#fbbf24" hi={activeGroup === 'frameD'} />
               </div>
 
-              {step === 'measure' && (
-                <button
-                  onClick={() => setStep('done')}
-                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-sm font-medium transition-colors"
-                >
-                  Confirmar medidas ✓
-                </button>
-              )}
-              {step === 'done' && (
-                <button
-                  onClick={copyResults}
-                  className={`w-full py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-colors ${copied ? 'bg-emerald-700 text-emerald-100' : 'bg-slate-700 hover:bg-slate-600'}`}
-                >
-                  <Copy className="w-4 h-4" />
-                  {copied ? 'Copiado!' : 'Copiar medidas'}
-                </button>
-              )}
+              {/* Botão de ação */}
+              <div className="px-4 pb-4 pt-1">
+                {step === 'measure' && !activeGroup && (
+                  <button onClick={() => setStep('done')}
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-sm font-medium transition-colors">
+                    Confirmar medidas ✓
+                  </button>
+                )}
+                {step === 'measure' && activeGroup && (
+                  <button onClick={() => setActiveGroup(null)}
+                    className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-medium transition-colors">
+                    Concluir ajuste →
+                  </button>
+                )}
+                {step === 'done' && (
+                  <button onClick={copyResults}
+                    className={`w-full py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-colors ${copied ? 'bg-emerald-700 text-emerald-100' : 'bg-slate-700 hover:bg-slate-600'}`}>
+                    <Copy className="w-4 h-4" />
+                    {copied ? 'Copiado!' : 'Copiar medidas'}
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </>
@@ -659,15 +732,15 @@ export default function FrameMeasurementTool() {
   )
 }
 
-function MR({ label, v, c }: { label: string; v: number; c: string }) {
+function MR({ label, v, c, hi }: { label: string; v: number; c: string; hi: boolean }) {
   return (
-    <div className="flex items-center justify-between text-sm py-0.5">
+    <div className={`flex items-center justify-between text-sm py-0.5 transition-opacity ${hi ? '' : 'opacity-50'}`}>
       <span className="flex items-center gap-1.5 text-slate-300">
         <span className="w-2 h-2 rounded-full shrink-0" style={{ background: c }} />
         {label}
       </span>
-      <span className="font-mono font-semibold tabular-nums">
-        {v.toFixed(1)}<span className="text-slate-500 font-normal text-xs ml-0.5">mm</span>
+      <span className={`font-mono font-semibold tabular-nums ${hi ? 'text-white' : 'text-slate-400'}`}>
+        {v.toFixed(1)}<span className="text-slate-600 font-normal text-xs ml-0.5">mm</span>
       </span>
     </div>
   )
