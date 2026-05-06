@@ -59,8 +59,7 @@ const LABELS: Record<HKey, string> = {
 
 // ─── Constantes visuais ───────────────────────────────────────────────────────
 const CC_MM    = 85.6
-const B_UP     = -72   // balão fica 72 px acima do âncora (padrão)
-const B_DOWN   = 72    // balão fica 72 px abaixo quando âncora está no topo
+const B_DIST   = 90    // distância do balão ao âncora em px
 const B_R      = 24    // raio do balão (área de toque)
 const A_R      = 5     // raio do ponto âncora
 const CAL_ARM  = 14    // braços do crosshair de calibração
@@ -70,10 +69,13 @@ const CAL_DOT  = 4     // ponto central do crosshair
 const dist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y)
 const fmt  = (n: number) => n.toFixed(1)
 
-/** Posição do balão relativa ao âncora — acima por padrão, abaixo perto do topo */
+/**
+ * Posição do balão: ABAIXO do âncora por padrão (dedo fica abaixo, âncora visível acima).
+ * Sobe apenas quando o âncora está no terço inferior da imagem (ex: cartão de crédito).
+ */
 function balloonOf(anchor: Pt, ib: { y: number; h: number }): Pt {
-  const nearTop = (anchor.y - ib.y) / ib.h < 0.20
-  return { x: anchor.x, y: anchor.y + (nearTop ? B_DOWN : B_UP) }
+  const nearBottom = (anchor.y - ib.y) / ib.h > 0.68
+  return { x: anchor.x, y: anchor.y + (nearBottom ? -B_DIST : B_DIST) }
 }
 
 function pill(ctx: CanvasRenderingContext2D, text: string, cx: number, cy: number, color: string) {
@@ -111,6 +113,7 @@ export default function FrameMeasurementTool() {
   const [dragging,    setDragging]    = useState<HKey | null>(null)
   const [autoOk,      setAutoOk]      = useState(false)
   const [mpLoading,   setMpLoading]   = useState(false)
+  const [confirming,  setConfirming]  = useState(false)
   const [copied,      setCopied]      = useState(false)
 
   // Refs estáveis para uso dentro de callbacks sem stale closure
@@ -179,30 +182,57 @@ export default function FrameMeasurementTool() {
   }
 
   // ── Aplica landmarks após calibração confirmada ───────────────────────────
+  // Usa a escala calibrada (px/mm) para estimativas baseadas em medidas reais,
+  // não em percentuais da largura do olho (muito imprecisos).
   function applyLandmarks(lms: RawLm[], b: typeof imgBounds, cur: Handles): Handles {
     const tc = (lm: RawLm): Pt => ({ x: b.x + lm.x * b.w, y: b.y + lm.y * b.h })
-    const irisR  = tc(lms[468]); const irisL  = tc(lms[473])
-    const outerR = tc(lms[33]);  const innerR  = tc(lms[133])
-    const topR   = tc(lms[159]); const botR    = tc(lms[145])
-    const outerL = tc(lms[263]); const innerL  = tc(lms[362])
-    const topL   = tc(lms[386]); const botL    = tc(lms[374])
-    const eyeW   = Math.abs(outerR.x - innerR.x)
-    const fOut   = eyeW * 0.40   // aro estende além do canto externo
-    const fV     = eyeW * 0.32   // aro estende além do canto superior/inferior
-    const bGap   = (innerL.x - innerR.x) * 0.08
+
+    // Pupilas — precisos pelo MediaPipe
+    const irisR = tc(lms[468])   // OD (imagem-esquerda)
+    const irisL = tc(lms[473])   // OE (imagem-direita)
+
+    // Canto externo dos olhos — para refinamento da borda lateral da lente
+    const outerR = tc(lms[33])
+
+    // Ponte nasal — para posição Y do apoio da ponte
+    const noseBridge = tc(lms[6])
+
+    // Escala calibrada: px por mm  (usa o cartão já posicionado pelo usuário)
+    const pxMm = dist(cur.calibA, cur.calibB) / CC_MM
+
+    // Centro horizontal da ponte (entre as duas pupilas)
+    const bridgeCX = (irisR.x + irisL.x) / 2
+
+    // ── Estimativas baseadas em medidas ópticas padrão adulto (mm) ──────
+    // Estes valores são ponto de partida — usuário ajusta em seguida.
+    const BRIDGE_HALF = 8.5  // meia-ponte típica: 17 mm total
+    const LENS_OUTER  = 26   // borda externa da lente ao centro da pupila (~52 mm A)
+    const LENS_TOP    = 12   // borda superior da lente acima da pupila
+    const MOUNT_H     = 18   // altura de montagem padrão (pupila → base do aro)
+
+    // Borda lateral: usa o mínimo entre estimativa mm e canto externo do olho + 4 mm
+    const lensLeftX = Math.min(
+      irisR.x - LENS_OUTER * pxMm,
+      outerR.x - 4 * pxMm,
+    )
+    // Borda interna da lente OD = mesma posição X que bridgeR
+    const lensRightX = bridgeCX - BRIDGE_HALF * pxMm
+    const bridgeY    = noseBridge.y - 2 * pxMm   // ponte fica levemente acima do nariz
+
     return {
-      ...cur,    // preserva calibA e calibB
-      pupilR: irisR, pupilL: irisL,
-      bridgeR: { x: innerR.x + bGap, y: (irisR.y + topR.y) / 2 },
-      bridgeL: { x: innerL.x - bGap, y: (irisL.y + topL.y) / 2 },
-      mountR:  { x: irisR.x, y: botR.y + fV },
-      mountL:  { x: irisL.x, y: botL.y + Math.abs(outerL.x - innerL.x) * 0.32 },
-      lensLeft:   { x: outerR.x - fOut, y: irisR.y },
-      lensRight:  { x: innerR.x + bGap, y: irisR.y },
-      lensTop:    { x: irisR.x,         y: topR.y - fV },
-      lensBottom: { x: irisR.x,         y: botR.y + fV },
-      diagA:      { x: outerR.x - fOut, y: topR.y - fV },
-      diagB:      { x: innerR.x + bGap, y: botR.y + fV },
+      ...cur,   // preserva calibA e calibB
+      pupilR: irisR,
+      pupilL: irisL,
+      bridgeR: { x: lensRightX,   y: bridgeY },
+      bridgeL: { x: bridgeCX + BRIDGE_HALF * pxMm, y: bridgeY },
+      mountR:  { x: irisR.x,      y: irisR.y + MOUNT_H * pxMm },
+      mountL:  { x: irisL.x,      y: irisL.y + MOUNT_H * pxMm },
+      lensLeft:   { x: lensLeftX,  y: irisR.y },
+      lensRight:  { x: lensRightX, y: irisR.y },
+      lensTop:    { x: irisR.x,    y: irisR.y - LENS_TOP * pxMm },
+      lensBottom: { x: irisR.x,    y: irisR.y + MOUNT_H * pxMm },
+      diagA:      { x: lensLeftX,  y: irisR.y - LENS_TOP * pxMm },
+      diagB:      { x: lensRightX, y: irisR.y + MOUNT_H * pxMm },
     }
   }
 
@@ -243,7 +273,8 @@ export default function FrameMeasurementTool() {
         setImgBounds(b)
         setPts(defaultHandles(b))
         setStep('calibrate')
-        runDetect(img)
+        // Pré-carrega o modelo enquanto usuário calibra o cartão (detecção roda só no confirm)
+        ensureLandmarker().catch(() => null)
       }
       img.src = ev.target!.result as string
     }
@@ -256,10 +287,20 @@ export default function FrameMeasurementTool() {
     e.target.value = ''
   }
 
-  // ── Confirma calibração e aplica landmarks ────────────────────────────────
-  function confirmCalibration() {
-    if (rawLmsRef.current && pts) {
-      setPts(prev => prev ? applyLandmarks(rawLmsRef.current!, imgBounds, prev) : prev)
+  // ── Confirma calibração → detecta rosto → aplica pontos ─────────────────
+  async function confirmCalibration() {
+    if (!pts) return
+    setConfirming(true)
+    try {
+      // Roda detecção agora (modelo deve estar carregado ou carregando)
+      if (!rawLmsRef.current && imgRef.current) {
+        await runDetect(imgRef.current)
+      }
+      if (rawLmsRef.current) {
+        setPts(prev => prev ? applyLandmarks(rawLmsRef.current!, imgBounds, prev) : prev)
+      }
+    } finally {
+      setConfirming(false)
     }
     setActiveGroup(null)
     setStep('measure')
@@ -654,9 +695,13 @@ export default function FrameMeasurementTool() {
                 </div>
                 <button
                   onClick={confirmCalibration}
-                  className="shrink-0 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-medium transition-colors whitespace-nowrap"
+                  disabled={confirming}
+                  className="shrink-0 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 rounded-xl text-sm font-medium transition-colors whitespace-nowrap flex items-center gap-2"
                 >
-                  {autoOk ? 'Calibrar e posicionar →' : 'Confirmar →'}
+                  {confirming && (
+                    <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" />
+                  )}
+                  {confirming ? 'Posicionando...' : autoOk ? 'Calibrar e posicionar →' : 'Confirmar →'}
                 </button>
               </div>
             </div>
