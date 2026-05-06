@@ -49,8 +49,12 @@ export default function ReceiptSelectionModal({ isOpen, onClose, pagamentos, onR
         setIsProcessing(true)
         try {
             const idsString = selectedIds.join('-')
-            window.open(`/print/recibo/${idsString}?t=${Date.now()}`, '_blank')
-            
+            // Checa ANTES de marcar se já foi impresso alguma vez, para passar o param correto
+            const selectedPagamentos = pagamentos.filter(p => selectedIds.includes(p.id))
+            const wasAlreadyPrinted = selectedPagamentos.some(p => p.receipt_printed_at)
+            const reprintParam = wasAlreadyPrinted ? '&reprint=true' : ''
+            window.open(`/print/recibo/${idsString}?t=${Date.now()}${reprintParam}`, '_blank')
+
             // Marca como impresso no banco
             await markPaymentsAsPrinted(selectedIds)
             await onReload()

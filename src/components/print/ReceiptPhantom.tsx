@@ -62,7 +62,8 @@ function Via({ data, isSegundaVia }: { data: ReceiptData, isSegundaVia: boolean 
     const mes = String(dateObj.getMonth() + 1).padStart(2, '0')
     const ano = String(dateObj.getFullYear())
 
-    const isReimpressaoReal = pagamentos.some(p => p.receipt_printed_at) || isReprint
+    // Usa apenas o parâmetro da URL: receipt_printed_at é setado antes da página carregar (race condition)
+    const isReimpressaoReal = isReprint
 
     const formasPagamento = pagamentos.map(p => p.forma_pagamento.toLowerCase().trim())
     const idsPagamentos = pagamentos.map(p => p.id).join(', ')
