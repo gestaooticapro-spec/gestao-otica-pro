@@ -713,6 +713,15 @@ export default function FrameMeasurementTool() {
 
               {/* Chips de grupo (seletor) */}
               <div className="flex gap-2 px-3 pt-3 pb-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+                {/* Voltar para recalibrar o cartão */}
+                <button
+                  onClick={() => { setActiveGroup(null); setStep('calibrate') }}
+                  className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap border border-white/15 bg-white/5 text-slate-400 active:bg-white/10"
+                  title="Voltar e recalibrar o cartão de crédito"
+                >
+                  ← Cartão
+                </button>
+                <div className="w-px bg-white/10 shrink-0 my-0.5" />
                 {MEASURE_GROUPS.map(g => (
                   <button
                     key={g.id}
