@@ -48,7 +48,7 @@ const COLORS: Record<HKey, string> = {
   diagA: '#fbbf24', diagB: '#fbbf24',
 }
 const LABELS: Record<HKey, string> = {
-  calibA: 'CC1', calibB: 'CC2',
+  calibA: 'R1', calibB: 'R2',
   pupilR: 'OD',  pupilL: 'OE',
   bridgeR: 'P1', bridgeL: 'P2',
   mountR: '↓OD', mountL: '↓OE',
@@ -686,8 +686,8 @@ export default function FrameMeasurementTool() {
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-sm font-medium mb-1">
-                    Arraste <span className="font-mono text-slate-200">CC1</span> e{' '}
-                    <span className="font-mono text-slate-200">CC2</span> para as pontas da borda longa do cartão
+                    Arraste <span className="font-mono text-slate-200">R1</span> e{' '}
+                    <span className="font-mono text-slate-200">R2</span> sobre os dois pontos de referência e informe a distância entre eles
                   </p>
                   <div className="flex items-center gap-3 mt-1">
                     <div className={`text-sm flex items-center gap-2 ${calOk ? 'text-emerald-400' : 'text-amber-400'}`}>
@@ -695,14 +695,12 @@ export default function FrameMeasurementTool() {
                       {fmt(meas.calibMm)} mm medidos {calOk ? '✓' : ''}
                     </div>
                     <label className="flex items-center gap-1.5 text-xs text-slate-400">
-                      cartão:
+                      referência:
                       <input
                         type="number"
                         value={cardMm}
                         onChange={e => setCardMm(parseFloat(e.target.value) || 85.6)}
                         step="0.1"
-                        min="70"
-                        max="100"
                         className="w-16 bg-white/10 border border-white/20 rounded px-1.5 py-0.5 text-white text-xs text-center focus:outline-none focus:border-indigo-400"
                       />
                       mm
