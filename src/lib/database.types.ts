@@ -1152,6 +1152,12 @@ export interface Database {
           medida_diagonal: string | null
           medida_ponte: string | null
           medida_diametro: string | null
+          medida_diametro_od: string | null
+          medida_diametro_oe: string | null
+          medida_palpebra_od: string | null
+          medida_palpebra_oe: string | null
+          medida_tipo_lente: string | null
+          foto_medicao_url: string | null
           lab_nome: string | null
           lab_pedido_por_id: number | null
           dt_pedido_em: string | null

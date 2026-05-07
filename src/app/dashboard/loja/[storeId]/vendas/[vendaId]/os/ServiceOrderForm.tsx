@@ -311,6 +311,9 @@ export default function ServiceOrderFormContent({
     const [medH, setMedH] = useState(''); const [medV, setMedV] = useState(''); const [medDiag, setMedDiag] = useState(''); const [medPonte, setMedPonte] = useState('')
     const [dnpOd, setDnpOd] = useState(''); const [dnpOe, setDnpOe] = useState('');
     const [altOd, setAltOd] = useState(''); const [altOe, setAltOe] = useState(''); const [diametro, setDiametro] = useState('')
+    const [diamOd, setDiamOd] = useState(''); const [diamOe, setDiamOe] = useState('')
+    const [palpebraOd, setPalpebraOd] = useState(''); const [palpebraOe, setPalpebraOe] = useState('')
+    const [tipoLente, setTipoLente] = useState(''); const [fotoMedicaoUrl, setFotoMedicaoUrl] = useState('')
 
     // Lab e Prazos
     const [dtPedido, setDtPedido] = useState(''); const [pedidoPorId, setPedidoPorId] = useState(''); const [labNome, setLabNome] = useState('')
@@ -461,6 +464,7 @@ Obs.: ${obsOs}`.trim();
         setLongeOdEsf(''); setLongeOdCil(''); setLongeOdEixo(''); setLongeOeEsf(''); setLongeOeCil(''); setLongeOeEixo('')
         setPertoOdEsf(''); setPertoOdCil(''); setPertoOdEixo(''); setPertoOeEsf(''); setPertoOeCil(''); setPertoOeEixo(''); setAdicao('')
         setMedH(''); setMedV(''); setMedDiag(''); setMedPonte(''); setDnpOd(''); setDnpOe(''); setAltOd(''); setAltOe(''); setDiametro('')
+        setDiamOd(''); setDiamOe(''); setPalpebraOd(''); setPalpebraOe(''); setTipoLente(''); setFotoMedicaoUrl('')
         setDtPedido(''); setPedidoPorId(''); setLabNome(''); setDtChegou(''); setDtMontado(''); setDtEntregue(''); setDtPrometido(''); setObsOs('')
         setProtocolo('')
     }, [])
@@ -480,6 +484,9 @@ Obs.: ${obsOs}`.trim();
             setAdicao(os.receita_adicao ?? '')
             setMedH(os.medida_horizontal ?? ''); setMedV(os.medida_vertical ?? ''); setMedDiag(os.medida_diagonal ?? ''); setMedPonte(os.medida_ponte ?? '')
             setDnpOd(os.medida_dnp_od ?? ''); setDnpOe(os.medida_dnp_oe ?? ''); setAltOd(os.medida_altura_od ?? ''); setAltOe(os.medida_altura_oe ?? ''); setDiametro(os.medida_diametro ?? '')
+            setDiamOd(os.medida_diametro_od ?? ''); setDiamOe(os.medida_diametro_oe ?? '')
+            setPalpebraOd(os.medida_palpebra_od ?? ''); setPalpebraOe(os.medida_palpebra_oe ?? '')
+            setTipoLente(os.medida_tipo_lente ?? ''); setFotoMedicaoUrl(os.foto_medicao_url ?? '')
             setDtPedido(toDateTimeInput(os.dt_pedido_em)); setPedidoPorId(os.lab_pedido_por_id?.toString() ?? ''); setLabNome(os.lab_nome ?? '')
             setDtChegou(toDateTimeInput(os.dt_lente_chegou)); setDtMontado(toDateTimeInput(os.dt_montado_em)); setDtEntregue(toDateTimeInput(os.dt_entregue_em))
             setDtPrometido(toDateTimeInput(os.dt_prometido_para)); setObsOs(os.obs_os ?? '')
@@ -682,6 +689,14 @@ Obs.: ${obsOs}`.trim();
                                     <label className="text-right text-[10px] font-bold text-slate-400 pr-1 self-center uppercase tracking-wider">Altura</label>
                                     <input name="medida_altura_od" value={altOd} onChange={e => setAltOd(e.target.value)} className={gridInput} />
                                     <input name="medida_altura_oe" value={altOe} onChange={e => setAltOe(e.target.value)} className={gridInput} />
+
+                                    <label className="text-right text-[10px] font-bold text-slate-400 pr-1 self-center uppercase tracking-wider">Diâm.</label>
+                                    <input name="medida_diametro_od" value={diamOd} onChange={e => setDiamOd(e.target.value)} className={gridInput} />
+                                    <input name="medida_diametro_oe" value={diamOe} onChange={e => setDiamOe(e.target.value)} className={gridInput} />
+
+                                    <label className="text-right text-[10px] font-bold text-slate-400 pr-1 self-center uppercase tracking-wider">Pálp.</label>
+                                    <input name="medida_palpebra_od" value={palpebraOd} onChange={e => setPalpebraOd(e.target.value)} className={gridInput} placeholder="—" />
+                                    <input name="medida_palpebra_oe" value={palpebraOe} onChange={e => setPalpebraOe(e.target.value)} className={gridInput} placeholder="—" />
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-2 border-t border-white/5 pt-3">
@@ -693,7 +708,7 @@ Obs.: ${obsOs}`.trim();
                                     {/* DIÂMETRO COM WHATSAPP */}
                                     <div className="col-span-2 flex items-end gap-1">
                                         <div className="flex-1">
-                                            <label className={labelStyle}>Diâmetro</label>
+                                            <label className={labelStyle}>Diâmetro (legado)</label>
                                             <input name="medida_diametro" value={diametro} onChange={e => setDiametro(e.target.value)} className={inputStyle} />
                                         </div>
                                         <button
@@ -705,6 +720,28 @@ Obs.: ${obsOs}`.trim();
                                             <MessageCircle className="h-4 w-4" /> <span className="font-bold text-[10px] hidden xl:inline">PEDIR</span>
                                         </button>
                                     </div>
+
+                                    <div>
+                                        <label className={labelStyle}>Tipo de lente</label>
+                                        <select name="medida_tipo_lente" value={tipoLente} onChange={e => setTipoLente(e.target.value)} className={inputStyle}>
+                                            <option value="">—</option>
+                                            <option value="surfacada">Surfaçada</option>
+                                            <option value="bifocal">Bifocal</option>
+                                            <option value="pronto">Pronto</option>
+                                        </select>
+                                    </div>
+
+                                    {/* Foto da medição (capturada pelo tablet) */}
+                                    {fotoMedicaoUrl && (
+                                        <div className="col-span-2">
+                                            <label className={labelStyle}>Foto da medição</label>
+                                            <a href={fotoMedicaoUrl} target="_blank" rel="noreferrer"
+                                                className="block mt-1 rounded overflow-hidden border border-white/10 hover:border-cyan-500/40 transition-colors">
+                                                <img src={fotoMedicaoUrl} alt="Medição" className="w-full h-24 object-cover" />
+                                            </a>
+                                        </div>
+                                    )}
+                                    <input type="hidden" name="foto_medicao_url" value={fotoMedicaoUrl} />
                                 </div>
                             </div>
                         </div>
