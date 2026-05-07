@@ -1,7 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Camera, Copy, ImageIcon, RotateCcw, Ruler, ScanFace } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Camera, CheckCircle2, Copy, ImageIcon, RotateCcw, Ruler, Save, ScanFace } from 'lucide-react'
+import { saveMedicaoOS } from '@/lib/actions/medidas.actions'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Step     = 'capture' | 'calibrate' | 'measure' | 'done'
@@ -114,7 +116,14 @@ function pill(ctx: CanvasRenderingContext2D, text: string, cx: number, cy: numbe
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
-export default function FrameMeasurementTool() {
+export default function FrameMeasurementTool({
+  osId,
+  storeId,
+}: {
+  osId?: number
+  storeId?: number
+} = {}) {
+  const router = useRouter()
   const containerRef  = useRef<HTMLDivElement>(null)
   const canvasRef     = useRef<HTMLCanvasElement>(null)
   const fileRef       = useRef<HTMLInputElement>(null)
@@ -140,6 +149,8 @@ export default function FrameMeasurementTool() {
   const [confirming,  setConfirming]  = useState(false)
   const [showDiam,    setShowDiam]    = useState(false)
   const [copied,      setCopied]      = useState(false)
+  const [saving,      setSaving]      = useState(false)
+  const [saved,       setSaved]       = useState(false)
   const [cardMm,      setCardMm]      = useState(85.6)
   const [cardInput,   setCardInput]   = useState('85.6')
 
@@ -504,6 +515,44 @@ export default function FrameMeasurementTool() {
     e.preventDefault(); draggingRef.current = null; setDragging(null)
   }
 
+  // ── Salvar medidas na OS (fluxo tablet) ──────────────────────────────────
+  async function saveToOS() {
+    if (!pts || !osId) return
+    setSaving(true)
+    try {
+      const m = calc(pts)
+
+      // Captura o canvas como JPEG base64
+      let fotoBase64: string | undefined
+      const canvas = canvasRef.current
+      if (canvas) {
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.82)
+        fotoBase64 = dataUrl.split(',')[1]
+      }
+
+      const result = await saveMedicaoOS({
+        osId,
+        dnpOd: m.dnpOD, dnpOe: m.dnpOE,
+        altOd: m.altOD,  altOe: m.altOE,
+        ponte: m.ponte,
+        horizontal: m.horizontal, vertical: m.vertical, diagonal: m.diagonal,
+        diamOd: calcDiam(m).OD.min, diamOe: calcDiam(m).OE.min,
+        palpebraOd: lensType === 'bifocal' ? m.palpebraOD : undefined,
+        palpebraOe: lensType === 'bifocal' ? m.palpebraOE : undefined,
+        tipoLente: lensType ?? 'surfacada',
+        fotoBase64,
+      })
+
+      if (result.ok) {
+        setSaved(true)
+      } else {
+        alert(`Erro ao salvar: ${result.error}`)
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
   // ── Copiar resultados ─────────────────────────────────────────────────────
   function copyResults() {
     if (!pts) return
@@ -525,7 +574,8 @@ export default function FrameMeasurementTool() {
 
   function reset() {
     setStep('capture'); setPts(null); setActiveGroup(null); setLensType(null)
-    setAutoOk(false); setShowDiam(false); rawLmsRef.current = null; imgRef.current = null
+    setAutoOk(false); setShowDiam(false); setSaved(false)
+    rawLmsRef.current = null; imgRef.current = null
   }
 
   const meas  = pts ? calc(pts) : null
@@ -762,17 +812,46 @@ export default function FrameMeasurementTool() {
                     Concluir ajuste →
                   </button>
                 )}
-                {step === 'done' && (
+                {step === 'done' && !saved && (
                   <>
                     <button onClick={() => setShowDiam(v => !v)}
                       className={`flex-1 py-2 rounded-xl text-xs font-medium border transition-colors ${showDiam ? 'bg-indigo-900/60 border-indigo-500 text-indigo-200' : 'bg-white/5 border-white/10 text-slate-300'}`}>
                       {showDiam ? 'Ocultar Ø' : 'Calcular Ø'}
                     </button>
-                    <button onClick={copyResults}
-                      className={`flex-1 py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors ${copied ? 'bg-emerald-700 text-emerald-100' : 'bg-slate-700 hover:bg-slate-600'}`}>
-                      <Copy className="w-3.5 h-3.5" />{copied ? 'Copiado!' : 'Copiar'}
-                    </button>
+                    {osId ? (
+                      <button onClick={saveToOS} disabled={saving}
+                        className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors">
+                        {saving
+                          ? <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                          : <Save className="w-3.5 h-3.5" />}
+                        {saving ? 'Salvando...' : 'Salvar na OS'}
+                      </button>
+                    ) : (
+                      <button onClick={copyResults}
+                        className={`flex-1 py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors ${copied ? 'bg-emerald-700 text-emerald-100' : 'bg-slate-700 hover:bg-slate-600'}`}>
+                        <Copy className="w-3.5 h-3.5" />{copied ? 'Copiado!' : 'Copiar'}
+                      </button>
+                    )}
                   </>
+                )}
+
+                {step === 'done' && saved && (
+                  <div className="w-full flex flex-col items-center gap-3 py-1">
+                    <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm">
+                      <CheckCircle2 className="w-5 h-5" />
+                      Medidas salvas na OS!
+                    </div>
+                    <div className="flex gap-2 w-full">
+                      <button onClick={() => storeId && router.push(`/tablet/${storeId}/os`)}
+                        className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-xs font-medium transition-colors">
+                        ← Voltar às OS
+                      </button>
+                      <button onClick={reset}
+                        className="flex-1 py-2 bg-white/5 border border-white/10 rounded-xl text-xs font-medium text-slate-300 transition-colors">
+                        Nova foto
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

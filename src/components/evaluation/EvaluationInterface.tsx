@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import React, { useEffect, useId, useMemo, useRef, useState, useTransition } from 'react'
 import { useParams, useRouter } from 'next/navigation'
@@ -136,6 +136,8 @@ type LensRecommendationActionPayload = {
 
 const LENS_ENGINE_DIAGNOSTIC_SUITE_NAME = 'Dossie Triplice do Motor'
 const LENS_ENGINE_DIAGNOSTIC_SUITE_RESTORE_KEY = 'dossie_triplice_motor'
+const LENS_DEMO_QUICK_FILL_RESTORE_KEY = 'demo_quick_fill_profiles'
+const SHOW_LENS_DEMO_QUICK_FILL = false
 
 const TRIAGE_SIGNAL_PATCHES: Record<LensTechnicalTriageSignal, Partial<Pick<RecommendationCaseInput, 'rotina_tags' | 'objetivo_tags' | 'desired_benefits' | 'preferred_features'>>> = {
   risco_espessura_alta: { desired_benefits: ['lente_fina', 'estetica', 'qualidade_optica'] },
@@ -1522,59 +1524,59 @@ const generateManualSuggestion = (form: ReturnType<typeof createEmptyForm>): Man
   const dirigeNoite = form.queixaDirigirNoite === 'sim'
   const sensibilidadeLuz = form.queixaSensibilidadeLuz === 'sim'
 
-  let primaryLens = 'Lente visão simples'
+  let primaryLens = 'Lente visÃ£o simples'
   const complementaryOptions: string[] = []
   const reasons: string[] = []
 
   if (progressaoRapida && isChild) {
     primaryLens = 'Lente de controle de miopia'
-    reasons.push('idade infantil com relato de progressão rápida do grau favorece avaliar uma solução específica para controle de miopia')
+    reasons.push('idade infantil com relato de progressÃ£o rÃ¡pida do grau favorece avaliar uma soluÃ§Ã£o especÃ­fica para controle de miopia')
   } else if ((addicao !== null && addicao >= 0.75) || (age !== null && age >= 45)) {
     primaryLens = 'Lente multifocal / progressiva'
-    reasons.push(`idade${age !== null ? ` ${age}` : ''} e adição ${formatDegreeDisplay(form.receitaAdicao) || 'presente'} favorecem correção para longe, perto e intermediário`)
+    reasons.push(`idade${age !== null ? ` ${age}` : ''} e adiÃ§Ã£o ${formatDegreeDisplay(form.receitaAdicao) || 'presente'} favorecem correÃ§Ã£o para longe, perto e intermediÃ¡rio`)
 
     if (usoPerto >= 10) {
-      complementaryOptions.push('campo intermediário ampliado')
-      reasons.push(`rotina de perto intensa (${usoPerto}h entre leitura, computador e celular) pede mais conforto no uso diário`)
+      complementaryOptions.push('campo intermediÃ¡rio ampliado')
+      reasons.push(`rotina de perto intensa (${usoPerto}h entre leitura, computador e celular) pede mais conforto no uso diÃ¡rio`)
     }
   } else if ((age !== null && age >= 38) || usoPerto >= 8) {
     primaryLens = 'Lente digital / anti-fadiga'
     reasons.push(`uso de perto elevado (${usoPerto}h) indica necessidade de mais conforto visual em telas e leitura`)
   } else if (usoPerto >= 4) {
-    primaryLens = 'Lente visão simples com desenho para rotina digital'
-    reasons.push(`há demanda relevante para perto e telas, mesmo sem sinais fortes de presbiopia`)
+    primaryLens = 'Lente visÃ£o simples com desenho para rotina digital'
+    reasons.push(`hÃ¡ demanda relevante para perto e telas, mesmo sem sinais fortes de presbiopia`)
   } else {
-    reasons.push('receita e rotina sugerem uma solução básica, com foco em nitidez e adaptação simples')
+    reasons.push('receita e rotina sugerem uma soluÃ§Ã£o bÃ¡sica, com foco em nitidez e adaptaÃ§Ã£o simples')
   }
 
   if (dirigir >= 4) {
     complementaryOptions.push('antirreflexo premium')
-    reasons.push(`dirigir ${dirigir}h por dia reforça benefício de antirreflexo com melhor contraste e redução de reflexos`)
+    reasons.push(`dirigir ${dirigir}h por dia reforÃ§a benefÃ­cio de antirreflexo com melhor contraste e reduÃ§Ã£o de reflexos`)
   }
 
   if (dirigeNoite) {
-    complementaryOptions.push('conforto para direção noturna')
-    reasons.push('foi marcada dificuldade para dirigir à noite, o que reforça contraste e redução de reflexos')
+    complementaryOptions.push('conforto para direÃ§Ã£o noturna')
+    reasons.push('foi marcada dificuldade para dirigir Ã  noite, o que reforÃ§a contraste e reduÃ§Ã£o de reflexos')
   }
 
   if (sol >= 4 || ambienteExterno >= 4) {
-    complementaryOptions.push('fotossensível / proteção UV')
-    reasons.push(`exposição externa relevante (${Math.max(sol, ambienteExterno)}h) combina com proteção solar no dia a dia`)
+    complementaryOptions.push('fotossensÃ­vel / proteÃ§Ã£o UV')
+    reasons.push(`exposiÃ§Ã£o externa relevante (${Math.max(sol, ambienteExterno)}h) combina com proteÃ§Ã£o solar no dia a dia`)
   }
 
   if (computador + celular >= 6) {
     complementaryOptions.push('conforto digital')
-    reasons.push(`uso combinado de computador e celular (${computador + celular}h) pede alívio para rotina de telas`)
+    reasons.push(`uso combinado de computador e celular (${computador + celular}h) pede alÃ­vio para rotina de telas`)
   }
 
   if (sensibilidadeLuz) {
     complementaryOptions.push('controle de claridade')
-    reasons.push('foi marcada sensibilidade à luz, favorecendo conforto com claridade e ambientes externos')
+    reasons.push('foi marcada sensibilidade Ã  luz, favorecendo conforto com claridade e ambientes externos')
   }
 
   if (precisaResistencia) {
     complementaryOptions.push('material resistente')
-    reasons.push('o contexto indica necessidade de uma configuração mais resistente para reduzir risco de quebra')
+    reasons.push('o contexto indica necessidade de uma configuraÃ§Ã£o mais resistente para reduzir risco de quebra')
   }
 
   const uniqueOptions = [...new Set(complementaryOptions)]
@@ -1593,7 +1595,7 @@ const generateManualSuggestion = (form: ReturnType<typeof createEmptyForm>): Man
 
 const buildAiRecommendationLabel = (option: RecommendationOption) => {
   const treatmentPart = option.treatmentName ? ` + ${option.treatmentName}` : ''
-  const sourcePart = option.sourceLaboratorio ? ` · ${option.sourceLaboratorio}` : ''
+  const sourcePart = option.sourceLaboratorio ? ` Â· ${option.sourceLaboratorio}` : ''
   return `${option.familyName} | ${option.offerLabel}${treatmentPart}${sourcePart}`
 }
 
@@ -1610,9 +1612,9 @@ const getClinicalCategoryLabel = (category: RecommendationOption['clinicalCatego
     case 'plana_solar':
       return 'solar'
     case 'visao_simples':
-      return 'visão simples'
+      return 'visÃ£o simples'
     default:
-      return 'categoria compatível'
+      return 'categoria compatÃ­vel'
   }
 }
 
@@ -1635,8 +1637,8 @@ const buildAiOptionNarrative = (
 
   if (index === 0) {
     const intro = mainReasons.length
-      ? `Escolhi esta como a melhor opção porque ela atende mais diretamente ao caso em ${mainReasons.join(' e ').toLowerCase()}.`
-      : `Escolhi esta como a melhor opção porque ela ficou mais coerente com a necessidade principal do caso.`
+      ? `Escolhi esta como a melhor opÃ§Ã£o porque ela atende mais diretamente ao caso em ${mainReasons.join(' e ').toLowerCase()}.`
+      : `Escolhi esta como a melhor opÃ§Ã£o porque ela ficou mais coerente com a necessidade principal do caso.`
 
     return [intro, supportText].filter(Boolean).join(' ')
   }
@@ -1644,13 +1646,13 @@ const buildAiOptionNarrative = (
   if (index === 1) {
     const intro = mainReasons.length
       ? `Esta continua muito forte para o caso, principalmente por ${mainReasons.join(' e ').toLowerCase()}.`
-      : `Esta continua muito coerente com a necessidade principal e funciona como segunda opção segura.`
+      : `Esta continua muito coerente com a necessidade principal e funciona como segunda opÃ§Ã£o segura.`
 
     const priceHint =
       referenceOption && option.finalPrice !== referenceOption.finalPrice
         ? option.finalPrice > referenceOption.finalPrice
-          ? `Ela sobe um pouco o investimento para buscar outra configuração dentro da mesma direção clínica.`
-          : `Ela reduz um pouco o investimento sem sair da mesma direção clínica.`
+          ? `Ela sobe um pouco o investimento para buscar outra configuraÃ§Ã£o dentro da mesma direÃ§Ã£o clÃ­nica.`
+          : `Ela reduz um pouco o investimento sem sair da mesma direÃ§Ã£o clÃ­nica.`
         : ''
 
     return [intro, priceHint, supportText].filter(Boolean).join(' ')
@@ -1659,23 +1661,23 @@ const buildAiOptionNarrative = (
   const topCategory = referenceOption ? getClinicalCategoryLabel(referenceOption.clinicalCategory) : null
   const categoryShift =
     referenceOption && option.clinicalCategory !== referenceOption.clinicalCategory
-      ? `Ela não cobre de forma tão direta a necessidade principal de ${topCategory}, mas entra como alternativa plausível se a conversa pender para ${categoryLabel}.`
-      : `Ela abre uma alternativa comercial sem fugir totalmente do raciocínio principal do caso.`
+      ? `Ela nÃ£o cobre de forma tÃ£o direta a necessidade principal de ${topCategory}, mas entra como alternativa plausÃ­vel se a conversa pender para ${categoryLabel}.`
+      : `Ela abre uma alternativa comercial sem fugir totalmente do raciocÃ­nio principal do caso.`
 
   let priceTradeoff = ''
   if (referenceOption) {
     if (option.finalPrice < referenceOption.finalPrice) {
-      priceTradeoff = `Aqui existe uma troca em favor de preço, ficando em ${priceFormatter.format(option.finalPrice)}.`
+      priceTradeoff = `Aqui existe uma troca em favor de preÃ§o, ficando em ${priceFormatter.format(option.finalPrice)}.`
     } else if (option.finalPrice > referenceOption.finalPrice) {
       priceTradeoff = `Aqui existe uma troca em favor de outra proposta de valor, subindo para ${priceFormatter.format(option.finalPrice)}.`
     }
   }
 
   const whyWorthItParts: string[] = []
-  if (hasResistance) whyWorthItParts.push('maior resistência')
-  if (hasThinness) whyWorthItParts.push('lente mais fina/estética')
-  if (hasTransitions) whyWorthItParts.push('fotossensível para conforto no sol')
-  if (hasBlueUv) whyWorthItParts.push('proteção de luz azul')
+  if (hasResistance) whyWorthItParts.push('maior resistÃªncia')
+  if (hasThinness) whyWorthItParts.push('lente mais fina/estÃ©tica')
+  if (hasTransitions) whyWorthItParts.push('fotossensÃ­vel para conforto no sol')
+  if (hasBlueUv) whyWorthItParts.push('proteÃ§Ã£o de luz azul')
   if (hasAntirreflexo) whyWorthItParts.push('antirreflexo de melhor qualidade')
   const whyWorthIt = whyWorthItParts.length
     ? `Ela vale o investimento adicional por ${whyWorthItParts.join(', ')}.`
@@ -1697,8 +1699,7 @@ const getSalesAssistOptionText = (
 
   return [
     argument.headline,
-    argument.whyThisLens,
-    argument.sellerArgument,
+    argument.sellerArgument || argument.whyThisLens,
     argument.tradeoff ? `Trade-off: ${argument.tradeoff}` : null,
     argument.closingLine,
   ].filter(Boolean).join('\n\n')
@@ -1757,7 +1758,7 @@ const buildAiCommercialSummary = (option: RecommendationOption) => {
   const explanation = option.treatmentExplainWhy || option.commercialSummary || option.recommendationNotes || ''
   const reasons = option.reasons.slice(0, 3).map(humanizeRecommendationReason).join(', ')
   return [
-    `${buildAiRecommendationLabel(option)} — ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(option.finalPrice)}`,
+    `${buildAiRecommendationLabel(option)} â€” ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(option.finalPrice)}`,
     explanation,
     reasons ? `Motivos considerados: ${reasons}.` : ''
   ]
@@ -1779,7 +1780,7 @@ const buildQuickRetentionReply = (params: {
   const alternativeOption = getTopAlternativeOption(recommendations)
   const priceFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
 
-  const topLabel = topOption ? buildAiRecommendationLabel(topOption) : 'a configuração principal'
+  const topLabel = topOption ? buildAiRecommendationLabel(topOption) : 'a configuraÃ§Ã£o principal'
   const topPrice = topOption ? priceFormatter.format(topOption.finalPrice) : null
   const altIsDifferent = alternativeOption && alternativeOption.configKey !== topOption?.configKey
   const altLabel = altIsDifferent ? buildAiRecommendationLabel(alternativeOption) : null
@@ -1788,21 +1789,21 @@ const buildQuickRetentionReply = (params: {
     activeCatalog?.laboratorio ||
     (activeCatalogs && activeCatalogs.length
       ? activeCatalogs.map((catalog) => catalog.laboratorio).join(' + ')
-      : 'os catálogos ativos da loja')
+      : 'os catÃ¡logos ativos da loja')
 
   if (intent === 'pesquisar') {
-    return `Sem problema. Antes de sair para pesquisar, vale te mostrar por que eu separei ${topLabel}${topPrice ? ` por ${topPrice}` : ''}: ela conversa diretamente com o que você me contou e já está dentro do que temos hoje em ${labName}. Se quiser, eu também posso te mostrar agora uma segunda comparação lado a lado${altLabel ? `, incluindo ${altLabel}${altPrice ? ` por ${altPrice}` : ''}` : ''}, para você decidir com mais segurança sem precisar ir embora na dúvida.`
+    return `Sem problema. Antes de sair para pesquisar, vale te mostrar por que eu separei ${topLabel}${topPrice ? ` por ${topPrice}` : ''}: ela conversa diretamente com o que vocÃª me contou e jÃ¡ estÃ¡ dentro do que temos hoje em ${labName}. Se quiser, eu tambÃ©m posso te mostrar agora uma segunda comparaÃ§Ã£o lado a lado${altLabel ? `, incluindo ${altLabel}${altPrice ? ` por ${altPrice}` : ''}` : ''}, para vocÃª decidir com mais seguranÃ§a sem precisar ir embora na dÃºvida.`
   }
 
   if (intent === 'pensar') {
-    return `Claro, você pode pensar com calma. Antes disso, deixa eu te resumir em uma frase: a opção que fez mais sentido para o seu caso foi ${topLabel}${topPrice ? ` por ${topPrice}` : ''} porque ela resolve melhor a necessidade principal sem eu te empurrar algo aleatório. Se preferir, eu também posso te deixar uma alternativa mais equilibrada${altLabel ? `, como ${altLabel}${altPrice ? ` por ${altPrice}` : ''}` : ''}, para você comparar com tranquilidade.`
+    return `Claro, vocÃª pode pensar com calma. Antes disso, deixa eu te resumir em uma frase: a opÃ§Ã£o que fez mais sentido para o seu caso foi ${topLabel}${topPrice ? ` por ${topPrice}` : ''} porque ela resolve melhor a necessidade principal sem eu te empurrar algo aleatÃ³rio. Se preferir, eu tambÃ©m posso te deixar uma alternativa mais equilibrada${altLabel ? `, como ${altLabel}${altPrice ? ` por ${altPrice}` : ''}` : ''}, para vocÃª comparar com tranquilidade.`
   }
 
   if (intent === 'armacoes') {
-    return `Sem problema com a armação, isso a gente consegue contornar aqui na loja. O importante é que a lente indicada para o seu caso continua sendo ${topLabel}${topPrice ? ` por ${topPrice}` : ''}; a armação eu posso trocar por outro estilo sem perder essa base técnica. Se quiser, eu já separo outras opções de armação com perfil diferente e mantenho a lente que realmente faz sentido para você.`
+    return `Sem problema com a armaÃ§Ã£o, isso a gente consegue contornar aqui na loja. O importante Ã© que a lente indicada para o seu caso continua sendo ${topLabel}${topPrice ? ` por ${topPrice}` : ''}; a armaÃ§Ã£o eu posso trocar por outro estilo sem perder essa base tÃ©cnica. Se quiser, eu jÃ¡ separo outras opÃ§Ãµes de armaÃ§Ã£o com perfil diferente e mantenho a lente que realmente faz sentido para vocÃª.`
   }
 
-  return `Entendo. Se você encontrou preço melhor na concorrência, vale comparar não só o valor, mas o que está entrando na configuração. Eu cheguei em ${topLabel}${topPrice ? ` por ${topPrice}` : ''} porque ela conversa melhor com o seu caso dentro do que temos hoje em ${labName}. Se a questão for orçamento, eu consigo te mostrar uma alternativa mais defensável sem desmontar a recomendação${altLabel ? `, como ${altLabel}${altPrice ? ` por ${altPrice}` : ''}` : ''}, para você comparar preço com mais justiça.`
+  return `Entendo. Se vocÃª encontrou preÃ§o melhor na concorrÃªncia, vale comparar nÃ£o sÃ³ o valor, mas o que estÃ¡ entrando na configuraÃ§Ã£o. Eu cheguei em ${topLabel}${topPrice ? ` por ${topPrice}` : ''} porque ela conversa melhor com o seu caso dentro do que temos hoje em ${labName}. Se a questÃ£o for orÃ§amento, eu consigo te mostrar uma alternativa mais defensÃ¡vel sem desmontar a recomendaÃ§Ã£o${altLabel ? `, como ${altLabel}${altPrice ? ` por ${altPrice}` : ''}` : ''}, para vocÃª comparar preÃ§o com mais justiÃ§a.`
 }
 
 const buildAiOptionDetails = (option: RecommendationOption) => {
@@ -1810,8 +1811,8 @@ const buildAiOptionDetails = (option: RecommendationOption) => {
   const reasons = getUniqueHumanizedReasons(option.reasons, 4)
 
   return [
-    supportText ? `Contexto da configuração:\n${supportText}` : '',
-    reasons.length ? `Critérios considerados:\n${reasons.map((reason) => `• ${reason}`).join('\n')}` : ''
+    supportText ? `Contexto da configuraÃ§Ã£o:\n${supportText}` : '',
+    reasons.length ? `CritÃ©rios considerados:\n${reasons.map((reason) => `â€¢ ${reason}`).join('\n')}` : ''
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -1826,7 +1827,7 @@ function AiOptionInfoButton({ option }: { option: RecommendationOption }) {
       <button
         type="button"
         className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/20 text-slate-300 transition-colors hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-100"
-        aria-label="Ver detalhes da recomendação"
+        aria-label="Ver detalhes da recomendaÃ§Ã£o"
       >
         <CircleHelp className="h-4 w-4" />
       </button>
@@ -1851,63 +1852,63 @@ const humanizeRecommendationReason = (reason: string) => {
   const value = rawValue.replace(/_/g, ' ')
 
   const labelsByValue: Record<string, string> = {
-    multifocal: 'Categoria clínica multifocal',
-    bifocal: 'Categoria clínica bifocal',
-    visao_simples: 'Categoria clínica visão simples',
-    ocupacional: 'Categoria clínica ocupacional',
-    controle_miopia: 'Categoria clínica de controle de miopia',
-    plana_solar: 'Categoria clínica solar',
+    multifocal: 'Categoria clÃ­nica multifocal',
+    bifocal: 'Categoria clÃ­nica bifocal',
+    visao_simples: 'Categoria clÃ­nica visÃ£o simples',
+    ocupacional: 'Categoria clÃ­nica ocupacional',
+    controle_miopia: 'Categoria clÃ­nica de controle de miopia',
+    plana_solar: 'Categoria clÃ­nica solar',
     dirigir: 'Rotina com bastante tempo ao volante',
-    dirigir_noite: 'Queixa de direção noturna',
+    dirigir_noite: 'Queixa de direÃ§Ã£o noturna',
     computador: 'Rotina intensa de computador',
     celular: 'Uso frequente de celular',
-    sol: 'Exposição solar relevante',
-    crianca_ativa: 'Criança muito ativa',
+    sol: 'ExposiÃ§Ã£o solar relevante',
+    crianca_ativa: 'CrianÃ§a muito ativa',
     risco_quebra: 'Risco frequente de quebra',
-    adaptacao_rapida: 'Busca adaptação mais fácil',
+    adaptacao_rapida: 'Busca adaptaÃ§Ã£o mais fÃ¡cil',
     conforto_visual: 'Busca mais conforto visual',
     conforto_luz: 'Busca mais conforto com claridade',
     resistencia: 'Busca material mais resistente',
-    indice_alto_pouco_ganho: 'Índice alto com ganho mínimo para este grau',
-    indice_baixo_grau_alto: 'Índice baixo para um grau que pede lente mais fina',
-    custo_beneficio: 'Busca melhor custo-benefício',
-    transitions: 'Preferência por Transitions',
-    blue_uv: 'Preferência por proteção Blue UV',
-    resistente: 'Configuração com material mais resistente',
+    indice_alto_pouco_ganho: 'Ãndice alto com ganho mÃ­nimo para este grau',
+    indice_baixo_grau_alto: 'Ãndice baixo para um grau que pede lente mais fina',
+    custo_beneficio: 'Busca melhor custo-benefÃ­cio',
+    transitions: 'PreferÃªncia por Transitions',
+    blue_uv: 'PreferÃªncia por proteÃ§Ã£o Blue UV',
+    resistente: 'ConfiguraÃ§Ã£o com material mais resistente',
   }
 
   if (reason === 'categoria:mista_sem_oferta_definida') {
-    return 'Família mista com oferta específica compatível'
+    return 'FamÃ­lia mista com oferta especÃ­fica compatÃ­vel'
   }
 
   if (reason === 'oferta_atomica') return 'Oferta pronta'
-  if (reason === 'inclui_tratamento') return 'Configuração já inclui tratamento'
+  if (reason === 'inclui_tratamento') return 'ConfiguraÃ§Ã£o jÃ¡ inclui tratamento'
   if (reason === 'tratamento:antirreflexo') return 'Tratamento antirreflexo'
-  if (reason === 'tratamento:conforto_telas') return 'Tratamento favorável para telas'
-  if (reason === 'tratamento:dirigir_noite') return 'Tratamento favorável para direção noturna'
-  if (reason === 'tratamento:outdoor') return 'Tratamento favorável para uso externo'
-  if (reason === 'opcao:alternativa_plausivel') return 'Alternativa plausível para ampliar a conversa'
-  if (reason === 'opcao:salto_preco_controlado') return 'Alternativa com salto de preço controlado'
-  if (reason === 'material:indice_alto_pouco_ganho') return 'Índice alto com ganho pequeno neste grau'
-  if (reason === 'material:indice_baixo_grau_alto') return 'Índice baixo para grau alto'
+  if (reason === 'tratamento:conforto_telas') return 'Tratamento favorÃ¡vel para telas'
+  if (reason === 'tratamento:dirigir_noite') return 'Tratamento favorÃ¡vel para direÃ§Ã£o noturna'
+  if (reason === 'tratamento:outdoor') return 'Tratamento favorÃ¡vel para uso externo'
+  if (reason === 'opcao:alternativa_plausivel') return 'Alternativa plausÃ­vel para ampliar a conversa'
+  if (reason === 'opcao:salto_preco_controlado') return 'Alternativa com salto de preÃ§o controlado'
+  if (reason === 'material:indice_alto_pouco_ganho') return 'Ãndice alto com ganho pequeno neste grau'
+  if (reason === 'material:indice_baixo_grau_alto') return 'Ãndice baixo para grau alto'
 
   if (type === 'categoria' && rawValue === 'controle_miopia') {
-    return 'Categoria clínica de controle de miopia'
+    return 'Categoria clÃ­nica de controle de miopia'
   }
   if ((type === 'beneficio' || type === 'uso') && rawValue === 'controle_miopia') {
-    return 'Sinal de progressão rápida do grau'
+    return 'Sinal de progressÃ£o rÃ¡pida do grau'
   }
 
   if (type === 'orcamento') {
-    return `Faixa de orçamento ${value}`
+    return `Faixa de orÃ§amento ${value}`
   }
 
   if (type === 'alvo_preco') {
-    return `Preço próximo do alvo informado`
+    return `PreÃ§o prÃ³ximo do alvo informado`
   }
 
   if (type === 'tratamento_orcamento') {
-    return `Tratamento com nível de preço ${value}`
+    return `Tratamento com nÃ­vel de preÃ§o ${value}`
   }
 
   if (type === 'tratamento_uso') {
@@ -1915,7 +1916,7 @@ const humanizeRecommendationReason = (reason: string) => {
   }
 
   if (type === 'tratamento_beneficio') {
-    return `Tratamento alinhado ao benefício: ${labelsByValue[rawValue] || value}`
+    return `Tratamento alinhado ao benefÃ­cio: ${labelsByValue[rawValue] || value}`
   }
 
   if (type === 'categoria' || type === 'uso' || type === 'beneficio' || type === 'feature' || type === 'material') {
@@ -1972,14 +1973,14 @@ const buildComparisonText = (
     .join(', ')
 
   if (level === 'forte') {
-    return 'A IA chegou a uma direção muito parecida com a sugestão do iVision. A diferença está mais na configuração comercial, no tratamento ou no preço final do que no desenho principal da lente.'
+    return 'A IA chegou a uma direÃ§Ã£o muito parecida com a sugestÃ£o do iVision. A diferenÃ§a estÃ¡ mais na configuraÃ§Ã£o comercial, no tratamento ou no preÃ§o final do que no desenho principal da lente.'
   }
 
   if (level === 'parcial') {
-    return `A IA manteve a mesma direção clínica geral do iVision, mas ajustou a configuração para refletir melhor o caso atual em preço final, tratamento e conforto de uso. ${humanReasons ? `Ela priorizou especialmente: ${humanReasons}.` : ''}`.trim()
+    return `A IA manteve a mesma direÃ§Ã£o clÃ­nica geral do iVision, mas ajustou a configuraÃ§Ã£o para refletir melhor o caso atual em preÃ§o final, tratamento e conforto de uso. ${humanReasons ? `Ela priorizou especialmente: ${humanReasons}.` : ''}`.trim()
   }
 
-  return `A IA considerou sinais adicionais do caso, como rotina, adaptação, faixa de preço e features desejadas, e por isso priorizou uma combinação diferente da sugerida pelo iVision. ${humanReasons ? `Os critérios mais fortes foram: ${humanReasons}.` : ''}`.trim()
+  return `A IA considerou sinais adicionais do caso, como rotina, adaptaÃ§Ã£o, faixa de preÃ§o e features desejadas, e por isso priorizou uma combinaÃ§Ã£o diferente da sugerida pelo iVision. ${humanReasons ? `Os critÃ©rios mais fortes foram: ${humanReasons}.` : ''}`.trim()
 }
 
 const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>): RecommendationCaseInput => {
@@ -2020,7 +2021,7 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>):
     objetivoTags.push('adaptacao_critica')
   }
 
-  // Histórico de trocas com dificuldade alta = caso crítico de adaptação
+  // HistÃ³rico de trocas com dificuldade alta = caso crÃ­tico de adaptaÃ§Ã£o
   const historicoComFalha = ['uma', 'duas', 'mais_de_duas'].includes(form.historicoTrocasRecentes)
   if (form.dificuldadeAdaptacao === 'alta' && historicoComFalha) {
     desiredBenefits.push('adaptacao_rapida', 'conforto_visual')
@@ -2034,7 +2035,7 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>):
 
   if (form.queixaSensibilidadeLuz === 'sim') {
     desiredBenefits.push('conforto_luz')
-    // só sugere transitions se o paciente não recusou explicitamente
+    // sÃ³ sugere transitions se o paciente nÃ£o recusou explicitamente
     if (form.prefereTransitions !== 'nao') {
       preferredFeatures.push('transitions')
     }
@@ -2473,7 +2474,7 @@ export default function EvaluationInterface({
 
   
   const handleSelectEvaluation = (ev: OpticalEvaluationListItem) => {
-    // Restaurar estado da avaliação
+    // Restaurar estado da avaliaÃ§Ã£o
     setCurrentEvaluationId(ev.id)
     setSyncStatus('saved')
     
@@ -2594,12 +2595,12 @@ export default function EvaluationInterface({
 
   const generateManualSuggestionResult = (): SuggestionGenerationResult => {
     if (!hasAnyDegreeData(form)) {
-      setFormError('Preencha pelo menos os campos principais do grau antes de gerar a sugestão.')
+      setFormError('Preencha pelo menos os campos principais do grau antes de gerar a sugestÃ£o.')
       return { success: false }
     }
 
     if (!form.ageYears && !hasAnyLifestyleData(form) && !form.receitaAdicao && !hasAnyComplaintData(form)) {
-      setFormError('Informe idade, adição, estilo de vida ou alguma queixa do cliente para gerar a sugestão.')
+      setFormError('Informe idade, adiÃ§Ã£o, estilo de vida ou alguma queixa do cliente para gerar a sugestÃ£o.')
       return { success: false }
     }
 
@@ -2622,7 +2623,7 @@ export default function EvaluationInterface({
     const result = generateManualSuggestionResult()
     if (!result.success) return
 
-    applyManualSuggestion(result.suggestion, 'Sugestão comercial gerada com base nas regras da avaliação manual.')
+    applyManualSuggestion(result.suggestion, 'SugestÃ£o comercial gerada com base nas regras da avaliaÃ§Ã£o manual.')
   }
 
   const fallbackToSystemSuggestion = () => {
@@ -2638,8 +2639,8 @@ export default function EvaluationInterface({
     setLensAudit(null)
     setLensAuditPayload(null)
     setLensSalesAssist(null)
-    setAiFeedback('Sugestão comercial gerada com base nos dados da avaliação.')
-    applyManualSuggestion(result.suggestion, 'Sugestão comercial gerada com base nos dados da avaliação.')
+    setAiFeedback('SugestÃ£o comercial gerada com base nos dados da avaliaÃ§Ã£o.')
+    applyManualSuggestion(result.suggestion, 'SugestÃ£o comercial gerada com base nos dados da avaliaÃ§Ã£o.')
     return true
   }
 
@@ -2655,7 +2656,7 @@ export default function EvaluationInterface({
     }
 
     if (aiCaseInput.esferico === null) {
-      setFormError('Preencha pelo menos o esférico para a IA recomendar. Cilíndrico e eixo são opcionais.')
+      setFormError('Preencha pelo menos o esfÃ©rico para a IA recomendar. CilÃ­ndrico e eixo sÃ£o opcionais.')
       return
     }
 
@@ -2709,11 +2710,11 @@ export default function EvaluationInterface({
       setManualSuggestion(null)
       setAiFeedback(
         technicalTriage
-          ? 'Triagem técnica e sugestão por IA geradas com base no catálogo ativo da loja.'
-          : 'Sugestão por IA gerada com base no catálogo ativo da loja.'
+          ? 'Triagem e sugestÃµes geradas.'
+          : 'SugestÃµes geradas.'
       )
 
-      // Auditoria Gemini assíncrona (não bloqueia o ranking)
+      // Auditoria Gemini assÃ­ncrona (nÃ£o bloqueia o ranking)
       if (payload.recommendations.length > 0) {
         setLensAudit(null)
         setLensSalesAssist(null)
@@ -2775,7 +2776,7 @@ export default function EvaluationInterface({
       setLensSalesAssist(null)
       setSyncStatus(evaluationIdRef.current ? 'saved' : 'idle')
       setManualSuggestion(null)
-      setAiFeedback(`Sugestão refinada para: "${currentInput}"`)
+      setAiFeedback(`SugestÃ£o refinada para: "${currentInput}"`)
     })
   }
 
@@ -2790,11 +2791,11 @@ export default function EvaluationInterface({
         activeCatalogs,
       })
     )
-    setAiFeedback('Resposta rápida gerada para ajudar o consultor a segurar o cliente na loja.')
+    setAiFeedback('Resposta rÃ¡pida gerada para ajudar o consultor a segurar o cliente na loja.')
 
     if (evaluationId && storeId) {
       updateEvaluationPanicReason(evaluationId, storeId, intent).catch(() => {
-        // silencioso — não bloqueia o fluxo do consultor
+        // silencioso â€” nÃ£o bloqueia o fluxo do consultor
       })
     }
   }
@@ -2807,7 +2808,7 @@ export default function EvaluationInterface({
         getSalesAssistOptionText(option, lensSalesAssist) ||
         buildAiCommercialSummary(option)
     }))
-    setFeedback('Sugestão da IA aplicada aos campos comerciais. Revise antes de salvar.')
+    setFeedback('SugestÃ£o da IA aplicada aos campos comerciais. Revise antes de salvar.')
     setFormError(null)
   }
 
@@ -2829,7 +2830,7 @@ export default function EvaluationInterface({
       return
     }
     if (!form.sourceUrl.trim()) {
-      setFormError('Cole primeiro o link do PDF do iVision para iniciar a importação.')
+      setFormError('Cole primeiro o link do PDF do iVision para iniciar a importaÃ§Ã£o.')
       return
     }
 
@@ -2850,7 +2851,7 @@ export default function EvaluationInterface({
         const result = await response.json() as ImportPreviewResponse
 
         if (!response.ok || !result.success || !result.data) {
-          setFormError(result.message || 'Não foi possível importar o PDF do iVision.')
+          setFormError(result.message || 'NÃ£o foi possÃ­vel importar o PDF do iVision.')
           return
         }
         const preview = result.data
@@ -2917,7 +2918,7 @@ export default function EvaluationInterface({
       return
     }
     if (!authenticatedEmployee) {
-      setFormError('Consultor não identificado. Impossível criar venda diretamente.')
+      setFormError('Consultor nÃ£o identificado. ImpossÃ­vel criar venda diretamente.')
       return
     }
 
@@ -2933,7 +2934,7 @@ export default function EvaluationInterface({
          }
          router.push(`/dashboard/loja/${storeId}/vendas/${result.data.id}/experimental?evaluation_id=${evaluationId || ''}`)
       } else {
-         setFormError(result.message || 'Erro ao converter avaliação em Venda.')
+         setFormError(result.message || 'Erro ao converter avaliaÃ§Ã£o em Venda.')
       }
     })
   }
@@ -3101,7 +3102,7 @@ export default function EvaluationInterface({
 
   // CRM Auto-save
   useEffect(() => {
-    // Só salva automaticamente se tiver paciente escolhido E funcionário autenticado
+    // SÃ³ salva automaticamente se tiver paciente escolhido E funcionÃ¡rio autenticado
     if (!isSubjectChosen || !authenticatedEmployee) {
       return
     }
@@ -3228,8 +3229,8 @@ export default function EvaluationInterface({
             hasAuthenticatedRef.current = true
             setAuthenticatedEmployee(emp)
           }}
-          title="Assinatura de Avaliação"
-          description="Acesso restrito. Insira o seu PIN de consultor para assumir a titularidade desta avaliação."
+          title="Assinatura de AvaliaÃ§Ã£o"
+          description="Acesso restrito. Insira o seu PIN de consultor para assumir a titularidade desta avaliaÃ§Ã£o."
         />
       </div>
     )
@@ -3260,10 +3261,10 @@ export default function EvaluationInterface({
               <div>
                 <h1 className="flex items-center gap-2 text-lg font-black uppercase tracking-tight text-white">
                   <Sparkles className="h-5 w-5 text-indigo-300" />
-                  Avaliação
+                  AvaliaÃ§Ã£o
                 </h1>
                 <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-300/80">
-                  Pré-venda e histórico individual
+                  PrÃ©-venda e histÃ³rico individual
                 </p>
               </div>
             </div>
@@ -3279,7 +3280,7 @@ export default function EvaluationInterface({
 
           <div className="border-b border-white/10 p-4 space-y-4">
             <div>
-              <label className={labelStyle}>Titular / Responsável</label>
+              <label className={labelStyle}>Titular / ResponsÃ¡vel</label>
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
                 <input
@@ -3351,10 +3352,10 @@ export default function EvaluationInterface({
             {selectedCustomer && (
               <>
                 <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300">Responsável</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300">ResponsÃ¡vel</p>
                   <p className="mt-2 text-lg font-black text-white">{selectedCustomer.full_name}</p>
                   <p className="mt-1 text-xs font-bold text-slate-400">
-                    {selectedCustomer.cpf || 'Sem CPF'} â€¢ {selectedCustomer.fone_movel || 'Sem telefone'}
+                    {selectedCustomer.cpf || 'Sem CPF'} Ã¢â‚¬Â¢ {selectedCustomer.fone_movel || 'Sem telefone'}
                   </p>
                 </div>
 
@@ -3413,21 +3414,21 @@ export default function EvaluationInterface({
           <div className="flex-1 overflow-y-auto p-4">
             <div className="mb-3 flex items-center gap-2">
               <History className="h-4 w-4 text-indigo-300" />
-              <h2 className="text-xs font-black uppercase tracking-[0.2em] text-indigo-300">Histórico</h2>
+              <h2 className="text-xs font-black uppercase tracking-[0.2em] text-indigo-300">HistÃ³rico</h2>
               {isLoadingHistory && <Loader2 className="h-4 w-4 animate-spin text-indigo-300" />}
             </div>
 
             {!selectedCustomer ? (
               <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-center text-sm text-slate-500">
-                Selecione um responsável e um paciente para ver o histórico de avaliações.
+                Selecione um responsÃ¡vel e um paciente para ver o histÃ³rico de avaliaÃ§Ãµes.
               </div>
             ) : !isSubjectChosen ? (
               <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-center text-sm text-slate-500">
-                Escolha primeiro o paciente avaliado para liberar o histórico individual.
+                Escolha primeiro o paciente avaliado para liberar o histÃ³rico individual.
               </div>
             ) : history.length === 0 ? (
               <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-center text-sm text-slate-500">
-                Nenhuma avaliação encontrada para {selectedSubjectLabel}.
+                Nenhuma avaliaÃ§Ã£o encontrada para {selectedSubjectLabel}.
               </div>
             ) : (
               <div className="space-y-3">
@@ -3436,13 +3437,13 @@ export default function EvaluationInterface({
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
-                          {new Date(item.created_at).toLocaleDateString('pt-BR')} â€¢ {item.source_system}
+                          {new Date(item.created_at).toLocaleDateString('pt-BR')} Ã¢â‚¬Â¢ {item.source_system}
                         </p>
                         <p className="mt-1 text-sm font-black text-white">
                           {item.evaluated_patient_name || item.patient_name_raw || 'Paciente'}
                         </p>
                         <p className="mt-1 text-xs font-bold text-slate-400">
-                          OS {item.source_os_number || 'N/A'} â€¢ {item.source_exam_type || 'Avaliação'}
+                          OS {item.source_os_number || 'N/A'} Ã¢â‚¬Â¢ {item.source_exam_type || 'AvaliaÃ§Ã£o'}
                         </p>
                       </div>
                       {item.source_document_url && (
@@ -3466,8 +3467,8 @@ export default function EvaluationInterface({
                     </div>
                     {(item.receita_adicao || item.recommended_lens_name) && (
                       <div className="mt-2 text-xs text-slate-400">
-                        {item.receita_adicao && <span className="mr-3 font-bold text-emerald-300">Adição {formatDegreeDisplay(item.receita_adicao)}</span>}
-                        {item.recommended_lens_name && <span>Sugestão: {item.recommended_lens_name}</span>}
+                        {item.receita_adicao && <span className="mr-3 font-bold text-emerald-300">AdiÃ§Ã£o {formatDegreeDisplay(item.receita_adicao)}</span>}
+                        {item.recommended_lens_name && <span>SugestÃ£o: {item.recommended_lens_name}</span>}
                       </div>
                     )}
                   </div>
@@ -3479,9 +3480,9 @@ export default function EvaluationInterface({
 
         <div className="flex-1 overflow-hidden rounded-2xl border border-white/10 bg-slate-900/40 backdrop-blur-xl shadow-xl">
           <div className="border-b border-white/10 bg-slate-900/60 px-6 py-4">
-            <h2 className="text-lg font-black uppercase tracking-tight text-white">Nova Avaliação</h2>
+            <h2 className="text-lg font-black uppercase tracking-tight text-white">Nova AvaliaÃ§Ã£o</h2>
             <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-300">
-              Importação iVision ou preenchimento manual
+              ImportaÃ§Ã£o iVision ou preenchimento manual
             </p>
           </div>
 
@@ -3493,7 +3494,7 @@ export default function EvaluationInterface({
                 onSelectEvaluation={handleSelectEvaluation}
                 isLoading={isLoadingDashboard}
                 title="Pacientes Recentes"
-                subtitle="Clique para retomar ou iniciar nova avaliação"
+                subtitle="Clique para retomar ou iniciar nova avaliaÃ§Ã£o"
               />
             ) : !isSubjectChosen ? (
               <div className="flex min-h-[420px] items-center justify-center">
@@ -3505,12 +3506,12 @@ export default function EvaluationInterface({
                     Escolha o Paciente Avaliado
                   </h3>
                   <p className="mt-3 text-sm leading-6 text-slate-400">
-                    Depois de selecionar o titular, escolha quem foi avaliado na coluna à esquerda. Só então a nova avaliação será aberta.
+                    Depois de selecionar o titular, escolha quem foi avaliado na coluna Ã  esquerda. SÃ³ entÃ£o a nova avaliaÃ§Ã£o serÃ¡ aberta.
                   </p>
                 </div>
               </div>
             ) : (
-              <div className="mx-auto max-w-5xl space-y-5">
+              <div className="mx-auto max-w-5xl space-y-5 pb-28">
                 {formError && (
                   <div className="flex items-center gap-2 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-300">
                     <AlertTriangle className="h-4 w-4" /> {formError}
@@ -3522,10 +3523,11 @@ export default function EvaluationInterface({
                   </div>
                 )}
 
-                {/* TEST PROFILES - REMOVE EASILY BY DELETING THIS BLOCK */}
+                {/* Demo profiles preserved for internal calibration (`demo_quick_fill_profiles`). */}
+                {SHOW_LENS_DEMO_QUICK_FILL && (
                 <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/5 bg-white/5 p-4 mb-5">
                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-                    Preenchimento Rápido (DEMO):
+                    Preenchimento RÃ¡pido (DEMO):
                   </span>
                   <button
                     type="button"
@@ -3662,13 +3664,14 @@ export default function EvaluationInterface({
                     onClick={() => {
                       setForm(createEmptyForm())
                       setFormError(null)
-                      setFeedback('Formulário limpo com sucesso!')
+                      setFeedback('FormulÃ¡rio limpo com sucesso!')
                     }}
                     className="ml-auto inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 transition-all hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
                   >
                     <Trash2 className="h-3.5 w-3.5" /> Limpar Tudo
                   </button>
                 </div>
+                )}
 
                 <div className={`${cardStyle} p-5`}>
                   <div className="mb-4 flex items-center justify-between gap-4">
@@ -3797,7 +3800,7 @@ export default function EvaluationInterface({
                       <input type="number" min="0" value={form.estiloVidaUsoCelularHoras} onChange={(e) => handleFormChange('estiloVidaUsoCelularHoras', e.target.value)} className={inputStyle} />
                     </div>
                     <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Exposição ao Sol (h)</label>
+                      <label className={labelStyle}>ExposiÃ§Ã£o ao Sol (h)</label>
                       <input type="number" min="0" value={form.estiloVidaExposicaoSolHoras} onChange={(e) => handleFormChange('estiloVidaExposicaoSolHoras', e.target.value)} className={inputStyle} />
                     </div>
                     <div className="col-span-12 md:col-span-3">
@@ -3820,10 +3823,10 @@ export default function EvaluationInterface({
                     Queixas e Prioridades
                   </h3>
                   <div className="grid grid-cols-12 gap-4">
-                    {/* SUBSECTION 1: HISTÃ“RICO E Ã“CULOS ATUAL */}
+                    {/* SUBSECTION 1: HISTÃƒâ€œRICO E Ãƒâ€œCULOS ATUAL */}
                     <div className="col-span-12">
                       <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 pb-2 border-b border-white/5">
-                        Histórico e Ã“culos Atual
+                        HistÃ³rico e Ãƒâ€œculos Atual
                       </h4>
                     </div>
                     <div className="col-span-12 md:col-span-4">
@@ -3842,8 +3845,8 @@ export default function EvaluationInterface({
                         onChange={(e) => handleFormChange('tipoLenteAtual', e.target.value)}
                         className={selectStyle}
                       >
-                        <option value="nao_informado">Não informado</option>
-                        <option value="visao_simples">Visão simples</option>
+                        <option value="nao_informado">NÃ£o informado</option>
+                        <option value="visao_simples">VisÃ£o simples</option>
                         <option value="multifocal">Multifocal / progressiva</option>
                         <option value="ocupacional">Ocupacional</option>
                         <option value="bifocal">Bifocal</option>
@@ -3851,14 +3854,14 @@ export default function EvaluationInterface({
                     </div>
                     {usedMultifocalBefore && !isChild && (
                       <div className="col-span-12 md:col-span-4">
-                        <label className={labelStyle}>Adaptação com lentes anteriores</label>
+                        <label className={labelStyle}>AdaptaÃ§Ã£o com lentes anteriores</label>
                         <select
                           value={form.dificuldadeAdaptacao}
                           onChange={(e) => handleFormChange('dificuldadeAdaptacao', e.target.value)}
                           className={selectStyle}
                         >
-                          <option value="nao_informado">Não informado</option>
-                          <option value="baixa">Boa adaptação</option>
+                          <option value="nao_informado">NÃ£o informado</option>
+                          <option value="baixa">Boa adaptaÃ§Ã£o</option>
                           <option value="media">Alguma dificuldade</option>
                           <option value="alta">Muita dificuldade</option>
                         </select>
@@ -3872,18 +3875,18 @@ export default function EvaluationInterface({
                           onChange={(e) => handleFormChange('historicoTrocasRecentes', e.target.value)}
                           className={selectStyle}
                         >
-                          <option value="nao_informado">Não informado</option>
+                          <option value="nao_informado">NÃ£o informado</option>
                           <option value="nenhuma">Nenhuma recente</option>
                           <option value="uma">Uma troca recente</option>
-                          <option value="mais_de_duas">Várias trocas / retrabalho</option>
+                          <option value="mais_de_duas">VÃ¡rias trocas / retrabalho</option>
                         </select>
                       </div>
                     )}
 
-                    {/* SUBSECTION 2: OBJETIVOS E PREFERÃŠNCIAS */}
+                    {/* SUBSECTION 2: OBJETIVOS E PREFERÃƒÅ NCIAS */}
                     <div className="col-span-12 mt-4">
                       <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 pb-2 border-b border-white/5">
-                        Objetivos e Preferências
+                        Objetivos e PreferÃªncias
                       </h4>
                     </div>
                     <div className="col-span-12 md:col-span-4">
@@ -3893,30 +3896,30 @@ export default function EvaluationInterface({
                         onChange={(e) => handleFormChange('prioridadePrincipal', e.target.value)}
                         className={selectStyle}
                       >
-                        <option value="equilibrio">Equilíbrio geral</option>
-                        <option value="economia">Melhor custo-benefício</option>
-                        <option value="adaptacao">Adaptação mais fácil</option>
-                        <option value="resistencia">Mais resistência</option>
+                        <option value="equilibrio">EquilÃ­brio geral</option>
+                        <option value="economia">Melhor custo-benefÃ­cio</option>
+                        <option value="adaptacao">AdaptaÃ§Ã£o mais fÃ¡cil</option>
+                        <option value="resistencia">Mais resistÃªncia</option>
                         <option value="controle_miopia">Controle de miopia</option>
                         <option value="premium">Desempenho premium</option>
                       </select>
                     </div>
                     <div className="col-span-12 md:col-span-4">
-                      <label className={labelStyle}>Principal incômodo atual</label>
+                      <label className={labelStyle}>Principal incÃ´modo atual</label>
                       <select
                         value={form.principalIncomodoAtual}
                         onChange={(e) => handleFormChange('principalIncomodoAtual', e.target.value)}
                         className={selectStyle}
                       >
-                        <option value="nao_informado">Não informado</option>
-                        <option value="nenhum">Nenhum específico</option>
-                        <option value="perto">Não enxerga bem de perto</option>
-                        <option value="longe">Não enxerga bem de longe</option>
-                        <option value="intermediario">Intermediário / computador</option>
+                        <option value="nao_informado">NÃ£o informado</option>
+                        <option value="nenhum">Nenhum especÃ­fico</option>
+                        <option value="perto">NÃ£o enxerga bem de perto</option>
+                        <option value="longe">NÃ£o enxerga bem de longe</option>
+                        <option value="intermediario">IntermediÃ¡rio / computador</option>
                         <option value="peso_espessura">Peso / espessura</option>
                         <option value="reflexo">Reflexo / brilho</option>
-                        <option value="adaptacao">Dificuldade de adaptação</option>
-                        <option value="preco">Preço</option>
+                        <option value="adaptacao">Dificuldade de adaptaÃ§Ã£o</option>
+                        <option value="preco">PreÃ§o</option>
                       </select>
                     </div>
                     <div className="col-span-12 md:col-span-4">
@@ -3926,17 +3929,17 @@ export default function EvaluationInterface({
                         onChange={(e) => handleFormChange('objetivoCompra', e.target.value)}
                         className={selectStyle}
                       >
-                        <option value="nao_informado">Não informado</option>
+                        <option value="nao_informado">NÃ£o informado</option>
                         <option value="primeira_multifocal">Primeira multifocal</option>
                         <option value="upgrade">Upgrade de lente</option>
-                        <option value="resolver_queixa">Resolver queixa específica</option>
+                        <option value="resolver_queixa">Resolver queixa especÃ­fica</option>
                         <option value="economizar">Economizar</option>
-                        <option value="trocar_marca">Trocar marca/laboratório</option>
-                        <option value="ocupacional_escritorio">Óculos para trabalho/escritório</option>
+                        <option value="trocar_marca">Trocar marca/laboratÃ³rio</option>
+                        <option value="ocupacional_escritorio">Ã“culos para trabalho/escritÃ³rio</option>
                       </select>
                     </div>
                     <div className="col-span-12 md:col-span-4">
-                      <label className={labelStyle}>Orçamento (R$)</label>
+                      <label className={labelStyle}>OrÃ§amento (R$)</label>
                       <input
                         value={form.budgetTarget}
                         onChange={(e) => handleFormChange('budgetTarget', e.target.value)}
@@ -3947,28 +3950,28 @@ export default function EvaluationInterface({
                       />
                     </div>
                     <div className="col-span-12 md:col-span-4">
-                      <label className={labelStyle}>Importância de estética/finura</label>
+                      <label className={labelStyle}>ImportÃ¢ncia de estÃ©tica/finura</label>
                       <select
                         value={form.importanciaEstetica}
                         onChange={(e) => handleFormChange('importanciaEstetica', e.target.value)}
                         className={selectStyle}
                       >
-                        <option value="nao_informado">Não informado</option>
+                        <option value="nao_informado">NÃ£o informado</option>
                         <option value="baixa">Baixa</option>
-                        <option value="media">Média</option>
+                        <option value="media">MÃ©dia</option>
                         <option value="alta">Alta</option>
                       </select>
                     </div>
                     <div className="col-span-12 md:col-span-4">
-                      <label className={labelStyle}>Importância de resistência</label>
+                      <label className={labelStyle}>ImportÃ¢ncia de resistÃªncia</label>
                       <select
                         value={form.importanciaResistencia}
                         onChange={(e) => handleFormChange('importanciaResistencia', e.target.value)}
                         className={selectStyle}
                       >
-                        <option value="nao_informado">Não informado</option>
+                        <option value="nao_informado">NÃ£o informado</option>
                         <option value="baixa">Baixa</option>
-                        <option value="media">Média</option>
+                        <option value="media">MÃ©dia</option>
                         <option value="alta">Alta</option>
                       </select>
                     </div>
@@ -3979,9 +3982,9 @@ export default function EvaluationInterface({
                         onChange={(e) => handleFormChange('prefereTransitions', e.target.value)}
                         className={selectStyle}
                       >
-                        <option value="nao_informado">Não informado</option>
+                        <option value="nao_informado">NÃ£o informado</option>
                         <option value="sim">Sim</option>
-                        <option value="nao">Não</option>
+                        <option value="nao">NÃ£o</option>
                       </select>
                     </div>
                     <div className="col-span-12 md:col-span-4">
@@ -3991,9 +3994,9 @@ export default function EvaluationInterface({
                         onChange={(e) => handleFormChange('prefereBlueUv', e.target.value)}
                         className={selectStyle}
                       >
-                        <option value="nao_informado">Não informado</option>
+                        <option value="nao_informado">NÃ£o informado</option>
                         <option value="sim">Sim</option>
-                        <option value="nao">Não</option>
+                        <option value="nao">NÃ£o</option>
                       </select>
                     </div>
 
@@ -4004,78 +4007,78 @@ export default function EvaluationInterface({
                       </h4>
                     </div>
                     <div className="col-span-12 md:col-span-4">
-                      <label className={labelStyle}>Dificuldade para dirigir à noite</label>
+                      <label className={labelStyle}>Dificuldade para dirigir Ã  noite</label>
                       <select
                         value={form.queixaDirigirNoite}
                         onChange={(e) => handleFormChange('queixaDirigirNoite', e.target.value)}
                         className={selectStyle}
                       >
-                        <option value="nao">Não</option>
+                        <option value="nao">NÃ£o</option>
                         <option value="sim">Sim</option>
                       </select>
                     </div>
                     <div className="col-span-12 md:col-span-4">
-                      <label className={labelStyle}>Sensibilidade à luz</label>
+                      <label className={labelStyle}>Sensibilidade Ã  luz</label>
                       <select
                         value={form.queixaSensibilidadeLuz}
                         onChange={(e) => handleFormChange('queixaSensibilidadeLuz', e.target.value)}
                         className={selectStyle}
                       >
-                        <option value="nao">Não</option>
+                        <option value="nao">NÃ£o</option>
                         <option value="sim">Sim</option>
                       </select>
                     </div>
                     <div className="col-span-12 md:col-span-4">
-                      <label className={labelStyle}>Quebra óculos com frequência</label>
+                      <label className={labelStyle}>Quebra Ã³culos com frequÃªncia</label>
                       <select
                         value={form.queixaQuebraOculos}
                         onChange={(e) => handleFormChange('queixaQuebraOculos', e.target.value)}
                         className={selectStyle}
                       >
-                        <option value="nao">Não</option>
+                        <option value="nao">NÃ£o</option>
                         <option value="sim">Sim</option>
                       </select>
                     </div>
                     {isChild && (
                       <div className="col-span-12 md:col-span-4">
-                        <label className={labelStyle}>Criança muito ativa</label>
+                        <label className={labelStyle}>CrianÃ§a muito ativa</label>
                         <select
                           value={form.queixaCriancaAtiva}
                           onChange={(e) => handleFormChange('queixaCriancaAtiva', e.target.value)}
                           className={selectStyle}
                         >
-                          <option value="nao">Não</option>
+                          <option value="nao">NÃ£o</option>
                           <option value="sim">Sim</option>
                         </select>
                       </div>
                     )}
                     {isChild && (
                       <div className="col-span-12 md:col-span-4">
-                        <label className={labelStyle}>Grau aumentando rápido</label>
+                        <label className={labelStyle}>Grau aumentando rÃ¡pido</label>
                         <select
                           value={form.queixaProgressaoRapida}
                           onChange={(e) => handleFormChange('queixaProgressaoRapida', e.target.value)}
                           className={selectStyle}
                         >
-                          <option value="nao">Não</option>
+                          <option value="nao">NÃ£o</option>
                           <option value="sim">Sim</option>
                         </select>
                       </div>
                     )}
 
-                    {/* SUBSECTION 4: OBSERVAÃ‡Ã•ES ADICIONAIS */}
+                    {/* SUBSECTION 4: OBSERVAÃƒâ€¡Ãƒâ€¢ES ADICIONAIS */}
                     <div className="col-span-12 mt-4">
                       <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 pb-2 border-b border-white/5">
-                        Observações Adicionais
+                        ObservaÃ§Ãµes Adicionais
                       </h4>
                     </div>
                     <div className="col-span-12">
-                      <label className={labelStyle}>Observações do consultor</label>
+                      <label className={labelStyle}>ObservaÃ§Ãµes do consultor</label>
                       <textarea
                         value={form.observacoesConsultor}
                         onChange={(e) => handleFormChange('observacoesConsultor', e.target.value)}
                         className="block min-h-[92px] w-full rounded-xl border border-white/20 bg-slate-900/60 shadow-inner text-slate-100 px-3 py-3 text-sm font-bold placeholder:font-normal placeholder:text-slate-500 outline-none focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all disabled:opacity-50"
-                        placeholder="Ex: cliente muito sensível a preço, já devolveu multifocal, quer lente mais fina, compara muito com concorrente..."
+                        placeholder="Ex: cliente muito sensÃ­vel a preÃ§o, jÃ¡ devolveu multifocal, quer lente mais fina, compara muito com concorrente..."
                       />
                     </div>
                   </div>
@@ -4084,7 +4087,7 @@ export default function EvaluationInterface({
                 {isIvisionMode && (
                   <div className={`${cardStyle} p-5`}>
                     <h3 className="mb-4 text-sm font-black uppercase tracking-[0.2em] text-indigo-300">
-                      Cabeçalho do PDF
+                      CabeÃ§alho do PDF
                     </h3>
                     <div className="grid grid-cols-12 gap-4">
                       <div className="col-span-12 md:col-span-6">
@@ -4096,7 +4099,7 @@ export default function EvaluationInterface({
                         />
                         {patientNameMismatch && (
                           <p className="mt-2 text-xs font-bold text-red-300">
-                            O nome do PDF está diferente do paciente avaliado escolhido: {selectedSubjectName}
+                            O nome do PDF estÃ¡ diferente do paciente avaliado escolhido: {selectedSubjectName}
                           </p>
                         )}
                       </div>
@@ -4153,7 +4156,7 @@ export default function EvaluationInterface({
                       <input value={form.receitaLongeOeEixo} onChange={(e) => handleFormChange('receitaLongeOeEixo', e.target.value)} className={inputStyle} />
                     </div>
                     <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Adição</label>
+                      <label className={labelStyle}>AdiÃ§Ã£o</label>
                       <DegreeInput value={form.receitaAdicao} onChange={(value) => handleFormChange('receitaAdicao', value)} className={inputStyle} />
                     </div>
                     <div className="col-span-12 md:col-span-3">
@@ -4176,7 +4179,7 @@ export default function EvaluationInterface({
 
                 <div className={`${cardStyle} p-5`}>
                   <h3 className="mb-4 text-sm font-black uppercase tracking-[0.2em] text-indigo-300">
-                    Recomendação Comercial
+                    RecomendaÃ§Ã£o Comercial
                   </h3>
                   <div className="grid grid-cols-12 gap-4">
                     {activeCatalog && (
@@ -4184,17 +4187,7 @@ export default function EvaluationInterface({
                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                           <div>
                             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-300">
-                              Sugestão assistida por IA
-                            </p>
-                            <p className="mt-2 text-sm text-slate-300">
-                              A IA usa os catálogos ativos da loja para sugerir lente, tratamento e preço final.
-                            </p>
-                            <p className="mt-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-                              {activeCatalogs.length > 1
-                                ? `Catálogos ativos: ${activeCatalogs
-                                    .map((catalog) => catalog.laboratorio)
-                                    .join(' + ')}`
-                                : `Catálogo ativo: ${activeCatalog.laboratorio} · ${activeCatalog.versao}`}
+                              SugestÃ£o assistida por IA
                             </p>
                           </div>
                           <button
@@ -4204,7 +4197,7 @@ export default function EvaluationInterface({
                             className="inline-flex items-center gap-2 rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-fuchsia-200 hover:bg-fuchsia-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {isGeneratingAi ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
-                            Gerar pela IA
+                            Gerar sugestões
                           </button>
                         </div>
 
@@ -4243,10 +4236,7 @@ export default function EvaluationInterface({
 
                         {lensSalesAssist?.sellerOpening && (
                           <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-4">
-                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">
-                              Como abrir a explicacao
-                            </p>
-                            <p className="mt-2 text-sm leading-6 text-cyan-50">
+                            <p className="text-sm leading-6 text-cyan-50">
                               {lensSalesAssist.sellerOpening}
                             </p>
                           </div>
@@ -4256,6 +4246,9 @@ export default function EvaluationInterface({
                           <summary className="cursor-pointer text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">
                             Dossie Triplice do Motor (debug)
                           </summary>
+                          <p className="mt-2 text-xs text-slate-400">
+                            Perfis demo de preenchimento rapido preservados no codigo para calibracao: <code>{LENS_DEMO_QUICK_FILL_RESTORE_KEY}</code>.
+                          </p>
 
                         {/* Dossie Triplice do Motor (`dossie_triplice_motor`): preserve este conjunto.
                             Ele junta Triagem IA -> Payload/Motor -> Auditoria IA para calibrar novas tabelas globais. */}
@@ -4266,7 +4259,7 @@ export default function EvaluationInterface({
                             </p>
                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-400 flex items-center gap-2">
-                                <Sparkles className="h-3 w-3" /> Debug IA — Auditoria da Indicação
+                                <Sparkles className="h-3 w-3" /> Debug IA â€” Auditoria da IndicaÃ§Ã£o
                               </p>
                               <button
                                 type="button"
@@ -4279,7 +4272,7 @@ export default function EvaluationInterface({
                               </button>
                             </div>
                             {isGeneratingAudit && !lensAudit
-                              ? <span className="flex items-center gap-2 text-amber-400/70 text-sm italic"><Loader2 className="h-3 w-3 animate-spin" />Analisando indicações...</span>
+                              ? <span className="flex items-center gap-2 text-amber-400/70 text-sm italic"><Loader2 className="h-3 w-3 animate-spin" />Analisando indicaÃ§Ãµes...</span>
                               : <p className="text-sm leading-6 text-amber-100/90 whitespace-pre-wrap">{lensAudit}</p>
                             }
                           </div>
@@ -4292,7 +4285,7 @@ export default function EvaluationInterface({
                             </p>
                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 flex items-center gap-2">
-                                <FileSearch className="h-3 w-3" /> Debug IA — Payload da Auditoria
+                                <FileSearch className="h-3 w-3" /> Debug IA â€” Payload da Auditoria
                               </p>
                               <button
                                 type="button"
@@ -4361,7 +4354,7 @@ export default function EvaluationInterface({
                           <div className="mt-4 grid grid-cols-12 gap-4">
                             <div className="col-span-12 lg:col-span-6 rounded-2xl border border-indigo-500/20 bg-indigo-500/10 p-4">
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-300">
-                                Sugestão iVision
+                                SugestÃ£o iVision
                               </p>
                               <p className="mt-2 text-lg font-black text-white">{ivisionReferenceSuggestion}</p>
                               {ivisionReferenceSummary && (
@@ -4372,7 +4365,7 @@ export default function EvaluationInterface({
                             </div>
                             <div className="col-span-12 lg:col-span-6 rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/10 p-4">
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-300">
-                                Sugestão IA
+                                SugestÃ£o IA
                               </p>
                               {aiTopRecommendation ? (
                                 <div className="mt-2 flex h-full flex-col">
@@ -4395,7 +4388,7 @@ export default function EvaluationInterface({
                                     onClick={() => handleApplyAiRecommendation(aiTopRecommendation)}
                                     className="mt-auto ml-auto inline-flex items-center gap-2 rounded-xl bg-fuchsia-500 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-white hover:bg-fuchsia-400"
                                   >
-                                    Aplicar esta opção
+                                    Aplicar esta opÃ§Ã£o
                                   </button>
                                 </div>
                               ) : manualSuggestion ? (
@@ -4418,7 +4411,7 @@ export default function EvaluationInterface({
                                 </>
                               ) : (
                                 <div className="mt-3 rounded-xl border border-dashed border-white/10 bg-black/20 px-4 py-4 text-sm leading-6 text-slate-300">
-                                  Gere pela IA para comparar a sugestão importada do iVision com uma recomendação baseada no catálogo ativo da loja.
+                                  Gere pela IA para comparar a sugestÃ£o importada do iVision com uma recomendaÃ§Ã£o baseada no catÃ¡logo ativo da loja.
                                 </div>
                               )}
                             </div>
@@ -4445,7 +4438,7 @@ export default function EvaluationInterface({
                                     <div className="flex items-start justify-between gap-3">
                                       <div>
                                         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                                          Opção {index + 1}
+                                          OpÃ§Ã£o {index + 1}
                                         </p>
                                         <p className="mt-2 text-lg font-black text-white">{buildAiRecommendationLabel(option)}</p>
                                         <p className="mt-2 text-sm font-bold text-fuchsia-100">
@@ -4464,7 +4457,7 @@ export default function EvaluationInterface({
                                       onClick={() => handleApplyAiRecommendation(option)}
                                       className="mt-auto ml-auto inline-flex items-center gap-2 self-end rounded-xl bg-fuchsia-500 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-white hover:bg-fuchsia-400"
                                     >
-                                      Aplicar esta opção
+                                      Aplicar esta opÃ§Ã£o
                                     </button>
                                   </div>
                                 </div>
@@ -4484,7 +4477,7 @@ export default function EvaluationInterface({
                         {!showIvisionReference && !aiRecommendations.length && manualSuggestion && (
                           <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
                             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                              Sugestão do sistema
+                              SugestÃ£o do sistema
                             </p>
                             <p className="mt-2 text-lg font-black text-white">{manualSuggestion.primaryLens}</p>
                             {manualSuggestion.complementaryOptions.length > 0 && (
@@ -4505,7 +4498,7 @@ export default function EvaluationInterface({
                         {aiRecommendations.length > 0 && (
                           <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
                             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                              Refinar recomendação
+                              Refinar recomendaÃ§Ã£o
                             </p>
                             <div className="mt-3 flex gap-3">
                               <input
@@ -4526,14 +4519,14 @@ export default function EvaluationInterface({
                             </div>
 
                             <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                              Resposta rápida para retenção
+                              Resposta rÃ¡pida para retenÃ§Ã£o
                             </p>
                             <div className="mt-3 flex flex-wrap gap-2">
                               {[
                                 { id: 'pesquisar', label: 'Vou dar uma pesquisada' },
                                 { id: 'pensar', label: 'Vou falar com meu marido' },
-                                { id: 'armacoes', label: 'Não gostei das armações' },
-                                { id: 'concorrencia', label: 'Achei mais barato na concorrência' }
+                                { id: 'armacoes', label: 'NÃ£o gostei das armaÃ§Ãµes' },
+                                { id: 'concorrencia', label: 'Achei mais barato na concorrÃªncia' }
                               ].map((shortcut) => (
                                 <button
                                   key={shortcut.id}
@@ -4556,10 +4549,10 @@ export default function EvaluationInterface({
                         {false && aiRecommendations.length > 0 && (
                           <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
                             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                              Refinar recomendação
+                              Refinar recomendaÃ§Ã£o
                             </p>
                             <div className="mt-3 flex flex-wrap gap-2">
-                              {['Ficou caro', 'Ele quer algo em até 8000', 'Quero manter Transitions', 'Quero outra opção'].map((suggestion) => (
+                              {['Ficou caro', 'Ele quer algo em atÃ© 8000', 'Quero manter Transitions', 'Quero outra opÃ§Ã£o'].map((suggestion) => (
                                 <button
                                   key={suggestion}
                                   type="button"
@@ -4574,7 +4567,7 @@ export default function EvaluationInterface({
                               <input
                                 value={aiConversationInput}
                                 onChange={(e) => setAiConversationInput(e.target.value)}
-                                placeholder="Ex: ficou caro, quero algo em até 8000"
+                                placeholder="Ex: ficou caro, quero algo em atÃ© 8000"
                                 className={`${inputStyle} flex-1`}
                               />
                               <button
@@ -4590,11 +4583,7 @@ export default function EvaluationInterface({
                           </div>
                         )}
 
-                        {!isGeneratingAi && !aiRecommendations.length && (
-                          <div className="mt-4 rounded-xl border border-dashed border-white/10 bg-black/10 px-4 py-4 text-sm text-slate-400">
-                            Gere a recomendação por IA para comparar ou aplicar uma opção comercial nesta avaliação.
-                          </div>
-                        )}
+                        {!isGeneratingAi && !aiRecommendations.length && null}
                       </div>
                     )}
                     {showManualSuggestionBlock && (
@@ -4602,10 +4591,7 @@ export default function EvaluationInterface({
                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                           <div>
                             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-300">
-                              Sugestão do Sistema
-                            </p>
-                            <p className="mt-2 text-sm text-slate-300">
-                              Gere uma sugestão comercial a partir do grau, da idade e do estilo de vida antes de salvar.
+                              SugestÃ£o do Sistema
                             </p>
                           </div>
                           <button
@@ -4614,14 +4600,14 @@ export default function EvaluationInterface({
                             className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-emerald-200 hover:bg-emerald-500/20"
                           >
                             <Sparkles className="h-4 w-4" />
-                            Gerar Sugestão
+                            Gerar SugestÃ£o
                           </button>
                         </div>
 
                         {manualSuggestion ? (
                           <div className="mt-4 grid grid-cols-12 gap-4">
                             <div className="col-span-12 lg:col-span-5">
-                              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Sugestão principal</p>
+                              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">SugestÃ£o principal</p>
                               <p className="mt-2 text-lg font-black text-white">{manualSuggestion.primaryLens}</p>
                               {manualSuggestion.complementaryOptions.length > 0 && (
                                 <p className="mt-2 text-sm font-bold text-emerald-200">
@@ -4642,7 +4628,7 @@ export default function EvaluationInterface({
                           </div>
                         ) : (
                           <div className="mt-4 rounded-xl border border-dashed border-white/10 bg-black/10 px-4 py-4 text-sm text-slate-400">
-                            A sugestão aparecerá aqui e também poderá preencher os campos comerciais logo abaixo.
+                            A sugestÃ£o aparecerÃ¡ aqui e tambÃ©m poderÃ¡ preencher os campos comerciais logo abaixo.
                           </div>
                         )}
                       </div>
@@ -4657,27 +4643,27 @@ export default function EvaluationInterface({
                         value={form.commercialRecommendationRaw}
                         onChange={(e) => handleFormChange('commercialRecommendationRaw', e.target.value)}
                         className="block min-h-[92px] w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm font-bold text-slate-100 shadow-inner outline-none transition-all placeholder:font-normal placeholder:text-slate-500 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50"
-                        placeholder="Tratamento sugerido, material, observações comerciais..."
+                        placeholder="Tratamento sugerido, material, observaÃ§Ãµes comerciais..."
                       />
                     </div>
                     {isIvisionMode && (
                       <>
                         <div className="col-span-12">
-                          <label className={labelStyle}>Avisos da importação</label>
+                          <label className={labelStyle}>Avisos da importaÃ§Ã£o</label>
                           <textarea
                             value={form.parseWarning}
                             onChange={(e) => handleFormChange('parseWarning', e.target.value)}
                             className="block min-h-[72px] w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm font-bold text-slate-100 shadow-inner outline-none transition-all placeholder:font-normal placeholder:text-slate-500 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50"
-                            placeholder="Avisos de parse ou observações internas"
+                            placeholder="Avisos de parse ou observaÃ§Ãµes internas"
                           />
                         </div>
                         <div className="col-span-12">
-                          <label className={labelStyle}>Texto extraído do PDF</label>
+                          <label className={labelStyle}>Texto extraÃ­do do PDF</label>
                           <textarea
                             value={form.extractedText}
                             onChange={(e) => handleFormChange('extractedText', e.target.value)}
                             className="block min-h-[180px] w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm font-medium text-slate-200 shadow-inner outline-none transition-all placeholder:font-normal placeholder:text-slate-500 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50"
-                            placeholder="O texto bruto extraído do PDF fica registrado aqui"
+                            placeholder="O texto bruto extraÃ­do do PDF fica registrado aqui"
                           />
                         </div>
                       </>
@@ -4685,7 +4671,8 @@ export default function EvaluationInterface({
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-3 mt-4">
+                <div className="sticky bottom-0 z-20 -mx-2 mt-4 border-t border-white/10 bg-slate-950/90 px-2 pt-4 pb-2 backdrop-blur-md">
+                  <div className="flex justify-end gap-3">
                   <button
                     type="button"
                     onClick={handleSave}
@@ -4693,7 +4680,7 @@ export default function EvaluationInterface({
                     className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-indigo-600 px-6 py-3 text-xs font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 disabled:opacity-50"
                   >
                     {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    Salvar Avaliação
+                    Salvar AvaliaÃ§Ã£o
                   </button>
 
                   <button
@@ -4705,6 +4692,7 @@ export default function EvaluationInterface({
                     {isCreatingVenda ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}
                     Ir para Venda (Checkout)
                   </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -4734,3 +4722,4 @@ export default function EvaluationInterface({
     </div>
   )
 }
+

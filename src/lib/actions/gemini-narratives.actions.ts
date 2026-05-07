@@ -126,6 +126,16 @@ export type LensSalesAssistResult = {
   error?: string
 }
 
+const LENS_SALES_ASSIST_TEXT_LIMITS = {
+  sellerOpening: 220,
+  headline: 70,
+  whyThisLens: 260,
+  sellerArgument: 300,
+  tradeoff: 180,
+  closingLine: 120,
+  comparisonTip: 240,
+} as const
+
 type GeminiResponseLike = {
   text?: () => string
   candidates?: Array<{
@@ -596,6 +606,7 @@ Regras:
 - O texto deve ajudar o vendedor a vender com seguranca, nao confundir o cliente.
 - Se uma feature foi rejeitada pelo cliente, nao tente vende-la.
 - Se o payload trouxer score/reasons, use isso como evidencia tecnica, mas nao mostre score ao cliente.
+- Seja breve: sellerOpening em ate 1 frase; headline em ate 6 palavras; whyThisLens em ate 2 frases curtas; sellerArgument em ate 2 frases curtas; tradeoff em 1 frase; closingLine em 1 frase.
 
 Responda apenas JSON valido, sem markdown:
 {
@@ -630,18 +641,18 @@ function normalizeSalesAssist(raw: Record<string, unknown>, recommendations: Rec
     .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object' && !Array.isArray(item))
     .map((item) => ({
       configKey: String(item.configKey || '').trim(),
-      headline: String(item.headline || '').trim().slice(0, 160),
-      whyThisLens: String(item.whyThisLens || '').trim().slice(0, 900),
-      sellerArgument: String(item.sellerArgument || '').trim().slice(0, 1200),
-      tradeoff: item.tradeoff ? String(item.tradeoff).trim().slice(0, 700) : null,
-      closingLine: item.closingLine ? String(item.closingLine).trim().slice(0, 350) : null,
+      headline: String(item.headline || '').trim().slice(0, LENS_SALES_ASSIST_TEXT_LIMITS.headline),
+      whyThisLens: String(item.whyThisLens || '').trim().slice(0, LENS_SALES_ASSIST_TEXT_LIMITS.whyThisLens),
+      sellerArgument: String(item.sellerArgument || '').trim().slice(0, LENS_SALES_ASSIST_TEXT_LIMITS.sellerArgument),
+      tradeoff: item.tradeoff ? String(item.tradeoff).trim().slice(0, LENS_SALES_ASSIST_TEXT_LIMITS.tradeoff) : null,
+      closingLine: item.closingLine ? String(item.closingLine).trim().slice(0, LENS_SALES_ASSIST_TEXT_LIMITS.closingLine) : null,
     }))
     .filter((item) => allowedKeys.has(item.configKey) && (item.whyThisLens || item.sellerArgument))
 
   return {
-    sellerOpening: raw.sellerOpening ? String(raw.sellerOpening).trim().slice(0, 700) : null,
+    sellerOpening: raw.sellerOpening ? String(raw.sellerOpening).trim().slice(0, LENS_SALES_ASSIST_TEXT_LIMITS.sellerOpening) : null,
     options,
-    comparisonTip: raw.comparisonTip ? String(raw.comparisonTip).trim().slice(0, 700) : null,
+    comparisonTip: raw.comparisonTip ? String(raw.comparisonTip).trim().slice(0, LENS_SALES_ASSIST_TEXT_LIMITS.comparisonTip) : null,
   }
 }
 
