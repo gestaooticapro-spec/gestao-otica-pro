@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ClipboardList } from 'lucide-react'
+import { DesktopModeButton } from '@/components/tablet/DesktopModeButton'
 
 export default function TabletMenuPage({ params }: { params: { storeId: string } }) {
   const { storeId } = params
@@ -19,9 +20,7 @@ export default function TabletMenuPage({ params }: { params: { storeId: string }
         </Link>
       </div>
 
-      <Link href="/dashboard" className="text-sm text-slate-500 hover:text-slate-300 transition-colors mt-4">
-        ← Versão completa
-      </Link>
+      <DesktopModeButton storeId={storeId} />
     </div>
   )
 }
