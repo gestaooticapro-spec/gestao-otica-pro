@@ -312,6 +312,9 @@ function ServiceOrderFormContent({
     const [medH, setMedH] = useState(''); const [medV, setMedV] = useState(''); const [medDiag, setMedDiag] = useState(''); const [medPonte, setMedPonte] = useState('')
     const [dnpOd, setDnpOd] = useState(''); const [dnpOe, setDnpOe] = useState('');
     const [altOd, setAltOd] = useState(''); const [altOe, setAltOe] = useState(''); const [diametro, setDiametro] = useState('')
+    const [diamOd, setDiamOd] = useState(''); const [diamOe, setDiamOe] = useState('')
+    const [palpebraOd, setPalpebraOd] = useState(''); const [palpebraOe, setPalpebraOe] = useState('')
+    const [tipoLente, setTipoLente] = useState(''); const [fotoMedicaoUrl, setFotoMedicaoUrl] = useState('')
 
     // Lab e Prazos
     const [dtPedido, setDtPedido] = useState(''); const [pedidoPorId, setPedidoPorId] = useState(''); const [labNome, setLabNome] = useState('')
@@ -437,6 +440,7 @@ function ServiceOrderFormContent({
         setLongeOdEsf(''); setLongeOdCil(''); setLongeOdEixo(''); setLongeOeEsf(''); setLongeOeCil(''); setLongeOeEixo('')
         setPertoOdEsf(''); setPertoOdCil(''); setPertoOdEixo(''); setPertoOeEsf(''); setPertoOeCil(''); setPertoOeEixo(''); setAdicao('')
         setMedH(''); setMedV(''); setMedDiag(''); setMedPonte(''); setDnpOd(''); setDnpOe(''); setAltOd(''); setAltOe(''); setDiametro('')
+        setDiamOd(''); setDiamOe(''); setPalpebraOd(''); setPalpebraOe(''); setTipoLente(''); setFotoMedicaoUrl('')
         setDtPedido(''); setPedidoPorId(''); setLabNome(''); setDtChegou(''); setDtMontado(''); setDtEntregue(''); setDtPrometido(''); setObsOs('')
         setProtocolo('')
         setSourceOpticalEvaluationId('')
@@ -460,6 +464,9 @@ function ServiceOrderFormContent({
             setAdicao(os.receita_adicao ?? '')
             setMedH(os.medida_horizontal ?? ''); setMedV(os.medida_vertical ?? ''); setMedDiag(os.medida_diagonal ?? ''); setMedPonte(os.medida_ponte ?? '')
             setDnpOd(os.medida_dnp_od ?? ''); setDnpOe(os.medida_dnp_oe ?? ''); setAltOd(os.medida_altura_od ?? ''); setAltOe(os.medida_altura_oe ?? ''); setDiametro(os.medida_diametro ?? '')
+            setDiamOd(os.medida_diametro_od ?? ''); setDiamOe(os.medida_diametro_oe ?? '')
+            setPalpebraOd(os.medida_palpebra_od ?? ''); setPalpebraOe(os.medida_palpebra_oe ?? '')
+            setTipoLente(os.medida_tipo_lente ?? ''); setFotoMedicaoUrl(os.foto_medicao_url ?? '')
             setDtPedido(toDateTimeInput(os.dt_pedido_em)); setPedidoPorId(os.lab_pedido_por_id?.toString() ?? ''); setLabNome(os.lab_nome ?? '')
             setDtChegou(toDateTimeInput(os.dt_lente_chegou)); setDtMontado(toDateTimeInput(os.dt_montado_em)); setDtEntregue(toDateTimeInput(os.dt_entregue_em))
             setDtPrometido(toDateTimeInput(os.dt_prometido_para)); setObsOs(os.obs_os ?? '')
@@ -914,6 +921,44 @@ ${addIf('Obs.', obsOs) || ''}
                                             </button>
                                         </div>
                                     </div>
+
+                                    {/* Diâmetro OD/OE e Pálpebra (preenchidos pelo tablet) */}
+                                    <div className="flex items-center gap-2">
+                                        <label className={`w-16 ${labelSlate} text-right shrink-0 mb-0`}>Diâm. OD</label>
+                                        <input name="medida_diametro_od" value={diamOd} onChange={e => setDiamOd(e.target.value)} className={inputStyle} placeholder="—" />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <label className={`w-16 ${labelSlate} text-right shrink-0 mb-0`}>Diâm. OE</label>
+                                        <input name="medida_diametro_oe" value={diamOe} onChange={e => setDiamOe(e.target.value)} className={inputStyle} placeholder="—" />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <label className={`w-16 ${labelSlate} text-right shrink-0 mb-0`}>Pálp. OD</label>
+                                        <input name="medida_palpebra_od" value={palpebraOd} onChange={e => setPalpebraOd(e.target.value)} className={inputStyle} placeholder="—" />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <label className={`w-16 ${labelSlate} text-right shrink-0 mb-0`}>Pálp. OE</label>
+                                        <input name="medida_palpebra_oe" value={palpebraOe} onChange={e => setPalpebraOe(e.target.value)} className={inputStyle} placeholder="—" />
+                                    </div>
+                                    <div className="col-span-2 flex items-center gap-2">
+                                        <label className={`w-16 ${labelSlate} text-right shrink-0 mb-0`}>Tipo</label>
+                                        <select name="medida_tipo_lente" value={tipoLente} onChange={e => setTipoLente(e.target.value)} className={inputStyle}>
+                                            <option value="">—</option>
+                                            <option value="surfacada">Surfaçada</option>
+                                            <option value="bifocal">Bifocal</option>
+                                            <option value="pronto">Pronto</option>
+                                        </select>
+                                    </div>
+
+                                    {/* Foto da medição (capturada pelo tablet) */}
+                                    {fotoMedicaoUrl && (
+                                        <div className="col-span-2">
+                                            <a href={fotoMedicaoUrl} target="_blank" rel="noreferrer"
+                                                className="block rounded overflow-hidden border border-white/10 hover:border-cyan-500/40 transition-colors">
+                                                <img src={fotoMedicaoUrl} alt="Foto medição" className="w-full h-24 object-cover" />
+                                            </a>
+                                        </div>
+                                    )}
+                                    <input type="hidden" name="foto_medicao_url" value={fotoMedicaoUrl} />
                                 </div>
                             </div>
                         </div>
