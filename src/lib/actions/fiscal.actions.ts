@@ -5,6 +5,17 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getNuvemFiscalToken } from "@/lib/nuvemfiscal";
 import { Database } from "@/lib/database.types";
 
+// Sanitiza xNome para atender à regex do SEFAZ: ^([!-ỹ]{1}[ -ỹ]{0,}[!-ỹ]{1}|[!-ỹ]{1})$
+function sanitizeXNome(nome: string | null | undefined): string {
+    if (!nome) return "CONSUMIDOR";
+    return nome
+        .normalize("NFC")
+        .replace(/[^\x20-\xFFÀ-ỹ]/g, "") // remove fora do range válido
+        .replace(/\s+/g, " ")                        // colapsa espaços múltiplos
+        .trim()
+        || "CONSUMIDOR";
+}
+
 type StoreRow = Database['public']['Tables']['stores']['Row'];
 
 type PagamentoItem = {
@@ -237,7 +248,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
                     return {
                         CNPJ: cleanDoc.length > 11 ? cleanDoc : undefined,
                         CPF: cleanDoc.length <= 11 ? cleanDoc : undefined,
-                        xNome: payload.cliente.nome,
+                        xNome: sanitizeXNome(payload.cliente.nome),
                         indIEDest: 9, // 9 = Não Contribuinte
                         email: payload.cliente.email || undefined
                     };
@@ -543,7 +554,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
                 toma: {
                     CNPJ: payload.cliente.cpf_cnpj?.length > 11 ? payload.cliente.cpf_cnpj.replace(/\D/g, "") : undefined,
                     CPF: payload.cliente.cpf_cnpj?.length <= 11 ? payload.cliente.cpf_cnpj.replace(/\D/g, "") : undefined,
-                    xNome: payload.cliente.nome,
+                    xNome: sanitizeXNome(payload.cliente.nome),
                     end: payload.cliente.endereco ? {
                         xLgr: payload.cliente.endereco.logradouro,
                         nro: payload.cliente.endereco.numero,
