@@ -21,6 +21,9 @@ export type LabOSResult = {
     dt_entregue_em: string | null
     lab_nome: string | null
     lab_pedido_por_id: number | null
+    // Flags booleanas
+    armacao_com_cliente: boolean
+    os_enviada_ao_lab: boolean
 }
 
 export type EmployeeSimple = {
@@ -58,6 +61,7 @@ export async function searchOSForLab(storeId: number, query: string): Promise<La
             .select(`
                 id, venda_id, customer_id, created_at, protocolo_fisico,
                 dt_pedido_em, dt_lente_chegou, dt_montado_em, dt_entregue_em, lab_nome, lab_pedido_por_id,
+                armacao_com_cliente, os_enviada_ao_lab,
                 customers ( full_name, fone_movel, phone ),
                 dependentes ( full_name ),
                 vendas ( status )
@@ -75,6 +79,7 @@ export async function searchOSForLab(storeId: number, query: string): Promise<La
             .select(`
                 id, venda_id, customer_id, created_at, protocolo_fisico,
                 dt_pedido_em, dt_lente_chegou, dt_montado_em, dt_entregue_em, lab_nome, lab_pedido_por_id,
+                armacao_com_cliente, os_enviada_ao_lab,
                 customers ( full_name, fone_movel, phone ),
                 dependentes ( full_name ),
                 vendas ( status )
@@ -93,6 +98,7 @@ export async function searchOSForLab(storeId: number, query: string): Promise<La
         .select(`
             id, venda_id, customer_id, created_at,
             dt_pedido_em, dt_lente_chegou, dt_montado_em, dt_entregue_em, lab_nome, lab_pedido_por_id,
+            armacao_com_cliente, os_enviada_ao_lab,
             customers!inner ( full_name, fone_movel, phone ),
             dependentes ( full_name ),
             vendas ( status )
@@ -111,6 +117,7 @@ export async function searchOSForLab(storeId: number, query: string): Promise<La
             .select(`
                 id, venda_id, customer_id, created_at,
                 dt_pedido_em, dt_lente_chegou, dt_montado_em, dt_entregue_em, lab_nome, lab_pedido_por_id,
+                armacao_com_cliente, os_enviada_ao_lab,
                 customers ( full_name, fone_movel, phone ),
                 dependentes!inner ( full_name ),
                 vendas ( status )
@@ -145,7 +152,9 @@ export async function searchOSForLab(storeId: number, query: string): Promise<La
         dt_montado_em: os.dt_montado_em,
         dt_entregue_em: os.dt_entregue_em,
         lab_nome: os.lab_nome,
-        lab_pedido_por_id: os.lab_pedido_por_id
+        lab_pedido_por_id: os.lab_pedido_por_id,
+        armacao_com_cliente: os.armacao_com_cliente ?? false,
+        os_enviada_ao_lab: os.os_enviada_ao_lab ?? false
     }))
 }
 
@@ -216,6 +225,8 @@ export async function getOpenLabOS(storeId: number): Promise<LabOSResult[]> {
             dt_entregue_em,
             lab_nome,
             lab_pedido_por_id,
+            armacao_com_cliente,
+            os_enviada_ao_lab,
             customers ( full_name, fone_movel, phone ),
             dependentes ( full_name ),
             vendas ( status )
@@ -244,8 +255,23 @@ export async function getOpenLabOS(storeId: number): Promise<LabOSResult[]> {
         dt_montado_em: os.dt_montado_em,
         dt_entregue_em: os.dt_entregue_em,
         lab_nome: os.lab_nome,
-        lab_pedido_por_id: os.lab_pedido_por_id
+        lab_pedido_por_id: os.lab_pedido_por_id,
+        armacao_com_cliente: os.armacao_com_cliente ?? false,
+        os_enviada_ao_lab: os.os_enviada_ao_lab ?? false,
     }))
+}
+
+// 3b. TOGGLE DE FLAG BOOLEANA DO LABORATÓRIO
+export async function toggleLabBoolean(
+    osId: number,
+    field: 'armacao_com_cliente' | 'os_enviada_ao_lab',
+    value: boolean
+): Promise<{ ok: boolean }> {
+    const supabase = createAdminClient()
+    const { error } = await (supabase.from('service_orders') as any)
+        .update({ [field]: value })
+        .eq('id', osId)
+    return { ok: !error }
 }
 
 // 4. AVANÇAR ETAPA DO LABORATÓRIO

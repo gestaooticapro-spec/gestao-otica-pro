@@ -394,8 +394,10 @@ export default function LaboratorioPage() {
                                                                     ? item.dt_lente_chegou
                                                                     : item.dt_montado_em
                                                     const waitingLabel = formatStageElapsed(waitDate)
-                                                    const whatsappMessage = `Olá ${customerName.split(' ')[0]}! Tudo bem? Aqui é da Ótica. Os óculos de *${patientName}* ficaram prontos! Quando puder, passe aqui para retirar e ajustar. 😎`
+                                                    const whatsappMessage = `Olá ${customerName.split(' ')[0]}! Tudo bem? Aqui é da Ótica. Os óculos de *${patientName}* ficaram prontos! Quando puder, passe aqui para retirar e ajustar.`
                                                     const whatsappLink = customerPhone ? getWhatsAppLink(customerPhone, whatsappMessage) : ''
+                                                    const whatsappMsgArmacao = `Olá ${customerName.split(' ')[0]}! Tudo bem? Aqui é da Ótica. As lentes de *${patientName}* chegaram. Quando puder, traga a armação para realizarmos a montagem.`
+                                                    const whatsappLinkArmacao = customerPhone ? getWhatsAppLink(customerPhone, whatsappMsgArmacao) : ''
 
                                                     return (
                                                         <div
@@ -444,6 +446,33 @@ export default function LaboratorioPage() {
                                                                     <Clock3 className="h-3.5 w-3.5 text-slate-500" />
                                                                     <span>Há {waitingLabel} nesta etapa</span>
                                                                 </div>
+
+                                                                {/* Flags booleanas — só leitura */}
+                                                                <div className="flex flex-wrap gap-1.5 pt-1">
+                                                                    {item.armacao_com_cliente && (
+                                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-500/20 text-amber-300 border-amber-500/30">
+                                                                            ✓ Armação c/ cliente
+                                                                        </span>
+                                                                    )}
+                                                                    {item.os_enviada_ao_lab && (
+                                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-sky-500/20 text-sky-300 border-sky-500/30">
+                                                                            ✓ Enviada p/ montagem
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+
+                                                                {currentStage === 'lentes_chegaram' && item.armacao_com_cliente && customerPhone && (
+                                                                    <a
+                                                                        href={whatsappLinkArmacao}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        onClick={(event) => event.stopPropagation()}
+                                                                        className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] font-bold text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                                                                    >
+                                                                        <MessageCircle className="h-3.5 w-3.5" />
+                                                                        Avisar para trazer armação
+                                                                    </a>
+                                                                )}
                                                                 {currentStage === 'oculos_montado' && customerPhone && (
                                                                     <a
                                                                         href={whatsappLink}

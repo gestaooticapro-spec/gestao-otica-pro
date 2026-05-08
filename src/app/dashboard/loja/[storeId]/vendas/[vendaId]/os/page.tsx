@@ -10,6 +10,7 @@ import {
     MessageCircle, Sparkles, Printer, FileText, ArrowLeft, ExternalLink, Import, Link2, Unlink2
 } from 'lucide-react'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
+import { OSPhotoViewer } from './OSPhotoViewer'
 
 import { getOSPageData, getVendaPageData, saveServiceOrder, deleteServiceOrder, type OSPageData, type SaveSOResult, type PrescriptionHistoryItem } from '@/lib/actions/vendas.actions'
 import {
@@ -314,10 +315,11 @@ function ServiceOrderFormContent({
     const [altOd, setAltOd] = useState(''); const [altOe, setAltOe] = useState(''); const [diametro, setDiametro] = useState('')
     const [diamOd, setDiamOd] = useState(''); const [diamOe, setDiamOe] = useState('')
     const [palpebraOd, setPalpebraOd] = useState(''); const [palpebraOe, setPalpebraOe] = useState('')
-    const [tipoLente, setTipoLente] = useState(''); const [fotoMedicaoUrl, setFotoMedicaoUrl] = useState('')
+    const [tipoLente, setTipoLente] = useState(''); const [fotoMedicaoUrl, setFotoMedicaoUrl] = useState(''); const [tokenLab, setTokenLab] = useState<string | null>(null)
 
     // Lab e Prazos
     const [dtPedido, setDtPedido] = useState(''); const [pedidoPorId, setPedidoPorId] = useState(''); const [labNome, setLabNome] = useState('')
+    const [armacaoComCliente, setArmacaoComCliente] = useState(false); const [osEnviadaAoLab, setOsEnviadaAoLab] = useState(false)
     const [dtChegou, setDtChegou] = useState(''); const [dtMontado, setDtMontado] = useState(''); const [dtEntregue, setDtEntregue] = useState('')
     const [dtPrometido, setDtPrometido] = useState(''); const [obsOs, setObsOs] = useState('')
 
@@ -440,8 +442,9 @@ function ServiceOrderFormContent({
         setLongeOdEsf(''); setLongeOdCil(''); setLongeOdEixo(''); setLongeOeEsf(''); setLongeOeCil(''); setLongeOeEixo('')
         setPertoOdEsf(''); setPertoOdCil(''); setPertoOdEixo(''); setPertoOeEsf(''); setPertoOeCil(''); setPertoOeEixo(''); setAdicao('')
         setMedH(''); setMedV(''); setMedDiag(''); setMedPonte(''); setDnpOd(''); setDnpOe(''); setAltOd(''); setAltOe(''); setDiametro('')
-        setDiamOd(''); setDiamOe(''); setPalpebraOd(''); setPalpebraOe(''); setTipoLente(''); setFotoMedicaoUrl('')
+        setDiamOd(''); setDiamOe(''); setPalpebraOd(''); setPalpebraOe(''); setTipoLente(''); setFotoMedicaoUrl(''); setTokenLab(null)
         setDtPedido(''); setPedidoPorId(''); setLabNome(''); setDtChegou(''); setDtMontado(''); setDtEntregue(''); setDtPrometido(''); setObsOs('')
+        setArmacaoComCliente(false); setOsEnviadaAoLab(false)
         setProtocolo('')
         setSourceOpticalEvaluationId('')
         setLinkedEvaluationSummary(null)
@@ -466,8 +469,9 @@ function ServiceOrderFormContent({
             setDnpOd(os.medida_dnp_od ?? ''); setDnpOe(os.medida_dnp_oe ?? ''); setAltOd(os.medida_altura_od ?? ''); setAltOe(os.medida_altura_oe ?? ''); setDiametro(os.medida_diametro ?? '')
             setDiamOd(os.medida_diametro_od ?? ''); setDiamOe(os.medida_diametro_oe ?? '')
             setPalpebraOd(os.medida_palpebra_od ?? ''); setPalpebraOe(os.medida_palpebra_oe ?? '')
-            setTipoLente(os.medida_tipo_lente ?? ''); setFotoMedicaoUrl(os.foto_medicao_url ?? '')
+            setTipoLente(os.medida_tipo_lente ?? ''); setFotoMedicaoUrl(os.foto_medicao_url ?? ''); setTokenLab((os as any).token_lab ?? null)
             setDtPedido(toDateTimeInput(os.dt_pedido_em)); setPedidoPorId(os.lab_pedido_por_id?.toString() ?? ''); setLabNome(os.lab_nome ?? '')
+            setArmacaoComCliente((os as any).armacao_com_cliente ?? false); setOsEnviadaAoLab((os as any).os_enviada_ao_lab ?? false)
             setDtChegou(toDateTimeInput(os.dt_lente_chegou)); setDtMontado(toDateTimeInput(os.dt_montado_em)); setDtEntregue(toDateTimeInput(os.dt_entregue_em))
             setDtPrometido(toDateTimeInput(os.dt_prometido_para)); setObsOs(os.obs_os ?? '')
             setProtocolo(os.protocolo_fisico || os.id.toString())
@@ -670,6 +674,7 @@ Cliente: ${pacienteNome}
 Médico: ${medicoTexto}
 
 ${addIf('Obs.', obsOs) || ''}
+${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tokenLab}` : ''}
 `.trim();
         const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
         window.open(url, '_blank');
@@ -950,14 +955,7 @@ ${addIf('Obs.', obsOs) || ''}
                                     </div>
 
                                     {/* Foto da medição (capturada pelo tablet) */}
-                                    {fotoMedicaoUrl && (
-                                        <div className="col-span-2">
-                                            <a href={fotoMedicaoUrl} target="_blank" rel="noreferrer"
-                                                className="block rounded overflow-hidden border border-white/10 hover:border-cyan-500/40 transition-colors">
-                                                <img src={fotoMedicaoUrl} alt="Foto medição" className="w-full h-24 object-cover" />
-                                            </a>
-                                        </div>
-                                    )}
+                                    {fotoMedicaoUrl && <OSPhotoViewer url={fotoMedicaoUrl} osId={activeId} onDelete={() => setFotoMedicaoUrl('')} />}
                                     <input type="hidden" name="foto_medicao_url" value={fotoMedicaoUrl} />
                                 </div>
                             </div>
@@ -967,7 +965,7 @@ ${addIf('Obs.', obsOs) || ''}
                         <div className="lg:col-span-8 space-y-2 flex flex-col">
 
                             {/* CARD VIOLETA (RECEITA) */}
-                            <div className={`${cardViolet} flex-1 flex flex-col`}>
+                            <div className={`${cardViolet} flex flex-col`}>
                                 <div className="flex justify-between border-b border-white/10 pb-3 mb-4 items-center">
                                     <h3 className="font-black text-purple-300 flex items-center gap-3 text-lg tracking-[0.15em] uppercase drop-shadow-sm">
                                         <div className="p-1.5 bg-purple-500/10 rounded-lg border border-purple-500/20 shadow-inner">
@@ -1158,6 +1156,18 @@ ${addIf('Obs.', obsOs) || ''}
                                         </select>
                                     </div>
                                     <div><label className={labelAmber}>Laboratório</label><input type="text" name="lab_nome" value={labNome} onChange={e => setLabNome(e.target.value)} className={inputStyle} placeholder="Ex: Hoya" /></div>
+
+                                    <div className="col-span-2 flex gap-6 pt-1">
+                                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                                            <input type="checkbox" name="armacao_com_cliente" checked={armacaoComCliente} onChange={e => setArmacaoComCliente(e.target.checked)} className="w-4 h-4 rounded accent-emerald-500" />
+                                            <span className="text-xs font-medium text-slate-300">Armação com o cliente</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                                            <input type="checkbox" name="os_enviada_ao_lab" checked={osEnviadaAoLab} onChange={e => setOsEnviadaAoLab(e.target.checked)} className="w-4 h-4 rounded accent-sky-500" />
+                                            <span className="text-xs font-medium text-slate-300">OS enviada ao laboratório para montagem</span>
+                                        </label>
+                                    </div>
+                                    <div aria-hidden="true" />
 
                                     <div><label className={labelAmber}>Lente Chegou</label><input type="datetime-local" name="dt_lente_chegou" value={dtChegou} onChange={e => setDtChegou(e.target.value)} className={inputStyle} /></div>
                                     <div><label className={labelAmber}>Montado Em</label><input type="datetime-local" name="dt_montado_em" value={dtMontado} onChange={e => setDtMontado(e.target.value)} className={inputStyle} /></div>

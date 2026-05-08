@@ -106,7 +106,7 @@ export async function listOSPendentesLab(storeId: number): Promise<OSPendente[]>
       dependente:dependente_id ( full_name )
     `)
     .eq('store_id', storeId)
-    .is('lab_nome', null)
+    .is('dt_pedido_em', null)
     .order('created_at', { ascending: false })
     .limit(50)
 
@@ -124,4 +124,92 @@ export async function listOSPendentesLab(storeId: number): Promise<OSPendente[]>
     venda_id: row.venda_id,
     store_id: row.store_id,
   }))
+}
+
+export async function clearFotoMedicao(osId: number): Promise<{ ok: boolean }> {
+  const supabaseAdmin = createAdminClient()
+  const { error } = await (supabaseAdmin.from('service_orders') as any)
+    .update({ foto_medicao_url: null })
+    .eq('id', osId)
+  return { ok: !error }
+}
+
+export interface OSLabPublic {
+  id: number
+  protocolo_fisico: string | null
+  foto_medicao_url: string | null
+  medida_dnp_od: string | null
+  medida_dnp_oe: string | null
+  medida_altura_od: string | null
+  medida_altura_oe: string | null
+  medida_horizontal: string | null
+  medida_vertical: string | null
+  medida_ponte: string | null
+  medida_diametro: string | null
+  medida_diametro_od: string | null
+  medida_diametro_oe: string | null
+  medida_palpebra_od: string | null
+  medida_palpebra_oe: string | null
+  medida_tipo_lente: string | null
+  receita_longe_od_esferico: string | null
+  receita_longe_od_cilindrico: string | null
+  receita_longe_od_eixo: string | null
+  receita_longe_oe_esferico: string | null
+  receita_longe_oe_cilindrico: string | null
+  receita_longe_oe_eixo: string | null
+  receita_adicao: string | null
+  store_name: string | null
+  patient_name: string | null
+}
+
+export async function getOSByLabToken(token: string): Promise<OSLabPublic | null> {
+  const supabaseAdmin = createAdminClient()
+
+  const { data, error } = await (supabaseAdmin
+    .from('service_orders') as any)
+    .select(`
+      id, protocolo_fisico, foto_medicao_url,
+      medida_dnp_od, medida_dnp_oe, medida_altura_od, medida_altura_oe,
+      medida_horizontal, medida_vertical, medida_ponte,
+      medida_diametro, medida_diametro_od, medida_diametro_oe,
+      medida_palpebra_od, medida_palpebra_oe, medida_tipo_lente,
+      receita_longe_od_esferico, receita_longe_od_cilindrico, receita_longe_od_eixo,
+      receita_longe_oe_esferico, receita_longe_oe_cilindrico, receita_longe_oe_eixo,
+      receita_adicao,
+      store:store_id ( name ),
+      customer:customer_id ( full_name ),
+      dependente:dependente_id ( full_name )
+    `)
+    .eq('token_lab', token)
+    .single()
+
+  if (error || !data) return null
+
+  return {
+    id: data.id,
+    protocolo_fisico: data.protocolo_fisico,
+    foto_medicao_url: data.foto_medicao_url,
+    medida_dnp_od: data.medida_dnp_od,
+    medida_dnp_oe: data.medida_dnp_oe,
+    medida_altura_od: data.medida_altura_od,
+    medida_altura_oe: data.medida_altura_oe,
+    medida_horizontal: data.medida_horizontal,
+    medida_vertical: data.medida_vertical,
+    medida_ponte: data.medida_ponte,
+    medida_diametro: data.medida_diametro,
+    medida_diametro_od: data.medida_diametro_od,
+    medida_diametro_oe: data.medida_diametro_oe,
+    medida_palpebra_od: data.medida_palpebra_od,
+    medida_palpebra_oe: data.medida_palpebra_oe,
+    medida_tipo_lente: data.medida_tipo_lente,
+    receita_longe_od_esferico: data.receita_longe_od_esferico,
+    receita_longe_od_cilindrico: data.receita_longe_od_cilindrico,
+    receita_longe_od_eixo: data.receita_longe_od_eixo,
+    receita_longe_oe_esferico: data.receita_longe_oe_esferico,
+    receita_longe_oe_cilindrico: data.receita_longe_oe_cilindrico,
+    receita_longe_oe_eixo: data.receita_longe_oe_eixo,
+    receita_adicao: data.receita_adicao,
+    store_name: data.store?.name ?? null,
+    patient_name: data.dependente?.full_name ?? data.customer?.full_name ?? null,
+  }
 }

@@ -1158,6 +1158,7 @@ export interface Database {
           medida_palpebra_oe: string | null
           medida_tipo_lente: string | null
           foto_medicao_url: string | null
+          token_lab: string | null
           lab_nome: string | null
           lab_pedido_por_id: number | null
           dt_pedido_em: string | null

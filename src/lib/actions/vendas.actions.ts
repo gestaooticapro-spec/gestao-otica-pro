@@ -183,6 +183,8 @@ const ServiceOrderSchema = z.object({
   medida_tipo_lente: z.string().nullable(),
   foto_medicao_url: z.string().nullable(),
   // Lab
+  armacao_com_cliente: z.boolean().optional(),
+  os_enviada_ao_lab: z.boolean().optional(),
   lab_nome: z.string().nullable(),
   lab_pedido_por_id: z.coerce.number().optional().nullable(),
   dt_pedido_em: z.string().nullable(),
@@ -273,6 +275,8 @@ export async function saveServiceOrder(
     medida_palpebra_oe: nullIfEmpty(formData.get('medida_palpebra_oe')),
     medida_tipo_lente: nullIfEmpty(formData.get('medida_tipo_lente')),
     foto_medicao_url: nullIfEmpty(formData.get('foto_medicao_url')),
+    armacao_com_cliente: formData.get('armacao_com_cliente') === 'on',
+    os_enviada_ao_lab: formData.get('os_enviada_ao_lab') === 'on',
     lab_nome: nullIfEmpty(formData.get('lab_nome')),
     lab_pedido_por_id: nullIfEmpty(formData.get('lab_pedido_por_id')),
     dt_pedido_em: parseDate(formData.get('dt_pedido_em')),
