@@ -158,6 +158,7 @@ export default function FrameMeasurementTool({
   const [cameraOpen,  setCameraOpen]  = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [gridDivs,    setGridDivs]    = useState(10)
+  const [cameraAspect, setCameraAspect] = useState<number>(16 / 9)
 
   useEffect(() => { imgBoundsRef.current = imgBounds   }, [imgBounds])
   useEffect(() => { activeGrpRef.current = activeGroup }, [activeGroup])
@@ -171,6 +172,9 @@ export default function FrameMeasurementTool({
 
     video.srcObject = stream
     video.onloadedmetadata = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        setCameraAspect(video.videoWidth / video.videoHeight)
+      }
       video.play().catch(() => {})
     }
   }, [cameraOpen])
@@ -306,14 +310,11 @@ export default function FrameMeasurementTool({
     }
     setCameraError(null)
     try {
-      const viewportRatio = window.innerWidth / Math.max(1, window.innerHeight)
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: 'environment' },
-          // Mantem a proporcao coerente com a tela para evitar efeito de esticar/comprimir.
-          aspectRatio: { ideal: viewportRatio },
-          width: { ideal: 1600 },
-          height: { ideal: 1600 / viewportRatio },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
         },
         audio: false,
       })
@@ -706,37 +707,41 @@ export default function FrameMeasurementTool({
 
       {step === 'capture' && cameraOpen && (
         <div className="absolute inset-0 z-30 bg-black">
-          <video
-            ref={videoRef}
-            className="absolute inset-0 h-full w-full object-cover"
-            autoPlay
-            playsInline
-            muted
-          />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="relative h-full max-h-full w-full max-w-full" style={{ aspectRatio: `${cameraAspect}` }}>
+              <video
+                ref={videoRef}
+                className="absolute inset-0 h-full w-full object-contain"
+                autoPlay
+                playsInline
+                muted
+              />
 
-          <div className="pointer-events-none absolute inset-0">
-            {Array.from({ length: gridDivs - 1 }).map((_, i) => (
-              <div
-                key={`v-${i}`}
-                className="absolute bottom-0 top-0"
-                style={{
-                  left: `${((i + 1) / gridDivs) * 100}%`,
-                  width: '1px',
-                  background: 'rgba(255,255,255,0.28)',
-                }}
-              />
-            ))}
-            {Array.from({ length: gridDivs - 1 }).map((_, i) => (
-              <div
-                key={`h-${i}`}
-                className="absolute left-0 right-0"
-                style={{
-                  top: `${((i + 1) / gridDivs) * 100}%`,
-                  height: '1px',
-                  background: 'rgba(255,255,255,0.28)',
-                }}
-              />
-            ))}
+              <div className="pointer-events-none absolute inset-0">
+                {Array.from({ length: gridDivs - 1 }).map((_, i) => (
+                  <div
+                    key={`v-${i}`}
+                    className="absolute bottom-0 top-0"
+                    style={{
+                      left: `${((i + 1) / gridDivs) * 100}%`,
+                      width: '1px',
+                      background: 'rgba(255,255,255,0.28)',
+                    }}
+                  />
+                ))}
+                {Array.from({ length: gridDivs - 1 }).map((_, i) => (
+                  <div
+                    key={`h-${i}`}
+                    className="absolute left-0 right-0"
+                    style={{
+                      top: `${((i + 1) / gridDivs) * 100}%`,
+                      height: '1px',
+                      background: 'rgba(255,255,255,0.28)',
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="absolute left-3 right-3 top-3 rounded-lg bg-black/45 px-3 py-2">
