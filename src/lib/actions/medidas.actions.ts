@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 
 export interface MedicaoPayload {
   osId: number
+  storeId?: number
   dnpOd: number; dnpOe: number
   altOd: number;  altOe: number
   ponte: number
@@ -21,7 +22,21 @@ export async function saveMedicaoOS(payload: MedicaoPayload): Promise<{ ok: bool
   const supabaseAdmin = createAdminClient()
 
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { ok: false, error: 'Não autenticado' }
+  let allowAnonymousTablet = false
+
+  if (!user) {
+    if (!payload.storeId) return { ok: false, error: 'Nao autenticado' }
+
+    const { data: osRow, error: osError } = await (supabaseAdmin
+      .from('service_orders') as any)
+      .select('id, store_id')
+      .eq('id', payload.osId)
+      .eq('store_id', payload.storeId)
+      .maybeSingle()
+
+    if (osError || !osRow) return { ok: false, error: 'OS nao encontrada para a loja informada' }
+    allowAnonymousTablet = true
+  }
 
   const round1 = (n: number) => Math.round(n * 10) / 10
 
@@ -72,9 +87,15 @@ export async function saveMedicaoOS(payload: MedicaoPayload): Promise<{ ok: bool
   if (payload.palpebraOe != null) update.medida_palpebra_oe = round1(payload.palpebraOe)
   if (fotoUrl)                    update.foto_medicao_url   = fotoUrl
 
-  const { error } = await (supabaseAdmin.from('service_orders') as any)
+  let updateQuery = (supabaseAdmin.from('service_orders') as any)
     .update(update)
     .eq('id', payload.osId)
+
+  if (allowAnonymousTablet && payload.storeId) {
+    updateQuery = updateQuery.eq('store_id', payload.storeId)
+  }
+
+  const { error } = await updateQuery
 
   if (error) return { ok: false, error: error.message }
   return { ok: true }

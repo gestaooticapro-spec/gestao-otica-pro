@@ -532,6 +532,7 @@ export default function FrameMeasurementTool({
 
       const result = await saveMedicaoOS({
         osId,
+        storeId,
         dnpOd: m.dnpOD, dnpOe: m.dnpOE,
         altOd: m.altOD,  altOe: m.altOE,
         ponte: m.ponte,
