@@ -163,6 +163,17 @@ export default function FrameMeasurementTool({
   useEffect(() => { activeGrpRef.current = activeGroup }, [activeGroup])
   useEffect(() => { lensTypeRef.current  = lensType    }, [lensType])
   useEffect(() => () => stopCamera(), [])
+  useEffect(() => {
+    if (!cameraOpen) return
+    const stream = streamRef.current
+    const video = videoRef.current
+    if (!stream || !video) return
+
+    video.srcObject = stream
+    video.onloadedmetadata = () => {
+      video.play().catch(() => {})
+    }
+  }, [cameraOpen])
 
   // ── Resize ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -305,12 +316,6 @@ export default function FrameMeasurementTool({
       })
       streamRef.current = stream
       setCameraOpen(true)
-      setTimeout(() => {
-        const video = videoRef.current
-        if (!video) return
-        video.srcObject = stream
-        video.play().catch(() => {})
-      }, 0)
     } catch {
       setCameraError('Nao foi possivel acessar a camera')
       setCameraOpen(false)
@@ -701,6 +706,7 @@ export default function FrameMeasurementTool({
           <video
             ref={videoRef}
             className="absolute inset-0 h-full w-full object-cover"
+            autoPlay
             playsInline
             muted
           />
