@@ -127,6 +127,8 @@ export default function FrameMeasurementTool({
   const containerRef  = useRef<HTMLDivElement>(null)
   const canvasRef     = useRef<HTMLCanvasElement>(null)
   const fileRef       = useRef<HTMLInputElement>(null)
+  const videoRef      = useRef<HTMLVideoElement>(null)
+  const streamRef     = useRef<MediaStream | null>(null)
   const imgRef        = useRef<HTMLImageElement | null>(null)
   const landmarkerRef = useRef<FaceLandmarkerInstance | null>(null)
   const rawLmsRef     = useRef<RawLm[] | null>(null)
@@ -153,10 +155,14 @@ export default function FrameMeasurementTool({
   const [saved,       setSaved]       = useState(false)
   const [cardMm,      setCardMm]      = useState(85.6)
   const [cardInput,   setCardInput]   = useState('85.6')
+  const [cameraOpen,  setCameraOpen]  = useState(false)
+  const [cameraError, setCameraError] = useState<string | null>(null)
+  const [gridDivs,    setGridDivs]    = useState(10)
 
   useEffect(() => { imgBoundsRef.current = imgBounds   }, [imgBounds])
   useEffect(() => { activeGrpRef.current = activeGroup }, [activeGroup])
   useEffect(() => { lensTypeRef.current  = lensType    }, [lensType])
+  useEffect(() => () => stopCamera(), [])
 
   // ── Resize ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -280,6 +286,66 @@ export default function FrameMeasurementTool({
 
   function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]; if (f) processFile(f); e.target.value = ''
+  }
+
+  async function startCamera() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('Camera indisponivel neste navegador')
+      return
+    }
+    setCameraError(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+        audio: false,
+      })
+      streamRef.current = stream
+      setCameraOpen(true)
+      setTimeout(() => {
+        const video = videoRef.current
+        if (!video) return
+        video.srcObject = stream
+        video.play().catch(() => {})
+      }, 0)
+    } catch {
+      setCameraError('Nao foi possivel acessar a camera')
+      setCameraOpen(false)
+    }
+  }
+
+  function stopCamera() {
+    const stream = streamRef.current
+    if (stream) stream.getTracks().forEach(track => track.stop())
+    streamRef.current = null
+    const video = videoRef.current
+    if (video) video.srcObject = null
+    setCameraOpen(false)
+  }
+
+  async function takeCameraShot() {
+    const video = videoRef.current
+    if (!video || !video.videoWidth || !video.videoHeight) return
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+    const file = await new Promise<File | null>((resolve) => {
+      canvas.toBlob((blob) => {
+        if (!blob) return resolve(null)
+        resolve(new File([blob], `captura-${Date.now()}.jpg`, { type: 'image/jpeg' }))
+      }, 'image/jpeg', 0.92)
+    })
+    if (!file) return
+
+    stopCamera()
+    processFile(file)
   }
 
   // ── Confirma calibração ───────────────────────────────────────────────────
@@ -619,8 +685,79 @@ export default function FrameMeasurementTool({
                 className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-medium transition-colors">
                 <Camera className="w-4 h-4" /> Abrir câmera
               </button>
+              <button onClick={startCamera}
+                className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-cyan-700 hover:bg-cyan-600 rounded-xl text-sm font-medium transition-colors">
+                <Camera className="w-4 h-4" /> Camera com grade
+              </button>
             </div>
+            {cameraError && <p className="text-xs text-rose-400">{cameraError}</p>}
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFileChange} />
+          </div>
+        </div>
+      )}
+
+      {step === 'capture' && cameraOpen && (
+        <div className="absolute inset-0 z-30 bg-black">
+          <video
+            ref={videoRef}
+            className="absolute inset-0 h-full w-full object-cover"
+            playsInline
+            muted
+          />
+
+          <div className="pointer-events-none absolute inset-0">
+            {Array.from({ length: gridDivs - 1 }).map((_, i) => (
+              <div
+                key={`v-${i}`}
+                className="absolute bottom-0 top-0"
+                style={{
+                  left: `${((i + 1) / gridDivs) * 100}%`,
+                  width: '1px',
+                  background: 'rgba(255,255,255,0.28)',
+                }}
+              />
+            ))}
+            {Array.from({ length: gridDivs - 1 }).map((_, i) => (
+              <div
+                key={`h-${i}`}
+                className="absolute left-0 right-0"
+                style={{
+                  top: `${((i + 1) / gridDivs) * 100}%`,
+                  height: '1px',
+                  background: 'rgba(255,255,255,0.28)',
+                }}
+              />
+            ))}
+          </div>
+
+          <div className="absolute left-3 right-3 top-3 rounded-lg bg-black/45 px-3 py-2">
+            <div className="flex items-center gap-2">
+              <span className="whitespace-nowrap text-xs text-slate-100">Grade</span>
+              <input
+                type="range"
+                min={4}
+                max={16}
+                value={gridDivs}
+                onChange={e => setGridDivs(parseInt(e.target.value, 10))}
+                className="w-full"
+              />
+              <span className="w-12 text-right font-mono text-xs text-slate-100">{gridDivs}x{gridDivs}</span>
+            </div>
+          </div>
+
+          <div className="absolute bottom-4 left-4 right-4 flex gap-2">
+            <button
+              onClick={stopCamera}
+              className="flex-1 rounded-xl border border-white/20 bg-white/10 py-3 text-sm"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={takeCameraShot}
+              className="flex-1 rounded-xl bg-emerald-600 py-3 text-sm font-medium hover:bg-emerald-500"
+            >
+              Capturar
+            </button>
           </div>
         </div>
       )}
