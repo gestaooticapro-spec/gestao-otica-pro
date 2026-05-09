@@ -306,11 +306,14 @@ export default function FrameMeasurementTool({
     }
     setCameraError(null)
     try {
+      const viewportRatio = window.innerWidth / Math.max(1, window.innerHeight)
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          // Mantem a proporcao coerente com a tela para evitar efeito de esticar/comprimir.
+          aspectRatio: { ideal: viewportRatio },
+          width: { ideal: 1600 },
+          height: { ideal: 1600 / viewportRatio },
         },
         audio: false,
       })
