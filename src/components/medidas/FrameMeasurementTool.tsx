@@ -24,6 +24,7 @@ type HKey = keyof Handles
 type MPModule = typeof import('@mediapipe/tasks-vision')
 type FaceLandmarkerInstance = Awaited<ReturnType<MPModule['FaceLandmarker']['createFromOptions']>>
 type RawLm = { x: number; y: number; z: number }
+type MediaTrackWithImageCapture = MediaStreamTrack & { getSettings?: () => MediaTrackSettings }
 
 // ─── Grupos de medição ────────────────────────────────────────────────────────
 interface MGroup { id: string; label: string; handles: HKey[]; refs?: HKey[] }
@@ -336,21 +337,40 @@ export default function FrameMeasurementTool({
   }
 
   async function takeCameraShot() {
-    const video = videoRef.current
-    if (!video || !video.videoWidth || !video.videoHeight) return
-    const canvas = document.createElement('canvas')
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+    const stream = streamRef.current
+    let file: File | null = null
 
-    const file = await new Promise<File | null>((resolve) => {
-      canvas.toBlob((blob) => {
-        if (!blob) return resolve(null)
-        resolve(new File([blob], `captura-${Date.now()}.jpg`, { type: 'image/jpeg' }))
-      }, 'image/jpeg', 0.92)
-    })
+    // Preferimos frame nativo da camera para evitar distorcao introduzida pelo elemento <video>.
+    const track = stream?.getVideoTracks?.()[0] as MediaTrackWithImageCapture | undefined
+    if (track && 'ImageCapture' in window) {
+      try {
+        const imageCapture = new (window as any).ImageCapture(track)
+        const blob = await imageCapture.takePhoto()
+        file = new File([blob], `captura-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' })
+      } catch {
+        file = null
+      }
+    }
+
+    // Fallback: captura do frame renderizado no video.
+    if (!file) {
+      const video = videoRef.current
+      if (!video || !video.videoWidth || !video.videoHeight) return
+      const canvas = document.createElement('canvas')
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+      file = await new Promise<File | null>((resolve) => {
+        canvas.toBlob((blob) => {
+          if (!blob) return resolve(null)
+          resolve(new File([blob], `captura-${Date.now()}.jpg`, { type: 'image/jpeg' }))
+        }, 'image/jpeg', 0.92)
+      })
+    }
+
     if (!file) return
 
     stopCamera()
