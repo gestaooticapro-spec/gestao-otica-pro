@@ -122,12 +122,13 @@ export async function listOSPendentesLab(storeId: number): Promise<OSPendente[]>
     .from('service_orders') as any)
     .select(`
       id, protocolo_fisico, created_at, obs_os, foto_medicao_url,
-      medida_dnp_od, venda_id, store_id,
+      medida_dnp_od, dt_pedido_em, dt_entregue_em, venda_id, store_id,
       customer:customer_id ( full_name ),
       dependente:dependente_id ( full_name )
     `)
     .eq('store_id', storeId)
-    .is('dt_pedido_em', null)
+    .is('dt_entregue_em', null)
+    .or('dt_pedido_em.is.null,and(medida_dnp_od.is.null,foto_medicao_url.is.null)')
     .order('created_at', { ascending: false })
     .limit(50)
 
