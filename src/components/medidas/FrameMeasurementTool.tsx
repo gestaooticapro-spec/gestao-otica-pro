@@ -214,8 +214,8 @@ export default function FrameMeasurementTool({
   function defaultHandles(b: typeof imgBounds): Handles {
     const cx = b.x + b.w / 2, cy = b.y + b.h / 2
     return {
-      calibA:     { x: b.x + b.w * 0.05,  y: b.y + b.h * 0.88 },
-      calibB:     { x: b.x + b.w * 0.28,  y: b.y + b.h * 0.88 },
+      calibA:     { x: cx - b.w * 0.12,   y: b.y + b.h * 0.12 },
+      calibB:     { x: cx + b.w * 0.12,   y: b.y + b.h * 0.12 },
       pupilR:     { x: cx - b.w * 0.13,   y: cy - b.h * 0.05 },
       pupilL:     { x: cx + b.w * 0.13,   y: cy - b.h * 0.05 },
       bridgeR:    { x: cx - b.w * 0.05,   y: cy + b.h * 0.03 },
@@ -861,7 +861,7 @@ export default function FrameMeasurementTool({
                           if (n > 0 && !isNaN(n)) setCardMm(n)
                         }}
                         onBlur={() => setCardInput(String(cardMm))}
-                        className="w-16 bg-white/10 border border-white/20 rounded px-1.5 py-0.5 text-white text-xs text-center focus:outline-none focus:border-indigo-400"
+                        className="w-28 bg-white/10 border border-white/20 rounded px-2.5 py-1.5 text-white text-sm text-center focus:outline-none focus:border-indigo-400"
                       />
                       mm
                     </label>

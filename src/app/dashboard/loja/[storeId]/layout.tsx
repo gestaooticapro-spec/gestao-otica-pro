@@ -8,6 +8,7 @@ import { OperatorLayout } from '@/components/operator-menu';
 import DashboardLayoutWrapper from '@/components/dashboard/DashboardLayoutWrapper';
 import ManagerLayout from '@/components/manager-menu/ManagerLayout';
 import { TabletRedirect } from '@/components/tablet/TabletRedirect';
+import { TabletModeButton } from '@/components/tablet/TabletModeButton';
 
 type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor' | 'tecnico';
 type StoreProfile = {
@@ -83,6 +84,7 @@ export default async function StoreLayout({
     return (
       <ModalsProvider storeId={storeIdParam}>
         <TabletRedirect storeId={storeIdParam} />
+        <TabletModeButton storeId={storeIdParam} />
         <OperatorLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl} preSaleAnalysisEnabled={preSaleAnalysisEnabled}>
           {children}
         </OperatorLayout>
@@ -94,6 +96,7 @@ export default async function StoreLayout({
     return (
       <ModalsProvider storeId={storeIdParam}>
         <TabletRedirect storeId={storeIdParam} />
+        <TabletModeButton storeId={storeIdParam} />
         <ManagerLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl}>
           {children}
         </ManagerLayout>
@@ -104,6 +107,7 @@ export default async function StoreLayout({
   return (
     <ModalsProvider storeId={storeIdParam}>
       <TabletRedirect storeId={storeIdParam} />
+      <TabletModeButton storeId={storeIdParam} />
       <div className="flex w-full h-full overflow-hidden">
         <DashboardLayoutWrapper>
           <div className="flex-shrink-0 h-full relative z-20">
