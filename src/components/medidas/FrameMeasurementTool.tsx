@@ -851,7 +851,7 @@ export default function FrameMeasurementTool({
                       <span className={`w-2 h-2 rounded-full ${calOk ? 'bg-emerald-400' : 'bg-amber-400'}`} />
                       {fmt(meas.calibMm)} mm medidos {calOk ? '✓' : ''}
                     </div>
-                    <label className="flex items-center gap-1.5 text-xs text-slate-400">
+                    <label className="flex items-center gap-2 text-sm text-slate-300">
                       referência:
                       <input
                         type="text" inputMode="decimal" value={cardInput}
@@ -861,7 +861,7 @@ export default function FrameMeasurementTool({
                           if (n > 0 && !isNaN(n)) setCardMm(n)
                         }}
                         onBlur={() => setCardInput(String(cardMm))}
-                        className="w-28 bg-white/10 border border-white/20 rounded px-2.5 py-1.5 text-white text-sm text-center focus:outline-none focus:border-indigo-400"
+                        className="w-36 h-11 bg-white/10 border border-white/20 rounded-lg px-3 text-white text-base text-center focus:outline-none focus:border-indigo-400"
                       />
                       mm
                     </label>
