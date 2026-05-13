@@ -3,7 +3,7 @@
 export function TabletModeButton({ storeId }: { storeId: number }) {
   const show =
     typeof window !== 'undefined' &&
-    localStorage.getItem('forceDesktop') === '1' &&
+    sessionStorage.getItem('forceDesktop') === '1' &&
     navigator.maxTouchPoints > 1 &&
     window.screen.width <= 1366
 
@@ -12,6 +12,7 @@ export function TabletModeButton({ storeId }: { storeId: number }) {
   return (
     <button
       onClick={() => {
+        sessionStorage.removeItem('forceDesktop')
         localStorage.removeItem('forceDesktop')
         window.location.href = `/tablet/${storeId}`
       }}

@@ -294,7 +294,13 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
                                                 {grupo.beneficiario && <p className="text-[10px] text-blue-400 font-bold ml-6 mt-1 bg-blue-500/10 border border-blue-500/20 inline-block px-2 py-0.5 rounded">Para: {grupo.beneficiario}</p>}
                                             </div>
                                             <div className="space-y-2">
-                                                {grupo.itens.sort((a: any, b: any) => a.numero_parcela - b.numero_parcela).map((p: any) => (
+                                                {grupo.itens
+                                                    .sort((a: any, b: any) => {
+                                                        const dateDiff = new Date(a.data_vencimento).getTime() - new Date(b.data_vencimento).getTime()
+                                                        if (dateDiff !== 0) return dateDiff
+                                                        return a.numero_parcela - b.numero_parcela
+                                                    })
+                                                    .map((p: any) => (
                                                     <ParcelaCard key={p.id} p={p} onClick={() => handleSelectParcela(p)} />
                                                 ))}
                                             </div>

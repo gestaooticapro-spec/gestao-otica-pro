@@ -127,8 +127,7 @@ export async function listOSPendentesLab(storeId: number): Promise<OSPendente[]>
       dependente:dependente_id ( full_name )
     `)
     .eq('store_id', storeId)
-    .is('dt_entregue_em', null)
-    .or('dt_pedido_em.is.null,and(medida_dnp_od.is.null,foto_medicao_url.is.null)')
+    .is('dt_pedido_em', null)
     .order('created_at', { ascending: false })
     .limit(50)
 

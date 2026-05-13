@@ -1,18 +1,21 @@
-'use client'
+﻿'use client'
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
 /**
  * Detecta tablet por toque + largura de tela.
- * Se o usuário tiver forçado modo desktop (via localStorage), não redireciona.
+ * Se o usuario tiver forcado modo desktop na sessao atual, nao redireciona.
  */
 export function TabletRedirect({ storeId }: { storeId: number }) {
   const router = useRouter()
 
   useEffect(() => {
-    // Usuário optou por manter modo desktop neste dispositivo
-    if (localStorage.getItem('forceDesktop') === '1') return
+    // Limpa configuracao antiga persistente para evitar ficar preso no desktop.
+    localStorage.removeItem('forceDesktop')
+
+    // Usuario optou por manter modo desktop apenas nesta sessao.
+    if (sessionStorage.getItem('forceDesktop') === '1') return
 
     const hasTouch = navigator.maxTouchPoints > 1
     const isNarrow = window.screen.width <= 1366

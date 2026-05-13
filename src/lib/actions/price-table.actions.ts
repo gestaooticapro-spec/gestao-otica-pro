@@ -118,6 +118,7 @@ type TenantMixedOfferRow = TenantOfferRow & {
 }
 
 const IN_QUERY_CHUNK_SIZE = 150
+const SUPABASE_PAGE_SIZE = 1000
 
 function chunkValues<T>(values: T[], size = IN_QUERY_CHUNK_SIZE): T[][] {
   if (!values.length) return []
@@ -143,6 +144,33 @@ async function runChunkedQuery<T>(
   }
 
   return results
+}
+
+async function fetchAllTenantCommercialOffers<T>(
+  supabaseAdmin: any,
+  columns: string,
+  applyFilters: (query: any) => any,
+): Promise<T[]> {
+  const rows: T[] = []
+
+  for (let from = 0; ; from += SUPABASE_PAGE_SIZE) {
+    const to = from + SUPABASE_PAGE_SIZE - 1
+    const { data, error } = await applyFilters(
+      supabaseAdmin
+        .from('tenant_commercial_offers')
+        .select(columns)
+        .order('id', { ascending: true }),
+    ).range(from, to)
+
+    if (error) throw error
+
+    const page = (data || []) as T[]
+    rows.push(...page)
+
+    if (page.length < SUPABASE_PAGE_SIZE) break
+  }
+
+  return rows
 }
 
 async function getPriceTableContext(storeId: number) {
@@ -224,12 +252,11 @@ export async function getStorePriceTableData(
     })
     .filter(Boolean) as PriceTableCatalogOption[]
 
-  const { data: tenantOffers, error: tenantOffersError } = await supabaseAdmin
-    .from('tenant_commercial_offers')
-    .select('id,global_offer_id,display_name')
-    .eq('activation_id', activation.id)
-
-  if (tenantOffersError) throw tenantOffersError
+  const tenantOffers = await fetchAllTenantCommercialOffers<TenantOfferRow>(
+    supabaseAdmin,
+    'id,global_offer_id,display_name',
+    (query) => query.eq('activation_id', activation.id),
+  )
 
   const globalOfferIds: string[] = (tenantOffers || []).map(
     (o: any): string => o.global_offer_id,
@@ -441,12 +468,11 @@ export async function getStorePriceTableAllActiveOffersData(
     .filter(Boolean) as PriceTableCatalogOption[]
 
   const activationIds = activations.map((activation: any) => activation.id)
-  const { data: tenantOffers, error: tenantOffersError } = await supabaseAdmin
-    .from('tenant_commercial_offers')
-    .select('id,activation_id,global_offer_id,display_name')
-    .in('activation_id', activationIds)
-
-  if (tenantOffersError) throw tenantOffersError
+  const tenantOffers = await fetchAllTenantCommercialOffers<TenantMixedOfferRow>(
+    supabaseAdmin,
+    'id,activation_id,global_offer_id,display_name',
+    (query) => query.in('activation_id', activationIds),
+  )
 
   const globalOfferIds: string[] = [
     ...new Set<string>((tenantOffers || []).map((offer: any): string => offer.global_offer_id)),

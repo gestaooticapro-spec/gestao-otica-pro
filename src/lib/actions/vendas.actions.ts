@@ -2338,14 +2338,28 @@ export async function receberParcela(prevState: any, formData: FormData) {
 
     // Lógica de Diferença (Exatamente igual ao seu original)
     if (diferencaDivida > 0.01) {
+      const { data: ultimaParcelaRaw } = await supabaseAdmin
+        .from('financiamento_parcelas')
+        .select('numero_parcela')
+        .eq('financiamento_id', parcelaAtual.financiamento_id)
+        .order('numero_parcela', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      const ultimaParcela = ultimaParcelaRaw as any
+      const proximoNumeroParcela = Number(ultimaParcela?.numero_parcela || parcelaAtual.numero_parcela) + 1
+
       if (estrategia === 'criar_pendencia') {
+        const novaDataVencimento = new Date(parcelaAtual.data_vencimento)
+        novaDataVencimento.setDate(novaDataVencimento.getDate() + 30)
+
         const { error: errPendencia } = await (supabaseAdmin.from('financiamento_parcelas') as any).insert({
           tenant_id: (profile as any).tenant_id,
           store_id: store_id,
           financiamento_id: parcelaAtual.financiamento_id,
           customer_id: parcelaAtual.customer_id,
-          numero_parcela: parcelaAtual.numero_parcela,
-          data_vencimento: parcelaAtual.data_vencimento,
+          numero_parcela: proximoNumeroParcela,
+          data_vencimento: novaDataVencimento.toISOString(),
           valor_parcela: diferencaDivida,
           status: 'Pendente'
         })
@@ -2376,7 +2390,7 @@ export async function receberParcela(prevState: any, formData: FormData) {
             store_id: store_id,
             financiamento_id: parcelaAtual.financiamento_id,
             customer_id: parcelaAtual.customer_id,
-            numero_parcela: parcelaAtual.numero_parcela + 1,
+            numero_parcela: proximoNumeroParcela,
             data_vencimento: novaData.toISOString(),
             valor_parcela: diferencaDivida,
             status: 'Pendente'

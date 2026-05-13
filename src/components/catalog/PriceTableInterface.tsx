@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react'
 import type { PriceTableData, PriceTableOffer } from '@/lib/actions/price-table.actions'
+import { normalizeLensName } from '@/lib/utils/lens'
 
 type ViewMode = 'matrix' | 'list'
 
@@ -600,6 +601,7 @@ function AtomicOfferCard({ offer }: { offer: PriceTableOffer }) {
 }
 
 function FamilySection({
+  storeId,
   familyName,
   composableOffers,
   atomicOffers,
@@ -607,7 +609,10 @@ function FamilySection({
   compatibilityMap,
   gridSummaryByOffer,
   viewMode,
+  hasGeometry,
+  returnTo,
 }: {
+  storeId: number
   familyName: string
   composableOffers: PriceTableOffer[]
   atomicOffers: PriceTableOffer[]
@@ -615,8 +620,15 @@ function FamilySection({
   compatibilityMap: Map<string, Map<string, { specialPrice: number | null; priceMode: 'final' | 'surcharge' }>>
   gridSummaryByOffer: Map<string, OfferGridSummary>
   viewMode: ViewMode
+  hasGeometry: boolean
+  returnTo: string
 }) {
   const [isOpen, setIsOpen] = useState(false)
+  const geometryHref = useMemo(() => {
+    const params = new URLSearchParams()
+    params.set('returnTo', returnTo)
+    return `/dashboard/loja/${storeId}/lentes/visualizar/${encodeURIComponent(familyName)}?${params.toString()}`
+  }, [familyName, returnTo, storeId])
 
   // Group composable by section
   const sections = useMemo(() => {
@@ -634,10 +646,11 @@ function FamilySection({
 
   return (
     <div className="rounded-3xl border border-white/8 bg-slate-900/60 backdrop-blur-sm">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex w-full items-center justify-between px-6 py-5 text-left transition-colors hover:bg-white/5"
-      >
+      <div className="flex w-full items-center justify-between px-6 py-5">
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex min-w-0 flex-1 items-center justify-between text-left transition-colors hover:text-cyan-100"
+        >
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-500/10 text-cyan-300">
             <Layers3 className="h-5 w-5" />
@@ -655,7 +668,16 @@ function FamilySection({
         ) : (
           <ChevronRight className="h-5 w-5 text-slate-500" />
         )}
-      </button>
+        </button>
+        {hasGeometry ? (
+          <Link
+            href={geometryHref}
+            className="ml-4 inline-flex shrink-0 rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-indigo-200 transition hover:border-indigo-300/60 hover:bg-indigo-500/20 hover:text-white"
+          >
+            Ver geometria
+          </Link>
+        ) : null}
+      </div>
 
       {isOpen && (
         <div className="space-y-6 px-6 pb-6">
@@ -771,10 +793,14 @@ export default function PriceTableInterface({
   data,
   embedded = false,
   initialFilters,
+  geometryFamilyNames = [],
+  returnTo,
 }: {
   data: PriceTableData
   embedded?: boolean
   initialFilters?: InitialFilters
+  geometryFamilyNames?: string[]
+  returnTo?: string
 }) {
   const [viewMode, setViewMode] = useState<ViewMode>('matrix')
   const [search, setSearch] = useState(initialFilters?.search || '')
@@ -843,6 +869,11 @@ export default function PriceTableInterface({
   }, [data.grids])
 
   const familyMap = useMemo(() => new Map(data.families.map((f) => [f.id, f])), [data.families])
+  const geometryFamilyNameSet = useMemo(
+    () => new Set(geometryFamilyNames.map((name) => normalizeLensName(name))),
+    [geometryFamilyNames],
+  )
+  const safeReturnTo = returnTo || `/dashboard/loja/${data.storeId}/tabela-precos?scope=laboratorio`
   const treatmentById = useMemo(
     () => new Map(data.treatments.map((t) => [t.id, t])),
     [data.treatments],
@@ -1370,6 +1401,7 @@ export default function PriceTableInterface({
           {familyGroups.map((group) => (
             <FamilySection
               key={group.family.id}
+              storeId={data.storeId}
               familyName={group.family.nome}
               composableOffers={group.composable}
               atomicOffers={group.atomic}
@@ -1377,6 +1409,8 @@ export default function PriceTableInterface({
               compatibilityMap={compatibilityMap}
               gridSummaryByOffer={gridSummaryByOffer}
               viewMode={viewMode}
+              hasGeometry={geometryFamilyNameSet.has(normalizeLensName(group.family.nome))}
+              returnTo={safeReturnTo}
             />
           ))}
 

@@ -4,6 +4,7 @@ import { ShieldAlert, Tag } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getProfileByAdmin } from '@/lib/supabase/admin'
 import { getStoreGlobalCatalogOverview } from '@/lib/actions/global-catalog.actions'
+import { getAllLensGeometries } from '@/lib/actions/lens-geometry.actions'
 import {
   getStorePriceTableAllActiveOffersData,
   getStorePriceTableData,
@@ -94,6 +95,32 @@ export default async function StorePriceTablePage({
         )
       : null
   const mixedData = scope === 'lente' ? await getStorePriceTableAllActiveOffersData(storeId) : null
+  const geometries = scope === 'laboratorio' ? await getAllLensGeometries() : []
+  const geometryFamilyNames = geometries.map((geometry) => geometry.family_name)
+  const currentTableParams = new URLSearchParams()
+  currentTableParams.set('scope', scope)
+  if (typeof searchParams?.versionId === 'string' && searchParams.versionId.trim()) {
+    currentTableParams.set('versionId', searchParams.versionId.trim())
+  }
+  if (typeof searchParams?.q === 'string' && searchParams.q.trim()) {
+    currentTableParams.set('q', searchParams.q.trim())
+  }
+  if (typeof searchParams?.clinical === 'string' && searchParams.clinical.trim()) {
+    currentTableParams.set('clinical', searchParams.clinical.trim())
+  }
+  if (typeof searchParams?.material === 'string' && searchParams.material.trim()) {
+    currentTableParams.set('material', searchParams.material.trim())
+  }
+  if (typeof searchParams?.indice === 'string' && searchParams.indice.trim()) {
+    currentTableParams.set('indice', searchParams.indice.trim())
+  }
+  if (typeof searchParams?.feature === 'string' && searchParams.feature.trim()) {
+    currentTableParams.set('feature', searchParams.feature.trim())
+  }
+  if (typeof searchParams?.section === 'string' && searchParams.section.trim()) {
+    currentTableParams.set('section', searchParams.section.trim())
+  }
+  const returnTo = `/dashboard/loja/${storeId}/tabela-precos?${currentTableParams.toString()}`
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
@@ -140,7 +167,13 @@ export default async function StorePriceTablePage({
         ) : null}
 
         {scope === 'laboratorio' && labData ? (
-          <PriceTableInterface data={labData} embedded initialFilters={initialLabFilters} />
+          <PriceTableInterface
+            data={labData}
+            embedded
+            initialFilters={initialLabFilters}
+            geometryFamilyNames={geometryFamilyNames}
+            returnTo={returnTo}
+          />
         ) : null}
         {scope === 'lente' && mixedData ? <PriceTableLensSearchInterface data={mixedData} /> : null}
       </div>
