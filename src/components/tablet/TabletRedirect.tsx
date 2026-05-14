@@ -1,7 +1,7 @@
 ﻿'use client'
 
 import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 
 /**
  * Detecta tablet por toque + largura de tela.
@@ -9,8 +9,12 @@ import { useRouter } from 'next/navigation'
  */
 export function TabletRedirect({ storeId }: { storeId: number }) {
   const router = useRouter()
+  const pathname = usePathname()
 
   useEffect(() => {
+    // Permite navegar para a tabela de preços a partir do menu tablet sem loop de redirecionamento.
+    if (pathname === `/dashboard/loja/${storeId}/tabela-precos`) return
+
     // Limpa configuracao antiga persistente para evitar ficar preso no desktop.
     localStorage.removeItem('forceDesktop')
 
@@ -23,7 +27,7 @@ export function TabletRedirect({ storeId }: { storeId: number }) {
     if (hasTouch && isNarrow) {
       router.replace(`/tablet/${storeId}`)
     }
-  }, [storeId, router])
+  }, [storeId, router, pathname])
 
   return null
 }
