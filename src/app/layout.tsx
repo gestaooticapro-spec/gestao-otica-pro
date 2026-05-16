@@ -21,6 +21,15 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: 'Gestão Ótica Pro',
   description: 'Sistema de gestão para redes de óticas',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', type: 'image/x-icon' },
+      { url: '/favicon-96x96.png', sizes: '96x96', type: 'image/png' },
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+    ],
+    shortcut: '/favicon.ico',
+    apple: '/apple-touch-icon.png',
+  },
   openGraph: {
     title: 'Gestão Ótica Pro',
     description: 'Sistema de gestão para redes de óticas',

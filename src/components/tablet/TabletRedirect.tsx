@@ -12,8 +12,12 @@ export function TabletRedirect({ storeId }: { storeId: number }) {
   const pathname = usePathname()
 
   useEffect(() => {
-    // Permite navegar para a tabela de preços a partir do menu tablet sem loop de redirecionamento.
-    if (pathname === `/dashboard/loja/${storeId}/tabela-precos`) return
+    // Permite navegar para rotas liberadas do dashboard sem loop de redirecionamento.
+    const allowedTabletDashboardRoutes = [
+      `/dashboard/loja/${storeId}/tabela-precos`,
+      `/dashboard/loja/${storeId}/lentes/mapa-calor`,
+    ]
+    if (allowedTabletDashboardRoutes.includes(pathname)) return
 
     // Limpa configuracao antiga persistente para evitar ficar preso no desktop.
     localStorage.removeItem('forceDesktop')

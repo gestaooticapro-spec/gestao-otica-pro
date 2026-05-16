@@ -42,6 +42,7 @@ const validaCPF = (strCPF: string) => {
 const formatDate = (dateString: string | null | undefined) => { try { return dateString?.split('T')[0] || ''; } catch (e) { return ''; } };
 const formatDateTime = (dateString: string | null | undefined) => { try { return dateString ? new Date(dateString).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR'); } catch (e) { return 'Data inválida'; } };
 const maskCPF = (value: string) => value.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2').substring(0, 14);
+const maskCep = (value: string) => value.replace(/\D/g, '').replace(/^(\d{5})(\d)/, '$1-$2').substring(0, 9);
 const detectPhoneCountry = (digits: string): 'PY' | 'BR' => {
     if (digits.startsWith('595')) return 'PY';
     if (digits.startsWith('09') && digits.length <= 10) return 'PY';
@@ -76,6 +77,15 @@ const maskPhone = (value: string, normalize = false) => {
         .substring(0, 15);
 };
 const formatRenda = (value: string) => { let v = value.replace(/\D/g, ''); if (!v) return '0,00'; let i = v.slice(0, -2); let d = v.slice(-2); if (i.length > 3) i = i.replace(/\B(?=(\d{3})+(?!\d))/g, "."); return `${i || '0'},${d}`; };
+
+type ViaCepResponse = {
+    erro?: boolean;
+    logradouro?: string;
+    bairro?: string;
+    localidade?: string;
+    uf?: string;
+    complemento?: string;
+};
 
 // --- DESIGN SYSTEM DOCTAS GLASS ---
 const labelStyle = "block text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-wider";
@@ -151,6 +161,8 @@ export default function StoreClientPage() {
     const [cidade, setCidade] = useState('');
     const [uf, setUf] = useState('');
     const [cep, setCep] = useState('');
+    const [isCepLoading, setIsCepLoading] = useState(false);
+    const [cepMessage, setCepMessage] = useState<string | null>(null);
     const [phone, setPhone] = useState('');
     const [foneMovel, setFoneMovel] = useState('');
     const [email, setEmail] = useState('');
@@ -252,7 +264,8 @@ export default function StoreClientPage() {
         setComplemento(currentCustomer?.complemento ?? '');
         setCidade(currentCustomer?.cidade ?? '');
         setUf(currentCustomer?.uf ?? '');
-        setCep(currentCustomer?.cep ?? '');
+        setCep(maskCep(currentCustomer?.cep ?? ''));
+        setCepMessage(null);
         setPhone(maskPhone(currentCustomer?.phone ?? ''));
         setFoneMovel(maskPhone(currentCustomer?.fone_movel ?? ''));
         setEmail(currentCustomer?.email ?? '');
@@ -286,6 +299,45 @@ export default function StoreClientPage() {
         else setIsCpfValid(false);
     };
 
+    const handleCepChange = (val: string) => {
+        setCep(maskCep(val));
+        setCepMessage(null);
+    };
+
+    const handleCepLookup = async () => {
+        const cleanCep = cep.replace(/\D/g, '');
+        if (cleanCep.length !== 8) {
+            setCepMessage('Informe um CEP com 8 digitos.');
+            return;
+        }
+
+        setIsCepLoading(true);
+        setCepMessage(null);
+
+        try {
+            const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+            if (!response.ok) throw new Error('Falha ao consultar CEP.');
+
+            const data = await response.json() as ViaCepResponse;
+            if (data.erro) {
+                setCepMessage('CEP nao encontrado.');
+                return;
+            }
+
+            setRua(data.logradouro ?? '');
+            setBairro(data.bairro ?? '');
+            setCidade(data.localidade ?? '');
+            setUf((data.uf ?? '').toUpperCase());
+            if (data.complemento) setComplemento(data.complemento);
+            setCepMessage('Endereco encontrado.');
+        } catch (error) {
+            console.error('Erro ao consultar CEP:', error);
+            setCepMessage('Nao foi possivel consultar o CEP.');
+        } finally {
+            setIsCepLoading(false);
+        }
+    };
+
     const handleCloseEditor = () => {
         setCurrentIndex(-1);
         setEditorMode('empty');
@@ -313,7 +365,7 @@ export default function StoreClientPage() {
         formData.set('complemento', complemento);
         formData.set('cidade', cidade);
         formData.set('uf', uf);
-        formData.set('cep', cep);
+        formData.set('cep', cep.replace(/\D/g, ''));
         formData.set('faixa_etaria', faixaEtaria);
         formData.set('notes', obsGeral);
         formData.set('obs_debito', obsGeral);
@@ -551,8 +603,8 @@ export default function StoreClientPage() {
                                     {activeTab === 'principal' && (
                                         <div className={cardStyle}>
                                             <AbaPrincipal
-                                                state={{ fullName, cpf, rg, birthDate, faixaEtaria, estadoCivil, rua, numero, bairro, complemento, cidade, uf, cep, phone, foneMovel, email, isCpfValid, obsGeral }}
-                                                handlers={{ setFullName, handleCpfChange, setRg, setBirthDate, setFaixaEtaria, setEstadoCivil, setRua, setNumero, setBairro, setComplemento, setCidade, setUf, setCep, setPhone, setFoneMovel, setEmail, setObsGeral }}
+                                                state={{ fullName, cpf, rg, birthDate, faixaEtaria, estadoCivil, rua, numero, bairro, complemento, cidade, uf, cep, phone, foneMovel, email, isCpfValid, obsGeral, isCepLoading, cepMessage }}
+                                                handlers={{ setFullName, handleCpfChange, setRg, setBirthDate, setFaixaEtaria, setEstadoCivil, setRua, setNumero, setBairro, setComplemento, setCidade, setUf, handleCepChange, handleCepLookup, setPhone, setFoneMovel, setEmail, setObsGeral }}
                                                 isSaving={isSaving} inputStyle={inputStyle}
                                             />
                                         </div>
@@ -673,7 +725,34 @@ function AbaPrincipal({ state, handlers, isSaving, inputStyle }: any) {
             </h3>
             <div className="col-span-2">
                 <label className={lbl}>CEP</label>
-                <input name="cep" type="text" value={state.cep} onChange={(e) => handlers.setCep(e.target.value)} className={inputStyle} disabled={isSaving} />
+                <div className="flex gap-1">
+                    <input
+                        name="cep"
+                        type="text"
+                        value={state.cep}
+                        onChange={(e) => handlers.handleCepChange(e.target.value)}
+                        onBlur={() => {
+                            if (state.cep.replace(/\D/g, '').length === 8) handlers.handleCepLookup();
+                        }}
+                        className={inputStyle}
+                        disabled={isSaving || state.isCepLoading}
+                    />
+                    <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={handlers.handleCepLookup}
+                        disabled={isSaving || state.isCepLoading}
+                        className="h-9 w-9 shrink-0 rounded-xl border border-white/10 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 disabled:opacity-50 transition-all flex items-center justify-center"
+                        title="Buscar endereco pelo CEP"
+                    >
+                        {state.isCepLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                    </button>
+                </div>
+                {state.cepMessage && (
+                    <span className={`text-[9px] font-bold mt-1 block ${state.cepMessage === 'Endereco encontrado.' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                        {state.cepMessage}
+                    </span>
+                )}
             </div>
             <div className="col-span-8">
                 <label className={lbl}>Logradouro</label>
