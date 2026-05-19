@@ -395,7 +395,7 @@ export async function saveOftalmo(prevState: CatalogActionResult, formData: Form
       clinica: nullIfEmpty(formData.get('clinica')),
       comissao: nullIfEmpty(formData.get('comissao')),
     })
-    if (!validated.success) return { success: false, message: 'Erro validação', errors: validated.error.flatten().fieldErrors }
+    if (!validated.success) return { success: false, message: 'Erro validacao', errors: validated.error.flatten().fieldErrors }
     const { id, ...data } = validated.data
 
     if (id) {
@@ -410,7 +410,8 @@ export async function saveOftalmo(prevState: CatalogActionResult, formData: Form
       return { success: true, message: 'Oftalmologista salvo!', data: saved }
     }
 
-    const insertPayload = { ...data, tenant_id: profile.tenant_id }
+    const normalizedCrm = data.crm ? data.crm.trim() : null
+    const insertPayload = { ...data, crm: normalizedCrm, tenant_id: profile.tenant_id }
 
     const { data: created, error: insertError } = await (supabaseAdmin.from('oftalmologistas') as any)
       .insert(insertPayload)
@@ -418,26 +419,39 @@ export async function saveOftalmo(prevState: CatalogActionResult, formData: Form
       .single()
 
     if (insertError && insertError.code === '23505') {
-      // Sequence desalinhada após migração de dados — auto-corrige
-      console.warn('[saveOftalmo] Sequence desalinhada detectada. Corrigindo automaticamente...')
+      const constraint = (insertError as any).constraint || ''
+      const isDuplicateCrm = constraint === 'oftalmologistas_tenant_id_store_id_crm_key'
+      const isDuplicateId = constraint === 'oftalmologistas_pkey'
 
-      const { data: maxRow } = await (supabaseAdmin.from('oftalmologistas') as any)
-        .select('id')
-        .order('id', { ascending: false })
-        .limit(1)
-        .single()
+      if (isDuplicateCrm) {
+        return {
+          success: false,
+          message: 'Ja existe um oftalmologista com esse CRM nesta loja. Edite o cadastro existente ou informe outro CRM.'
+        }
+      }
 
-      const nextId = (maxRow?.id || 0) + 1
+      if (isDuplicateId) {
+        // Sequence desalinhada apos migracao de dados - auto-corrige
+        console.warn('[saveOftalmo] Sequence desalinhada detectada. Corrigindo automaticamente...')
 
-      const { data: retried, error: retryError } = await (supabaseAdmin.from('oftalmologistas') as any)
-        .insert({ ...insertPayload, id: nextId })
-        .select('*')
-        .single()
+        const { data: maxRow } = await (supabaseAdmin.from('oftalmologistas') as any)
+          .select('id')
+          .order('id', { ascending: false })
+          .limit(1)
+          .single()
 
-      if (retryError) throw retryError
+        const nextId = (maxRow?.id || 0) + 1
 
-      revalidatePath(`/dashboard/loja/${profile.store_id}/cadastros`)
-      return { success: true, message: 'Oftalmologista salvo! (ID corrigido automaticamente)', data: retried }
+        const { data: retried, error: retryError } = await (supabaseAdmin.from('oftalmologistas') as any)
+          .insert({ ...insertPayload, id: nextId })
+          .select('*')
+          .single()
+
+        if (retryError) throw retryError
+
+        revalidatePath(`/dashboard/loja/${profile.store_id}/cadastros`)
+        return { success: true, message: 'Oftalmologista salvo! (ID corrigido automaticamente)', data: retried }
+      }
     }
 
     if (insertError) throw insertError

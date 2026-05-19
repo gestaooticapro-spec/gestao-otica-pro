@@ -150,6 +150,8 @@ type FechamentoInvoice = {
     chave_acesso: string | null;
     xml_content: string | null;
     xml_url: string | null;
+    motivo_rejeicao: string | null;
+    error_message: string | null;
     data_emissao: string | null;
     created_at: string;
 };
@@ -161,7 +163,7 @@ export async function getFechamentoData(storeId: number, month: number, year: nu
 
     const startDate = new Date(year, month, 1).toISOString();
     const endDate = new Date(year, month + 1, 1).toISOString();
-    const fields = "id, numero, status, valor_total, chave_acesso, xml_content, xml_url, data_emissao, created_at";
+    const fields = "id, numero, status, valor_total, chave_acesso, xml_content, xml_url, motivo_rejeicao, error_message, data_emissao, created_at";
 
     const [{ data: byEmission }, { data: byCreation }] = await Promise.all([
         supabase.from("fiscal_invoices").select(fields)

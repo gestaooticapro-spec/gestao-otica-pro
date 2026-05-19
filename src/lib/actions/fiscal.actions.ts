@@ -72,6 +72,15 @@ function buildOutputInvoiceSnapshot(
     };
 }
 
+function extractProtocolFromInutilization(result: any) {
+    const directProtocol = result?.numero_protocolo || result?.autorizacao?.numero_protocolo;
+    if (directProtocol) return String(directProtocol);
+
+    const motivo = String(result?.motivo_status || result?.autorizacao?.motivo_status || "");
+    const match = motivo.match(/nProt:?\s*(\d+)/i);
+    return match?.[1] || null;
+}
+
 async function tryFetchXmlContent(xmlUrl?: string | null) {
     if (!xmlUrl) return null;
     try {
@@ -80,6 +89,29 @@ async function tryFetchXmlContent(xmlUrl?: string | null) {
         return await response.text();
     } catch (error) {
         console.warn("[Fiscal] Nao foi possivel baixar XML automaticamente:", error);
+        return null;
+    }
+}
+
+async function tryFetchXmlByUuid(
+    token: string,
+    baseUrl: string,
+    tipoDocumento: "NFCe" | "NFSe",
+    uuid?: string | null
+) {
+    if (!uuid) return null;
+    try {
+        const endpointType = tipoDocumento === "NFCe" ? "nfce" : "nfse";
+        const response = await fetch(`${baseUrl}/${endpointType}/${uuid}/xml`, {
+            method: "GET",
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json"
+            }
+        });
+        if (!response.ok) return null;
+        return await response.text();
+    } catch {
         return null;
     }
 }
@@ -459,7 +491,10 @@ export async function emitirNFCe(payload: EmissionPayload) {
         }
 
         if (realStatus === 'autorizado') {
-            const xmlContent = await tryFetchXmlContent(result.xml_url);
+            let xmlContent = await tryFetchXmlContent(result.xml_url);
+            if (!xmlContent) {
+                xmlContent = await tryFetchXmlByUuid(token, baseUrl, "NFCe", result.id);
+            }
             const authorizedUpdate: Record<string, any> = {
                 status: "authorized",
                 nuvemfiscal_uuid: result.id,
@@ -735,16 +770,28 @@ export async function consultarNFCe(invoiceId: string) {
             error_message: errorMessage
         };
 
-        // Salvar XML localmente se autorizado
-        if (novoStatus === 'authorized' && result.xml_url && !invoice.xml_content) {
-            try {
-                const xmlResponse = await fetch(result.xml_url);
-                if (xmlResponse.ok) {
-                    updatePayload.xml_content = await xmlResponse.text();
-                    console.log(`[NFCe] XML salvo localmente para nota ${result.numero || invoiceId}`);
+        // Salvar XML localmente (xml_url ou fallback por UUID)
+        if ((novoStatus === 'authorized' || novoStatus === 'cancelled') && !invoice.xml_content) {
+            let xmlContent: string | null = null;
+
+            if (result.xml_url) {
+                try {
+                    const xmlResponse = await fetch(result.xml_url);
+                    if (xmlResponse.ok) {
+                        xmlContent = await xmlResponse.text();
+                    }
+                } catch (xmlErr) {
+                    console.warn('[NFCe] Não foi possível baixar XML via xml_url.', xmlErr);
                 }
-            } catch (xmlErr) {
-                console.warn('[NFCe] Não foi possível baixar o XML agora.', xmlErr);
+            }
+
+            if (!xmlContent) {
+                xmlContent = await tryFetchXmlByUuid(token, baseUrl, "NFCe", invoice.nuvemfiscal_uuid);
+            }
+
+            if (xmlContent) {
+                updatePayload.xml_content = xmlContent;
+                console.log(`[NFCe] XML salvo localmente para nota ${result.numero || invoiceId}`);
             }
         }
 
@@ -758,6 +805,199 @@ export async function consultarNFCe(invoiceId: string) {
     } catch (error: any) {
         console.error("Erro ao consultar NFC-e:", error);
         return { success: false, error: error.message };
+    }
+}
+
+export async function recuperarXmlsNFCePeriodo(params: {
+    storeId: number;
+    month: number; // 0-11
+    year: number;
+    environment?: "production" | "homologation";
+}) {
+    const supabase = createAdminClient() as any;
+    const env = params.environment || "production";
+
+    try {
+        const start = new Date(Date.UTC(params.year, params.month, 1, 0, 0, 0)).toISOString();
+        const end = new Date(Date.UTC(params.year, params.month + 1, 0, 23, 59, 59)).toISOString();
+
+        const { data: invoices, error } = await supabase
+            .from("fiscal_invoices")
+            .select("id, status, xml_content, xml_url")
+            .eq("store_id", params.storeId)
+            .eq("tipo_documento", "NFCe")
+            .eq("environment", env)
+            .gte("data_emissao", start)
+            .lte("data_emissao", end)
+            .in("status", ["authorized", "cancelled"]);
+
+        if (error) {
+            return { success: false, error: error.message };
+        }
+
+        const list = invoices || [];
+        const target = list.filter((inv: any) => !inv.xml_content && !inv.xml_url);
+
+        let refreshed = 0;
+        for (const inv of target) {
+            const res = await consultarNFCe(String(inv.id));
+            if (res.success) refreshed += 1;
+        }
+
+        const { data: after, error: afterError } = await supabase
+            .from("fiscal_invoices")
+            .select("id, xml_content, xml_url")
+            .eq("store_id", params.storeId)
+            .eq("tipo_documento", "NFCe")
+            .eq("environment", env)
+            .gte("data_emissao", start)
+            .lte("data_emissao", end)
+            .in("status", ["authorized", "cancelled"]);
+
+        if (afterError) {
+            return { success: false, error: afterError.message };
+        }
+
+        const total = (after || []).length;
+        const withXml = (after || []).filter((inv: any) => Boolean(inv.xml_content || inv.xml_url)).length;
+        const missing = total - withXml;
+
+        return {
+            success: true,
+            total,
+            withXml,
+            missing,
+            refreshed,
+        };
+    } catch (error: any) {
+        console.error("Erro ao recuperar XMLs do período:", error);
+        return { success: false, error: error.message || "Erro inesperado ao recuperar XMLs." };
+    }
+}
+
+export async function inutilizarNumeracaoNFCe(params: {
+    storeId: number;
+    year: number;
+    serie: number;
+    numeroInicial: number;
+    numeroFinal: number;
+    justificativa: string;
+    environment?: "production" | "homologation";
+}) {
+    const supabase = createAdminClient() as any;
+    const env = params.environment || "production";
+
+    try {
+        if (!params.justificativa || params.justificativa.trim().length < 15) {
+            return { success: false, error: "Justificativa deve ter ao menos 15 caracteres." };
+        }
+        if (params.numeroInicial <= 0 || params.numeroFinal <= 0 || params.numeroFinal < params.numeroInicial) {
+            return { success: false, error: "Faixa de numeração inválida." };
+        }
+
+        const { data: store, error: storeError } = await supabase
+            .from("stores")
+            .select("cnpj, tenant_id")
+            .eq("id", params.storeId)
+            .single();
+
+        if (storeError || !store?.cnpj) {
+            return { success: false, error: "CNPJ da loja não encontrado." };
+        }
+
+        const cnpj = String(store.cnpj).replace(/\D/g, "");
+        if (!cnpj) {
+            return { success: false, error: "CNPJ inválido na loja." };
+        }
+
+        const token = await getNuvemFiscalToken(env);
+        const baseUrl = env === "production"
+            ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
+            : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
+
+        const payload = {
+            ambiente: env === "production" ? "producao" : "homologacao",
+            cnpj,
+            ano: params.year % 100,
+            serie: params.serie,
+            numero_inicial: params.numeroInicial,
+            numero_final: params.numeroFinal,
+            justificativa: params.justificativa.trim(),
+        };
+
+        const response = await fetch(`${baseUrl}/nfce/inutilizacoes`, {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+            const apiError = result?.error?.message || "Erro ao solicitar inutilização na Nuvem Fiscal.";
+            return { success: false, error: apiError, details: result };
+        }
+
+        // Persistir histórico local para permitir download posterior de comprovantes
+        try {
+            const protocol = extractProtocolFromInutilization(result);
+            const externalId = result?.id || result?.autorizacao?.id || null;
+            const status = result?.status || result?.autorizacao?.status || null;
+
+            await supabase
+                .from("fiscal_inutilizations")
+                .upsert({
+                    store_id: params.storeId,
+                    tenant_id: store.tenant_id || null,
+                    environment: env,
+                    model: "NFCe",
+                    year: params.year,
+                    serie: params.serie,
+                    numero_inicial: params.numeroInicial,
+                    numero_final: params.numeroFinal,
+                    justificativa: params.justificativa.trim(),
+                    protocol,
+                    external_id: externalId,
+                    status,
+                    response_json: result,
+                }, { onConflict: "external_id" });
+        } catch (persistErr) {
+            console.warn("[Fiscal] Não foi possível persistir histórico de inutilização localmente.", persistErr);
+        }
+
+        return { success: true, data: result };
+    } catch (error: any) {
+        console.error("Erro ao inutilizar numeração NFC-e:", error);
+        return { success: false, error: error.message || "Erro inesperado na inutilização." };
+    }
+}
+
+export async function listarInutilizacoesNFCe(params: {
+    storeId: number;
+    year: number;
+    environment?: "production" | "homologation";
+}) {
+    const supabase = createAdminClient() as any;
+    const env = params.environment || "production";
+    try {
+        const { data, error } = await supabase
+            .from("fiscal_inutilizations")
+            .select("id, environment, year, serie, numero_inicial, numero_final, justificativa, protocol, external_id, status, response_json, created_at")
+            .eq("store_id", params.storeId)
+            .eq("model", "NFCe")
+            .eq("environment", env)
+            .eq("year", params.year)
+            .order("created_at", { ascending: false });
+
+        if (error) {
+            return { success: false, error: error.message, data: [] };
+        }
+
+        return { success: true, data: data || [] };
+    } catch (error: any) {
+        return { success: false, error: error.message || "Erro ao listar inutilizações.", data: [] };
     }
 }
 

@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { getFechamentoData } from "@/lib/actions/fiscal-db.actions";
+import { recuperarXmlsNFCePeriodo, inutilizarNumeracaoNFCe, listarInutilizacoesNFCe } from "@/lib/actions/fiscal.actions";
 import { getStoreProfile } from "@/lib/actions/store.actions";
 import {
     Download, Loader2, FileArchive, FileText,
@@ -23,7 +24,34 @@ type FiscalSummary = {
     canceladas: number;
     rejeitadas: number;
     valor_total: number;
-    xmls: { numero: string | null; chave_acesso: string | null; xml_content: string | null; xml_url: string | null; status: string }[];
+    xmls: {
+        numero: string | null;
+        chave_acesso: string | null;
+        xml_content: string | null;
+        xml_url: string | null;
+        status: string;
+        motivo_rejeicao?: string | null;
+        error_message?: string | null;
+    }[];
+};
+
+type InutilizacaoItem = {
+    id: number;
+    environment: "production" | "homologation";
+    year: number;
+    serie: number;
+    numero_inicial: number;
+    numero_final: number;
+    justificativa: string;
+    protocol: string | null;
+    external_id: string | null;
+    status: string | null;
+    response_json: any;
+    created_at: string;
+};
+
+const hasXmlSource = (item: { xml_content: string | null; xml_url: string | null }) => {
+    return Boolean(item.xml_content || item.xml_url);
 };
 
 export default function FechamentoMensalOtica({ params }: { params: { storeId: string } }) {
@@ -43,7 +71,15 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
     const [loading, setLoading] = useState(false);
     const [summary, setSummary] = useState<FiscalSummary | null>(null);
     const [exporting, setExporting] = useState(false);
+    const [recovering, setRecovering] = useState(false);
+    const [invalidating, setInvalidating] = useState(false);
+    const [invalidateEnvironment, setInvalidateEnvironment] = useState<"production" | "homologation">("production");
+    const [invalidateSerie, setInvalidateSerie] = useState(2);
+    const [invalidateStart, setInvalidateStart] = useState("");
+    const [invalidateEnd, setInvalidateEnd] = useState("");
+    const [invalidateReason, setInvalidateReason] = useState("Falha operacional no controle de numeração, sem autorização de uso para os números informados.");
     const [storeInfo, setStoreInfo] = useState<{ name: string; razao_social: string | null; cnpj: string | null } | null>(null);
+    const [inutilizacoes, setInutilizacoes] = useState<InutilizacaoItem[]>([]);
 
     const fetchXmlText = useCallback(async (xmlUrl?: string | null) => {
         if (!xmlUrl) return null;
@@ -60,13 +96,17 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
         setLoading(true);
         setSummary(null);
         try {
-            const [all, profile] = await Promise.all([
+            const [all, profile, inutilRes] = await Promise.all([
                 getFechamentoData(storeId, month, year),
                 getStoreProfile(storeId),
+                listarInutilizacoesNFCe({ storeId, year, environment: invalidateEnvironment }),
             ]);
             if (!all) throw new Error("Loja não encontrada.");
             if (profile) {
                 setStoreInfo({ name: profile.name, razao_social: profile.razao_social ?? null, cnpj: profile.cnpj ?? null });
+            }
+            if (inutilRes.success) {
+                setInutilizacoes((inutilRes.data as InutilizacaoItem[]) || []);
             }
 
             const autorizadas = all.filter(d => d.status === "authorized");
@@ -85,6 +125,8 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                     xml_content: d.xml_content,
                     xml_url: d.xml_url,
                     status: d.status,
+                    motivo_rejeicao: (d as any).motivo_rejeicao ?? null,
+                    error_message: (d as any).error_message ?? null,
                 })),
             });
         } catch (err: any) {
@@ -94,11 +136,46 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
         }
     };
 
+    const downloadJson = (item: InutilizacaoItem) => {
+        const blob = new Blob([JSON.stringify(item.response_json, null, 2)], { type: "application/json;charset=utf-8" });
+        saveAs(blob, `Inutilizacao_NFCe_S${item.serie}_${item.numero_inicial}-${item.numero_final}_${item.year}.json`);
+    };
+
+    const downloadPdf = (item: InutilizacaoItem) => {
+        const doc = new jsPDF();
+        doc.setFontSize(14);
+        doc.text("Comprovante de Inutilizacao de Numeracao NFC-e", 14, 18);
+        doc.setFontSize(10);
+        doc.text(`Loja: ${storeInfo?.name || storeId}`, 14, 28);
+        doc.text(`CNPJ: ${storeInfo?.cnpj || "-"}`, 14, 34);
+        doc.text(`Ambiente: ${item.environment === "production" ? "Producao" : "Homologacao"}`, 14, 40);
+        doc.text(`Ano: ${item.year}`, 14, 46);
+        doc.text(`Serie: ${item.serie}`, 14, 52);
+        doc.text(`Faixa: ${item.numero_inicial} a ${item.numero_final}`, 14, 58);
+        doc.text(`Protocolo: ${item.protocol || "-"}`, 14, 64);
+        doc.text(`Status: ${item.status || "-"}`, 14, 70);
+        doc.text(`Data da solicitacao: ${new Date(item.created_at).toLocaleString("pt-BR")}`, 14, 76);
+        autoTable(doc, {
+            startY: 84,
+            head: [["Campo", "Valor"]],
+            body: [
+                ["Justificativa", item.justificativa],
+                ["ID externo", item.external_id || "-"],
+            ],
+            styles: { fontSize: 9, cellWidth: "wrap" },
+            headStyles: { fillColor: [26, 26, 26] },
+        });
+        doc.save(`Comprovante_Inutilizacao_NFCe_S${item.serie}_${item.numero_inicial}-${item.numero_final}_${item.year}.pdf`);
+    };
+
     const handleExportZip = async () => {
         if (!summary) return;
         setExporting(true);
 
         try {
+            const inutilRes = await listarInutilizacoesNFCe({ storeId, year, environment: "production" });
+            const inutilizacoesExport = inutilRes.success ? ((inutilRes.data as InutilizacaoItem[]) || []) : [];
+
             const zip = new JSZip();
             const folderName = `Fechamento_NFCe_${MONTHS[month]}_${year}`;
             const root = zip.folder(folderName)!;
@@ -145,6 +222,36 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
 
             root.file("Resumo_Fechamento.pdf", doc.output("arraybuffer"));
 
+            // CSV de rejeições para justificar numeração não autorizada
+            const rejectedDocs = summary.xmls.filter(x => x.status === "rejected" || x.status === "error");
+            const rejectedRows = [
+                ["NUMERO", "STATUS", "MOTIVO", "CHAVE_ACESSO"],
+                ...rejectedDocs.map(d => [
+                    d.numero || "",
+                    d.status || "",
+                    (d.motivo_rejeicao || d.error_message || "").replace(/\r?\n/g, " "),
+                    d.chave_acesso || "",
+                ])
+            ];
+            root.file("Numeracoes_Rejeitadas.csv", "\ufeff" + rejectedRows.map(r => r.join(";")).join("\n"));
+
+            // CSV de inutilizações homologadas/solicitadas para o ano
+            const inutilRows = [
+                ["AMBIENTE", "ANO", "SERIE", "NUMERO_INICIAL", "NUMERO_FINAL", "PROTOCOLO", "STATUS", "DATA", "JUSTIFICATIVA"],
+                ...inutilizacoesExport.map(i => [
+                    i.environment === "production" ? "producao" : "homologacao",
+                    String(i.year),
+                    String(i.serie),
+                    String(i.numero_inicial),
+                    String(i.numero_final),
+                    i.protocol || "",
+                    i.status || "",
+                    new Date(i.created_at).toLocaleString("pt-BR"),
+                    (i.justificativa || "").replace(/\r?\n/g, " "),
+                ])
+            ];
+            root.file("Inutilizacoes_NFCe.csv", "\ufeff" + inutilRows.map(r => r.join(";")).join("\n"));
+
             // XMLs organizados por status
             const autFolder = root.folder("XMLs_Autorizadas")!;
             const cancelFolder = root.folder("XMLs_Canceladas")!;
@@ -162,6 +269,15 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                 }
             }
 
+            // Comprovantes técnicos das inutilizações
+            if (inutilizacoesExport.length > 0) {
+                const inutilFolder = root.folder("Inutilizacoes_Comprovantes")!;
+                for (const i of inutilizacoesExport) {
+                    const file = `NFCe_S${i.serie}_${i.numero_inicial}-${i.numero_final}_${i.year}.json`;
+                    inutilFolder.file(file, JSON.stringify(i.response_json ?? {}, null, 2));
+                }
+            }
+
             const blob = await zip.generateAsync({ type: "blob" });
             saveAs(blob, `${folderName}.zip`);
 
@@ -169,6 +285,89 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
             alert("Erro ao gerar ZIP: " + err.message);
         } finally {
             setExporting(false);
+        }
+    };
+
+    const handleRecoverXmls = async () => {
+        setRecovering(true);
+        try {
+            const res = await recuperarXmlsNFCePeriodo({
+                storeId,
+                month,
+                year,
+                environment: "production",
+            });
+
+            if (!res.success) {
+                alert(`Erro ao recuperar XMLs: ${res.error}`);
+                return;
+            }
+
+            alert(
+                `Recuperação concluída.\n` +
+                `Notas no período: ${res.total}\n` +
+                `Com XML/URL: ${res.withXml}\n` +
+                `Faltando: ${res.missing}\n` +
+                `Notas consultadas agora: ${res.refreshed}`
+            );
+
+            await fetchSummary();
+        } catch (err: any) {
+            alert("Erro ao recuperar XMLs: " + err.message);
+        } finally {
+            setRecovering(false);
+        }
+    };
+
+    const handleInvalidateNumbers = async () => {
+        const start = parseInt(invalidateStart, 10);
+        const end = parseInt(invalidateEnd, 10);
+        if (!start || !end) {
+            alert("Informe número inicial e final para inutilização.");
+            return;
+        }
+        if (end < start) {
+            alert("Número final deve ser maior ou igual ao inicial.");
+            return;
+        }
+        if (!invalidateReason || invalidateReason.trim().length < 15) {
+            alert("A justificativa deve ter no mínimo 15 caracteres.");
+            return;
+        }
+        const envLabel = invalidateEnvironment === "production" ? "produção" : "homologação";
+        if (!confirm(`Confirmar inutilização NFC-e série ${invalidateSerie}, faixa ${start} a ${end}, ano ${year}, em ${envLabel}?`)) {
+            return;
+        }
+
+        setInvalidating(true);
+        try {
+            const res = await inutilizarNumeracaoNFCe({
+                storeId,
+                year,
+                serie: invalidateSerie,
+                numeroInicial: start,
+                numeroFinal: end,
+                justificativa: invalidateReason,
+                environment: invalidateEnvironment,
+            });
+
+            if (!res.success) {
+                alert(`Erro na inutilização: ${res.error}`);
+                return;
+            }
+
+            const protocolo = res.data?.numero_protocolo
+                || res.data?.autorizacao?.numero_protocolo
+                || String(res.data?.motivo_status || "").match(/nProt:?\s*(\d+)/i)?.[1]
+                || "N/A";
+            const status = res.data?.status || res.data?.autorizacao?.status || "solicitado";
+            alert(`Inutilização enviada com sucesso.\nStatus: ${status}\nProtocolo: ${protocolo}`);
+            const updated = await listarInutilizacoesNFCe({ storeId, year, environment: invalidateEnvironment });
+            if (updated.success) setInutilizacoes((updated.data as InutilizacaoItem[]) || []);
+        } catch (err: any) {
+            alert("Erro ao inutilizar faixa: " + err.message);
+        } finally {
+            setInvalidating(false);
         }
     };
 
@@ -262,7 +461,19 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                                 ZIP contendo XMLs das NFC-e + resumo em PDF e CSV para {MONTHS[month]}/{year}.
                             </p>
                             <p className="text-xs text-stone-400 mt-1">
-                                {summary.xmls.filter(x => x.status === "authorized" || x.status === "cancelled").length} arquivo(s) XML disponíveis.
+                                {(() => {
+                                    const expectedXmlCount = summary.autorizadas + summary.canceladas;
+                                    const availableXmlCount = summary.xmls.filter(
+                                        x => (x.status === "authorized" || x.status === "cancelled") && hasXmlSource(x)
+                                    ).length;
+                                    const missingXmlCount = Math.max(0, expectedXmlCount - availableXmlCount);
+
+                                    if (missingXmlCount > 0) {
+                                        return `${availableXmlCount} XML(s) disponível(is) de ${expectedXmlCount}. Faltando ${missingXmlCount}.`;
+                                    }
+
+                                    return `${availableXmlCount} arquivo(s) XML disponível(is).`;
+                                })()}
                             </p>
                         </div>
                         <button
@@ -275,6 +486,112 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                                 : <><FileArchive size={16} /> Exportar (.zip)</>
                             }
                         </button>
+                        <button
+                            onClick={handleRecoverXmls}
+                            disabled={recovering || summary.autorizadas + summary.canceladas === 0}
+                            className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-stone-900 px-5 py-2.5 rounded-xl font-bold text-sm shadow-sm transition disabled:opacity-50 whitespace-nowrap"
+                        >
+                            {recovering
+                                ? <><Loader2 size={16} className="animate-spin" /> Buscando XMLs...</>
+                                : <>Buscar XMLs faltantes</>
+                            }
+                        </button>
+                    </div>
+
+                    <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 mt-4">
+                        <p className="font-bold text-stone-800">Inutilização de Numeração NFC-e</p>
+                        <p className="text-xs text-stone-500 mt-1">
+                            Automatiza o envio da solicitação para SEFAZ via Nuvem Fiscal no ambiente escolhido. A autorização depende da SEFAZ.
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-4">
+                            <select
+                                value={invalidateEnvironment}
+                                onChange={e => setInvalidateEnvironment(e.target.value as "production" | "homologation")}
+                                className="border border-stone-300 rounded-xl px-4 py-2 text-sm font-medium text-stone-800 outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] bg-white cursor-pointer"
+                            >
+                                <option value="production">Produção</option>
+                                <option value="homologation">Homologação</option>
+                            </select>
+                            <input
+                                type="number"
+                                value={invalidateSerie}
+                                onChange={e => setInvalidateSerie(parseInt(e.target.value || "0", 10))}
+                                className="border border-stone-300 rounded-xl px-4 py-2 text-sm font-medium text-stone-800 outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15]"
+                                placeholder="Série"
+                                min={1}
+                            />
+                            <input
+                                type="number"
+                                value={invalidateStart}
+                                onChange={e => setInvalidateStart(e.target.value)}
+                                className="border border-stone-300 rounded-xl px-4 py-2 text-sm font-medium text-stone-800 outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15]"
+                                placeholder="Nº inicial"
+                                min={1}
+                            />
+                            <input
+                                type="number"
+                                value={invalidateEnd}
+                                onChange={e => setInvalidateEnd(e.target.value)}
+                                className="border border-stone-300 rounded-xl px-4 py-2 text-sm font-medium text-stone-800 outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15]"
+                                placeholder="Nº final"
+                                min={1}
+                            />
+                            <button
+                                onClick={handleInvalidateNumbers}
+                                disabled={invalidating}
+                                className="flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-sm transition disabled:opacity-50 whitespace-nowrap"
+                            >
+                                {invalidating
+                                    ? <><Loader2 size={16} className="animate-spin" /> Enviando...</>
+                                    : <>Inutilizar faixa</>
+                                }
+                            </button>
+                        </div>
+                        <p className="text-xs mt-2 font-semibold text-amber-700">
+                            Ambiente atual da inutilização: {invalidateEnvironment === "production" ? "Produção" : "Homologação"}.
+                        </p>
+                        <textarea
+                            value={invalidateReason}
+                            onChange={e => setInvalidateReason(e.target.value)}
+                            rows={3}
+                            className="mt-3 w-full border border-stone-300 rounded-xl px-4 py-2 text-sm font-medium text-stone-800 outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15]"
+                            placeholder="Justificativa (mínimo 15 caracteres)"
+                        />
+                        <div className="mt-5">
+                            <p className="font-semibold text-stone-800 text-sm">Comprovantes salvos</p>
+                            {inutilizacoes.length === 0 ? (
+                                <p className="text-xs text-stone-500 mt-1">Nenhuma inutilização salva para {year} neste ambiente.</p>
+                            ) : (
+                                <div className="mt-2 space-y-2">
+                                    {inutilizacoes.map(item => (
+                                        <div key={item.id} className="border border-stone-200 rounded-xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                            <div>
+                                                <p className="text-sm font-semibold text-stone-800">
+                                                    Série {item.serie} • Faixa {item.numero_inicial} a {item.numero_final}
+                                                </p>
+                                                <p className="text-xs text-stone-500">
+                                                    Protocolo: {item.protocol || "-"} • Status: {item.status || "-"} • {new Date(item.created_at).toLocaleString("pt-BR")}
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => downloadPdf(item)}
+                                                    className="bg-stone-900 hover:bg-stone-800 text-white px-3 py-1.5 rounded-lg text-xs font-bold"
+                                                >
+                                                    Baixar PDF
+                                                </button>
+                                                <button
+                                                    onClick={() => downloadJson(item)}
+                                                    className="bg-stone-200 hover:bg-stone-300 text-stone-800 px-3 py-1.5 rounded-lg text-xs font-bold"
+                                                >
+                                                    Baixar JSON
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </>
             )}
