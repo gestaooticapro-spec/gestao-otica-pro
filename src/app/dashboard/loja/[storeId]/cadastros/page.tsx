@@ -263,7 +263,7 @@ export default function CatalogPage() {
               <input
                 type="text"
                 className="w-full h-9 pl-9 pr-3 rounded-xl border border-white/10 bg-black/20 text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 font-bold text-xs shadow-inner"
-                placeholder="Buscar item..."
+                placeholder={activeTab === 'oftalmologistas' ? 'Buscar por nome ou CRM...' : 'Buscar item...'}
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />

@@ -426,7 +426,7 @@ export async function saveOftalmo(prevState: CatalogActionResult, formData: Form
       if (isDuplicateCrm) {
         return {
           success: false,
-          message: 'Ja existe um oftalmologista com esse CRM nesta loja. Edite o cadastro existente ou informe outro CRM.'
+          message: 'Esse CRM ja esta vinculado a outro oftalmologista nesta loja. Se for a mesma pessoa, edite o cadastro existente; se nao, confira o numero do CRM informado.'
         }
       }
 
@@ -537,7 +537,7 @@ export async function fetchCatalogItems(
 
   if (category === 'oftalmologistas') {
     let q = (supabaseAdmin.from('oftalmologistas') as any).select('*').eq('store_id', storeId).limit(50)
-    if (query) q = q.ilike('nome_completo', `%${query}%`)
+    if (query) q = q.or(`nome_completo.ilike.%${query}%,crm.ilike.%${query}%`)
     const { data } = await q.order('nome_completo')
     return (data || []).map((i: any) => ({
       id: i.id, title: i.nome_completo, subtitle: i.crm ? `CRM: ${i.crm}` : i.clinica, raw: i
