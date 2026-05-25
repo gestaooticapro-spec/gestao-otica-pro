@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import dynamic from 'next/dynamic';
+import { getStoreAppMode, type AppMode } from '@/lib/app-mode';
 
 const AiSuggestionConfigPanel = dynamic(() => import('@/components/config/AiSuggestionConfigPanel'), {
     loading: () => <div className="p-6 text-center"><Loader2 className="animate-spin h-6 w-6 text-cyan-400 mx-auto" /></div>,
@@ -25,7 +26,9 @@ type StoreFeatureSettings = {
     logo?: string;
     pre_sale_analysis_enabled?: boolean;
     receipt_type?: 'pre_printed' | 'half_a4';
+    app_mode?: AppMode;
 };
+type StoreFeatureSettingKey = keyof StoreFeatureSettings;
 type StoreData = {
     id: number;
     name: string;
@@ -86,7 +89,6 @@ function StoreDataForm({ storeId }: { storeId: number }) {
 
     if (loading) return <div className="p-10 text-center"><Loader2 className="animate-spin h-8 w-8 text-indigo-400 mx-auto" /></div>
     if (!data) return <div className="p-10 text-center text-sm font-bold text-red-300">Não foi possível carregar os dados da loja.</div>
-
     return (
         <form action={handleSave} className="max-w-4xl mx-auto space-y-6 animate-in fade-in">
             <input type="hidden" name="id" value={storeId} />
@@ -351,7 +353,10 @@ function ResourcesForm({ storeId }: { storeId: number }) {
         })
     }, [storeId])
 
-    const handleSettingChange = (settingName: string, value: any) => {
+    const handleSettingChange = (
+        settingName: StoreFeatureSettingKey,
+        value: StoreFeatureSettings[StoreFeatureSettingKey]
+    ) => {
         startTransition(async () => {
             const res = await updateStoreSettings(storeId, { [settingName]: value })
             if (res.success) {
@@ -359,7 +364,7 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                 setData(prev => prev ? {
                     ...prev,
                     settings: {
-                        ...(prev.settings as any),
+                        ...(prev.settings || {}),
                         [settingName]: value
                     }
                 } : null)
@@ -372,6 +377,8 @@ function ResourcesForm({ storeId }: { storeId: number }) {
     if (loading) return <div className="p-10 text-center"><Loader2 className="animate-spin h-8 w-8 text-indigo-400 mx-auto" /></div>
     if (!data) return <div className="p-10 text-center text-sm font-bold text-red-300">Não foi possível carregar os dados da loja.</div>
 
+    const appMode = getStoreAppMode(data.settings)
+
     return (
         <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in">
             <div className={cardStyle}>
@@ -383,6 +390,49 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                     {isSaving && <div className="flex items-center gap-2 text-[10px] text-cyan-400 animate-pulse font-bold tracking-widest uppercase">
                         <Loader2 className="h-3 w-3 animate-spin" /> Salvando...
                     </div>}
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4 transition-colors mb-4">
+                    <div>
+                        <p className="text-sm font-black text-white uppercase tracking-[0.15em] mb-2">
+                            Modo do Sistema
+                        </p>
+                        <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                            Escolha entre uma operaÃ§Ã£o enxuta para novas lojas ou o sistema completo.
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <label className={`flex items-start gap-3 cursor-pointer rounded-xl border p-4 transition-colors ${appMode === 'mvp' ? 'border-cyan-500/40 bg-cyan-500/10' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}>
+                                <input
+                                    type="radio"
+                                    name="app_mode"
+                                    value="mvp"
+                                    checked={appMode === 'mvp'}
+                                    onChange={() => handleSettingChange('app_mode', 'mvp')}
+                                    disabled={isSaving}
+                                    className="mt-1 h-4 w-4 border-white/20 bg-slate-900 text-cyan-500 focus:ring-cyan-500 disabled:opacity-50"
+                                />
+                                <div>
+                                    <span className="text-sm text-slate-100 font-black uppercase tracking-[0.12em]">MVP</span>
+                                    <p className="mt-1 text-xs text-slate-400 leading-relaxed">Menus enxutos para operaÃ§Ã£o essencial.</p>
+                                </div>
+                            </label>
+                            <label className={`flex items-start gap-3 cursor-pointer rounded-xl border p-4 transition-colors ${appMode === 'full' ? 'border-indigo-500/40 bg-indigo-500/10' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}>
+                                <input
+                                    type="radio"
+                                    name="app_mode"
+                                    value="full"
+                                    checked={appMode === 'full'}
+                                    onChange={() => handleSettingChange('app_mode', 'full')}
+                                    disabled={isSaving}
+                                    className="mt-1 h-4 w-4 border-white/20 bg-slate-900 text-indigo-500 focus:ring-indigo-500 disabled:opacity-50"
+                                />
+                                <div>
+                                    <span className="text-sm text-slate-100 font-black uppercase tracking-[0.12em]">Full</span>
+                                    <p className="mt-1 text-xs text-slate-400 leading-relaxed">Todos os mÃ³dulos e relatÃ³rios liberados.</p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
                 </div>
 
                 <label className="flex items-start gap-4 rounded-xl border border-white/10 bg-black/20 p-4 cursor-pointer hover:bg-white/5 transition-colors group">

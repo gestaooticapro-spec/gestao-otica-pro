@@ -8,7 +8,7 @@ export default async function StoreLensHeatmapLabPage({
   searchParams,
 }: {
   params: { storeId: string }
-  searchParams?: { family?: string }
+  searchParams?: { family?: string; client?: string }
 }) {
   const storeId = parseInt(params.storeId, 10)
   const supabase = createClient()
@@ -20,6 +20,7 @@ export default async function StoreLensHeatmapLabPage({
 
   const geometries = await getAllLensGeometries()
   const requestedFamily = searchParams?.family ? decodeURIComponent(searchParams.family) : null
+  const clientMode = searchParams?.client === '1'
   const geometry =
     geometries.find((item) => item.family_name === requestedFamily) ??
     geometries.find((item) => item.family_name === 'Kodak Network UHD') ??
@@ -31,6 +32,7 @@ export default async function StoreLensHeatmapLabPage({
       backPath={`/dashboard/loja/${storeId}/recomendacao-lentes`}
       geometry={geometry}
       geometries={geometries}
+      clientMode={clientMode}
     />
   )
 }

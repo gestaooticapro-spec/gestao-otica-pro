@@ -26,6 +26,7 @@ interface VendaActionsProps {
     nfEmitida: boolean
     onNFCeSuccess: (environment: 'production' | 'homologation') => Promise<void>
     onNFCeModalClose: () => Promise<void>
+    hideFiscal?: boolean
 }
 
 export default function VendaActions({
@@ -38,6 +39,7 @@ export default function VendaActions({
     nfEmitida,
     onNFCeSuccess,
     onNFCeModalClose,
+    hideFiscal = false,
 }: VendaActionsProps) {
     const [isReturnModalOpen, setIsReturnModalOpen] = useState(false)
     const [isAuthOpen, setIsAuthOpen] = useState(false)
@@ -204,7 +206,7 @@ export default function VendaActions({
             </button>
 
             {/* BOTÃO NFC-e */}
-            <button
+            {!hideFiscal && <button
                 type="button"
                 onClick={() => setIsFiscalModalOpen(true)}
                 className={`flex items-center gap-2.5 px-3 h-9 text-sm rounded-lg border font-bold transition-all uppercase tracking-wide ${
@@ -221,7 +223,7 @@ export default function VendaActions({
                         {nfEmitida ? 'EMITIDA' : 'PENDENTE'}
                     </span>
                 </div>
-            </button>
+            </button>}
 
             {/* MODAIS */}
             {isReturnModalOpen && (
@@ -256,7 +258,7 @@ export default function VendaActions({
             )}
 
             {/* MODAL FISCAL */}
-            {isFiscalModalOpen && (
+            {!hideFiscal && isFiscalModalOpen && (
                 <FiscalEmissionModal
                     isOpen={isFiscalModalOpen}
                     onClose={async () => { setIsFiscalModalOpen(false); await onNFCeModalClose() }}

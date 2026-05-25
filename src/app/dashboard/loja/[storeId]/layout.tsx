@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect, notFound } from 'next/navigation';
+import { headers } from 'next/headers';
 import SideNav from '@/components/SideNav';
 import { getProfileByAdmin } from '@/lib/supabase/admin';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -9,6 +10,7 @@ import DashboardLayoutWrapper from '@/components/dashboard/DashboardLayoutWrappe
 import ManagerLayout from '@/components/manager-menu/ManagerLayout';
 import { TabletRedirect } from '@/components/tablet/TabletRedirect';
 import { TabletModeButton } from '@/components/tablet/TabletModeButton';
+import { getStoreAppMode, isMvpMode, isMvpRouteAllowed, type AppMode } from '@/lib/app-mode';
 
 type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor' | 'tecnico';
 type StoreProfile = {
@@ -22,6 +24,7 @@ type StoreDataShape = {
 type StoreSettings = {
   logo?: string;
   pre_sale_analysis_enabled?: boolean;
+  app_mode?: AppMode;
 };
 
 export default async function StoreLayout({
@@ -68,8 +71,14 @@ export default async function StoreLayout({
   const storeName = storeData?.name || 'Otica';
   const settings = storeData?.settings;
   const typedSettings = (settings as StoreSettings | null) || null;
+  const appMode = getStoreAppMode(settings);
   let logoFile: string | null = null;
   const preSaleAnalysisEnabled = typedSettings?.pre_sale_analysis_enabled === true;
+
+  const pathname = headers().get('x-pathname') || `/dashboard/loja/${storeIdParam}`;
+  if (isMvpMode(appMode) && !isMvpRouteAllowed(pathname, storeIdParam)) {
+    return redirect(`/dashboard/loja/${storeIdParam}`);
+  }
 
   if (settings && typeof settings === 'object' && 'logo' in settings) {
     const maybeLogo = (settings as { logo?: unknown }).logo;
@@ -85,7 +94,7 @@ export default async function StoreLayout({
       <ModalsProvider storeId={storeIdParam}>
         <TabletRedirect storeId={storeIdParam} />
         <TabletModeButton storeId={storeIdParam} />
-        <OperatorLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl} preSaleAnalysisEnabled={preSaleAnalysisEnabled}>
+        <OperatorLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl} preSaleAnalysisEnabled={preSaleAnalysisEnabled} appMode={appMode}>
           {children}
         </OperatorLayout>
       </ModalsProvider>
@@ -97,7 +106,7 @@ export default async function StoreLayout({
       <ModalsProvider storeId={storeIdParam}>
         <TabletRedirect storeId={storeIdParam} />
         <TabletModeButton storeId={storeIdParam} />
-        <ManagerLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl}>
+        <ManagerLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl} appMode={appMode}>
           {children}
         </ManagerLayout>
       </ModalsProvider>

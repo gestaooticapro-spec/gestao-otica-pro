@@ -31,6 +31,7 @@ import {
     type OpticalEvaluationImportOption,
     type OpticalEvaluationSummary
 } from '@/lib/actions/evaluation.actions'
+import { type AppMode } from '@/lib/app-mode'
 
 type ServiceOrderWithLinks = any
 type Dependente = Database['public']['Tables']['dependentes']['Row']
@@ -247,14 +248,16 @@ type FormProps = Omit<OSPageData, 'oftalmologistas'> & {
     saveState: SaveSOResult
     dispatch: (payload: FormData) => void
     preSaleAnalysisEnabled: boolean
+    appMode?: AppMode
 }
 
 function ServiceOrderFormContent({
-    storeId, vendaId, customer, vendaItens, dependentes: initialDependentes, oftalmosList, employees, existingOrders, authedEmployeeName, onListChange, saveState, dispatch, preSaleAnalysisEnabled,
+    storeId, vendaId, customer, vendaItens, dependentes: initialDependentes, oftalmosList, employees, existingOrders, authedEmployeeName, onListChange, saveState, dispatch, preSaleAnalysisEnabled, appMode = 'full',
     venda
 }: FormProps) {
 
     const router = useRouter()
+    const isMvp = appMode === 'mvp'
     const searchParams = useSearchParams()
     const targetOsId = searchParams.get('os_id')
 
@@ -830,7 +833,7 @@ ${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tok
                                         </div>
                                     </div>
 
-                                    <div className="flex items-center gap-2 mb-2">
+                                    {!isMvp && <div className="flex items-center gap-2 mb-2">
                                         <label className={`w-16 ${labelBlue} text-right shrink-0 mb-0`}>Médico</label>
                                         <div className="flex-1 flex gap-1">
                                             <select name="oftalmologista_id" value={oftalmologistaId} onChange={e => setOftalmologistaId(e.target.value)} className={inputStyle}>
@@ -846,7 +849,7 @@ ${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tok
                                                 <Plus className="h-4 w-4" />
                                             </button>
                                         </div>
-                                    </div>
+                                    </div>}
 
                                     <div className="pt-3 border-t border-white/5 mt-2 space-y-2">
                                         <div className="flex items-center gap-2">
@@ -1240,7 +1243,7 @@ ${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tok
             }
 
             {
-                isOftalmoModalOpen && (
+                !isMvp && isOftalmoModalOpen && (
                     <AddOftalmoModal
                         isOpen={isOftalmoModalOpen}
                         onClose={() => setIsOftalmoModalOpen(false)}
@@ -1361,6 +1364,7 @@ export default function ServiceOrderPage() {
                 saveState={saveState}
                 dispatch={dispatch}
                 preSaleAnalysisEnabled={data.preSaleAnalysisEnabled}
+                appMode={data.appMode}
                 venda={data.venda}
             />
         </div>

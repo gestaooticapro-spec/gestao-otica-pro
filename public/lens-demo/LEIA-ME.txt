@@ -13,5 +13,7 @@ Recomendações:
 http://localhost:3000/dashboard/loja/1/catalogo-global/geometria
 http://localhost:3000/dashboard/loja/1/lentes/visualizar/Kodak%20Network%20UHD
 http://localhost:3000/dashboard/loja/1/lentes/mapa-calor
+http://localhost:3000/dashboard/loja/1/visagismo
+http://localhost:3000/dashboard/loja/1/visagismo/gabarito
 
 DOSSIÊ TRÍPLICE DO MOTOR

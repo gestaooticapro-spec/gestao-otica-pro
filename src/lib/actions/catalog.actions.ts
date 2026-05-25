@@ -5,6 +5,7 @@ import { Database, Json } from '@/lib/database.types'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
+import { getStoreAppMode, isMvpMode } from '@/lib/app-mode'
 
 export type CatalogActionResult = {
   success: boolean
@@ -34,6 +35,15 @@ async function getContext() {
   const profile: any = await getProfileByAdmin(user.id)
 
   return { user, profile, supabaseAdmin: createAdminClient() }
+}
+
+async function getStoreMode(supabaseAdmin: ReturnType<typeof createAdminClient>, storeId: number) {
+  const { data: store } = await (supabaseAdmin.from('stores') as any)
+    .select('settings')
+    .eq('id', storeId)
+    .single()
+
+  return getStoreAppMode(store?.settings)
 }
 
 // --- HELPER: BARCODE INTELIGENTE ---
@@ -240,6 +250,39 @@ export async function saveArmacao(prevState: CatalogActionResult, formData: Form
     }
 
     if (id) {
+      const { data: existing } = await (supabaseAdmin.from('products') as any)
+        .select('estoque_atual, preco_custo')
+        .eq('id', id)
+        .eq('store_id', profile.store_id)
+        .single()
+
+      const currentStock = Number(existing?.estoque_atual ?? 0)
+      const nextStock = Number(data.quantidade_estoque ?? 0)
+      const diff = nextStock - currentStock
+
+      if (diff !== 0) {
+        const appMode = await getStoreMode(supabaseAdmin, profile.store_id)
+        const employeeAuthIdRaw = formData.get('employee_auth_id')
+        const employeeAuthId = employeeAuthIdRaw ? Number(employeeAuthIdRaw) : null
+
+        if (isMvpMode(appMode) && !employeeAuthId) {
+          return { success: false, message: 'PIN obrigatório para alterar estoque no modo MVP.' }
+        }
+
+        await (supabaseAdmin.from('stock_movements') as any).insert({
+          tenant_id: profile.tenant_id,
+          store_id: profile.store_id,
+          product_id: id,
+          tipo: 'Ajuste',
+          quantidade: Math.abs(diff),
+          motivo: 'Ajuste rápido MVP (cadastro)',
+          custo_unitario_momento: existing?.preco_custo ?? data.preco_custo ?? null,
+          registrado_por_id: user.id,
+          employee_id: employeeAuthId,
+          created_at: new Date().toISOString()
+        })
+      }
+
       await (supabaseAdmin.from('products') as any).update(payload).eq('id', id)
     } else {
       const { data: inserted } = await (supabaseAdmin.from('products') as any).insert(payload).select('id').single()
@@ -311,6 +354,39 @@ export async function saveProdutoGeral(prevState: CatalogActionResult, formData:
     }
 
     if (id) {
+      const { data: existing } = await (supabaseAdmin.from('products') as any)
+        .select('estoque_atual, preco_custo')
+        .eq('id', id)
+        .eq('store_id', profile.store_id)
+        .single()
+
+      const currentStock = Number(existing?.estoque_atual ?? 0)
+      const nextStock = Number(data.estoque_atual ?? 0)
+      const diff = nextStock - currentStock
+
+      if (diff !== 0) {
+        const appMode = await getStoreMode(supabaseAdmin, profile.store_id)
+        const employeeAuthIdRaw = formData.get('employee_auth_id')
+        const employeeAuthId = employeeAuthIdRaw ? Number(employeeAuthIdRaw) : null
+
+        if (isMvpMode(appMode) && !employeeAuthId) {
+          return { success: false, message: 'PIN obrigatório para alterar estoque no modo MVP.' }
+        }
+
+        await (supabaseAdmin.from('stock_movements') as any).insert({
+          tenant_id: profile.tenant_id,
+          store_id: profile.store_id,
+          product_id: id,
+          tipo: 'Ajuste',
+          quantidade: Math.abs(diff),
+          motivo: 'Ajuste rápido MVP (cadastro)',
+          custo_unitario_momento: existing?.preco_custo ?? data.preco_custo ?? null,
+          registrado_por_id: user.id,
+          employee_id: employeeAuthId,
+          created_at: new Date().toISOString()
+        })
+      }
+
       await (supabaseAdmin.from('products') as any).update(payload).eq('id', id)
     } else {
       const { data: inserted } = await (supabaseAdmin.from('products') as any).insert(payload).select('id').single()

@@ -15,6 +15,7 @@ import RetornosCobrancaWidget from '@/components/consultas/RetornosCobrancaWidge
 import { AlertaEntrega, AlertaLaboratorio, Aniversariante, VencimentoProximo } from '@/lib/actions/consultas.actions'
 import { RetornoCobranca } from '@/lib/actions/collection.actions'
 import ParcelaSearchModal from '@/components/modals/ParcelaSearchModal'
+import { type AppMode } from '@/lib/app-mode'
 
 interface Props {
   storeId: number
@@ -27,10 +28,12 @@ interface Props {
   birthdays: Aniversariante[]
   vencimentos: VencimentoProximo[]
   retornos: RetornoCobranca[]
+  appMode?: AppMode
 }
 
-export default function ActionMenuDashboard({ storeId, storeName, alerts, birthdays, vencimentos, retornos }: Props) {
+export default function ActionMenuDashboard({ storeId, storeName, alerts, birthdays, vencimentos, retornos, appMode = 'full' }: Props) {
   const [isParcelaModalOpen, setIsParcelaModalOpen] = useState(false)
+  const isMvp = appMode === 'mvp'
 
   // LINHA 1: ATENDIMENTO (Frente de Loja)
   const topRow = [
@@ -107,6 +110,22 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
     }
   ]
 
+  const visibleTopRow = isMvp
+    ? topRow.filter(item => item.title !== "Baixa Parcelas")
+    : topRow
+
+  const visibleBottomRow = isMvp
+    ? [
+        bottomRow.find(item => item.title === "Livro Caixa"),
+        {
+          title: "HistÃ³rico",
+          icon: Search,
+          href: `/dashboard/loja/${storeId}/vendas?mode=historico`,
+          color: "hover:bg-slate-500/20 hover:border-slate-500/50 hover:text-slate-200"
+        }
+      ].filter(Boolean) as NonNullable<typeof bottomRow[number]>[]
+    : bottomRow
+
   return (
     <div className="h-full overflow-hidden relative font-sans">
       <div className="relative z-10 h-full overflow-y-auto custom-scrollbar">
@@ -163,7 +182,7 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
 
                 {/* GRADE 1: ATENDIMENTO (Grandes) */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {topRow.map((item, idx) => {
+                  {visibleTopRow.map((item, idx) => {
                     const content = (
                       <div className={`
                                     group h-40 rounded-3xl p-6 relative overflow-hidden transition-all duration-300 
@@ -215,7 +234,7 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
                   Gestão & Retaguarda
                 </h2>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  {bottomRow.map((item, idx) => (
+                  {visibleBottomRow.map((item, idx) => (
                     <Link key={idx} href={item.href} className={`
                       group flex flex-col items-center justify-center text-center p-6 rounded-2xl 
                       bg-black/20 border border-white/5 backdrop-blur-sm
@@ -273,11 +292,13 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
         </div>
       </div>
 
-      <ParcelaSearchModal
-        isOpen={isParcelaModalOpen}
-        onClose={() => setIsParcelaModalOpen(false)}
-        storeId={storeId}
-      />
+      {!isMvp && (
+        <ParcelaSearchModal
+          isOpen={isParcelaModalOpen}
+          onClose={() => setIsParcelaModalOpen(false)}
+          storeId={storeId}
+        />
+      )}
     </div>
   )
 }

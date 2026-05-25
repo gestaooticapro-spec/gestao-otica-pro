@@ -5,6 +5,7 @@ import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { type AppMode } from '@/lib/app-mode'
 
 // --- DEFINIÇÃO DO FORMATO DAS CONFIGURAÇÕES ---
 export type StoreSettings = {
@@ -13,6 +14,7 @@ export type StoreSettings = {
     print_show_logo: boolean
     print_show_price_os: boolean
     custom_message_receipt?: string
+    app_mode?: AppMode
 }
 
 // Valores padrão
@@ -109,6 +111,8 @@ export async function updateStoreSettings(prevState: any, formData: FormData) {
             .eq('id', store_id)
 
         revalidatePath(`/dashboard/loja/${store_id}/config`)
+        revalidatePath(`/dashboard/loja/${store_id}`)
+        revalidatePath(`/dashboard/loja/${store_id}`, 'layout')
         return { success: true, message: 'Configurações de impressão salvas!' }
 
     } catch (e: any) {

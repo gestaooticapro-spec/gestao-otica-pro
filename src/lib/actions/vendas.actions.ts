@@ -9,6 +9,7 @@ import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { useCredit } from './wallet.actions'
 import { calcularERegistrarComissao, cancelarComissao, calcularComissaoMedico } from './commission.actions'
 import { checkLensStock, confirmReservations, cancelReservations, getLensReservationForOsSlot, reserveLensByAdmin, type LensReservationSlot } from './stock.actions'
+import { getStoreAppMode, type AppMode } from '@/lib/app-mode'
 
 // ================================================================
 // --- TIPOS GLOBAIS ---
@@ -27,6 +28,7 @@ type FinanciamentoParcela = Database['public']['Tables']['financiamento_parcelas
 type Employee = Database['public']['Tables']['employees']['Row']
 type StoreSettings = {
   pre_sale_analysis_enabled?: boolean
+  app_mode?: AppMode
 }
 
 type ServiceOrderWithLinks = ServiceOrder & {
@@ -47,6 +49,7 @@ export type OSPageData = {
   vendaItens: VendaItem[]
   existingOrders: ServiceOrderWithLinks[]
   preSaleAnalysisEnabled: boolean
+  appMode?: AppMode
 }
 
 export type GetOSPageDataResult = {
@@ -124,6 +127,7 @@ export async function getOSPageData(
     if (customerRes.error) throw new Error(`Cliente: ${customerRes.error.message}`)
     const storeSettings = (storeRes.data as { settings?: unknown } | null)?.settings
     const preSaleAnalysisEnabled = ((storeSettings || {}) as StoreSettings).pre_sale_analysis_enabled === true
+    const appMode = getStoreAppMode(storeSettings)
 
     const data: OSPageData = {
       customer: customerRes.data,
@@ -134,6 +138,7 @@ export async function getOSPageData(
       vendaItens: itensRes.data || [],
       existingOrders: osRes.data || [],
       preSaleAnalysisEnabled,
+      appMode,
     }
 
     return { success: true, data }

@@ -10,6 +10,7 @@ import {
 import { openWhatsApp } from '@/lib/utils/whatsapp';
 import { getWhatsAppLink } from '@/lib/utils';
 import Link from 'next/link';
+import { type AppMode } from '@/lib/app-mode';
 
 // Tipos importados (ou definidos localmente se preferir não importar do server action em client component)
 // Para evitar erros de build se o arquivo de actions não exportar tipos para client, definimos aqui compatível.
@@ -67,6 +68,7 @@ interface OperatorMenuLojaVaziaProps {
     storeName?: string;
     onBack: () => void;
     onNavigate: (route: string) => void;
+    appMode?: AppMode;
 }
 
 interface RadarData {
@@ -88,9 +90,11 @@ export default function OperatorMenuLojaVazia({
     storeId,
     storeName = 'Ótica',
     onBack,
-    onNavigate
+    onNavigate,
+    appMode = 'full'
 }: OperatorMenuLojaVaziaProps) {
     const { preference } = useBackgroundPreference();
+    const isMvp = appMode === 'mvp';
 
     const [tooltip, setTooltip] = useState<{ visible: boolean, x: number, y: number, text: string }>({ visible: false, x: 0, y: 0, text: '' });
     const hoverTimeout = useRef<NodeJS.Timeout | null>(null);
@@ -128,6 +132,11 @@ export default function OperatorMenuLojaVazia({
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        if (isMvp) {
+            setLoading(false);
+            return;
+        }
+
         async function fetchData() {
             try {
                 const response = await fetch(`/api/alertas-operacionais?storeId=${storeId}`);
@@ -150,7 +159,7 @@ export default function OperatorMenuLojaVazia({
             }
         }
         fetchData();
-    }, [storeId]);
+    }, [storeId, isMvp]);
 
     const handleZapAniversario = (fone: string | null, nome: string) => {
         if (!fone) return alert(`${nome.split(' ')[0]} não tem celular cadastrado.`);
@@ -235,6 +244,86 @@ export default function OperatorMenuLojaVazia({
     const [openEntregas, setOpenEntregas] = useState(false);
     const [openRetornos, setOpenRetornos] = useState(false);
     const [openLaboratorio, setOpenLaboratorio] = useState(false);
+
+    if (isMvp) {
+        const mvpActions = [
+            {
+                title: 'Caixa',
+                subtitle: 'Movimento Diario',
+                icon: DollarSign,
+                route: `/dashboard/loja/${storeId}/financeiro/caixa`,
+                tone: 'from-amber-600/12 via-orange-900/25 to-slate-900/60 hover:border-amber-400/35',
+            },
+            {
+                title: 'Produtos & Precos',
+                subtitle: 'Cadastros',
+                icon: Tag,
+                route: `/dashboard/loja/${storeId}/cadastros`,
+                tone: 'from-indigo-600/12 via-indigo-900/25 to-slate-900/60 hover:border-indigo-400/35',
+            },
+            {
+                title: 'Historico',
+                subtitle: 'Vendas',
+                icon: FileSpreadsheet,
+                route: `/dashboard/loja/${storeId}/vendas?mode=historico`,
+                tone: 'from-slate-600/12 via-slate-900/25 to-slate-900/60 hover:border-slate-400/35',
+            },
+        ];
+
+        return (
+            <div className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-950 font-sans transition-colors duration-500">
+                <div className="absolute top-6 right-6 z-50">
+                    <BackgroundToggle />
+                </div>
+
+                <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
+                    <div className="absolute inset-0 bg-[url('/lojavazia.png')] bg-cover bg-center" />
+                    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+                </div>
+
+                <div className="relative z-10 w-full max-w-4xl">
+                    <div className="mb-8 text-center animate-in slide-in-from-top-5 duration-700">
+                        <h1 className="text-4xl font-black text-white drop-shadow-lg tracking-tight mb-2">
+                            Gestao & Interno
+                        </h1>
+                        <p className="text-slate-400 text-sm font-medium uppercase tracking-[0.2em] bg-white/5 px-4 py-1 rounded-full border border-white/5 inline-block">
+                            MVP
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        {mvpActions.map((item) => {
+                            const Icon = item.icon;
+                            return (
+                                <button
+                                    key={item.title}
+                                    onClick={() => onNavigate(item.route)}
+                                    className={`group bg-gradient-to-br ${item.tone} rounded-xl flex items-center gap-4 px-5 py-5 border border-white/10 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30`}
+                                >
+                                    <div className="p-2.5 rounded-lg bg-white/10 text-slate-200 group-hover:bg-white/20 transition-colors">
+                                        <Icon className="w-6 h-6" strokeWidth={1.5} />
+                                    </div>
+                                    <div className="text-left">
+                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">{item.title}</span>
+                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-slate-300 transition-colors">{item.subtitle}</span>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                <button
+                    onClick={onBack}
+                    className="fixed flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all duration-300 border border-white/5 hover:border-white/20 backdrop-blur-sm z-20 group"
+                    style={{ left: 'max(1rem, env(safe-area-inset-left))', bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+                >
+                    <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+                    <span className="text-xs font-bold uppercase tracking-wider">Voltar</span>
+                </button>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen relative flex flex-col items-center p-6 overflow-hidden bg-slate-950 font-sans transition-colors duration-500">

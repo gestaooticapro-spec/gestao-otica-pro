@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useTransition } from 'react';
+import { useState, useEffect, useTransition, useRef } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
@@ -17,8 +17,11 @@ import {
   type CatalogItemResult,
   type CatalogActionResult
 } from '@/lib/actions/catalog.actions';
+import { getStoreProfile } from '@/lib/actions/store.actions';
+import { getStoreAppMode, type AppMode } from '@/lib/app-mode';
 import LensGridEditor from '@/components/cadastros/LensGridEditor';
 import MedicoComissaoModal from '@/components/modals/MedicoComissaoModal';
+import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal';
 import { toast } from 'sonner';
 import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/BackgroundToggle';
 
@@ -37,6 +40,7 @@ export default function CatalogPage() {
 
   // --- Estados ---
   const [activeTab, setActiveTab] = useState<CategoryType>('solar'); // Padrão solicitado
+  const [appMode, setAppMode] = useState<AppMode>('full');
   const [items, setItems] = useState<CatalogItemResult[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editorMode, setEditorMode] = useState<EditorMode>('empty');
@@ -61,6 +65,25 @@ export default function CatalogPage() {
   const [showComissaoModal, setShowComissaoModal] = useState(false);
   // --- Estado compartilhado do campo comissão (secreto) ---
   const [showComissao, setShowComissao] = useState(false);
+  const [isStockAuthOpen, setIsStockAuthOpen] = useState(false);
+  const [authorizedEmployeeId, setAuthorizedEmployeeId] = useState<number | null>(null);
+  const [originalStockValue, setOriginalStockValue] = useState<number>(0);
+  const catalogFormRef = useRef<HTMLFormElement | null>(null);
+  const isMvp = appMode === 'mvp';
+
+  useEffect(() => {
+    getStoreProfile(storeId).then(store => setAppMode(getStoreAppMode(store?.settings)));
+  }, [storeId]);
+
+  useEffect(() => {
+    if (isMvp && (activeTab === 'oftalmologistas' || activeTab === 'fornecedores')) {
+      setActiveTab('solar');
+      setSearch('');
+      setSelectedId(null);
+      setFormData({});
+      setEditorMode('empty');
+    }
+  }, [isMvp, activeTab]);
 
   // --- Carregar Lista ---
   useEffect(() => {
@@ -92,31 +115,61 @@ export default function CatalogPage() {
   const handleSelect = (item: CatalogItemResult) => {
     setSelectedId(item.id);
     setFormData(item.raw);
+    if (activeTab === 'produtos_gerais') {
+      setOriginalStockValue(Number(item.raw?.estoque_atual || 0));
+    } else if (activeTab === 'solar' || activeTab === 'receituario') {
+      setOriginalStockValue(Number(item.raw?.quantidade_estoque || 0));
+    } else {
+      setOriginalStockValue(0);
+    }
+    setAuthorizedEmployeeId(null);
     setEditorMode('edit');
   };
 
   const handleNew = () => {
     setSelectedId(null);
     setFormData({});
+    setOriginalStockValue(0);
+    setAuthorizedEmployeeId(null);
     setEditorMode('create');
   };
 
   const handleCloseEditor = () => {
     setSelectedId(null);
     setFormData({});
+    setOriginalStockValue(0);
+    setAuthorizedEmployeeId(null);
     setEditorMode('empty');
   };
 
   const handleInputChange = (field: string, value: any) => {
     setFormData((prev: any) => ({ ...prev, [field]: value }));
+    if (field === 'estoque_atual' || field === 'quantidade_estoque') {
+      setAuthorizedEmployeeId(null);
+    }
+  };
+
+  const getCurrentStockValue = () => {
+    if (activeTab === 'produtos_gerais') return Number(formData.estoque_atual || 0);
+    if (activeTab === 'solar' || activeTab === 'receituario') return Number(formData.quantidade_estoque || 0);
+    return 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editorMode === 'empty') return;
+    const isStockEditableTab = activeTab === 'produtos_gerais' || activeTab === 'solar' || activeTab === 'receituario';
+    const isEditing = editorMode === 'edit' && !!selectedId;
+    const stockChanged = isEditing && isStockEditableTab && getCurrentStockValue() !== originalStockValue;
+
+    if (isMvp && stockChanged && !authorizedEmployeeId) {
+      setIsStockAuthOpen(true);
+      return;
+    }
 
     const formPayload = new FormData();
     if (selectedId) formPayload.append('id', selectedId.toString());
+    if (authorizedEmployeeId) formPayload.append('employee_auth_id', String(authorizedEmployeeId));
 
     Object.keys(formData).forEach(key => {
       if (formData[key] !== null && formData[key] !== undefined) {
@@ -336,18 +389,23 @@ export default function CatalogPage() {
               label="Varejo / Outros" icon={ShoppingBag}
               active={activeTab === 'produtos_gerais'} onClick={() => handleTabChange('produtos_gerais')}
             />
-            <TabButton
+            {!isMvp && <TabButton
               label="Fornecedores" icon={Truck}
               active={activeTab === 'fornecedores'} onClick={() => handleTabChange('fornecedores')}
-            />
-            <TabButton
+            />}
+            {!isMvp && <TabButton
               label="Oftalmologistas" icon={Stethoscope}
               active={activeTab === 'oftalmologistas'} onClick={() => handleTabChange('oftalmologistas')}
-            />
+            />}
           </div>
 
           {/* Formulário */}
-          <form id="catalog-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+          <form
+            id="catalog-form"
+            ref={catalogFormRef}
+            onSubmit={handleSubmit}
+            className="flex-1 overflow-y-auto p-4 custom-scrollbar"
+          >
             <div className="max-w-4xl mx-auto">
               {editorMode === 'empty' ? (
                 <div className={`${cardStyle} min-h-[320px] flex items-center justify-center`}>
@@ -374,7 +432,7 @@ export default function CatalogPage() {
                     />
                   )}
                   {(activeTab === 'solar' || activeTab === 'receituario') && (
-                    <FormArmacoes data={formData} onChange={handleInputChange} disabled={isSaving} storeId={storeId} />
+                    <FormArmacoes data={formData} onChange={handleInputChange} disabled={isSaving} storeId={storeId} isMvp={isMvp} />
                   )}
                   {activeTab === 'produtos_gerais' && (
                     <FormProdutosGerais
@@ -383,6 +441,7 @@ export default function CatalogPage() {
                       disabled={isSaving}
                       sugestoes={sugestoesCategorias}
                       storeId={storeId}
+                      isMvp={isMvp}
                     />
                   )}
                   {activeTab === 'tratamentos' && (
@@ -483,6 +542,21 @@ export default function CatalogPage() {
           onClose={() => setShowComissaoModal(false)}
           storeId={storeId}
         />
+
+        <EmployeeAuthModal
+          storeId={storeId}
+          isOpen={isStockAuthOpen}
+          onClose={() => setIsStockAuthOpen(false)}
+          onSuccess={(employee) => {
+            setAuthorizedEmployeeId(employee.id);
+            setIsStockAuthOpen(false);
+            setTimeout(() => {
+              catalogFormRef.current?.requestSubmit();
+            }, 0);
+          }}
+          title="Autorizar ajuste de estoque"
+          description="Confirme com PIN para salvar o novo estoque no modo MVP."
+        />
       </div>
     </div>
   );
@@ -506,8 +580,8 @@ function TabButton({ label, icon: Icon, active, onClick }: any) {
 }
 
 // --- CAMPO DE ESTOQUE INTELIGENTE (ATUALIZADO PARA REDIRECIONAR) ---
-function EstoqueInput({ value, onChange, disabled, isEditing, storeId, productId, productName }: any) {
-  if (!isEditing) {
+function EstoqueInput({ value, onChange, disabled, isEditing, storeId, productId, productName, allowDirectEdit = false }: any) {
+  if (!isEditing || allowDirectEdit) {
     // Modo Criação: Permite digitar
     return (
       <input
@@ -546,7 +620,7 @@ function EstoqueInput({ value, onChange, disabled, isEditing, storeId, productId
 
 // --- FORMULÁRIOS ESPECÍFICOS ---
 
-function FormProdutosGerais({ data, onChange, disabled, sugestoes, storeId }: any) {
+function FormProdutosGerais({ data, onChange, disabled, sugestoes, storeId, isMvp = false }: any) {
   const isEditing = !!data.id;
   return (
     <div className="grid grid-cols-12 gap-3 gap-y-4">
@@ -588,6 +662,7 @@ function FormProdutosGerais({ data, onChange, disabled, sugestoes, storeId }: an
           storeId={storeId}
           productId={data.id}
           productName={data.descricao}
+          allowDirectEdit={isMvp}
         />
       </div>
       <div className="col-span-3">
@@ -598,7 +673,7 @@ function FormProdutosGerais({ data, onChange, disabled, sugestoes, storeId }: an
   );
 }
 
-function FormArmacoes({ data, onChange, disabled, storeId }: any) {
+function FormArmacoes({ data, onChange, disabled, storeId, isMvp = false }: any) {
   const isEditing = !!data.id;
 
   return (
@@ -638,6 +713,7 @@ function FormArmacoes({ data, onChange, disabled, storeId }: any) {
           storeId={storeId}
           productId={data.id}
           productName={`${data.marca || ''} ${data.modelo || ''}`.trim()}
+          allowDirectEdit={isMvp}
         />
       </div>
 

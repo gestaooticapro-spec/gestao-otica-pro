@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -12,6 +12,13 @@ type FaceMetrics = {
   eyeY: number
   headX: number
   headY: number
+}
+type CameraSettings = {
+  width?: number
+  height?: number
+  frameRate?: number
+  deviceId?: string
+  facingMode?: string
 }
 type SessionPhase = 'idle' | 'calibrating' | 'running' | 'finished'
 type ProfileDescriptor = {
@@ -46,11 +53,42 @@ type SessionSample = {
   targetX: number
   targetY: number
 }
+type ClientSyncPayload = {
+  type: 'state'
+  phase: SessionPhase
+  target: NormalizedPoint
+  status: string
+}
+type RemoteCommand = 'openCamera' | 'startCalibration' | 'startSession' | 'finishSession' | 'resetLab'
+type CommandPayload = {
+  type: 'command'
+  command: RemoteCommand
+}
+type ReportPayload = {
+  type: 'report'
+  cameraReady: boolean
+  hasCalibration: boolean
+  phase: SessionPhase
+  status: string
+  target: NormalizedPoint
+  liveMetrics: FaceMetrics
+  summary: SessionSummary | null
+  prepSecondsLeft: number
+  heatmap: Float32Array
+  samples: SessionSample[]
+  cameraSettings: CameraSettings | null
+}
+type PendingRemoteCommand = {
+  id: number
+  command: RemoteCommand
+}
 type MediaPipeModule = typeof import('@mediapipe/tasks-vision')
 type FaceLandmarkerInstance = Awaited<ReturnType<MediaPipeModule['FaceLandmarker']['createFromOptions']>>
 
 const VIDEO_W = 960
 const VIDEO_H = 540
+const MIRROR_VIDEO_W = 1280
+const MIRROR_VIDEO_H = 720
 const HEAT_COLS = 44
 const HEAT_ROWS = 28
 const TARGET_INTERVAL_MS = 2200
@@ -884,11 +922,13 @@ export default function GazeHeatmapLab({
   backPath,
   geometry,
   geometries = [],
+  clientMode = false,
 }: {
   storeId: number
   backPath: string
   geometry?: LensGeometry | null
   geometries?: LensGeometry[]
+  clientMode?: boolean
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
@@ -903,6 +943,7 @@ export default function GazeHeatmapLab({
   const targetTimerRef = useRef<number | null>(null)
   const sessionTimerRef = useRef<number | null>(null)
   const calibrationTimerRef = useRef<number | null>(null)
+  const prepCountdownTimerRef = useRef<number | null>(null)
   const lastTickRef = useRef<number>(0)
   const lastUiTickRef = useRef<number>(0)
   const phaseRef = useRef<SessionPhase>('idle')
@@ -915,6 +956,7 @@ export default function GazeHeatmapLab({
   const targetStartedAtRef = useRef<number>(0)
   const targetSequenceRef = useRef<NormalizedPoint[]>([])
   const targetIndexRef = useRef<number>(0)
+  const broadcastRef = useRef<BroadcastChannel | null>(null)
 
   const [cameraReady, setCameraReady] = useState(false)
   const [loadingModel, setLoadingModel] = useState(false)
@@ -931,7 +973,11 @@ export default function GazeHeatmapLab({
     headY: 0,
   })
   const [summary, setSummary] = useState<SessionSummary | null>(null)
+  const [prepSecondsLeft, setPrepSecondsLeft] = useState(0)
   const [secureContextWarning, setSecureContextWarning] = useState(false)
+  const [pendingRemoteCommand, setPendingRemoteCommand] = useState<PendingRemoteCommand | null>(null)
+  const [remoteReportVersion, setRemoteReportVersion] = useState(0)
+  const [cameraSettings, setCameraSettings] = useState<CameraSettings | null>(null)
   const isFocusMode = phase === 'calibrating' || phase === 'running'
   const selectedGeometry = geometries.find((item) => item.id === selectedGeometryId) ?? geometry ?? geometries[0] ?? null
 
@@ -987,14 +1033,91 @@ export default function GazeHeatmapLab({
   }, [])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    const channel = new BroadcastChannel(`heatmap-lab-${storeId}`)
+    broadcastRef.current = channel
+
+    channel.onmessage = (event: MessageEvent<CommandPayload | ReportPayload>) => {
+      const data = event.data
+      if (!data) return
+
+      if (clientMode) {
+        if (data.type === 'command') {
+          setPendingRemoteCommand({ id: Date.now(), command: data.command })
+        }
+        return
+      }
+
+      if (data.type === 'report') {
+        setCameraReady(data.cameraReady)
+        setHasCalibration(data.hasCalibration)
+        setPhase(data.phase)
+        setStatus(data.status)
+        setTarget(data.target)
+        setLiveMetrics(data.liveMetrics)
+        setSummary(data.summary)
+        setPrepSecondsLeft(data.prepSecondsLeft)
+        heatmapRef.current = new Float32Array(data.heatmap)
+        samplesRef.current = data.samples
+        setCameraSettings(data.cameraSettings)
+        setRemoteReportVersion((version) => version + 1)
+      }
+    }
+
+    return () => {
+      channel.close()
+      broadcastRef.current = null
+    }
+  }, [clientMode, storeId])
+
+  useEffect(() => {
+    if (!clientMode || !pendingRemoteCommand) return
+
+    if (pendingRemoteCommand.command === 'openCamera') void startCamera()
+    if (pendingRemoteCommand.command === 'startCalibration') void startCalibration()
+    if (pendingRemoteCommand.command === 'startSession') startSession()
+    if (pendingRemoteCommand.command === 'finishSession') finishSession()
+    if (pendingRemoteCommand.command === 'resetLab') resetLab()
+
+    setPendingRemoteCommand(null)
+  }, [clientMode, pendingRemoteCommand])
+
+  useEffect(() => {
+    if (!clientMode) return
+    const channel = broadcastRef.current
+    if (!channel) return
+    channel.postMessage({
+      type: 'report',
+      cameraReady,
+      hasCalibration,
+      phase,
+      status,
+      target,
+      liveMetrics,
+      summary,
+      prepSecondsLeft,
+      heatmap: heatmapRef.current,
+      samples: samplesRef.current,
+      cameraSettings,
+    } satisfies ReportPayload)
+  }, [clientMode, cameraReady, cameraSettings, hasCalibration, liveMetrics, phase, prepSecondsLeft, status, summary, target])
+
+  useEffect(() => {
+    if (!clientMode) return
+    if (cameraReady) return
+    void startCamera()
+  }, [clientMode, cameraReady])
+
+  useEffect(() => {
     redrawHeatmaps()
-  }, [redrawHeatmaps])
+  }, [redrawHeatmaps, remoteReportVersion])
 
   useEffect(() => {
     phaseRef.current = phase
   }, [phase])
 
   useEffect(() => {
+    if (!clientMode) return
     const stage = stageRef.current
     if (!stage) return
 
@@ -1008,7 +1131,7 @@ export default function GazeHeatmapLab({
     if (document.fullscreenElement) {
       document.exitFullscreen?.().catch(() => {})
     }
-  }, [isFocusMode])
+  }, [clientMode, isFocusMode])
 
   useEffect(() => {
     return () => {
@@ -1016,6 +1139,7 @@ export default function GazeHeatmapLab({
       if (targetTimerRef.current) window.clearInterval(targetTimerRef.current)
       if (sessionTimerRef.current) window.clearTimeout(sessionTimerRef.current)
       if (calibrationTimerRef.current) window.clearTimeout(calibrationTimerRef.current)
+      if (prepCountdownTimerRef.current) window.clearInterval(prepCountdownTimerRef.current)
       landmarkerRef.current?.close?.()
       streamRef.current?.getTracks().forEach((track) => track.stop())
     }
@@ -1056,21 +1180,21 @@ export default function GazeHeatmapLab({
 
   async function startCamera() {
     try {
-      await ensureLandmarker()
       setStatus('Solicitando acesso à câmera frontal...')
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
           facingMode: 'user',
-          width: { ideal: VIDEO_W },
-          height: { ideal: VIDEO_H },
+          width: { ideal: MIRROR_VIDEO_W },
+          height: { ideal: MIRROR_VIDEO_H },
           frameRate: { ideal: 30, max: 30 },
         },
       })
 
       streamRef.current?.getTracks().forEach((track) => track.stop())
       streamRef.current = stream
+      setCameraSettings(stream.getVideoTracks()[0]?.getSettings() ?? null)
 
       const video = videoRef.current
       if (!video) return
@@ -1079,7 +1203,6 @@ export default function GazeHeatmapLab({
       await video.play()
       setCameraReady(true)
       setStatus('Câmera ativa. Deixe o rosto centralizado e inicie a calibração.')
-      startTrackingLoop()
     } catch (error) {
       console.error(error)
       setStatus('Não foi possível abrir a câmera. No tablet, use HTTPS ou uma origem segura.')
@@ -1087,6 +1210,10 @@ export default function GazeHeatmapLab({
   }
 
   function stopCamera() {
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current)
+      animationRef.current = null
+    }
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
     const video = videoRef.current
@@ -1097,6 +1224,7 @@ export default function GazeHeatmapLab({
     const overlay = overlayRef.current
     overlay?.getContext('2d')?.clearRect(0, 0, overlay.width, overlay.height)
     setCameraReady(false)
+    setCameraSettings(null)
   }
 
   function stopSessionTimers() {
@@ -1111,6 +1239,26 @@ export default function GazeHeatmapLab({
     if (calibrationTimerRef.current) {
       window.clearTimeout(calibrationTimerRef.current)
       calibrationTimerRef.current = null
+    }
+    if (prepCountdownTimerRef.current) {
+      window.clearInterval(prepCountdownTimerRef.current)
+      prepCountdownTimerRef.current = null
+    }
+  }
+
+  async function applyTrackingCameraProfile() {
+    const track = streamRef.current?.getVideoTracks()[0]
+    if (!track) return
+    try {
+      await track.applyConstraints({
+        width: { ideal: VIDEO_W },
+        height: { ideal: VIDEO_H },
+        frameRate: { ideal: 30, max: 30 },
+      })
+      setCameraSettings(track.getSettings())
+    } catch (error) {
+      console.warn('Não foi possível reduzir a câmera para o perfil de tracking.', error)
+      setCameraSettings(track.getSettings())
     }
   }
 
@@ -1128,6 +1276,7 @@ export default function GazeHeatmapLab({
     setHasCalibration(false)
     setTarget({ x: 0.5, y: 0.5 })
     setPhase('idle')
+    setPrepSecondsLeft(0)
     setSummary(null)
     setStatus(cameraReady ? 'Câmera pronta. Faça uma nova calibração quando quiser.' : 'Abra a câmera frontal e alinhe o rosto ao centro.')
     redrawHeatmaps()
@@ -1189,8 +1338,36 @@ export default function GazeHeatmapLab({
     targetIndexRef.current += 1
   }
 
-  function startCalibration() {
+  function startPreparedSession(requireCalibration = true) {
     if (!cameraReady) return
+    if (requireCalibration && !hasCalibration) {
+      setStatus('Faça a calibração central antes de iniciar a sessão.')
+      return
+    }
+
+    stopSessionTimers()
+
+    heatmapRef.current = makeHeatmap()
+    samplesRef.current = []
+    targetSamplesRef.current = []
+    targetSequenceRef.current = buildTargetSequence()
+    targetIndexRef.current = 0
+    setPrepSecondsLeft(0)
+    setSummary(null)
+    setPhase('running')
+    setStatus('Sessão em andamento. O roteiro do alvo agora garante passagem por extremos, cantos e eixos para medir o campo realmente exigido.')
+    advanceSequenceTarget()
+
+    targetTimerRef.current = window.setInterval(() => {
+      advanceSequenceTarget()
+    }, TARGET_INTERVAL_MS)
+  }
+
+  async function startCalibration() {
+    if (!cameraReady) return
+    await applyTrackingCameraProfile()
+    await ensureLandmarker()
+    startTrackingLoop()
     stopSessionTimers()
     calibrationSamplesRef.current = []
     setPhase('calibrating')
@@ -1214,8 +1391,7 @@ export default function GazeHeatmapLab({
         { eyeX: 0, eyeY: 0, headX: 0, headY: 0 },
       )
       setHasCalibration(true)
-      setPhase('idle')
-      setStatus('Calibração concluída. Agora já podemos rodar a sessão com alvo móvel.')
+      startPreparedSession(false)
     }, CALIBRATION_DURATION_MS)
   }
 
@@ -1230,25 +1406,20 @@ export default function GazeHeatmapLab({
   }
 
   function startSession() {
-    if (!cameraReady) return
-    if (!hasCalibration) {
-      setStatus('Faça a calibração central antes de iniciar a sessão.')
-      return
-    }
+    startPreparedSession(true)
+  }
 
-    heatmapRef.current = makeHeatmap()
-    samplesRef.current = []
-    targetSamplesRef.current = []
-    targetSequenceRef.current = buildTargetSequence()
-    targetIndexRef.current = 0
-    setSummary(null)
-    setPhase('running')
-    setStatus('Sessão em andamento. O roteiro do alvo agora garante passagem por extremos, cantos e eixos para medir o campo realmente exigido.')
-    advanceSequenceTarget()
+  function openClientScreen() {
+    if (typeof window === 'undefined') return
+    const url = new URL(window.location.href)
+    url.searchParams.set('client', '1')
+    window.open(url.toString(), 'heatmap-client-screen', 'popup=yes,width=1366,height=768')
+  }
 
-    targetTimerRef.current = window.setInterval(() => {
-      advanceSequenceTarget()
-    }, TARGET_INTERVAL_MS)
+  function sendCommand(command: RemoteCommand) {
+    const channel = broadcastRef.current
+    if (!channel) return
+    channel.postMessage({ type: 'command', command } satisfies CommandPayload)
   }
 
   function startTrackingLoop() {
@@ -1329,8 +1500,15 @@ export default function GazeHeatmapLab({
   const headPercentY = Math.round((summary?.headShareY ?? 0) * 100)
   const phaseIsRunning = phase === 'running'
   const phaseIsCalibrating = phase === 'calibrating'
-  const phaseLabel = phaseIsRunning ? 'Sessão ativa' : phaseIsCalibrating ? 'Calibração' : 'Aguardando'
-  const stageClassName = isFocusMode
+  const phaseIsBusy = phaseIsRunning || phaseIsCalibrating
+  const phaseLabel = phaseIsRunning
+    ? 'Sessão ativa'
+    : phaseIsCalibrating
+      ? 'Calibração'
+      : 'Aguardando'
+  const stageClassName = clientMode
+    ? 'relative h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_50%_20%,_rgba(59,130,246,0.18),_rgba(2,6,23,0.94)_55%),linear-gradient(180deg,_rgba(15,23,42,0.98),_rgba(2,6,23,1))]'
+    : isFocusMode
     ? 'relative h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_50%_20%,_rgba(59,130,246,0.18),_rgba(2,6,23,0.94)_55%),linear-gradient(180deg,_rgba(15,23,42,0.98),_rgba(2,6,23,1))]'
     : 'relative h-[56vh] min-h-[420px] max-h-[760px] overflow-hidden rounded-[32px] border border-white/10 bg-[radial-gradient(circle_at_50%_20%,_rgba(59,130,246,0.18),_rgba(2,6,23,0.94)_55%),linear-gradient(180deg,_rgba(15,23,42,0.95),_rgba(2,6,23,1))] lg:h-[64vh]'
   const cameraPanelClassName = isFocusMode
@@ -1353,42 +1531,75 @@ export default function GazeHeatmapLab({
     : 'absolute left-1/2 top-1/2 bg-cyan-100/90 -translate-x-1/2 -translate-y-1/2'
   const floatingActionClassName =
     'absolute top-1/2 z-30 inline-flex -translate-y-1/2 items-center gap-2 rounded-2xl border border-white/15 bg-slate-950/74 px-4 py-3 text-sm font-black text-slate-100 shadow-[0_18px_42px_rgba(2,6,23,0.34)] backdrop-blur transition hover:bg-slate-900/88 disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-slate-950/42 disabled:text-slate-500'
+  const clientVideoVisible = clientMode && !isFocusMode
+  const showClientTarget = !clientMode || isFocusMode
 
   const stageNode = (
     <div ref={stageRef} className={stageClassName}>
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.06)_1px,transparent_1px)] bg-[size:32px_32px]" />
-      <button
-        type="button"
-        onClick={startCalibration}
-        disabled={!cameraReady || phaseIsCalibrating}
-        className={`${floatingActionClassName} left-4`}
-      >
-        <ScanFace className="h-4 w-4" />
-        Calibrar
-      </button>
-      <button
-        type="button"
-        onClick={startSession}
-        disabled={!cameraReady || phaseIsRunning || !hasCalibration}
-        className={`${floatingActionClassName} right-4 border-rose-300/30 bg-rose-950/58 text-rose-100 hover:bg-rose-900/72 disabled:border-white/5 disabled:bg-slate-950/42 disabled:text-slate-500`}
-      >
-        <Play className="h-4 w-4" />
-        Iniciar sessão
-      </button>
-      <div
-        className={targetClassName}
-        style={{
-          left: `${target.x * 100}%`,
-          top: `${target.y * 100}%`,
-        }}
-      >
-        <div className={targetRingClassName} />
-        <div className={targetInnerRingClassName} />
-        <div className={`${targetCrosshairClassName} h-[72%] w-px`} />
-        <div className={`${targetCrosshairClassName} h-px w-[72%]`} />
-        <div className={targetDotClassName} />
-      </div>
-      {!isFocusMode && (
+      <video
+        ref={videoRef}
+        className={
+          clientMode
+            ? `absolute inset-0 h-full w-full ${clientVideoVisible ? 'object-contain bg-black opacity-100' : 'object-cover opacity-0'} scale-x-[-1]`
+            : 'pointer-events-none fixed -left-[200vw] top-0 h-px w-px overflow-hidden opacity-0'
+        }
+        style={clientVideoVisible ? undefined : { opacity: 0, pointerEvents: 'none' }}
+        playsInline
+        muted
+        autoPlay
+      />
+      <canvas
+        ref={overlayRef}
+        width={VIDEO_W}
+        height={VIDEO_H}
+        className={
+          clientMode
+            ? 'pointer-events-none fixed -left-[200vw] top-0 h-px w-px overflow-hidden opacity-0'
+            : 'pointer-events-none fixed -left-[200vw] top-0 h-px w-px overflow-hidden opacity-0'
+        }
+        style={{ opacity: 0, pointerEvents: 'none' }}
+      />
+      {showClientTarget && (
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.06)_1px,transparent_1px)] bg-[size:32px_32px]" />
+      )}
+      {!clientMode && (
+        <>
+          <button
+            type="button"
+            onClick={() => (clientMode ? void startCalibration() : sendCommand('startCalibration'))}
+            disabled={!cameraReady || phaseIsBusy}
+            className={`${floatingActionClassName} left-4`}
+          >
+            <ScanFace className="h-4 w-4" />
+            Calibrar e iniciar
+          </button>
+          <button
+            type="button"
+            onClick={() => (clientMode ? startSession() : sendCommand('startSession'))}
+            disabled={!cameraReady || phaseIsBusy || !hasCalibration}
+            className={`${floatingActionClassName} right-4 border-rose-300/30 bg-rose-950/58 text-rose-100 hover:bg-rose-900/72 disabled:border-white/5 disabled:bg-slate-950/42 disabled:text-slate-500`}
+          >
+            <Play className="h-4 w-4" />
+            Iniciar sessão
+          </button>
+        </>
+      )}
+      {showClientTarget && (
+        <div
+          className={targetClassName}
+          style={{
+            left: `${target.x * 100}%`,
+            top: `${target.y * 100}%`,
+          }}
+        >
+          <div className={targetRingClassName} />
+          <div className={targetInnerRingClassName} />
+          <div className={`${targetCrosshairClassName} h-[72%] w-px`} />
+          <div className={`${targetCrosshairClassName} h-px w-[72%]`} />
+          <div className={targetDotClassName} />
+        </div>
+      )}
+      {!clientMode && !isFocusMode && (
         <div className="absolute bottom-4 left-4 rounded-full bg-slate-900/70 px-3 py-1 text-xs font-bold text-slate-300 backdrop-blur">
           {phaseLabel}
         </div>
@@ -1396,13 +1607,33 @@ export default function GazeHeatmapLab({
     </div>
   )
 
+  if (clientMode) {
+    return (
+      <div className="h-screen w-screen overflow-hidden bg-slate-950 text-white">
+        {stageNode}
+        {!cameraReady && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/72 p-6 backdrop-blur-sm">
+            <div className="max-w-sm rounded-[28px] border border-cyan-300/25 bg-slate-900/92 p-5 text-center shadow-[0_30px_90px_rgba(2,6,23,0.5)]">
+              <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan-200">Tela do cliente</p>
+              <p className="mt-3 text-sm leading-6 text-slate-300">{status}</p>
+              <button
+                type="button"
+                onClick={startCamera}
+                disabled={loadingModel}
+                className="mt-5 inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-300 disabled:cursor-wait disabled:bg-slate-700 disabled:text-slate-300"
+              >
+                {loadingModel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                Ativar câmera
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      {isFocusMode && (
-        <div className="fixed inset-0 z-50 bg-slate-950">
-          {stageNode}
-        </div>
-      )}
       <div className="border-b border-white/10 bg-slate-900/90 px-5 py-4 backdrop-blur">
         <div className="flex flex-wrap items-center gap-3">
           <Link
@@ -1435,7 +1666,7 @@ export default function GazeHeatmapLab({
             </div>
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={startCamera}
+                onClick={() => (clientMode ? startCamera() : sendCommand('openCamera'))}
                 disabled={loadingModel}
                 className="inline-flex items-center gap-2 rounded-2xl bg-cyan-500 px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-300"
               >
@@ -1443,23 +1674,29 @@ export default function GazeHeatmapLab({
                 Abrir câmera
               </button>
               <button
-                onClick={startCalibration}
-                disabled={!cameraReady || phaseIsCalibrating}
+                onClick={() => (clientMode ? void startCalibration() : sendCommand('startCalibration'))}
+                disabled={!cameraReady || phaseIsBusy}
                 className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-800 px-4 py-2.5 text-sm font-black text-slate-200 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:text-slate-500"
               >
                 <ScanFace className="h-4 w-4" />
-                Calibrar
+                Calibrar e iniciar
               </button>
               <button
-                onClick={startSession}
-                disabled={!cameraReady || phaseIsRunning || !hasCalibration}
+                onClick={() => (clientMode ? startSession() : sendCommand('startSession'))}
+                disabled={!cameraReady || phaseIsBusy || !hasCalibration}
                 className="inline-flex items-center gap-2 rounded-2xl border border-rose-400/30 bg-rose-500/15 px-4 py-2.5 text-sm font-black text-rose-200 transition hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:text-slate-500"
               >
                 <Play className="h-4 w-4" />
                 Iniciar sessão
               </button>
               <button
-                onClick={finishSession}
+                onClick={openClientScreen}
+                className="inline-flex items-center gap-2 rounded-2xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-2.5 text-sm font-black text-cyan-100 transition hover:bg-cyan-500/20"
+              >
+                Abrir tela cliente
+              </button>
+              <button
+                onClick={() => (clientMode ? finishSession() : sendCommand('finishSession'))}
                 disabled={!phaseIsRunning}
                 className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-800 px-4 py-2.5 text-sm font-black text-slate-200 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:text-slate-500"
               >
@@ -1467,7 +1704,7 @@ export default function GazeHeatmapLab({
                 Encerrar
               </button>
               <button
-                onClick={resetLab}
+                onClick={() => (clientMode ? resetLab() : sendCommand('resetLab'))}
                 className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-800 px-4 py-2.5 text-sm font-black text-slate-200 transition hover:bg-slate-700"
               >
                 <RotateCcw className="h-4 w-4" />
@@ -1479,6 +1716,11 @@ export default function GazeHeatmapLab({
           <div className="mb-4 rounded-3xl border border-white/10 bg-slate-900/80 px-4 py-3 text-sm text-slate-300">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span>{status}</span>
+              <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-black tracking-[0.14em] text-emerald-200">
+                {cameraSettings
+                  ? `CAM ${cameraSettings.width ?? '-'}x${cameraSettings.height ?? '-'} · ${Math.round(cameraSettings.frameRate ?? 0) || '-'}FPS`
+                  : 'CAM aguardando tela cliente'}
+              </span>
               <div className="flex flex-wrap items-center gap-2">
                 <label className="flex items-center gap-2 text-xs font-bold text-slate-400">
                   Geometria
@@ -1499,6 +1741,11 @@ export default function GazeHeatmapLab({
                 <span className="rounded-full bg-slate-800 px-2.5 py-1 text-[10px] font-black tracking-[0.16em] text-cyan-200">
                   BUILD {HEATMAP_LAB_BUILD}
                 </span>
+                {cameraSettings && (
+                  <span className="rounded-full bg-slate-800 px-2.5 py-1 text-[10px] font-black tracking-[0.16em] text-emerald-200">
+                    CAM {cameraSettings.width ?? '-'}x{cameraSettings.height ?? '-'} · {Math.round(cameraSettings.frameRate ?? 0) || '-'}FPS
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -1510,24 +1757,6 @@ export default function GazeHeatmapLab({
           )}
 
           <div className="space-y-4">
-            <div className={cameraPanelClassName}>
-              <video
-                ref={videoRef}
-                className="aspect-video w-full object-cover scale-x-[-1]"
-                playsInline
-                muted
-                autoPlay
-              />
-              <canvas
-                ref={overlayRef}
-                width={VIDEO_W}
-                height={VIDEO_H}
-                className="absolute inset-0 h-full w-full scale-x-[-1]"
-              />
-            </div>
-
-            {!isFocusMode && stageNode}
-
             <div className="grid gap-4 xl:grid-cols-[1fr]">
               <div className="rounded-[28px] border border-white/10 bg-slate-900/80 p-4">
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -1547,7 +1776,24 @@ export default function GazeHeatmapLab({
                   </div>
                 </div>
                 <div className="mt-3 rounded-2xl border border-cyan-400/15 bg-cyan-500/5 p-3 text-xs leading-5 text-slate-300">
-                  Para o tablet ficar mais realista, esta fase agora ocupa bem mais tela. O ideal é segurar o aparelho entre 35 e 45 cm dos olhos do cliente e deixar a bolinha cruzar quase toda a largura.
+                  <div className="grid gap-2 sm:grid-cols-4">
+                    <div>
+                      <span className="block font-black uppercase tracking-[0.16em] text-cyan-200">Olho X</span>
+                      <span className="text-slate-100">{Math.round(liveMetrics.eyeX * 100)}%</span>
+                    </div>
+                    <div>
+                      <span className="block font-black uppercase tracking-[0.16em] text-cyan-200">Olho Y</span>
+                      <span className="text-slate-100">{Math.round(liveMetrics.eyeY * 100)}%</span>
+                    </div>
+                    <div>
+                      <span className="block font-black uppercase tracking-[0.16em] text-emerald-200">Cabeça X</span>
+                      <span className="text-slate-100">{Math.round(liveMetrics.headX * 100)}%</span>
+                    </div>
+                    <div>
+                      <span className="block font-black uppercase tracking-[0.16em] text-emerald-200">Cabeça Y</span>
+                      <span className="text-slate-100">{Math.round(liveMetrics.headY * 100)}%</span>
+                    </div>
+                  </div>
                 </div>
                 <p className="mt-3 text-xs text-slate-500">
                   O bloco acima é só monitoramento instantâneo. O que vale para a lente é a leitura consolidada e os mapas abaixo.

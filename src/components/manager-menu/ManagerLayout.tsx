@@ -22,6 +22,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { OperatorLayout } from '@/components/operator-menu';
 import { useEffect } from 'react';
+import { type AppMode } from '@/lib/app-mode';
 
 type ManualManagerState = 'home' | 'gerencia' | 'operator';
 type ManagerState = ManualManagerState | 'page';
@@ -31,6 +32,7 @@ interface ManagerLayoutProps {
     storeId: number;
     storeName: string;
     logoUrl: string | null;
+    appMode?: AppMode;
 }
 
 const GERENCIA_LINKS = [
@@ -90,12 +92,13 @@ const GERENCIA_LINKS = [
     }
 ] as const;
 
-export default function ManagerLayout({ children, storeId, storeName, logoUrl }: ManagerLayoutProps) {
+export default function ManagerLayout({ children, storeId, storeName, logoUrl, appMode = 'full' }: ManagerLayoutProps) {
     const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const supabase = createClient();
     const { preference } = useBackgroundPreference();
+    const isMvp = appMode === 'mvp';
 
     const menuParam = searchParams.get('menu');
     const [manualState, setManualState] = useState<ManualManagerState>('home');
@@ -124,6 +127,7 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
                 storeId={storeId}
                 storeName={storeName}
                 logoUrl={logoUrl}
+                appMode={appMode}
                 onBackToHub={() => {
                     router.replace(`/dashboard/loja/${storeId}`);
                     setManualState('home');
@@ -269,7 +273,7 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {GERENCIA_LINKS.map((item) => {
+                            {GERENCIA_LINKS.filter(item => !isMvp || item.id === 'config').map((item) => {
                                 const Icon = item.icon;
                                 return (
                                     <button

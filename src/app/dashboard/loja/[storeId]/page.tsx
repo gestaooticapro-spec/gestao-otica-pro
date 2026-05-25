@@ -13,6 +13,22 @@ import { getRetornosDeHoje } from '@/lib/actions/collection.actions'
 import { ManagerDashboard, AdminDashboard } from '@/components/dashboard/DashboardViews'
 import ActionMenuDashboard from '@/components/dashboard/ActionMenuDashboard'
 import { TabletRedirect } from '@/components/tablet/TabletRedirect'
+import { getStoreAppMode } from '@/lib/app-mode'
+
+type StoreHomeProfile = {
+    role?: string | null
+}
+type StoreHomeRow = {
+    name?: string | null
+    settings?: unknown
+}
+type StoreHomeTable = {
+    select: (columns: string) => {
+        eq: (column: string, value: number) => {
+            single: () => Promise<{ data: StoreHomeRow | null }>
+        }
+    }
+}
 
 export default async function StoreHomePage({ params }: { params: { storeId: string } }) {
     const storeId = parseInt(params.storeId, 10)
@@ -22,17 +38,19 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return redirect('/login')
 
-    const profile = await getProfileByAdmin(user.id) as any
+    const profile = await getProfileByAdmin(user.id) as StoreHomeProfile | null
     if (!profile) return redirect('/login')
 
     // Busca nome da loja
     const supabaseAdmin = createAdminClient()
-    const { data: store } = await (supabaseAdmin.from('stores') as any)
-        .select('name')
+    const storesTable = supabaseAdmin.from('stores') as unknown as StoreHomeTable
+    const { data: store } = await storesTable
+        .select('name, settings')
         .eq('id', storeId)
         .single()
 
     const storeName = store?.name || `Loja ${storeId}`
+    const appMode = getStoreAppMode(store?.settings)
 
     // 1. ADMIN (Dono da Rede)
     if (profile.role === 'admin') {
@@ -85,6 +103,7 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
                 birthdays={aniversariantes}
                 vencimentos={vencimentos}
                 retornos={retornos}
+                appMode={appMode}
             />
         </>
     )
