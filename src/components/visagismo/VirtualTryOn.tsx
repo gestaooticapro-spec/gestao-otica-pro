@@ -84,10 +84,18 @@ type TryOnState = {
 type SkinTone = 'light' | 'medium' | 'dark'
 type LensMode = 'none' | 'crystal' | 'frost' | 'reflection'
 
-type TryOnCommand = 'startCamera' | 'stopCamera' | 'fullscreen' | 'analyzeFace'
+type TryOnCommand =
+  | 'startCamera'
+  | 'stopCamera'
+  | 'fullscreen'
+  | 'analyzeFace'
+  | 'freezePhoto'
+  | 'analyzeFrozenPhoto'
+  | 'resumeLive'
 type TryOnAnalysisReport = {
   analysis: FaceAnalysisResult
   recommendations: FrameRecommendation[]
+  detectedSkinTone?: SkinTone
 }
 
 type TryOnMessage =
@@ -96,7 +104,16 @@ type TryOnMessage =
   | { type: 'autoSelect'; selectedId: string }
   | { type: 'narrative'; narrative: VisagismoRecommendationNarrative | null }
   | { type: 'narrativeLoading'; loading: boolean }
-  | { type: 'report'; cameraOn: boolean; faceDetected: boolean; faceTooTurned: boolean; status: string; analysisReport?: TryOnAnalysisReport | null }
+  | {
+      type: 'report'
+      cameraOn: boolean
+      faceDetected: boolean
+      faceTooTurned: boolean
+      photoFrozen: boolean
+      detectedSkinTone?: SkinTone
+      status: string
+      analysisReport?: TryOnAnalysisReport | null
+    }
 
 const RIGHT_IRIS = 468
 const LEFT_IRIS = 473
@@ -199,6 +216,18 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
   const stopCameraRef = useRef<() => void>(() => {})
   const fullscreenRef = useRef<() => Promise<void>>(async () => {})
   const analyzeFaceRef = useRef<() => void>(() => {})
+  const freezePhotoRef = useRef<() => void>(() => {})
+  const analyzeFrozenPhotoRef = useRef<() => void>(() => {})
+  const resumeLiveRef = useRef<() => void>(() => {})
+  const frozenImageRef = useRef<string | null>(null)
+  const frozenLandmarksRef = useRef<Landmark[] | null>(null)
+  const frozenFaceGuideRef = useRef<FaceGuide | null>(null)
+  const frozenSkinToneRef = useRef<SkinTone | null>(null)
+  const lastSkinToneSampleRef = useRef(0)
+  const skinToneVotesRef = useRef<SkinTone[]>([])
+  const skinToneManualOverrideRef = useRef(false)
+  const acceptIncomingAnalysisRef = useRef(false)
+  const autoNarrativePendingRef = useRef(false)
   const analysisTimersRef = useRef<number[]>([])
   const frameSwapTimerRef = useRef<number | null>(null)
   const analysisPhaseRef = useRef<AnalysisPhase>('idle')
@@ -220,6 +249,9 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
     customerProfile: DEFAULT_CUSTOMER_PROFILE,
   })
   const [cameraOn, setCameraOn] = useState(false)
+  const [photoFrozen, setPhotoFrozen] = useState(false)
+  const [frozenImage, setFrozenImage] = useState<string | null>(null)
+  const [cameraDetectedSkinTone, setCameraDetectedSkinTone] = useState<SkinTone | null>(null)
   const [status, setStatus] = useState(clientMode ? 'Aguardando comando da tela touch' : 'Tela cliente aguardando')
   const [faceDetected, setFaceDetected] = useState(false)
   const [faceTooTurned, setFaceTooTurned] = useState(false)
@@ -277,6 +309,9 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
         if (message.type === 'command' && message.command === 'stopCamera') stopCameraRef.current()
         if (message.type === 'command' && message.command === 'fullscreen') void fullscreenRef.current()
         if (message.type === 'command' && message.command === 'analyzeFace') analyzeFaceRef.current()
+        if (message.type === 'command' && message.command === 'freezePhoto') freezePhotoRef.current()
+        if (message.type === 'command' && message.command === 'analyzeFrozenPhoto') analyzeFrozenPhotoRef.current()
+        if (message.type === 'command' && message.command === 'resumeLive') resumeLiveRef.current()
         return
       }
 
@@ -284,8 +319,27 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
         setCameraOn(message.cameraOn)
         setFaceDetected(message.faceDetected)
         setFaceTooTurned(message.faceTooTurned)
+        setPhotoFrozen(message.photoFrozen)
         setStatus(message.status)
-        if (message.analysisReport !== undefined) setAnalysisReport(message.analysisReport)
+        if (message.detectedSkinTone) {
+          setCameraDetectedSkinTone(message.detectedSkinTone)
+          if (!skinToneManualOverrideRef.current) {
+            setTryOnState({ skinTone: message.detectedSkinTone })
+          }
+        }
+        if (message.analysisReport !== undefined && (acceptIncomingAnalysisRef.current || !message.analysisReport)) {
+          if (message.analysisReport) {
+            autoNarrativePendingRef.current = true
+            acceptIncomingAnalysisRef.current = false
+          } else {
+            autoNarrativePendingRef.current = false
+          }
+          narrativeRequestKeyRef.current = null
+          setAnalysisReport(message.analysisReport)
+          if (message.analysisReport?.detectedSkinTone && !skinToneManualOverrideRef.current) {
+            setTryOnState({ skinTone: message.analysisReport.detectedSkinTone })
+          }
+        }
       }
 
       if (message.type === 'autoSelect') {
@@ -317,6 +371,14 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
 
     const previousTemplate = previousTemplateRef.current
     previousTemplateRef.current = selectedTemplate
+    if (photoFrozen) {
+      const frozenPose = computeFrozenPose()
+      if (frozenPose) {
+        poseRef.current = frozenPose
+        setPose(frozenPose)
+      }
+    }
+
     const currentPose = poseRef.current
     if (!currentPose?.detected || previousTemplate?.id === selectedTemplate.id) return
 
@@ -328,17 +390,31 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
       pose: currentPose,
     })
     frameSwapTimerRef.current = window.setTimeout(() => setFrameSwap(null), 950)
-  }, [clientMode, selectedTemplate])
+  }, [clientMode, photoFrozen, selectedTemplate])
 
   useEffect(() => {
     mirrorRef.current = state.mirror
     sizeAdjustRef.current = state.sizeAdjust
     heightAdjustRef.current = state.heightAdjust
 
+    if (clientMode && photoFrozen) {
+      const video = videoRef.current
+      const landmarks = frozenLandmarksRef.current
+      if (video && landmarks) {
+        const guide = computeFaceGuide(landmarks, video, mirrorRef.current)
+        const frozenPose = computeFrozenPose()
+        setFaceGuide(guide)
+        if (frozenPose) {
+          poseRef.current = frozenPose
+          setPose(frozenPose)
+        }
+      }
+    }
+
     if (!clientMode) {
       channelRef.current?.postMessage({ type: 'state', state } satisfies TryOnMessage)
     }
-  }, [clientMode, state])
+  }, [clientMode, photoFrozen, state])
 
   useEffect(() => {
     if (clientMode) return
@@ -369,9 +445,11 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
       faceDetected,
       faceTooTurned,
       status,
+      photoFrozen,
+      detectedSkinTone: cameraDetectedSkinTone ?? undefined,
       analysisReport,
     } satisfies TryOnMessage)
-  }, [analysisReport, cameraOn, clientMode, faceDetected, faceTooTurned, status])
+  }, [analysisReport, cameraDetectedSkinTone, cameraOn, clientMode, faceDetected, faceTooTurned, photoFrozen, status])
 
   function setTryOnState(patch: Partial<TryOnState>) {
     setState((current) => ({ ...current, ...patch }))
@@ -416,15 +494,25 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
   }
 
   function runFaceAnalysis() {
+    acceptIncomingAnalysisRef.current = true
+    narrativeRequestKeyRef.current = null
     sendCommand('analyzeFace')
   }
 
+  function runFrozenPhotoAnalysis() {
+    acceptIncomingAnalysisRef.current = true
+    narrativeRequestKeyRef.current = null
+    sendCommand('analyzeFrozenPhoto')
+  }
+
   function runSimulatedAnalysis(faceShape: FaceShape) {
+    acceptIncomingAnalysisRef.current = true
     const analysis = createSimulatedFaceAnalysis(faceShape)
     const recommendations = recommendFramesForFace(analysis, templates, state.customerProfile)
     const selectedId = recommendations[0]?.templateId ?? ''
     const report = { analysis, recommendations }
 
+    autoNarrativePendingRef.current = true
     setAnalysisReport(report)
     setAiNarrative(null)
     setAiNarrativeError(null)
@@ -513,14 +601,15 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
   ])
 
   useEffect(() => {
-    if (clientMode || !analysisReport) return
+    if (clientMode || !analysisReport || !autoNarrativePendingRef.current) return
 
-    const key = buildNarrativeRequestKey(analysisReport, state.customerProfile)
+    const key = buildNarrativeRequestKey(analysisReport, state.customerProfile, state.skinTone, state.frameColor)
+    autoNarrativePendingRef.current = false
     if (narrativeRequestKeyRef.current === key) return
 
     narrativeRequestKeyRef.current = key
     generateNarrative(analysisReport)
-  }, [analysisReport, clientMode, generateNarrative, state.customerProfile])
+  }, [analysisReport, clientMode, generateNarrative, state.customerProfile, state.frameColor, state.skinTone])
 
   async function copyNarrativeText() {
     if (!aiNarrative) return
@@ -532,7 +621,11 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
 
   function startTryOnCamera() {
     const nextState = { ...state, selectedId: '' }
+    skinToneManualOverrideRef.current = false
+    setCameraDetectedSkinTone(null)
     setAnalysisReport(null)
+    acceptIncomingAnalysisRef.current = false
+    autoNarrativePendingRef.current = false
     setAiNarrative(null)
     setAiNarrativeError(null)
     setAiNarrativeLoading(false)
@@ -587,11 +680,18 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
   }
 
   async function startCamera() {
-    if (cameraOn) return
+    if (cameraOn) {
+      if (frozenImageRef.current) resumeLivePhoto()
+      return
+    }
 
     try {
+      clearFrozenPhoto()
+      skinToneManualOverrideRef.current = false
+      setCameraDetectedSkinTone(null)
       setAnalysisVisible(false)
       setAnalysisReport(null)
+      autoNarrativePendingRef.current = false
       setAnalysisPhase('idle')
       const landmarker = await ensureLandmarker()
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -626,15 +726,20 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
+    clearFrozenPhoto()
     setCameraOn(false)
     setPose(null)
     setFaceGuide(null)
     setFrameSwap(null)
     setAnalysisVisible(false)
     setAnalysisReport(null)
+    autoNarrativePendingRef.current = false
     setAiNarrative(null)
     setAiNarrativeError(null)
     setAiNarrativeLoading(false)
+    setCameraDetectedSkinTone(null)
+    skinToneVotesRef.current = []
+    lastSkinToneSampleRef.current = 0
     narrativeRequestKeyRef.current = null
     setAnalysisPhase('idle')
     setFaceDetected(false)
@@ -660,6 +765,8 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
   }
 
   function loop(landmarker: FaceLandmarkerInstance) {
+    if (frozenImageRef.current) return
+
     const video = videoRef.current
     if (!video || video.readyState < 2) {
       animationRef.current = requestAnimationFrame(() => loop(landmarker))
@@ -706,6 +813,8 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
         poseRef.current = null
         setPose(null)
       }
+
+      updateSilentSkinTone(video, landmarks, now)
     } else {
       setPose((current) => current ? { ...current, detected: false } : null)
       setFaceGuide(null)
@@ -717,6 +826,120 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
     animationRef.current = requestAnimationFrame(() => loop(landmarker))
   }
 
+  function clearFrozenPhoto() {
+    frozenImageRef.current = null
+    frozenLandmarksRef.current = null
+    frozenFaceGuideRef.current = null
+    frozenSkinToneRef.current = null
+    setFrozenImage(null)
+    setPhotoFrozen(false)
+  }
+
+  function updateSilentSkinTone(video: HTMLVideoElement, landmarks: Landmark[], now: number) {
+    if (photoFrozen || skinToneManualOverrideRef.current) return
+    if (now - lastSkinToneSampleRef.current < 900) return
+    lastSkinToneSampleRef.current = now
+
+    const detected = detectSkinToneFromVideo(video, landmarks)
+    if (!detected) return
+
+    skinToneVotesRef.current = [...skinToneVotesRef.current, detected].slice(-5)
+    const stableTone = mostFrequentSkinTone(skinToneVotesRef.current)
+    if (!stableTone || stableTone === cameraDetectedSkinTone) return
+
+    setCameraDetectedSkinTone(stableTone)
+  }
+
+  function cloneLandmarks(landmarks: Landmark[]) {
+    return landmarks.map((landmark) => ({
+      x: landmark.x,
+      y: landmark.y,
+      z: landmark.z,
+    }))
+  }
+
+  function computeFrozenPose() {
+    const video = videoRef.current
+    const landmarks = frozenLandmarksRef.current
+    const template = selectedTemplateRef.current
+    if (!video || !landmarks || !template) return null
+
+    return computeOverlayPose(
+      landmarks,
+      video,
+      template,
+      mirrorRef.current,
+      sizeAdjustRef.current,
+      heightAdjustRef.current,
+    )
+  }
+
+  function freezeCurrentPhoto() {
+    const video = videoRef.current
+    const landmarks = lastLandmarksRef.current
+    if (!video || video.readyState < 2 || !landmarks) {
+      setStatus('Posicione o rosto antes de congelar a foto')
+      return
+    }
+
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const context = canvas.getContext('2d')
+    if (!context) {
+      setStatus('Nao foi possivel congelar a imagem')
+      return
+    }
+
+    if (mirrorRef.current) {
+      context.translate(canvas.width, 0)
+      context.scale(-1, 1)
+    }
+    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+    const image = canvas.toDataURL('image/jpeg', 0.9)
+    const landmarkSnapshot = cloneLandmarks(landmarks)
+    const guide = computeFaceGuide(landmarkSnapshot, video, mirrorRef.current)
+    const yaw = computeFaceYaw(landmarkSnapshot, video, mirrorRef.current)
+    const turned = Math.abs(yaw) > 0.32
+    const detectedSkinTone = detectSkinToneFromVideo(video, landmarkSnapshot)
+
+    if (animationRef.current) cancelAnimationFrame(animationRef.current)
+    animationRef.current = null
+    frozenImageRef.current = image
+    frozenLandmarksRef.current = landmarkSnapshot
+    frozenFaceGuideRef.current = guide
+    frozenSkinToneRef.current = detectedSkinTone ?? null
+    setCameraDetectedSkinTone(detectedSkinTone ?? null)
+    setFrozenImage(image)
+    setPhotoFrozen(true)
+    setFaceGuide(guide)
+    setFaceDetected(true)
+    setFaceTooTurned(turned)
+    setStatus(turned ? 'Foto congelada, mas o rosto estava virado' : 'Foto congelada. Cliente pode colocar os oculos')
+
+    const frozenPose = computeFrozenPose()
+    if (frozenPose) {
+      poseRef.current = frozenPose
+      setPose(frozenPose)
+    }
+  }
+
+  function resumeLivePhoto() {
+    clearFrozenPhoto()
+    clearAnalysisTimers()
+    clearFrameSwapTimer()
+    setAnalysisVisible(false)
+    setAnalysisPhase('idle')
+    analysisPhaseRef.current = 'idle'
+    setFrameSwap(null)
+    setStatus(cameraOn ? 'Voltando para camera ao vivo...' : 'Camera desligada')
+
+    if (cameraOn && landmarkerRef.current && !animationRef.current) {
+      loop(landmarkerRef.current)
+    }
+  }
+
   function analyzeCurrentFace() {
     const landmarks = lastLandmarksRef.current
     if (!landmarks) {
@@ -724,9 +947,33 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
       return
     }
 
+    runAnalysisFromLandmarks(landmarks, 'live')
+  }
+
+  function analyzeFrozenPhoto() {
+    const landmarks = frozenLandmarksRef.current
+    if (!landmarks) {
+      setStatus('Congele uma foto antes de analisar')
+      return
+    }
+
+    runAnalysisFromLandmarks(landmarks, 'photo')
+  }
+
+  function runAnalysisFromLandmarks(landmarks: Landmark[], source: 'live' | 'photo') {
+    const video = videoRef.current
+    const guide = source === 'photo'
+      ? frozenFaceGuideRef.current
+      : video
+        ? computeFaceGuide(landmarks, video, mirrorRef.current)
+        : null
+
     clearAnalysisTimers()
     setAnalysisVisible(true)
+    setFaceGuide(guide)
+    setFaceDetected(true)
     setAnalysisReport(null)
+    autoNarrativePendingRef.current = false
     setAiNarrative(null)
     setAiNarrativeError(null)
     setAiNarrativeLoading(false)
@@ -734,7 +981,7 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
     setAnalysisPhase('forehead')
     analysisPhaseRef.current = 'forehead'
     setState((current) => ({ ...current, selectedId: '' }))
-    setStatus('Medindo largura das temporas...')
+    setStatus(source === 'photo' ? 'Medindo a foto congelada...' : 'Medindo largura das temporas...')
 
     const analysis = analyzeFaceLandmarks(landmarks)
     if (!analysis) {
@@ -742,14 +989,26 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
       return
     }
 
+    const detectedSkinTone = source === 'photo'
+      ? frozenSkinToneRef.current ?? undefined
+      : video
+        ? detectSkinToneFromVideo(video, landmarks)
+        : undefined
     const recommendations = recommendFramesForFace(analysis, templates, state.customerProfile)
-    const report = { analysis, recommendations }
+    const report = { analysis, recommendations, detectedSkinTone }
     const selectedId = recommendations[0]?.templateId
+
+    if (detectedSkinTone && !skinToneManualOverrideRef.current) {
+      setState((current) => ({ ...current, skinTone: detectedSkinTone }))
+    }
+
+    autoNarrativePendingRef.current = true
+    setAnalysisReport(report)
 
     queueAnalysisTimer(() => {
       setAnalysisPhase('cheekbones')
       analysisPhaseRef.current = 'cheekbones'
-      setStatus('Medindo regiao dos olhos...')
+      setStatus('Medindo maca do rosto...')
     }, 900)
 
     queueAnalysisTimer(() => {
@@ -771,17 +1030,16 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
     }, 3600)
 
     queueAnalysisTimer(() => {
-      setAnalysisReport(report)
       setAnalysisPhase('complete')
       analysisPhaseRef.current = 'complete'
       setStatus(`Analise pronta: ${faceShapeLabel(analysis.faceShape)}`)
-    }, 4700)
+    }, 4350)
 
     queueAnalysisTimer(() => {
       setAnalysisPhase('hiding')
       analysisPhaseRef.current = 'hiding'
       setStatus(selectedId ? 'Carregando armacao sugerida...' : 'Analise pronta')
-    }, 8200)
+    }, 6000)
 
     queueAnalysisTimer(() => {
       if (selectedId) {
@@ -792,7 +1050,7 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
       setAnalysisPhase('idle')
       analysisPhaseRef.current = 'idle'
       setStatus(selectedId ? 'Armacao sugerida carregada' : 'Rosto detectado')
-    }, 8750)
+    }, 6550)
   }
 
   function queueAnalysisTimer(callback: () => void, delay: number) {
@@ -814,10 +1072,17 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
   stopCameraRef.current = stopCamera
   fullscreenRef.current = toggleFullscreen
   analyzeFaceRef.current = analyzeCurrentFace
+  freezePhotoRef.current = freezeCurrentPhoto
+  analyzeFrozenPhotoRef.current = analyzeFrozenPhoto
+  resumeLiveRef.current = resumeLivePhoto
 
   const canRenderFrame = !!selectedTemplate && !!pose && pose.detected && !faceTooTurned
   const canRenderAnalysis = analysisVisible && !!faceGuide && faceDetected
   const clientNarrativeOption = aiNarrative?.options.find((option) => option.templateId === state.selectedId) ?? null
+  const selectedIsRecommended = recommendedTemplates.some((template) => template.id === state.selectedId)
+  const waitingForNarrativePresentation = selectedIsRecommended && aiNarrativeLoading && !clientNarrativeOption
+  const canRenderPresentedFrame = canRenderFrame && !waitingForNarrativePresentation
+  const presentationColor = clientNarrativeOption?.suggestedColorHex ?? state.frameColor
 
   if (clientMode) {
     return (
@@ -825,11 +1090,18 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
         <section ref={stageRef} className="relative h-screen w-screen overflow-hidden bg-black">
           <video
             ref={videoRef}
-            className={`absolute inset-0 h-full w-full object-contain ${state.mirror ? '-scale-x-100' : ''}`}
+            className={`absolute inset-0 h-full w-full object-contain ${state.mirror ? '-scale-x-100' : ''} ${frozenImage ? 'opacity-0' : ''}`}
             autoPlay
             muted
             playsInline
           />
+
+          {frozenImage && (
+            <div
+              className="absolute inset-0 bg-contain bg-center bg-no-repeat"
+              style={{ backgroundImage: `url(${frozenImage})` }}
+            />
+          )}
 
           {!cameraOn && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-slate-950">
@@ -840,7 +1112,7 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
             </div>
           )}
 
-          {canRenderFrame && selectedTemplate && !frameSwap && (
+          {canRenderPresentedFrame && selectedTemplate && !frameSwap && (
             <div
               className="pointer-events-none absolute left-0 top-0"
               style={{
@@ -852,17 +1124,17 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
               <TryOnFrameSvg
                 template={selectedTemplate}
                 strokeScale={state.strokeScale}
-                color={state.frameColor}
+                color={presentationColor}
                 lensMode={state.lensMode}
               />
             </div>
           )}
 
-          {frameSwap && !faceTooTurned && (
+          {frameSwap && !faceTooTurned && !waitingForNarrativePresentation && (
             <FrameSwapAnimation
               swap={frameSwap}
               strokeScale={state.strokeScale}
-              color={state.frameColor}
+              color={presentationColor}
               lensMode={state.lensMode}
             />
           )}
@@ -875,7 +1147,7 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
             <ClientFrameStack
               templates={recommendedTemplates}
               selectedId={state.selectedId}
-              color={state.frameColor}
+              color={presentationColor}
               lensMode={state.lensMode}
             />
           )}
@@ -890,7 +1162,7 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
 
           {clientNarrativeOption && (
             <ClientNarrativeOverlay
-              key={`${clientNarrativeOption.templateId}-${clientNarrativeOption.headline}-${clientNarrativeOption.explanation}`}
+              key={`${clientNarrativeOption.templateId}-${clientNarrativeOption.headline}-${clientNarrativeOption.explanation}-${clientNarrativeOption.shapeSuggestion}-${clientNarrativeOption.colorSuggestion}`}
               option={clientNarrativeOption}
             />
           )}
@@ -904,6 +1176,12 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
           }`}>
             {status}
           </div>
+
+          {photoFrozen && (
+            <div className="absolute left-4 top-16 rounded-lg border border-cyan-300/30 bg-black/45 px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100 backdrop-blur">
+              foto congelada
+            </div>
+          )}
 
           <button
             type="button"
@@ -955,7 +1233,11 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
           <div className="grid gap-3 sm:grid-cols-3">
             <StatusCard label="Camera" value={cameraOn ? 'ativa' : 'desligada'} tone={cameraOn ? 'good' : 'idle'} />
             <StatusCard label="Rosto" value={faceDetected ? 'detectado' : 'aguardando'} tone={faceDetected ? 'good' : 'idle'} />
-            <StatusCard label="Posicao" value={faceTooTurned ? 'virado' : faceDetected ? 'frontal' : '-'} tone={faceTooTurned ? 'warn' : 'idle'} />
+            <StatusCard
+              label={photoFrozen ? 'Modo' : 'Posicao'}
+              value={photoFrozen ? 'foto' : faceTooTurned ? 'virado' : faceDetected ? 'frontal' : '-'}
+              tone={photoFrozen ? 'good' : faceTooTurned ? 'warn' : 'idle'}
+            />
           </div>
 
           <div className="mt-6 rounded-lg border border-white/10 bg-slate-950/50 p-4">
@@ -1088,7 +1370,33 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-xs font-black uppercase text-cyan-100 transition-colors hover:bg-cyan-500/20"
             >
               <ScanFace className="h-4 w-4" />
-              Analisar rosto
+              Analisar ao vivo
+            </button>
+            <button
+              type="button"
+              onClick={() => sendCommand('freezePhoto')}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3 text-xs font-black uppercase text-slate-300 transition-colors hover:bg-white/10"
+            >
+              <Camera className="h-4 w-4" />
+              Congelar foto
+            </button>
+            <button
+              type="button"
+              onClick={runFrozenPhotoAnalysis}
+              disabled={!photoFrozen}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-xs font-black uppercase text-cyan-100 transition-colors hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ScanFace className="h-4 w-4" />
+              Analisar foto
+            </button>
+            <button
+              type="button"
+              onClick={() => sendCommand('resumeLive')}
+              disabled={!photoFrozen}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3 text-xs font-black uppercase text-slate-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Play className="h-4 w-4" />
+              Voltar ao vivo
             </button>
           </div>
 
@@ -1203,6 +1511,21 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
                             <span className="text-[10px] font-black uppercase text-cyan-200">{option.headline}</span>
                           </div>
                           <p className="mt-2 text-xs leading-5 text-slate-300">{option.explanation}</p>
+                          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                            <p className="rounded-lg border border-white/10 bg-black/20 p-2 text-xs leading-5 text-slate-300">
+                              <span className="font-black uppercase text-cyan-200">Formato: </span>
+                              {option.shapeSuggestion}
+                            </p>
+                            <p className="rounded-lg border border-white/10 bg-black/20 p-2 text-xs leading-5 text-slate-300">
+                              <span className="font-black uppercase text-cyan-200">Cor: </span>
+                              <span
+                                className="mr-1 inline-block h-3 w-3 translate-y-0.5 rounded-full border border-white/20"
+                                style={{ backgroundColor: option.suggestedColorHex }}
+                              />
+                              <span className="font-bold text-slate-100">{option.suggestedColorName}. </span>
+                              {option.colorSuggestion}
+                            </p>
+                          </div>
                           <p className="mt-2 text-xs leading-5 text-slate-500">{option.sellerTip}</p>
                           {option.caveat && (
                             <p className="mt-2 text-xs leading-5 text-amber-100/80">{option.caveat}</p>
@@ -1284,13 +1607,23 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
             </div>
 
             <div className="mt-4">
-              <p className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Pele</p>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Pele</p>
+                {(cameraDetectedSkinTone || analysisReport?.detectedSkinTone) && (
+                  <span className="text-[9px] font-black uppercase tracking-[0.12em] text-cyan-300">
+                    sugerida pela camera
+                  </span>
+                )}
+              </div>
               <div className="grid grid-cols-3 gap-2">
                 {SKIN_TONE_OPTIONS.map((tone) => (
                   <button
                     key={tone.value}
                     type="button"
-                    onClick={() => setTryOnState({ skinTone: tone.value })}
+                    onClick={() => {
+                      skinToneManualOverrideRef.current = true
+                      setTryOnState({ skinTone: tone.value })
+                    }}
                     className={`flex items-center justify-center gap-2 rounded-lg border px-2 py-2 text-[10px] font-black uppercase transition-colors ${
                       state.skinTone === tone.value
                         ? 'border-cyan-300 bg-cyan-400/10 text-cyan-100'
@@ -1453,7 +1786,7 @@ function ClientThinkingCarousel({
   lensMode: LensMode
 }) {
   const statusIndex = useCyclingIndex(THINKING_STATUS_TEXTS.length, 1700)
-  const carouselItems = [...templates, ...templates, ...templates]
+  const carouselItems = templates.length > 0 ? templates : []
 
   return (
     <div className="pointer-events-none absolute bottom-[22vh] left-8 top-24 z-20 flex w-64 flex-col justify-center">
@@ -1472,19 +1805,23 @@ function ClientThinkingCarousel({
             maskImage: 'linear-gradient(to bottom, transparent, black 18%, black 52%, transparent 92%)',
           }}
         >
-          <div className="visagismo-thinking-carousel absolute inset-x-0 top-0 space-y-4">
-            {carouselItems.map((template, index) => (
-              <div
-                key={`${template.id}-${index}`}
-                className="mx-auto flex h-24 w-48 items-center justify-center rounded-lg border border-white/10 bg-slate-950/65 p-2 shadow-xl"
-              >
-                <TryOnFrameSvg
-                  template={template}
-                  strokeScale={0.9}
-                  color={color}
-                  lensMode={lensMode}
-                  className="h-full w-full drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]"
-                />
+          <div className="visagismo-thinking-carousel absolute inset-x-0 top-0">
+            {[0, 1].map((track) => (
+              <div key={track} className="space-y-4 pb-4">
+                {carouselItems.map((template) => (
+                  <div
+                    key={`${track}-${template.id}`}
+                    className="mx-auto flex h-24 w-48 items-center justify-center rounded-lg border border-white/10 bg-slate-950/65 p-2 shadow-xl"
+                  >
+                    <TryOnFrameSvg
+                      template={template}
+                      strokeScale={0.9}
+                      color={color}
+                      lensMode={lensMode}
+                      className="h-full w-full drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]"
+                    />
+                  </div>
+                ))}
               </div>
             ))}
           </div>
@@ -1493,7 +1830,7 @@ function ClientThinkingCarousel({
 
       <style jsx global>{`
         .visagismo-thinking-carousel {
-          animation: visagismo-thinking-carousel 5.4s linear infinite;
+          animation: visagismo-thinking-carousel 3.6s linear infinite;
         }
 
         @keyframes visagismo-thinking-carousel {
@@ -1525,8 +1862,12 @@ function useCyclingIndex(length: number, intervalMs: number) {
 }
 
 function ClientNarrativeOverlay({ option }: { option: VisagismoNarrativeOption }) {
-  const text = option.explanation || option.headline
-  const typedText = useTypewriter(text, 28)
+  const shapeText = option.shapeSuggestion || option.explanation || option.headline
+  const colorText = option.colorSuggestion
+    ? `${option.suggestedColorName}: ${option.colorSuggestion}`
+    : option.suggestedColorName
+  const typedShapeText = useTypewriter(shapeText, 24)
+  const typedColorText = useTypewriter(colorText, 24, shapeText.length * 24 + 250)
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-[8vh] z-20 flex justify-center px-6">
@@ -1537,30 +1878,54 @@ function ClientNarrativeOverlay({ option }: { option: VisagismoNarrativeOption }
         <h2 className="mt-2 text-4xl font-black tracking-tight text-white md:text-6xl">
           {option.name}
         </h2>
-        <p className="mt-3 min-h-[2.5rem] text-2xl font-bold leading-snug text-slate-100 md:text-3xl">
-          {typedText}
-          <span className="ml-1 inline-block h-7 w-0.5 translate-y-1 animate-pulse bg-cyan-200" />
-        </p>
+        <div className="mt-4 grid gap-3 text-left md:grid-cols-2">
+          <div className="rounded-lg border border-cyan-300/20 bg-black/25 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">Sugestao de formato</p>
+            <p className="mt-2 min-h-[5.5rem] text-xl font-bold leading-snug text-slate-100 md:text-2xl">
+              {typedShapeText}
+              {!colorText && <span className="ml-1 inline-block h-6 w-0.5 translate-y-1 animate-pulse bg-cyan-200" />}
+            </p>
+          </div>
+          <div className="rounded-lg border border-cyan-300/20 bg-black/25 p-4">
+            <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">
+              <span
+                className="h-3 w-3 rounded-full border border-white/30"
+                style={{ backgroundColor: option.suggestedColorHex }}
+              />
+              Sugestao de cor
+            </p>
+            <p className="mt-2 min-h-[5.5rem] text-xl font-bold leading-snug text-slate-100 md:text-2xl">
+              {typedColorText}
+              <span className="ml-1 inline-block h-6 w-0.5 translate-y-1 animate-pulse bg-cyan-200" />
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   )
 }
 
-function useTypewriter(text: string, speedMs: number) {
+function useTypewriter(text: string, speedMs: number, delayMs = 0) {
   const [value, setValue] = useState('')
 
   useEffect(() => {
     if (!text) return
 
     let index = 0
-    const id = window.setInterval(() => {
-      index += 1
-      setValue(text.slice(0, index))
-      if (index >= text.length) window.clearInterval(id)
-    }, speedMs)
+    let intervalId: number | null = null
+    const timeoutId = window.setTimeout(() => {
+      intervalId = window.setInterval(() => {
+        index += 1
+        setValue(text.slice(0, index))
+        if (index >= text.length && intervalId) window.clearInterval(intervalId)
+      }, speedMs)
+    }, delayMs)
 
-    return () => window.clearInterval(id)
-  }, [speedMs, text])
+    return () => {
+      window.clearTimeout(timeoutId)
+      if (intervalId) window.clearInterval(intervalId)
+    }
+  }, [delayMs, speedMs, text])
 
   return value
 }
@@ -1625,7 +1990,7 @@ function FrameSwapAnimation({
         @keyframes visagismo-frame-in {
           0% {
             opacity: 0.2;
-            transform: translate(calc(100vw - 230px), calc(100vh - 145px)) scale(0.36) rotate(0rad);
+            transform: translate(calc(100vw - 230px), 96px) scale(0.36) rotate(0rad);
           }
           62% {
             opacity: 1;
@@ -1643,7 +2008,7 @@ function FrameSwapAnimation({
           }
           100% {
             opacity: 0.22;
-            transform: translate(calc(100vw - 230px), calc(100vh - 145px)) scale(0.36) rotate(0rad);
+            transform: translate(calc(100vw - 230px), 96px) scale(0.36) rotate(0rad);
           }
         }
       `}</style>
@@ -1702,7 +2067,12 @@ function FaceAnalysisOverlay({ guide, phase }: { guide: FaceGuide; phase: Analys
       ))}
 
       {activeMeasurement && (
-        <MeasurementLine from={activeMeasurement[0]} to={activeMeasurement[1]} label={activeMeasurement[2]} />
+        <MeasurementLine
+          key={`${phase}-${activeMeasurement[0].id}-${activeMeasurement[1].id}`}
+          from={activeMeasurement[0]}
+          to={activeMeasurement[1]}
+          label={activeMeasurement[2]}
+        />
       )}
 
       {showMask && guide.lines.map(([from, to]) => (
@@ -1810,7 +2180,7 @@ function MeasurementLine({
 
 function getActiveMeasurement(guide: FaceGuide, phase: AnalysisPhase): [FaceGuidePoint, FaceGuidePoint, string] | null {
   if (phase === 'forehead') return [...guide.measurements.forehead, 'TEMPORAS']
-  if (phase === 'cheekbones') return [...guide.measurements.cheekbones, 'OLHOS']
+  if (phase === 'cheekbones') return [...guide.measurements.cheekbones, 'MACA DO ROSTO']
   if (phase === 'nose') return [...guide.measurements.noseAxis, 'EIXO']
   if (phase === 'jaw') return [...guide.measurements.jaw, 'QUEIXO']
   return null
@@ -2249,6 +2619,78 @@ function computeFaceYaw(landmarks: Landmark[], video: HTMLVideoElement, mirror: 
   return (nose.x - eyeCenter.x) / eyeDistance
 }
 
+function detectSkinToneFromVideo(video: HTMLVideoElement, landmarks: Landmark[]): SkinTone | undefined {
+  if (!video.videoWidth || !video.videoHeight) return undefined
+
+  const canvas = document.createElement('canvas')
+  canvas.width = video.videoWidth
+  canvas.height = video.videoHeight
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+  if (!context) return undefined
+
+  context.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+  const sampleLandmarks = [
+    landmarks[234],
+    landmarks[454],
+    landmarks[205],
+    landmarks[425],
+    landmarks[NOSE],
+    landmarks[NOSE_BRIDGE],
+  ].filter((landmark): landmark is Landmark => Boolean(landmark))
+
+  const luminanceSamples: number[] = []
+  const radius = Math.max(4, Math.round(Math.min(canvas.width, canvas.height) * 0.012))
+
+  sampleLandmarks.forEach((landmark) => {
+    const centerX = Math.round(landmark.x * canvas.width)
+    const centerY = Math.round(landmark.y * canvas.height)
+    const x = clamp(centerX - radius, 0, canvas.width - 1)
+    const y = clamp(centerY - radius, 0, canvas.height - 1)
+    const width = Math.min(radius * 2 + 1, canvas.width - x)
+    const height = Math.min(radius * 2 + 1, canvas.height - y)
+    const data = context.getImageData(x, y, width, height).data
+
+    for (let index = 0; index < data.length; index += 4) {
+      const red = data[index]
+      const green = data[index + 1]
+      const blue = data[index + 2]
+      const alpha = data[index + 3]
+      if (alpha < 220) continue
+
+      const max = Math.max(red, green, blue)
+      const min = Math.min(red, green, blue)
+      const saturation = max === 0 ? 0 : (max - min) / max
+      const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+
+      if (luminance < 35 || luminance > 245 || saturation > 0.72) continue
+      luminanceSamples.push(luminance)
+    }
+  })
+
+  if (luminanceSamples.length < 20) return undefined
+
+  luminanceSamples.sort((a, b) => a - b)
+  const median = luminanceSamples[Math.floor(luminanceSamples.length / 2)]
+
+  if (median >= 160) return 'light'
+  if (median >= 92) return 'medium'
+  return 'dark'
+}
+
+function mostFrequentSkinTone(items: SkinTone[]) {
+  if (items.length < 3) return null
+
+  const counts = items.reduce<Record<SkinTone, number>>((acc, item) => {
+    acc[item] += 1
+    return acc
+  }, { light: 0, medium: 0, dark: 0 })
+
+  const ranked = (Object.entries(counts) as Array<[SkinTone, number]>)
+    .sort((a, b) => b[1] - a[1])
+  return ranked[0][1] >= 3 ? ranked[0][0] : null
+}
+
 function createVideoPointMapper(video: HTMLVideoElement, mirror: boolean) {
   const videoRect = video.getBoundingClientRect()
   const parentRect = video.parentElement?.getBoundingClientRect()
@@ -2525,18 +2967,25 @@ function formatNarrativeForClipboard(narrative: VisagismoRecommendationNarrative
   const options = narrative.options
     .map((option, index) => {
       const caveat = option.caveat ? `\nObservacao: ${option.caveat}` : ''
-      return `${index + 1}. ${option.name} - ${option.headline}\n${option.explanation}\nFala do vendedor: ${option.sellerTip}${caveat}`
+      return `${index + 1}. ${option.name} - ${option.headline}\nResumo: ${option.explanation}\nFormato: ${option.shapeSuggestion}\nCor sugerida: ${option.suggestedColorName} (${option.suggestedColorHex})\nMotivo da cor: ${option.colorSuggestion}\nFala do vendedor: ${option.sellerTip}${caveat}`
     })
     .join('\n\n')
 
   return `${narrative.sellerOpening}\n\n${narrative.customerSummary}\n\n${options}\n\n${narrative.closingLine}`
 }
 
-function buildNarrativeRequestKey(report: TryOnAnalysisReport, customerProfile: CustomerStyleProfile) {
+function buildNarrativeRequestKey(
+  report: TryOnAnalysisReport,
+  customerProfile: CustomerStyleProfile,
+  skinTone: SkinTone,
+  frameColor: string,
+) {
   return JSON.stringify({
     shape: report.analysis.faceShape,
     confidence: Math.round(report.analysis.confidence * 100),
     profile: customerProfile,
+    skinTone,
+    frameColor,
     top: report.recommendations.slice(0, 3).map((recommendation) => ({
       id: recommendation.templateId,
       score: recommendation.score,

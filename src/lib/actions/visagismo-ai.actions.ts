@@ -21,9 +21,26 @@ export type VisagismoNarrativeOption = {
   name: string
   headline: string
   explanation: string
+  shapeSuggestion: string
+  suggestedColorName: string
+  suggestedColorHex: string
+  colorSuggestion: string
   sellerTip: string
   caveat: string | null
 }
+
+const FRAME_COLOR_PALETTE = [
+  { name: 'Preto', value: '#0f172a' },
+  { name: 'Grafite', value: '#475569' },
+  { name: 'Prata', value: '#cbd5e1' },
+  { name: 'Dourado', value: '#c9963e' },
+  { name: 'Tartaruga', value: '#7c3f1d' },
+  { name: 'Marrom', value: '#5c4033' },
+  { name: 'Transparente', value: '#d9f3f4' },
+  { name: 'Vinho', value: '#7f1d3a' },
+  { name: 'Azul', value: '#1d4ed8' },
+  { name: 'Verde', value: '#166534' },
+] as const
 
 export type VisagismoRecommendationNarrative = {
   sellerOpening: string
@@ -161,7 +178,11 @@ function buildVisagismoNarrativePrompt(params: {
   const payload = {
     faceAnalysis: params.analysis,
     customerProfile: params.customerProfile,
-    appearance: params.appearance,
+    appearance: {
+      skinToneLabel: skinToneLabel(params.appearance.skinTone),
+      lensMode: params.appearance.lensMode,
+    },
+    availableFrameColors: FRAME_COLOR_PALETTE,
     recommendations: params.recommendations.map((recommendation, index) => {
       const template = templatesById.get(recommendation.templateId)
 
@@ -187,6 +208,12 @@ REGRAS IMPORTANTES:
 - Explique de forma comercial, curta, elegante e natural para atendimento em otica.
 - Se houver uma ressalva tecnica nas razoes, trate como comparacao visual, sem assustar o cliente.
 - Evite promessas absolutas sobre beleza, idade, genero ou tom de pele.
+- Escolha uma cor em availableFrameColors para cada opcao, considerando formato da armacao, faceAnalysis, customerProfile e appearance.skinToneLabel.
+- Nao justifique a cor atualmente selecionada; recomende a cor que fizer mais sentido.
+- suggestedColorHex deve ser exatamente um value de availableFrameColors, e suggestedColorName deve ser o name correspondente.
+- Trate a pele como leitura assistida por camera, ajustavel pelo vendedor.
+- Separe claramente a justificativa de formato em shapeSuggestion e a justificativa de cor em colorSuggestion.
+- A explanation deve ser uma frase-resumo curta combinando formato e cor.
 - Responda somente em JSON valido, sem markdown.
 
 Formato obrigatorio:
@@ -198,8 +225,12 @@ Formato obrigatorio:
       "templateId": "id recebido",
       "name": "nome recebido",
       "headline": "titulo curto",
-      "explanation": "explicacao para o cliente em ate 260 caracteres",
-      "sellerTip": "fala pratica para o vendedor em ate 220 caracteres",
+      "explanation": "resumo geral em ate 220 caracteres",
+      "shapeSuggestion": "por que este formato faz sentido para o rosto/perfil em ate 220 caracteres",
+      "suggestedColorName": "nome exato de availableFrameColors",
+      "suggestedColorHex": "value exato de availableFrameColors",
+      "colorSuggestion": "por que a cor sugerida faz sentido com o tom de pele/perfil em ate 220 caracteres",
+      "sellerTip": "fala pratica para o vendedor em ate 240 caracteres",
       "caveat": "ressalva curta ou null"
     }
   ],
@@ -209,6 +240,12 @@ Formato obrigatorio:
 Dados:
 ${JSON.stringify(payload, null, 2)}
 `.trim()
+}
+
+function skinToneLabel(skinTone: string) {
+  if (skinTone === 'light') return 'pele clara'
+  if (skinTone === 'dark') return 'pele escura/negra'
+  return 'pele media'
 }
 
 function normalizeNarrative(
@@ -224,17 +261,25 @@ function normalizeNarrative(
       const templateId = String(item.templateId || '').trim()
       const recommendation = allowed.get(templateId)
       if (!recommendation) return null
+      const fallbackExplanation = String(item.explanation || recommendation.reasons.join('. ')).trim()
+      const fallbackShape = String(item.shapeSuggestion || fallbackExplanation || recommendation.reasons.join('. ')).trim()
+      const suggestedColor = normalizeSuggestedColor(item.suggestedColorHex, item.suggestedColorName)
+      const fallbackColor = String(item.colorSuggestion || `A cor ${suggestedColor.name.toLowerCase()} pode equilibrar contraste, pele e estilo desejado no atendimento.`).trim()
 
       return {
         templateId,
         name: recommendation.name,
         headline: limit(String(item.headline || recommendation.name).trim(), 70),
-        explanation: limit(String(item.explanation || recommendation.reasons.join('. ')).trim(), 260),
-        sellerTip: limit(String(item.sellerTip || 'Compare esta opcao no rosto e observe a leitura geral da expressao.').trim(), 220),
+        explanation: limit(fallbackExplanation, 220),
+        shapeSuggestion: limit(fallbackShape, 220),
+        suggestedColorName: suggestedColor.name,
+        suggestedColorHex: suggestedColor.value,
+        colorSuggestion: limit(fallbackColor, 220),
+        sellerTip: limit(String(item.sellerTip || 'Compare esta opcao no rosto e observe a leitura geral da expressao.').trim(), 240),
         caveat: item.caveat ? limit(String(item.caveat).trim(), 140) : null,
       }
     })
-    .filter((item): item is VisagismoNarrativeOption => Boolean(item))
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
 
   const missing = recommendations
     .filter((recommendation) => !options.some((option) => option.templateId === recommendation.templateId))
@@ -242,7 +287,11 @@ function normalizeNarrative(
       templateId: recommendation.templateId,
       name: recommendation.name,
       headline: recommendation.name,
-      explanation: limit(recommendation.reasons.join('. '), 260),
+      explanation: limit(recommendation.reasons.join('. '), 220),
+      shapeSuggestion: limit(recommendation.reasons.join('. '), 220),
+      suggestedColorName: 'Grafite',
+      suggestedColorHex: '#475569',
+      colorSuggestion: 'O grafite e uma cor versatil para comparar contraste, leveza e presenca sem pesar tanto quanto o preto.',
       sellerTip: 'Mostre esta opcao como comparacao visual para confirmar o efeito no rosto do cliente.',
       caveat: null,
     }))
@@ -253,6 +302,17 @@ function normalizeNarrative(
     options: [...options, ...missing].slice(0, 3),
     closingLine: limit(String(raw.closingLine || 'Vamos comparar as tres no rosto para ver qual conversa melhor com sua expressao.').trim(), 180),
   }
+}
+
+function normalizeSuggestedColor(hex: unknown, name: unknown) {
+  const normalizedHex = typeof hex === 'string' ? hex.trim().toLowerCase() : ''
+  const byHex = FRAME_COLOR_PALETTE.find((color) => color.value === normalizedHex)
+  if (byHex) return { name: byHex.name, value: byHex.value }
+
+  const normalizedName = typeof name === 'string' ? name.trim().toLowerCase() : ''
+  const byName = FRAME_COLOR_PALETTE.find((color) => color.name.toLowerCase() === normalizedName)
+  const fallback = byName ?? FRAME_COLOR_PALETTE[1]
+  return { name: fallback.name, value: fallback.value }
 }
 
 function extractGeminiText(response: GeminiResponseLike): string {
