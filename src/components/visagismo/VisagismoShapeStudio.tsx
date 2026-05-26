@@ -1,15 +1,18 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
-import { ArrowLeft, Camera, Check, Glasses, PenTool, Rows3, Shapes } from 'lucide-react'
+import { useMemo, useState, useTransition } from 'react'
+import { ArrowLeft, Camera, Check, Glasses, PenTool, Rows3, Shapes, Trash2 } from 'lucide-react'
 import FrameShapePreview from './FrameShapePreview'
 import {
   FRAME_SHAPE_TEMPLATES,
   type FrameShapeCategory,
   type FrameShapeTemplate,
 } from '@/lib/visagismo/frame-shapes'
-import type { GlobalVisagismoFrameTemplate } from '@/lib/actions/visagismo.actions'
+import {
+  deleteGlobalVisagismoFrameTemplate,
+  type GlobalVisagismoFrameTemplate,
+} from '@/lib/actions/visagismo.actions'
 
 type CategoryFilter = 'all' | FrameShapeCategory
 
@@ -45,11 +48,14 @@ interface VisagismoShapeStudioProps {
 }
 
 export default function VisagismoShapeStudio({ storeId, globalTemplates }: VisagismoShapeStudioProps) {
+  const [isDeleting, startDeleteTransition] = useTransition()
+  const [templates, setTemplates] = useState(globalTemplates)
+  const [deleteResult, setDeleteResult] = useState<{ success: boolean; message: string } | null>(null)
   const [category, setCategory] = useState<CategoryFilter>('all')
   const [selectedIds, setSelectedIds] = useState<string[]>(
-    globalTemplates.length > 0 ? globalTemplates.slice(0, 3).map((template) => template.id) : DEFAULT_SELECTION,
+    templates.length > 0 ? templates.slice(0, 3).map((template) => template.id) : DEFAULT_SELECTION,
   )
-  const hasGlobalTemplates = globalTemplates.length > 0
+  const hasGlobalTemplates = templates.length > 0
 
   const filteredShapes = useMemo(() => {
     if (category === 'all') return FRAME_SHAPE_TEMPLATES
@@ -57,7 +63,7 @@ export default function VisagismoShapeStudio({ storeId, globalTemplates }: Visag
   }, [category])
 
   const selectedGlobalTemplates = selectedIds
-    .map((id) => globalTemplates.find((template) => template.id === id))
+    .map((id) => templates.find((template) => template.id === id))
     .filter((template): template is GlobalVisagismoFrameTemplate => Boolean(template))
 
   const selectedShapes = selectedIds
@@ -73,6 +79,27 @@ export default function VisagismoShapeStudio({ storeId, globalTemplates }: Visag
 
       if (current.length >= 3) return [current[1], current[2], id]
       return [...current, id]
+    })
+  }
+
+  function deleteTemplate(template: GlobalVisagismoFrameTemplate) {
+    const confirmed = window.confirm(`Remover "${template.name}" da lista global?`)
+    if (!confirmed) return
+
+    startDeleteTransition(async () => {
+      const result = await deleteGlobalVisagismoFrameTemplate(storeId, template.id)
+      setDeleteResult(result)
+
+      if (result.success) {
+        setTemplates((current) => current.filter((item) => item.id !== template.id))
+        setSelectedIds((current) => {
+          const next = current.filter((id) => id !== template.id)
+          if (next.length > 0) return next
+
+          const fallback = templates.find((item) => item.id !== template.id)
+          return fallback ? [fallback.id] : DEFAULT_SELECTION
+        })
+      }
     })
   }
 
@@ -142,14 +169,31 @@ export default function VisagismoShapeStudio({ storeId, globalTemplates }: Visag
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {hasGlobalTemplates ? globalTemplates.map((template) => {
+            {deleteResult && (
+              <div className={`rounded-lg border px-3 py-2 text-xs font-bold ${
+                deleteResult.success
+                  ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-100'
+                  : 'border-rose-400/30 bg-rose-500/10 text-rose-100'
+              }`}>
+                {deleteResult.message}
+              </div>
+            )}
+
+            {hasGlobalTemplates ? templates.map((template) => {
               const selected = selectedIds.includes(template.id)
 
               return (
-                <button
+                <div
                   key={template.id}
-                  type="button"
                   onClick={() => toggleShape(template.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      toggleShape(template.id)
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
                   className={`group rounded-lg border p-3 text-left transition-colors ${
                     selected
                       ? 'border-cyan-400/60 bg-cyan-400/10'
@@ -166,6 +210,19 @@ export default function VisagismoShapeStudio({ storeId, globalTemplates }: Visag
                         <Check className="h-4 w-4" />
                       </span>
                     )}
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        deleteTemplate(template)
+                      }}
+                      disabled={isDeleting}
+                      title="Remover gabarito"
+                      className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-md border border-rose-300/25 bg-rose-500/10 text-rose-100 opacity-0 transition-opacity hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50 group-hover:opacity-100"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
                   <div className="mt-3 flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -178,7 +235,7 @@ export default function VisagismoShapeStudio({ storeId, globalTemplates }: Visag
                       {template.category || 'Global'}
                     </span>
                   </div>
-                </button>
+                </div>
               )
             }) : filteredShapes.map((shape) => {
               const selected = selectedIds.includes(shape.id)
@@ -292,6 +349,12 @@ function GlobalFrameTemplatePreview({
 }) {
   const { width, height } = template.viewBox
   const { outerFullPath, innerRightPath, innerLeftPath } = template.generatedPaths
+  const outerFramePath = ensureClosedSvgPath(outerFullPath)
+  const rightLensPath = ensureClosedSvgPath(innerRightPath)
+  const leftLensPath = ensureClosedSvgPath(innerLeftPath)
+  const frameFillPath = outerFramePath
+    ? [outerFramePath, rightLensPath, leftLensPath].filter(Boolean).join(' ')
+    : undefined
 
   return (
     <svg
@@ -305,9 +368,23 @@ function GlobalFrameTemplatePreview({
       strokeLinejoin="round"
       vectorEffect="non-scaling-stroke"
     >
+      {frameFillPath && (
+        <path
+          d={frameFillPath}
+          fill="currentColor"
+          fillRule="evenodd"
+          stroke="none"
+          opacity="0.28"
+        />
+      )}
       {outerFullPath && <path d={outerFullPath} strokeWidth="2.4" />}
       {innerRightPath && <path d={innerRightPath} strokeWidth="1.2" opacity="0.65" />}
       {innerLeftPath && <path d={innerLeftPath} strokeWidth="1.2" opacity="0.65" />}
     </svg>
   )
+}
+
+function ensureClosedSvgPath(path: string | undefined) {
+  if (!path) return undefined
+  return /z\s*$/i.test(path.trim()) ? path : `${path} Z`
 }

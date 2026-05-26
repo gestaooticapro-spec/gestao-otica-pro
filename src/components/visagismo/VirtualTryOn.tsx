@@ -1,23 +1,32 @@
 'use client'
 
 import Link from 'next/link'
-import type { CSSProperties } from 'react'
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useTransition } from 'react'
 import {
   ArrowLeft,
+  Bot,
   Camera,
+  Clipboard,
   FlipHorizontal,
   Glasses,
+  Loader2,
   Maximize2,
   MonitorUp,
   Play,
   ScanFace,
   SlidersHorizontal,
+  Sparkles,
   Square,
 } from 'lucide-react'
 import type { GlobalVisagismoFrameTemplate } from '@/lib/actions/visagismo.actions'
+import {
+  generateVisagismoNarrativeAction,
+  type VisagismoNarrativeOption,
+  type VisagismoRecommendationNarrative,
+} from '@/lib/actions/visagismo-ai.actions'
 import { analyzeFaceLandmarks, type FaceAnalysisResult, type FaceShape } from '@/lib/visagismo/face-analysis'
-import { recommendFramesForFace, type FrameRecommendation } from '@/lib/visagismo/frame-recommendation'
+import { recommendFramesForFace, type CustomerStyleProfile, type FrameRecommendation } from '@/lib/visagismo/frame-recommendation'
 
 type MediaPipeModule = typeof import('@mediapipe/tasks-vision')
 type FaceLandmarkerInstance = Awaited<ReturnType<MediaPipeModule['FaceLandmarker']['createFromOptions']>>
@@ -28,9 +37,6 @@ type OverlayPose = {
   y: number
   width: number
   angle: number
-  yaw: number
-  scaleX: number
-  perspectiveDeg: number
   detected: boolean
 }
 
@@ -72,6 +78,7 @@ type TryOnState = {
   frameColor: string
   lensMode: LensMode
   skinTone: SkinTone
+  customerProfile: CustomerStyleProfile
 }
 
 type SkinTone = 'light' | 'medium' | 'dark'
@@ -87,6 +94,8 @@ type TryOnMessage =
   | { type: 'state'; state: TryOnState }
   | { type: 'command'; command: TryOnCommand }
   | { type: 'autoSelect'; selectedId: string }
+  | { type: 'narrative'; narrative: VisagismoRecommendationNarrative | null }
+  | { type: 'narrativeLoading'; loading: boolean }
   | { type: 'report'; cameraOn: boolean; faceDetected: boolean; faceTooTurned: boolean; status: string; analysisReport?: TryOnAnalysisReport | null }
 
 const RIGHT_IRIS = 468
@@ -96,6 +105,7 @@ const RIGHT_EYE_INNER = 133
 const LEFT_EYE_INNER = 362
 const LEFT_EYE_OUTER = 263
 const NOSE = 1
+const NOSE_BRIDGE = 168
 const DEFAULT_PD_MM = 63
 const FRAME_COLOR_PALETTE = [
   { name: 'Preto', value: '#0f172a' },
@@ -119,6 +129,52 @@ const LENS_MODE_OPTIONS: Array<{ label: string; value: LensMode }> = [
   { label: 'Cristal', value: 'crystal' },
   { label: 'Fosca', value: 'frost' },
   { label: 'Reflexo', value: 'reflection' },
+]
+const THINKING_STATUS_TEXTS = [
+  'Cruzando formato do rosto com proporcao da armacao...',
+  'Comparando linhas, peso visual e expressao...',
+  'Filtrando restricoes marcadas pelo consultor...',
+  'Preparando uma fala simples para apresentar ao cliente...',
+] as const
+const DEFAULT_CUSTOMER_PROFILE: CustomerStyleProfile = {
+  style: 'none',
+  expression: 'none',
+  goals: [],
+  avoid: [],
+}
+const CUSTOMER_STYLE_OPTIONS: Array<{ label: string; value: CustomerStyleProfile['style'] }> = [
+  { label: 'Livre', value: 'none' },
+  { label: 'Discreto', value: 'discrete' },
+  { label: 'Classico', value: 'classic' },
+  { label: 'Moderno', value: 'modern' },
+  { label: 'Marcante', value: 'striking' },
+]
+const CUSTOMER_EXPRESSION_OPTIONS: Array<{ label: string; value: CustomerStyleProfile['expression'] }> = [
+  { label: 'Livre', value: 'none' },
+  { label: 'Masc.', value: 'masculine' },
+  { label: 'Fem.', value: 'feminine' },
+  { label: 'Neutro', value: 'neutral' },
+]
+const CUSTOMER_GOAL_OPTIONS: Array<{ label: string; value: CustomerStyleProfile['goals'][number] }> = [
+  { label: 'Suavizar', value: 'soften' },
+  { label: 'Estruturar', value: 'structure' },
+  { label: 'Rejuvenescer', value: 'rejuvenate' },
+  { label: 'Levantar', value: 'lift' },
+]
+const CUSTOMER_AVOID_OPTIONS: Array<{ label: string; value: CustomerStyleProfile['avoid'][number] }> = [
+  { label: 'Sem gatinho', value: 'cat-eye' },
+  { label: 'Sem redondo', value: 'round' },
+  { label: 'Sem grande', value: 'large' },
+  { label: 'Sem forte', value: 'strong' },
+]
+const SIMULATED_FACE_OPTIONS: Array<{ label: string; value: FaceShape }> = [
+  { label: 'Redondo', value: 'round' },
+  { label: 'Oval', value: 'oval' },
+  { label: 'Quadrado', value: 'square' },
+  { label: 'Alongado', value: 'long' },
+  { label: 'Coracao', value: 'heart' },
+  { label: 'Triangular', value: 'triangle' },
+  { label: 'Equilibrado', value: 'balanced' },
 ]
 
 interface VirtualTryOnProps {
@@ -147,6 +203,7 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
   const frameSwapTimerRef = useRef<number | null>(null)
   const analysisPhaseRef = useRef<AnalysisPhase>('idle')
   const previousTemplateRef = useRef<GlobalVisagismoFrameTemplate | null>(null)
+  const narrativeRequestKeyRef = useRef<string | null>(null)
   const mirrorRef = useRef(true)
   const sizeAdjustRef = useRef(1)
   const heightAdjustRef = useRef(0)
@@ -160,6 +217,7 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
     frameColor: FRAME_COLOR_PALETTE[6].value,
     lensMode: 'crystal',
     skinTone: 'medium',
+    customerProfile: DEFAULT_CUSTOMER_PROFILE,
   })
   const [cameraOn, setCameraOn] = useState(false)
   const [status, setStatus] = useState(clientMode ? 'Aguardando comando da tela touch' : 'Tela cliente aguardando')
@@ -172,6 +230,13 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
   const [pose, setPose] = useState<OverlayPose | null>(null)
   const [frameSwap, setFrameSwap] = useState<FrameSwap | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [jsonCopied, setJsonCopied] = useState(false)
+  const [batchJsonCopied, setBatchJsonCopied] = useState(false)
+  const [narrativeCopied, setNarrativeCopied] = useState(false)
+  const [aiNarrative, setAiNarrative] = useState<VisagismoRecommendationNarrative | null>(null)
+  const [aiNarrativeError, setAiNarrativeError] = useState<string | null>(null)
+  const [aiNarrativeLoading, setAiNarrativeLoading] = useState(false)
+  const [isGeneratingNarrative, startNarrativeTransition] = useTransition()
 
   const selectedTemplate = useMemo(
     () => templates.find((template) => template.id === state.selectedId) ?? null,
@@ -184,6 +249,17 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
       .filter((template): template is GlobalVisagismoFrameTemplate => Boolean(template)),
     [analysisReport, templates],
   )
+  const thinkingTemplates = useMemo(() => {
+    if (recommendedTemplates.length) return recommendedTemplates
+    if (selectedTemplate) {
+      return [
+        selectedTemplate,
+        ...templates.filter((template) => template.id !== selectedTemplate.id),
+      ].slice(0, 5)
+    }
+
+    return templates.slice(0, 5)
+  }, [recommendedTemplates, selectedTemplate, templates])
 
   useEffect(() => {
     const channel = new BroadcastChannel(channelName)
@@ -195,6 +271,8 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
 
       if (clientMode) {
         if (message.type === 'state') setState(message.state)
+        if (message.type === 'narrative') setAiNarrative(message.narrative)
+        if (message.type === 'narrativeLoading') setAiNarrativeLoading(message.loading)
         if (message.type === 'command' && message.command === 'startCamera') void startCameraRef.current()
         if (message.type === 'command' && message.command === 'stopCamera') stopCameraRef.current()
         if (message.type === 'command' && message.command === 'fullscreen') void fullscreenRef.current()
@@ -263,6 +341,16 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
   }, [clientMode, state])
 
   useEffect(() => {
+    if (clientMode) return
+    channelRef.current?.postMessage({ type: 'narrative', narrative: aiNarrative } satisfies TryOnMessage)
+  }, [aiNarrative, clientMode])
+
+  useEffect(() => {
+    if (clientMode) return
+    channelRef.current?.postMessage({ type: 'narrativeLoading', loading: aiNarrativeLoading } satisfies TryOnMessage)
+  }, [aiNarrativeLoading, clientMode])
+
+  useEffect(() => {
     if (!clientMode) return
 
     const onFullscreenChange = () => {
@@ -289,6 +377,40 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
     setState((current) => ({ ...current, ...patch }))
   }
 
+  function setCustomerProfile(patch: Partial<CustomerStyleProfile>) {
+    setState((current) => ({
+      ...current,
+      customerProfile: {
+        ...current.customerProfile,
+        ...patch,
+      },
+    }))
+  }
+
+  function toggleCustomerGoal(goal: CustomerStyleProfile['goals'][number]) {
+    setState((current) => ({
+      ...current,
+      customerProfile: {
+        ...current.customerProfile,
+        goals: current.customerProfile.goals.includes(goal)
+          ? current.customerProfile.goals.filter((item) => item !== goal)
+          : [...current.customerProfile.goals, goal],
+      },
+    }))
+  }
+
+  function toggleCustomerAvoid(avoid: CustomerStyleProfile['avoid'][number]) {
+    setState((current) => ({
+      ...current,
+      customerProfile: {
+        ...current.customerProfile,
+        avoid: current.customerProfile.avoid.includes(avoid)
+          ? current.customerProfile.avoid.filter((item) => item !== avoid)
+          : [...current.customerProfile.avoid, avoid],
+      },
+    }))
+  }
+
   function sendCommand(command: TryOnCommand) {
     channelRef.current?.postMessage({ type: 'command', command } satisfies TryOnMessage)
   }
@@ -297,9 +419,124 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
     sendCommand('analyzeFace')
   }
 
+  function runSimulatedAnalysis(faceShape: FaceShape) {
+    const analysis = createSimulatedFaceAnalysis(faceShape)
+    const recommendations = recommendFramesForFace(analysis, templates, state.customerProfile)
+    const selectedId = recommendations[0]?.templateId ?? ''
+    const report = { analysis, recommendations }
+
+    setAnalysisReport(report)
+    setAiNarrative(null)
+    setAiNarrativeError(null)
+    setAiNarrativeLoading(false)
+    narrativeRequestKeyRef.current = null
+    if (selectedId) setTryOnState({ selectedId })
+    setStatus(`Simulacao: ${faceShapeLabel(faceShape)}`)
+  }
+
+  async function copyRecommendationJson() {
+    if (!analysisReport) return
+
+    const diagnostic = buildRecommendationDiagnostic({
+      analysisReport,
+      templates,
+      customerProfile: state.customerProfile,
+      appearance: {
+        frameColor: state.frameColor,
+        lensMode: state.lensMode,
+        skinTone: state.skinTone,
+      },
+    })
+    await navigator.clipboard.writeText(JSON.stringify(diagnostic, null, 2))
+    setJsonCopied(true)
+    window.setTimeout(() => setJsonCopied(false), 1800)
+  }
+
+  async function copyBatchAuditJson() {
+    const diagnostic = buildBatchRecommendationDiagnostic({
+      templates,
+      appearance: {
+        frameColor: state.frameColor,
+        lensMode: state.lensMode,
+        skinTone: state.skinTone,
+      },
+    })
+
+    await navigator.clipboard.writeText(JSON.stringify(diagnostic, null, 2))
+    setBatchJsonCopied(true)
+    window.setTimeout(() => setBatchJsonCopied(false), 1800)
+  }
+
+  const generateNarrative = useCallback((report = analysisReport) => {
+    if (!report || isGeneratingNarrative || aiNarrativeLoading) return
+
+    setAiNarrativeError(null)
+    setAiNarrativeLoading(true)
+    channelRef.current?.postMessage({ type: 'narrativeLoading', loading: true } satisfies TryOnMessage)
+    startNarrativeTransition(async () => {
+      try {
+        const result = await generateVisagismoNarrativeAction({
+          analysis: report.analysis,
+          recommendations: report.recommendations,
+          templates,
+          customerProfile: state.customerProfile,
+          appearance: {
+            frameColor: state.frameColor,
+            lensMode: state.lensMode,
+            skinTone: state.skinTone,
+          },
+        })
+
+        if (result.success && result.narrative) {
+          setAiNarrative(result.narrative)
+          setAiNarrativeError(null)
+          return
+        }
+
+        setAiNarrative(null)
+        setAiNarrativeError(result.error ?? 'Nao foi possivel gerar o texto da indicacao')
+      } finally {
+        setAiNarrativeLoading(false)
+        channelRef.current?.postMessage({ type: 'narrativeLoading', loading: false } satisfies TryOnMessage)
+      }
+    })
+  }, [
+    aiNarrativeLoading,
+    analysisReport,
+    isGeneratingNarrative,
+    startNarrativeTransition,
+    state.customerProfile,
+    state.frameColor,
+    state.lensMode,
+    state.skinTone,
+    templates,
+  ])
+
+  useEffect(() => {
+    if (clientMode || !analysisReport) return
+
+    const key = buildNarrativeRequestKey(analysisReport, state.customerProfile)
+    if (narrativeRequestKeyRef.current === key) return
+
+    narrativeRequestKeyRef.current = key
+    generateNarrative(analysisReport)
+  }, [analysisReport, clientMode, generateNarrative, state.customerProfile])
+
+  async function copyNarrativeText() {
+    if (!aiNarrative) return
+
+    await navigator.clipboard.writeText(formatNarrativeForClipboard(aiNarrative))
+    setNarrativeCopied(true)
+    window.setTimeout(() => setNarrativeCopied(false), 1800)
+  }
+
   function startTryOnCamera() {
     const nextState = { ...state, selectedId: '' }
     setAnalysisReport(null)
+    setAiNarrative(null)
+    setAiNarrativeError(null)
+    setAiNarrativeLoading(false)
+    narrativeRequestKeyRef.current = null
     setAnalysisPhase('idle')
     setState(nextState)
     channelRef.current?.postMessage({ type: 'state', state: nextState } satisfies TryOnMessage)
@@ -311,6 +548,11 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
     const url = new URL(window.location.href)
     url.searchParams.set('client', '1')
     window.open(url.toString(), 'visagismo-client-screen', 'popup=yes,width=1366,height=768')
+    window.setTimeout(() => {
+      channelRef.current?.postMessage({ type: 'state', state } satisfies TryOnMessage)
+      channelRef.current?.postMessage({ type: 'narrative', narrative: aiNarrative } satisfies TryOnMessage)
+      channelRef.current?.postMessage({ type: 'narrativeLoading', loading: aiNarrativeLoading } satisfies TryOnMessage)
+    }, 700)
   }
 
   async function ensureLandmarker() {
@@ -390,6 +632,10 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
     setFrameSwap(null)
     setAnalysisVisible(false)
     setAnalysisReport(null)
+    setAiNarrative(null)
+    setAiNarrativeError(null)
+    setAiNarrativeLoading(false)
+    narrativeRequestKeyRef.current = null
     setAnalysisPhase('idle')
     setFaceDetected(false)
     setFaceTooTurned(false)
@@ -481,6 +727,10 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
     clearAnalysisTimers()
     setAnalysisVisible(true)
     setAnalysisReport(null)
+    setAiNarrative(null)
+    setAiNarrativeError(null)
+    setAiNarrativeLoading(false)
+    narrativeRequestKeyRef.current = null
     setAnalysisPhase('forehead')
     analysisPhaseRef.current = 'forehead'
     setState((current) => ({ ...current, selectedId: '' }))
@@ -492,7 +742,7 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
       return
     }
 
-    const recommendations = recommendFramesForFace(analysis, templates)
+    const recommendations = recommendFramesForFace(analysis, templates, state.customerProfile)
     const report = { analysis, recommendations }
     const selectedId = recommendations[0]?.templateId
 
@@ -565,8 +815,9 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
   fullscreenRef.current = toggleFullscreen
   analyzeFaceRef.current = analyzeCurrentFace
 
-  const canRenderFrame = !!selectedTemplate && !!pose && pose.detected
+  const canRenderFrame = !!selectedTemplate && !!pose && pose.detected && !faceTooTurned
   const canRenderAnalysis = analysisVisible && !!faceGuide && faceDetected
+  const clientNarrativeOption = aiNarrative?.options.find((option) => option.templateId === state.selectedId) ?? null
 
   if (clientMode) {
     return (
@@ -596,7 +847,6 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
                 width: pose.width,
                 height: pose.width * (selectedTemplate.viewBox.height / selectedTemplate.viewBox.width),
                 transform: `translate(${pose.x}px, ${pose.y}px) translate(-50%, -50%) rotate(${pose.angle}rad)`,
-                opacity: faceTooTurned ? 0.42 : 1,
               }}
             >
               <TryOnFrameSvg
@@ -604,12 +854,11 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
                 strokeScale={state.strokeScale}
                 color={state.frameColor}
                 lensMode={state.lensMode}
-                yaw={pose.yaw}
               />
             </div>
           )}
 
-          {frameSwap && (
+          {frameSwap && !faceTooTurned && (
             <FrameSwapAnimation
               swap={frameSwap}
               strokeScale={state.strokeScale}
@@ -628,6 +877,21 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
               selectedId={state.selectedId}
               color={state.frameColor}
               lensMode={state.lensMode}
+            />
+          )}
+
+          {aiNarrativeLoading && thinkingTemplates.length > 0 && (
+            <ClientThinkingCarousel
+              templates={thinkingTemplates}
+              color={state.frameColor}
+              lensMode={state.lensMode}
+            />
+          )}
+
+          {clientNarrativeOption && (
+            <ClientNarrativeOverlay
+              key={`${clientNarrativeOption.templateId}-${clientNarrativeOption.headline}-${clientNarrativeOption.explanation}`}
+              option={clientNarrativeOption}
             />
           )}
 
@@ -699,6 +963,99 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
             <p className="mt-2 text-sm font-bold text-slate-200">{status}</p>
           </div>
 
+          <div className="mt-6 rounded-lg border border-white/10 bg-slate-950/50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">Perfil do cliente</p>
+                <p className="mt-1 text-xs text-slate-500">Toques rapidos enquanto conversa com o cliente.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTryOnState({ customerProfile: DEFAULT_CUSTOMER_PROFILE })}
+                className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[10px] font-black uppercase text-slate-400 transition-colors hover:bg-white/10 hover:text-slate-200"
+              >
+                Limpar perfil
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <ButtonGroup label="Estilo desejado">
+                {CUSTOMER_STYLE_OPTIONS.map((option) => (
+                  <ProfileButton
+                    key={option.value}
+                    selected={state.customerProfile.style === option.value}
+                    onClick={() => setCustomerProfile({ style: option.value })}
+                  >
+                    {option.label}
+                  </ProfileButton>
+                ))}
+              </ButtonGroup>
+
+              <ButtonGroup label="Preferencia visual">
+                {CUSTOMER_EXPRESSION_OPTIONS.map((option) => (
+                  <ProfileButton
+                    key={option.value}
+                    selected={state.customerProfile.expression === option.value}
+                    onClick={() => setCustomerProfile({ expression: option.value })}
+                  >
+                    {option.label}
+                  </ProfileButton>
+                ))}
+              </ButtonGroup>
+
+              <ButtonGroup label="Objetivo">
+                {CUSTOMER_GOAL_OPTIONS.map((option) => (
+                  <ProfileButton
+                    key={option.value}
+                    selected={state.customerProfile.goals.includes(option.value)}
+                    onClick={() => toggleCustomerGoal(option.value)}
+                  >
+                    {option.label}
+                  </ProfileButton>
+                ))}
+              </ButtonGroup>
+
+              <ButtonGroup label="Restricoes">
+                {CUSTOMER_AVOID_OPTIONS.map((option) => (
+                  <ProfileButton
+                    key={option.value}
+                    selected={state.customerProfile.avoid.includes(option.value)}
+                    onClick={() => toggleCustomerAvoid(option.value)}
+                    tone="warn"
+                  >
+                    {option.label}
+                  </ProfileButton>
+                ))}
+              </ButtonGroup>
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-lg border border-white/10 bg-slate-950/50 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">Simular indicacao</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Teste o motor sem camera usando o perfil do cliente marcado acima.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {SIMULATED_FACE_OPTIONS.map((option) => (
+                <ProfileButton
+                  key={option.value}
+                  selected={analysisReport?.analysis.faceShape === option.value && !faceDetected}
+                  onClick={() => runSimulatedAnalysis(option.value)}
+                >
+                  {option.label}
+                </ProfileButton>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={copyBatchAuditJson}
+              className="mt-3 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[10px] font-black uppercase text-slate-300 transition-colors hover:bg-white/10"
+            >
+              <Clipboard className="h-3.5 w-3.5" />
+              {batchJsonCopied ? 'Lote copiado' : 'Copiar lote para IA'}
+            </button>
+          </div>
+
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
             <button
               type="button"
@@ -744,9 +1101,19 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
                     Formato estimado: {faceShapeLabel(analysisReport.analysis.faceShape)}
                   </p>
                 </div>
-                <span className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 font-mono text-xs font-bold text-slate-300">
-                  {Math.round(analysisReport.analysis.confidence * 100)}%
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={copyRecommendationJson}
+                    className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[10px] font-black uppercase text-slate-300 transition-colors hover:bg-white/10"
+                  >
+                    <Clipboard className="h-3.5 w-3.5" />
+                    {jsonCopied ? 'Copiado' : 'Copiar JSON'}
+                  </button>
+                  <span className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 font-mono text-xs font-bold text-slate-300">
+                    {Math.round(analysisReport.analysis.confidence * 100)}%
+                  </span>
+                </div>
               </div>
 
               <div className="mt-4 grid gap-2">
@@ -772,6 +1139,83 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
                     </p>
                   </button>
                 ))}
+              </div>
+
+              <div className="mt-4 rounded-lg border border-cyan-400/20 bg-cyan-400/[0.04] p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">
+                      <Bot className="h-3.5 w-3.5" />
+                      Texto para apresentar
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">
+                      A IA transforma a decisao do motor em uma fala para o atendimento.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {aiNarrative && (
+                      <button
+                        type="button"
+                        onClick={copyNarrativeText}
+                        className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[10px] font-black uppercase text-slate-300 transition-colors hover:bg-white/10"
+                      >
+                        <Clipboard className="h-3.5 w-3.5" />
+                        {narrativeCopied ? 'Copiado' : 'Copiar texto'}
+                      </button>
+                    )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (analysisReport) {
+                            narrativeRequestKeyRef.current = null
+                            generateNarrative(analysisReport)
+                          }
+                        }}
+                        disabled={isGeneratingNarrative}
+                      className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/30 bg-cyan-400/10 px-3 py-2 text-[10px] font-black uppercase text-cyan-100 transition-colors hover:bg-cyan-400/20 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {isGeneratingNarrative ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                      {isGeneratingNarrative ? 'Gerando' : 'Gerar texto'}
+                    </button>
+                  </div>
+                </div>
+
+                {aiNarrativeError && (
+                  <p className="mt-3 rounded-lg border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-100">
+                    {aiNarrativeError}
+                  </p>
+                )}
+
+                {aiNarrative && (
+                  <div className="mt-3 space-y-3">
+                    <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                      <p className="text-sm font-bold leading-6 text-slate-100">{aiNarrative.sellerOpening}</p>
+                      <p className="mt-2 text-xs leading-5 text-slate-400">{aiNarrative.customerSummary}</p>
+                    </div>
+
+                    <div className="grid gap-2">
+                      {aiNarrative.options.map((option, index) => (
+                        <div key={option.templateId} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-black text-white">
+                              {index + 1}. {option.name}
+                            </p>
+                            <span className="text-[10px] font-black uppercase text-cyan-200">{option.headline}</span>
+                          </div>
+                          <p className="mt-2 text-xs leading-5 text-slate-300">{option.explanation}</p>
+                          <p className="mt-2 text-xs leading-5 text-slate-500">{option.sellerTip}</p>
+                          {option.caveat && (
+                            <p className="mt-2 text-xs leading-5 text-amber-100/80">{option.caveat}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <p className="rounded-lg border border-white/10 bg-black/20 p-3 text-xs font-bold leading-5 text-slate-300">
+                      {aiNarrative.closingLine}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -917,6 +1361,45 @@ function StatusCard({ label, value, tone }: { label: string; value: string; tone
   )
 }
 
+function ButtonGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
+      <div className="flex flex-wrap gap-2">{children}</div>
+    </div>
+  )
+}
+
+function ProfileButton({
+  selected,
+  onClick,
+  children,
+  tone = 'default',
+}: {
+  selected: boolean
+  onClick: () => void
+  children: ReactNode
+  tone?: 'default' | 'warn'
+}) {
+  const selectedClass = tone === 'warn'
+    ? 'border-amber-300/70 bg-amber-400/10 text-amber-100'
+    : 'border-cyan-300/70 bg-cyan-400/10 text-cyan-100'
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-lg border px-3 py-2 text-xs font-black uppercase transition-colors ${
+        selected
+          ? selectedClass
+          : 'border-white/10 bg-white/[0.03] text-slate-400 hover:bg-white/10 hover:text-slate-200'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
 function ClientFrameStack({
   templates,
   selectedId,
@@ -929,7 +1412,7 @@ function ClientFrameStack({
   lensMode: LensMode
 }) {
   return (
-    <div className="pointer-events-none absolute bottom-6 right-6 h-32 w-52">
+    <div className="pointer-events-none absolute right-6 top-20 z-30 h-32 w-52">
       {templates.map((template, index) => {
         const active = template.id === selectedId
         return (
@@ -960,6 +1443,128 @@ function ClientFrameStack({
   )
 }
 
+function ClientThinkingCarousel({
+  templates,
+  color,
+  lensMode,
+}: {
+  templates: GlobalVisagismoFrameTemplate[]
+  color: string
+  lensMode: LensMode
+}) {
+  const statusIndex = useCyclingIndex(THINKING_STATUS_TEXTS.length, 1700)
+  const carouselItems = [...templates, ...templates, ...templates]
+
+  return (
+    <div className="pointer-events-none absolute bottom-[22vh] left-8 top-24 z-20 flex w-64 flex-col justify-center">
+      <div className="rounded-lg border border-cyan-300/20 bg-black/45 p-4 shadow-2xl backdrop-blur-md">
+        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">
+          analisando estilo
+        </p>
+        <p className="mt-2 min-h-[2.5rem] text-sm font-bold leading-5 text-slate-100">
+          {THINKING_STATUS_TEXTS[statusIndex]}
+        </p>
+
+        <div
+          className="relative mt-4 h-80 overflow-hidden"
+          style={{
+            WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 18%, black 52%, transparent 92%)',
+            maskImage: 'linear-gradient(to bottom, transparent, black 18%, black 52%, transparent 92%)',
+          }}
+        >
+          <div className="visagismo-thinking-carousel absolute inset-x-0 top-0 space-y-4">
+            {carouselItems.map((template, index) => (
+              <div
+                key={`${template.id}-${index}`}
+                className="mx-auto flex h-24 w-48 items-center justify-center rounded-lg border border-white/10 bg-slate-950/65 p-2 shadow-xl"
+              >
+                <TryOnFrameSvg
+                  template={template}
+                  strokeScale={0.9}
+                  color={color}
+                  lensMode={lensMode}
+                  className="h-full w-full drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <style jsx global>{`
+        .visagismo-thinking-carousel {
+          animation: visagismo-thinking-carousel 5.4s linear infinite;
+        }
+
+        @keyframes visagismo-thinking-carousel {
+          0% {
+            transform: translateY(0);
+          }
+          100% {
+            transform: translateY(-50%);
+          }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+function useCyclingIndex(length: number, intervalMs: number) {
+  const [index, setIndex] = useState(0)
+
+  useEffect(() => {
+    if (length <= 1) return
+    const id = window.setInterval(() => {
+      setIndex((current) => (current + 1) % length)
+    }, intervalMs)
+
+    return () => window.clearInterval(id)
+  }, [intervalMs, length])
+
+  return index
+}
+
+function ClientNarrativeOverlay({ option }: { option: VisagismoNarrativeOption }) {
+  const text = option.explanation || option.headline
+  const typedText = useTypewriter(text, 28)
+
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-[8vh] z-20 flex justify-center px-6">
+      <div className="max-w-4xl rounded-lg border border-white/10 bg-black/55 px-7 py-5 text-center shadow-2xl backdrop-blur-md">
+        <p className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-200">
+          {option.headline}
+        </p>
+        <h2 className="mt-2 text-4xl font-black tracking-tight text-white md:text-6xl">
+          {option.name}
+        </h2>
+        <p className="mt-3 min-h-[2.5rem] text-2xl font-bold leading-snug text-slate-100 md:text-3xl">
+          {typedText}
+          <span className="ml-1 inline-block h-7 w-0.5 translate-y-1 animate-pulse bg-cyan-200" />
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function useTypewriter(text: string, speedMs: number) {
+  const [value, setValue] = useState('')
+
+  useEffect(() => {
+    if (!text) return
+
+    let index = 0
+    const id = window.setInterval(() => {
+      index += 1
+      setValue(text.slice(0, index))
+      if (index >= text.length) window.clearInterval(id)
+    }, speedMs)
+
+    return () => window.clearInterval(id)
+  }, [speedMs, text])
+
+  return value
+}
+
 function FrameSwapAnimation({
   swap,
   strokeScale,
@@ -987,11 +1592,9 @@ function FrameSwapAnimation({
             '--target-x': `${targetX}px`,
             '--target-y': `${targetY}px`,
             '--target-rotate': `${swap.pose.angle}rad`,
-            '--target-scale-x': swap.pose.scaleX ?? 1,
-            '--target-perspective': `${swap.pose.perspectiveDeg ?? 0}deg`,
           } as CSSProperties}
         >
-          <TryOnFrameSvg template={swap.from} strokeScale={strokeScale} color={color} lensMode={lensMode} yaw={swap.pose.yaw} />
+          <TryOnFrameSvg template={swap.from} strokeScale={strokeScale} color={color} lensMode={lensMode} />
         </div>
       )}
       <div
@@ -1003,11 +1606,9 @@ function FrameSwapAnimation({
           '--target-x': `${targetX}px`,
           '--target-y': `${targetY}px`,
           '--target-rotate': `${swap.pose.angle}rad`,
-          '--target-scale-x': swap.pose.scaleX ?? 1,
-          '--target-perspective': `${swap.pose.perspectiveDeg ?? 0}deg`,
         } as CSSProperties}
       >
-        <TryOnFrameSvg template={swap.to} strokeScale={strokeScale} color={color} lensMode={lensMode} yaw={swap.pose.yaw} />
+        <TryOnFrameSvg template={swap.to} strokeScale={strokeScale} color={color} lensMode={lensMode} />
       </div>
 
       <style jsx global>{`
@@ -1247,18 +1848,20 @@ function TryOnFrameSvg({
   className,
   color,
   lensMode = 'none',
-  yaw = 0,
 }: {
   template: GlobalVisagismoFrameTemplate
   strokeScale: number
   className?: string
   color?: string
   lensMode?: LensMode
-  yaw?: number
 }) {
   const { outerFullPath, innerRightPath, innerLeftPath } = template.generatedPaths
+  const outerFramePath = ensureClosedSvgPath(outerFullPath)
   const rightLensPath = ensureClosedSvgPath(innerRightPath)
   const leftLensPath = ensureClosedSvgPath(innerLeftPath)
+  const frameFillPath = outerFramePath
+    ? [outerFramePath, rightLensPath, leftLensPath].filter(Boolean).join(' ')
+    : undefined
   const id = useId().replace(/:/g, '')
   const lensFillId = `visagismo-lens-${id}`
   const lensGlowId = `visagismo-lens-glow-${id}`
@@ -1270,11 +1873,12 @@ function TryOnFrameSvg({
   const isTransparentFrame = color === FRAME_COLOR_PALETTE[6].value
   const frameColor = color ?? '#cffafe'
   const lensOpacity = lensMode === 'none' ? 0 : lensMode === 'frost' ? 0.46 : lensMode === 'reflection' ? 0.24 : 0.34
+  const svgStyle: CSSProperties = color ? { color, overflow: 'visible' } : { overflow: 'visible' }
 
   return (
     <svg
       className={className ?? 'h-full w-full text-cyan-100 drop-shadow-[0_1px_2px_rgba(0,0,0,0.75)]'}
-      style={color ? { color } : undefined}
+      style={svgStyle}
       viewBox={`0 0 ${template.viewBox.width} ${template.viewBox.height}`}
       fill="none"
       stroke="currentColor"
@@ -1377,63 +1981,76 @@ function TryOnFrameSvg({
         </g>
       )}
 
-      {outerFullPath && (
+      {frameFillPath && (
         <g filter={`url(#visagismo-frame-shadow-${id})`}>
           <path
+            d={frameFillPath}
+            fill="#020617"
+            fillRule="evenodd"
+            stroke="none"
+            opacity={isTransparentFrame ? 0.06 : 0.12}
+          />
+          <path
+            d={frameFillPath}
+            fill={frameColor}
+            fillRule="evenodd"
+            stroke="none"
+            opacity={isTransparentFrame ? 0.44 : 0.78}
+          />
+          {isTransparentFrame && (
+            <path
+              d={frameFillPath}
+              fill="#ffffff"
+              fillRule="evenodd"
+              stroke="none"
+              opacity="0.06"
+            />
+          )}
+        </g>
+      )}
+
+      {outerFullPath && (
+        <g>
+          <path
             d={outerFullPath}
             stroke="#020617"
-            strokeWidth={(isTransparentFrame ? 6 : 4.8) * strokeScale}
-            opacity={isTransparentFrame ? 0.22 : 0.34}
-          />
-          <path
-            d={outerFullPath}
-            stroke={isTransparentFrame ? '#ffffff' : frameColor}
-            strokeWidth={(isTransparentFrame ? 5.2 : 4) * strokeScale}
-            opacity={isTransparentFrame ? 0.18 : 0.2}
-          />
-          <path
-            d={outerFullPath}
-            stroke={frameColor}
-            strokeWidth={(isTransparentFrame ? 3.4 : 3.1) * strokeScale}
-            opacity={isTransparentFrame ? 0.76 : 1}
-          />
-          <path
-            d={outerFullPath}
-            stroke="#ffffff"
-            strokeWidth={(isTransparentFrame ? 1.1 : 0.85) * strokeScale}
-            opacity={isTransparentFrame ? 0.58 : 0.28}
-          />
-          <path
-            d={outerFullPath}
-            stroke="#020617"
-            strokeWidth={0.65 * strokeScale}
-            opacity={isTransparentFrame ? 0.22 : 0.2}
+            strokeWidth={0.8 * strokeScale}
+            opacity={isTransparentFrame ? 0.5 : 0.62}
           />
         </g>
       )}
       {innerRightPath && (
-        <path
-          d={innerRightPath}
-          strokeWidth={1.35 * strokeScale}
-          stroke={isTransparentFrame ? '#e0f7fa' : frameColor}
-          opacity={isTransparentFrame ? 0.64 : 0.86}
-        />
+        <g>
+          <path
+            d={innerRightPath}
+            strokeWidth={1.15 * strokeScale}
+            stroke="#020617"
+            opacity={isTransparentFrame ? 0.38 : 0.32}
+          />
+          <path
+            d={innerRightPath}
+            strokeWidth={0.62 * strokeScale}
+            stroke={frameColor}
+            opacity={isTransparentFrame ? 0.36 : 0.66}
+          />
+        </g>
       )}
       {innerLeftPath && (
-        <path
-          d={innerLeftPath}
-          strokeWidth={1.35 * strokeScale}
-          stroke={isTransparentFrame ? '#e0f7fa' : frameColor}
-          opacity={isTransparentFrame ? 0.64 : 0.86}
-        />
+        <g>
+          <path
+            d={innerLeftPath}
+            strokeWidth={1.15 * strokeScale}
+            stroke="#020617"
+            opacity={isTransparentFrame ? 0.38 : 0.32}
+          />
+          <path
+            d={innerLeftPath}
+            strokeWidth={0.62 * strokeScale}
+            stroke={frameColor}
+            opacity={isTransparentFrame ? 0.36 : 0.66}
+          />
+        </g>
       )}
-      <TempleArms
-        template={template}
-        strokeScale={strokeScale}
-        color={frameColor}
-        transparent={isTransparentFrame}
-        yaw={yaw}
-      />
     </svg>
   )
 }
@@ -1441,45 +2058,6 @@ function TryOnFrameSvg({
 function ensureClosedSvgPath(path: string | undefined) {
   if (!path) return undefined
   return /z\s*$/i.test(path.trim()) ? path : `${path} Z`
-}
-
-function TempleArms({
-  template,
-  strokeScale,
-  color,
-  transparent,
-  yaw,
-}: {
-  template: GlobalVisagismoFrameTemplate
-  strokeScale: number
-  color: string
-  transparent: boolean
-  yaw: number
-}) {
-  const width = template.viewBox.width
-  const height = template.viewBox.height
-  const leftStart = { x: width * 0.035, y: height * 0.5 }
-  const rightStart = { x: width * 0.965, y: height * 0.5 }
-  const leftArm = `M ${leftStart.x} ${leftStart.y} C ${-width * 0.08} ${height * 0.46}, ${-width * 0.18} ${height * 0.38}, ${-width * 0.32} ${height * 0.3}`
-  const rightArm = `M ${rightStart.x} ${rightStart.y} C ${width * 1.08} ${height * 0.46}, ${width * 1.18} ${height * 0.38}, ${width * 1.32} ${height * 0.3}`
-  const armWidth = 2.1 * strokeScale
-  const leftStrength = clamp(0.72 + yaw * 1.2, 0.18, 1)
-  const rightStrength = clamp(0.72 - yaw * 1.2, 0.18, 1)
-
-  return (
-    <g strokeLinecap="round" strokeLinejoin="round">
-      {[
-        { path: leftArm, strength: leftStrength },
-        { path: rightArm, strength: rightStrength },
-      ].map(({ path, strength }) => (
-        <g key={path}>
-          <path d={path} stroke="#020617" strokeWidth={(armWidth + 1.6 * strokeScale) * (0.82 + strength * 0.2)} opacity={(transparent ? 0.18 : 0.28) * strength} />
-          <path d={path} stroke={color} strokeWidth={armWidth * (0.82 + strength * 0.26)} opacity={(transparent ? 0.52 : 0.88) * strength} />
-          <path d={path} stroke="#ffffff" strokeWidth={0.55 * strokeScale} opacity={(transparent ? 0.44 : 0.22) * strength} />
-        </g>
-      ))}
-    </g>
-  )
 }
 
 function Range({
@@ -1556,6 +2134,7 @@ function computeOverlayPose(
   const right = toPx(rightEyeAnchor)
   const left = toPx(leftEyeAnchor)
   const nosePoint = toPx(nose)
+  const bridgePoint = landmarks[NOSE_BRIDGE] ? toPx(landmarks[NOSE_BRIDGE]) : nosePoint
   const screenLeftEye = right.x < left.x ? right : left
   const screenRightEye = right.x < left.x ? left : right
   const eyeCenter = {
@@ -1565,15 +2144,15 @@ function computeOverlayPose(
   const eyeDistance = Math.max(distance(right, left), 1)
   const realWidth = template.realWidthMm ?? 132
   const yaw = (nosePoint.x - eyeCenter.x) / eyeDistance
+  const bridgeBlend = clamp(Math.abs(yaw) * 2.4, 0, 0.9)
+  const anchorX = lerp(eyeCenter.x, bridgePoint.x, bridgeBlend)
+  const turnSizeCompensation = clamp(1 + Math.abs(yaw) * 0.42, 1, 1.12)
 
   return {
-    x: eyeCenter.x,
+    x: anchorX,
     y: eyeCenter.y + heightAdjust,
-    width: eyeDistance * (realWidth / DEFAULT_PD_MM) * sizeAdjust,
+    width: eyeDistance * turnSizeCompensation * (realWidth / DEFAULT_PD_MM) * sizeAdjust,
     angle: clamp(Math.atan2(screenRightEye.y - screenLeftEye.y, screenRightEye.x - screenLeftEye.x), -0.22, 0.22),
-    yaw,
-    scaleX: clamp(1 - Math.abs(yaw) * 0.62, 0.62, 1),
-    perspectiveDeg: clamp(yaw * 46, -24, 24),
     detected: true,
   }
 }
@@ -1706,9 +2285,6 @@ function smoothPose(previous: OverlayPose | null, next: OverlayPose): OverlayPos
     y: lerp(previous.y, next.y, amount),
     width: lerp(previous.width, next.width, amount),
     angle: lerp(previous.angle, next.angle, amount),
-    yaw: lerp(previous.yaw, next.yaw, amount),
-    scaleX: lerp(previous.scaleX ?? 1, next.scaleX ?? 1, amount),
-    perspectiveDeg: lerp(previous.perspectiveDeg ?? 0, next.perspectiveDeg ?? 0, amount),
     detected: next.detected,
   }
 }
@@ -1723,6 +2299,369 @@ function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
+}
+
+function createSimulatedFaceAnalysis(faceShape: FaceShape): FaceAnalysisResult {
+  const presets: Record<FaceShape, FaceAnalysisResult['traits'] & { widthToHeight: number }> = {
+    round: {
+      widthToHeight: 0.82,
+      softLines: 0.84,
+      angularLines: 0.2,
+      verticalFace: 0.12,
+      wideFace: 0.74,
+      upperFaceDominance: 0.22,
+      lowerFaceDominance: 0.2,
+    },
+    oval: {
+      widthToHeight: 0.69,
+      softLines: 0.72,
+      angularLines: 0.28,
+      verticalFace: 0.34,
+      wideFace: 0.36,
+      upperFaceDominance: 0.18,
+      lowerFaceDominance: 0.14,
+    },
+    square: {
+      widthToHeight: 0.76,
+      softLines: 0.32,
+      angularLines: 0.76,
+      verticalFace: 0.18,
+      wideFace: 0.62,
+      upperFaceDominance: 0.16,
+      lowerFaceDominance: 0.38,
+    },
+    long: {
+      widthToHeight: 0.55,
+      softLines: 0.58,
+      angularLines: 0.34,
+      verticalFace: 0.86,
+      wideFace: 0.08,
+      upperFaceDominance: 0.2,
+      lowerFaceDominance: 0.16,
+    },
+    heart: {
+      widthToHeight: 0.68,
+      softLines: 0.55,
+      angularLines: 0.42,
+      verticalFace: 0.4,
+      wideFace: 0.32,
+      upperFaceDominance: 0.78,
+      lowerFaceDominance: 0.06,
+    },
+    triangle: {
+      widthToHeight: 0.72,
+      softLines: 0.46,
+      angularLines: 0.52,
+      verticalFace: 0.28,
+      wideFace: 0.46,
+      upperFaceDominance: 0.08,
+      lowerFaceDominance: 0.76,
+    },
+    balanced: {
+      widthToHeight: 0.7,
+      softLines: 0.58,
+      angularLines: 0.38,
+      verticalFace: 0.32,
+      wideFace: 0.34,
+      upperFaceDominance: 0.16,
+      lowerFaceDominance: 0.16,
+    },
+  }
+  const preset = presets[faceShape]
+  const faceHeight = 1
+  const faceWidth = preset.widthToHeight * faceHeight
+
+  return {
+    faceShape,
+    confidence: 0.92,
+    proportions: {
+      faceWidth,
+      faceHeight,
+      widthToHeight: preset.widthToHeight,
+      foreheadWidth: faceWidth * (faceShape === 'heart' ? 1 : 0.92),
+      cheekboneWidth: faceWidth,
+      jawWidth: faceWidth * (faceShape === 'triangle' || faceShape === 'square' ? 0.98 : 0.82),
+      chinWidth: faceWidth * (faceShape === 'heart' ? 0.52 : 0.68),
+    },
+    traits: {
+      softLines: preset.softLines,
+      angularLines: preset.angularLines,
+      verticalFace: preset.verticalFace,
+      wideFace: preset.wideFace,
+      upperFaceDominance: preset.upperFaceDominance,
+      lowerFaceDominance: preset.lowerFaceDominance,
+    },
+  }
+}
+
+function buildRecommendationDiagnostic({
+  analysisReport,
+  templates,
+  customerProfile,
+  appearance,
+}: {
+  analysisReport: TryOnAnalysisReport
+  templates: GlobalVisagismoFrameTemplate[]
+  customerProfile: CustomerStyleProfile
+  appearance: {
+    frameColor: string
+    lensMode: LensMode
+    skinTone: SkinTone
+  }
+}) {
+  const recommendations = analysisReport.recommendations.map((recommendation, index) => {
+    const template = templates.find((item) => item.id === recommendation.templateId)
+
+    return {
+      rank: index + 1,
+      templateId: recommendation.templateId,
+      name: recommendation.name,
+      score: recommendation.score,
+      reasons: recommendation.reasons,
+      frameProfile: template?.profile ?? null,
+      frameData: template
+        ? {
+            slug: template.slug,
+            category: template.category,
+            description: template.description,
+            realWidthMm: template.realWidthMm,
+            viewBox: template.viewBox,
+            generatedPathsAvailable: {
+              outerFullPath: Boolean(template.generatedPaths.outerFullPath),
+              innerRightPath: Boolean(template.generatedPaths.innerRightPath),
+              innerLeftPath: Boolean(template.generatedPaths.innerLeftPath),
+            },
+          }
+        : null,
+    }
+  })
+
+  return {
+    generatedAt: new Date().toISOString(),
+    purpose: 'Diagnostico do motor de recomendacao de visagismo para revisao externa/IA.',
+    note: 'A IA deve avaliar coerencia dos pesos e motivos. Ela nao decide a recomendacao exibida ao cliente.',
+    engineInputs: {
+      faceAnalysis: analysisReport.analysis,
+      customerProfile,
+      frameProfiles: templates.map((template) => ({
+        id: template.id,
+        name: template.name,
+        profile: template.profile,
+        realWidthMm: template.realWidthMm,
+        viewBox: template.viewBox,
+      })),
+    },
+    currentAppearance: {
+      ...appearance,
+      usage: 'Aparencia visual atual da prova. No momento, estes campos nao pesam na recomendacao.',
+    },
+    recommendations,
+    topThree: recommendations.slice(0, 3),
+    promptSuggestion:
+      'Analise este JSON como auditor de um motor de visagismo. Verifique se as 3 primeiras sugestoes fazem sentido para o rosto e perfil do cliente, aponte pesos que parecem exagerados e sugira ajustes objetivos nas regras.',
+  }
+}
+
+function buildBatchRecommendationDiagnostic({
+  templates,
+  appearance,
+}: {
+  templates: GlobalVisagismoFrameTemplate[]
+  appearance: {
+    frameColor: string
+    lensMode: LensMode
+    skinTone: SkinTone
+  }
+}) {
+  const scenarios = createAuditScenarios()
+  const results = scenarios.map((scenario, index) => {
+    const analysis = createSimulatedFaceAnalysis(scenario.faceShape)
+    const recommendations = recommendFramesForFace(analysis, templates, scenario.customerProfile)
+    const report = { analysis, recommendations }
+
+    return {
+      id: `scenario-${String(index + 1).padStart(2, '0')}`,
+      title: scenario.title,
+      expectation: scenario.expectation,
+      customerProfile: scenario.customerProfile,
+      faceAnalysis: analysis,
+      topThree: buildRecommendationDiagnostic({
+        analysisReport: report,
+        templates,
+        customerProfile: scenario.customerProfile,
+        appearance,
+      }).topThree,
+      fullRanking: recommendations.map((recommendation, rank) => ({
+        rank: rank + 1,
+        templateId: recommendation.templateId,
+        name: recommendation.name,
+        score: recommendation.score,
+        reasons: recommendation.reasons,
+      })),
+    }
+  })
+
+  return {
+    generatedAt: new Date().toISOString(),
+    purpose: 'Auditoria em lote do motor de recomendacao de visagismo.',
+    instructions:
+      'Analise todos os cenarios, encontre padroes de erro do motor, conflitos entre perfil do cliente e geometria facial, pesos exagerados/subutilizados e sugira ajustes objetivos nas regras. Nao escolha armações para cliente real; audite a logica.',
+    currentAppearance: {
+      ...appearance,
+      usage: 'Aparencia visual atual. No momento, estes campos nao pesam na recomendacao.',
+    },
+    frameProfiles: templates.map((template) => ({
+      id: template.id,
+      name: template.name,
+      profile: template.profile,
+      realWidthMm: template.realWidthMm,
+      viewBox: template.viewBox,
+    })),
+    scenarios: results,
+  }
+}
+
+function formatNarrativeForClipboard(narrative: VisagismoRecommendationNarrative) {
+  const options = narrative.options
+    .map((option, index) => {
+      const caveat = option.caveat ? `\nObservacao: ${option.caveat}` : ''
+      return `${index + 1}. ${option.name} - ${option.headline}\n${option.explanation}\nFala do vendedor: ${option.sellerTip}${caveat}`
+    })
+    .join('\n\n')
+
+  return `${narrative.sellerOpening}\n\n${narrative.customerSummary}\n\n${options}\n\n${narrative.closingLine}`
+}
+
+function buildNarrativeRequestKey(report: TryOnAnalysisReport, customerProfile: CustomerStyleProfile) {
+  return JSON.stringify({
+    shape: report.analysis.faceShape,
+    confidence: Math.round(report.analysis.confidence * 100),
+    profile: customerProfile,
+    top: report.recommendations.slice(0, 3).map((recommendation) => ({
+      id: recommendation.templateId,
+      score: recommendation.score,
+    })),
+  })
+}
+
+function createAuditScenarios(): Array<{
+  title: string
+  faceShape: FaceShape
+  customerProfile: CustomerStyleProfile
+  expectation: string
+}> {
+  return [
+    {
+      title: 'Rosto redondo, discreto masculino, quer estruturar e evitar gatinho',
+      faceShape: 'round',
+      customerProfile: {
+        style: 'discrete',
+        expression: 'masculine',
+        goals: ['structure', 'rejuvenate'],
+        avoid: ['cat-eye'],
+      },
+      expectation: 'Deve favorecer estruturas discretas como retangular, quadrado arredondado, browline/wayfarer; gatinho deve ficar fora do topo.',
+    },
+    {
+      title: 'Rosto alongado, classico feminino, quer levantar',
+      faceShape: 'long',
+      customerProfile: {
+        style: 'classic',
+        expression: 'feminine',
+        goals: ['lift'],
+        avoid: [],
+      },
+      expectation: 'Deve favorecer linhas ascendentes/gatinho se nao houver restricao, e penalizar aviador descendente.',
+    },
+    {
+      title: 'Rosto alongado, classico, quer suavizar e evitar grande',
+      faceShape: 'long',
+      customerProfile: {
+        style: 'classic',
+        expression: 'none',
+        goals: ['soften'],
+        avoid: ['large'],
+      },
+      expectation: 'Deve respeitar sem grande, evitando wide/high no topo; Panto/Oval/Browline podem subir.',
+    },
+    {
+      title: 'Rosto quadrado, moderno, quer suavizar',
+      faceShape: 'square',
+      customerProfile: {
+        style: 'modern',
+        expression: 'neutral',
+        goals: ['soften'],
+        avoid: [],
+      },
+      expectation: 'Deve favorecer curvas ou mistos modernos, sem excesso de quadrados fortes.',
+    },
+    {
+      title: 'Rosto triangular, marcante feminino, quer levantar',
+      faceShape: 'triangle',
+      customerProfile: {
+        style: 'striking',
+        expression: 'feminine',
+        goals: ['lift'],
+        avoid: [],
+      },
+      expectation: 'Deve favorecer gatinho/ascendente e modelos com presenca na parte superior.',
+    },
+    {
+      title: 'Rosto oval, discreto neutro, sem forte',
+      faceShape: 'oval',
+      customerProfile: {
+        style: 'discrete',
+        expression: 'neutral',
+        goals: [],
+        avoid: ['strong'],
+      },
+      expectation: 'Deve favorecer opcoes leves/medias e evitar geometrico forte/quadrado marcado.',
+    },
+    {
+      title: 'Rosto coracao, classico, quer suavizar',
+      faceShape: 'heart',
+      customerProfile: {
+        style: 'classic',
+        expression: 'none',
+        goals: ['soften'],
+        avoid: [],
+      },
+      expectation: 'Deve favorecer oval, panto, arredondado ou aviador moderado, sem peso excessivo na parte superior.',
+    },
+    {
+      title: 'Rosto redondo, moderno, quer presenca sem redondo',
+      faceShape: 'round',
+      customerProfile: {
+        style: 'modern',
+        expression: 'neutral',
+        goals: ['structure'],
+        avoid: ['round'],
+      },
+      expectation: 'Deve favorecer geometrico/retangular/wayfarer e derrubar redondo/oval.',
+    },
+    {
+      title: 'Rosto equilibrado, marcante masculino, quer estruturar',
+      faceShape: 'balanced',
+      customerProfile: {
+        style: 'striking',
+        expression: 'masculine',
+        goals: ['structure'],
+        avoid: [],
+      },
+      expectation: 'Deve favorecer quadrado marcado, geometrico, wayfarer ou retangular com presenca.',
+    },
+    {
+      title: 'Rosto alongado, discreto masculino, sem grande',
+      faceShape: 'long',
+      customerProfile: {
+        style: 'discrete',
+        expression: 'masculine',
+        goals: ['structure'],
+        avoid: ['large'],
+      },
+      expectation: 'Deve equilibrar rosto longo sem usar modelos grandes; evitar wide/high no top 3.',
+    },
+  ]
 }
 
 function faceShapeLabel(shape: FaceShape) {

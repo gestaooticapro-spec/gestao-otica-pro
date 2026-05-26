@@ -17,6 +17,7 @@ export type VisagismoTemplatePayload = {
   calibration?: Record<string, unknown>
   paths?: Record<string, TemplatePathPayload>
   generated?: Record<string, unknown>
+  profile?: Partial<VisagismoFrameProfile>
 }
 
 export type VisagismoTemplateActionResult = {
@@ -40,6 +41,37 @@ export type GlobalVisagismoFrameTemplate = {
     innerRightPath?: string
     innerLeftPath?: string
   }
+  profile: VisagismoFrameProfile
+}
+
+export type FrameProfileShape =
+  | 'round'
+  | 'oval'
+  | 'panto'
+  | 'rectangular'
+  | 'square'
+  | 'cat-eye'
+  | 'aviator'
+  | 'browline'
+  | 'geometric'
+  | 'wayfarer'
+  | 'other'
+
+export type FrameProfileIntensity = 'light' | 'medium' | 'strong'
+export type FrameProfileLineStyle = 'curved' | 'straight' | 'mixed'
+export type FrameProfileDirection = 'neutral' | 'ascending' | 'descending'
+export type FrameProfileSize = 'narrow' | 'medium' | 'wide'
+export type FrameProfileLensHeight = 'low' | 'medium' | 'high'
+export type FrameProfileEffect = 'softens' | 'structures' | 'elongates' | 'shortens' | 'lifts' | 'adds-presence' | 'balances'
+
+export type VisagismoFrameProfile = {
+  shape: FrameProfileShape
+  visualWeight: FrameProfileIntensity
+  lineStyle: FrameProfileLineStyle
+  direction: FrameProfileDirection
+  visualWidth: FrameProfileSize
+  lensHeight: FrameProfileLensHeight
+  effects: FrameProfileEffect[]
 }
 
 type VisagismoTemplateTable = {
@@ -50,6 +82,12 @@ type VisagismoTemplateTable = {
     select: (columns: string) => {
       single: () => Promise<{ data: { id?: string } | null; error: { message: string } | null }>
     }
+  }
+}
+
+type VisagismoTemplateDeleteTable = {
+  delete: () => {
+    eq: (column: string, value: string) => Promise<{ error: { message: string } | null }>
   }
 }
 
@@ -81,6 +119,13 @@ type VisagismoTemplateRow = {
   calibration: Record<string, unknown> | null
   source_paths: Record<string, unknown> | null
   generated_paths: Record<string, unknown> | null
+  profile_shape?: string | null
+  profile_visual_weight?: string | null
+  profile_line_style?: string | null
+  profile_line_direction?: string | null
+  profile_visual_width?: string | null
+  profile_lens_height?: string | null
+  profile_effects?: string[] | null
 }
 
 export async function getGlobalVisagismoFrameTemplates(): Promise<GlobalVisagismoFrameTemplate[]> {
@@ -91,28 +136,36 @@ export async function getGlobalVisagismoFrameTemplates(): Promise<GlobalVisagism
 
   if (!user) return []
 
-  const templateTable = supabase
-    .from('global_visagismo_frame_templates') as unknown as VisagismoTemplateSelectTable
+  const baseColumns = [
+    'id',
+    'slug',
+    'name',
+    'category',
+    'description',
+    'real_width_mm',
+    'viewbox_width',
+    'viewbox_height',
+    'calibration',
+    'source_paths',
+    'generated_paths',
+  ]
+  const profileColumns = [
+    'profile_shape',
+    'profile_visual_weight',
+    'profile_line_style',
+    'profile_line_direction',
+    'profile_visual_width',
+    'profile_lens_height',
+    'profile_effects',
+  ]
 
-  const { data, error } = await templateTable
-    .select(
-      [
-        'id',
-        'slug',
-        'name',
-        'category',
-        'description',
-        'real_width_mm',
-        'viewbox_width',
-        'viewbox_height',
-        'calibration',
-        'source_paths',
-        'generated_paths',
-      ].join(','),
-    )
-    .eq('is_active', true)
-    .order('sort_order', { ascending: true })
-    .order('name', { ascending: true })
+  let { data, error } = await selectActiveTemplates(supabase, [...baseColumns, ...profileColumns])
+
+  if (error && profileColumns.some((column) => error?.message.includes(column))) {
+    const fallback = await selectActiveTemplates(supabase, baseColumns)
+    data = fallback.data
+    error = fallback.error
+  }
 
   if (error) throw new Error(error.message)
 
@@ -130,7 +183,22 @@ export async function getGlobalVisagismoFrameTemplates(): Promise<GlobalVisagism
     calibration: row.calibration ?? {},
     sourcePaths: row.source_paths ?? {},
     generatedPaths: normalizeGeneratedPaths(row.generated_paths),
+    profile: normalizeProfile(row),
   }))
+}
+
+async function selectActiveTemplates(
+  supabase: ReturnType<typeof createClient>,
+  columns: string[],
+) {
+  const templateTable = supabase
+    .from('global_visagismo_frame_templates') as unknown as VisagismoTemplateSelectTable
+
+  return templateTable
+    .select(columns.join(','))
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true })
+    .order('name', { ascending: true })
 }
 
 export async function saveGlobalVisagismoFrameTemplate(
@@ -157,6 +225,7 @@ export async function saveGlobalVisagismoFrameTemplate(
     const sourcePaths = payload.paths ?? {}
     const calibration = payload.calibration ?? {}
     const viewBox = payload.viewBox ?? {}
+    const profile = normalizeProfile({ name, ...payload.profile })
 
     const templateTable = supabase
       .from('global_visagismo_frame_templates') as unknown as VisagismoTemplateTable
@@ -174,6 +243,13 @@ export async function saveGlobalVisagismoFrameTemplate(
           calibration,
           source_paths: sourcePaths,
           generated_paths: generatedPaths,
+          profile_shape: profile.shape,
+          profile_visual_weight: profile.visualWeight,
+          profile_line_style: profile.lineStyle,
+          profile_line_direction: profile.direction,
+          profile_visual_width: profile.visualWidth,
+          profile_lens_height: profile.lensHeight,
+          profile_effects: profile.effects,
           preview_svg_path: typeof generatedPaths.outerFullPath === 'string'
             ? generatedPaths.outerFullPath
             : null,
@@ -204,13 +280,270 @@ export async function saveGlobalVisagismoFrameTemplate(
   }
 }
 
-function normalizeGeneratedPaths(value: Record<string, unknown> | null): GlobalVisagismoFrameTemplate['generatedPaths'] {
-  return {
-    outerFullPath: typeof value?.outerFullPath === 'string' ? value.outerFullPath : undefined,
-    innerRightPath: typeof value?.innerRightPath === 'string' ? value.innerRightPath : undefined,
-    innerLeftPath: typeof value?.innerLeftPath === 'string' ? value.innerLeftPath : undefined,
+export async function deleteGlobalVisagismoFrameTemplate(
+  storeId: number,
+  templateId: string,
+): Promise<VisagismoTemplateActionResult> {
+  try {
+    const supabase = createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { success: false, message: 'Usuario nao autenticado.' }
+    }
+
+    if (!templateId) {
+      return { success: false, message: 'Gabarito nao informado.' }
+    }
+
+    const templateTable = supabase
+      .from('global_visagismo_frame_templates') as unknown as VisagismoTemplateDeleteTable
+
+    const { error } = await templateTable
+      .delete()
+      .eq('id', templateId)
+
+    if (error) {
+      return { success: false, message: error.message }
+    }
+
+    revalidatePath(`/dashboard/loja/${storeId}/visagismo`)
+    revalidatePath(`/dashboard/loja/${storeId}/visagismo/gabarito`)
+    revalidatePath(`/dashboard/loja/${storeId}/visagismo/prova`)
+
+    return {
+      success: true,
+      message: 'Gabarito removido da lista.',
+      id: templateId,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Erro ao remover gabarito.',
+    }
   }
 }
+
+function normalizeGeneratedPaths(value: Record<string, unknown> | null): GlobalVisagismoFrameTemplate['generatedPaths'] {
+  return {
+    outerFullPath: normalizePath(value?.outerFullPath),
+    innerRightPath: normalizePath(value?.innerRightPath),
+    innerLeftPath: normalizePath(value?.innerLeftPath),
+  }
+}
+
+function normalizePath(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+function normalizeProfile(value: Record<string, unknown>): VisagismoFrameProfile {
+  const inferred = inferProfileFromName(String(value.name ?? ''))
+  const explicitShape = pickProfileValue(value.profile_shape ?? value.shape, PROFILE_SHAPES, inferred.shape)
+  const shouldUseNameInference = explicitShape === 'other' && inferred.shape !== 'other'
+  const shape = shouldUseNameInference ? inferred.shape : explicitShape
+  const visualWeight = shouldUseNameInference
+    ? inferred.visualWeight
+    : pickProfileValue(value.profile_visual_weight ?? value.visualWeight, PROFILE_INTENSITIES, inferred.visualWeight)
+  const lineStyle = shouldUseNameInference
+    ? inferred.lineStyle
+    : pickProfileValue(value.profile_line_style ?? value.lineStyle, PROFILE_LINE_STYLES, inferred.lineStyle)
+  const direction = shouldUseNameInference
+    ? inferred.direction
+    : pickProfileValue(value.profile_line_direction ?? value.direction, PROFILE_DIRECTIONS, inferred.direction)
+  const visualWidth = shouldUseNameInference
+    ? inferred.visualWidth
+    : pickProfileValue(value.profile_visual_width ?? value.visualWidth, PROFILE_WIDTHS, inferred.visualWidth)
+  const lensHeight = shouldUseNameInference
+    ? inferred.lensHeight
+    : pickProfileValue(value.profile_lens_height ?? value.lensHeight, PROFILE_LENS_HEIGHTS, inferred.lensHeight)
+
+  return {
+    shape,
+    visualWeight,
+    lineStyle,
+    direction,
+    visualWidth,
+    lensHeight,
+    effects: deriveProfileEffects({ shape, visualWeight, lineStyle, direction, visualWidth, lensHeight }),
+  }
+}
+
+function deriveProfileEffects(profile: Omit<VisagismoFrameProfile, 'effects'>): FrameProfileEffect[] {
+  const effects = new Set<FrameProfileEffect>(['balances'])
+
+  if (profile.lineStyle === 'curved' || ['round', 'oval', 'panto', 'aviator'].includes(profile.shape)) {
+    effects.add('softens')
+  }
+
+  if (profile.lineStyle === 'straight' || ['rectangular', 'square', 'geometric', 'wayfarer', 'browline'].includes(profile.shape)) {
+    effects.add('structures')
+  }
+
+  if (profile.direction === 'ascending' || profile.shape === 'cat-eye') {
+    effects.add('lifts')
+  }
+
+  if (profile.visualWeight === 'strong' || ['cat-eye', 'aviator', 'geometric', 'browline', 'wayfarer'].includes(profile.shape)) {
+    effects.add('adds-presence')
+  }
+
+  if (profile.lensHeight === 'low' || (profile.visualWidth === 'narrow' && profile.lensHeight !== 'high')) {
+    effects.add('elongates')
+  }
+
+  if (profile.lensHeight === 'high' || (profile.visualWidth === 'wide' && profile.lensHeight !== 'low')) {
+    effects.add('shortens')
+  }
+
+  return Array.from(effects)
+}
+
+function inferProfileFromName(name: string): VisagismoFrameProfile {
+  const normalized = slugify(name)
+
+  if (normalized.includes('gatinho') || normalized.includes('cat')) {
+    return {
+      shape: 'cat-eye',
+      visualWeight: normalized.includes('marcado') ? 'strong' : 'medium',
+      lineStyle: 'mixed',
+      direction: 'ascending',
+      visualWidth: 'wide',
+      lensHeight: 'medium',
+      effects: ['lifts', 'adds-presence'],
+    }
+  }
+
+  if (normalized.includes('aviador')) {
+    return {
+      shape: 'aviator',
+      visualWeight: 'medium',
+      lineStyle: 'curved',
+      direction: 'descending',
+      visualWidth: 'wide',
+      lensHeight: 'high',
+      effects: ['softens', 'adds-presence'],
+    }
+  }
+
+  if (normalized.includes('browline')) {
+    return {
+      shape: 'browline',
+      visualWeight: 'medium',
+      lineStyle: 'straight',
+      direction: 'neutral',
+      visualWidth: 'medium',
+      lensHeight: 'medium',
+      effects: ['structures', 'adds-presence'],
+    }
+  }
+
+  if (normalized.includes('wayfarer')) {
+    return {
+      shape: 'wayfarer',
+      visualWeight: 'medium',
+      lineStyle: 'straight',
+      direction: 'neutral',
+      visualWidth: 'wide',
+      lensHeight: 'medium',
+      effects: ['structures', 'adds-presence'],
+    }
+  }
+
+  if (normalized.includes('hexagonal') || normalized.includes('geometr')) {
+    return {
+      shape: 'geometric',
+      visualWeight: 'strong',
+      lineStyle: 'straight',
+      direction: 'neutral',
+      visualWidth: 'medium',
+      lensHeight: 'medium',
+      effects: ['structures', 'adds-presence'],
+    }
+  }
+
+  if (normalized.includes('retangular')) {
+    return {
+      shape: 'rectangular',
+      visualWeight: 'medium',
+      lineStyle: 'straight',
+      direction: 'neutral',
+      visualWidth: 'wide',
+      lensHeight: 'low',
+      effects: ['structures', 'balances'],
+    }
+  }
+
+  if (normalized.includes('quadrad')) {
+    return {
+      shape: 'square',
+      visualWeight: normalized.includes('marcado') ? 'strong' : 'medium',
+      lineStyle: 'straight',
+      direction: 'neutral',
+      visualWidth: 'medium',
+      lensHeight: 'medium',
+      effects: ['structures', 'adds-presence'],
+    }
+  }
+
+  if (normalized.includes('panto')) {
+    return {
+      shape: 'panto',
+      visualWeight: 'medium',
+      lineStyle: 'mixed',
+      direction: 'neutral',
+      visualWidth: 'medium',
+      lensHeight: 'medium',
+      effects: ['softens', 'balances'],
+    }
+  }
+
+  if (normalized.includes('oval')) {
+    return {
+      shape: 'oval',
+      visualWeight: 'light',
+      lineStyle: 'curved',
+      direction: 'neutral',
+      visualWidth: 'medium',
+      lensHeight: 'medium',
+      effects: ['softens', 'balances'],
+    }
+  }
+
+  if (normalized.includes('redondo') || normalized.includes('arredond')) {
+    return {
+      shape: 'round',
+      visualWeight: 'light',
+      lineStyle: 'curved',
+      direction: 'neutral',
+      visualWidth: 'medium',
+      lensHeight: 'high',
+      effects: ['softens', 'balances'],
+    }
+  }
+
+  return {
+    shape: 'other',
+    visualWeight: 'medium',
+    lineStyle: 'mixed',
+    direction: 'neutral',
+    visualWidth: 'medium',
+    lensHeight: 'medium',
+    effects: ['balances'],
+  }
+}
+
+function pickProfileValue<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof value === 'string' && allowed.includes(value as T) ? value as T : fallback
+}
+
+const PROFILE_SHAPES = ['round', 'oval', 'panto', 'rectangular', 'square', 'cat-eye', 'aviator', 'browline', 'geometric', 'wayfarer', 'other'] as const
+const PROFILE_INTENSITIES = ['light', 'medium', 'strong'] as const
+const PROFILE_LINE_STYLES = ['curved', 'straight', 'mixed'] as const
+const PROFILE_DIRECTIONS = ['neutral', 'ascending', 'descending'] as const
+const PROFILE_WIDTHS = ['narrow', 'medium', 'wide'] as const
+const PROFILE_LENS_HEIGHTS = ['low', 'medium', 'high'] as const
 
 function slugify(value: string) {
   return value

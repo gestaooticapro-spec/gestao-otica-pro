@@ -16,6 +16,7 @@ import {
 import {
   saveGlobalVisagismoFrameTemplate,
   type GlobalVisagismoFrameTemplate,
+  type VisagismoFrameProfile,
 } from '@/lib/actions/visagismo.actions'
 
 type DrawLayer = 'outerRight' | 'innerRight' | 'outerLeft' | 'innerLeft' | 'bridge'
@@ -37,6 +38,67 @@ const LAYERS: Array<{ id: DrawLayer; label: string }> = [
   { id: 'innerLeft', label: 'Aro esq. interno' },
 ]
 
+const PROFILE_OPTIONS = {
+  shape: [
+    { value: 'round', label: 'Arredondado' },
+    { value: 'oval', label: 'Oval' },
+    { value: 'panto', label: 'Panto' },
+    { value: 'rectangular', label: 'Retangular' },
+    { value: 'square', label: 'Quadrado' },
+    { value: 'cat-eye', label: 'Gatinho' },
+    { value: 'aviator', label: 'Aviador' },
+    { value: 'browline', label: 'Browline' },
+    { value: 'geometric', label: 'Geometrico' },
+    { value: 'wayfarer', label: 'Wayfarer' },
+    { value: 'other', label: 'Outro' },
+  ],
+  visualWeight: [
+    { value: 'light', label: 'Leve' },
+    { value: 'medium', label: 'Media' },
+    { value: 'strong', label: 'Forte' },
+  ],
+  lineStyle: [
+    { value: 'curved', label: 'Curvas' },
+    { value: 'straight', label: 'Retas' },
+    { value: 'mixed', label: 'Mistas' },
+  ],
+  direction: [
+    { value: 'neutral', label: 'Neutra' },
+    { value: 'ascending', label: 'Ascendente' },
+    { value: 'descending', label: 'Descendente' },
+  ],
+  visualWidth: [
+    { value: 'narrow', label: 'Estreita' },
+    { value: 'medium', label: 'Media' },
+    { value: 'wide', label: 'Larga' },
+  ],
+  lensHeight: [
+    { value: 'low', label: 'Baixa' },
+    { value: 'medium', label: 'Media' },
+    { value: 'high', label: 'Alta' },
+  ],
+} as const
+
+const EFFECT_LABELS: Record<VisagismoFrameProfile['effects'][number], string> = {
+  softens: 'Suaviza',
+  structures: 'Estrutura',
+  elongates: 'Alonga',
+  shortens: 'Encurta',
+  lifts: 'Levanta',
+  'adds-presence': 'Presenca',
+  balances: 'Equilibra',
+}
+
+const DEFAULT_PROFILE: VisagismoFrameProfile = {
+  shape: 'other',
+  visualWeight: 'medium',
+  lineStyle: 'mixed',
+  direction: 'neutral',
+  visualWidth: 'medium',
+  lensHeight: 'medium',
+  effects: ['balances'],
+}
+
 interface FrameTemplateEditorProps {
   storeId: number
   globalTemplates: GlobalVisagismoFrameTemplate[]
@@ -52,6 +114,7 @@ export default function FrameTemplateEditor({ storeId, globalTemplates }: FrameT
   const [image, setImage] = useState<ImageState | null>(null)
   const [name, setName] = useState('Novo formato')
   const [realWidthMm, setRealWidthMm] = useState(132)
+  const [profile, setProfile] = useState<VisagismoFrameProfile>(DEFAULT_PROFILE)
   const [imageScale, setImageScale] = useState(1)
   const [imageX, setImageX] = useState(0)
   const [imageY, setImageY] = useState(0)
@@ -93,7 +156,13 @@ export default function FrameTemplateEditor({ storeId, globalTemplates }: FrameT
   const generatedInnerLeft = paths.innerLeft.length > 0
     ? paths.innerLeft
     : mirrorPoints(paths.innerRight, symmetryAxisX)
+  const calculatedEffects = useMemo(() => deriveProfileEffects(profile), [profile])
   const exportJson = useMemo(() => {
+    const profileForSave = {
+      ...profile,
+      effects: calculatedEffects,
+    }
+
     return {
       name,
       viewBox: VIEW_BOX,
@@ -121,8 +190,9 @@ export default function FrameTemplateEditor({ storeId, globalTemplates }: FrameT
         innerRightPath: pointsToSmoothPath(paths.innerRight, true),
         innerLeftPath: pointsToSmoothPath(generatedInnerLeft, true),
       },
+      profile: profileForSave,
     }
-  }, [generatedInnerLeft, leftEdge, name, outerFullPoints, paths, realWidthMm, rightEdge, symmetryAxisX, unitToMm])
+  }, [calculatedEffects, generatedInnerLeft, leftEdge, name, outerFullPoints, paths, profile, realWidthMm, rightEdge, symmetryAxisX, unitToMm])
 
   function handleFile(file: File) {
     const reader = new FileReader()
@@ -227,6 +297,62 @@ export default function FrameTemplateEditor({ storeId, globalTemplates }: FrameT
     setImageOpacity(0.45)
   }
 
+  function scaleDrawing(factor: number, origin: Point = { x: symmetryAxisX, y: (leftEdge.y + rightEdge.y) / 2 }) {
+    setPaths((current) => transformPathPoints(current, (point) => ({
+      x: origin.x + (point.x - origin.x) * factor,
+      y: origin.y + (point.y - origin.y) * factor,
+    })))
+  }
+
+  function centerDrawing() {
+    const bounds = getBounds(outerFullPoints.length > 1 ? outerFullPoints : allPathPoints(paths))
+    if (!bounds) return
+
+    const target = {
+      x: symmetryAxisX,
+      y: (leftEdge.y + rightEdge.y) / 2,
+    }
+    const dx = target.x - (bounds.minX + bounds.width / 2)
+    const dy = target.y - (bounds.minY + bounds.height / 2)
+
+    setPaths((current) => transformPathPoints(current, (point) => ({
+      x: point.x + dx,
+      y: point.y + dy,
+    })))
+  }
+
+  function fitDrawingToEdges() {
+    const bounds = getBounds(outerFullPoints.length > 1 ? outerFullPoints : allPathPoints(paths))
+    if (!bounds || bounds.width <= 0) return
+
+    const factor = calibrationDistance / bounds.width
+    const origin = {
+      x: bounds.minX + bounds.width / 2,
+      y: bounds.minY + bounds.height / 2,
+    }
+
+    setPaths((current) => {
+      const scaled = transformPathPoints(current, (point) => ({
+        x: origin.x + (point.x - origin.x) * factor,
+        y: origin.y + (point.y - origin.y) * factor,
+      }))
+      const scaledBounds = getBounds(allPathPoints(scaled))
+      if (!scaledBounds) return scaled
+
+      const target = {
+        x: symmetryAxisX,
+        y: (leftEdge.y + rightEdge.y) / 2,
+      }
+      const dx = target.x - (scaledBounds.minX + scaledBounds.width / 2)
+      const dy = target.y - (scaledBounds.minY + scaledBounds.height / 2)
+
+      return transformPathPoints(scaled, (point) => ({
+        x: point.x + dx,
+        y: point.y + dy,
+      }))
+    })
+  }
+
   function downloadJson() {
     const blob = new Blob([JSON.stringify(exportJson, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -254,6 +380,7 @@ export default function FrameTemplateEditor({ storeId, globalTemplates }: FrameT
 
     setName(template.name)
     setRealWidthMm(template.realWidthMm ?? 132)
+    setProfile(template.profile ?? DEFAULT_PROFILE)
     if (isPoint(calibration.leftEdge)) setLeftEdge(calibration.leftEdge)
     if (isPoint(calibration.rightEdge)) setRightEdge(calibration.rightEdge)
     setPaths(importedPaths)
@@ -400,6 +527,90 @@ export default function FrameTemplateEditor({ storeId, globalTemplates }: FrameT
             <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
               <Metric label="Distancia" value={`${calibrationDistance.toFixed(1)} u`} />
               <Metric label="Escala" value={`${unitToMm.toFixed(2)} mm/u`} />
+            </div>
+          </Panel>
+
+          <Panel title="Ajuste do desenho">
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { label: '-5%', factor: 0.95 },
+                { label: '-1%', factor: 0.99 },
+                { label: '+1%', factor: 1.01 },
+                { label: '+5%', factor: 1.05 },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => scaleDrawing(item.factor)}
+                  className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-2 text-xs font-black text-slate-300 transition-colors hover:bg-white/10"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={fitDrawingToEdges}
+                disabled={outerFullPoints.length < 2}
+                className="rounded-lg border border-cyan-400/25 bg-cyan-500/10 px-3 py-2 text-xs font-black text-cyan-100 transition-colors hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Ajustar D/E
+              </button>
+              <button
+                type="button"
+                onClick={centerDrawing}
+                className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-black text-slate-300 transition-colors hover:bg-white/10"
+              >
+                Centralizar
+              </button>
+            </div>
+          </Panel>
+
+          <Panel title="Perfil de indicacao">
+            <div className="grid grid-cols-2 gap-2">
+              <ProfileSelect
+                label="Formato"
+                value={profile.shape}
+                options={PROFILE_OPTIONS.shape}
+                onChange={(value) => setProfile((current) => ({ ...current, shape: value }))}
+              />
+              <ProfileSelect
+                label="Peso"
+                value={profile.visualWeight}
+                options={PROFILE_OPTIONS.visualWeight}
+                onChange={(value) => setProfile((current) => ({ ...current, visualWeight: value }))}
+              />
+              <ProfileSelect
+                label="Linha"
+                value={profile.lineStyle}
+                options={PROFILE_OPTIONS.lineStyle}
+                onChange={(value) => setProfile((current) => ({ ...current, lineStyle: value }))}
+              />
+              <ProfileSelect
+                label="Direcao"
+                value={profile.direction}
+                options={PROFILE_OPTIONS.direction}
+                onChange={(value) => setProfile((current) => ({ ...current, direction: value }))}
+              />
+              <ProfileSelect
+                label="Largura"
+                value={profile.visualWidth}
+                options={PROFILE_OPTIONS.visualWidth}
+                onChange={(value) => setProfile((current) => ({ ...current, visualWidth: value }))}
+              />
+              <ProfileSelect
+                label="Altura"
+                value={profile.lensHeight}
+                options={PROFILE_OPTIONS.lensHeight}
+                onChange={(value) => setProfile((current) => ({ ...current, lensHeight: value }))}
+              />
+            </div>
+            <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2">
+              <p className="text-[9px] font-black uppercase text-slate-500">Efeitos calculados</p>
+              <p className="mt-1 text-xs font-bold text-slate-300">
+                {calculatedEffects.map((effect) => EFFECT_LABELS[effect]).join(' / ')}
+              </p>
             </div>
           </Panel>
 
@@ -585,6 +796,35 @@ function NumberInput({
   )
 }
 
+function ProfileSelect<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: T
+  options: readonly { value: T; label: string }[]
+  onChange: (value: T) => void
+}) {
+  return (
+    <label className="block rounded-lg border border-white/10 bg-black/20 p-2">
+      <span className="block text-[9px] font-black uppercase text-slate-500">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value as T)}
+        className="mt-1 h-7 w-full bg-transparent text-xs font-bold text-slate-100 outline-none"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-white/10 bg-black/20 px-2 py-1.5">
@@ -738,6 +978,78 @@ function mirrorPoints(points: Point[], axisX: number) {
   }))
 }
 
+function deriveProfileEffects(profile: VisagismoFrameProfile) {
+  const effects = new Set<VisagismoFrameProfile['effects'][number]>(['balances'])
+
+  if (profile.lineStyle === 'curved' || ['round', 'oval', 'panto', 'aviator'].includes(profile.shape)) {
+    effects.add('softens')
+  }
+
+  if (profile.lineStyle === 'straight' || ['rectangular', 'square', 'geometric', 'wayfarer', 'browline'].includes(profile.shape)) {
+    effects.add('structures')
+  }
+
+  if (profile.direction === 'ascending' || profile.shape === 'cat-eye') {
+    effects.add('lifts')
+  }
+
+  if (profile.visualWeight === 'strong' || ['cat-eye', 'aviator', 'geometric', 'browline', 'wayfarer'].includes(profile.shape)) {
+    effects.add('adds-presence')
+  }
+
+  if (profile.lensHeight === 'low' || (profile.visualWidth === 'narrow' && profile.lensHeight !== 'high')) {
+    effects.add('elongates')
+  }
+
+  if (profile.lensHeight === 'high' || (profile.visualWidth === 'wide' && profile.lensHeight !== 'low')) {
+    effects.add('shortens')
+  }
+
+  return Array.from(effects)
+}
+
+function transformPathPoints(
+  paths: Record<DrawLayer, Point[]>,
+  transform: (point: Point) => Point,
+): Record<DrawLayer, Point[]> {
+  return Object.fromEntries(
+    Object.entries(paths).map(([layer, points]) => [
+      layer,
+      points.map((point) => {
+        const next = transform(point)
+        return {
+          x: clamp(next.x, 0, VIEW_BOX.width),
+          y: clamp(next.y, 0, VIEW_BOX.height),
+        }
+      }),
+    ]),
+  ) as Record<DrawLayer, Point[]>
+}
+
+function allPathPoints(paths: Record<DrawLayer, Point[]>) {
+  return Object.values(paths).flat()
+}
+
+function getBounds(points: Point[]) {
+  if (points.length === 0) return null
+
+  const xs = points.map((point) => point.x)
+  const ys = points.map((point) => point.y)
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+  const minY = Math.min(...ys)
+  const maxY = Math.max(...ys)
+
+  return {
+    minX,
+    maxX,
+    minY,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY,
+  }
+}
+
 function makeMirroredFullPathPoints(points: Point[], axisX: number) {
   if (points.length === 0) return []
   if (points.length === 1) return points
@@ -752,6 +1064,10 @@ function makeMirroredFullPathPoints(points: Point[], axisX: number) {
 
 function distance(a: Point, b: Point) {
   return Math.hypot(a.x - b.x, a.y - b.y)
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
 }
 
 function isPoint(value: unknown): value is Point {
