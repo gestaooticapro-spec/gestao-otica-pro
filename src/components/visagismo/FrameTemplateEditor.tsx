@@ -15,11 +15,12 @@ import {
 } from 'lucide-react'
 import {
   saveGlobalVisagismoFrameTemplate,
+  type FrameConstruction,
   type GlobalVisagismoFrameTemplate,
   type VisagismoFrameProfile,
 } from '@/lib/actions/visagismo.actions'
 
-type DrawLayer = 'outerRight' | 'innerRight' | 'outerLeft' | 'innerLeft' | 'bridge'
+type DrawLayer = 'outerRight' | 'innerRight' | 'outerLeft' | 'innerLeft' | 'secondaryRight' | 'secondaryLeft' | 'bridge'
 
 interface Point {
   x: number
@@ -36,6 +37,8 @@ const LAYERS: Array<{ id: DrawLayer; label: string }> = [
   { id: 'outerRight', label: 'Externo direito + meia ponte' },
   { id: 'innerRight', label: 'Aro dir. interno' },
   { id: 'innerLeft', label: 'Aro esq. interno' },
+  { id: 'secondaryRight', label: '2o externo direito' },
+  { id: 'secondaryLeft', label: '2o externo esquerdo' },
 ]
 
 const PROFILE_OPTIONS = {
@@ -89,6 +92,12 @@ const EFFECT_LABELS: Record<VisagismoFrameProfile['effects'][number], string> = 
   balances: 'Equilibra',
 }
 
+const CONSTRUCTION_OPTIONS: Array<{ value: FrameConstruction; label: string }> = [
+  { value: 'full-rim', label: 'Aro completo' },
+  { value: 'rimless', label: 'Parafusada' },
+  { value: 'semi-rimless', label: 'Fio de nylon' },
+]
+
 const DEFAULT_PROFILE: VisagismoFrameProfile = {
   shape: 'other',
   visualWeight: 'medium',
@@ -114,6 +123,7 @@ export default function FrameTemplateEditor({ storeId, globalTemplates }: FrameT
   const [image, setImage] = useState<ImageState | null>(null)
   const [name, setName] = useState('Novo formato')
   const [realWidthMm, setRealWidthMm] = useState(132)
+  const [construction, setConstruction] = useState<FrameConstruction>('full-rim')
   const [profile, setProfile] = useState<VisagismoFrameProfile>(DEFAULT_PROFILE)
   const [imageScale, setImageScale] = useState(1)
   const [imageX, setImageX] = useState(0)
@@ -129,6 +139,8 @@ export default function FrameTemplateEditor({ storeId, globalTemplates }: FrameT
     innerRight: [],
     outerLeft: [],
     innerLeft: [],
+    secondaryRight: [],
+    secondaryLeft: [],
     bridge: [],
   })
 
@@ -156,6 +168,9 @@ export default function FrameTemplateEditor({ storeId, globalTemplates }: FrameT
   const generatedInnerLeft = paths.innerLeft.length > 0
     ? paths.innerLeft
     : mirrorPoints(paths.innerRight, symmetryAxisX)
+  const generatedSecondaryLeft = paths.secondaryLeft.length > 0
+    ? paths.secondaryLeft
+    : mirrorPoints(paths.secondaryRight, symmetryAxisX)
   const calculatedEffects = useMemo(() => deriveProfileEffects(profile), [profile])
   const exportJson = useMemo(() => {
     const profileForSave = {
@@ -167,6 +182,7 @@ export default function FrameTemplateEditor({ storeId, globalTemplates }: FrameT
       name,
       viewBox: VIEW_BOX,
       realWidthMm,
+      construction,
       calibration: {
         leftEdge,
         rightEdge,
@@ -189,10 +205,13 @@ export default function FrameTemplateEditor({ storeId, globalTemplates }: FrameT
         outerFullPath: pointsToSmoothPath(outerFullPoints, false),
         innerRightPath: pointsToSmoothPath(paths.innerRight, true),
         innerLeftPath: pointsToSmoothPath(generatedInnerLeft, true),
+        secondaryRightPath: pointsToSmoothPath(paths.secondaryRight, false),
+        secondaryLeftPath: pointsToSmoothPath(generatedSecondaryLeft, false),
+        construction,
       },
       profile: profileForSave,
     }
-  }, [calculatedEffects, generatedInnerLeft, leftEdge, name, outerFullPoints, paths, profile, realWidthMm, rightEdge, symmetryAxisX, unitToMm])
+  }, [calculatedEffects, construction, generatedInnerLeft, generatedSecondaryLeft, leftEdge, name, outerFullPoints, paths, profile, realWidthMm, rightEdge, symmetryAxisX, unitToMm])
 
   function handleFile(file: File) {
     const reader = new FileReader()
@@ -380,6 +399,7 @@ export default function FrameTemplateEditor({ storeId, globalTemplates }: FrameT
 
     setName(template.name)
     setRealWidthMm(template.realWidthMm ?? 132)
+    setConstruction(template.construction)
     setProfile(template.profile ?? DEFAULT_PROFILE)
     if (isPoint(calibration.leftEdge)) setLeftEdge(calibration.leftEdge)
     if (isPoint(calibration.rightEdge)) setRightEdge(calibration.rightEdge)
@@ -443,6 +463,78 @@ export default function FrameTemplateEditor({ storeId, globalTemplates }: FrameT
 
       <main className="mx-auto grid max-w-7xl gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[360px_1fr]">
         <aside className="space-y-3">
+          <Panel title="Desenho">
+            <label className="block text-[10px] font-black uppercase text-slate-500">Nome</label>
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              className="mt-1 h-10 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-sm font-bold text-slate-100 outline-none focus:border-cyan-400/60"
+            />
+            <div className="mt-3">
+              <ProfileSelect
+                label="Construcao"
+                value={construction}
+                options={CONSTRUCTION_OPTIONS}
+                onChange={setConstruction}
+              />
+            </div>
+            <div className="mt-3 grid grid-cols-1 gap-2">
+              {LAYERS.map((layer) => (
+                <button
+                  key={layer.id}
+                  type="button"
+                  onClick={() => {
+                    setMode('draw')
+                    setActiveLayer(layer.id)
+                  }}
+                  className={`rounded-lg border px-3 py-2 text-left text-xs font-bold transition-colors ${
+                    activeLayer === layer.id && mode === 'draw'
+                      ? 'border-cyan-400/60 bg-cyan-400/10 text-cyan-100'
+                      : 'border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/10'
+                  }`}
+                >
+                  {layer.label}
+                  <span className="float-right font-mono text-slate-500">{paths[layer.id].length}</span>
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={undoPoint}
+                className="flex-1 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-bold text-slate-300 transition-colors hover:bg-white/10"
+              >
+                <Undo2 className="mr-1 inline h-3.5 w-3.5" />
+                Desfazer
+              </button>
+              <button
+                type="button"
+                onClick={clearLayer}
+                className="flex-1 rounded-lg border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-200 transition-colors hover:bg-rose-500/20"
+              >
+                Limpar
+              </button>
+            </div>
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => mirrorLayer('innerRight', 'innerLeft')}
+                disabled={paths.innerRight.length === 0}
+                className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-bold text-slate-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Espelhar interno
+              </button>
+              <button
+                type="button"
+                onClick={() => mirrorLayer('secondaryRight', 'secondaryLeft')}
+                disabled={paths.secondaryRight.length === 0}
+                className="mt-2 w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-bold text-slate-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Espelhar 2o externo
+              </button>
+            </div>
+          </Panel>
+
           <Panel title="Imagem">
             <input
               ref={fileRef}
@@ -614,61 +706,6 @@ export default function FrameTemplateEditor({ storeId, globalTemplates }: FrameT
             </div>
           </Panel>
 
-          <Panel title="Desenho">
-            <label className="block text-[10px] font-black uppercase text-slate-500">Nome</label>
-            <input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              className="mt-1 h-10 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-sm font-bold text-slate-100 outline-none focus:border-cyan-400/60"
-            />
-            <div className="mt-3 grid grid-cols-1 gap-2">
-              {LAYERS.map((layer) => (
-                <button
-                  key={layer.id}
-                  type="button"
-                  onClick={() => {
-                    setMode('draw')
-                    setActiveLayer(layer.id)
-                  }}
-                  className={`rounded-lg border px-3 py-2 text-left text-xs font-bold transition-colors ${
-                    activeLayer === layer.id && mode === 'draw'
-                      ? 'border-cyan-400/60 bg-cyan-400/10 text-cyan-100'
-                      : 'border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/10'
-                  }`}
-                >
-                  {layer.label}
-                  <span className="float-right font-mono text-slate-500">{paths[layer.id].length}</span>
-                </button>
-              ))}
-            </div>
-            <div className="mt-3 flex gap-2">
-              <button
-                type="button"
-                onClick={undoPoint}
-                className="flex-1 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-bold text-slate-300 transition-colors hover:bg-white/10"
-              >
-                <Undo2 className="mr-1 inline h-3.5 w-3.5" />
-                Desfazer
-              </button>
-              <button
-                type="button"
-                onClick={clearLayer}
-                className="flex-1 rounded-lg border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-200 transition-colors hover:bg-rose-500/20"
-              >
-                Limpar
-              </button>
-            </div>
-            <div className="mt-3">
-              <button
-                type="button"
-                onClick={() => mirrorLayer('innerRight', 'innerLeft')}
-                disabled={paths.innerRight.length === 0}
-                className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-bold text-slate-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Espelhar interno
-              </button>
-            </div>
-          </Panel>
         </aside>
 
         <section className="min-w-0 rounded-lg border border-white/10 bg-white/[0.03] p-3">
@@ -682,7 +719,7 @@ export default function FrameTemplateEditor({ storeId, globalTemplates }: FrameT
                     : `Desenhando: ${LAYERS.find((layer) => layer.id === activeLayer)?.label}`}
               </p>
               <p className="mt-1 text-xs text-slate-500">
-                Desenhe o externo direito ate o eixo central. O lado esquerdo e gerado por simetria.
+                Desenhe o externo direito ate o eixo central. O 2o externo serve para arco superior, charneira frontal e detalhes construtivos.
               </p>
             </div>
           </div>
@@ -737,6 +774,20 @@ export default function FrameTemplateEditor({ storeId, globalTemplates }: FrameT
                 points={generatedInnerLeft}
                 active={activeLayer === 'innerLeft'}
                 closed
+                onPointDragStart={startPointDrag}
+              />
+              <Polyline
+                layer="secondaryRight"
+                points={paths.secondaryRight}
+                active={activeLayer === 'secondaryRight'}
+                closed={false}
+                onPointDragStart={startPointDrag}
+              />
+              <Polyline
+                layer="secondaryLeft"
+                points={generatedSecondaryLeft}
+                active={activeLayer === 'secondaryLeft'}
+                closed={false}
                 onPointDragStart={startPointDrag}
               />
             </svg>
@@ -1087,6 +1138,8 @@ function normalizeImportedPaths(value: unknown): Record<DrawLayer, Point[]> {
     innerRight: normalizeImportedLayer(source.innerRight),
     outerLeft: normalizeImportedLayer(source.outerLeft),
     innerLeft: normalizeImportedLayer(source.innerLeft),
+    secondaryRight: normalizeImportedLayer(source.secondaryRight),
+    secondaryLeft: normalizeImportedLayer(source.secondaryLeft),
     bridge: normalizeImportedLayer(source.bridge),
   }
 }

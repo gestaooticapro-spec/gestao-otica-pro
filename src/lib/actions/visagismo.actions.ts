@@ -17,6 +17,7 @@ export type VisagismoTemplatePayload = {
   calibration?: Record<string, unknown>
   paths?: Record<string, TemplatePathPayload>
   generated?: Record<string, unknown>
+  construction?: FrameConstruction
   profile?: Partial<VisagismoFrameProfile>
 }
 
@@ -40,7 +41,10 @@ export type GlobalVisagismoFrameTemplate = {
     outerFullPath?: string
     innerRightPath?: string
     innerLeftPath?: string
+    secondaryRightPath?: string
+    secondaryLeftPath?: string
   }
+  construction: FrameConstruction
   profile: VisagismoFrameProfile
 }
 
@@ -63,6 +67,7 @@ export type FrameProfileDirection = 'neutral' | 'ascending' | 'descending'
 export type FrameProfileSize = 'narrow' | 'medium' | 'wide'
 export type FrameProfileLensHeight = 'low' | 'medium' | 'high'
 export type FrameProfileEffect = 'softens' | 'structures' | 'elongates' | 'shortens' | 'lifts' | 'adds-presence' | 'balances'
+export type FrameConstruction = 'full-rim' | 'rimless' | 'semi-rimless'
 
 export type VisagismoFrameProfile = {
   shape: FrameProfileShape
@@ -183,6 +188,7 @@ export async function getGlobalVisagismoFrameTemplates(): Promise<GlobalVisagism
     calibration: row.calibration ?? {},
     sourcePaths: row.source_paths ?? {},
     generatedPaths: normalizeGeneratedPaths(row.generated_paths),
+    construction: normalizeConstruction(row.generated_paths?.construction ?? row.source_paths?.construction),
     profile: normalizeProfile(row),
   }))
 }
@@ -226,6 +232,11 @@ export async function saveGlobalVisagismoFrameTemplate(
     const calibration = payload.calibration ?? {}
     const viewBox = payload.viewBox ?? {}
     const profile = normalizeProfile({ name, ...payload.profile })
+    const construction = normalizeConstruction(payload.construction ?? generatedPaths.construction)
+    const generatedPathsWithConstruction: Record<string, unknown> = {
+      ...generatedPaths,
+      construction,
+    }
 
     const templateTable = supabase
       .from('global_visagismo_frame_templates') as unknown as VisagismoTemplateTable
@@ -242,7 +253,7 @@ export async function saveGlobalVisagismoFrameTemplate(
           viewbox_height: Number(viewBox.height ?? 60),
           calibration,
           source_paths: sourcePaths,
-          generated_paths: generatedPaths,
+          generated_paths: generatedPathsWithConstruction,
           profile_shape: profile.shape,
           profile_visual_weight: profile.visualWeight,
           profile_line_style: profile.lineStyle,
@@ -250,8 +261,8 @@ export async function saveGlobalVisagismoFrameTemplate(
           profile_visual_width: profile.visualWidth,
           profile_lens_height: profile.lensHeight,
           profile_effects: profile.effects,
-          preview_svg_path: typeof generatedPaths.outerFullPath === 'string'
-            ? generatedPaths.outerFullPath
+          preview_svg_path: typeof generatedPathsWithConstruction.outerFullPath === 'string'
+            ? generatedPathsWithConstruction.outerFullPath
             : null,
           is_active: true,
         },
@@ -331,11 +342,17 @@ function normalizeGeneratedPaths(value: Record<string, unknown> | null): GlobalV
     outerFullPath: normalizePath(value?.outerFullPath),
     innerRightPath: normalizePath(value?.innerRightPath),
     innerLeftPath: normalizePath(value?.innerLeftPath),
+    secondaryRightPath: normalizePath(value?.secondaryRightPath),
+    secondaryLeftPath: normalizePath(value?.secondaryLeftPath),
   }
 }
 
 function normalizePath(value: unknown) {
   return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+function normalizeConstruction(value: unknown): FrameConstruction {
+  return value === 'rimless' || value === 'semi-rimless' ? value : 'full-rim'
 }
 
 function normalizeProfile(value: Record<string, unknown>): VisagismoFrameProfile {

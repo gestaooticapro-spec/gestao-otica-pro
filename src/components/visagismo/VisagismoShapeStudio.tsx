@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState, useTransition } from 'react'
+import { useId, useMemo, useState, useTransition } from 'react'
 import { ArrowLeft, Camera, Check, Glasses, PenTool, Rows3, Shapes, Trash2 } from 'lucide-react'
 import FrameShapePreview from './FrameShapePreview'
 import {
@@ -348,13 +348,24 @@ function GlobalFrameTemplatePreview({
   className?: string
 }) {
   const { width, height } = template.viewBox
-  const { outerFullPath, innerRightPath, innerLeftPath } = template.generatedPaths
+  const { outerFullPath, innerRightPath, innerLeftPath, secondaryRightPath, secondaryLeftPath } = template.generatedPaths
+  const construction = getTemplateConstruction(template)
+  const isRimless = construction === 'rimless'
+  const isSemiRimless = construction === 'semi-rimless'
   const outerFramePath = ensureClosedSvgPath(outerFullPath)
+  const outerClipId = useId().replace(/:/g, '')
   const rightLensPath = ensureClosedSvgPath(innerRightPath)
   const leftLensPath = ensureClosedSvgPath(innerLeftPath)
-  const frameFillPath = outerFramePath
+  const frameFillPath = outerFramePath && !isRimless && !isSemiRimless
     ? [outerFramePath, rightLensPath, leftLensPath].filter(Boolean).join(' ')
     : undefined
+  const semiRimlessFillPath = isSemiRimless && outerFramePath
+    ? outerFramePath
+    : undefined
+  const outerStrokeWidth = isRimless ? 2.2 : isSemiRimless ? 1.25 : 2.4
+  const innerStrokeWidth = isRimless ? 0.62 : isSemiRimless ? 0.86 : 1.2
+  const innerOpacity = isRimless ? 0.42 : isSemiRimless ? 0.52 : 0.65
+  const secondaryStrokeWidth = isRimless ? 2.1 : isSemiRimless ? 1.35 : 1.6
 
   return (
     <svg
@@ -368,6 +379,13 @@ function GlobalFrameTemplatePreview({
       strokeLinejoin="round"
       vectorEffect="non-scaling-stroke"
     >
+      {outerFramePath && (
+        <defs>
+          <clipPath id={`visagismo-template-outer-${outerClipId}`}>
+            <path d={outerFramePath} />
+          </clipPath>
+        </defs>
+      )}
       {frameFillPath && (
         <path
           d={frameFillPath}
@@ -377,11 +395,28 @@ function GlobalFrameTemplatePreview({
           opacity="0.28"
         />
       )}
-      {outerFullPath && <path d={outerFullPath} strokeWidth="2.4" />}
-      {innerRightPath && <path d={innerRightPath} strokeWidth="1.2" opacity="0.65" />}
-      {innerLeftPath && <path d={innerLeftPath} strokeWidth="1.2" opacity="0.65" />}
+      {semiRimlessFillPath && (
+        <path
+          d={semiRimlessFillPath}
+          fill="currentColor"
+          stroke="none"
+          opacity="0.24"
+        />
+      )}
+      {outerFullPath && <path d={outerFullPath} strokeWidth={outerStrokeWidth} opacity={isRimless ? 0.88 : 1} />}
+      {innerRightPath && <path d={innerRightPath} strokeWidth={innerStrokeWidth} opacity={innerOpacity} />}
+      {innerLeftPath && <path d={innerLeftPath} strokeWidth={innerStrokeWidth} opacity={innerOpacity} />}
+      {secondaryRightPath && <path d={secondaryRightPath} strokeWidth={secondaryStrokeWidth} opacity="0.9" />}
+      {secondaryLeftPath && <path d={secondaryLeftPath} strokeWidth={secondaryStrokeWidth} opacity="0.9" />}
     </svg>
   )
+}
+
+function getTemplateConstruction(template: GlobalVisagismoFrameTemplate) {
+  const label = `${template.name} ${template.slug}`.toLowerCase()
+  if (template.construction === 'rimless' || label.includes('parafus')) return 'rimless'
+  if (template.construction === 'semi-rimless' || label.includes('nylon')) return 'semi-rimless'
+  return 'full-rim'
 }
 
 function ensureClosedSvgPath(path: string | undefined) {

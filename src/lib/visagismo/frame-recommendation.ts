@@ -5,7 +5,7 @@ export type CustomerStyleProfile = {
   style: 'none' | 'discrete' | 'classic' | 'modern' | 'striking'
   expression: 'none' | 'masculine' | 'feminine' | 'neutral'
   goals: Array<'soften' | 'structure' | 'rejuvenate' | 'lift'>
-  avoid: Array<'cat-eye' | 'round' | 'large' | 'strong'>
+  avoid: Array<'cat-eye' | 'round' | 'large' | 'strong' | 'rimless' | 'semi-rimless'>
 }
 
 export type FrameRecommendation = {
@@ -32,6 +32,7 @@ function scoreTemplate(
 ): FrameRecommendation {
   const label = `${template.name} ${template.category ?? ''}`.toLowerCase()
   const profile = template.profile
+  const construction = template.construction
   const traits = analysis.traits
   const reasons: string[] = []
   let score = 54
@@ -132,11 +133,11 @@ function scoreTemplate(
   }
 
   if (customerProfile) {
-    const customer = scoreCustomerProfile(profile, customerProfile)
+    const customer = scoreCustomerProfile(profile, construction, customerProfile)
     score += customer.score
     reasons.push(...customer.reasons)
 
-    if (hasHardAvoid(profile, customerProfile)) {
+    if (hasHardAvoid(profile, construction, customerProfile)) {
       score = Math.min(score, 34)
       reasons.unshift('foi mantida fora das principais opcoes por restricao marcada pelo cliente')
     }
@@ -220,6 +221,7 @@ function scoreFaceShapeFit(
 
 function scoreCustomerProfile(
   profile: GlobalVisagismoFrameTemplate['profile'],
+  construction: GlobalVisagismoFrameTemplate['construction'],
   customer: CustomerStyleProfile,
 ) {
   const reasons: string[] = []
@@ -230,6 +232,8 @@ function scoreCustomerProfile(
     if (profile.visualWeight === 'strong') score -= 16
     if (profile.shape === 'geometric' || profile.shape === 'cat-eye') score -= 5
     if (profile.visualWeight === 'medium' && profile.effects.includes('structures')) score += 4
+    if (construction === 'rimless') score += 14
+    if (construction === 'semi-rimless') score += 8
     reasons.push('respeita uma proposta mais discreta')
   }
 
@@ -252,6 +256,8 @@ function scoreCustomerProfile(
     if (profile.visualWeight === 'strong') score += 14
     if (profile.effects.includes('adds-presence')) score += 8
     if (profile.visualWeight === 'light') score -= 8
+    if (construction === 'rimless') score -= 35
+    if (construction === 'semi-rimless') score -= 18
     reasons.push('entrega mais presenca no rosto')
   }
 
@@ -277,6 +283,8 @@ function scoreCustomerProfile(
   }
 
   if (customer.goals.includes('soften')) {
+    if (construction === 'rimless') score += 5
+    if (construction === 'semi-rimless') score += 3
     if (profile.lineStyle === 'mixed') score += 8
     if (profile.lineStyle === 'straight') score -= 14
     if (profile.shape === 'geometric') score -= 8
@@ -318,19 +326,26 @@ function scoreCustomerProfile(
   if (customer.avoid.includes('large') && profile.lensHeight === 'high') score -= 42
   if (customer.avoid.includes('large') && profile.visualWidth === 'wide' && profile.lensHeight === 'medium') score -= 16
   if (customer.avoid.includes('strong') && profile.visualWeight === 'strong') score -= 36
+  if (customer.avoid.includes('strong') && construction === 'rimless') score += 8
+  if (customer.avoid.includes('strong') && construction === 'semi-rimless') score += 5
+  if (customer.avoid.includes('rimless') && construction === 'rimless') score -= 42
+  if (customer.avoid.includes('semi-rimless') && construction === 'semi-rimless') score -= 42
 
   return { score, reasons }
 }
 
 function hasHardAvoid(
   profile: GlobalVisagismoFrameTemplate['profile'],
+  construction: GlobalVisagismoFrameTemplate['construction'],
   customer: CustomerStyleProfile,
 ) {
   return (
     (customer.avoid.includes('cat-eye') && profile.shape === 'cat-eye') ||
     (customer.avoid.includes('round') && ['round', 'oval'].includes(profile.shape)) ||
     (customer.avoid.includes('large') && profile.lensHeight === 'high') ||
-    (customer.avoid.includes('strong') && profile.visualWeight === 'strong')
+    (customer.avoid.includes('strong') && profile.visualWeight === 'strong') ||
+    (customer.avoid.includes('rimless') && construction === 'rimless') ||
+    (customer.avoid.includes('semi-rimless') && construction === 'semi-rimless')
   )
 }
 

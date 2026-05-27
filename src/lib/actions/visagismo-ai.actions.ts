@@ -193,6 +193,7 @@ function buildVisagismoNarrativePrompt(params: {
         score: recommendation.score,
         reasons: recommendation.reasons,
         frameProfile: template?.profile ?? null,
+        construction: template?.construction ?? 'full-rim',
       }
     }),
   }
@@ -209,6 +210,7 @@ REGRAS IMPORTANTES:
 - Se houver uma ressalva tecnica nas razoes, trate como comparacao visual, sem assustar o cliente.
 - Evite promessas absolutas sobre beleza, idade, genero ou tom de pele.
 - Escolha uma cor em availableFrameColors para cada opcao, considerando formato da armacao, faceAnalysis, customerProfile e appearance.skinToneLabel.
+- Leve em conta construction: full-rim tem mais presenca, rimless/parafusada deve soar mais leve e delicada, semi-rimless/fio de nylon fica entre os dois.
 - Nao justifique a cor atualmente selecionada; recomende a cor que fizer mais sentido.
 - suggestedColorHex deve ser exatamente um value de availableFrameColors, e suggestedColorName deve ser o name correspondente.
 - Trate a pele como leitura assistida por camera, ajustavel pelo vendedor.

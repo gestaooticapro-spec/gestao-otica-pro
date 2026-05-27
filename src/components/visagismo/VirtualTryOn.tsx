@@ -183,6 +183,8 @@ const CUSTOMER_AVOID_OPTIONS: Array<{ label: string; value: CustomerStyleProfile
   { label: 'Sem redondo', value: 'round' },
   { label: 'Sem grande', value: 'large' },
   { label: 'Sem forte', value: 'strong' },
+  { label: 'Sem parafusada', value: 'rimless' },
+  { label: 'Sem fio de nylon', value: 'semi-rimless' },
 ]
 const SIMULATED_FACE_OPTIONS: Array<{ label: string; value: FaceShape }> = [
   { label: 'Redondo', value: 'round' },
@@ -2225,12 +2227,18 @@ function TryOnFrameSvg({
   color?: string
   lensMode?: LensMode
 }) {
-  const { outerFullPath, innerRightPath, innerLeftPath } = template.generatedPaths
+  const { outerFullPath, innerRightPath, innerLeftPath, secondaryRightPath, secondaryLeftPath } = template.generatedPaths
+  const construction = getTemplateConstruction(template)
+  const isRimless = construction === 'rimless'
+  const isSemiRimless = construction === 'semi-rimless'
   const outerFramePath = ensureClosedSvgPath(outerFullPath)
   const rightLensPath = ensureClosedSvgPath(innerRightPath)
   const leftLensPath = ensureClosedSvgPath(innerLeftPath)
-  const frameFillPath = outerFramePath
+  const frameFillPath = outerFramePath && !isRimless && !isSemiRimless
     ? [outerFramePath, rightLensPath, leftLensPath].filter(Boolean).join(' ')
+    : undefined
+  const semiRimlessFillPath = isSemiRimless && outerFramePath
+    ? outerFramePath
     : undefined
   const id = useId().replace(/:/g, '')
   const lensFillId = `visagismo-lens-${id}`
@@ -2238,11 +2246,23 @@ function TryOnFrameSvg({
   const lensHazeId = `visagismo-lens-haze-${id}`
   const lensSpotId = `visagismo-lens-spot-${id}`
   const lensBlurId = `visagismo-lens-blur-${id}`
+  const outerClipId = `visagismo-outer-frame-${id}`
   const rightClipId = `visagismo-right-lens-${id}`
   const leftClipId = `visagismo-left-lens-${id}`
   const isTransparentFrame = color === FRAME_COLOR_PALETTE[6].value
   const frameColor = color ?? '#cffafe'
-  const lensOpacity = lensMode === 'none' ? 0 : lensMode === 'frost' ? 0.46 : lensMode === 'reflection' ? 0.24 : 0.34
+  const baseLensOpacity = lensMode === 'none' ? 0 : lensMode === 'frost' ? 0.46 : lensMode === 'reflection' ? 0.24 : 0.34
+  const lensOpacity = isRimless ? baseLensOpacity * 0.72 : isSemiRimless ? baseLensOpacity * 0.86 : baseLensOpacity
+  const outerStrokeWidth = isRimless ? 1.35 : isSemiRimless ? 0.64 : 0.8
+  const outerStrokeOpacity = isRimless ? 0.62 : isSemiRimless ? 0.42 : isTransparentFrame ? 0.5 : 0.62
+  const innerShadowWidth = isRimless ? 0.56 : isSemiRimless ? 0.76 : 1.15
+  const innerColorWidth = isRimless ? 0.34 : isSemiRimless ? 0.44 : 0.62
+  const innerShadowOpacity = isRimless ? 0.24 : isSemiRimless ? 0.28 : isTransparentFrame ? 0.38 : 0.32
+  const innerColorOpacity = isRimless ? 0.34 : isSemiRimless ? 0.48 : isTransparentFrame ? 0.36 : 0.66
+  const secondaryShadowWidth = isRimless ? 2.2 : isSemiRimless ? 1.45 : 1.65
+  const secondaryColorWidth = isRimless ? 1.45 : isSemiRimless ? 0.96 : 1.05
+  const secondaryShadowOpacity = isRimless ? 0.46 : isSemiRimless ? 0.46 : isTransparentFrame ? 0.42 : 0.5
+  const secondaryColorOpacity = isRimless ? 0.92 : isSemiRimless ? 0.88 : isTransparentFrame ? 0.5 : 0.9
   const svgStyle: CSSProperties = color ? { color, overflow: 'visible' } : { overflow: 'visible' }
 
   return (
@@ -2289,6 +2309,11 @@ function TryOnFrameSvg({
         {leftLensPath && (
           <clipPath id={leftClipId}>
             <path d={leftLensPath} />
+          </clipPath>
+        )}
+        {outerFramePath && (
+          <clipPath id={outerClipId}>
+            <path d={outerFramePath} />
           </clipPath>
         )}
         <filter id={`visagismo-frame-shadow-${id}`} x="-20%" y="-20%" width="140%" height="140%">
@@ -2379,13 +2404,32 @@ function TryOnFrameSvg({
         </g>
       )}
 
+      {semiRimlessFillPath && (
+        <g filter={`url(#visagismo-frame-shadow-${id})`}>
+          <path
+            d={semiRimlessFillPath}
+            fill="#020617"
+            fillRule="evenodd"
+            stroke="none"
+            opacity={isTransparentFrame ? 0.04 : 0.08}
+          />
+          <path
+            d={semiRimlessFillPath}
+            fill={frameColor}
+            fillRule="evenodd"
+            stroke="none"
+            opacity={isTransparentFrame ? 0.2 : 0.42}
+          />
+        </g>
+      )}
+
       {outerFullPath && (
         <g>
           <path
             d={outerFullPath}
             stroke="#020617"
-            strokeWidth={0.8 * strokeScale}
-            opacity={isTransparentFrame ? 0.5 : 0.62}
+            strokeWidth={outerStrokeWidth * strokeScale}
+            opacity={outerStrokeOpacity}
           />
         </g>
       )}
@@ -2393,15 +2437,15 @@ function TryOnFrameSvg({
         <g>
           <path
             d={innerRightPath}
-            strokeWidth={1.15 * strokeScale}
+            strokeWidth={innerShadowWidth * strokeScale}
             stroke="#020617"
-            opacity={isTransparentFrame ? 0.38 : 0.32}
+            opacity={innerShadowOpacity}
           />
           <path
             d={innerRightPath}
-            strokeWidth={0.62 * strokeScale}
+            strokeWidth={innerColorWidth * strokeScale}
             stroke={frameColor}
-            opacity={isTransparentFrame ? 0.36 : 0.66}
+            opacity={innerColorOpacity}
           />
         </g>
       )}
@@ -2409,16 +2453,52 @@ function TryOnFrameSvg({
         <g>
           <path
             d={innerLeftPath}
-            strokeWidth={1.15 * strokeScale}
+            strokeWidth={innerShadowWidth * strokeScale}
             stroke="#020617"
-            opacity={isTransparentFrame ? 0.38 : 0.32}
+            opacity={innerShadowOpacity}
           />
           <path
             d={innerLeftPath}
-            strokeWidth={0.62 * strokeScale}
+            strokeWidth={innerColorWidth * strokeScale}
             stroke={frameColor}
-            opacity={isTransparentFrame ? 0.36 : 0.66}
+            opacity={innerColorOpacity}
           />
+        </g>
+      )}
+      {(secondaryRightPath || secondaryLeftPath) && (
+        <g filter={`url(#visagismo-frame-shadow-${id})`}>
+          {secondaryRightPath && (
+            <>
+              <path
+                d={secondaryRightPath}
+                stroke="#020617"
+                strokeWidth={secondaryShadowWidth * strokeScale}
+                opacity={secondaryShadowOpacity}
+              />
+              <path
+                d={secondaryRightPath}
+                stroke={frameColor}
+                strokeWidth={secondaryColorWidth * strokeScale}
+                opacity={secondaryColorOpacity}
+              />
+            </>
+          )}
+          {secondaryLeftPath && (
+            <>
+              <path
+                d={secondaryLeftPath}
+                stroke="#020617"
+                strokeWidth={secondaryShadowWidth * strokeScale}
+                opacity={secondaryShadowOpacity}
+              />
+              <path
+                d={secondaryLeftPath}
+                stroke={frameColor}
+                strokeWidth={secondaryColorWidth * strokeScale}
+                opacity={secondaryColorOpacity}
+              />
+            </>
+          )}
         </g>
       )}
     </svg>
@@ -2428,6 +2508,13 @@ function TryOnFrameSvg({
 function ensureClosedSvgPath(path: string | undefined) {
   if (!path) return undefined
   return /z\s*$/i.test(path.trim()) ? path : `${path} Z`
+}
+
+function getTemplateConstruction(template: GlobalVisagismoFrameTemplate) {
+  const label = `${template.name} ${template.slug}`.toLowerCase()
+  if (template.construction === 'rimless' || label.includes('parafus')) return 'rimless'
+  if (template.construction === 'semi-rimless' || label.includes('nylon')) return 'semi-rimless'
+  return 'full-rim'
 }
 
 function Range({
@@ -2868,10 +2955,13 @@ function buildRecommendationDiagnostic({
             description: template.description,
             realWidthMm: template.realWidthMm,
             viewBox: template.viewBox,
+            construction: template.construction,
             generatedPathsAvailable: {
               outerFullPath: Boolean(template.generatedPaths.outerFullPath),
               innerRightPath: Boolean(template.generatedPaths.innerRightPath),
               innerLeftPath: Boolean(template.generatedPaths.innerLeftPath),
+              secondaryRightPath: Boolean(template.generatedPaths.secondaryRightPath),
+              secondaryLeftPath: Boolean(template.generatedPaths.secondaryLeftPath),
             },
           }
         : null,
@@ -2889,6 +2979,7 @@ function buildRecommendationDiagnostic({
         id: template.id,
         name: template.name,
         profile: template.profile,
+        construction: template.construction,
         realWidthMm: template.realWidthMm,
         viewBox: template.viewBox,
       })),
@@ -2956,6 +3047,7 @@ function buildBatchRecommendationDiagnostic({
       id: template.id,
       name: template.name,
       profile: template.profile,
+      construction: template.construction,
       realWidthMm: template.realWidthMm,
       viewBox: template.viewBox,
     })),
