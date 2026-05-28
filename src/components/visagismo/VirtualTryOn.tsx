@@ -195,6 +195,8 @@ const SIMULATED_FACE_OPTIONS: Array<{ label: string; value: FaceShape }> = [
   { label: 'Triangular', value: 'triangle' },
   { label: 'Equilibrado', value: 'balanced' },
 ]
+const SHOW_DEV_SIMULATION = false
+const SHOW_FRAME_LIST = false
 
 interface VirtualTryOnProps {
   storeId: number
@@ -1199,9 +1201,9 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
   }
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-slate-950 text-slate-100">
+    <div className="h-[calc(100vh-64px)] overflow-hidden bg-slate-950 text-slate-100">
       <div className="border-b border-white/10 bg-slate-950/95">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <Link
               href={`/dashboard/loja/${storeId}/visagismo`}
@@ -1215,14 +1217,14 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
                 <Glasses className="h-3.5 w-3.5" />
                 Visagismo
               </div>
-              <h1 className="mt-1 text-xl font-black tracking-tight text-white">Comando da prova virtual</h1>
+              <h1 className="mt-1 text-lg font-black tracking-tight text-white">Comando da prova virtual</h1>
             </div>
           </div>
 
           <button
             type="button"
             onClick={openClientScreen}
-            className="inline-flex items-center gap-2 rounded-lg bg-cyan-500 px-3 py-2 text-xs font-black uppercase text-slate-950 transition-colors hover:bg-cyan-400"
+            className="inline-flex items-center gap-2 rounded-lg bg-cyan-500 px-2.5 py-1.5 text-[10px] font-black uppercase text-slate-950 transition-colors hover:bg-cyan-400"
           >
             <MonitorUp className="h-4 w-4" />
             Abrir tela cliente
@@ -1230,8 +1232,8 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
         </div>
       </div>
 
-      <main className="mx-auto grid max-w-7xl gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[1fr_340px]">
-        <section className="rounded-lg border border-white/10 bg-white/[0.04] p-6">
+      <main className="mx-auto grid h-[calc(100vh-64px-61px)] max-w-7xl gap-3 overflow-hidden px-4 py-3 sm:px-6 lg:grid-cols-[1fr_300px]">
+        <section className="overflow-auto rounded-lg border border-white/10 bg-white/[0.04] p-3">
           <div className="grid gap-3 sm:grid-cols-3">
             <StatusCard label="Camera" value={cameraOn ? 'ativa' : 'desligada'} tone={cameraOn ? 'good' : 'idle'} />
             <StatusCard label="Rosto" value={faceDetected ? 'detectado' : 'aguardando'} tone={faceDetected ? 'good' : 'idle'} />
@@ -1242,27 +1244,27 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
             />
           </div>
 
-          <div className="mt-6 rounded-lg border border-white/10 bg-slate-950/50 p-4">
+          <div className="mt-3 rounded-lg border border-white/10 bg-slate-950/50 p-2.5">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">Status da tela cliente</p>
-            <p className="mt-2 text-sm font-bold text-slate-200">{status}</p>
+            <p className="mt-1 text-xs font-bold text-slate-200">{status}</p>
           </div>
 
-          <div className="mt-6 rounded-lg border border-white/10 bg-slate-950/50 p-4">
+          <div className="mt-3 rounded-lg border border-white/10 bg-slate-950/50 p-2.5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">Perfil do cliente</p>
-                <p className="mt-1 text-xs text-slate-500">Toques rapidos enquanto conversa com o cliente.</p>
+                <p className="mt-0.5 text-[11px] text-slate-500">Toques rapidos enquanto conversa com o cliente.</p>
               </div>
               <button
                 type="button"
                 onClick={() => setTryOnState({ customerProfile: DEFAULT_CUSTOMER_PROFILE })}
-                className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[10px] font-black uppercase text-slate-400 transition-colors hover:bg-white/10 hover:text-slate-200"
+                className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[10px] font-black uppercase text-slate-400 transition-colors hover:bg-white/10 hover:text-slate-200"
               >
                 Limpar perfil
               </button>
             </div>
 
-            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div className="mt-2 grid gap-2 lg:grid-cols-2">
               <ButtonGroup label="Estilo desejado">
                 {CUSTOMER_STYLE_OPTIONS.map((option) => (
                   <ProfileButton
@@ -1314,7 +1316,8 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
             </div>
           </div>
 
-          <div className="mt-6 rounded-lg border border-white/10 bg-slate-950/50 p-4">
+          {SHOW_DEV_SIMULATION && (
+          <div className="mt-3 rounded-lg border border-white/10 bg-slate-950/50 p-2.5">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">Simular indicacao</p>
             <p className="mt-1 text-xs text-slate-500">
               Teste o motor sem camera usando o perfil do cliente marcado acima.
@@ -1339,65 +1342,66 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
               {batchJsonCopied ? 'Lote copiado' : 'Copiar lote para IA'}
             </button>
           </div>
+          )}
 
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
             <button
               type="button"
               onClick={startTryOnCamera}
               disabled={templates.length === 0}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-3 text-xs font-black uppercase text-slate-950 transition-colors hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-2 text-[11px] font-black uppercase text-slate-950 transition-colors hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Play className="h-4 w-4" />
+              <Play className="h-3.5 w-3.5" />
               Iniciar camera
             </button>
             <button
               type="button"
               onClick={() => sendCommand('stopCamera')}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3 text-xs font-black uppercase text-slate-300 transition-colors hover:bg-white/10"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-black uppercase text-slate-300 transition-colors hover:bg-white/10"
             >
-              <Square className="h-4 w-4" />
+              <Square className="h-3.5 w-3.5" />
               Parar camera
             </button>
             <button
               type="button"
               onClick={() => sendCommand('fullscreen')}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3 text-xs font-black uppercase text-slate-300 transition-colors hover:bg-white/10"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-black uppercase text-slate-300 transition-colors hover:bg-white/10"
             >
-              <Maximize2 className="h-4 w-4" />
+              <Maximize2 className="h-3.5 w-3.5" />
               Tela cheia
             </button>
             <button
               type="button"
               onClick={runFaceAnalysis}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-xs font-black uppercase text-cyan-100 transition-colors hover:bg-cyan-500/20"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-[11px] font-black uppercase text-cyan-100 transition-colors hover:bg-cyan-500/20"
             >
-              <ScanFace className="h-4 w-4" />
+              <ScanFace className="h-3.5 w-3.5" />
               Analisar ao vivo
             </button>
             <button
               type="button"
               onClick={() => sendCommand('freezePhoto')}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3 text-xs font-black uppercase text-slate-300 transition-colors hover:bg-white/10"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-black uppercase text-slate-300 transition-colors hover:bg-white/10"
             >
-              <Camera className="h-4 w-4" />
+              <Camera className="h-3.5 w-3.5" />
               Congelar foto
             </button>
             <button
               type="button"
               onClick={runFrozenPhotoAnalysis}
               disabled={!photoFrozen}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-xs font-black uppercase text-cyan-100 transition-colors hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-[11px] font-black uppercase text-cyan-100 transition-colors hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <ScanFace className="h-4 w-4" />
+              <ScanFace className="h-3.5 w-3.5" />
               Analisar foto
             </button>
             <button
               type="button"
               onClick={() => sendCommand('resumeLive')}
               disabled={!photoFrozen}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3 text-xs font-black uppercase text-slate-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-black uppercase text-slate-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <Play className="h-4 w-4" />
+              <Play className="h-3.5 w-3.5" />
               Voltar ao vivo
             </button>
           </div>
@@ -1546,8 +1550,8 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
           )}
         </section>
 
-        <aside className="space-y-3">
-          <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3">
+        <aside className="space-y-3 overflow-auto">
+          <div className="rounded-lg border border-white/10 bg-white/[0.04] p-2.5">
             <h2 className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
               <SlidersHorizontal className="h-3.5 w-3.5" />
               Ajustes
@@ -1649,6 +1653,7 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
             </button>
           </div>
 
+          {SHOW_FRAME_LIST && (
           <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3">
             <h2 className="mb-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Formatos</h2>
             <div className="grid gap-2">
@@ -1675,6 +1680,7 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
               ))}
             </div>
           </div>
+          )}
         </aside>
       </main>
     </div>
@@ -1689,9 +1695,9 @@ function StatusCard({ label, value, tone }: { label: string; value: string; tone
       : 'border-white/10 bg-white/[0.03] text-slate-300'
 
   return (
-    <div className={`rounded-lg border p-4 ${toneClass}`}>
+    <div className={`rounded-lg border p-2.5 ${toneClass}`}>
       <p className="text-[10px] font-black uppercase tracking-[0.18em] opacity-70">{label}</p>
-      <p className="mt-2 text-lg font-black uppercase">{value}</p>
+      <p className="mt-1 text-sm font-black uppercase">{value}</p>
     </div>
   )
 }
@@ -1699,8 +1705,8 @@ function StatusCard({ label, value, tone }: { label: string; value: string; tone
 function ButtonGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
-      <p className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
-      <div className="flex flex-wrap gap-2">{children}</div>
+      <p className="mb-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
+      <div className="flex flex-wrap gap-1.5">{children}</div>
     </div>
   )
 }
@@ -1724,7 +1730,7 @@ function ProfileButton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-lg border px-3 py-2 text-xs font-black uppercase transition-colors ${
+      className={`rounded-lg border px-2 py-1.5 text-[10px] font-black uppercase transition-colors ${
         selected
           ? selectedClass
           : 'border-white/10 bg-white/[0.03] text-slate-400 hover:bg-white/10 hover:text-slate-200'
