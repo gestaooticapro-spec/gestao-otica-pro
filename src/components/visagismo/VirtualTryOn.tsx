@@ -2261,6 +2261,8 @@ function TryOnFrameSvg({
   const lensOpacity = isRimless ? baseLensOpacity * 0.72 : isSemiRimless ? baseLensOpacity * 0.86 : baseLensOpacity
   const outerStrokeWidth = isRimless ? 1.35 : isSemiRimless ? 0.64 : 0.8
   const outerStrokeOpacity = isRimless ? 0.62 : isSemiRimless ? 0.42 : isTransparentFrame ? 0.5 : 0.62
+  const outerColorWidth = isRimless ? 0.88 : isSemiRimless ? 0.48 : 0
+  const outerColorOpacity = isRimless ? 0.88 : isSemiRimless ? 0.7 : 0
   const innerShadowWidth = isRimless ? 0.56 : isSemiRimless ? 0.76 : 1.15
   const innerColorWidth = isRimless ? 0.34 : isSemiRimless ? 0.44 : 0.62
   const innerShadowOpacity = isRimless ? 0.24 : isSemiRimless ? 0.28 : isTransparentFrame ? 0.38 : 0.32
@@ -2269,6 +2271,8 @@ function TryOnFrameSvg({
   const secondaryColorWidth = isRimless ? 1.45 : isSemiRimless ? 0.96 : 1.05
   const secondaryShadowOpacity = isRimless ? 0.46 : isSemiRimless ? 0.46 : isTransparentFrame ? 0.42 : 0.5
   const secondaryColorOpacity = isRimless ? 0.92 : isSemiRimless ? 0.88 : isTransparentFrame ? 0.5 : 0.9
+  const renderedSecondaryRightPath = ensureRenderableSecondaryPath(secondaryRightPath, template.viewBox.width)
+  const renderedSecondaryLeftPath = ensureRenderableSecondaryPath(secondaryLeftPath, template.viewBox.width)
   const svgStyle: CSSProperties = color ? { color, overflow: 'visible' } : { overflow: 'visible' }
 
   return (
@@ -2437,6 +2441,14 @@ function TryOnFrameSvg({
             strokeWidth={outerStrokeWidth * strokeScale}
             opacity={outerStrokeOpacity}
           />
+          {(isRimless || isSemiRimless) && (
+            <path
+              d={outerFullPath}
+              stroke={frameColor}
+              strokeWidth={outerColorWidth * strokeScale}
+              opacity={outerColorOpacity}
+            />
+          )}
         </g>
       )}
       {innerRightPath && (
@@ -2471,34 +2483,34 @@ function TryOnFrameSvg({
           />
         </g>
       )}
-      {(secondaryRightPath || secondaryLeftPath) && (
+      {(renderedSecondaryRightPath || renderedSecondaryLeftPath) && (
         <g filter={`url(#visagismo-frame-shadow-${id})`}>
-          {secondaryRightPath && (
+          {renderedSecondaryRightPath && (
             <>
               <path
-                d={secondaryRightPath}
+                d={renderedSecondaryRightPath}
                 stroke="#020617"
                 strokeWidth={secondaryShadowWidth * strokeScale}
                 opacity={secondaryShadowOpacity}
               />
               <path
-                d={secondaryRightPath}
+                d={renderedSecondaryRightPath}
                 stroke={frameColor}
                 strokeWidth={secondaryColorWidth * strokeScale}
                 opacity={secondaryColorOpacity}
               />
             </>
           )}
-          {secondaryLeftPath && (
+          {renderedSecondaryLeftPath && (
             <>
               <path
-                d={secondaryLeftPath}
+                d={renderedSecondaryLeftPath}
                 stroke="#020617"
                 strokeWidth={secondaryShadowWidth * strokeScale}
                 opacity={secondaryShadowOpacity}
               />
               <path
-                d={secondaryLeftPath}
+                d={renderedSecondaryLeftPath}
                 stroke={frameColor}
                 strokeWidth={secondaryColorWidth * strokeScale}
                 opacity={secondaryColorOpacity}
@@ -2514,6 +2526,20 @@ function TryOnFrameSvg({
 function ensureClosedSvgPath(path: string | undefined) {
   if (!path) return undefined
   return /z\s*$/i.test(path.trim()) ? path : `${path} Z`
+}
+
+function ensureRenderableSecondaryPath(path: string | undefined, width: number) {
+  if (!path) return undefined
+  const trimmed = path.trim()
+  const moveOnly = trimmed.match(/^M\s*(-?\d*\.?\d+)\s+(-?\d*\.?\d+)$/i)
+  if (!moveOnly) return path
+
+  const x = Number(moveOnly[1])
+  const y = Number(moveOnly[2])
+  if (Number.isNaN(x) || Number.isNaN(y)) return path
+
+  const halfDash = Math.max(width * 0.02, 1.8)
+  return `M ${(x - halfDash).toFixed(2)} ${y.toFixed(2)} L ${(x + halfDash).toFixed(2)} ${y.toFixed(2)}`
 }
 
 function getTemplateConstruction(template: GlobalVisagismoFrameTemplate) {

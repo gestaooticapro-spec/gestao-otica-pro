@@ -23,6 +23,7 @@ type FocusReport = {
   faceDetected: boolean
   blurPx: number
   clarity: number
+  calibrationLeft: number
   metrics: FocusMetrics
 }
 type FocusCommand = {
@@ -72,6 +73,7 @@ export default function MultifocalFocusDemo({ storeId, clientMode = false }: Mul
   const baselineRef = useRef<FocusMetrics>({ ...ZERO_METRICS, faceDetected: true })
   const calibrationSamplesRef = useRef<FocusMetrics[]>([])
   const calibrationTimerRef = useRef<number | null>(null)
+  const calibrationStartedAtRef = useRef(0)
   const blurRef = useRef(0)
   const statusRef = useRef(clientMode ? 'Aguardando inicio no painel' : 'Tela cliente aguardando')
   const startDemoRef = useRef<() => void>(() => {})
@@ -84,6 +86,7 @@ export default function MultifocalFocusDemo({ storeId, clientMode = false }: Mul
   const [faceDetected, setFaceDetected] = useState(false)
   const [blurPx, setBlurPx] = useState(0)
   const [clarity, setClarity] = useState(100)
+  const [calibrationLeft, setCalibrationLeft] = useState(0)
   const [metrics, setMetrics] = useState<FocusMetrics>(ZERO_METRICS)
   const [isFullscreen, setIsFullscreen] = useState(false)
 
@@ -123,6 +126,7 @@ export default function MultifocalFocusDemo({ storeId, clientMode = false }: Mul
         setFaceDetected(data.faceDetected)
         setBlurPx(data.blurPx)
         setClarity(data.clarity)
+        setCalibrationLeft(data.calibrationLeft)
         setMetrics(data.metrics)
       }
     }
@@ -164,6 +168,7 @@ export default function MultifocalFocusDemo({ storeId, clientMode = false }: Mul
       faceDetected: metricsRef.current.faceDetected,
       blurPx: blurRef.current,
       clarity: Math.round(100 - (blurRef.current / 14) * 100),
+      calibrationLeft,
       metrics: metricsRef.current,
     } satisfies FocusReport)
   }
@@ -223,12 +228,14 @@ export default function MultifocalFocusDemo({ storeId, clientMode = false }: Mul
       blurRef.current = 0
       setBlurPx(0)
       setClarity(100)
+      setCalibrationLeft(Math.ceil(CALIBRATION_MS / 1000))
 
       const landmarker = await ensureLandmarker()
       await startCamera()
       startTrackingLoop(landmarker)
 
       setStatus('Calibrando centro: olhe para a imagem com a cabeca reta.')
+      calibrationStartedAtRef.current = performance.now()
       calibrationTimerRef.current = window.setTimeout(() => {
         const samples = calibrationSamplesRef.current.filter((sample) => sample.faceDetected)
         if (samples.length < 8) {
@@ -238,6 +245,7 @@ export default function MultifocalFocusDemo({ storeId, clientMode = false }: Mul
 
         baselineRef.current = averageMetrics(samples)
         setPhase('running')
+        setCalibrationLeft(0)
         setStatus('Sessao ativa')
       }, CALIBRATION_MS)
     } catch (error) {
@@ -283,11 +291,19 @@ export default function MultifocalFocusDemo({ storeId, clientMode = false }: Mul
       metricsRef.current = nextMetrics
 
       if (phaseRef.current !== 'idle') {
+        const secondsLeft =
+          phaseRef.current === 'calibrating'
+            ? Math.max(0, Math.ceil((CALIBRATION_MS - (now - calibrationStartedAtRef.current)) / 1000))
+            : 0
+        setCalibrationLeft(secondsLeft)
+
         const nextStatus = nextMetrics.faceDetected
           ? phaseRef.current === 'calibrating'
-            ? 'Rosto encontrado. Mantendo calibracao central...'
+            ? `Rosto encontrado. Calibrando: ${secondsLeft}s`
             : 'Sessao ativa'
-          : `Procurando rosto... camera ${video.videoWidth || '-'}x${video.videoHeight || '-'}`
+          : phaseRef.current === 'calibrating'
+            ? `Procurando rosto... calibracao ${secondsLeft}s`
+            : `Procurando rosto... camera ${video.videoWidth || '-'}x${video.videoHeight || '-'}`
         if (lastDetectionStatusRef.current !== nextStatus) {
           lastDetectionStatusRef.current = nextStatus
           setStatus(nextStatus)
@@ -326,6 +342,7 @@ export default function MultifocalFocusDemo({ storeId, clientMode = false }: Mul
     setMetrics(ZERO_METRICS)
     setBlurPx(0)
     setClarity(100)
+    setCalibrationLeft(0)
   }
 
   function cleanupTracking() {
@@ -362,6 +379,12 @@ export default function MultifocalFocusDemo({ storeId, clientMode = false }: Mul
           <div>{phaseLabel(phase)}</div>
           <div className="mt-1 text-white/70">Nitidez {clarity}%</div>
         </div>
+        {phase === 'calibrating' && (
+          <div className="absolute left-1/2 top-5 -translate-x-1/2 rounded-md border border-white/15 bg-black/45 px-5 py-3 text-center backdrop-blur">
+            <div className="text-[10px] font-black uppercase tracking-wide text-white/60">Calibracao</div>
+            <div className="mt-1 font-mono text-3xl font-black">{calibrationLeft}s</div>
+          </div>
+        )}
         <button
           type="button"
           onClick={toggleClientFullscreen}
@@ -438,6 +461,26 @@ export default function MultifocalFocusDemo({ storeId, clientMode = false }: Mul
                 {isRunning ? 'Parar' : 'Iniciar'}
               </button>
               <div className="mt-4 rounded-md bg-zinc-100 p-3 text-sm font-semibold text-zinc-700">{status}</div>
+              {phase === 'calibrating' && (
+                <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3">
+                  <div className="flex items-center justify-between text-xs font-black uppercase tracking-wide text-amber-800">
+                    <span>Calibracao</span>
+                    <span className="font-mono text-base">{calibrationLeft}s</span>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-amber-100">
+                    <div
+                      className="h-full rounded-full bg-amber-500 transition-all duration-150"
+                      style={{
+                        width: `${clamp(
+                          ((CALIBRATION_MS / 1000 - calibrationLeft) / (CALIBRATION_MS / 1000)) * 100,
+                          0,
+                          100,
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="rounded-md border border-zinc-300 bg-white p-5 shadow-sm">

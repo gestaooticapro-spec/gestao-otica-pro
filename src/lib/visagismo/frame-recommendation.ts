@@ -263,7 +263,18 @@ function scoreCustomerProfile(
 
   if (customer.expression === 'masculine') {
     if (['rectangular', 'square', 'aviator', 'wayfarer', 'geometric'].includes(profile.shape)) score += 8
-    if (profile.shape === 'cat-eye') score -= 14
+    if (profile.shape === 'cat-eye') {
+      const wantsLift = customer.goals.includes('lift')
+      const fashionForward = customer.style === 'modern' || customer.style === 'striking'
+
+      // Cat-eye for masculine profile is treated as a rare exception.
+      // We only relax the penalty when the client explicitly wants a lifted,
+      // fashion-forward direction.
+      score -= 52
+      if (wantsLift) score += 12
+      if (fashionForward) score += 10
+      if (wantsLift && fashionForward) score += 6
+    }
   }
 
   if (customer.expression === 'feminine') {

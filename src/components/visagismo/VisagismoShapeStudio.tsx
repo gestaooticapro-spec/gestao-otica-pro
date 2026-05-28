@@ -362,6 +362,8 @@ function GlobalFrameTemplatePreview({
   const semiRimlessFillPath = isSemiRimless && outerFramePath
     ? outerFramePath
     : undefined
+  const renderedSecondaryRightPath = ensureRenderableSecondaryPath(secondaryRightPath, width)
+  const renderedSecondaryLeftPath = ensureRenderableSecondaryPath(secondaryLeftPath, width)
   const outerStrokeWidth = isRimless ? 2.2 : isSemiRimless ? 1.25 : 2.4
   const innerStrokeWidth = isRimless ? 0.62 : isSemiRimless ? 0.86 : 1.2
   const innerOpacity = isRimless ? 0.42 : isSemiRimless ? 0.52 : 0.65
@@ -406,8 +408,8 @@ function GlobalFrameTemplatePreview({
       {outerFullPath && <path d={outerFullPath} strokeWidth={outerStrokeWidth} opacity={isRimless ? 0.88 : 1} />}
       {innerRightPath && <path d={innerRightPath} strokeWidth={innerStrokeWidth} opacity={innerOpacity} />}
       {innerLeftPath && <path d={innerLeftPath} strokeWidth={innerStrokeWidth} opacity={innerOpacity} />}
-      {secondaryRightPath && <path d={secondaryRightPath} strokeWidth={secondaryStrokeWidth} opacity="0.9" />}
-      {secondaryLeftPath && <path d={secondaryLeftPath} strokeWidth={secondaryStrokeWidth} opacity="0.9" />}
+      {renderedSecondaryRightPath && <path d={renderedSecondaryRightPath} strokeWidth={secondaryStrokeWidth} opacity="0.9" />}
+      {renderedSecondaryLeftPath && <path d={renderedSecondaryLeftPath} strokeWidth={secondaryStrokeWidth} opacity="0.9" />}
     </svg>
   )
 }
@@ -417,6 +419,20 @@ function getTemplateConstruction(template: GlobalVisagismoFrameTemplate) {
   if (template.construction === 'rimless' || label.includes('parafus')) return 'rimless'
   if (template.construction === 'semi-rimless' || label.includes('nylon')) return 'semi-rimless'
   return 'full-rim'
+}
+
+function ensureRenderableSecondaryPath(path: string | undefined, width: number) {
+  if (!path) return undefined
+  const trimmed = path.trim()
+  const moveOnly = trimmed.match(/^M\s*(-?\d*\.?\d+)\s+(-?\d*\.?\d+)$/i)
+  if (!moveOnly) return path
+
+  const x = Number(moveOnly[1])
+  const y = Number(moveOnly[2])
+  if (Number.isNaN(x) || Number.isNaN(y)) return path
+
+  const halfDash = Math.max(width * 0.02, 1.8)
+  return `M ${(x - halfDash).toFixed(2)} ${y.toFixed(2)} L ${(x + halfDash).toFixed(2)} ${y.toFixed(2)}`
 }
 
 function ensureClosedSvgPath(path: string | undefined) {
