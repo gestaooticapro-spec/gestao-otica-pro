@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Camera, CheckCircle2, Copy, ImageIcon, RotateCcw, Ruler, Save, ScanFace } from 'lucide-react'
+import { Camera, CheckCircle2, Copy, ImageIcon, RotateCcw, Ruler, Save, ScanFace, ZoomIn, ZoomOut } from 'lucide-react'
 import { saveMedicaoOS } from '@/lib/actions/medidas.actions'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -25,6 +25,10 @@ type MPModule = typeof import('@mediapipe/tasks-vision')
 type FaceLandmarkerInstance = Awaited<ReturnType<MPModule['FaceLandmarker']['createFromOptions']>>
 type RawLm = { x: number; y: number; z: number }
 type MediaTrackWithImageCapture = MediaStreamTrack & { getSettings?: () => MediaTrackSettings }
+type FaceLandmarkerImageResult = { faceLandmarks?: RawLm[][] }
+type WindowWithImageCapture = Window & {
+  ImageCapture?: new (track: MediaStreamTrack) => { takePhoto: () => Promise<Blob> }
+}
 
 // ─── Grupos de medição ────────────────────────────────────────────────────────
 interface MGroup { id: string; label: string; handles: HKey[]; refs?: HKey[] }
@@ -154,12 +158,13 @@ export default function FrameMeasurementTool({
   const [copied,      setCopied]      = useState(false)
   const [saving,      setSaving]      = useState(false)
   const [saved,       setSaved]       = useState(false)
-  const [cardMm,      setCardMm]      = useState(85.6)
+  const [cardMm,      setCardMm]      = useState(CC_MM)
   const [cardInput,   setCardInput]   = useState('85.6')
   const [cameraOpen,  setCameraOpen]  = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [gridDivs,    setGridDivs]    = useState(10)
   const [cameraAspect, setCameraAspect] = useState<number>(16 / 9)
+  const [viewZoom,    setViewZoom]    = useState(1)
 
   useEffect(() => { imgBoundsRef.current = imgBounds   }, [imgBounds])
   useEffect(() => { activeGrpRef.current = activeGroup }, [activeGroup])
@@ -273,7 +278,7 @@ export default function FrameMeasurementTool({
     oc.height = Math.round(img.naturalHeight * s)
     oc.getContext('2d')!.drawImage(img, 0, 0, oc.width, oc.height)
     try {
-      const result = (lm as any).detect(oc)
+      const result = lm.detect(oc) as FaceLandmarkerImageResult
       const detected: RawLm[] | undefined = result?.faceLandmarks?.[0]
       if (!detected?.length) return
       rawLmsRef.current = detected; setAutoOk(true)
@@ -342,9 +347,10 @@ export default function FrameMeasurementTool({
 
     // Preferimos frame nativo da camera para evitar distorcao introduzida pelo elemento <video>.
     const track = stream?.getVideoTracks?.()[0] as MediaTrackWithImageCapture | undefined
-    if (track && 'ImageCapture' in window) {
+    const imageWindow = window as WindowWithImageCapture
+    if (track && imageWindow.ImageCapture) {
       try {
-        const imageCapture = new (window as any).ImageCapture(track)
+        const imageCapture = new imageWindow.ImageCapture(track)
         const blob = await imageCapture.takePhoto()
         file = new File([blob], `captura-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' })
       } catch {
@@ -430,8 +436,17 @@ export default function FrameMeasurementTool({
     const canvas = canvasRef.current; if (!canvas || !imgRef.current) return
     const ctx = canvas.getContext('2d')!; const ib = imgBounds
     ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, canvasW, canvasH)
+
+    ctx.save()
+    ctx.translate(canvasW / 2, canvasH / 2)
+    ctx.scale(viewZoom, viewZoom)
+    ctx.translate(-canvasW / 2, -canvasH / 2)
+
     ctx.drawImage(imgRef.current, ib.x, ib.y, ib.w, ib.h)
-    if (!pts) return
+    if (!pts) {
+      ctx.restore()
+      return
+    }
 
     const m   = calc(pts)
     const bCX = (pts.bridgeR.x + pts.bridgeL.x) / 2
@@ -512,7 +527,7 @@ export default function FrameMeasurementTool({
       ctx.beginPath(); ctx.moveTo(pts.calibA.x, pts.calibA.y); ctx.lineTo(pts.calibB.x, pts.calibB.y); ctx.stroke()
       ctx.restore()
       pill(ctx, `${fmt(m.calibMm)} mm`, (pts.calibA.x + pts.calibB.x) / 2, (pts.calibA.y + pts.calibB.y) / 2 - 14, ok ? '#94a3b8' : '#fbbf24')
-      calCross(pts.calibA, 'calibA'); calCross(pts.calibB, 'calibB'); return
+      calCross(pts.calibA, 'calibA'); calCross(pts.calibB, 'calibB'); ctx.restore(); return
     }
 
     // Medição
@@ -555,7 +570,8 @@ export default function FrameMeasurementTool({
         else                  dot(pts[k], k, true)
       })
     }
-  }, [pts, dragging, step, activeGroup, lensType, canvasW, canvasH, imgBounds, cardMm]) // eslint-disable-line react-hooks/exhaustive-deps
+    ctx.restore()
+  }, [pts, dragging, step, activeGroup, lensType, canvasW, canvasH, imgBounds, cardMm, viewZoom]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { draw() }, [draw])
 
@@ -565,10 +581,18 @@ export default function FrameMeasurementTool({
     const sx = canvasW / rect.width, sy = canvasH / rect.height
     if ('touches' in e) {
       const t = (e as React.TouchEvent).touches[0] ?? (e as React.TouchEvent).changedTouches[0]
-      return { x: (t.clientX - rect.left) * sx, y: (t.clientY - rect.top) * sy }
+      const raw = { x: (t.clientX - rect.left) * sx, y: (t.clientY - rect.top) * sy }
+      return {
+        x: (raw.x - canvasW / 2) / viewZoom + canvasW / 2,
+        y: (raw.y - canvasH / 2) / viewZoom + canvasH / 2,
+      }
     }
     const me = e as React.MouseEvent
-    return { x: (me.clientX - rect.left) * sx, y: (me.clientY - rect.top) * sy }
+    const raw = { x: (me.clientX - rect.left) * sx, y: (me.clientY - rect.top) * sy }
+    return {
+      x: (raw.x - canvasW / 2) / viewZoom + canvasW / 2,
+      y: (raw.y - canvasH / 2) / viewZoom + canvasH / 2,
+    }
   }
 
   function nearestBalloon(pos: Pt): HKey | null {
@@ -671,6 +695,7 @@ export default function FrameMeasurementTool({
   function reset() {
     setStep('capture'); setPts(null); setActiveGroup(null); setLensType(null)
     setAutoOk(false); setShowDiam(false); setSaved(false)
+    setViewZoom(1)
     rawLmsRef.current = null; imgRef.current = null
   }
 
@@ -691,6 +716,37 @@ export default function FrameMeasurementTool({
             onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp} />
         )}
       </div>
+
+      {step !== 'capture' && (
+        <div className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/80 p-2 shadow-lg backdrop-blur">
+          <button
+            type="button"
+            onClick={() => setViewZoom((zoom) => Math.max(1, Math.round((zoom - 0.25) * 100) / 100))}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 hover:bg-white/15"
+            title="Diminuir zoom"
+            aria-label="Diminuir zoom"
+          >
+            <ZoomOut className="h-4 w-4" />
+          </button>
+          <div className="min-w-14 text-center font-mono text-xs font-bold text-slate-200">{Math.round(viewZoom * 100)}%</div>
+          <button
+            type="button"
+            onClick={() => setViewZoom((zoom) => Math.min(3, Math.round((zoom + 0.25) * 100) / 100))}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 hover:bg-white/15"
+            title="Aumentar zoom"
+            aria-label="Aumentar zoom"
+          >
+            <ZoomIn className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewZoom(1)}
+            className="rounded-lg bg-white/10 px-3 py-2 text-xs font-bold hover:bg-white/15"
+          >
+            100%
+          </button>
+        </div>
+      )}
 
       {/* Captura */}
       {step === 'capture' && (

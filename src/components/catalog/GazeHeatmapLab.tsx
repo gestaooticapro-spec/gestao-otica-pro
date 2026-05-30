@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Camera, CircleDot, Loader2, Play, RotateCcw, ScanFace, StopCircle } from 'lucide-react'
+import { ArrowLeft, Camera, CircleDot, Loader2, Maximize2, Minimize2, Play, RotateCcw, ScanFace, StopCircle } from 'lucide-react'
 import type { LensGeometry, LensPins } from '@/lib/actions/lens-geometry.actions'
 
 type NormalizedPoint = { x: number; y: number }
@@ -10,6 +10,10 @@ type FaceMetrics = {
   faceDetected: boolean
   eyeX: number
   eyeY: number
+  headX: number
+  headY: number
+}
+type HeadOffset = {
   headX: number
   headY: number
 }
@@ -52,6 +56,12 @@ type SessionSample = {
   headY: number
   targetX: number
   targetY: number
+  headOnlyProjection?: boolean
+}
+type SandboxCalibrationStep = {
+  key: string
+  target: NormalizedPoint
+  instruction: string
 }
 type ClientSyncPayload = {
   type: 'state'
@@ -59,7 +69,15 @@ type ClientSyncPayload = {
   target: NormalizedPoint
   status: string
 }
-type RemoteCommand = 'openCamera' | 'startCalibration' | 'startSession' | 'finishSession' | 'resetLab'
+type RemoteCommand =
+  | 'openCamera'
+  | 'startCalibration'
+  | 'startSandboxCalibration'
+  | 'startHeadOnlySandbox'
+  | 'startSession'
+  | 'finishSession'
+  | 'cancelRun'
+  | 'resetLab'
 type CommandPayload = {
   type: 'command'
   command: RemoteCommand
@@ -72,6 +90,7 @@ type ReportPayload = {
   status: string
   target: NormalizedPoint
   liveMetrics: FaceMetrics
+  liveHeadOffset: HeadOffset
   summary: SessionSummary | null
   prepSecondsLeft: number
   heatmap: Float32Array
@@ -95,24 +114,42 @@ const TARGET_INTERVAL_MS = 2200
 const TARGET_SETTLE_MS = 700
 const TARGET_CAPTURE_END_MS = 1850
 const CALIBRATION_DURATION_MS = 3000
+const SANDBOX_CALIBRATION_STEP_MS = 2600
+const SANDBOX_CALIBRATION_SETTLE_MS = 700
 const SAFE_TARGET_MARGIN_X = 0.04
 const SAFE_TARGET_MARGIN_Y = 0.08
 const EYE_DEADZONE_X = 0.035
 const EYE_DEADZONE_Y = 0.04
 const HEAD_DEADZONE_X = 0.09
-const HEAD_DEADZONE_Y = 0.11
+const HEAD_DEADZONE_Y = 0.18
 const EYE_RESPONSE_X = 0.58
 const EYE_RESPONSE_Y = 0.52
 const HEAD_RESPONSE_X = 0.64
 const HEAD_RESPONSE_Y = 0.58
+const HEAD_ONLY_HEAD_X_SCALE = 0.55
+const HEAD_ONLY_HEAD_Y_SCALE = 0.12
+const HEAD_COMPENSATION_DOT_Y_GAIN = 2.6
 const ENVELOPE_BINS = 72
 const CUTOUT = { x: 0.24, y: 0.22, w: 0.52, h: 0.46 }
 const HEATMAP_LAB_BUILD = 'heatmap-v10-geometry-picker-2026-04-30'
+const SANDBOX_CALIBRATION_STEPS: SandboxCalibrationStep[] = [
+  { key: 'center', target: { x: 0.5, y: 0.5 }, instruction: '1/9 · centro · cabeça neutra' },
+  { key: 'eyeLeft', target: { x: 0.08, y: 0.5 }, instruction: '2/9 · só olhos · esquerda' },
+  { key: 'eyeRight', target: { x: 0.92, y: 0.5 }, instruction: '3/9 · só olhos · direita' },
+  { key: 'eyeUp', target: { x: 0.5, y: 0.1 }, instruction: '4/9 · só olhos · cima' },
+  { key: 'eyeDown', target: { x: 0.5, y: 0.9 }, instruction: '5/9 · só olhos · baixo' },
+  { key: 'headLeft', target: { x: 0.08, y: 0.5 }, instruction: '6/9 · acompanhe com a cabeça · esquerda' },
+  { key: 'headRight', target: { x: 0.92, y: 0.5 }, instruction: '7/9 · acompanhe com a cabeça · direita' },
+  { key: 'headUp', target: { x: 0.5, y: 0.1 }, instruction: '8/9 · acompanhe com a cabeça · cima' },
+  { key: 'headDown', target: { x: 0.5, y: 0.9 }, instruction: '9/9 · acompanhe com a cabeça · baixo' },
+]
 
 const LANDMARKS = {
   nose: 1,
   forehead: 10,
   chin: 152,
+  leftFace: 234,
+  rightFace: 454,
   leftEyeOuter: 33,
   leftEyeInner: 133,
   leftEyeTop: 159,
@@ -161,6 +198,29 @@ const applyDeadzone = (value: number, deadzone: number, limit = 1.2) => {
   return Math.sign(value) * normalized
 }
 
+function averageFaceMetrics(samples: FaceMetrics[]) {
+  if (!samples.length) return { faceDetected: false, eyeX: 0, eyeY: 0, headX: 0, headY: 0 }
+  return samples.reduce(
+    (acc, sample) => ({
+      faceDetected: true,
+      eyeX: acc.eyeX + sample.eyeX / samples.length,
+      eyeY: acc.eyeY + sample.eyeY / samples.length,
+      headX: acc.headX + sample.headX / samples.length,
+      headY: acc.headY + sample.headY / samples.length,
+    }),
+    { faceDetected: true, eyeX: 0, eyeY: 0, headX: 0, headY: 0 },
+  )
+}
+
+function calibrationMagnitude(
+  a: FaceMetrics | undefined,
+  b: FaceMetrics | undefined,
+  axis: 'eyeX' | 'eyeY' | 'headX' | 'headY',
+) {
+  if (!a || !b) return 1
+  return clamp(Math.abs(a[axis] - b[axis]) / 2, 0.18, 1.2)
+}
+
 function distance(a: NormalizedPoint, b: NormalizedPoint) {
   return Math.hypot(a.x - b.x, a.y - b.y)
 }
@@ -207,6 +267,8 @@ function computeFaceMetrics(landmarks: NormalizedPoint[]): FaceMetrics {
   const nose = getLandmark(landmarks, LANDMARKS.nose)
   const forehead = getLandmark(landmarks, LANDMARKS.forehead)
   const chin = getLandmark(landmarks, LANDMARKS.chin)
+  const leftFace = getLandmark(landmarks, LANDMARKS.leftFace)
+  const rightFace = getLandmark(landmarks, LANDMARKS.rightFace)
 
   const leftAxis = computeEyeAxis(leftIris, leftEyeOuter, leftEyeInner, leftEyeTop, leftEyeBottom)
   const rightAxis = computeEyeAxis(rightIris, rightEyeOuter, rightEyeInner, rightEyeTop, rightEyeBottom)
@@ -227,13 +289,24 @@ function computeFaceMetrics(landmarks: NormalizedPoint[]): FaceMetrics {
   }
   const eyeDistance = Math.max(distance(leftEyeCenter, rightEyeCenter), 0.0001)
   const faceHeight = Math.max(Math.abs(chin.y - forehead.y), 0.0001)
+  const faceCenter = {
+    x: (leftFace.x + rightFace.x) / 2,
+    y: (leftFace.y + rightFace.y) / 2,
+  }
+  const faceWidth = Math.max(distance(leftFace, rightFace), 0.0001)
+  const faceShiftX = clamp((eyeCenter.x - 0.5) / 0.22, -1.4, 1.4)
+  const faceShiftY = clamp((eyeCenter.y - 0.5) / 0.26, -1.4, 1.4)
+  const poseHeadX = clamp((nose.x - eyeCenter.x) / (eyeDistance * 0.5), -1.4, 1.4)
+  const poseHeadY = clamp(((nose.y - eyeCenter.y) / faceHeight - 0.08) * 3.2, -1.4, 1.4)
+  const yawHeadX = clamp((nose.x - faceCenter.x) / (faceWidth * 0.26), -1.4, 1.4)
+  const pitchHeadY = clamp((nose.y - faceCenter.y) / (faceHeight * 0.22), -1.4, 1.4)
 
   return {
     faceDetected: true,
     eyeX,
     eyeY,
-    headX: clamp((nose.x - eyeCenter.x) / (eyeDistance * 0.5), -1.4, 1.4),
-    headY: clamp(((nose.y - eyeCenter.y) / faceHeight - 0.08) * 3.2, -1.4, 1.4),
+    headX: clamp(yawHeadX * 0.72 + poseHeadX * 0.38 + faceShiftX * 0.42, -1.4, 1.4),
+    headY: clamp(-(pitchHeadY * 0.28 + poseHeadY * 0.26 + faceShiftY * 0.22), -1.4, 1.4),
   }
 }
 
@@ -334,9 +407,9 @@ function getAxisEyeShare(eye: number, head: number, headPenalty: number) {
 function suppressHeadAxis(head: number, eye: number, demand: number, axis: 'x' | 'y') {
   const absHead = Math.abs(head)
   const absEye = Math.abs(eye)
-  const floor = axis === 'x' ? 0.16 : 0.18
-  const demandBoost = axis === 'x' ? 0.03 : 0.05
-  const eyeAllowance = axis === 'x' ? 0.95 : 1.1
+  const floor = axis === 'x' ? 0.08 : 0.1
+  const demandBoost = axis === 'x' ? 0.06 : 0.07
+  const eyeAllowance = axis === 'x' ? 0.8 : 0.95
   if (absHead < floor + demand * demandBoost && absHead <= absEye * eyeAllowance) {
     return 0
   }
@@ -344,6 +417,14 @@ function suppressHeadAxis(head: number, eye: number, demand: number, axis: 'x' |
     return 0
   }
   return head
+}
+
+function getHeadOnlyCarryX(headX: number) {
+  return clamp(headX / HEAD_ONLY_HEAD_X_SCALE, -1.25, 1.25)
+}
+
+function getHeadOnlyCarryY(headY: number) {
+  return clamp(-headY / HEAD_ONLY_HEAD_Y_SCALE, -1.25, 1.25)
 }
 
 function projectSampleToLens(sample: SessionSample) {
@@ -354,55 +435,89 @@ function projectSampleToLens(sample: SessionSample) {
   const normalizedEyeY = applyDeadzone(sample.eyeY, EYE_DEADZONE_Y)
   const normalizedHeadX = applyDeadzone(sample.headX, HEAD_DEADZONE_X)
   const normalizedHeadY = applyDeadzone(sample.headY, HEAD_DEADZONE_Y)
-  const eyeMag = Math.hypot(normalizedEyeX, normalizedEyeY)
-  const eyeNorm = clamp(eyeMag / 0.48, 0, 1.35)
+
+  if (sample.headOnlyProjection) {
+    const headCarryX = getHeadOnlyCarryX(sample.headX)
+    const headCarryY = getHeadOnlyCarryY(sample.headY)
+    const lensEyeX = clamp(target.x - headCarryX, -1.2, 1.2)
+    const lensEyeY = clamp(target.y - headCarryY, -1.2, 1.2)
+    const headShareX = clamp(Math.abs(headCarryX) / Math.max(Math.abs(target.x), 0.0001), 0, 1)
+    const headShareY = clamp(Math.abs(headCarryY) / Math.max(Math.abs(target.y), 0.0001), 0, 1)
+    const eyeShareX = 1 - headShareX
+    const eyeShareY = 1 - headShareY
+    const demandedWeight = Math.max(demandX + demandY, 0.0001)
+    const eyeDemandShare = clamp((eyeShareX * demandX + eyeShareY * demandY) / demandedWeight, 0, 1)
+    const eyeNorm = clamp(Math.hypot(lensEyeX, lensEyeY) / 0.65, 0, 1.5)
+    const edgeSpread = clamp(0.52 + eyeNorm * 1.05 + eyeDemandShare * 0.32, 0.52, 1.92)
+
+    return {
+      point: {
+        x: clamp(0.5 + lensEyeX * 0.5, 0.03, 0.97),
+        y: clamp(0.52 + lensEyeY * 0.45, 0.03, 0.95),
+      },
+      heatPoint: {
+        x: clamp(0.5 + lensEyeX * 0.52, 0.03, 0.97),
+        y: clamp(0.52 + lensEyeY * 0.47, 0.03, 0.95),
+      },
+      radius: 1.7 + edgeSpread * 1.18,
+      spreadX: 0.006 + Math.abs(lensEyeX) * 0.052 + eyeDemandShare * 0.012,
+      spreadY: 0.012 + Math.abs(lensEyeY) * 0.075 + eyeDemandShare * 0.016,
+      weight: 1 + eyeDemandShare * 0.22,
+      eyeDominance: eyeDemandShare,
+      headDominance: 1 - eyeDemandShare,
+      eyeShareX,
+      eyeShareY,
+      demandWeight: demandedWeight,
+    }
+  }
+
+  const eyeConfirmsTargetX =
+    demandX < 0.08 ? 0 : smoothstep(0.02, 0.16, Math.sign(target.x) * -normalizedEyeX)
+  const measuredEyeConfirmsTargetY =
+    demandY < 0.08 ? 0 : smoothstep(0.02, 0.14, Math.abs(normalizedEyeY))
+  const verticalHeadEvidence = smoothstep(0.12, 0.38, Math.abs(sample.headY))
+  const effectiveHeadY = normalizedHeadY * (1 - measuredEyeConfirmsTargetY * 0.45)
   const eyeShareX = getAxisEyeShare(
-    normalizedEyeX * (0.55 + demandX * EYE_RESPONSE_X),
-    normalizedHeadX * (0.38 + demandX * HEAD_RESPONSE_X),
-    1.18,
+    normalizedEyeX * (0.72 + demandX * EYE_RESPONSE_X),
+    normalizedHeadX * (0.44 + demandX * HEAD_RESPONSE_X),
+    1.12,
   )
   const eyeShareY = getAxisEyeShare(
-    normalizedEyeY * (0.5 + demandY * EYE_RESPONSE_Y),
-    normalizedHeadY * (0.34 + demandY * HEAD_RESPONSE_Y),
-    1.34,
+    normalizedEyeY * (0.78 + demandY * EYE_RESPONSE_Y),
+    effectiveHeadY * (0.32 + demandY * HEAD_RESPONSE_Y),
+    1.22,
   )
+  const eyeConfirmsTargetY =
+    demandY < 0.08
+      ? 0
+      : Math.max(measuredEyeConfirmsTargetY, smoothstep(0.44, 0.72, eyeShareY)) *
+        (1 - verticalHeadEvidence * 0.94)
+  const lensTargetX = target.x * eyeShareX * eyeConfirmsTargetX
+  const lensTargetY = target.y * eyeShareY * eyeConfirmsTargetY
+  const lensEyeX = clamp(lensTargetX * 0.88 - normalizedEyeX * 0.24, -1.2, 1.2)
+  const lensEyeY = clamp(lensTargetY * 1.04 + normalizedEyeY * 0.05 * (1 - verticalHeadEvidence), -1.2, 1.2)
   const demandedWeight = Math.max(demandX + demandY, 0.0001)
   const eyeDemandShare = clamp((eyeShareX * demandX + eyeShareY * demandY) / demandedWeight, 0, 1)
   const headDemandShare = 1 - eyeDemandShare
-  const lensDemandX = target.x * eyeShareX
-  const lensDemandY = target.y * eyeShareY
-  const heatDemandX = target.x * (0.62 + eyeShareX * 0.24)
-  const heatDemandY = target.y * (0.6 + eyeShareY * 0.24)
-  const edgeSpread = clamp(0.42 + eyeDemandShare * 1.25 + eyeNorm * 0.22, 0.42, 1.98)
-  const verticalBias = clamp(0.82 + demandY * 0.95 + eyeShareY * 0.3, 0.82, 1.75)
+  const eyeMag = Math.hypot(lensEyeX, lensEyeY)
+  const eyeNorm = clamp(eyeMag / 0.65, 0, 1.5)
+  const edgeSpread = clamp(0.52 + eyeNorm * 1.05 + eyeDemandShare * 0.32, 0.52, 1.92)
 
   const point = {
-    x: clamp(
-      0.5 +
-        lensDemandX * 0.42 +
-        normalizedEyeX * 0.05,
-      0.03,
-      0.97,
-    ),
-    y: clamp(
-      0.52 +
-        lensDemandY * 0.42 * verticalBias +
-        normalizedEyeY * 0.08,
-      0.03,
-      0.95,
-    ),
+    x: clamp(0.5 + lensEyeX * 0.62, 0.03, 0.97),
+    y: clamp(0.52 + lensEyeY * 0.54, 0.03, 0.95),
   }
   const heatPoint = {
-    x: clamp(0.5 + heatDemandX * 0.42 + normalizedEyeX * 0.025, 0.03, 0.97),
-    y: clamp(0.52 + heatDemandY * 0.38 * verticalBias + normalizedEyeY * 0.035, 0.03, 0.95),
+    x: clamp(0.5 + lensEyeX * 0.64, 0.03, 0.97),
+    y: clamp(0.52 + lensEyeY * 0.56, 0.03, 0.95),
   }
 
   return {
     point,
     heatPoint,
     radius: 1.7 + edgeSpread * 1.18,
-    spreadX: 0.006 + demandX * 0.052 * eyeShareX + eyeDemandShare * 0.018,
-    spreadY: 0.012 + demandY * 0.085 * eyeShareY + eyeDemandShare * 0.026 + headDemandShare * 0.008,
+    spreadX: 0.006 + Math.abs(lensEyeX) * 0.052 + eyeDemandShare * 0.012,
+    spreadY: 0.012 + Math.abs(lensEyeY) * 0.075 + eyeDemandShare * 0.016,
     weight: 1 + eyeDemandShare * 0.22,
     eyeDominance: eyeDemandShare,
     headDominance: headDemandShare,
@@ -952,6 +1067,9 @@ export default function GazeHeatmapLab({
   const targetSamplesRef = useRef<SessionSample[]>([])
   const calibrationSamplesRef = useRef<FaceMetrics[]>([])
   const baselineRef = useRef({ eyeX: 0, eyeY: 0, headX: 0, headY: 0 })
+  const sandboxStepRef = useRef<{ step: SandboxCalibrationStep; startedAt: number; samples: FaceMetrics[] } | null>(null)
+  const sandboxCollectedRef = useRef<Record<string, FaceMetrics[]>>({})
+  const headOnlyProjectionRef = useRef(false)
   const currentTargetRef = useRef<NormalizedPoint>({ x: 0.5, y: 0.5 })
   const targetStartedAtRef = useRef<number>(0)
   const targetSequenceRef = useRef<NormalizedPoint[]>([])
@@ -959,6 +1077,7 @@ export default function GazeHeatmapLab({
   const broadcastRef = useRef<BroadcastChannel | null>(null)
 
   const [cameraReady, setCameraReady] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const [loadingModel, setLoadingModel] = useState(false)
   const [phase, setPhase] = useState<SessionPhase>('idle')
   const [hasCalibration, setHasCalibration] = useState(false)
@@ -972,12 +1091,14 @@ export default function GazeHeatmapLab({
     headX: 0,
     headY: 0,
   })
+  const [liveHeadOffset, setLiveHeadOffset] = useState<HeadOffset>({ headX: 0, headY: 0 })
   const [summary, setSummary] = useState<SessionSummary | null>(null)
   const [prepSecondsLeft, setPrepSecondsLeft] = useState(0)
   const [secureContextWarning, setSecureContextWarning] = useState(false)
   const [pendingRemoteCommand, setPendingRemoteCommand] = useState<PendingRemoteCommand | null>(null)
   const [remoteReportVersion, setRemoteReportVersion] = useState(0)
   const [cameraSettings, setCameraSettings] = useState<CameraSettings | null>(null)
+  const [headOnlyProjection, setHeadOnlyProjection] = useState(false)
   const isFocusMode = phase === 'calibrating' || phase === 'running'
   const selectedGeometry = geometries.find((item) => item.id === selectedGeometryId) ?? geometry ?? geometries[0] ?? null
 
@@ -1055,6 +1176,7 @@ export default function GazeHeatmapLab({
         setStatus(data.status)
         setTarget(data.target)
         setLiveMetrics(data.liveMetrics)
+        setLiveHeadOffset(data.liveHeadOffset)
         setSummary(data.summary)
         setPrepSecondsLeft(data.prepSecondsLeft)
         heatmapRef.current = new Float32Array(data.heatmap)
@@ -1075,8 +1197,11 @@ export default function GazeHeatmapLab({
 
     if (pendingRemoteCommand.command === 'openCamera') void startCamera()
     if (pendingRemoteCommand.command === 'startCalibration') void startCalibration()
+    if (pendingRemoteCommand.command === 'startSandboxCalibration') void startSandboxCalibration()
+    if (pendingRemoteCommand.command === 'startHeadOnlySandbox') void startHeadOnlySandbox()
     if (pendingRemoteCommand.command === 'startSession') startSession()
     if (pendingRemoteCommand.command === 'finishSession') finishSession()
+    if (pendingRemoteCommand.command === 'cancelRun') cancelRun()
     if (pendingRemoteCommand.command === 'resetLab') resetLab()
 
     setPendingRemoteCommand(null)
@@ -1094,19 +1219,30 @@ export default function GazeHeatmapLab({
       status,
       target,
       liveMetrics,
+      liveHeadOffset,
       summary,
       prepSecondsLeft,
       heatmap: heatmapRef.current,
       samples: samplesRef.current,
       cameraSettings,
     } satisfies ReportPayload)
-  }, [clientMode, cameraReady, cameraSettings, hasCalibration, liveMetrics, phase, prepSecondsLeft, status, summary, target])
+  }, [clientMode, cameraReady, cameraSettings, hasCalibration, liveHeadOffset, liveMetrics, phase, prepSecondsLeft, status, summary, target])
 
   useEffect(() => {
     if (!clientMode) return
     if (cameraReady) return
     void startCamera()
   }, [clientMode, cameraReady])
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      const stage = stageRef.current
+      setIsFullscreen(Boolean(stage && document.fullscreenElement === stage))
+    }
+    document.addEventListener('fullscreenchange', onFullscreenChange)
+    onFullscreenChange()
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
+  }, [])
 
   useEffect(() => {
     redrawHeatmaps()
@@ -1132,6 +1268,19 @@ export default function GazeHeatmapLab({
       document.exitFullscreen?.().catch(() => {})
     }
   }, [clientMode, isFocusMode])
+
+  const toggleFullscreen = useCallback(async () => {
+    const stage = stageRef.current
+    if (!stage) return
+
+    try {
+      if (document.fullscreenElement === stage) {
+        await document.exitFullscreen?.()
+      } else {
+        await stage.requestFullscreen?.()
+      }
+    } catch {}
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -1271,15 +1420,36 @@ export default function GazeHeatmapLab({
     targetSequenceRef.current = []
     targetIndexRef.current = 0
     baselineRef.current = { eyeX: 0, eyeY: 0, headX: 0, headY: 0 }
+    sandboxStepRef.current = null
+    sandboxCollectedRef.current = {}
+    headOnlyProjectionRef.current = false
     currentTargetRef.current = { x: 0.5, y: 0.5 }
     targetStartedAtRef.current = 0
     setHasCalibration(false)
+    setLiveHeadOffset({ headX: 0, headY: 0 })
+    setHeadOnlyProjection(false)
     setTarget({ x: 0.5, y: 0.5 })
     setPhase('idle')
     setPrepSecondsLeft(0)
     setSummary(null)
     setStatus(cameraReady ? 'Câmera pronta. Faça uma nova calibração quando quiser.' : 'Abra a câmera frontal e alinhe o rosto ao centro.')
     redrawHeatmaps()
+  }
+
+  function cancelRun() {
+    stopSessionTimers()
+    sandboxStepRef.current = null
+    targetSamplesRef.current = []
+    targetSequenceRef.current = []
+    targetIndexRef.current = 0
+    currentTargetRef.current = { x: 0.5, y: 0.5 }
+    headOnlyProjectionRef.current = false
+    setTarget({ x: 0.5, y: 0.5 })
+    setHeadOnlyProjection(false)
+    setLiveHeadOffset({ headX: 0, headY: 0 })
+    setPrepSecondsLeft(0)
+    setPhase('idle')
+    setStatus(cameraReady ? 'Teste parado. A câmera continua pronta para recomeçar.' : 'Teste parado.')
   }
 
   function randomTarget() {
@@ -1355,7 +1525,11 @@ export default function GazeHeatmapLab({
     setPrepSecondsLeft(0)
     setSummary(null)
     setPhase('running')
-    setStatus('Sessão em andamento. O roteiro do alvo agora garante passagem por extremos, cantos e eixos para medir o campo realmente exigido.')
+    setStatus(
+      headOnlyProjectionRef.current
+        ? 'Sandbox cabeça em andamento: o mapa assume que o alvo foi olhado e desconta o movimento da cabeça.'
+        : 'Sessão em andamento. O roteiro do alvo agora garante passagem por extremos, cantos e eixos para medir o campo realmente exigido.',
+    )
     advanceSequenceTarget()
 
     targetTimerRef.current = window.setInterval(() => {
@@ -1381,18 +1555,107 @@ export default function GazeHeatmapLab({
         setPhase('idle')
         return
       }
-      baselineRef.current = samples.reduce(
-        (acc, sample) => ({
-          eyeX: acc.eyeX + sample.eyeX / samples.length,
-          eyeY: acc.eyeY + sample.eyeY / samples.length,
-          headX: acc.headX + sample.headX / samples.length,
-          headY: acc.headY + sample.headY / samples.length,
-        }),
-        { eyeX: 0, eyeY: 0, headX: 0, headY: 0 },
-      )
+      baselineRef.current = averageFaceMetrics(samples)
+      headOnlyProjectionRef.current = false
+      setHeadOnlyProjection(false)
       setHasCalibration(true)
+      setLiveHeadOffset({ headX: 0, headY: 0 })
       startPreparedSession(false)
     }, CALIBRATION_DURATION_MS)
+  }
+
+  async function startHeadOnlySandbox() {
+    if (!cameraReady) return
+    await applyTrackingCameraProfile()
+    await ensureLandmarker()
+    startTrackingLoop()
+    stopSessionTimers()
+    calibrationSamplesRef.current = []
+    sandboxStepRef.current = null
+    sandboxCollectedRef.current = {}
+    heatmapRef.current = makeHeatmap()
+    samplesRef.current = []
+    targetSamplesRef.current = []
+    headOnlyProjectionRef.current = true
+    setHeadOnlyProjection(true)
+    setPhase('calibrating')
+    setSummary(null)
+    moveTarget({ x: 0.5, y: 0.5 })
+    setStatus('Sandbox cabeça: olhe para o centro por 3 segundos. Depois o mapa usa só a cabeça contra o alvo.')
+    calibrationTimerRef.current = window.setTimeout(() => {
+      const samples = calibrationSamplesRef.current
+      if (!samples.length) {
+        setStatus('Não houve rastreamento suficiente na calibração central da sandbox.')
+        setPhase('idle')
+        return
+      }
+      baselineRef.current = averageFaceMetrics(samples)
+      setHasCalibration(true)
+      setLiveHeadOffset({ headX: 0, headY: 0 })
+      startPreparedSession(false)
+    }, CALIBRATION_DURATION_MS)
+  }
+
+  function finishSandboxCalibration() {
+    const collected = sandboxCollectedRef.current
+    const averaged = Object.fromEntries(
+      Object.entries(collected).map(([key, samples]) => [key, averageFaceMetrics(samples)]),
+    ) as Record<string, FaceMetrics>
+    const center = averaged.center
+
+    if (!center?.faceDetected) {
+      setStatus('Sandbox sem amostras centrais suficientes. Rode novamente com o rosto mais centralizado.')
+      sandboxStepRef.current = null
+      setPhase('idle')
+      return
+    }
+
+    baselineRef.current = center
+    headOnlyProjectionRef.current = true
+    setHeadOnlyProjection(true)
+    sandboxStepRef.current = null
+    setHasCalibration(true)
+    setLiveHeadOffset({ headX: 0, headY: 0 })
+    setStatus('Sandbox cabeça calibrada. O mapa vai assumir que o alvo foi olhado e descontar apenas o movimento da cabeça.')
+    startPreparedSession(false)
+  }
+
+  function runSandboxCalibrationStep(index: number) {
+    const step = SANDBOX_CALIBRATION_STEPS[index]
+    if (!step) {
+      finishSandboxCalibration()
+      return
+    }
+
+    sandboxStepRef.current = { step, startedAt: performance.now(), samples: [] }
+    moveTarget(step.target)
+    setStatus(step.instruction)
+    calibrationTimerRef.current = window.setTimeout(() => {
+      const current = sandboxStepRef.current
+      if (current?.step.key === step.key) {
+        sandboxCollectedRef.current[step.key] = current.samples
+      }
+      runSandboxCalibrationStep(index + 1)
+    }, SANDBOX_CALIBRATION_STEP_MS)
+  }
+
+  async function startSandboxCalibration() {
+    if (!cameraReady) return
+    await applyTrackingCameraProfile()
+    await ensureLandmarker()
+    startTrackingLoop()
+    stopSessionTimers()
+    heatmapRef.current = makeHeatmap()
+    samplesRef.current = []
+    targetSamplesRef.current = []
+    calibrationSamplesRef.current = []
+    sandboxCollectedRef.current = {}
+    sandboxStepRef.current = null
+    setPhase('calibrating')
+    setSummary(null)
+    setPrepSecondsLeft(0)
+    setStatus('Iniciando sandbox de calibração...')
+    runSandboxCalibrationStep(0)
   }
 
   function finishSession() {
@@ -1453,6 +1716,10 @@ export default function GazeHeatmapLab({
 
       if (phaseRef.current === 'calibrating' && metrics.faceDetected) {
         calibrationSamplesRef.current.push(metrics)
+        const sandboxStep = sandboxStepRef.current
+        if (sandboxStep && now - sandboxStep.startedAt > SANDBOX_CALIBRATION_SETTLE_MS) {
+          sandboxStep.samples.push(metrics)
+        }
       }
 
       const targetElapsed = now - targetStartedAtRef.current
@@ -1463,23 +1730,28 @@ export default function GazeHeatmapLab({
         const relativeEyeY = clamp(metrics.eyeY - baselineRef.current.eyeY, -1.2, 1.2)
         const rawHeadX = clamp(metrics.headX - baselineRef.current.headX, -1.2, 1.2)
         const rawHeadY = clamp(metrics.headY - baselineRef.current.headY, -1.2, 1.2)
-        const targetOffset = normalizeTargetOffset(currentTargetRef.current.x, currentTargetRef.current.y)
-        const relativeHeadX = suppressHeadAxis(rawHeadX, relativeEyeX, Math.abs(targetOffset.x), 'x')
-        const relativeHeadY = suppressHeadAxis(rawHeadY, relativeEyeY, Math.abs(targetOffset.y), 'y')
         const sample = {
           eyeX: relativeEyeX,
           eyeY: relativeEyeY,
-          headX: relativeHeadX,
-          headY: relativeHeadY,
+          headX: rawHeadX,
+          headY: rawHeadY,
           targetX: currentTargetRef.current.x,
           targetY: currentTargetRef.current.y,
+          headOnlyProjection: headOnlyProjectionRef.current,
         }
         samplesRef.current.push(sample)
         targetSamplesRef.current.push(sample)
       }
 
       if (now - lastUiTickRef.current > 120) {
+        const nextHeadOffset = metrics.faceDetected
+          ? {
+              headX: clamp(metrics.headX - baselineRef.current.headX, -1.2, 1.2),
+              headY: clamp(metrics.headY - baselineRef.current.headY, -1.2, 1.2),
+            }
+          : { headX: 0, headY: 0 }
         setLiveMetrics(metrics)
+        setLiveHeadOffset(nextHeadOffset)
         redrawHeatmaps()
         lastUiTickRef.current = now
       }
@@ -1498,6 +1770,23 @@ export default function GazeHeatmapLab({
   const headPercentX = Math.round((summary?.headShareX ?? 0) * 100)
   const eyePercentY = Math.round((summary?.eyeShareY ?? 0) * 100)
   const headPercentY = Math.round((summary?.headShareY ?? 0) * 100)
+  const calibratedLiveHeadX = liveHeadOffset.headX
+  const calibratedLiveHeadY = liveHeadOffset.headY
+  const realHeadX = clamp(calibratedLiveHeadX, -1, 1)
+  const realHeadY = clamp(calibratedLiveHeadY * HEAD_COMPENSATION_DOT_Y_GAIN, -1, 1)
+  const compensationHeadX = clamp(getHeadOnlyCarryX(calibratedLiveHeadX), -1, 1)
+  const compensationHeadY = clamp(getHeadOnlyCarryY(calibratedLiveHeadY), -1, 1)
+  const avatarHeadX = realHeadX
+  const avatarHeadY = realHeadY
+  const avatarFaceTransform = `perspective(720px) rotateY(${-avatarHeadX * 38}deg) rotateX(${avatarHeadY * 30}deg)`
+  const realHeadDotStyle = {
+    left: `${50 + realHeadX * 38}%`,
+    top: `${50 + realHeadY * 44}%`,
+  }
+  const compensationDotStyle = {
+    left: `${50 + compensationHeadX * 38}%`,
+    top: `${50 + compensationHeadY * 44}%`,
+  }
   const phaseIsRunning = phase === 'running'
   const phaseIsCalibrating = phase === 'calibrating'
   const phaseIsBusy = phaseIsRunning || phaseIsCalibrating
@@ -1562,6 +1851,38 @@ export default function GazeHeatmapLab({
       {showClientTarget && (
         <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.06)_1px,transparent_1px)] bg-[size:32px_32px]" />
       )}
+      {clientMode && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+          <div className="relative h-[min(58vh,520px)] w-[min(58vh,520px)] rounded-[32px] border border-white/10 bg-slate-950/26 shadow-[0_30px_90px_rgba(2,6,23,0.38)] backdrop-blur-[2px]">
+            <div className="absolute left-1/2 top-8 h-[calc(100%-64px)] w-px -translate-x-1/2 bg-white/10" />
+            <div className="absolute left-8 top-1/2 h-px w-[calc(100%-64px)] -translate-y-1/2 bg-white/10" />
+            <div
+              className="absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-100 bg-cyan-300 shadow-[0_0_26px_rgba(103,232,249,0.72)]"
+              style={realHeadDotStyle}
+            />
+            <div
+              className="absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-amber-100 bg-amber-300 shadow-[0_0_26px_rgba(252,211,77,0.72)]"
+              style={compensationDotStyle}
+            />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div
+                className="relative h-[54%] w-[44%] rounded-[42%_42%_46%_46%] border-2 border-cyan-100/70 bg-slate-800/92 shadow-[inset_0_0_56px_rgba(34,211,238,0.12),0_28px_68px_rgba(2,6,23,0.58)] transition-transform duration-100"
+                style={{ transform: avatarFaceTransform, transformStyle: 'preserve-3d' }}
+              >
+                <div className="absolute -left-[10%] top-[42%] h-[17%] w-[10%] rounded-full border border-cyan-100/40 bg-slate-700/90" />
+                <div className="absolute -right-[10%] top-[42%] h-[17%] w-[10%] rounded-full border border-cyan-100/40 bg-slate-700/90" />
+                <div className="absolute left-[27%] top-[37%] h-[8%] w-[9%] rounded-full bg-cyan-100 shadow-[0_0_16px_rgba(165,243,252,0.55)]" />
+                <div className="absolute right-[27%] top-[37%] h-[8%] w-[9%] rounded-full bg-cyan-100 shadow-[0_0_16px_rgba(165,243,252,0.55)]" />
+                <div className="absolute left-1/2 top-[38%] h-[30%] w-1 -translate-x-1/2 rounded-full bg-emerald-300/90 shadow-[0_0_16px_rgba(110,231,183,0.5)]" />
+                <div className="absolute bottom-[21%] left-1/2 h-[4%] w-[38%] -translate-x-1/2 rounded-full bg-slate-500" />
+              </div>
+            </div>
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-white/10 bg-slate-950/62 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-emerald-100">
+              Azul cabeça · Âmbar compensação
+            </div>
+          </div>
+        </div>
+      )}
       {!clientMode && (
         <>
           <button
@@ -1599,6 +1920,19 @@ export default function GazeHeatmapLab({
           <div className={targetDotClassName} />
         </div>
       )}
+      {clientMode && phaseIsCalibrating && showClientTarget && (
+        <div
+          className={`absolute z-30 max-w-[min(560px,calc(100vw-32px))] -translate-x-1/2 rounded-2xl border border-white/15 bg-slate-950/78 px-4 py-2.5 text-center text-sm font-black text-slate-100 shadow-[0_18px_42px_rgba(2,6,23,0.34)] backdrop-blur ${
+            target.y > 0.72 ? '-translate-y-[calc(100%+56px)]' : 'translate-y-12'
+          }`}
+          style={{
+            left: `${target.x * 100}%`,
+            top: `${target.y * 100}%`,
+          }}
+        >
+          {status}
+        </div>
+      )}
       {!clientMode && !isFocusMode && (
         <div className="absolute bottom-4 left-4 rounded-full bg-slate-900/70 px-3 py-1 text-xs font-bold text-slate-300 backdrop-blur">
           {phaseLabel}
@@ -1611,6 +1945,14 @@ export default function GazeHeatmapLab({
     return (
       <div className="h-screen w-screen overflow-hidden bg-slate-950 text-white">
         {stageNode}
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          className="fixed right-4 top-4 z-[75] inline-flex items-center gap-2 rounded-xl border border-white/20 bg-slate-900/75 px-3 py-2 text-xs font-bold text-slate-100 backdrop-blur transition hover:bg-slate-800/85"
+        >
+          {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          {isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+        </button>
         {!cameraReady && (
           <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/72 p-6 backdrop-blur-sm">
             <div className="max-w-sm rounded-[28px] border border-cyan-300/25 bg-slate-900/92 p-5 text-center shadow-[0_30px_90px_rgba(2,6,23,0.5)]">
@@ -1682,6 +2024,14 @@ export default function GazeHeatmapLab({
                 Calibrar e iniciar
               </button>
               <button
+                onClick={() => (clientMode ? void startHeadOnlySandbox() : sendCommand('startHeadOnlySandbox'))}
+                disabled={!cameraReady || phaseIsRunning}
+                className="inline-flex items-center gap-2 rounded-2xl border border-amber-300/30 bg-amber-500/10 px-4 py-2.5 text-sm font-black text-amber-100 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:text-slate-500"
+              >
+                <ScanFace className="h-4 w-4" />
+                {phaseIsCalibrating ? 'Recomeçar sandbox' : 'Sandbox cabeça'}
+              </button>
+              <button
                 onClick={() => (clientMode ? startSession() : sendCommand('startSession'))}
                 disabled={!cameraReady || phaseIsBusy || !hasCalibration}
                 className="inline-flex items-center gap-2 rounded-2xl border border-rose-400/30 bg-rose-500/15 px-4 py-2.5 text-sm font-black text-rose-200 transition hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:text-slate-500"
@@ -1702,6 +2052,14 @@ export default function GazeHeatmapLab({
               >
                 <StopCircle className="h-4 w-4" />
                 Encerrar
+              </button>
+              <button
+                onClick={() => (clientMode ? cancelRun() : sendCommand('cancelRun'))}
+                disabled={!phaseIsBusy}
+                className="inline-flex items-center gap-2 rounded-2xl border border-amber-300/25 bg-slate-800 px-4 py-2.5 text-sm font-black text-amber-100 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:text-slate-500"
+              >
+                <StopCircle className="h-4 w-4" />
+                Parar
               </button>
               <button
                 onClick={() => (clientMode ? resetLab() : sendCommand('resetLab'))}
@@ -1792,6 +2150,60 @@ export default function GazeHeatmapLab({
                     <div>
                       <span className="block font-black uppercase tracking-[0.16em] text-emerald-200">Cabeça Y</span>
                       <span className="text-slate-100">{Math.round(liveMetrics.headY * 100)}%</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3 grid gap-3 lg:grid-cols-[220px_1fr]">
+                  <div className="rounded-2xl border border-emerald-400/15 bg-slate-950/60 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-black uppercase tracking-[0.16em] text-emerald-200">
+                        Compensação cabeça
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-500">
+                        X {Math.round(calibratedLiveHeadX * 100)} · Y {Math.round(calibratedLiveHeadY * 100)}
+                      </span>
+                    </div>
+                    <div className="relative mx-auto h-40 w-40 rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_center,_rgba(15,23,42,0.95),_rgba(2,6,23,0.96))]">
+                      <div className="absolute left-1/2 top-3 h-[calc(100%-24px)] w-px -translate-x-1/2 bg-white/10" />
+                      <div className="absolute left-3 top-1/2 h-px w-[calc(100%-24px)] -translate-y-1/2 bg-white/10" />
+                      <div
+                        className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-200 bg-cyan-300 shadow-[0_0_18px_rgba(103,232,249,0.55)]"
+                        style={realHeadDotStyle}
+                      />
+                      <div
+                        className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-amber-200 bg-amber-300 shadow-[0_0_18px_rgba(252,211,77,0.55)]"
+                        style={compensationDotStyle}
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div
+                          className="relative h-24 w-20 rounded-[42%_42%_46%_46%] border border-cyan-200/50 bg-slate-800 shadow-[inset_0_0_28px_rgba(34,211,238,0.1),0_18px_38px_rgba(2,6,23,0.45)] transition-transform duration-150"
+                          style={{ transform: avatarFaceTransform, transformStyle: 'preserve-3d' }}
+                        >
+                          <div className="absolute -left-2 top-10 h-6 w-3 rounded-full border border-cyan-200/30 bg-slate-700" />
+                          <div className="absolute -right-2 top-10 h-6 w-3 rounded-full border border-cyan-200/30 bg-slate-700" />
+                          <div className="absolute left-4 top-9 h-2.5 w-2.5 rounded-full bg-cyan-200" />
+                          <div className="absolute right-4 top-9 h-2.5 w-2.5 rounded-full bg-cyan-200" />
+                          <div className="absolute left-1/2 top-10 h-8 w-px -translate-x-1/2 bg-emerald-300/80" />
+                          <div className="absolute bottom-5 left-1/2 h-1.5 w-8 -translate-x-1/2 rounded-full bg-slate-500" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3 text-xs leading-5 text-slate-300">
+                    <p className="font-bold text-slate-200">Como ler a compensação</p>
+                    <p className="mt-1 text-slate-400">
+                      A bolinha mostra a compensação usada pelo mapa, por isso pode ir no sentido oposto ao rosto.
+                      Se ela quase não mexe em um eixo, a captura desse eixo está fraca.
+                    </p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <div className="rounded-xl bg-slate-900/70 px-3 py-2">
+                        <span className="block font-black uppercase tracking-[0.16em] text-emerald-200">Horizontal</span>
+                        <span className="text-slate-100">{Math.round(Math.abs(calibratedLiveHeadX) * 100)}%</span>
+                      </div>
+                      <div className="rounded-xl bg-slate-900/70 px-3 py-2">
+                        <span className="block font-black uppercase tracking-[0.16em] text-emerald-200">Vertical</span>
+                        <span className="text-slate-100">{Math.round(Math.abs(calibratedLiveHeadY) * 100)}%</span>
+                      </div>
                     </div>
                   </div>
                 </div>
