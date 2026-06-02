@@ -169,7 +169,15 @@ export default function FrameMeasurementTool({
   const [gridDivs,    setGridDivs]    = useState(10)
   const [showDnpGuide, setShowDnpGuide] = useState(true)
   const [dnpGuideMm, setDnpGuideMm] = useState(32)
-  const [livePupils, setLivePupils] = useState<{ r: Pt; l: Pt; center: Pt } | null>(null)
+  const [livePupils, setLivePupils] = useState<{
+    r: Pt
+    l: Pt
+    center: Pt
+    faceCenter: Pt
+    rightPct: number
+    leftPct: number
+    balanceDiff: number
+  } | null>(null)
 
   useEffect(() => { imgBoundsRef.current = imgBounds   }, [imgBounds])
   useEffect(() => { activeGrpRef.current = activeGroup }, [activeGroup])
@@ -203,7 +211,7 @@ export default function FrameMeasurementTool({
 
       const cw = preview.clientWidth
       const ch = preview.clientHeight
-      const scale = Math.min(cw / video.videoWidth, ch / video.videoHeight)
+      const scale = Math.max(cw / video.videoWidth, ch / video.videoHeight)
       const rw = video.videoWidth * scale
       const rh = video.videoHeight * scale
       const ox = (cw - rw) / 2
@@ -223,8 +231,23 @@ export default function FrameMeasurementTool({
             const face = result.faceLandmarks?.[0]
             const r = face?.[468] ? toPreviewPoint(face[468]) : null
             const l = face?.[473] ? toPreviewPoint(face[473]) : null
-            if (r && l) setLivePupils({ r, l, center: { x: (r.x + l.x) / 2, y: (r.y + l.y) / 2 } })
-            else setLivePupils(null)
+            const faceCenter = face?.[6] ? toPreviewPoint(face[6]) : null
+            if (r && l && faceCenter) {
+              const rightDistance = Math.max(0, faceCenter.x - r.x)
+              const leftDistance = Math.max(0, l.x - faceCenter.x)
+              const total = rightDistance + leftDistance
+              const rightPct = total > 0 ? Math.round((rightDistance / total) * 100) : 50
+              const leftPct = total > 0 ? 100 - rightPct : 50
+              setLivePupils({
+                r,
+                l,
+                center: { x: (r.x + l.x) / 2, y: (r.y + l.y) / 2 },
+                faceCenter,
+                rightPct,
+                leftPct,
+                balanceDiff: Math.abs(rightPct - leftPct),
+              })
+            } else setLivePupils(null)
           } catch {
             setLivePupils(null)
           }
@@ -819,10 +842,10 @@ export default function FrameMeasurementTool({
       {step === 'capture' && cameraOpen && (
         <div className="absolute inset-0 z-30 bg-black">
           <div className="absolute inset-0 flex items-center justify-center">
-            <div ref={cameraPreviewRef} className="absolute inset-0">
+            <div ref={cameraPreviewRef} className="absolute inset-0 overflow-hidden">
               <video
                 ref={videoRef}
-                className="absolute inset-0 h-full w-full object-contain"
+                className="absolute inset-0 h-full w-full object-cover"
                 autoPlay
                 playsInline
                 muted
@@ -872,6 +895,10 @@ export default function FrameMeasurementTool({
                   {livePupils ? (
                     <>
                       <div
+                        className={`absolute bottom-[10%] top-[13%] w-0.5 -translate-x-1/2 ${livePupils.balanceDiff <= 8 ? 'bg-emerald-300/90' : livePupils.balanceDiff <= 18 ? 'bg-amber-300/90' : 'bg-rose-300/90'}`}
+                        style={{ left: livePupils.faceCenter.x }}
+                      />
+                      <div
                         className="absolute h-px bg-indigo-200/90"
                         style={{
                           left: `${Math.min(livePupils.r.x, livePupils.l.x)}px`,
@@ -881,6 +908,12 @@ export default function FrameMeasurementTool({
                       />
                       <div className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-emerald-200 bg-emerald-500/35" style={{ left: livePupils.r.x, top: livePupils.r.y }} />
                       <div className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-emerald-200 bg-emerald-500/35" style={{ left: livePupils.l.x, top: livePupils.l.y }} />
+                      <div
+                        className={`absolute -translate-x-1/2 rounded px-2 py-1 text-[11px] font-black tabular-nums ${livePupils.balanceDiff <= 8 ? 'bg-emerald-950/85 text-emerald-100' : livePupils.balanceDiff <= 18 ? 'bg-amber-950/85 text-amber-100' : 'bg-rose-950/85 text-rose-100'}`}
+                        style={{ left: livePupils.faceCenter.x, top: livePupils.center.y - 34 }}
+                      >
+                        {livePupils.rightPct}/{livePupils.leftPct}
+                      </div>
                       <div className="absolute -translate-x-1/2 rounded bg-black/75 px-2 py-1 text-[10px] font-bold text-emerald-100" style={{ left: livePupils.r.x, top: livePupils.r.y + 14 }}>
                         OD {dnpGuideMm}mm
                       </div>
@@ -904,7 +937,11 @@ export default function FrameMeasurementTool({
                     </>
                   )}
                   <div className="absolute left-1/2 top-[17%] -translate-x-1/2 rounded bg-black/65 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-cyan-100">
-                    {livePupils ? 'Pupilas detectadas' : 'Rosto de frente'}
+                    {livePupils
+                      ? livePupils.balanceDiff <= 8
+                        ? 'Rosto alinhado'
+                        : 'Vire o rosto para centralizar'
+                      : 'Rosto de frente'}
                   </div>
                 </div>
               )}
