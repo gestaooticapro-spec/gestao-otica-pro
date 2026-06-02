@@ -637,6 +637,10 @@ function getDesiredClinicalCategories(input: RecommendationCaseInput): ClinicalC
     return ['controle_miopia']
   }
 
+  if (acceptsDedicatedSolarAlternative(input)) {
+    return ['plana_solar']
+  }
+
   if (hasPrimarySunDemand(input)) {
     return ['visao_simples', 'plana_solar']
   }
@@ -893,11 +897,11 @@ const EXPLICIT_EMBEDDED_TREATMENTS: Array<{
       name: 'Antirreflexo Blue Premium',
       type: 'Antirreflexo',
       semantic: {
-        positioning: 'intermediaria',
-        price_tier: 'intermediario',
+        positioning: 'premium',
+        price_tier: 'premium',
         usage_tags: ['uso_diario', 'telas', 'computador', 'celular'],
         benefit_tags: ['antirreflexo', 'conforto_digital', 'conforto_visual', 'protecao_luz_azul'],
-        commercial_summary: 'Tratamento intermediario com antirreflexo e filtro azul para rotina digital.',
+        commercial_summary: 'Tratamento premium com antirreflexo e filtro azul para rotina digital.',
         recommendation_notes: 'Sobe quando telas, Blue/UV e custo-beneficio sao prioridades.',
         explain_why: 'Foi escolhido por combinar conforto digital e filtragem de luz azul.',
       },
@@ -1289,12 +1293,15 @@ function scorePriceTarget(params: {
   if (minPrice != null && price < minPrice) return 0
 
   const ratio = price / targetPrice
-  if (ratio > 1.2) return -6
-  if (ratio > 1.1) return -3
-  if (ratio > 1) return -1
-  if (ratio >= 0.8) return 5   // sweet spot: within ±20% of target
-  if (ratio >= 0.6) return 1   // up to 40% below target: acceptable
-  return -2                    // more than 40% below target
+  if (ratio > 1.6) return -16
+  if (ratio > 1.45) return -13
+  if (ratio > 1.3) return -10
+  if (ratio > 1.2) return -7
+  if (ratio > 1.1) return -4
+  if (ratio > 1.03) return -1.5
+  if (ratio >= 0.8) return 7
+  if (ratio >= 0.6) return 2
+  return -2
 }
 
 function getPrescriptionStrength(input: RecommendationCaseInput): number {
@@ -1766,17 +1773,20 @@ function scoreOffer(params: {
     minPrice,
   })
   score += targetScore
-  if (targetScore > 0.5 && targetPrice != null) {
-    reasons.push(`alvo_preco:${targetPrice}`)
+  if (targetPrice != null) {
+    if (targetScore > 0.5) reasons.push(`alvo_preco:${targetPrice}`)
+    if (targetScore < -0.5 && finalPrice > targetPrice) reasons.push('alvo_preco:acima_alvo')
   }
-  if (
-    targetPrice != null &&
-    budgetMode === 'economico' &&
-    finalPrice > targetPrice
-  ) {
+  if (targetPrice != null && finalPrice > targetPrice) {
     const overTargetRatio = finalPrice / targetPrice
-    score -= overTargetRatio > 1.1 ? 4 : 2
-    reasons.push('alvo_preco:acima_alvo')
+    const overTargetPenalty =
+      budgetMode === 'economico'
+        ? overTargetRatio > 1.1 ? 4 : 2
+        : overTargetRatio > 1.5 ? 3 : overTargetRatio > 1.25 ? 1.5 : 0
+    if (overTargetPenalty > 0) {
+      score -= overTargetPenalty
+      reasons.push('alvo_preco:acima_alvo_relevante')
+    }
   }
   if (
     targetPrice != null &&
@@ -2490,6 +2500,7 @@ function isUnsafeTopRecommendation(
   }
   if (
     highPrescriptionThinLensNeed &&
+    entry.clinicalCategory !== 'controle_miopia' &&
     (reasons.includes('material:indice_nao_informado_grau_alto') ||
       reasons.includes('design:esferico_limitado_grau_alto') ||
       reasons.includes('material:indice_baixo_grau_alto') ||
@@ -2522,12 +2533,22 @@ function getExploratoryClinicalCategories(
     return uniqueCategories(['controle_miopia']) || strict
   }
 
+  if (strict.includes('plana_solar')) {
+    return uniqueCategories(['plana_solar']) || strict
+  }
+
   if (strict.includes('multifocal')) {
     const hasDrivingNeeds = (input.rotina_tags || []).some(
       (tag) => tag === 'dirigir' || tag === 'dirigir_noite',
     )
     const wantsFirstMultifocal = (input.objetivo_tags || []).includes('primeira_multifocal')
     const adicao = input.adicao ?? 0
+
+    if (adicao > MAX_ANTI_FATIGUE_ADDITION) {
+      return hasDrivingNeeds
+        ? uniqueCategories(['multifocal']) || strict
+        : uniqueCategories(['multifocal', 'ocupacional']) || strict
+    }
 
     // Presbiopia instalada com objetivo explícito de multifocal:
     // não abrir visao_simples — o paciente precisa de correção progressiva completa
@@ -3082,14 +3103,174 @@ async function loadRecommendationCatalogMulti(versionIds: string[]): Promise<Rec
     return loadRecommendationCatalog(uniqueIds[0])
   }
 
-  const catalogs = await Promise.all(uniqueIds.map((id) => loadRecommendationCatalog(id)))
+  // The generated Supabase types do not include the global catalog tables yet.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabaseAdmin = createAdminClient() as any
+  type CatalogRangeQuery<T> = {
+    range: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>
+  }
+  const fetchAllCatalogRows = async <T,>(buildQuery: () => CatalogRangeQuery<T>): Promise<T[]> => {
+    const pageSize = 1000
+    const rows: T[] = []
+
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await buildQuery().range(from, from + pageSize - 1)
+      if (error) throw error
+
+      const page = (data || []) as T[]
+      rows.push(...page)
+      if (page.length < pageSize) break
+    }
+
+    return rows
+  }
+  const fetchAllCatalogRowsInChunks = async <T,>(
+    values: string[],
+    buildQuery: (chunk: string[]) => CatalogRangeQuery<T>,
+  ): Promise<T[]> => {
+    const chunkSize = 150
+    const rows: T[] = []
+
+    for (let index = 0; index < values.length; index += chunkSize) {
+      const chunk = values.slice(index, index + chunkSize)
+      rows.push(...await fetchAllCatalogRows<T>(() => buildQuery(chunk)))
+    }
+
+    return rows
+  }
+
+  const versions = await fetchAllCatalogRows<Record<string, unknown>>(() =>
+    supabaseAdmin
+      .from('global_catalog_versions')
+      .select('id,laboratorio,versao')
+      .in('id', uniqueIds)
+  )
+  const versionById = new Map(versions.map((version) => [String(version.id), version]))
+
+  const families = await fetchAllCatalogRowsInChunks<Record<string, unknown>>(uniqueIds, (chunk) =>
+    supabaseAdmin
+      .from('global_lens_families')
+      .select('id,version_id,nome,design,tags_uso,tags_beneficios,clinical_category')
+      .in('version_id', chunk)
+  )
+
+  const familyIds = families.map((family) => String(family.id))
+  const offers = familyIds.length
+    ? await fetchAllCatalogRowsInChunks<Record<string, unknown>>(familyIds, (chunk) =>
+      supabaseAdmin
+        .from('global_lens_offers')
+        .select('id,family_id,raw_label,canonical_label,material,clinical_category,features,base_price,is_atomic_offer,already_includes_treatment,allows_composition,source_page_reference')
+        .in('family_id', chunk)
+    )
+    : []
+  const offerIds = offers.map((offer) => String(offer.id))
+
+  const [grids, usageProfiles, compatibilities, treatments] = await Promise.all([
+    offerIds.length
+      ? fetchAllCatalogRowsInChunks<Record<string, unknown>>(offerIds, (chunk) =>
+        supabaseAdmin
+          .from('global_offer_diopter_grids')
+          .select('offer_id,sph_min,sph_max,cyl_min,cyl_max,add_min,add_max')
+          .in('offer_id', chunk)
+      )
+      : Promise.resolve([]),
+    familyIds.length
+      ? fetchAllCatalogRowsInChunks<Record<string, unknown>>(familyIds, (chunk) =>
+        supabaseAdmin
+          .from('global_usage_profiles')
+          .select('family_id,usage_tags,benefit_tags,commercial_summary,recommendation_notes')
+          .eq('profile_scope', 'family')
+          .in('family_id', chunk)
+      )
+      : Promise.resolve([]),
+    offerIds.length
+      ? fetchAllCatalogRowsInChunks<Record<string, unknown>>(offerIds, (chunk) =>
+        supabaseAdmin
+          .from('global_offer_treatments_compatibility')
+          .select('offer_id,treatment_id,special_price,price_mode')
+          .in('offer_id', chunk)
+      )
+      : Promise.resolve([]),
+    fetchAllCatalogRowsInChunks<Record<string, unknown>>(uniqueIds, (chunk) =>
+      supabaseAdmin
+        .from('global_treatments')
+        .select('id,version_id,nome,tipo,features')
+        .in('version_id', chunk)
+    ),
+  ])
+
+  const familyById = new Map(families.map((family) => [String(family.id), family]))
+
   return {
-    families: catalogs.flatMap((catalog) => catalog.families),
-    offers: catalogs.flatMap((catalog) => catalog.offers),
-    grids: catalogs.flatMap((catalog) => catalog.grids),
-    usageProfiles: catalogs.flatMap((catalog) => catalog.usageProfiles),
-    compatibilities: catalogs.flatMap((catalog) => catalog.compatibilities),
-    treatments: catalogs.flatMap((catalog) => catalog.treatments),
+    families: families.map((family) => {
+      const versionMeta = versionById.get(String(family.version_id))
+      return {
+        id: String(family.id),
+        nome: String(family.nome || ''),
+        design: family.design ? String(family.design) : null,
+        tags_uso: normalizeStringArray(family.tags_uso),
+        tags_beneficios: normalizeStringArray(family.tags_beneficios),
+        clinical_category: normalizeCategory(family.clinical_category),
+        sourceLaboratorio: versionMeta?.laboratorio ? String(versionMeta.laboratorio) : null,
+        sourceVersao: versionMeta?.versao ? String(versionMeta.versao) : null,
+        sourceVersionId: versionMeta?.id ? String(versionMeta.id) : null,
+      }
+    }),
+    offers: offers.map((offer) => {
+      const family = familyById.get(String(offer.family_id))
+      const versionMeta = family ? versionById.get(String(family.version_id)) : null
+      return {
+        id: String(offer.id),
+        family_id: String(offer.family_id),
+        raw_label: String(offer.raw_label || ''),
+        canonical_label: offer.canonical_label ? String(offer.canonical_label) : null,
+        material: offer.material ? String(offer.material) : null,
+        clinical_category: normalizeCategory(offer.clinical_category),
+        features: toFeatureRecord(offer.features),
+        base_price: normalizeNumber(offer.base_price),
+        is_atomic_offer: Boolean(offer.is_atomic_offer),
+        already_includes_treatment: Boolean(offer.already_includes_treatment),
+        allows_composition: Boolean(offer.allows_composition),
+        source_page_reference: offer.source_page_reference ? String(offer.source_page_reference) : null,
+        sourceLaboratorio: versionMeta?.laboratorio ? String(versionMeta.laboratorio) : null,
+        sourceVersao: versionMeta?.versao ? String(versionMeta.versao) : null,
+        sourceVersionId: versionMeta?.id ? String(versionMeta.id) : null,
+      }
+    }),
+    grids: grids.map((grid) => ({
+      offer_id: String(grid.offer_id),
+      sph_min: normalizeNumber(grid.sph_min),
+      sph_max: normalizeNumber(grid.sph_max),
+      cyl_min: normalizeNumber(grid.cyl_min),
+      cyl_max: normalizeNumber(grid.cyl_max),
+      add_min: normalizeNumber(grid.add_min),
+      add_max: normalizeNumber(grid.add_max),
+    })),
+    usageProfiles: usageProfiles.map((profile) => ({
+      family_id: String(profile.family_id),
+      usage_tags: normalizeStringArray(profile.usage_tags),
+      benefit_tags: normalizeStringArray(profile.benefit_tags),
+      commercial_summary: profile.commercial_summary ? String(profile.commercial_summary) : null,
+      recommendation_notes: profile.recommendation_notes ? String(profile.recommendation_notes) : null,
+    })),
+    compatibilities: compatibilities.map((compatibility) => ({
+      offer_id: String(compatibility.offer_id),
+      treatment_id: String(compatibility.treatment_id),
+      special_price: normalizeNumber(compatibility.special_price),
+      price_mode: compatibility.price_mode === 'surcharge' ? 'surcharge' : 'final',
+    })),
+    treatments: treatments.map((treatment) => {
+      const versionMeta = versionById.get(String(treatment.version_id))
+      return {
+        id: String(treatment.id),
+        nome: String(treatment.nome || ''),
+        tipo: treatment.tipo ? String(treatment.tipo) : null,
+        features: toFeatureRecord(treatment.features),
+        sourceLaboratorio: versionMeta?.laboratorio ? String(versionMeta.laboratorio) : null,
+        sourceVersao: versionMeta?.versao ? String(versionMeta.versao) : null,
+        sourceVersionId: versionMeta?.id ? String(versionMeta.id) : null,
+      }
+    }),
   }
 }
 
@@ -3427,3 +3608,5 @@ export async function startRecommendationConversation(params: {
     recommendations,
   }
 }
+
+
