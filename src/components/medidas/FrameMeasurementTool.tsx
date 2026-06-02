@@ -24,7 +24,6 @@ type HKey = keyof Handles
 type MPModule = typeof import('@mediapipe/tasks-vision')
 type FaceLandmarkerInstance = Awaited<ReturnType<MPModule['FaceLandmarker']['createFromOptions']>>
 type RawLm = { x: number; y: number; z: number }
-type MediaTrackWithImageCapture = MediaStreamTrack & { getSettings?: () => MediaTrackSettings }
 type FaceLandmarkerResult = { faceLandmarks?: RawLm[][] }
 type ImageCaptureConstructor = new (track: MediaStreamTrack) => { takePhoto: () => Promise<Blob> }
 type CameraMode = 'grid' | 'guide'
@@ -211,7 +210,7 @@ export default function FrameMeasurementTool({
 
       const cw = preview.clientWidth
       const ch = preview.clientHeight
-      const scale = Math.max(cw / video.videoWidth, ch / video.videoHeight)
+      const scale = Math.min(cw / video.videoWidth, ch / video.videoHeight)
       const rw = video.videoWidth * scale
       const rh = video.videoHeight * scale
       const ox = (cw - rw) / 2
@@ -395,13 +394,11 @@ export default function FrameMeasurementTool({
     setCameraError(null)
     setCameraMode(mode)
     try {
-      const portrait = window.innerHeight >= window.innerWidth
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: 'environment' },
-          width: { ideal: portrait ? 1080 : 1920 },
-          height: { ideal: portrait ? 1920 : 1080 },
-          aspectRatio: { ideal: portrait ? 9 / 16 : 16 / 9 },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
         },
         audio: false,
       })
@@ -425,14 +422,16 @@ export default function FrameMeasurementTool({
 
   async function takeCameraShot() {
     const stream = streamRef.current
-    let file: File | null = null
+    const video = videoRef.current
+    const preview = cameraPreviewRef.current
+    if (!video || !preview || !video.videoWidth || !video.videoHeight) return
 
-    // Preferimos frame nativo da camera para evitar distorcao introduzida pelo elemento <video>.
-    const track = stream?.getVideoTracks?.()[0] as MediaTrackWithImageCapture | undefined
-    if (track && 'ImageCapture' in window) {
+    let file: File | null = null
+    const track = stream?.getVideoTracks?.()[0]
+    const ImageCaptureCtor = (window as Window & { ImageCapture?: ImageCaptureConstructor }).ImageCapture
+
+    if (track && ImageCaptureCtor) {
       try {
-        const ImageCaptureCtor = (window as Window & { ImageCapture?: ImageCaptureConstructor }).ImageCapture
-        if (!ImageCaptureCtor) throw new Error('ImageCapture indisponivel')
         const imageCapture = new ImageCaptureCtor(track)
         const blob = await imageCapture.takePhoto()
         file = new File([blob], `captura-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' })
@@ -441,23 +440,32 @@ export default function FrameMeasurementTool({
       }
     }
 
-    // Fallback: captura do frame renderizado no video.
     if (!file) {
-      const video = videoRef.current
-      if (!video || !video.videoWidth || !video.videoHeight) return
-      const canvas = document.createElement('canvas')
-      canvas.width = video.videoWidth
-      canvas.height = video.videoHeight
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+    const previewW = preview.clientWidth || window.innerWidth
+    const previewH = preview.clientHeight || window.innerHeight
+    const outputW = Math.min(1600, Math.max(720, Math.round(previewW * window.devicePixelRatio)))
+    const outputH = Math.round(outputW * (previewH / previewW))
 
-      file = await new Promise<File | null>((resolve) => {
-        canvas.toBlob((blob) => {
-          if (!blob) return resolve(null)
-          resolve(new File([blob], `captura-${Date.now()}.jpg`, { type: 'image/jpeg' }))
-        }, 'image/jpeg', 0.92)
-      })
+    const canvas = document.createElement('canvas')
+    canvas.width = outputW
+    canvas.height = outputH
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const scale = Math.min(previewW / video.videoWidth, previewH / video.videoHeight)
+    const visibleW = previewW / scale
+    const visibleH = previewH / scale
+    const sx = Math.max(0, (video.videoWidth - visibleW) / 2)
+    const sy = Math.max(0, (video.videoHeight - visibleH) / 2)
+
+    ctx.drawImage(video, sx, sy, visibleW, visibleH, 0, 0, outputW, outputH)
+
+    file = await new Promise<File | null>((resolve) => {
+      canvas.toBlob((blob) => {
+        if (!blob) return resolve(null)
+        resolve(new File([blob], `captura-${Date.now()}.jpg`, { type: 'image/jpeg' }))
+      }, 'image/jpeg', 0.92)
+    })
     }
 
     if (!file) return
@@ -845,7 +853,7 @@ export default function FrameMeasurementTool({
             <div ref={cameraPreviewRef} className="absolute inset-0 overflow-hidden">
               <video
                 ref={videoRef}
-                className="absolute inset-0 h-full w-full object-cover"
+                className="absolute inset-0 h-full w-full object-contain"
                 autoPlay
                 playsInline
                 muted
