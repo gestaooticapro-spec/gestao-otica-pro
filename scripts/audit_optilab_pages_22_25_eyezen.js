@@ -28,26 +28,31 @@ function ensureObject(value) {
   return value && typeof value === 'object' ? value : {}
 }
 
-async function main() {
-  const targetFamilyNames = [
-    'LENTES EYEZEN BOOST®',
-    'LENTES EYEZEN START®',
-    'EYEZEN® START STOCK | LENTES PRONTAS CRIZAL®',
-  ]
+function norm(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
 
+async function main() {
   const { data: families, error: famErr } = await supabase
     .from('global_lens_families')
     .select('id,nome')
     .eq('version_id', versionId)
-    .in('nome', targetFamilyNames)
 
   if (famErr) throw famErr
 
-  const familyById = new Map((families || []).map((f) => [f.id, f]))
-  const familyIds = (families || []).map((f) => f.id)
+  const targetFamilies = (families || []).filter((f) => {
+    const n = norm(f.nome)
+    return n.includes('eyezen') && (n.includes('boost') || n.includes('start')) && !n.includes('stock')
+  })
+
+  const familyById = new Map(targetFamilies.map((f) => [f.id, f]))
+  const familyIds = targetFamilies.map((f) => f.id)
 
   if (!familyIds.length) {
-    console.log('Nenhuma família Eyezen encontrada na versão:', versionId)
+    console.log('Nenhuma famÃ­lia Eyezen encontrada na versÃ£o:', versionId)
     return
   }
 
@@ -55,6 +60,7 @@ async function main() {
     .from('global_lens_offers')
     .select('id,family_id,raw_label,canonical_label,material,indice_refracao,base_price,features,source_page_reference')
     .in('family_id', familyIds)
+    .in('source_page_reference', ['Pagina 22', 'Pagina 23', 'Pagina 24', 'Pagina 25'])
   if (offErr) throw offErr
 
   const offerIds = (offers || []).map((o) => o.id)
@@ -74,7 +80,7 @@ async function main() {
 
   const summary = {
     versionId,
-    familiesFound: (families || []).map((f) => f.nome),
+    familiesFound: targetFamilies.map((f) => f.nome),
     offersTotal: offers?.length || 0,
     offersMissingMinFittingHeight: 0,
     distinctMinFittingHeights: new Map(),
@@ -122,3 +128,4 @@ main().catch((err) => {
   console.error('Erro na auditoria Eyezen:', err)
   process.exit(1)
 })
+

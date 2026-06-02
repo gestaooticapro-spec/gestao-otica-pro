@@ -1,5 +1,8 @@
 # Passo 1: Catalogo Global de Lentes - Arquitetura Detalhada
 
+> **Nota atual (2026):** este documento continua util como arquitetura conceitual, mas nao e o guia operacional mais recente. Para novas importacoes, use `CATALOGO_IMPORTACAO_REGRAS_ATUAIS.md`, `IMPORTACAO_CATALOGOS_E_SEMANTICA.md` e, como exemplo pratico validado, `HAYTEK_IMPORTACAO_NOTAS.md`.
+> Quando houver conflito, vale a regra atual: grades tecnicas ficam em `global_offer_diopter_grids` e nunca devem ser achatadas em uma unica faixa se a tabela trouxer multiplos segmentos.
+
 > Status: Documento de arquitetura e planejamento.
 > Escopo: Definir a base tecnica que sustenta leitura offline de PDFs, catalogo global curado, ativacao por loja, sugestao futura por IA, composicao na venda/OS e alimentacao do canvas.
 > Decisao operacional: Nao vamos criar agora uma UI para ler PDF e montar tabelas globais. A ingestao inicial sera feita offline por aqui, com scripts e curadoria humana.

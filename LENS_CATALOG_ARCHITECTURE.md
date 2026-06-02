@@ -1,5 +1,8 @@
 # Arquitetura de Catálogo de Lentes: Modelo Híbrido Consolidado
 
+> **Nota atual (2026):** este documento e historico/conceitual. Para importacoes novas e correcao de grades achatadas, use primeiro `CATALOGO_IMPORTACAO_REGRAS_ATUAIS.md` e `IMPORTACAO_CATALOGOS_E_SEMANTICA.md`.
+> Os blocos SQL abaixo nao devem ser copiados como schema atual, especialmente onde sugerem guardar grade tecnica diretamente em `global_lens_offers`. O modelo atual usa `global_offer_diopter_grids` como tabela filha, com multiplos segmentos por oferta quando a fonte exigir.
+
 > **Status:** Consenso Arquitetural Aprovado.
 > **Princípio Central:** Não tentaremos encaixar a complexidade laboratorial ótica num modelo "hambúrguer puro", nem usaremos o `JSONB` como motor de regras. O PDF será processado offline, gerando um catálogo técnico bruto global com curadoria, que a loja poderá ativar via Snapshots.
 

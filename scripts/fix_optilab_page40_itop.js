@@ -19,26 +19,26 @@ if (!versionId) {
 
 const PAGE_REF = 'Pagina 40'
 
-// Progressivas: cyl=[0,0] → [-6,0]; mfh: "short"=14mm, demais=18mm
+// Progressivas: cyl=[0,0] â†’ [-6,0]; mfh: "short"=14mm, demais=18mm
 // A tabela usa badge "short" para lentes com altura 14mm
-// Por label: 1.50, 1.50+Sun, 1.50+Trans, 1.59, 1.59+Trans = short disponível (14mm); 1.56, 1.67, 1.67+Trans, 1.67+UV, 1.74, 1.74+Trans, 1.74+UV = 18mm
-// Conservador: barra diz "14 e 18mm" — setar mfh=14 para todas (mínimo suportado)
+// Por label: 1.50, 1.50+Sun, 1.50+Trans, 1.59, 1.59+Trans = short disponÃ­vel (14mm); 1.56, 1.67, 1.67+Trans, 1.67+UV, 1.74, 1.74+Trans, 1.74+UV = 18mm
+// Conservador: barra diz "14 e 18mm" â€” setar mfh=14 para todas (mÃ­nimo suportado)
 const PROGRESSIVAS_FIXES = [
   { label: 'iTop PROGRESSIVA 1.50',                      cyl_min: -6, cyl_max: 0, mfh: 14 },
   { label: 'iTop PROGRESSIVA 1.50 + Sun Light Photo',     cyl_min: -6, cyl_max: 0, mfh: 14 },
   { label: 'iTop PROGRESSIVA 1.50 + Transitions Gen S',   cyl_min: -6, cyl_max: 0, mfh: 14 },
-  { label: 'iTop PROGRESSIVA 1.56 UV Led Protection',     cyl_min: -6, cyl_max: 0, mfh: 18 },
-  { label: 'iTop PROGRESSIVA 1.59',                       cyl_min: -6, cyl_max: 0, mfh: 14 },
-  { label: 'iTop PROGRESSIVA 1.59 + Transitions Gen S',   cyl_min: -6, cyl_max: 0, mfh: 14 },
-  { label: 'iTop PROGRESSIVA 1.67',                       cyl_min: -6, cyl_max: 0, mfh: 18 },
-  { label: 'iTop PROGRESSIVA 1.67 + Transitions Gen S',   cyl_min: -6, cyl_max: 0, mfh: 18 },
-  { label: 'iTop PROGRESSIVA 1.67 UV Led Protection',     cyl_min: -6, cyl_max: 0, mfh: 18 },
-  { label: 'iTop PROGRESSIVA 1.74',                       cyl_min: -6, cyl_max: 0, mfh: 18 },
-  { label: 'iTop PROGRESSIVA 1.74 + Transitions Gen S',   cyl_min: -6, cyl_max: 0, mfh: 18 },
-  { label: 'iTop PROGRESSIVA 1.74 UV Led Protection',     cyl_min: -6, cyl_max: 0, sph_min: -15, sph_max: 9, mfh: 18 },
+  { label: 'iTop PROGRESSIVA 1.56 UV Led Protection',     cyl_min: -8, cyl_max: 0, mfh: 18 },
+  { label: 'iTop PROGRESSIVA 1.59',                       cyl_min: -8, cyl_max: 0, mfh: 14 },
+  { label: 'iTop PROGRESSIVA 1.59 + Transitions Gen S',   cyl_min: -8, cyl_max: 0, mfh: 14 },
+  { label: 'iTop PROGRESSIVA 1.67',                       cyl_min: -8, cyl_max: 0, mfh: 18 },
+  { label: 'iTop PROGRESSIVA 1.67 + Transitions Gen S',   cyl_min: -8, cyl_max: 0, mfh: 18 },
+  { label: 'iTop PROGRESSIVA 1.67 UV Led Protection',     cyl_min: -8, cyl_max: 0, mfh: 18 },
+  { label: 'iTop PROGRESSIVA 1.74',                       cyl_min: -8, cyl_max: 0, mfh: 18 },
+  { label: 'iTop PROGRESSIVA 1.74 + Transitions Gen S',   cyl_min: -8, cyl_max: 0, mfh: 18 },
+  { label: 'iTop PROGRESSIVA 1.74 UV Led Protection',     cyl_min: -8, cyl_max: 0, sph_min: -12, sph_max: 9, mfh: 18 },
 ]
 
-// UV Led Protection (visão simples) e iTop Tradicional: cyl=[0,0]→[-8,0]
+// UV Led Protection (visÃ£o simples) e iTop Tradicional: cyl=[0,0]â†’[-8,0]
 const VISAO_SIMPLES_FIXES = [
   { label: 'iTop VISÃO SIMPLES Blocos 1.50 iTop Sun Light Protection Photo', cyl_min: -8, cyl_max: 0 },
   { label: 'iTop VISÃO SIMPLES Blocos 1.67 iTop Single Clear Esférico',      cyl_min: -8, cyl_max: 0 },
@@ -63,18 +63,18 @@ async function main() {
   const gridByOffer = new Map((grids || []).map((g) => [g.offer_id, g]))
   const offerByLabel = new Map((offers || []).map((o) => [o.canonical_label, o]))
 
-  console.log(`\nDRY-RUN: ${!commit ? 'SIM' : 'NÃO — APLICANDO MUDANÇAS'}`)
+  console.log(`\nDRY-RUN: ${!commit ? 'SIM' : 'NÃƒO â€” APLICANDO MUDANÃ‡AS'}`)
   console.log(`Ofertas na ${PAGE_REF}: ${offers.length}`)
 
   let patched = 0
 
-  // Patch 1: Progressivas — cyl, mfh e sph onde necessário
-  console.log('\n[Patch 1] Progressivas — cyl / mfh / sph:')
+  // Patch 1: Progressivas â€” cyl, mfh e sph onde necessÃ¡rio
+  console.log('\n[Patch 1] Progressivas â€” cyl / mfh / sph:')
   for (const fix of PROGRESSIVAS_FIXES) {
     const offer = offerByLabel.get(fix.label)
-    if (!offer) { console.log(`  AVISO: oferta não encontrada: "${fix.label}"`); continue }
+    if (!offer) { console.log(`  AVISO: oferta nÃ£o encontrada: "${fix.label}"`); continue }
     const g = gridByOffer.get(offer.id)
-    if (!g) { console.log(`  AVISO: grade não encontrada para "${fix.label}"`); continue }
+    if (!g) { console.log(`  AVISO: grade nÃ£o encontrada para "${fix.label}"`); continue }
 
     const gridPatch = {}
     if (Number(g.cyl_min) !== fix.cyl_min || Number(g.cyl_max) !== fix.cyl_max) {
@@ -88,13 +88,13 @@ async function main() {
     const needsMfh = currentMfh !== fix.mfh
 
     if (Object.keys(gridPatch).length === 0 && !needsMfh) {
-      console.log(`  OK (sem mudança): "${fix.label}"`)
+      console.log(`  OK (sem mudanÃ§a): "${fix.label}"`)
       continue
     }
 
     console.log(`  "${fix.label}"`)
     if (Object.keys(gridPatch).length) console.log(`    grade: ${JSON.stringify(gridPatch)}`)
-    if (needsMfh) console.log(`    mfh: ${currentMfh} → ${fix.mfh}`)
+    if (needsMfh) console.log(`    mfh: ${currentMfh} â†’ ${fix.mfh}`)
 
     if (commit) {
       if (Object.keys(gridPatch).length) {
@@ -110,16 +110,20 @@ async function main() {
     patched++
   }
 
-  // Patch 2: Visão Simples / Tradicional — cyl
-  console.log('\n[Patch 2] Visão Simples / Tradicional — cyl:')
+  // Patch 2: VisÃ£o Simples / Tradicional â€” cyl
+  console.log('\n[Patch 2] VisÃ£o Simples / Tradicional â€” cyl:')
   for (const fix of VISAO_SIMPLES_FIXES) {
     const offer = offerByLabel.get(fix.label)
-    if (!offer) { console.log(`  AVISO: oferta não encontrada: "${fix.label}"`); continue }
+    if (!offer) { console.log(`  AVISO: oferta nÃ£o encontrada: "${fix.label}"`); continue }
     const g = gridByOffer.get(offer.id)
-    if (!g) { console.log(`  AVISO: grade não encontrada para "${fix.label}"`); continue }
+    if (!g) { console.log(`  AVISO: grade nÃ£o encontrada para "${fix.label}"`); continue }
 
     console.log(`  "${fix.label}"`)
-    console.log(`    cyl: [${g.cyl_min}, ${g.cyl_max}] → [${fix.cyl_min}, ${fix.cyl_max}]`)
+    console.log(`    cyl: [${g.cyl_min}, ${g.cyl_max}] â†’ [${fix.cyl_min}, ${fix.cyl_max}]`)
+    if (Number(g.cyl_min) === fix.cyl_min && Number(g.cyl_max) === fix.cyl_max) {
+      console.log('    OK (sem mudanca)')
+      continue
+    }
     if (commit) {
       const { error } = await supabase.from('global_offer_diopter_grids')
         .update({ cyl_min: fix.cyl_min, cyl_max: fix.cyl_max })
@@ -130,7 +134,8 @@ async function main() {
   }
 
   console.log(`\nTotal de patches: ${patched}`)
-  console.log(commit ? '[COMMIT] Aplicado.' : '[DRY-RUN] Sem alterações. Rode com --commit para efetivar.')
+  console.log(commit ? '[COMMIT] Aplicado.' : '[DRY-RUN] Sem alteraÃ§Ãµes. Rode com --commit para efetivar.')
 }
 
 main().catch((e) => { console.error(e); process.exit(1) })
+

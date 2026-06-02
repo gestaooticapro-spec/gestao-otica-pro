@@ -20,6 +20,31 @@ const args = process.argv.slice(2)
 const storeId = Number(args.find((arg) => arg.startsWith('--store='))?.split('=')[1] || 1)
 const laboratorio = args.find((arg) => arg.startsWith('--laboratorio='))?.split('=')[1] || 'HOYA'
 const versao = args.find((arg) => arg.startsWith('--versao='))?.split('=')[1] || 'HOYA Dezembro 2025'
+const pageSize = 1000
+const chunkSize = 500
+
+async function fetchAll(queryFactory) {
+  const rows = []
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await queryFactory().range(from, from + pageSize - 1)
+    if (error) throw error
+
+    const page = data || []
+    rows.push(...page)
+    if (page.length < pageSize) break
+  }
+
+  return rows
+}
+
+function chunkValues(values, size = chunkSize) {
+  const chunks = []
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size))
+  }
+  return chunks
+}
 
 async function main() {
   const now = new Date().toISOString()
@@ -98,24 +123,36 @@ async function main() {
     process.exit(1)
   }
 
-  const { data: familyIds } = await supabase
-    .from('global_lens_families')
-    .select('id')
-    .eq('version_id', version.id)
+  const familyIds = await fetchAll(() =>
+    supabase
+      .from('global_lens_families')
+      .select('id')
+      .eq('version_id', version.id),
+  )
 
-  const ids = (familyIds || []).map((row) => row.id)
-  const { data: offers } = ids.length
-    ? await supabase.from('global_lens_offers').select('id,canonical_label,raw_label,features').in('family_id', ids)
-    : { data: [] }
+  const ids = familyIds.map((row) => row.id)
+  const offers = []
+  for (const chunk of chunkValues(ids)) {
+    offers.push(
+      ...(await fetchAll(() =>
+        supabase
+          .from('global_lens_offers')
+          .select('id,canonical_label,raw_label,features')
+          .in('family_id', chunk),
+      )),
+    )
+  }
 
-  const { data: existingOffers } = await supabase
-    .from('tenant_commercial_offers')
-    .select('global_offer_id')
-    .eq('activation_id', activation.id)
+  const existingOffers = await fetchAll(() =>
+    supabase
+      .from('tenant_commercial_offers')
+      .select('global_offer_id')
+      .eq('activation_id', activation.id),
+  )
 
-  const existingOfferIds = new Set((existingOffers || []).map((row) => row.global_offer_id))
+  const existingOfferIds = new Set(existingOffers.map((row) => row.global_offer_id))
 
-  const missingOffers = (offers || [])
+  const missingOffers = offers
     .filter((offer) => !existingOfferIds.has(offer.id))
     .map((offer) => ({
       activation_id: activation.id,
@@ -130,10 +167,12 @@ async function main() {
     }))
 
   if (missingOffers.length) {
-    const { error } = await supabase
-      .from('tenant_commercial_offers')
-      .upsert(missingOffers, { onConflict: 'activation_id,global_offer_id' })
-    if (error) throw error
+    for (const chunk of chunkValues(missingOffers)) {
+      const { error } = await supabase
+        .from('tenant_commercial_offers')
+        .upsert(chunk, { onConflict: 'activation_id,global_offer_id' })
+      if (error) throw error
+    }
   }
 
   await supabase

@@ -19,17 +19,15 @@ if (!versionId) {
 
 const PAGE_REF = 'Pagina 39'
 
-// Correções por offer_id (confirmados via auditoria)
-// Lentes Acabadas: sph e cyl estão invertidos
+// Correcoes por canonical_label confirmadas via auditoria.
 const ACABADAS_FIXES = [
-  { id: 'iTop LENTES ACABADAS 1.56',                    sph_min: -4, sph_max: 4,  cyl_min: -2, cyl_max: 0 },
-  { id: 'iTop LENTES ACABADAS 1.56 Cilíndrico Estendido', sph_min: -4, sph_max: 4,  cyl_min: -4, cyl_max: 0 },
-  { id: 'iTop LENTES ACABADAS 1.59',                    sph_min: -4, sph_max: 4,  cyl_min: -2, cyl_max: 0 },
-  { id: 'iTop LENTES ACABADAS 1.59 Cilíndrico Estendido', sph_min: -4, sph_max: 4,  cyl_min: -4, cyl_max: 0 },
-  { id: 'iTop LENTES ACABADAS 1.67',                    sph_min: -10, sph_max: 6, cyl_min: -4, cyl_max: 0 },
+  { id: 'iTop LENTES ACABADAS 1.56', sph_min: -4, sph_max: 4, cyl_min: -2, cyl_max: 0 },
+  { id: 'iTop LENTES ACABADAS 1.56 Cilíndrico Estendido', sph_min: -4, sph_max: 4, cyl_min: -4, cyl_max: 0 },
+  { id: 'iTop LENTES ACABADAS 1.59', sph_min: -4, sph_max: 4, cyl_min: -2, cyl_max: 0 },
+  { id: 'iTop LENTES ACABADAS 1.59 Cilíndrico Estendido', sph_min: -4, sph_max: 4, cyl_min: -4, cyl_max: 0 },
+  { id: 'iTop LENTES ACABADAS 1.67', sph_min: -10, sph_max: 6, cyl_min: -4, cyl_max: 0 },
 ]
 
-// Surfaçadas: 1.67 UV Led tem sph errado
 const SURFACADAS_FIXES = [
   { label: 'iTop LENTES SURFAÇADAS DIGITAIS 1.67 UV Led Protection Single Digital', sph_min: -10, sph_max: 10 },
 ]
@@ -53,21 +51,30 @@ async function main() {
   const gridByOffer = new Map((grids || []).map((g) => [g.offer_id, g]))
   const offerByLabel = new Map((offers || []).map((o) => [o.canonical_label, o]))
 
-  console.log(`\nDRY-RUN: ${!commit ? 'SIM' : 'NÃO — APLICANDO MUDANÇAS'}`)
-  console.log(`Ofertas na ${PAGE_REF}: ${offers.length}`)
+  console.log(`\nDRY-RUN: ${!commit ? 'SIM' : 'NAO - APLICANDO MUDANCAS'}`)
+  console.log(`Ofertas na ${PAGE_REF}: ${(offers || []).length}`)
 
   let patched = 0
 
-  // Patch 1: Lentes Acabadas — sph e cyl invertidos
-  console.log('\n[Patch 1] Lentes Acabadas — corrigir sph e cyl:')
+  console.log('\n[Patch 1] Lentes Acabadas - corrigir sph e cyl quando necessario:')
   for (const fix of ACABADAS_FIXES) {
     const offer = offerByLabel.get(fix.id)
-    if (!offer) { console.log(`  AVISO: oferta não encontrada: "${fix.id}"`); continue }
+    if (!offer) { console.log(`  AVISO: oferta nao encontrada: "${fix.id}"`); continue }
     const g = gridByOffer.get(offer.id)
-    if (!g) { console.log(`  AVISO: grade não encontrada para "${fix.id}"`); continue }
+    if (!g) { console.log(`  AVISO: grade nao encontrada para "${fix.id}"`); continue }
+    const needsPatch = (
+      Number(g.sph_min) !== fix.sph_min ||
+      Number(g.sph_max) !== fix.sph_max ||
+      Number(g.cyl_min) !== fix.cyl_min ||
+      Number(g.cyl_max) !== fix.cyl_max
+    )
+    if (!needsPatch) {
+      console.log(`  OK sem mudanca: "${fix.id}"`)
+      continue
+    }
     console.log(`  "${fix.id}"`)
-    console.log(`    sph: [${g.sph_min}, ${g.sph_max}] → [${fix.sph_min}, ${fix.sph_max}]`)
-    console.log(`    cyl: [${g.cyl_min}, ${g.cyl_max}] → [${fix.cyl_min}, ${fix.cyl_max}]`)
+    console.log(`    sph: [${g.sph_min}, ${g.sph_max}] -> [${fix.sph_min}, ${fix.sph_max}]`)
+    console.log(`    cyl: [${g.cyl_min}, ${g.cyl_max}] -> [${fix.cyl_min}, ${fix.cyl_max}]`)
     if (commit) {
       const { error } = await supabase.from('global_offer_diopter_grids')
         .update({ sph_min: fix.sph_min, sph_max: fix.sph_max, cyl_min: fix.cyl_min, cyl_max: fix.cyl_max })
@@ -77,15 +84,22 @@ async function main() {
     patched++
   }
 
-  // Patch 2: Surfaçadas — sph errado
-  console.log('\n[Patch 2] Lentes Surfaçadas — corrigir sph:')
+  console.log('\n[Patch 2] Lentes Surfacadas - corrigir sph quando necessario:')
   for (const fix of SURFACADAS_FIXES) {
     const offer = offerByLabel.get(fix.label)
-    if (!offer) { console.log(`  AVISO: oferta não encontrada: "${fix.label}"`); continue }
+    if (!offer) { console.log(`  AVISO: oferta nao encontrada: "${fix.label}"`); continue }
     const g = gridByOffer.get(offer.id)
-    if (!g) { console.log(`  AVISO: grade não encontrada para "${fix.label}"`); continue }
+    if (!g) { console.log(`  AVISO: grade nao encontrada para "${fix.label}"`); continue }
+    const needsPatch = (
+      Number(g.sph_min) !== fix.sph_min ||
+      Number(g.sph_max) !== fix.sph_max
+    )
+    if (!needsPatch) {
+      console.log(`  OK sem mudanca: "${fix.label}"`)
+      continue
+    }
     console.log(`  "${fix.label}"`)
-    console.log(`    sph: [${g.sph_min}, ${g.sph_max}] → [${fix.sph_min}, ${fix.sph_max}]`)
+    console.log(`    sph: [${g.sph_min}, ${g.sph_max}] -> [${fix.sph_min}, ${fix.sph_max}]`)
     if (commit) {
       const { error } = await supabase.from('global_offer_diopter_grids')
         .update({ sph_min: fix.sph_min, sph_max: fix.sph_max })
@@ -96,7 +110,7 @@ async function main() {
   }
 
   console.log(`\nTotal de patches: ${patched}`)
-  console.log(commit ? '[COMMIT] Aplicado.' : '[DRY-RUN] Sem alterações. Rode com --commit para efetivar.')
+  console.log(commit ? '[COMMIT] Aplicado.' : '[DRY-RUN] Sem alteracoes. Rode com --commit para efetivar.')
 }
 
 main().catch((e) => { console.error(e); process.exit(1) })
