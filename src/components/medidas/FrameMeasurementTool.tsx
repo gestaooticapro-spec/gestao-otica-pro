@@ -132,6 +132,7 @@ export default function FrameMeasurementTool({
   const canvasRef     = useRef<HTMLCanvasElement>(null)
   const fileRef       = useRef<HTMLInputElement>(null)
   const videoRef      = useRef<HTMLVideoElement>(null)
+  const cameraPreviewRef = useRef<HTMLDivElement>(null)
   const streamRef     = useRef<MediaStream | null>(null)
   const imgRef        = useRef<HTMLImageElement | null>(null)
   const landmarkerRef = useRef<FaceLandmarkerInstance | null>(null)
@@ -166,9 +167,9 @@ export default function FrameMeasurementTool({
   const [cameraMode, setCameraMode] = useState<CameraMode>('guide')
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [gridDivs,    setGridDivs]    = useState(10)
-  const [cameraAspect, setCameraAspect] = useState<number>(16 / 9)
   const [showDnpGuide, setShowDnpGuide] = useState(true)
   const [dnpGuideMm, setDnpGuideMm] = useState(32)
+  const [livePupils, setLivePupils] = useState<{ r: Pt; l: Pt; center: Pt } | null>(null)
 
   useEffect(() => { imgBoundsRef.current = imgBounds   }, [imgBounds])
   useEffect(() => { activeGrpRef.current = activeGroup }, [activeGroup])
@@ -182,12 +183,62 @@ export default function FrameMeasurementTool({
 
     video.srcObject = stream
     video.onloadedmetadata = () => {
-      if (video.videoWidth > 0 && video.videoHeight > 0) {
-        setCameraAspect(video.videoWidth / video.videoHeight)
-      }
       video.play().catch(() => {})
     }
   }, [cameraOpen])
+
+  useEffect(() => {
+    if (!cameraOpen || cameraMode !== 'guide' || !showDnpGuide) {
+      setLivePupils(null)
+      return
+    }
+
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const toPreviewPoint = (lm: RawLm): Pt | null => {
+      const video = videoRef.current
+      const preview = cameraPreviewRef.current
+      if (!video || !preview || !video.videoWidth || !video.videoHeight) return null
+
+      const cw = preview.clientWidth
+      const ch = preview.clientHeight
+      const scale = Math.min(cw / video.videoWidth, ch / video.videoHeight)
+      const rw = video.videoWidth * scale
+      const rh = video.videoHeight * scale
+      const ox = (cw - rw) / 2
+      const oy = (ch - rh) / 2
+
+      return { x: ox + lm.x * rw, y: oy + lm.y * rh }
+    }
+
+    const tick = async () => {
+      if (cancelled) return
+      const video = videoRef.current
+      if (video?.readyState && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        const lm = await ensureLandmarker().catch(() => null)
+        if (lm && !cancelled) {
+          try {
+            const result = lm.detect(video) as FaceLandmarkerResult
+            const face = result.faceLandmarks?.[0]
+            const r = face?.[468] ? toPreviewPoint(face[468]) : null
+            const l = face?.[473] ? toPreviewPoint(face[473]) : null
+            if (r && l) setLivePupils({ r, l, center: { x: (r.x + l.x) / 2, y: (r.y + l.y) / 2 } })
+            else setLivePupils(null)
+          } catch {
+            setLivePupils(null)
+          }
+        }
+      }
+      timer = setTimeout(tick, 220)
+    }
+
+    tick()
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [cameraOpen, cameraMode, showDnpGuide])
 
   // ── Resize ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -321,11 +372,13 @@ export default function FrameMeasurementTool({
     setCameraError(null)
     setCameraMode(mode)
     try {
+      const portrait = window.innerHeight >= window.innerWidth
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          width: { ideal: portrait ? 1080 : 1920 },
+          height: { ideal: portrait ? 1920 : 1080 },
+          aspectRatio: { ideal: portrait ? 9 / 16 : 16 / 9 },
         },
         audio: false,
       })
@@ -344,6 +397,7 @@ export default function FrameMeasurementTool({
     const video = videoRef.current
     if (video) video.srcObject = null
     setCameraOpen(false)
+    setLivePupils(null)
   }
 
   async function takeCameraShot() {
@@ -765,13 +819,7 @@ export default function FrameMeasurementTool({
       {step === 'capture' && cameraOpen && (
         <div className="absolute inset-0 z-30 bg-black">
           <div className="absolute inset-0 flex items-center justify-center">
-            <div
-              className="relative max-h-full max-w-full"
-              style={{
-                width: `min(100vw, calc(100vh * ${cameraAspect}))`,
-                height: `min(100vh, calc(100vw / ${cameraAspect}))`,
-              }}
-            >
+            <div ref={cameraPreviewRef} className="absolute inset-0">
               <video
                 ref={videoRef}
                 className="absolute inset-0 h-full w-full object-contain"
@@ -821,19 +869,42 @@ export default function FrameMeasurementTool({
                   />
                   <div className="absolute bottom-[10%] top-[13%] left-1/2 w-px -translate-x-1/2 bg-cyan-300/80" />
                   <div className="absolute left-[29%] right-[29%] top-[42%] h-px bg-cyan-300/80" />
-                  <div className="absolute left-1/2 top-[42%] h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-200 bg-black/70" />
-                  <div className="absolute left-[36%] top-[42%] h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-indigo-300 bg-indigo-500/30" />
-                  <div className="absolute left-[64%] top-[42%] h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-indigo-300 bg-indigo-500/30" />
-                  <div className="absolute left-[36%] top-[42%] h-px w-[14%] bg-indigo-300/90" />
-                  <div className="absolute right-[36%] top-[42%] h-px w-[14%] bg-indigo-300/90" />
-                  <div className="absolute left-[36%] top-[calc(42%+14px)] -translate-x-1/2 rounded bg-black/70 px-2 py-1 text-[10px] font-bold text-indigo-100">
-                    OD {dnpGuideMm}mm
-                  </div>
-                  <div className="absolute left-[64%] top-[calc(42%+14px)] -translate-x-1/2 rounded bg-black/70 px-2 py-1 text-[10px] font-bold text-indigo-100">
-                    OE {dnpGuideMm}mm
-                  </div>
+                  {livePupils ? (
+                    <>
+                      <div
+                        className="absolute h-px bg-indigo-200/90"
+                        style={{
+                          left: `${Math.min(livePupils.r.x, livePupils.l.x)}px`,
+                          top: `${livePupils.center.y}px`,
+                          width: `${Math.abs(livePupils.l.x - livePupils.r.x)}px`,
+                        }}
+                      />
+                      <div className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-emerald-200 bg-emerald-500/35" style={{ left: livePupils.r.x, top: livePupils.r.y }} />
+                      <div className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-emerald-200 bg-emerald-500/35" style={{ left: livePupils.l.x, top: livePupils.l.y }} />
+                      <div className="absolute -translate-x-1/2 rounded bg-black/75 px-2 py-1 text-[10px] font-bold text-emerald-100" style={{ left: livePupils.r.x, top: livePupils.r.y + 14 }}>
+                        OD {dnpGuideMm}mm
+                      </div>
+                      <div className="absolute -translate-x-1/2 rounded bg-black/75 px-2 py-1 text-[10px] font-bold text-emerald-100" style={{ left: livePupils.l.x, top: livePupils.l.y + 14 }}>
+                        OE {dnpGuideMm}mm
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="absolute left-1/2 top-[42%] h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-200 bg-black/70" />
+                      <div className="absolute left-[36%] top-[42%] h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-indigo-300 bg-indigo-500/30" />
+                      <div className="absolute left-[64%] top-[42%] h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-indigo-300 bg-indigo-500/30" />
+                      <div className="absolute left-[36%] top-[42%] h-px w-[14%] bg-indigo-300/90" />
+                      <div className="absolute right-[36%] top-[42%] h-px w-[14%] bg-indigo-300/90" />
+                      <div className="absolute left-[36%] top-[calc(42%+14px)] -translate-x-1/2 rounded bg-black/70 px-2 py-1 text-[10px] font-bold text-indigo-100">
+                        OD {dnpGuideMm}mm
+                      </div>
+                      <div className="absolute left-[64%] top-[calc(42%+14px)] -translate-x-1/2 rounded bg-black/70 px-2 py-1 text-[10px] font-bold text-indigo-100">
+                        OE {dnpGuideMm}mm
+                      </div>
+                    </>
+                  )}
                   <div className="absolute left-1/2 top-[17%] -translate-x-1/2 rounded bg-black/65 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-cyan-100">
-                    Rosto de frente
+                    {livePupils ? 'Pupilas detectadas' : 'Rosto de frente'}
                   </div>
                 </div>
               )}
