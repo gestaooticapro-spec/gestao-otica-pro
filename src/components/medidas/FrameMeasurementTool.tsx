@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Camera, CheckCircle2, Copy, ImageIcon, RotateCcw, Ruler, Save, ScanFace } from 'lucide-react'
-import { saveMedicaoOS } from '@/lib/actions/medidas.actions'
+import { findMedicaoOSByNumber, saveMedicaoOS, type MedicaoOSLookup } from '@/lib/actions/medidas.actions'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Step     = 'capture' | 'calibrate' | 'measure' | 'done'
@@ -25,6 +25,9 @@ type MPModule = typeof import('@mediapipe/tasks-vision')
 type FaceLandmarkerInstance = Awaited<ReturnType<MPModule['FaceLandmarker']['createFromOptions']>>
 type RawLm = { x: number; y: number; z: number }
 type MediaTrackWithImageCapture = MediaStreamTrack & { getSettings?: () => MediaTrackSettings }
+type FaceLandmarkerResult = { faceLandmarks?: RawLm[][] }
+type ImageCaptureConstructor = new (track: MediaStreamTrack) => { takePhoto: () => Promise<Blob> }
+type CameraMode = 'grid' | 'guide'
 
 // ─── Grupos de medição ────────────────────────────────────────────────────────
 interface MGroup { id: string; label: string; handles: HKey[]; refs?: HKey[] }
@@ -154,12 +157,18 @@ export default function FrameMeasurementTool({
   const [copied,      setCopied]      = useState(false)
   const [saving,      setSaving]      = useState(false)
   const [saved,       setSaved]       = useState(false)
+  const [linkedOS, setLinkedOS] = useState<MedicaoOSLookup | null>(null)
+  const [osNumberInput, setOsNumberInput] = useState('')
+  const [osLookupError, setOsLookupError] = useState<string | null>(null)
   const [cardMm,      setCardMm]      = useState(85.6)
   const [cardInput,   setCardInput]   = useState('85.6')
   const [cameraOpen,  setCameraOpen]  = useState(false)
+  const [cameraMode, setCameraMode] = useState<CameraMode>('guide')
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [gridDivs,    setGridDivs]    = useState(10)
   const [cameraAspect, setCameraAspect] = useState<number>(16 / 9)
+  const [showDnpGuide, setShowDnpGuide] = useState(true)
+  const [dnpGuideMm, setDnpGuideMm] = useState(32)
 
   useEffect(() => { imgBoundsRef.current = imgBounds   }, [imgBounds])
   useEffect(() => { activeGrpRef.current = activeGroup }, [activeGroup])
@@ -273,7 +282,7 @@ export default function FrameMeasurementTool({
     oc.height = Math.round(img.naturalHeight * s)
     oc.getContext('2d')!.drawImage(img, 0, 0, oc.width, oc.height)
     try {
-      const result = (lm as any).detect(oc)
+      const result = lm.detect(oc) as FaceLandmarkerResult
       const detected: RawLm[] | undefined = result?.faceLandmarks?.[0]
       if (!detected?.length) return
       rawLmsRef.current = detected; setAutoOk(true)
@@ -304,12 +313,13 @@ export default function FrameMeasurementTool({
     const f = e.target.files?.[0]; if (f) processFile(f); e.target.value = ''
   }
 
-  async function startCamera() {
+  async function startCamera(mode: CameraMode) {
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraError('Camera indisponivel neste navegador')
       return
     }
     setCameraError(null)
+    setCameraMode(mode)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -344,7 +354,9 @@ export default function FrameMeasurementTool({
     const track = stream?.getVideoTracks?.()[0] as MediaTrackWithImageCapture | undefined
     if (track && 'ImageCapture' in window) {
       try {
-        const imageCapture = new (window as any).ImageCapture(track)
+        const ImageCaptureCtor = (window as Window & { ImageCapture?: ImageCaptureConstructor }).ImageCapture
+        if (!ImageCaptureCtor) throw new Error('ImageCapture indisponivel')
+        const imageCapture = new ImageCaptureCtor(track)
         const blob = await imageCapture.takePhoto()
         file = new File([blob], `captura-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' })
       } catch {
@@ -612,9 +624,33 @@ export default function FrameMeasurementTool({
 
   // ── Salvar medidas na OS (fluxo tablet) ──────────────────────────────────
   async function saveToOS() {
-    if (!pts || !osId) return
+    if (!pts) return
+    if (!storeId && !osId) {
+      setOsLookupError('Loja nao identificada para buscar a OS.')
+      return
+    }
+
     setSaving(true)
+    setOsLookupError(null)
     try {
+      let targetOsId = linkedOS?.id ?? osId
+
+      if (!targetOsId) {
+        if (!storeId) {
+          setOsLookupError('Loja nao identificada para buscar a OS.')
+          return
+        }
+
+        const found = await findMedicaoOSByNumber(storeId, osNumberInput)
+        if (!found.ok || !found.os) {
+          setOsLookupError(found.error ?? 'Nao foi possivel encontrar a OS.')
+          return
+        }
+
+        setLinkedOS(found.os)
+        targetOsId = found.os.id
+      }
+
       const m = calc(pts)
 
       // Captura o canvas como JPEG base64
@@ -626,7 +662,7 @@ export default function FrameMeasurementTool({
       }
 
       const result = await saveMedicaoOS({
-        osId,
+        osId: targetOsId,
         storeId,
         dnpOd: m.dnpOD, dnpOe: m.dnpOE,
         altOd: m.altOD,  altOe: m.altOE,
@@ -671,6 +707,7 @@ export default function FrameMeasurementTool({
   function reset() {
     setStep('capture'); setPts(null); setActiveGroup(null); setLensType(null)
     setAutoOk(false); setShowDiam(false); setSaved(false)
+    setLinkedOS(null); setOsNumberInput(''); setOsLookupError(null)
     rawLmsRef.current = null; imgRef.current = null
   }
 
@@ -710,11 +747,11 @@ export default function FrameMeasurementTool({
                 className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium transition-colors">
                 <ImageIcon className="w-4 h-4" /> Escolher da galeria
               </button>
-              <button onClick={() => { fileRef.current!.setAttribute('capture', 'environment'); fileRef.current!.click() }}
+              <button onClick={() => startCamera('guide')}
                 className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-medium transition-colors">
-                <Camera className="w-4 h-4" /> Abrir câmera
+                <Camera className="w-4 h-4" /> Câmera com guia DNP
               </button>
-              <button onClick={startCamera}
+              <button onClick={() => startCamera('grid')}
                 className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-cyan-700 hover:bg-cyan-600 rounded-xl text-sm font-medium transition-colors">
                 <Camera className="w-4 h-4" /> Camera com grade
               </button>
@@ -728,7 +765,13 @@ export default function FrameMeasurementTool({
       {step === 'capture' && cameraOpen && (
         <div className="absolute inset-0 z-30 bg-black">
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="relative h-full max-h-full w-full max-w-full" style={{ aspectRatio: `${cameraAspect}` }}>
+            <div
+              className="relative max-h-full max-w-full"
+              style={{
+                width: `min(100vw, calc(100vh * ${cameraAspect}))`,
+                height: `min(100vh, calc(100vw / ${cameraAspect}))`,
+              }}
+            >
               <video
                 ref={videoRef}
                 className="absolute inset-0 h-full w-full object-contain"
@@ -737,7 +780,8 @@ export default function FrameMeasurementTool({
                 muted
               />
 
-              <div className="pointer-events-none absolute inset-0">
+              {cameraMode === 'grid' && (
+                <div className="pointer-events-none absolute inset-0">
                 {Array.from({ length: gridDivs - 1 }).map((_, i) => (
                   <div
                     key={`v-${i}`}
@@ -760,23 +804,80 @@ export default function FrameMeasurementTool({
                     }}
                   />
                 ))}
-              </div>
+                </div>
+              )}
+
+              {cameraMode === 'guide' && showDnpGuide && (
+                <div className="pointer-events-none absolute inset-0">
+                  <div
+                    className="absolute rounded-full border-2 border-cyan-300/60"
+                    style={{
+                      left: '29%',
+                      right: '29%',
+                      top: '13%',
+                      bottom: '10%',
+                      boxShadow: '0 0 0 999px rgba(0,0,0,0.08)',
+                    }}
+                  />
+                  <div className="absolute bottom-[10%] top-[13%] left-1/2 w-px -translate-x-1/2 bg-cyan-300/80" />
+                  <div className="absolute left-[29%] right-[29%] top-[42%] h-px bg-cyan-300/80" />
+                  <div className="absolute left-1/2 top-[42%] h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-200 bg-black/70" />
+                  <div className="absolute left-[36%] top-[42%] h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-indigo-300 bg-indigo-500/30" />
+                  <div className="absolute left-[64%] top-[42%] h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-indigo-300 bg-indigo-500/30" />
+                  <div className="absolute left-[36%] top-[42%] h-px w-[14%] bg-indigo-300/90" />
+                  <div className="absolute right-[36%] top-[42%] h-px w-[14%] bg-indigo-300/90" />
+                  <div className="absolute left-[36%] top-[calc(42%+14px)] -translate-x-1/2 rounded bg-black/70 px-2 py-1 text-[10px] font-bold text-indigo-100">
+                    OD {dnpGuideMm}mm
+                  </div>
+                  <div className="absolute left-[64%] top-[calc(42%+14px)] -translate-x-1/2 rounded bg-black/70 px-2 py-1 text-[10px] font-bold text-indigo-100">
+                    OE {dnpGuideMm}mm
+                  </div>
+                  <div className="absolute left-1/2 top-[17%] -translate-x-1/2 rounded bg-black/65 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-cyan-100">
+                    Rosto de frente
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="absolute left-3 right-3 top-3 rounded-lg bg-black/45 px-3 py-2">
-            <div className="flex items-center gap-2">
-              <span className="whitespace-nowrap text-xs text-slate-100">Grade</span>
-              <input
-                type="range"
-                min={4}
-                max={16}
-                value={gridDivs}
-                onChange={e => setGridDivs(parseInt(e.target.value, 10))}
-                className="w-full"
-              />
-              <span className="w-12 text-right font-mono text-xs text-slate-100">{gridDivs}x{gridDivs}</span>
-            </div>
+          <div className="absolute left-3 right-3 top-3 space-y-2 rounded-lg bg-black/45 px-3 py-2">
+            {cameraMode === 'grid' && (
+              <div className="flex items-center gap-2">
+                <span className="w-16 whitespace-nowrap text-xs text-slate-100">Grade</span>
+                <input
+                  type="range"
+                  min={4}
+                  max={16}
+                  value={gridDivs}
+                  onChange={e => setGridDivs(parseInt(e.target.value, 10))}
+                  className="w-full"
+                />
+                <span className="w-12 text-right font-mono text-xs text-slate-100">{gridDivs}x{gridDivs}</span>
+              </div>
+            )}
+            {cameraMode === 'guide' && (
+              <div className="flex items-center gap-2">
+                <label className="flex w-16 items-center gap-1 whitespace-nowrap text-xs text-slate-100">
+                  <input
+                    type="checkbox"
+                    checked={showDnpGuide}
+                    onChange={e => setShowDnpGuide(e.target.checked)}
+                    className="h-3 w-3 accent-cyan-400"
+                  />
+                  DNP
+                </label>
+                <input
+                  type="range"
+                  min={26}
+                  max={40}
+                  value={dnpGuideMm}
+                  onChange={e => setDnpGuideMm(parseInt(e.target.value, 10))}
+                  className="w-full"
+                  disabled={!showDnpGuide}
+                />
+                <span className="w-12 text-right font-mono text-xs text-slate-100">{dnpGuideMm}mm</span>
+              </div>
+            )}
           </div>
 
           <div className="absolute bottom-4 left-4 right-4 flex gap-2">
@@ -965,7 +1066,7 @@ export default function FrameMeasurementTool({
               )}
 
               {/* Ações */}
-              <div className="px-4 pb-3 pt-1 flex gap-2">
+              <div className="px-4 pb-3 pt-1 flex flex-wrap gap-2">
                 {step === 'measure' && !activeGroup && (
                   <>
                     <button onClick={() => setShowDiam(v => !v)}
@@ -986,11 +1087,33 @@ export default function FrameMeasurementTool({
                 )}
                 {step === 'done' && !saved && (
                   <>
+                    {!osId && (
+                      <div className="w-full rounded-xl border border-white/10 bg-black/25 p-2">
+                        <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Numero da OS
+                        </label>
+                        <input
+                          value={osNumberInput}
+                          onChange={e => {
+                            setOsNumberInput(e.target.value)
+                            setOsLookupError(null)
+                          }}
+                          placeholder="Digite o numero/protocolo"
+                          className="h-9 w-full rounded-lg border border-white/10 bg-black/30 px-3 text-sm font-semibold text-white outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-500/30"
+                        />
+                        {linkedOS && (
+                          <p className="mt-1 text-[11px] text-emerald-300">
+                            OS {linkedOS.protocolo_fisico ?? linkedOS.id} vinculada a {linkedOS.dependente_name ?? linkedOS.customer_name ?? 'cliente'}
+                          </p>
+                        )}
+                        {osLookupError && <p className="mt-1 text-[11px] text-rose-300">{osLookupError}</p>}
+                      </div>
+                    )}
                     <button onClick={() => setShowDiam(v => !v)}
                       className={`flex-1 py-2 rounded-xl text-xs font-medium border transition-colors ${showDiam ? 'bg-indigo-900/60 border-indigo-500 text-indigo-200' : 'bg-white/5 border-white/10 text-slate-300'}`}>
                       {showDiam ? 'Ocultar Ø' : 'Calcular Ø'}
                     </button>
-                    {osId ? (
+                    {(osId || linkedOS || osNumberInput.trim()) ? (
                       <button onClick={saveToOS} disabled={saving}
                         className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors">
                         {saving

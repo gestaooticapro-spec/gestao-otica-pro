@@ -25,6 +25,16 @@ export default async function TabletOSPage({ params }: { params: { storeId: stri
         </div>
       </header>
 
+      <div className="border-b border-white/10 bg-slate-900/70 px-4 py-3">
+        <Link
+          href={`/medidas-armacao?storeId=${storeId}`}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 active:bg-indigo-700"
+        >
+          <Camera className="h-4 w-4" />
+          Tirar foto e informar OS depois
+        </Link>
+      </div>
+
       {lista.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-slate-500 text-sm">
           Nenhuma OS pendente de laboratório

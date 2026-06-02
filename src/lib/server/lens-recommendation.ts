@@ -2921,6 +2921,38 @@ export async function loadRecommendationCatalog(versionId: string): Promise<Reco
   // The generated Supabase types do not include the global catalog tables yet.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabaseAdmin = createAdminClient() as any
+  type CatalogRangeQuery<T> = {
+    range: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>
+  }
+  const fetchAllCatalogRows = async <T,>(buildQuery: () => CatalogRangeQuery<T>): Promise<T[]> => {
+    const pageSize = 1000
+    const rows: T[] = []
+
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await buildQuery().range(from, from + pageSize - 1)
+      if (error) throw error
+
+      const page = (data || []) as T[]
+      rows.push(...page)
+      if (page.length < pageSize) break
+    }
+
+    return rows
+  }
+  const fetchAllCatalogRowsInChunks = async <T,>(
+    values: string[],
+    buildQuery: (chunk: string[]) => CatalogRangeQuery<T>,
+  ): Promise<T[]> => {
+    const chunkSize = 150
+    const rows: T[] = []
+
+    for (let index = 0; index < values.length; index += chunkSize) {
+      const chunk = values.slice(index, index + chunkSize)
+      rows.push(...await fetchAllCatalogRows<T>(() => buildQuery(chunk)))
+    }
+
+    return rows
+  }
 
   const { data: versionMeta, error: versionMetaError } = await supabaseAdmin
     .from('global_catalog_versions')
@@ -2930,51 +2962,62 @@ export async function loadRecommendationCatalog(versionId: string): Promise<Reco
 
   if (versionMetaError) throw versionMetaError
 
-  const { data: families, error: familiesError } = await supabaseAdmin
-    .from('global_lens_families')
-    .select('id,nome,design,tags_uso,tags_beneficios,clinical_category')
-    .eq('version_id', versionId)
-
-  if (familiesError) throw familiesError
-
-  const familyIds = (families || []).map((family: { id: string }) => family.id)
-
-  const [
-    { data: offers, error: offersError },
-    { data: grids, error: gridsError },
-    { data: usageProfiles, error: profilesError },
-    { data: compatibilities, error: compatError },
-    { data: treatments, error: treatmentsError },
-  ] = await Promise.all([
+  const families = await fetchAllCatalogRows<Record<string, unknown>>(() =>
     supabaseAdmin
+      .from('global_lens_families')
+      .select('id,nome,design,tags_uso,tags_beneficios,clinical_category')
+      .eq('version_id', versionId)
+  )
+
+  const familyIds = families.map((family) => String(family.id))
+
+  const offers = familyIds.length
+    ? await fetchAllCatalogRowsInChunks<Record<string, unknown>>(familyIds, (chunk) =>
+      supabaseAdmin
       .from('global_lens_offers')
       .select('id,family_id,raw_label,canonical_label,material,clinical_category,features,base_price,is_atomic_offer,already_includes_treatment,allows_composition,source_page_reference')
-      .in('family_id', familyIds),
-    supabaseAdmin
-      .from('global_offer_diopter_grids')
-      .select('offer_id,sph_min,sph_max,cyl_min,cyl_max,add_min,add_max'),
-    supabaseAdmin
-      .from('global_usage_profiles')
-      .select('family_id,usage_tags,benefit_tags,commercial_summary,recommendation_notes')
-      .eq('profile_scope', 'family')
-      .in('family_id', familyIds),
-    supabaseAdmin
-      .from('global_offer_treatments_compatibility')
-      .select('offer_id,treatment_id,special_price,price_mode'),
-    supabaseAdmin
-      .from('global_treatments')
-      .select('id,nome,tipo,features')
-      .eq('version_id', versionId),
+      .in('family_id', chunk)
+    )
+    : []
+
+  const offerIds = offers.map((offer) => String(offer.id))
+
+  const [grids, usageProfiles, compatibilities, treatments] = await Promise.all([
+    offerIds.length
+      ? fetchAllCatalogRowsInChunks<Record<string, unknown>>(offerIds, (chunk) =>
+        supabaseAdmin
+          .from('global_offer_diopter_grids')
+          .select('offer_id,sph_min,sph_max,cyl_min,cyl_max,add_min,add_max')
+          .in('offer_id', chunk)
+      )
+      : Promise.resolve([]),
+    familyIds.length
+      ? fetchAllCatalogRowsInChunks<Record<string, unknown>>(familyIds, (chunk) =>
+        supabaseAdmin
+          .from('global_usage_profiles')
+          .select('family_id,usage_tags,benefit_tags,commercial_summary,recommendation_notes')
+          .eq('profile_scope', 'family')
+          .in('family_id', chunk)
+      )
+      : Promise.resolve([]),
+    offerIds.length
+      ? fetchAllCatalogRowsInChunks<Record<string, unknown>>(offerIds, (chunk) =>
+        supabaseAdmin
+          .from('global_offer_treatments_compatibility')
+          .select('offer_id,treatment_id,special_price,price_mode')
+          .in('offer_id', chunk)
+      )
+      : Promise.resolve([]),
+    fetchAllCatalogRows<Record<string, unknown>>(() =>
+      supabaseAdmin
+        .from('global_treatments')
+        .select('id,nome,tipo,features')
+        .eq('version_id', versionId)
+    ),
   ])
 
-  if (offersError) throw offersError
-  if (gridsError) throw gridsError
-  if (profilesError) throw profilesError
-  if (compatError) throw compatError
-  if (treatmentsError) throw treatmentsError
-
   return {
-    families: (families || []).map((family: Record<string, unknown>) => ({
+    families: families.map((family: Record<string, unknown>) => ({
       id: String(family.id),
       nome: String(family.nome || ''),
       design: family.design ? String(family.design) : null,
@@ -2985,7 +3028,7 @@ export async function loadRecommendationCatalog(versionId: string): Promise<Reco
       sourceVersao: versionMeta?.versao ? String(versionMeta.versao) : null,
       sourceVersionId: versionMeta?.id ? String(versionMeta.id) : null,
     })),
-    offers: (offers || []).map((offer: Record<string, unknown>) => ({
+    offers: offers.map((offer: Record<string, unknown>) => ({
       id: String(offer.id),
       family_id: String(offer.family_id),
       raw_label: String(offer.raw_label || ''),
@@ -3002,7 +3045,7 @@ export async function loadRecommendationCatalog(versionId: string): Promise<Reco
       sourceVersao: versionMeta?.versao ? String(versionMeta.versao) : null,
       sourceVersionId: versionMeta?.id ? String(versionMeta.id) : null,
     })),
-    grids: (grids || []).map((grid: Record<string, unknown>) => ({
+    grids: grids.map((grid: Record<string, unknown>) => ({
       offer_id: String(grid.offer_id),
       sph_min: normalizeNumber(grid.sph_min),
       sph_max: normalizeNumber(grid.sph_max),
@@ -3011,20 +3054,20 @@ export async function loadRecommendationCatalog(versionId: string): Promise<Reco
       add_min: normalizeNumber(grid.add_min),
       add_max: normalizeNumber(grid.add_max),
     })),
-    usageProfiles: (usageProfiles || []).map((profile: Record<string, unknown>) => ({
+    usageProfiles: usageProfiles.map((profile: Record<string, unknown>) => ({
       family_id: String(profile.family_id),
       usage_tags: normalizeStringArray(profile.usage_tags),
       benefit_tags: normalizeStringArray(profile.benefit_tags),
       commercial_summary: profile.commercial_summary ? String(profile.commercial_summary) : null,
       recommendation_notes: profile.recommendation_notes ? String(profile.recommendation_notes) : null,
     })),
-    compatibilities: (compatibilities || []).map((compatibility: Record<string, unknown>) => ({
+    compatibilities: compatibilities.map((compatibility: Record<string, unknown>) => ({
       offer_id: String(compatibility.offer_id),
       treatment_id: String(compatibility.treatment_id),
       special_price: normalizeNumber(compatibility.special_price),
       price_mode: compatibility.price_mode === 'surcharge' ? 'surcharge' : 'final',
     })),
-    treatments: (treatments || []).map((treatment: Record<string, unknown>) => ({
+    treatments: treatments.map((treatment: Record<string, unknown>) => ({
       id: String(treatment.id),
       nome: String(treatment.nome || ''),
       tipo: treatment.tipo ? String(treatment.tipo) : null,

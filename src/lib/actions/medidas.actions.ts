@@ -1,5 +1,7 @@
 'use server'
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
@@ -15,6 +17,58 @@ export interface MedicaoPayload {
   tipoLente: 'surfacada' | 'bifocal' | 'pronto'
   // JPEG base64 da imagem do canvas (sem o prefixo data:image/jpeg;base64,)
   fotoBase64?: string
+}
+
+export interface MedicaoOSLookup {
+  id: number
+  protocolo_fisico: string | null
+  customer_name: string | null
+  dependente_name: string | null
+}
+
+export async function findMedicaoOSByNumber(
+  storeId: number,
+  osNumber: string,
+): Promise<{ ok: boolean; os?: MedicaoOSLookup; error?: string }> {
+  const normalized = osNumber.trim()
+  if (!normalized) return { ok: false, error: 'Informe o numero da OS' }
+
+  const supabaseAdmin = createAdminClient()
+  const numericId = /^\d+$/.test(normalized) ? Number(normalized) : null
+
+  let query = (supabaseAdmin
+    .from('service_orders') as any)
+    .select(`
+      id, protocolo_fisico, store_id,
+      customer:customer_id ( full_name ),
+      dependente:dependente_id ( full_name )
+    `)
+    .eq('store_id', storeId)
+
+  if (numericId !== null) {
+    query = query.or(`id.eq.${numericId},protocolo_fisico.eq.${normalized}`)
+  } else {
+    query = query.eq('protocolo_fisico', normalized)
+  }
+
+  const { data, error } = await query
+    .order('created_at', { ascending: false })
+    .limit(2)
+
+  if (error) return { ok: false, error: error.message }
+  if (!data?.length) return { ok: false, error: 'OS nao encontrada nessa loja' }
+  if (data.length > 1) return { ok: false, error: 'Mais de uma OS encontrada. Use o ID interno da OS.' }
+
+  const row = data[0]
+  return {
+    ok: true,
+    os: {
+      id: row.id,
+      protocolo_fisico: row.protocolo_fisico,
+      customer_name: row.customer?.full_name ?? null,
+      dependente_name: row.dependente?.full_name ?? null,
+    },
+  }
 }
 
 export async function saveMedicaoOS(payload: MedicaoPayload): Promise<{ ok: boolean; error?: string }> {

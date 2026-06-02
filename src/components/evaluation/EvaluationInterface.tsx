@@ -43,6 +43,7 @@ import {
   generateLensRecommendationsAction
 } from '@/lib/actions/lens-recommendation.actions'
 import {
+  generateLensAuditAction,
   generateLensSalesAssistAction,
   generateLensTechnicalTriageAction,
   type LensSalesAssist,
@@ -137,7 +138,7 @@ type LensRecommendationActionPayload = {
 const LENS_ENGINE_DIAGNOSTIC_SUITE_NAME = 'Dossie Triplice do Motor'
 const LENS_ENGINE_DIAGNOSTIC_SUITE_RESTORE_KEY = 'dossie_triplice_motor'
 const LENS_DEMO_QUICK_FILL_RESTORE_KEY = 'demo_quick_fill_profiles'
-const SHOW_LENS_DEMO_QUICK_FILL = false
+const SHOW_LENS_DEMO_QUICK_FILL = true
 
 const TRIAGE_SIGNAL_PATCHES: Record<LensTechnicalTriageSignal, Partial<Pick<RecommendationCaseInput, 'rotina_tags' | 'objetivo_tags' | 'desired_benefits' | 'preferred_features'>>> = {
   risco_espessura_alta: { desired_benefits: ['lente_fina', 'estetica', 'qualidade_optica'] },
@@ -976,7 +977,7 @@ const TEST_PROFILES = {
     usaMultifocalHoje: 'nao',
     dificuldadeAdaptacao: 'nao_informado',
     historicoTrocasRecentes: 'nao_informado',
-    prioridadePrincipal: 'preco',
+    prioridadePrincipal: 'economia',
     principalIncomodoAtual: 'longe',
     objetivoCompra: 'primeiro_oculos',
     faixaOrcamento: 'ate_800',
@@ -1126,7 +1127,7 @@ const TEST_PROFILES = {
     usaMultifocalHoje: 'nao',
     dificuldadeAdaptacao: 'nao_informado',
     historicoTrocasRecentes: 'nao_informado',
-    prioridadePrincipal: 'sol',
+    prioridadePrincipal: 'equilibrio',
     principalIncomodoAtual: 'luz',
     objetivoCompra: 'oculos_sol_grau',
     faixaOrcamento: '800_2000',
@@ -1176,7 +1177,7 @@ const TEST_PROFILES = {
     usaMultifocalHoje: 'nao',
     dificuldadeAdaptacao: 'nao_informado',
     historicoTrocasRecentes: 'uma',
-    prioridadePrincipal: 'preco',
+    prioridadePrincipal: 'economia',
     principalIncomodoAtual: 'longe',
     objetivoCompra: 'resolver_queixa',
     faixaOrcamento: '800_2000',
@@ -1226,7 +1227,7 @@ const TEST_PROFILES = {
     usaMultifocalHoje: 'nao',
     dificuldadeAdaptacao: 'nao_informado',
     historicoTrocasRecentes: 'nao_informado',
-    prioridadePrincipal: 'conforto_digital',
+    prioridadePrincipal: 'adaptacao',
     principalIncomodoAtual: 'perto',
     objetivoCompra: 'oculos_escritorio',
     faixaOrcamento: '800_2000',
@@ -1276,7 +1277,7 @@ const TEST_PROFILES = {
     usaMultifocalHoje: 'nao',
     dificuldadeAdaptacao: 'nao_informado',
     historicoTrocasRecentes: 'nao_informado',
-    prioridadePrincipal: 'sol',
+    prioridadePrincipal: 'equilibrio',
     principalIncomodoAtual: 'luz',
     objetivoCompra: 'resolver_queixa',
     faixaOrcamento: '800_2000',
@@ -1376,7 +1377,7 @@ const TEST_PROFILES = {
     usaMultifocalHoje: 'nao',
     dificuldadeAdaptacao: 'nao_informado',
     historicoTrocasRecentes: 'nao_informado',
-    prioridadePrincipal: 'estetica',
+    prioridadePrincipal: 'premium',
     principalIncomodoAtual: 'longe',
     objetivoCompra: 'resolver_queixa',
     faixaOrcamento: '2000_5000',
@@ -1459,6 +1460,206 @@ const TEST_PROFILES = {
     medidaDnpOe: '31',
     medidaAlturaOd: '20',
     medidaAlturaOe: '20'
+  },
+  solarPlanoSemGrau: {
+    patientNameRaw: 'Nina Sol (Solar Plano Sem Grau)',
+    ageYears: '33',
+    estiloVidaUsoComputadorHoras: '2',
+    estiloVidaDirigirHoras: '2',
+    estiloVidaLeituraHoras: '1',
+    estiloVidaUsoCelularHoras: '3',
+    estiloVidaExposicaoSolHoras: '6',
+    estiloVidaAmbienteInternoHoras: '5',
+    estiloVidaAmbienteExternoHoras: '6',
+    estiloVidaAssistirTvHoras: '1',
+    marcaAtual: 'Nenhuma',
+    tipoLenteAtual: 'visao_simples',
+    usaMultifocalHoje: 'nao',
+    dificuldadeAdaptacao: 'nao_informado',
+    historicoTrocasRecentes: 'nao_informado',
+    prioridadePrincipal: 'equilibrio',
+    principalIncomodoAtual: 'luz',
+    objetivoCompra: 'oculos_sol_grau',
+    faixaOrcamento: 'ate_800',
+    budgetTarget: '450',
+    importanciaEstetica: 'media',
+    importanciaResistencia: 'baixa',
+    prefereTransitions: 'nao',
+    prefereBlueUv: 'nao',
+    aceitaPremium: 'nao',
+    queixaDirigirNoite: 'nao',
+    queixaSensibilidadeLuz: 'sim',
+    queixaQuebraOculos: 'nao',
+    queixaCriancaAtiva: 'nao',
+    queixaProgressaoRapida: 'nao',
+    observacoesConsultor: 'Cliente quer apenas oculos de sol plano, sem grau. Testa se solares planas aparecem somente como 0/0 e se o motor nao inventa disponibilidade com grau.',
+    receitaLongeOdEsferico: '0,00',
+    receitaLongeOdCilindrico: '0,00',
+    receitaLongeOdEixo: '',
+    receitaLongeOeEsferico: '0,00',
+    receitaLongeOeCilindrico: '0,00',
+    receitaLongeOeEixo: '',
+    receitaAdicao: '',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '32',
+    medidaDnpOe: '32',
+    medidaAlturaOd: '18',
+    medidaAlturaOe: '18'
+  },
+  multifocalAcabadaConservadora: {
+    patientNameRaw: 'Irene Paiva (Multifocal Acabada Conservadora)',
+    ageYears: '63',
+    estiloVidaUsoComputadorHoras: '1',
+    estiloVidaDirigirHoras: '1',
+    estiloVidaLeituraHoras: '4',
+    estiloVidaUsoCelularHoras: '2',
+    estiloVidaExposicaoSolHoras: '1',
+    estiloVidaAmbienteInternoHoras: '10',
+    estiloVidaAmbienteExternoHoras: '1',
+    estiloVidaAssistirTvHoras: '3',
+    marcaAtual: 'Oculos pronto antigo',
+    tipoLenteAtual: 'multifocal',
+    usaMultifocalHoje: 'sim',
+    dificuldadeAdaptacao: 'baixa',
+    historicoTrocasRecentes: 'nao_informado',
+    prioridadePrincipal: 'economia',
+    principalIncomodoAtual: 'perto',
+    objetivoCompra: 'resolver_queixa',
+    faixaOrcamento: 'ate_800',
+    budgetTarget: '700',
+    importanciaEstetica: 'baixa',
+    importanciaResistencia: 'baixa',
+    prefereTransitions: 'nao',
+    prefereBlueUv: 'nao',
+    aceitaPremium: 'nao',
+    queixaDirigirNoite: 'nao',
+    queixaSensibilidadeLuz: 'nao',
+    queixaQuebraOculos: 'nao',
+    queixaCriancaAtiva: 'nao',
+    queixaProgressaoRapida: 'nao',
+    observacoesConsultor: 'Multifocal simples, grau dentro da faixa conservadora de acabadas e adicao ate +3.00. Testa se acabadas multifocais entram sem ultrapassar grade.',
+    receitaLongeOdEsferico: '+2,00',
+    receitaLongeOdCilindrico: '-1,00',
+    receitaLongeOdEixo: '90',
+    receitaLongeOeEsferico: '+1,75',
+    receitaLongeOeCilindrico: '-0,75',
+    receitaLongeOeEixo: '85',
+    receitaAdicao: '3,00',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '31',
+    medidaDnpOe: '31',
+    medidaAlturaOd: '18',
+    medidaAlturaOe: '18'
+  },
+  astigmatismoForaConservadora: {
+    patientNameRaw: 'Rafael Torres (Cilindro Alto Limite)',
+    ageYears: '40',
+    estiloVidaUsoComputadorHoras: '6',
+    estiloVidaDirigirHoras: '2',
+    estiloVidaLeituraHoras: '2',
+    estiloVidaUsoCelularHoras: '3',
+    estiloVidaExposicaoSolHoras: '1',
+    estiloVidaAmbienteInternoHoras: '9',
+    estiloVidaAmbienteExternoHoras: '1',
+    estiloVidaAssistirTvHoras: '1',
+    marcaAtual: 'Nenhuma',
+    tipoLenteAtual: 'visao_simples',
+    usaMultifocalHoje: 'nao',
+    dificuldadeAdaptacao: 'nao_informado',
+    historicoTrocasRecentes: 'nao_informado',
+    prioridadePrincipal: 'premium',
+    principalIncomodoAtual: 'longe',
+    objetivoCompra: 'resolver_queixa',
+    faixaOrcamento: '2000_5000',
+    budgetTarget: '2600',
+    importanciaEstetica: 'media',
+    importanciaResistencia: 'baixa',
+    prefereTransitions: 'nao',
+    prefereBlueUv: 'sim',
+    aceitaPremium: 'sim',
+    queixaDirigirNoite: 'sim',
+    queixaSensibilidadeLuz: 'nao',
+    queixaQuebraOculos: 'nao',
+    queixaCriancaAtiva: 'nao',
+    queixaProgressaoRapida: 'nao',
+    observacoesConsultor: 'Cilindro -4.50 deve derrubar lentes acabadas/conservadoras que so aceitam ate -2.00 ou -4.00. Testa se o motor filtra por grade antes de ranquear.',
+    receitaLongeOdEsferico: '-3,00',
+    receitaLongeOdCilindrico: '-4,50',
+    receitaLongeOdEixo: '175',
+    receitaLongeOeEsferico: '-2,75',
+    receitaLongeOeCilindrico: '-4,25',
+    receitaLongeOeEixo: '5',
+    receitaAdicao: '',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '31',
+    medidaDnpOe: '31',
+    medidaAlturaOd: '18',
+    medidaAlturaOe: '18'
+  },
+  visionHaytekPremium: {
+    patientNameRaw: 'Paula Mendes (Vision Haytek Premium)',
+    ageYears: '55',
+    estiloVidaUsoComputadorHoras: '5',
+    estiloVidaDirigirHoras: '3',
+    estiloVidaLeituraHoras: '3',
+    estiloVidaUsoCelularHoras: '2',
+    estiloVidaExposicaoSolHoras: '2',
+    estiloVidaAmbienteInternoHoras: '8',
+    estiloVidaAmbienteExternoHoras: '2',
+    estiloVidaAssistirTvHoras: '2',
+    marcaAtual: 'Multifocal atual',
+    tipoLenteAtual: 'multifocal',
+    usaMultifocalHoje: 'sim',
+    dificuldadeAdaptacao: 'media',
+    historicoTrocasRecentes: 'uma',
+    prioridadePrincipal: 'premium',
+    principalIncomodoAtual: 'longe_perto',
+    objetivoCompra: 'melhorar_conforto',
+    faixaOrcamento: '2000_5000',
+    budgetTarget: '4200',
+    importanciaEstetica: 'media',
+    importanciaResistencia: 'media',
+    prefereTransitions: 'sim',
+    prefereBlueUv: 'sim',
+    aceitaPremium: 'sim',
+    queixaDirigirNoite: 'sim',
+    queixaSensibilidadeLuz: 'sim',
+    queixaQuebraOculos: 'nao',
+    queixaCriancaAtiva: 'nao',
+    queixaProgressaoRapida: 'nao',
+    observacoesConsultor: 'Caso para testar equivalencia Vision/Haytek em multifocal premium: deve favorecer familias superiores quando Vision/Haytek estiverem ativas e semanticamente alinhadas.',
+    receitaLongeOdEsferico: '+1,25',
+    receitaLongeOdCilindrico: '-0,75',
+    receitaLongeOdEixo: '100',
+    receitaLongeOeEsferico: '+1,00',
+    receitaLongeOeCilindrico: '-0,50',
+    receitaLongeOeEixo: '80',
+    receitaAdicao: '2,25',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '31',
+    medidaDnpOe: '31',
+    medidaAlturaOd: '18',
+    medidaAlturaOe: '18'
   }
 };
 
@@ -2463,7 +2664,6 @@ export default function EvaluationInterface({
     setLensAudit(null)
     setLensAuditPayload(null)
     setLensSalesAssist(null)
-    setIsGeneratingSalesAssist(false)
     setIsGeneratingAudit(false)
     setIsGeneratingSalesAssist(false)
     setIvisionReferenceSuggestion(null)
@@ -2668,6 +2868,7 @@ export default function EvaluationInterface({
     setLensAudit(null)
     setLensAuditPayload(null)
     setLensSalesAssist(null)
+    setIsGeneratingAudit(false)
     setIsGeneratingSalesAssist(false)
 
     startAiGenerationTransition(async () => {
@@ -2694,7 +2895,6 @@ export default function EvaluationInterface({
           setAiRecommendations([])
           setAiState(null)
           setAiFeedback(null)
-          setLensTechnicalTriage(null)
           setLensAudit(null)
           setLensAuditPayload(null)
           setLensSalesAssist(null)
@@ -2718,6 +2918,7 @@ export default function EvaluationInterface({
       if (payload.recommendations.length > 0) {
         setLensAudit(null)
         setLensSalesAssist(null)
+        setIsGeneratingAudit(true)
         setIsGeneratingSalesAssist(true)
         const auditDebugPayload = {
           patient: auditPatientContext,
@@ -2726,6 +2927,14 @@ export default function EvaluationInterface({
           recommendations: payload.recommendations,
         }
         setLensAuditPayload(auditDebugPayload)
+        generateLensAuditAction(auditPatientContext, payload.recommendations).then((auditResult) => {
+          if (auditResult.success && auditResult.audit) {
+            setLensAudit(auditResult.audit)
+          }
+          setIsGeneratingAudit(false)
+        }).catch(() => {
+          setIsGeneratingAudit(false)
+        })
         generateLensSalesAssistAction({
           patientContext: auditPatientContext,
           technicalTriage,
@@ -2742,6 +2951,7 @@ export default function EvaluationInterface({
       } else {
         setLensAuditPayload(null)
         setLensSalesAssist(null)
+        setIsGeneratingAudit(false)
       }
     })
   }
@@ -3662,6 +3872,46 @@ export default function EvaluationInterface({
                   <button
                     type="button"
                     onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.solarPlanoSemGrau }))
+                      setFeedback('Perfil da Nina (solar plano sem grau) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <UserRound className="h-3.5 w-3.5" /> Nina (Solar 0/0)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.multifocalAcabadaConservadora }))
+                      setFeedback('Perfil da Irene (multifocal acabada conservadora) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <ShoppingCart className="h-3.5 w-3.5" /> Irene (Acabada)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.astigmatismoForaConservadora }))
+                      setFeedback('Perfil do Rafael (cilindro alto limite) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <CircleHelp className="h-3.5 w-3.5" /> Rafael (Cil Alto)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.visionHaytekPremium }))
+                      setFeedback('Perfil da Paula (Vision/Haytek premium) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" /> Paula (Vision)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
                       setForm(createEmptyForm())
                       setFormError(null)
                       setFeedback('Formulário limpo com sucesso!')
@@ -4252,7 +4502,10 @@ export default function EvaluationInterface({
                           </div>
                         )}
 
-                        <details className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-3">
+                        <details
+                          open={Boolean(lensTechnicalTriage || lensAuditPayload || lensAudit || isGeneratingAudit)}
+                          className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-3"
+                        >
                           <summary className="cursor-pointer text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">
                             Dossie Triplice do Motor (debug)
                           </summary>
@@ -4732,4 +4985,5 @@ export default function EvaluationInterface({
     </div>
   )
 }
+
 
