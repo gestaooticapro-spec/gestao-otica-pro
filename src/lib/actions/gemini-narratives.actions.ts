@@ -110,7 +110,6 @@ export type LensSalesOptionArgument = {
   headline: string
   whyThisLens: string
   sellerArgument: string
-  tradeoff: string | null
   closingLine: string | null
 }
 
@@ -131,10 +130,17 @@ const LENS_SALES_ASSIST_TEXT_LIMITS = {
   headline: 70,
   whyThisLens: 260,
   sellerArgument: 300,
-  tradeoff: 180,
   closingLine: 120,
   comparisonTip: 240,
 } as const
+
+type SalesAssistCriticalFacts = {
+  global: string[]
+  byOption: Array<{
+    configKey: string
+    facts: string[]
+  }>
+}
 
 type GeminiResponseLike = {
   text?: () => string
@@ -566,13 +572,145 @@ Ao apontar problemas, separe claramente o que e erro provavel do motor, ponto de
 Responda em texto corrido, em portugues, de forma tecnica e direta. Escreva como um colega especialista dando um parecer rapido.`
 }
 
+function formatSignedDiopter(value: number): string {
+  return `${value > 0 ? '+' : ''}${value.toFixed(2)}D`
+}
+
+function pushUnique(items: string[], value: string): void {
+  if (!items.includes(value)) items.push(value)
+}
+
+function buildSalesAssistCriticalFacts(params: {
+  patientContext: PatientAuditContext
+  motorInput: RecommendationCaseInput
+  recommendations: RecommendationOption[]
+}): SalesAssistCriticalFacts {
+  const { patientContext, motorInput, recommendations } = params
+  const global: string[] = []
+  const absSphere = typeof motorInput.esferico === 'number' ? Math.abs(motorInput.esferico) : null
+  const absCylinder = typeof motorInput.cilindrico === 'number' ? Math.abs(motorInput.cilindrico) : null
+  const add = typeof motorInput.adicao === 'number' ? motorInput.adicao : null
+  const objectiveTags = motorInput.objetivo_tags || []
+  const desiredBenefits = motorInput.desired_benefits || []
+  const preferredFeatures = motorInput.preferred_features || []
+  const rejectedFeatures = motorInput.rejected_features || []
+  const categories = new Set(recommendations.map((option) => option.clinicalCategory))
+
+  if (add !== null && add >= 3.5) {
+    pushUnique(global, `Adicao alta (${formatSignedDiopter(add)}) exige opcoes com grade/disponibilidade compativel.`)
+  } else if (add !== null && add >= 3) {
+    pushUnique(global, `Adicao elevada (${formatSignedDiopter(add)}) pede atencao a campo de perto e disponibilidade.`)
+  }
+
+  if (absCylinder !== null && absCylinder >= 4) {
+    pushUnique(global, `Cilindro alto (${formatSignedDiopter(motorInput.cilindrico || 0)}) restringe lentes prontas e exige grade compativel.`)
+  } else if (absCylinder !== null && absCylinder >= 2.5) {
+    pushUnique(global, `Astigmatismo relevante (${formatSignedDiopter(motorInput.cilindrico || 0)}) pede cuidado com disponibilidade e qualidade optica.`)
+  }
+
+  if (absSphere !== null && absSphere >= 6) {
+    pushUnique(global, `Grau esferico alto (${formatSignedDiopter(motorInput.esferico || 0)}) aumenta a importancia de espessura, indice e estetica.`)
+  } else if (absSphere !== null && absSphere >= 4) {
+    pushUnique(global, `Grau esferico moderado/alto (${formatSignedDiopter(motorInput.esferico || 0)}) merece atencao a espessura e material.`)
+  }
+
+  if (objectiveTags.includes('ocupacional') || desiredBenefits.includes('ocupacional') || categories.has('ocupacional')) {
+    pushUnique(global, 'Objetivo de escritorio: priorizar lente ocupacional para perto/intermediario, nao vender como multifocal de uso geral.')
+  }
+
+  if (categories.has('plana_solar')) {
+    pushUnique(global, 'Caso solar plano: foco em conforto sob luz intensa, sem sugerir correcao de grau se a receita estiver plana.')
+  }
+
+  if (categories.has('controle_miopia') || objectiveTags.includes('controle_miopia') || desiredBenefits.includes('controle_miopia')) {
+    pushUnique(global, 'Controle de miopia e uma prioridade clinica: explicar como foco principal quando aparecer nas opcoes.')
+  }
+
+  if (patientContext.queixaDirigirNoite || motorInput.rotina_tags?.includes('dirigir_noite')) {
+    pushUnique(global, 'Queixa de dirigir a noite: valorizar antirreflexo e qualidade optica quando esses sinais existirem na opcao.')
+  }
+
+  if (patientContext.queixaQuebraOculos || patientContext.queixaCriancaAtiva || desiredBenefits.includes('resistencia')) {
+    pushUnique(global, 'Necessidade de resistencia: considerar material e impacto como argumento quando a opcao trouxer esse sinal.')
+  }
+
+  if (preferredFeatures.includes('blue_uv')) {
+    pushUnique(global, 'Cliente deseja Blue/UV: mencionar apenas quando a opcao realmente trouxer esse recurso.')
+  }
+
+  if (preferredFeatures.includes('transitions') || preferredFeatures.includes('fotossensivel')) {
+    pushUnique(global, 'Cliente deseja fotossensivel: mencionar apenas quando a opcao realmente trouxer esse recurso.')
+  }
+
+  if (rejectedFeatures.length > 0) {
+    pushUnique(global, `Preferencias rejeitadas devem ser respeitadas no texto: ${rejectedFeatures.join(', ')}.`)
+  }
+
+  if (typeof motorInput.targetPrice === 'number') {
+    pushUnique(global, `Preco alvo informado: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(motorInput.targetPrice)}.`)
+  }
+
+  const byOption = recommendations.slice(0, 3).map((option) => {
+    const facts: string[] = []
+    const reasonText = (option.reasons || []).join(' ')
+
+    if (option.clinicalCategory === 'ocupacional') {
+      pushUnique(facts, 'Opcao ocupacional para perto/intermediario e rotina de escritorio.')
+    }
+    if (option.clinicalCategory === 'multifocal') {
+      pushUnique(facts, 'Opcao multifocal para multiplas distancias; alinhar com adaptacao e campo de perto quando relevante.')
+    }
+    if (option.clinicalCategory === 'visao_simples') {
+      pushUnique(facts, 'Opcao de visao simples; nao vender como multifocal/ocupacional.')
+    }
+    if (option.clinicalCategory === 'plana_solar') {
+      pushUnique(facts, 'Opcao solar plana para conforto em luz intensa.')
+    }
+    if (option.clinicalCategory === 'controle_miopia') {
+      pushUnique(facts, 'Opcao com foco em controle de miopia.')
+    }
+    if (reasonText.includes('indice_174')) {
+      pushUnique(facts, 'Indice 1.74: argumento de lente mais fina para graus altos quando fizer sentido.')
+    } else if (reasonText.includes('indice_167')) {
+      pushUnique(facts, 'Indice 1.67: argumento de lente mais fina para graus moderados/altos quando fizer sentido.')
+    }
+    if (reasonText.includes('ar_premium_dirigir_noite') || reasonText.includes('tratamento:dirigir_noite')) {
+      pushUnique(facts, 'Tratamento indicado para dirigir a noite/qualidade visual.')
+    }
+    if (reasonText.includes('feature:blue_uv')) {
+      pushUnique(facts, 'Opcao com Blue/UV ou filtro azul conforme payload.')
+    }
+    if (reasonText.includes('feature:transitions') || reasonText.includes('fotossensivel')) {
+      pushUnique(facts, 'Opcao fotossensivel conforme payload.')
+    }
+    if (reasonText.includes('alvo_preco:acima_alvo')) {
+      pushUnique(facts, 'Preco acima do alvo: apresentar como ponto de atencao comercial simples.')
+    }
+    if (reasonText.includes('lens_tier:premium') || reasonText.includes('treatment_tier:premium')) {
+      pushUnique(facts, 'Opcao com componente premium conforme tier do payload.')
+    }
+    if (reasonText.includes('fulfillment:sob_demanda_exigencia')) {
+      pushUnique(facts, 'Atende uma exigencia de disponibilidade/sob demanda; nao prometer pronta entrega.')
+    }
+
+    return {
+      configKey: option.configKey,
+      facts,
+    }
+  })
+
+  return { global, byOption }
+}
+
 function buildSalesAssistPrompt(params: {
   patientContext: PatientAuditContext
   technicalTriage: LensTechnicalTriage | null
   motorInput: RecommendationCaseInput
   recommendations: RecommendationOption[]
+  criticalFacts?: SalesAssistCriticalFacts
 }): string {
   const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
+  const criticalFacts = params.criticalFacts || buildSalesAssistCriticalFacts(params)
   const options = params.recommendations.slice(0, 3).map((opt, index) => ({
     index: index + 1,
     configKey: opt.configKey,
@@ -601,12 +739,19 @@ Regras:
 - Nao diga que o motor errou.
 - Nao invente beneficios que nao aparecem no payload.
 - Nao use reputacao externa de marca como argumento.
-- Se houver limitacao ou trade-off, explique com cuidado comercial.
+- Se houver limitacao relevante, explique como ponto de atencao simples; nao transforme nenhuma opcao em "trade-off" fixo.
+- Nao trate a terceira opcao como alternativa especial. Explique cada opcao pelo seu proprio merito.
 - Use linguagem natural de balcão, sem parecer laudo medico.
 - O texto deve ajudar o vendedor a vender com seguranca, nao confundir o cliente.
 - Se uma feature foi rejeitada pelo cliente, nao tente vende-la.
 - Se o payload trouxer score/reasons, use isso como evidencia tecnica, mas nao mostre score ao cliente.
-- Seja breve: sellerOpening em ate 1 frase; headline em ate 6 palavras; whyThisLens em ate 2 frases curtas; sellerArgument em ate 2 frases curtas; tradeoff em 1 frase; closingLine em 1 frase.
+- Evite promessas absolutas como "adaptacao garantida", "garante adaptacao", "maxima transparencia", "melhor do mercado" ou "mais fina disponivel", exceto quando o payload trouxer literalmente essa garantia.
+- Para Varilux, se fizer sentido mencionar garantia, diga "conta com garantia de adaptacao Varilux, conforme condicoes do certificado"; nao prometa que a adaptacao clinica sera certa ou imediata.
+- Quando houver um filtro tecnico decisivo no caso, destaque isso em linguagem simples. Exemplos: adicao alta, cilindro alto, grau alto, lente ocupacional, controle de miopia, lente solar plana, resistencia, alto indice ou rejeicao de uma tecnologia.
+- Se a escolha foi limitada por disponibilidade/grade, explique que a opcao foi selecionada por atender a receita, sem prometer disponibilidade fora do payload.
+- Use os criticalFacts como fonte preferencial para identificar o motivo tecnico principal. Se houver criticalFacts.global, o sellerOpening deve mencionar o primeiro fato global em linguagem simples.
+- Use criticalFacts.byOption para explicar cada opcao pelo seu proprio merito, sem copiar literalmente todos os fatos.
+- Seja breve: sellerOpening em ate 1 frase; headline em ate 6 palavras; whyThisLens em ate 2 frases curtas; sellerArgument em ate 2 frases curtas; closingLine em 1 frase.
 
 Responda apenas JSON valido, sem markdown:
 {
@@ -617,11 +762,10 @@ Responda apenas JSON valido, sem markdown:
       "headline": "titulo curto do argumento",
       "whyThisLens": "por que esta lente foi indicada para este cliente",
       "sellerArgument": "texto pronto para o vendedor falar ao cliente",
-      "tradeoff": "trade-off honesto, ou null",
       "closingLine": "frase curta de fechamento, ou null"
     }
   ],
-  "comparisonTip": "dica curta para comparar as opcoes entre si, ou null"
+  "comparisonTip": "dica curta para comparar as opcoes entre si, sem chamar nenhuma de trade-off, ou null"
 }
 
 Dados:
@@ -629,11 +773,15 @@ ${JSON.stringify({
     patient: params.patientContext,
     technicalTriage: params.technicalTriage,
     motorInput: params.motorInput,
+    criticalFacts,
     recommendations: options,
   }, null, 2)}`
 }
 
-function normalizeSalesAssist(raw: Record<string, unknown>, recommendations: RecommendationOption[]): LensSalesAssist {
+function normalizeSalesAssist(
+  raw: Record<string, unknown>,
+  recommendations: RecommendationOption[],
+): LensSalesAssist {
   const allowedKeys = new Set(recommendations.map((option) => option.configKey))
   const rawOptions = Array.isArray(raw.options) ? raw.options : []
 
@@ -644,7 +792,6 @@ function normalizeSalesAssist(raw: Record<string, unknown>, recommendations: Rec
       headline: String(item.headline || '').trim().slice(0, LENS_SALES_ASSIST_TEXT_LIMITS.headline),
       whyThisLens: String(item.whyThisLens || '').trim().slice(0, LENS_SALES_ASSIST_TEXT_LIMITS.whyThisLens),
       sellerArgument: String(item.sellerArgument || '').trim().slice(0, LENS_SALES_ASSIST_TEXT_LIMITS.sellerArgument),
-      tradeoff: item.tradeoff ? String(item.tradeoff).trim().slice(0, LENS_SALES_ASSIST_TEXT_LIMITS.tradeoff) : null,
       closingLine: item.closingLine ? String(item.closingLine).trim().slice(0, LENS_SALES_ASSIST_TEXT_LIMITS.closingLine) : null,
     }))
     .filter((item) => allowedKeys.has(item.configKey) && (item.whyThisLens || item.sellerArgument))
@@ -669,7 +816,8 @@ export async function generateLensSalesAssistAction(params: {
     return { success: false, assist: null, error: 'Sem recomendacoes' }
   }
 
-  const prompt = buildSalesAssistPrompt(params)
+  const criticalFacts = buildSalesAssistCriticalFacts(params)
+  const prompt = buildSalesAssistPrompt({ ...params, criticalFacts })
 
   for (let i = 0; i < GEMINI_KEYS.length; i++) {
     const key = GEMINI_KEYS[i]

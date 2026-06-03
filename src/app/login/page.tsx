@@ -3,10 +3,9 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useFormStatus } from 'react-dom'
-import { Loader2, Eye, EyeOff } from 'lucide-react'
+import { Loader2, Eye, EyeOff, Maximize2, Minimize2 } from 'lucide-react'
 import Link from 'next/link'
 import { getLoginRoute } from '@/lib/actions/auth.actions'
 
@@ -26,10 +25,36 @@ function SubmitButton() {
 
 // --- Componente Principal da Página ---
 export default function LoginPage() {
-  const router = useRouter()
   const supabase = createClient()
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement))
+    }
+
+    handleFullscreenChange()
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange)
+    }
+  }, [])
+
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen()
+        return
+      }
+
+      await document.documentElement.requestFullscreen()
+    } catch {
+      setErrorMessage('Não foi possível ativar a tela cheia neste dispositivo.')
+    }
+  }
 
   const handleSubmit = async (formData: FormData) => {
     setErrorMessage(null)
@@ -57,8 +82,8 @@ export default function LoginPage() {
         setErrorMessage(message || 'Erro no roteamento. Tente novamente.');
       }
 
-    } catch (error: any) {
-      setErrorMessage(error.message || 'Ocorreu um erro inesperado.')
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : 'Ocorreu um erro inesperado.')
     }
   }
 
@@ -68,6 +93,16 @@ export default function LoginPage() {
     >
       {/* Overlay escuro para melhorar leitura sobre a imagem */}
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"></div>
+
+      <button
+        type="button"
+        onClick={toggleFullscreen}
+        aria-label={isFullscreen ? 'Sair da tela cheia' : 'Entrar em tela cheia'}
+        title={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+        className="absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/20 text-white/60 backdrop-blur-md transition-all hover:border-white/20 hover:bg-black/35 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/70"
+      >
+        {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+      </button>
 
       <div className="relative w-full max-w-md rounded-2xl bg-black/20 backdrop-blur-xl p-8 shadow-2xl text-white border border-white/10 ring-1 ring-white/5">
 

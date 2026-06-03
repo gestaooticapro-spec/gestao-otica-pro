@@ -43,7 +43,6 @@ import {
   generateLensRecommendationsAction
 } from '@/lib/actions/lens-recommendation.actions'
 import {
-  generateLensAuditAction,
   generateLensSalesAssistAction,
   type LensSalesAssist,
   type LensTechnicalTriage,
@@ -2395,6 +2394,123 @@ const createEmptyForm = () => ({
   rawPayloadJson: {} as Record<string, unknown>
 })
 
+type RecommendationConsistencyIssue = {
+  severity: 'blocker' | 'warning'
+  message: string
+  suggestion: string
+}
+
+function validateRecommendationFormConsistency(form: ReturnType<typeof createEmptyForm>): RecommendationConsistencyIssue[] {
+  const issues: RecommendationConsistencyIssue[] = []
+  const age = parseNullableInteger(form.ageYears)
+  const isChild = age !== null && age <= 14
+  const sphere = parseNullableNumber(form.receitaLongeOdEsferico) ?? parseNullableNumber(form.receitaLongeOeEsferico)
+  const cylinder = parseNullableNumber(form.receitaLongeOdCilindrico) ?? parseNullableNumber(form.receitaLongeOeCilindrico)
+  const add = parseNullableNumber(form.receitaAdicao)
+  const targetBudget = parseNullableNumber(form.budgetTarget)
+  const wantsFirstMultifocal = form.objetivoCompra === 'primeira_multifocal'
+  const wantsOfficeLens = form.objetivoCompra === 'oculos_escritorio' || form.objetivoCompra === 'ocupacional_escritorio'
+  const wantsSolar = form.objetivoCompra === 'oculos_sol_grau'
+  const wantsPremium =
+    form.prioridadePrincipal === 'premium' ||
+    form.aceitaPremium === 'sim' ||
+    form.importanciaEstetica === 'alta' ||
+    form.importanciaResistencia === 'alta' ||
+    form.prefereTransitions === 'sim'
+  const wantsManyUpgrades = [
+    form.prioridadePrincipal === 'premium',
+    form.aceitaPremium === 'sim',
+    form.importanciaEstetica === 'alta',
+    form.importanciaResistencia === 'alta',
+    form.prefereTransitions === 'sim',
+    form.prefereBlueUv === 'sim',
+  ].filter(Boolean).length >= 3
+
+  if (isChild && wantsFirstMultifocal) {
+    issues.push({
+      severity: 'blocker',
+      message: 'Paciente infantil nao deve ser marcado como primeira multifocal/progressiva.',
+      suggestion: 'Troque o objetivo para resolver queixa, controle de miopia ou outra necessidade coerente com a idade.',
+    })
+  }
+
+  if ((wantsFirstMultifocal || wantsOfficeLens) && add === null) {
+    issues.push({
+      severity: 'blocker',
+      message: wantsOfficeLens
+        ? 'Oculos de escritorio/ocupacional precisa de adicao informada para o motor avaliar corretamente.'
+        : 'Primeira multifocal precisa de adicao informada.',
+      suggestion: 'Preencha a adicao ou altere o objetivo da compra.',
+    })
+  }
+
+  if (wantsSolar && add !== null) {
+    issues.push({
+      severity: 'warning',
+      message: 'Objetivo solar com adicao preenchida pode misturar necessidades diferentes.',
+      suggestion: 'Confirme se o cliente quer solar plano, solar com grau de longe ou multifocal solar.',
+    })
+  }
+
+  if (targetBudget !== null && targetBudget <= 800 && wantsPremium) {
+    issues.push({
+      severity: 'warning',
+      message: 'Ha desejo por recursos premium com orcamento muito baixo.',
+      suggestion: 'Confirme se a prioridade e manter preco baixo ou abrir espaco para uma solucao superior.',
+    })
+  }
+
+  if (targetBudget !== null && targetBudget <= 1600 && wantsManyUpgrades) {
+    issues.push({
+      severity: 'warning',
+      message: 'O cliente pediu varias melhorias ao mesmo tempo dentro de um alvo de preco apertado.',
+      suggestion: 'Alinhe uma prioridade principal antes de gerar: preco, estetica, resistencia, fotossensivel ou tratamento.',
+    })
+  }
+
+  if (form.queixaDirigirNoite === 'sim' && targetBudget !== null && targetBudget <= 800) {
+    issues.push({
+      severity: 'warning',
+      message: 'Queixa de dirigir a noite costuma exigir melhor antirreflexo, mas o orcamento esta baixo.',
+      suggestion: 'Confirme se o cliente aceita ultrapassar o alvo para priorizar seguranca/conforto noturno.',
+    })
+  }
+
+  if (form.queixaProgressaoRapida === 'sim' && isChild && form.prioridadePrincipal !== 'controle_miopia') {
+    issues.push({
+      severity: 'warning',
+      message: 'Crianca com progressao rapida deve ter controle de miopia como prioridade clinica.',
+      suggestion: 'Considere mudar a prioridade principal para controle de miopia antes de gerar.',
+    })
+  }
+
+  if (Math.abs(cylinder || 0) >= 4) {
+    issues.push({
+      severity: 'warning',
+      message: 'Cilindro alto restringe disponibilidade e pode derrubar lentes prontas/conservadoras.',
+      suggestion: 'Confira se a receita esta correta; o motor deve priorizar opcoes compativeis com a grade.',
+    })
+  }
+
+  if (add !== null && add >= 3.5) {
+    issues.push({
+      severity: 'warning',
+      message: 'Adicao alta restringe disponibilidade de multifocais.',
+      suggestion: 'Mantenha atencao a grade; talvez aparecam menos opcoes e isso pode estar correto.',
+    })
+  }
+
+  if (sphere !== null && Math.abs(sphere) >= 6 && targetBudget !== null && targetBudget <= 1600) {
+    issues.push({
+      severity: 'warning',
+      message: 'Grau alto com orcamento apertado pode limitar estetica, espessura e tratamentos.',
+      suggestion: 'Confirme se o cliente prioriza preco ou melhor resultado estetico/visual.',
+    })
+  }
+
+  return issues
+}
+
 export default function EvaluationInterface({
   activeCatalog,
   activeCatalogs = [],
@@ -2767,6 +2883,11 @@ export default function EvaluationInterface({
       return
     }
 
+    if (recommendationBlockingIssues.length > 0) {
+      setFormError(`Corrija antes de gerar sugestao: ${recommendationBlockingIssues[0].message}`)
+      return
+    }
+
     setFormError(null)
     setAiFeedback(null)
     setQuickRetentionReply(null)
@@ -2816,27 +2937,33 @@ export default function EvaluationInterface({
       setManualSuggestion(null)
       setAiFeedback('Sugestões geradas sem triagem IA.')
 
-      // Auditoria Gemini assíncrona (não bloqueia o ranking)
+      // Debug preservado: payload + Sales Assist. A auditoria IA fica comentada para evitar custo/delay nos testes.
       if (payload.recommendations.length > 0) {
         setLensAudit(null)
         setLensSalesAssist(null)
-        setIsGeneratingAudit(true)
+        setIsGeneratingAudit(false)
         setIsGeneratingSalesAssist(true)
         const auditDebugPayload = {
+          debugProfileName: form.patientNameRaw || selectedSubjectName || null,
           patient: auditPatientContext,
           technicalTriage,
           motorInput: recommendationCaseInput,
           recommendations: payload.recommendations,
         }
         setLensAuditPayload(auditDebugPayload)
-        generateLensAuditAction(auditPatientContext, payload.recommendations).then((auditResult) => {
-          if (auditResult.success && auditResult.audit) {
-            setLensAudit(auditResult.audit)
-          }
-          setIsGeneratingAudit(false)
-        }).catch(() => {
-          setIsGeneratingAudit(false)
-        })
+        // Restore key: dossie_triplice_motor / Etapa 3 - Auditoria IA.
+        // Para religar o debug profundo, reimporte `generateLensAuditAction` de
+        // `@/lib/actions/gemini-narratives.actions` e restaure esta chamada:
+        //
+        // setIsGeneratingAudit(true)
+        // generateLensAuditAction(auditPatientContext, payload.recommendations).then((auditResult) => {
+        //   if (auditResult.success && auditResult.audit) {
+        //     setLensAudit(auditResult.audit)
+        //   }
+        //   setIsGeneratingAudit(false)
+        // }).catch(() => {
+        //   setIsGeneratingAudit(false)
+        // })
         generateLensSalesAssistAction({
           patientContext: auditPatientContext,
           technicalTriage,
@@ -3301,6 +3428,11 @@ export default function EvaluationInterface({
   const isIvisionMode = form.sourceSystem === 'ivision'
   const hasCatalogForAi = activeCatalogs.length > 0 || !!activeCatalog
   const aiCaseInput = inferRecommendationCaseInput(form)
+  const recommendationConsistencyIssues = useMemo(
+    () => validateRecommendationFormConsistency(form),
+    [form]
+  )
+  const recommendationBlockingIssues = recommendationConsistencyIssues.filter((issue) => issue.severity === 'blocker')
   const patientAge = aiCaseInput.idade ?? null
   const isChild = patientAge !== null && patientAge <= 14
   const hasAdicao = aiCaseInput.adicao !== null
@@ -3308,7 +3440,8 @@ export default function EvaluationInterface({
   const canGenerateAi =
     hasCatalogForAi &&
     isSubjectChosen &&
-    aiCaseInput.esferico !== null
+    aiCaseInput.esferico !== null &&
+    recommendationBlockingIssues.length === 0
   const showManualSuggestionBlock = !hasCatalogForAi
   const aiTopRecommendation = aiRecommendations[0] || null
   const showIvisionReference = isIvisionMode && !!ivisionReferenceSuggestion
@@ -4366,6 +4499,29 @@ export default function EvaluationInterface({
                         {aiFeedback && (
                           <div className="mt-4 rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
                             {aiFeedback}
+                          </div>
+                        )}
+
+                        {recommendationConsistencyIssues.length > 0 && (
+                          <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${
+                            recommendationBlockingIssues.length > 0
+                              ? 'border-red-500/30 bg-red-500/10 text-red-100'
+                              : 'border-amber-500/30 bg-amber-500/10 text-amber-100'
+                          }`}>
+                            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em]">
+                              <AlertTriangle className="h-4 w-4" />
+                              {recommendationBlockingIssues.length > 0
+                                ? 'Corrija antes de gerar sugestao'
+                                : 'Atencao antes de gerar sugestao'}
+                            </div>
+                            <div className="mt-3 space-y-3">
+                              {recommendationConsistencyIssues.map((issue, index) => (
+                                <div key={`${issue.severity}-${index}`} className="rounded-lg border border-white/10 bg-black/10 p-3">
+                                  <p className="font-bold">{issue.message}</p>
+                                  <p className="mt-1 text-xs opacity-80">{issue.suggestion}</p>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
 
