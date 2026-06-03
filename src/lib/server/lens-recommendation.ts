@@ -617,6 +617,10 @@ function getDesiredClinicalCategories(input: RecommendationCaseInput): ClinicalC
   const desiredBenefits = input.desired_benefits || []
   const objetivoTags = input.objetivo_tags || []
 
+  if (objetivoTags.includes('ocupacional') || desiredBenefits.includes('ocupacional')) {
+    return ['ocupacional']
+  }
+
   // Explicit occupational request from UI (e.g. "óculos para trabalho/escritório")
   if (hasPrimaryOccupationalDemand(input)) {
     return input.adicao != null
@@ -647,10 +651,6 @@ function getDesiredClinicalCategories(input: RecommendationCaseInput): ClinicalC
 
   if (rotinaTags.includes('sol') && rotinaTags.length === 1) {
     return ['plana_solar', 'visao_simples']
-  }
-
-  if (objetivoTags.includes('ocupacional') || desiredBenefits.includes('ocupacional')) {
-    return ['ocupacional', 'visao_simples']
   }
 
   return ['visao_simples']
@@ -1601,7 +1601,7 @@ function scoreOffer(params: {
     !hasImpactResistantMaterial
   ) {
     score -= indexValue >= 1.74 ? 2.5 : 1.5
-    reasons.push('material:alto_indice_tradeoff_resistencia')
+    reasons.push('material:alto_indice_menos_resistente')
   }
 
   if (highResistanceChildCase && !hasResistantMaterial) {
@@ -2354,111 +2354,6 @@ function selectDiverseTopEntries(
     .sort((a, b) => b.score - a.score || a.finalPrice - b.finalPrice)
 }
 
-function appendPrioritizedEntries(
-  selected: RecommendationOption[],
-  pool: RecommendationOption[],
-  topN: number,
-): RecommendationOption[] {
-  if (selected.length >= topN) return selected.slice(0, topN)
-
-  const selectedConfigKeys = new Set(selected.map((entry) => entry.configKey))
-  const selectedFamilies = new Set(selected.map((entry) => entry.familyId))
-  const selectedOffers = new Set(selected.map((entry) => entry.offerId))
-  const selectedLabs = new Set(selected.map((entry) => entry.sourceLaboratorio).filter(Boolean) as string[])
-  const selectedFamilyNames = new Set(selected.map((entry) => normalizeFamilyName(entry.familyName)))
-  const selectedProductNames = new Set(selected.map((entry) => normalizeProductSemanticName(entry)))
-
-  const trySelect = (entry: RecommendationOption) => {
-    if (selected.length >= topN) return
-    if (selectedConfigKeys.has(entry.configKey)) return
-    selected.push(entry)
-    selectedConfigKeys.add(entry.configKey)
-    selectedFamilies.add(entry.familyId)
-    selectedOffers.add(entry.offerId)
-    if (entry.sourceLaboratorio) selectedLabs.add(entry.sourceLaboratorio)
-    selectedFamilyNames.add(normalizeFamilyName(entry.familyName))
-    selectedProductNames.add(normalizeProductSemanticName(entry))
-  }
-
-  // Pass 1: prefer entries from labs not yet represented, different product
-  for (const entry of pool) {
-    if (selected.length >= topN) break
-    const lab = entry.sourceLaboratorio
-    const nameNorm = normalizeFamilyName(entry.familyName)
-    const productNorm = normalizeProductSemanticName(entry)
-    if (lab && !selectedLabs.has(lab) && !selectedFamilyNames.has(nameNorm) && !selectedProductNames.has(productNorm)) {
-      trySelect(entry)
-    }
-  }
-
-  // Pass 2: fill remaining — different product name
-  for (const entry of pool) {
-    if (selected.length >= topN) break
-    if (
-      !selectedFamilyNames.has(normalizeFamilyName(entry.familyName)) &&
-      !selectedProductNames.has(normalizeProductSemanticName(entry))
-    ) {
-      trySelect(entry)
-    }
-  }
-
-  // Pass 3: fill remaining — different family id
-  for (const entry of pool) {
-    if (selected.length >= topN) break
-    if (
-      !selectedFamilies.has(entry.familyId) &&
-      !selectedProductNames.has(normalizeProductSemanticName(entry))
-    ) {
-      trySelect(entry)
-    }
-  }
-
-  // Pass 4: fill any remaining slots
-  for (const entry of pool) {
-    if (selected.length >= topN) break
-    if (!selectedProductNames.has(normalizeProductSemanticName(entry))) {
-      trySelect(entry)
-    }
-  }
-
-  return selected
-    .slice(0, topN)
-    .sort((a, b) => b.score - a.score || a.finalPrice - b.finalPrice)
-}
-
-function applyExploratoryPriceDiscipline(
-  exploratoryEntries: RecommendationOption[],
-  anchorEntries: RecommendationOption[],
-): RecommendationOption[] {
-  if (!anchorEntries.length) return exploratoryEntries
-
-  const anchorPrices = anchorEntries
-    .map((entry) => entry.finalPrice)
-    .filter((value) => Number.isFinite(value) && value > 0)
-
-  if (!anchorPrices.length) return exploratoryEntries
-
-  const maxAnchorPrice = Math.max(...anchorPrices)
-  const softCeiling = maxAnchorPrice * 1.8
-
-  return exploratoryEntries
-    .map((entry) => {
-      if (!Number.isFinite(entry.finalPrice) || entry.finalPrice <= softCeiling) {
-        return entry
-      }
-
-      const priceOverflowRatio = Math.min((entry.finalPrice - softCeiling) / softCeiling, 1.5)
-      const penalty = Number((1.25 + priceOverflowRatio * 2.5).toFixed(2))
-
-      return {
-        ...entry,
-        score: Number((entry.score - penalty).toFixed(2)),
-        reasons: uniqueStrings([...entry.reasons, 'opcao:salto_preco_controlado']),
-      }
-    })
-    .sort((a, b) => b.score - a.score || a.finalPrice - b.finalPrice)
-}
-
 function isUnsafeTopRecommendation(
   input: RecommendationCaseInput,
   entry: RecommendationOption,
@@ -2519,87 +2414,6 @@ function isUnsafeTopRecommendation(
   }
 
   return false
-}
-
-function getExploratoryClinicalCategories(
-  input: RecommendationCaseInput,
-  forcedClinicalCategories?: ClinicalCategory[],
-): ClinicalCategory[] {
-  const strict = forcedClinicalCategories?.length
-    ? forcedClinicalCategories
-    : getDesiredClinicalCategories(input)
-
-  if (strict.includes('controle_miopia')) {
-    return uniqueCategories(['controle_miopia']) || strict
-  }
-
-  if (strict.includes('plana_solar')) {
-    return uniqueCategories(['plana_solar']) || strict
-  }
-
-  if (strict.includes('multifocal')) {
-    const hasDrivingNeeds = (input.rotina_tags || []).some(
-      (tag) => tag === 'dirigir' || tag === 'dirigir_noite',
-    )
-    const wantsFirstMultifocal = (input.objetivo_tags || []).includes('primeira_multifocal')
-    const adicao = input.adicao ?? 0
-
-    if (adicao > MAX_ANTI_FATIGUE_ADDITION) {
-      return hasDrivingNeeds
-        ? uniqueCategories(['multifocal']) || strict
-        : uniqueCategories(['multifocal', 'ocupacional']) || strict
-    }
-
-    // Presbiopia instalada com objetivo explícito de multifocal:
-    // não abrir visao_simples — o paciente precisa de correção progressiva completa
-    if (wantsFirstMultifocal && adicao >= 1.0) {
-      return hasDrivingNeeds
-        ? uniqueCategories(['multifocal']) || strict
-        : uniqueCategories(['multifocal', 'visao_simples']) || strict
-    }
-
-    if (hasDrivingNeeds) {
-      return uniqueCategories(['multifocal', 'visao_simples']) || strict
-    }
-    return uniqueCategories(['multifocal', 'ocupacional', 'visao_simples']) || strict
-  }
-
-  if (strict.includes('ocupacional')) {
-    if (input.adicao != null && input.adicao > MAX_ANTI_FATIGUE_ADDITION) {
-      return uniqueCategories(['ocupacional', 'multifocal']) || strict
-    }
-    return uniqueCategories(['ocupacional', 'visao_simples', 'multifocal']) || strict
-  }
-
-  if (strict.includes('visao_simples')) {
-    if (input.adicao == null && !(input.objetivo_tags || []).includes('ocupacional')) {
-      return uniqueCategories(['visao_simples']) || strict
-    }
-    return uniqueCategories(['visao_simples', 'ocupacional']) || strict
-  }
-
-  return strict
-}
-
-function sameCategories(a: ClinicalCategory[] | undefined, b: ClinicalCategory[] | undefined): boolean {
-  const left = a || []
-  const right = b || []
-  if (left.length !== right.length) return false
-  return left.every((value) => right.includes(value))
-}
-
-function shouldReserveSlotForAntiFadiga(
-  input: RecommendationCaseInput,
-  strictCategories: ClinicalCategory[],
-  exploratoryCategories: ClinicalCategory[],
-): boolean {
-  return (
-    strictCategories.includes('multifocal') &&
-    exploratoryCategories.includes('visao_simples') &&
-    (input.objetivo_tags || []).includes('primeira_multifocal') &&
-    input.adicao != null &&
-    input.adicao <= MAX_ANTI_FATIGUE_ADDITION
-  )
 }
 
 function rankRecommendationOptions(params: {
@@ -3328,60 +3142,7 @@ export async function recommendLensConfigurations(params: {
     excludedConfigKeys,
   }).filter((entry) => !isUnsafeTopRecommendation(input, entry))
 
-  if (topN <= 2) {
-    return selectDiverseTopEntries(strictRanked, topN)
-  }
-
-  const exploratoryCategories = getExploratoryClinicalCategories(input, strictCategories)
-  const strictQuota = shouldReserveSlotForAntiFadiga(input, strictCategories, exploratoryCategories)
-    ? 1
-    : Math.min(2, topN)
-  const selected = selectDiverseTopEntries(strictRanked, strictQuota)
-
-  if (!sameCategories(strictCategories, exploratoryCategories)) {
-    const exploratoryRanked = applyExploratoryPriceDiscipline(
-      rankRecommendationOptions({
-        catalog,
-        input,
-        aiConfig: params.aiConfig,
-        forcedClinicalCategories: exploratoryCategories,
-        requiredFeatures,
-        maxPrice,
-      minPrice,
-      targetPrice,
-      excludedConfigKeys,
-      }).map((entry) => {
-        if (strictCategories.includes(entry.clinicalCategory)) {
-          return entry
-        }
-
-        const isAntiFadiga =
-          entry.clinicalCategory === 'visao_simples' &&
-          input.adicao != null &&
-          input.adicao <= MAX_ANTI_FATIGUE_ADDITION
-
-        return {
-          ...entry,
-          score: Number((entry.score - 0.75).toFixed(2)),
-          reasons: uniqueStrings([
-            ...entry.reasons,
-            isAntiFadiga ? 'opcao:alternativa_anti_fadiga' : 'opcao:alternativa_plausivel',
-          ]),
-        }
-      }).filter((entry) => !isUnsafeTopRecommendation(input, entry)),
-      selected,
-    )
-
-    appendPrioritizedEntries(selected, exploratoryRanked, topN)
-  }
-
-  if (selected.length < topN) {
-    appendPrioritizedEntries(selected, strictRanked, topN)
-  }
-
-  return selected
-    .slice(0, topN)
-    .sort((a, b) => b.score - a.score || a.finalPrice - b.finalPrice)
+  return selectDiverseTopEntries(strictRanked, topN)
 }
 
 export function inferConversationIntents(message: string): ConversationIntent[] {

@@ -45,10 +45,8 @@ import {
 import {
   generateLensAuditAction,
   generateLensSalesAssistAction,
-  generateLensTechnicalTriageAction,
   type LensSalesAssist,
   type LensTechnicalTriage,
-  type LensTechnicalTriageSignal,
   type PatientAuditContext,
 } from '@/lib/actions/gemini-narratives.actions'
 import { Database } from '@/lib/database.types'
@@ -139,101 +137,6 @@ const LENS_ENGINE_DIAGNOSTIC_SUITE_NAME = 'Dossie Triplice do Motor'
 const LENS_ENGINE_DIAGNOSTIC_SUITE_RESTORE_KEY = 'dossie_triplice_motor'
 const LENS_DEMO_QUICK_FILL_RESTORE_KEY = 'demo_quick_fill_profiles'
 const SHOW_LENS_DEMO_QUICK_FILL = true
-
-const TRIAGE_SIGNAL_PATCHES: Record<LensTechnicalTriageSignal, Partial<Pick<RecommendationCaseInput, 'rotina_tags' | 'objetivo_tags' | 'desired_benefits' | 'preferred_features'>>> = {
-  risco_espessura_alta: { desired_benefits: ['lente_fina', 'estetica', 'qualidade_optica'] },
-  risco_espessura_moderada: { desired_benefits: ['lente_fina'] },
-  priorizar_indice_alto: { desired_benefits: ['lente_fina', 'estetica'] },
-  evitar_indice_baixo: { desired_benefits: ['lente_fina'] },
-  priorizar_asferica: { desired_benefits: ['qualidade_optica', 'estetica'] },
-  priorizar_resistencia: { desired_benefits: ['resistencia'], rotina_tags: ['risco_quebra'] },
-  priorizar_trivex_policarbonato: {
-    desired_benefits: ['resistencia'],
-    rotina_tags: ['risco_quebra'],
-    objetivo_tags: ['resistencia_impacto_prioritaria'],
-  },
-  controle_miopia_prioritario: {
-    rotina_tags: ['controle_miopia'],
-    objetivo_tags: ['controle_miopia'],
-    desired_benefits: ['controle_miopia'],
-  },
-  fotossensivel_desejado_mas_secundario: {
-    preferred_features: ['transitions'],
-    desired_benefits: ['conforto_luz'],
-    objetivo_tags: ['transitions_secundario'],
-  },
-  blue_uv_desejado_mas_secundario: {
-    preferred_features: ['blue_uv'],
-    desired_benefits: ['conforto_digital'],
-    objetivo_tags: ['blue_uv_secundario'],
-  },
-  risco_adaptacao_multifocal: {
-    rotina_tags: ['adaptacao_critica'],
-    objetivo_tags: ['adaptacao_critica'],
-    desired_benefits: ['adaptacao_rapida', 'conforto_visual'],
-  },
-  priorizar_ar_premium: { desired_benefits: ['ar_premium', 'qualidade_optica', 'conforto_visual'] },
-  evitar_ar_externo: {
-    desired_benefits: ['qualidade_optica', 'conforto_visual'],
-    objetivo_tags: ['evitar_ar_externo'],
-  },
-  priorizar_conforto_digital: { desired_benefits: ['conforto_digital'], rotina_tags: ['computador'] },
-  priorizar_dirigir_noite: { desired_benefits: ['conforto_visual', 'qualidade_optica'], rotina_tags: ['dirigir_noite'] },
-  priorizar_campo_perto: { desired_benefits: ['conforto_visual'], rotina_tags: ['leitura', 'computador'] },
-  orcamento_limita_solucao_ideal: { objetivo_tags: ['orcamento_limita_solucao_ideal'] },
-}
-
-const uniqueList = (items: string[]) => Array.from(new Set(items.filter(Boolean)))
-
-const applyTechnicalTriageToCaseInput = (
-  caseInput: RecommendationCaseInput,
-  triage: LensTechnicalTriage | null,
-): RecommendationCaseInput => {
-  if (!triage) return caseInput
-
-  const next: RecommendationCaseInput = {
-    ...caseInput,
-    rotina_tags: [...(caseInput.rotina_tags || [])],
-    objetivo_tags: [...(caseInput.objetivo_tags || [])],
-    desired_benefits: [...(caseInput.desired_benefits || [])],
-    preferred_features: [...(caseInput.preferred_features || [])],
-  }
-
-  for (const signal of uniqueList([...triage.technicalSignals, ...triage.clinicalPriorities]) as LensTechnicalTriageSignal[]) {
-    const patch = TRIAGE_SIGNAL_PATCHES[signal]
-    if (!patch) continue
-    next.rotina_tags = uniqueList([...(next.rotina_tags || []), ...(patch.rotina_tags || [])])
-    next.objetivo_tags = uniqueList([...(next.objetivo_tags || []), ...(patch.objetivo_tags || [])])
-    next.desired_benefits = uniqueList([...(next.desired_benefits || []), ...(patch.desired_benefits || [])])
-    next.preferred_features = uniqueList([...(next.preferred_features || []), ...(patch.preferred_features || [])])
-  }
-
-  const triageNotes = [
-    triage.parecer ? `Triagem IA: ${triage.parecer}` : null,
-    triage.salesContext.tradeoff ? `Tradeoff IA: ${triage.salesContext.tradeoff}` : null,
-    triage.salesContext.caution ? `Cuidado IA: ${triage.salesContext.caution}` : null,
-  ].filter(Boolean)
-
-  if (triageNotes.length > 0) {
-    next.notes = [caseInput.notes, ...triageNotes].filter(Boolean).join(' | ')
-  }
-
-  if (next.rejected_features?.length) {
-    const rejected = new Set(next.rejected_features)
-    next.preferred_features = (next.preferred_features || []).filter((feature) => !rejected.has(feature))
-  }
-
-  const explicitlyPreferred = new Set(caseInput.preferred_features || [])
-  if (caseInput.budget_mode === 'premium') {
-    next.objetivo_tags = (next.objetivo_tags || []).filter((tag) => {
-      if (tag === 'transitions_secundario' && explicitlyPreferred.has('transitions')) return false
-      if (tag === 'blue_uv_secundario' && explicitlyPreferred.has('blue_uv')) return false
-      return true
-    })
-  }
-
-  return next
-}
 
 type SuggestionGenerationResult =
   | { success: true; suggestion: ManualSuggestion }
@@ -1901,7 +1804,6 @@ const getSalesAssistOptionText = (
   return [
     argument.headline,
     argument.sellerArgument || argument.whyThisLens,
-    argument.tradeoff ? `Trade-off: ${argument.tradeoff}` : null,
     argument.closingLine,
   ].filter(Boolean).join('\n\n')
 }
@@ -2088,7 +1990,6 @@ const humanizeRecommendationReason = (reason: string) => {
   if (reason === 'tratamento:conforto_telas') return 'Tratamento favorável para telas'
   if (reason === 'tratamento:dirigir_noite') return 'Tratamento favorável para direção noturna'
   if (reason === 'tratamento:outdoor') return 'Tratamento favorável para uso externo'
-  if (reason === 'opcao:alternativa_plausivel') return 'Alternativa plausível para ampliar a conversa'
   if (reason === 'opcao:salto_preco_controlado') return 'Alternativa com salto de preço controlado'
   if (reason === 'material:indice_alto_pouco_ganho') return 'Índice alto com ganho pequeno neste grau'
   if (reason === 'material:indice_baixo_grau_alto') return 'Índice baixo para grau alto'
@@ -2273,8 +2174,13 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>):
     objetivoTags.push('controle_miopia')
   }
 
+  const wantsOfficeLens =
+    form.objetivoCompra === 'oculos_escritorio' ||
+    form.objetivoCompra === 'ocupacional_escritorio'
+
   if (
     parseNullableNumber(form.receitaAdicao) !== null &&
+    !wantsOfficeLens &&
     (form.usaMultifocalHoje === 'nao' || form.objetivoCompra === 'primeira_multifocal')
   ) {
     objetivoTags.push('primeira_multifocal')
@@ -2308,8 +2214,9 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>):
     objetivoTags.push('controle_miopia')
   }
 
-  if (form.objetivoCompra === 'ocupacional_escritorio') {
+  if (wantsOfficeLens) {
     objetivoTags.push('ocupacional')
+    rotinaTags.push('computador')
     desiredBenefits.push('conforto_visual', 'conforto_digital')
   }
 
@@ -2873,9 +2780,8 @@ export default function EvaluationInterface({
 
     startAiGenerationTransition(async () => {
       const auditPatientContext = buildPatientAuditContext(form, aiCaseInput)
-      const triageResult = await generateLensTechnicalTriageAction(auditPatientContext, aiCaseInput)
-      const technicalTriage = triageResult.success ? triageResult.triage : null
-      const recommendationCaseInput = applyTechnicalTriageToCaseInput(aiCaseInput, technicalTriage)
+      const technicalTriage: LensTechnicalTriage | null = null
+      const recommendationCaseInput = aiCaseInput
 
       setLensTechnicalTriage(technicalTriage)
 
@@ -2908,11 +2814,7 @@ export default function EvaluationInterface({
       setAiRecommendations(payload.recommendations)
       setSyncStatus(evaluationIdRef.current ? 'saved' : 'idle')
       setManualSuggestion(null)
-      setAiFeedback(
-        technicalTriage
-          ? 'Triagem e sugestões geradas.'
-          : 'Sugestões geradas.'
-      )
+      setAiFeedback('Sugestões geradas sem triagem IA.')
 
       // Auditoria Gemini assíncrona (não bloqueia o ranking)
       if (payload.recommendations.length > 0) {
@@ -4195,7 +4097,7 @@ export default function EvaluationInterface({
                         <option value="resolver_queixa">Resolver queixa específica</option>
                         <option value="economizar">Economizar</option>
                         <option value="trocar_marca">Trocar marca/laboratório</option>
-                        <option value="ocupacional_escritorio">Óculos para trabalho/escritório</option>
+                        <option value="oculos_escritorio">Óculos para trabalho/escritório</option>
                       </select>
                     </div>
                     <div className="col-span-12 md:col-span-4">
