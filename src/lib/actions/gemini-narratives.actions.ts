@@ -728,6 +728,9 @@ function buildSalesAssistPrompt(params: {
     treatmentSummary: opt.treatmentSummary,
     treatmentNotes: opt.treatmentNotes,
     treatmentExplainWhy: opt.treatmentExplainWhy,
+    originalRank: opt.originalRank,
+    presentationRank: opt.presentationRank,
+    commercialRole: opt.commercialRole,
   }))
 
   return `Voce e um consultor senior de optica ajudando um vendedor durante o atendimento.
@@ -751,6 +754,7 @@ Regras:
 - Se a escolha foi limitada por disponibilidade/grade, explique que a opcao foi selecionada por atender a receita, sem prometer disponibilidade fora do payload.
 - Use os criticalFacts como fonte preferencial para identificar o motivo tecnico principal. Se houver criticalFacts.global, o sellerOpening deve mencionar o primeiro fato global em linguagem simples.
 - Use criticalFacts.byOption para explicar cada opcao pelo seu proprio merito, sem copiar literalmente todos os fatos.
+- Se uma opcao trouxer commercialRole, use isso apenas como contexto interno de venda. Nao diga ao cliente termos como "alvo", "ancora" ou "estrategia comercial".
 - Seja breve: sellerOpening em ate 1 frase; headline em ate 6 palavras; whyThisLens em ate 2 frases curtas; sellerArgument em ate 2 frases curtas; closingLine em 1 frase.
 
 Responda apenas JSON valido, sem markdown:

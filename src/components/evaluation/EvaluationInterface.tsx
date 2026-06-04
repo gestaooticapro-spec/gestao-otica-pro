@@ -55,7 +55,8 @@ import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/Backg
 import type {
   RecommendationCaseInput,
   RecommendationConversationState,
-  RecommendationOption
+  RecommendationOption,
+  RecommendationPresentationStrategy
 } from '@/lib/server/lens-recommendation'
 
 type Dependente = Database['public']['Tables']['dependentes']['Row']
@@ -130,6 +131,7 @@ type ActiveCatalogSummary = {
 type LensRecommendationActionPayload = {
   state: RecommendationConversationState
   recommendations: RecommendationOption[]
+  presentationStrategy?: RecommendationPresentationStrategy
 }
 
 const LENS_ENGINE_DIAGNOSTIC_SUITE_NAME = 'Dossie Triplice do Motor'
@@ -2411,6 +2413,17 @@ function validateRecommendationFormConsistency(form: ReturnType<typeof createEmp
   const wantsFirstMultifocal = form.objetivoCompra === 'primeira_multifocal'
   const wantsOfficeLens = form.objetivoCompra === 'oculos_escritorio' || form.objetivoCompra === 'ocupacional_escritorio'
   const wantsSolar = form.objetivoCompra === 'oculos_sol_grau'
+  const hasNearOrIntermediateComplaint =
+    form.principalIncomodoAtual === 'perto' ||
+    form.principalIncomodoAtual === 'intermediario' ||
+    form.principalIncomodoAtual === 'adaptacao'
+  const hasPresbyopicContext =
+    form.usaMultifocalHoje === 'sim' ||
+    form.tipoLenteAtual === 'multifocal' ||
+    form.tipoLenteAtual === 'bifocal' ||
+    wantsFirstMultifocal ||
+    wantsOfficeLens ||
+    hasNearOrIntermediateComplaint
   const wantsPremium =
     form.prioridadePrincipal === 'premium' ||
     form.aceitaPremium === 'sim' ||
@@ -2441,6 +2454,22 @@ function validateRecommendationFormConsistency(form: ReturnType<typeof createEmp
         ? 'Oculos de escritorio/ocupacional precisa de adicao informada para o motor avaliar corretamente.'
         : 'Primeira multifocal precisa de adicao informada.',
       suggestion: 'Preencha a adicao ou altere o objetivo da compra.',
+    })
+  }
+
+  if (add !== null && add > 0 && !hasPresbyopicContext) {
+    issues.push({
+      severity: 'warning',
+      message: 'Ha adicao preenchida, mas o restante do formulario ainda nao indica claramente necessidade de multifocal ou ocupacional.',
+      suggestion: 'Confirme se o cliente precisa de lente para perto/intermediario, primeira multifocal ou oculos de escritorio.',
+    })
+  }
+
+  if (isChild && add !== null && add > 0) {
+    issues.push({
+      severity: 'warning',
+      message: 'Crianca com adicao preenchida merece dupla checagem da receita e do objetivo da compra.',
+      suggestion: 'Confirme se a adicao esta correta e se o caso e realmente multifocal/ocupacional, nao apenas controle de miopia ou visao simples.',
     })
   }
 
@@ -2813,6 +2842,27 @@ export default function EvaluationInterface({
   }
 
   const handleFormChange = (field: keyof ReturnType<typeof createEmptyForm>, value: string) => {
+    if (field === 'budgetTarget') {
+      const targetBudget = parseNullableNumber(value)
+      const faixaOrcamento =
+        targetBudget === null
+          ? 'nao_informado'
+          : targetBudget <= 800
+            ? 'ate_800'
+            : targetBudget <= 2000
+              ? '800_2000'
+              : targetBudget <= 5000
+                ? '2000_5000'
+                : 'acima_5000'
+
+      setForm((prev) => ({
+        ...prev,
+        budgetTarget: value,
+        faixaOrcamento,
+      }))
+      return
+    }
+
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
@@ -2948,6 +2998,7 @@ export default function EvaluationInterface({
           patient: auditPatientContext,
           technicalTriage,
           motorInput: recommendationCaseInput,
+          presentationStrategy: payload.presentationStrategy || null,
           recommendations: payload.recommendations,
         }
         setLensAuditPayload(auditDebugPayload)
@@ -4243,6 +4294,18 @@ export default function EvaluationInterface({
                         type="number"
                         min="0"
                       />
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
+                      <label className={labelStyle}>Aceita Lentes Premium?</label>
+                      <select
+                        value={form.aceitaPremium}
+                        onChange={(e) => handleFormChange('aceitaPremium', e.target.value)}
+                        className={selectStyle}
+                      >
+                        <option value="nao_informado">Nao informado</option>
+                        <option value="sim">Sim</option>
+                        <option value="nao">Nao</option>
+                      </select>
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Importância de estética/finura</label>

@@ -60,6 +60,17 @@ export type RecommendationOption = {
   treatmentSummary: string | null
   treatmentNotes: string | null
   treatmentExplainWhy: string | null
+  originalRank?: number
+  presentationRank?: number
+  commercialRole?: 'anchor' | 'target' | 'alternative'
+}
+
+export type RecommendationPresentationStrategy = {
+  applied: boolean
+  type: 'target_as_second_option' | 'none'
+  reason: string | null
+  originalOrder: string[]
+  displayOrder: string[]
 }
 
 export type RecommendationConversationState = {
@@ -251,9 +262,7 @@ function withoutAccents(value: string): string {
 }
 
 function rejectsPremiumPreference(input: RecommendationCaseInput): boolean {
-  const budgetMode = normalizeBudgetMode(input.budget_mode)
   const note = withoutAccents(String(input.notes || '').toLowerCase())
-  if (budgetMode !== 'economico') return false
 
   return (
     (input.objetivo_tags || []).includes('premium_recusado') ||
@@ -1186,7 +1195,7 @@ function inferMixedCategoryFromSemanticSignals(
     return 'controle_miopia'
   }
 
-  if (/(interview|digitime|office|work|softwear|relax)/.test(descriptor)) {
+  if (/(interview|digitime|office|work|softwear)/.test(descriptor)) {
     return 'ocupacional'
   }
 
@@ -2295,6 +2304,8 @@ function selectDiverseTopEntries(
   const selectedLabs = new Set<string>()
   const selectedFamilyNames = new Set<string>() // cross-catalog dedupe by normalized name
   const selectedProductNames = new Set<string>() // cross-catalog dedupe by actual product
+  const primaryCategory = entries[0]?.clinicalCategory
+  const shouldDiversifyLabs = primaryCategory === 'multifocal' || primaryCategory === 'ocupacional'
 
   const trySelect = (entry: RecommendationOption) => {
     if (selected.length >= topN) return
@@ -2308,14 +2319,16 @@ function selectDiverseTopEntries(
     selectedProductNames.add(normalizeProductSemanticName(entry))
   }
 
-  // Pass 1: best entry per unique lab, different product per slot
-  for (const entry of entries) {
-    if (selected.length >= topN) break
-    const lab = entry.sourceLaboratorio
-    const nameNorm = normalizeFamilyName(entry.familyName)
-    const productNorm = normalizeProductSemanticName(entry)
-    if (lab && !selectedLabs.has(lab) && !selectedFamilyNames.has(nameNorm) && !selectedProductNames.has(productNorm)) {
-      trySelect(entry)
+  // Pass 1: best entry per unique lab, only for categories where lab diversity is commercially useful.
+  if (shouldDiversifyLabs) {
+    for (const entry of entries) {
+      if (selected.length >= topN) break
+      const lab = entry.sourceLaboratorio
+      const nameNorm = normalizeFamilyName(entry.familyName)
+      const productNorm = normalizeProductSemanticName(entry)
+      if (lab && !selectedLabs.has(lab) && !selectedFamilyNames.has(nameNorm) && !selectedProductNames.has(productNorm)) {
+        trySelect(entry)
+      }
     }
   }
 
@@ -3145,6 +3158,92 @@ export async function recommendLensConfigurations(params: {
   return selectDiverseTopEntries(strictRanked, topN)
 }
 
+function getStorePreferenceSnapshot(option: RecommendationOption): { lab: number; brand: number } {
+  let lab = 3
+  let brand = 3
+
+  for (const reason of option.reasons) {
+    const labMatch = reason.match(/^preferencia_lab:(\d+)$/)
+    if (labMatch) lab = Number(labMatch[1])
+
+    const brandMatch = reason.match(/^preferencia_marca:.+:(\d+)$/)
+    if (brandMatch) brand = Number(brandMatch[1])
+  }
+
+  return { lab, brand }
+}
+
+function getStorePreferencePresentationReason(
+  first: RecommendationOption,
+  second: RecommendationOption,
+): string | null {
+  const firstPreference = getStorePreferenceSnapshot(first)
+  const secondPreference = getStorePreferenceSnapshot(second)
+  const firstHasStrongPreference = firstPreference.lab >= 5 || firstPreference.brand >= 5
+  if (!firstHasStrongPreference) return null
+
+  if (firstPreference.lab > secondPreference.lab) {
+    return `preferencia_lab:${firstPreference.lab}>${secondPreference.lab}`
+  }
+  if (firstPreference.brand > secondPreference.brand) {
+    return `preferencia_marca:${firstPreference.brand}>${secondPreference.brand}`
+  }
+
+  return null
+}
+
+function applyRecommendationPresentationStrategy(
+  recommendations: RecommendationOption[],
+): {
+  recommendations: RecommendationOption[]
+  presentationStrategy: RecommendationPresentationStrategy
+} {
+  const roleForIndex = (index: number): NonNullable<RecommendationOption['commercialRole']> =>
+    index === 0 ? 'anchor' : index === 1 ? 'target' : 'alternative'
+  const ranked = recommendations.map((option, index) => ({
+    ...option,
+    originalRank: index + 1,
+  }))
+  const originalOrder = ranked.map((option) => option.configKey)
+  const preferenceReason =
+    ranked[0] && ranked[1]
+      ? getStorePreferencePresentationReason(ranked[0], ranked[1])
+      : null
+
+  if (ranked.length < 2 || !preferenceReason) {
+    return {
+      recommendations: ranked.map((option, index) => ({
+        ...option,
+        presentationRank: index + 1,
+      })),
+      presentationStrategy: {
+        applied: false,
+        type: 'none',
+        reason: null,
+        originalOrder,
+        displayOrder: originalOrder,
+      },
+    }
+  }
+
+  const display = [ranked[1], ranked[0], ...ranked.slice(2)].map((option, index) => ({
+    ...option,
+    presentationRank: index + 1,
+    commercialRole: roleForIndex(index),
+  }))
+
+  return {
+    recommendations: display,
+    presentationStrategy: {
+      applied: true,
+      type: 'target_as_second_option',
+      reason: preferenceReason,
+      originalOrder,
+      displayOrder: display.map((option) => option.configKey),
+    },
+  }
+}
+
 export function inferConversationIntents(message: string): ConversationIntent[] {
   const normalized = normalizeIntentText(message)
   const intents: ConversationIntent[] = []
@@ -3326,6 +3425,7 @@ export async function startRecommendationConversation(params: {
 }): Promise<{
   state: RecommendationConversationState
   recommendations: RecommendationOption[]
+  presentationStrategy: RecommendationPresentationStrategy
 }> {
   const state: RecommendationConversationState = {
     versionId: params.versionId,
@@ -3352,7 +3452,7 @@ export async function startRecommendationConversation(params: {
   const initialMaxPrice = tPrice
     ? tPrice * (childControlMyopia || premiumTechnicalStretch ? 1.7 : 1.2)
     : undefined
-  const recommendations = await recommendLensConfigurations({
+  const rankedRecommendations = await recommendLensConfigurations({
     versionId: params.versionId,
     versionIds: params.versionIds,
     caseInput: state.caseInput,
@@ -3361,12 +3461,14 @@ export async function startRecommendationConversation(params: {
     targetPrice: tPrice,
     maxPrice: initialMaxPrice,
   })
+  const { recommendations, presentationStrategy } = applyRecommendationPresentationStrategy(rankedRecommendations)
 
   state.lastRecommendations = recommendations
 
   return {
     state,
     recommendations,
+    presentationStrategy,
   }
 }
 
