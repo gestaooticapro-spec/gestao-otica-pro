@@ -9,6 +9,8 @@ import {
     FileText, Plus, Search, Loader2, AlertCircle,
     CheckCircle, XCircle, Clock, Download, RefreshCw, Ban, MessageCircle, FileArchive, ArrowLeft, Printer
 } from "lucide-react";
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
+import ModuleDisabledState from '@/components/modules/ModuleDisabledState';
 
 type Invoice = {
     id: string;
@@ -33,6 +35,7 @@ type Invoice = {
 export default function FiscalDashboard({ params }: { params: { storeId: string } }) {
     const storeId = parseInt(params.storeId);
     const router = useRouter();
+    const modules = useStoreModules();
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
@@ -52,6 +55,8 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
 
     // Smart polling para notas em processamento
     useEffect(() => {
+        if (!modules.fiscal) return;
+
         const checkForUpdates = async () => {
             const processingInvoices = invoicesRef.current.filter(
                 (inv) => inv.status === "processing" && inv.environment === environment
@@ -83,11 +88,11 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
         if (!intervalMs) return;
         const intervalId = setInterval(checkForUpdates, intervalMs);
         return () => clearInterval(intervalId);
-    }, [invoices.filter((inv) => inv.status === "processing").length, environment]);
+    }, [invoices.filter((inv) => inv.status === "processing").length, environment, modules.fiscal]);
 
     useEffect(() => {
-        if (storeId) fetchInvoices();
-    }, [storeId]);
+        if (storeId && modules.fiscal) fetchInvoices();
+    }, [storeId, modules.fiscal]);
 
     const fetchInvoices = async () => {
         setLoading(true);
@@ -211,6 +216,10 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
     const sumAuthorized = authorizedInvoices.reduce((acc, inv) => acc + (inv.valor_total || 0), 0);
     const countError = filteredInvoices.filter((i) => i.status === "error" || i.status === "rejected").length;
     const countPending = filteredInvoices.filter((i) => i.status === "processing" || i.status === "draft").length;
+
+    if (!modules.fiscal) {
+        return <ModuleDisabledState storeId={storeId} moduleLabel="Fiscal" />;
+    }
 
     return (
         <div className="space-y-6 pb-32 p-6">

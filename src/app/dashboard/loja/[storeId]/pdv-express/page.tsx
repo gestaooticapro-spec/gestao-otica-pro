@@ -6,13 +6,18 @@ import PdvExpressInterface from '@/components/vendas/PdvExpressInterface'
 import { Zap, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
+import ModuleDisabledState from '@/components/modules/ModuleDisabledState'
 
 export default function PdvExpressPage({ params }: { params: { storeId: string } }) {
   const storeId = parseInt(params.storeId, 10)
   const [employees, setEmployees] = useState<any[]>([])
   const { preference, isLoaded } = useBackgroundPreference()
+  const modules = useStoreModules()
 
   useEffect(() => {
+    if (!modules.quickSale) return
+
     async function loadEmployees() {
       try {
         const data = await getEmployees(storeId)
@@ -23,7 +28,11 @@ export default function PdvExpressPage({ params }: { params: { storeId: string }
       }
     }
     loadEmployees()
-  }, [storeId])
+  }, [storeId, modules.quickSale])
+
+  if (!modules.quickSale) {
+    return <ModuleDisabledState storeId={storeId} moduleLabel="Venda Rapida" />
+  }
 
   if (!isLoaded) {
     return (

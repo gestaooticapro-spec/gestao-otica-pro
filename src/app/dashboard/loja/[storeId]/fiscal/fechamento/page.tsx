@@ -13,6 +13,8 @@ import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
+import ModuleDisabledState from '@/components/modules/ModuleDisabledState';
 
 const MONTHS = [
     "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -56,6 +58,7 @@ const hasXmlSource = (item: { xml_content: string | null; xml_url: string | null
 
 export default function FechamentoMensalOtica({ params }: { params: { storeId: string } }) {
     const storeId = parseInt(params.storeId);
+    const modules = useStoreModules();
 
     const [month, setMonth] = useState(() => {
         const d = new Date();
@@ -71,6 +74,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
     const [loading, setLoading] = useState(false);
     const [summary, setSummary] = useState<FiscalSummary | null>(null);
     const [exporting, setExporting] = useState(false);
+
     const [recovering, setRecovering] = useState(false);
     const [invalidating, setInvalidating] = useState(false);
     const [invalidateEnvironment, setInvalidateEnvironment] = useState<"production" | "homologation">("production");
@@ -372,6 +376,10 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
     };
 
     const years = [2024, 2025, 2026, 2027];
+
+    if (!modules.fiscal) {
+        return <ModuleDisabledState storeId={storeId} moduleLabel="Fiscal" backHref={`/dashboard/loja/${storeId}/fiscal`} />;
+    }
 
     return (
         <div className="max-w-3xl mx-auto p-6 pb-16">

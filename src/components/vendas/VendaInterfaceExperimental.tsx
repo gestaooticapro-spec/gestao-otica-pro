@@ -24,6 +24,7 @@ import ReceiptSelectionModal from '@/components/modals/ReceiptSelectionModal'
 import UpdateCpfModal from '@/components/modals/UpdateCpfModal'
 import TransferVendaModal from '@/components/modals/TransferVendaModal'
 import CustomerQuickInfoModal from '@/components/modals/CustomerQuickInfoModal'
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 
 import { Database } from '@/lib/database.types'
 
@@ -210,6 +211,7 @@ export default function VendaInterfaceExperimental({
 }: VendaInterfaceProps) {
 
     const router = useRouter()
+    const modules = useStoreModules()
     const { preference } = useBackgroundPreference();
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false)
 
@@ -230,7 +232,13 @@ export default function VendaInterfaceExperimental({
     const closeModal = () => setActiveModal('none')
     const hasCpf = !!customer?.cpf?.toString().replace(/\D/g, '')
     const hasPhone = !!(customer?.fone_movel || customer?.phone)?.toString().replace(/\D/g, '')
-    const canOpenParcelamento = hasCpf && hasPhone
+    const canOpenParcelamento = modules.installments && hasCpf && hasPhone
+
+    useEffect(() => {
+        if (!modules.installments && activeModal === 'parcelamento') {
+            setActiveModal('none')
+        }
+    }, [activeModal, modules.installments])
 
     const handleOpenParcelamento = () => {
         if (!canOpenParcelamento) {
@@ -385,7 +393,7 @@ export default function VendaInterfaceExperimental({
                     </SectionCard>
 
                     {/* QUADRO 4: PARCELAMENTO (LARANJA - Financeiro) */}
-                    <SectionCard
+                    {modules.installments && <SectionCard
                         title="Parcelamento"
                         icon={FileText}
                         onAdd={(!financiamento && !isVendaFechadaOuCancelada) ? handleOpenParcelamento : undefined} // Só mostra botão se não tiver financiamento e não estiver fechada
@@ -412,7 +420,7 @@ export default function VendaInterfaceExperimental({
                                 </div>
                             )}
                         </div>
-                    </SectionCard>
+                    </SectionCard>}
 
                     {/* QUADRO 5: OBSERVAÇÕES GERAIS (NOVO) */}
                     <SectionCard
@@ -502,7 +510,7 @@ export default function VendaInterfaceExperimental({
             </SimpleModal>
 
             {/* Modal de Parcelamento (LARANJA) */}
-            <SimpleModal
+            {modules.installments && <SimpleModal
                 isOpen={activeModal === 'parcelamento'}
                 onClose={closeModal}
                 title="Gerar Parcelamento"
@@ -521,7 +529,7 @@ export default function VendaInterfaceExperimental({
                     isQuitado={isQuitado}
                     isModal={true}
                 />
-            </SimpleModal>
+            </SimpleModal>}
 
             {/* Modal de Impressão (Já existente) */}
             <ReceiptSelectionModal

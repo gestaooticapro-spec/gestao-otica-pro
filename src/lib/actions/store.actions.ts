@@ -6,6 +6,7 @@ import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { Database, Json } from '@/lib/database.types'
 import { createClient } from '@/lib/supabase/server'
 import { syncStoreFiscalData } from './fiscal.actions'
+import { StoreSettings } from '@/lib/store-modules'
 
 const StoreProfileSchema = z.object({
     id: z.coerce.number(),
@@ -44,11 +45,6 @@ type StoreRow = Database['public']['Tables']['stores']['Row']
 type StoreUpdatePayload = Database['public']['Tables']['stores']['Update']
 type StorePublicRow = Pick<StoreRow, 'name' | 'tenant_id' | 'settings'>
 type TenantRow = { name: string | null }
-type StoreSettings = {
-    logo?: string
-    pre_sale_analysis_enabled?: boolean
-    [key: string]: Json | undefined
-}
 type QueryError = { message: string }
 type SingleResult<T> = Promise<{ data: T | null; error: QueryError | null }>
 type StoreSelectBuilder<T> = {
@@ -138,8 +134,6 @@ export async function updateStoreProfile(
         codigo_municipio_ibge: formData.get('codigo_municipio_ibge'),
         regime_tributario: formData.get('regime_tributario'),
     }
-    const preSaleAnalysisEnabled = formData.get('pre_sale_analysis_enabled') === 'on'
-
     const validated = StoreProfileSchema.safeParse(rawData)
     if (!validated.success) {
         return { success: false, message: 'Dados inválidos. Verifique os campos.' }
@@ -174,10 +168,7 @@ export async function updateStoreProfile(
             }
         }
 
-        updateData.settings = {
-            ...currentSettings,
-            pre_sale_analysis_enabled: preSaleAnalysisEnabled
-        }
+        updateData.settings = currentSettings
 
         await storesTable
             .update(updateData)

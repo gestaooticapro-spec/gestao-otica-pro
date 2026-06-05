@@ -7,6 +7,7 @@ import {
     ArrowUpRight, Clock, Star, Search, Users, Wallet, FileText, Eye, EyeOff, ChevronDown, AlertTriangle, X,
     Stethoscope
 } from 'lucide-react'
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 
 interface CustomerHistoryPageProps {
     data: CustomerXRayData
@@ -44,6 +45,7 @@ const deg = (val: any) => {
 }
 
 export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPageProps) {
+    const modules = useStoreModules()
     const { customer, stats, habits, sales, postSales, cobranca, devedor } = data
     const [selectedSaleId, setSelectedSaleId] = useState<number | null>(sales[0]?.id || null)
     const [expandedOsId, setExpandedOsId] = useState<number | null>(null)
@@ -189,7 +191,7 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                             <p className="text-[10px] text-purple-400/70 font-bold uppercase tracking-wider">Dias s/ Comprar</p>
                         </div>
                     </div>
-                    <div className="bg-fuchsia-950/30 border border-fuchsia-500/20 rounded-2xl p-4 flex flex-col justify-between backdrop-blur-md hover:bg-fuchsia-900/20 transition-colors duration-300">
+                    {modules.postSales && <div className="bg-fuchsia-950/30 border border-fuchsia-500/20 rounded-2xl p-4 flex flex-col justify-between backdrop-blur-md hover:bg-fuchsia-900/20 transition-colors duration-300">
                         <div className="flex items-start justify-between gap-2">
                             <div className="p-2 bg-fuchsia-500/10 rounded-xl ring-1 ring-fuchsia-500/20 w-fit">
                                 <Star className="w-4 h-4 text-fuchsia-300" />
@@ -217,8 +219,8 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                                     : 'Nenhum pós-venda registrado'}
                             </p>
                         </div>
-                    </div>
-                    <div className="bg-orange-950/30 border border-orange-500/20 rounded-2xl p-4 flex flex-col justify-between backdrop-blur-md hover:bg-orange-900/20 transition-colors duration-300">
+                    </div>}
+                    {modules.installments && <div className="bg-orange-950/30 border border-orange-500/20 rounded-2xl p-4 flex flex-col justify-between backdrop-blur-md hover:bg-orange-900/20 transition-colors duration-300">
                         <div className="p-2 bg-orange-500/10 rounded-xl ring-1 ring-orange-500/20 w-fit">
                             <Wallet className="w-4 h-4 text-orange-300" />
                         </div>
@@ -229,7 +231,7 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                                 {cobranca.jaFoiCobrado ? 'Cliente já foi cobrado' : 'Sem cobrança registrada'}
                             </p>
                         </div>
-                    </div>
+                    </div>}
                 </div>
             </div>
 
@@ -532,7 +534,7 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                 </div>
             </div>
 
-            {isPostSalesModalOpen && (
+            {modules.postSales && isPostSalesModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                     <button
                         type="button"

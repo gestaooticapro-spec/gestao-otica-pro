@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition } from 'react';
 import {
     Users, Plus, Save, Power, Loader2, Lock, User,
     ShieldCheck, Briefcase, Wrench, BadgeCheck, Percent, CheckCircle2,
-    Store, MapPin, Phone, QrCode, ArrowLeft, AlertCircle, Sparkles
+    Store, MapPin, Phone, QrCode, ArrowLeft, AlertCircle, Sparkles, FileText, Wallet, HeartHandshake, Zap, Printer
 } from 'lucide-react';
 import { getEmployees, saveEmployee, toggleEmployeeStatus } from '@/lib/actions/employee.actions';
 import { getStoreProfile, updateStoreProfile, updateStoreSettings } from '@/lib/actions/store.actions';
@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import dynamic from 'next/dynamic';
+import { StoreSettings as SharedStoreSettings, getStoreModules } from '@/lib/store-modules';
 
 const AiSuggestionConfigPanel = dynamic(() => import('@/components/config/AiSuggestionConfigPanel'), {
     loading: () => <div className="p-6 text-center"><Loader2 className="animate-spin h-6 w-6 text-cyan-400 mx-auto" /></div>,
@@ -21,11 +22,7 @@ const AiSuggestionConfigPanel = dynamic(() => import('@/components/config/AiSugg
 
 type Employee = Database['public']['Tables']['employees']['Row'];
 type EmployeeRole = NonNullable<Employee['role']>;
-type StoreFeatureSettings = {
-    logo?: string;
-    pre_sale_analysis_enabled?: boolean;
-    receipt_type?: 'pre_printed' | 'half_a4';
-};
+type StoreFeatureSettings = SharedStoreSettings;
 type StoreData = {
     id: number;
     name: string;
@@ -86,6 +83,59 @@ function StoreDataForm({ storeId }: { storeId: number }) {
 
     if (loading) return <div className="p-10 text-center"><Loader2 className="animate-spin h-8 w-8 text-indigo-400 mx-auto" /></div>
     if (!data) return <div className="p-10 text-center text-sm font-bold text-red-300">Não foi possível carregar os dados da loja.</div>
+
+    /*
+    const modules = [
+        {
+            key: 'module_fiscal_enabled',
+            title: 'Módulo Fiscal',
+            description: 'Controla emissão de notas, painel fiscal e fechamento mensal da NFC-e.',
+            icon: FileText,
+            accent: 'text-rose-300',
+            iconBg: 'bg-rose-500/15 border-rose-400/20',
+        },
+        {
+            key: 'module_installments_enabled',
+            title: 'Módulo de Parcelamento',
+            description: 'Liga ou desliga baixa de parcelas, cobrança e relatórios do crediário/carnês.',
+            icon: Wallet,
+            accent: 'text-amber-300',
+            iconBg: 'bg-amber-500/15 border-amber-400/20',
+        },
+        {
+            key: 'module_post_sales_enabled',
+            title: 'Módulo de Pós-venda',
+            description: 'Habilita o fluxo de acompanhamento e os relatórios de pós-venda.',
+            icon: HeartHandshake,
+            accent: 'text-pink-300',
+            iconBg: 'bg-pink-500/15 border-pink-400/20',
+        },
+        {
+            key: 'pre_sale_analysis_enabled',
+            title: 'Módulo de Avaliação',
+            description: 'Mantém a tela de Avaliação disponível no atendimento e na análise pré-venda.',
+            icon: Sparkles,
+            accent: 'text-cyan-300',
+            iconBg: 'bg-cyan-500/15 border-cyan-400/20',
+        },
+        {
+            key: 'module_quick_sale_enabled',
+            title: 'Módulo de Venda Rápida',
+            description: 'Mostra ou esconde o fluxo de PDV Express para vendas de balcão.',
+            icon: Zap,
+            accent: 'text-violet-300',
+            iconBg: 'bg-violet-500/15 border-violet-400/20',
+        },
+        {
+            key: 'module_labels_enabled',
+            title: 'Módulo de Etiquetas',
+            description: 'Controla a geração e impressão de etiquetas dentro do estoque.',
+            icon: Printer,
+            accent: 'text-teal-300',
+            iconBg: 'bg-teal-500/15 border-teal-400/20',
+        },
+    ] as const
+    */
 
     return (
         <form action={handleSave} className="max-w-4xl mx-auto space-y-6 animate-in fade-in">
@@ -340,6 +390,7 @@ function StoreDataForm({ storeId }: { storeId: number }) {
 
 // --- SUB-COMPONENTE: RECURSOS ---
 function ResourcesForm({ storeId }: { storeId: number }) {
+    const router = useRouter()
     const [data, setData] = useState<StoreData | null>(null)
     const [loading, setLoading] = useState(true)
     const [isSaving, startTransition] = useTransition()
@@ -363,6 +414,7 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                         [settingName]: value
                     }
                 } : null)
+                router.refresh()
             } else {
                 alert("Erro: " + res.message)
             }
@@ -371,6 +423,8 @@ function ResourcesForm({ storeId }: { storeId: number }) {
 
     if (loading) return <div className="p-10 text-center"><Loader2 className="animate-spin h-8 w-8 text-indigo-400 mx-auto" /></div>
     if (!data) return <div className="p-10 text-center text-sm font-bold text-red-300">Não foi possível carregar os dados da loja.</div>
+
+    const activeModules = getStoreModules(data.settings)
 
     return (
         <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in">
@@ -385,7 +439,101 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                     </div>}
                 </div>
 
-                <label className="flex items-start gap-4 rounded-xl border border-white/10 bg-black/20 p-4 cursor-pointer hover:bg-white/5 transition-colors group">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {[
+                        {
+                            key: 'module_fiscal_enabled',
+                            moduleKey: 'fiscal',
+                            title: 'Modulo Fiscal',
+                            description: 'Controla emissao de notas, painel fiscal e fechamento mensal da NFC-e.',
+                            icon: FileText,
+                            accent: 'text-rose-300',
+                            iconBg: 'bg-rose-500/15 border-rose-400/20',
+                        },
+                        {
+                            key: 'module_installments_enabled',
+                            moduleKey: 'installments',
+                            title: 'Modulo de Parcelamento',
+                            description: 'Liga ou desliga baixa de parcelas, cobranca e relatorios do crediario/carnes.',
+                            icon: Wallet,
+                            accent: 'text-amber-300',
+                            iconBg: 'bg-amber-500/15 border-amber-400/20',
+                        },
+                        {
+                            key: 'module_post_sales_enabled',
+                            moduleKey: 'postSales',
+                            title: 'Modulo de Pos-venda',
+                            description: 'Habilita o fluxo de acompanhamento e os relatorios de pos-venda.',
+                            icon: HeartHandshake,
+                            accent: 'text-pink-300',
+                            iconBg: 'bg-pink-500/15 border-pink-400/20',
+                        },
+                        {
+                            key: 'pre_sale_analysis_enabled',
+                            moduleKey: 'evaluation',
+                            title: 'Modulo de Avaliacao',
+                            description: 'Mantem a tela de Avaliacao disponivel no atendimento e na analise pre-venda.',
+                            icon: Sparkles,
+                            accent: 'text-cyan-300',
+                            iconBg: 'bg-cyan-500/15 border-cyan-400/20',
+                        },
+                        {
+                            key: 'module_quick_sale_enabled',
+                            moduleKey: 'quickSale',
+                            title: 'Modulo de Venda Rapida',
+                            description: 'Mostra ou esconde o fluxo de PDV Express para vendas de balcao.',
+                            icon: Zap,
+                            accent: 'text-violet-300',
+                            iconBg: 'bg-violet-500/15 border-violet-400/20',
+                        },
+                        {
+                            key: 'module_labels_enabled',
+                            moduleKey: 'labels',
+                            title: 'Modulo de Etiquetas',
+                            description: 'Controla a geracao e impressao de etiquetas dentro do estoque.',
+                            icon: Printer,
+                            accent: 'text-teal-300',
+                            iconBg: 'bg-teal-500/15 border-teal-400/20',
+                        },
+                    ].map((module) => {
+                        const Icon = module.icon
+
+                        return (
+                            <label
+                                key={module.key}
+                                className="flex items-start gap-4 rounded-xl border border-white/10 bg-black/20 p-4 cursor-pointer hover:bg-white/5 transition-colors group"
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={activeModules[module.moduleKey as keyof typeof activeModules]}
+                                    onChange={(e) => handleSettingChange(module.key, e.target.checked)}
+                                    disabled={isSaving}
+                                    className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-900 text-cyan-500 focus:ring-cyan-500 disabled:opacity-50"
+                                />
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`h-10 w-10 rounded-xl border flex items-center justify-center ${module.iconBg}`}>
+                                            <Icon className={`h-5 w-5 ${module.accent}`} />
+                                        </div>
+                                        <div>
+                                            <p className={`text-sm font-black uppercase tracking-[0.15em] ${module.accent}`}>
+                                                {module.title}
+                                            </p>
+                                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 mt-1">
+                                                {activeModules[module.moduleKey as keyof typeof activeModules] ? 'Ativado' : 'Desativado'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <p className="mt-3 text-xs text-slate-400 leading-relaxed">
+                                        {module.description}
+                                    </p>
+                                </div>
+                            </label>
+                        )
+                    })}
+                </div>
+
+                {false && (<label className="flex items-start gap-4 rounded-xl border border-white/10 bg-black/20 p-4 cursor-pointer hover:bg-white/5 transition-colors group">
                     <input
                         type="checkbox"
                         checked={Boolean(data?.settings?.pre_sale_analysis_enabled)}
@@ -402,7 +550,7 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                             e pode registrar análises antes da venda, com histórico individual por titular ou dependente.
                         </p>
                     </div>
-                </label>
+                </label>)}
 
                 <div className="rounded-xl border border-white/10 bg-black/20 p-4 transition-colors">
                     <div>

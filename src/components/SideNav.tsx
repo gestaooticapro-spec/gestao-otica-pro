@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useModals } from '@/lib/contexts/ModalsContext';
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
 
 type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor' | 'tecnico';
 
@@ -159,6 +160,7 @@ export default function SideNav({ userRole, storeId, storeName, logoUrl }: SideN
     const router = useRouter();
     const pathname = usePathname();
     const supabase = createClient();
+    const modules = useStoreModules();
 
     // --- ESTADOS ---
     const [isMainCollapsed, setIsMainCollapsed] = useState(true);
@@ -224,7 +226,15 @@ export default function SideNav({ userRole, storeId, storeName, logoUrl }: SideN
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-3 space-y-1 custom-scrollbar">
-                    {group.subItems.filter(sub => sub.allowedRoles.includes(userRole)).map(sub => {
+                    {group.subItems.filter(sub => {
+                        if (!sub.allowedRoles.includes(userRole)) return false;
+                        if (sub.route.includes('/pdv-express')) return modules.quickSale;
+                        if (sub.label === 'Baixa Parcelas' || sub.route.includes('/cobranca')) return modules.installments;
+                        if (sub.route.includes('/pos-venda')) return modules.postSales;
+                        if (sub.route.includes('/estoque/etiquetas')) return modules.labels;
+                        if (sub.route.includes('/fiscal')) return modules.fiscal;
+                        return true;
+                    }).map(sub => {
                         let activeClass = 'bg-white/10 text-white font-bold border border-white/10 shadow-lg';
                         let iconActiveColor = 'text-white drop-shadow-[0_0_5px_rgba(255,255,255,0.8)]';
 

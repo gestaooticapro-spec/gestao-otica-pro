@@ -15,6 +15,7 @@ import RetornosCobrancaWidget from '@/components/consultas/RetornosCobrancaWidge
 import { AlertaEntrega, AlertaLaboratorio, Aniversariante, VencimentoProximo } from '@/lib/actions/consultas.actions'
 import { RetornoCobranca } from '@/lib/actions/collection.actions'
 import ParcelaSearchModal from '@/components/modals/ParcelaSearchModal'
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 
 interface Props {
   storeId: number
@@ -31,6 +32,7 @@ interface Props {
 
 export default function ActionMenuDashboard({ storeId, storeName, alerts, birthdays, vencimentos, retornos }: Props) {
   const [isParcelaModalOpen, setIsParcelaModalOpen] = useState(false)
+  const modules = useStoreModules()
 
   // LINHA 1: ATENDIMENTO (Frente de Loja)
   const topRow = [
@@ -71,7 +73,11 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
       border: "border-emerald-400/30",
       image: null
     }
-  ]
+  ].filter((item) => {
+    if (item.href?.includes('/pdv-express')) return modules.quickSale
+    if (item.action) return modules.installments
+    return true
+  })
 
   // LINHA 2: RETAGUARDA (Loja Vazia)
   const bottomRow = [
@@ -105,7 +111,12 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
       href: `/dashboard/loja/${storeId}/estoque/etiquetas`,
       color: "hover:bg-teal-500/20 hover:border-teal-500/50 hover:text-teal-200"
     }
-  ]
+  ].filter((item) => {
+    if (item.href.includes('/cobranca')) return modules.installments
+    if (item.href.includes('/pos-venda')) return modules.postSales
+    if (item.href.includes('/estoque/etiquetas')) return modules.labels
+    return true
+  })
 
   return (
     <div className="h-full overflow-hidden relative font-sans">
@@ -237,6 +248,8 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
               </div>
 
               <div className="space-y-6">
+                {modules.installments && (
+                  <>
                 {/* Widget Vencimentos */}
                 <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
                   <WidgetVencimentos dados={vencimentos} storeName={storeName} />
@@ -246,6 +259,9 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
                 <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
                   <RetornosCobrancaWidget retornos={retornos} />
                 </div>
+
+                  </>
+                )}
 
                 {/* Widget Aniversariantes */}
                 <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">

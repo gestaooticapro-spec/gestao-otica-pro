@@ -16,12 +16,15 @@ import {
 import { formatCurrency } from '@/lib/utils';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { getParcelamentoMetrics, getParcelasAtrasadas, type ParcelaAtrasadaItem } from '@/lib/actions/reports.actions';
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
+import ModuleDisabledState from '@/components/modules/ModuleDisabledState';
 
 export default function ParcelamentoReportPage() {
     const router = useRouter();
     const params = useParams();
     const storeId = Number(params.storeId);
     const { preference } = useBackgroundPreference();
+    const modules = useStoreModules();
 
     const [metrics, setMetrics] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -32,7 +35,7 @@ export default function ParcelamentoReportPage() {
     const [atrasadasList, setAtrasadasList] = useState<ParcelaAtrasadaItem[]>([]);
 
     useEffect(() => {
-        if (!storeId) return;
+        if (!storeId || !modules.installments) return;
 
         const fetchData = async () => {
             setLoading(true);
@@ -47,7 +50,7 @@ export default function ParcelamentoReportPage() {
         };
 
         fetchData();
-    }, [storeId]);
+    }, [storeId, modules.installments]);
 
     const handleOpenAtrasadas = async () => {
         setIsAtrasadasOpen(true);
@@ -64,6 +67,10 @@ export default function ParcelamentoReportPage() {
             setAtrasadasLoading(false);
         }
     };
+
+    if (!modules.installments) {
+        return <ModuleDisabledState storeId={storeId} moduleLabel="Parcelamento" backHref={`/dashboard/loja/${storeId}/reports`} />;
+    }
 
     return (
         <div className="min-h-full relative flex flex-col p-6 lg:p-10 z-0">

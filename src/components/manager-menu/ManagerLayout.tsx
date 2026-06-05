@@ -22,6 +22,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { OperatorLayout } from '@/components/operator-menu';
 import { useEffect } from 'react';
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
 
 type ManualManagerState = 'home' | 'gerencia' | 'operator';
 type ManagerState = ManualManagerState | 'page';
@@ -96,6 +97,7 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
     const searchParams = useSearchParams();
     const supabase = createClient();
     const { preference } = useBackgroundPreference();
+    const modules = useStoreModules();
 
     const menuParam = searchParams.get('menu');
     const [manualState, setManualState] = useState<ManualManagerState>('home');
@@ -269,7 +271,7 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {GERENCIA_LINKS.map((item) => {
+                            {GERENCIA_LINKS.filter((item) => item.id !== 'fiscal' || modules.fiscal).map((item) => {
                                 const Icon = item.icon;
                                 return (
                                     <button

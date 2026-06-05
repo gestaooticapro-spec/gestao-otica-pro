@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 // Importa o helper do admin, que usa o Service Role Client
 import { getProfileByAdmin } from '@/lib/supabase/admin' 
+import { getStoreModulesForStore } from '@/lib/store-modules.server'
 
 export default async function HomePage() {
   const supabase = createClient()
@@ -31,7 +32,8 @@ export default async function HomePage() {
       
     } else if (profile?.role === 'vendedor' && profile.store_id) {
       // Vendedor vai direto para o PDV ou para a home da loja
-      redirect(`/dashboard/loja/${profile.store_id}/pdv-express`)
+      const modules = await getStoreModulesForStore(profile.store_id)
+      redirect(modules.quickSale ? `/dashboard/loja/${profile.store_id}/pdv-express` : `/dashboard/loja/${profile.store_id}`)
       
     } else {
       // Se for um usuário logado sem perfil válido, desloga

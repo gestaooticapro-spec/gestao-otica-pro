@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { X, CheckCircle, Printer, Plus, CreditCard, FileText, Loader2, Search } from 'lucide-react'
 import FinanciamentoBox from '@/components/vendas/FinanciamentoBox'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
@@ -15,6 +15,7 @@ import {
 import { getSaleData } from '@/lib/actions/fiscal-db.actions'
 import { type CartItem } from '@/components/vendas/PdvExpressInterface'
 import { Database } from '@/lib/database.types'
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 
 // Tipo para o funcionário autenticado
 type Employee = Database['public']['Tables']['employees']['Row']
@@ -42,6 +43,7 @@ export default function PaymentModal({
     cartItems
 }: PaymentModalProps) {
 
+    const modules = useStoreModules()
     const [activeTab, setActiveTab] = useState<'pagamento' | 'carne'>('pagamento')
     const [isCompleted, setIsCompleted] = useState(false)
     const [vendaIdGerada, setVendaIdGerada] = useState<number | null>(null)
@@ -69,6 +71,12 @@ export default function PaymentModal({
     const [vendaItens, setVendaItens] = useState<any[]>([])
     const [isLoadingFiscal, setIsLoadingFiscal] = useState(false)
     const [nfceEmitida, setNfceEmitida] = useState(false)
+
+    useEffect(() => {
+        if (!modules.installments && activeTab === 'carne') {
+            setActiveTab('pagamento')
+        }
+    }, [activeTab, modules.installments])
 
     const triggerPrint = async (pagamentoId: number): Promise<boolean> => {
         try {
@@ -211,7 +219,7 @@ export default function PaymentModal({
                                     </p>
                                 </div>
                                 <div className="flex flex-col sm:flex-row gap-4 mt-8 w-full max-w-md">
-                                    <button
+                                    {modules.fiscal && <button
                                         onClick={handleOpenFiscalModal}
                                         disabled={isLoadingFiscal || nfceEmitida}
                                         className={`flex-1 py-4 rounded-xl border font-bold transition-all flex flex-col items-center gap-2 disabled:cursor-not-allowed ${
@@ -222,7 +230,7 @@ export default function PaymentModal({
                                     >
                                         {isLoadingFiscal ? <Loader2 className="h-6 w-6 animate-spin text-blue-400" /> : nfceEmitida ? <CheckCircle className="h-6 w-6 text-emerald-400" /> : <FileText className="h-6 w-6 text-blue-400" />}
                                         {nfceEmitida ? 'NFC-e Emitida ✓' : 'Emitir NFC-e'}
-                                    </button>
+                                    </button>}
                                     <button onClick={onReset} className="flex-1 py-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-emerald-950 shadow-emerald-500/20 shadow-lg font-black tracking-widest uppercase transition-all flex flex-col items-center gap-2">
                                         <Plus className="h-6 w-6" /> Nova Venda (Sair)
                                     </button>
@@ -250,9 +258,9 @@ export default function PaymentModal({
                                         <button onClick={() => setActiveTab('pagamento')} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 transition-all ${activeTab === 'pagamento' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'}`}>
                                             <CreditCard className="h-4 w-4" /> Pagamento
                                         </button>
-                                        <button onClick={() => setActiveTab('carne')} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 transition-all ${activeTab === 'carne' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/20 shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'}`}>
+                                        {modules.installments && <button onClick={() => setActiveTab('carne')} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 transition-all ${activeTab === 'carne' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/20 shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'}`}>
                                             <FileText className="h-4 w-4" /> Carnê
-                                        </button>
+                                        </button>}
                                     </div>
                                 )}
 

@@ -19,6 +19,7 @@ import { Calendar, ClipboardList, AlertTriangle, CheckCircle2, Wallet, DollarSig
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import UpdateCpfModal from '@/components/modals/UpdateCpfModal'
 import CollapsibleBox from './CollapsibleBox'
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 
 type Financiamento = Database['public']['Tables']['financiamento_loja']['Row']
 type FinanciamentoParcela = Database['public']['Tables']['financiamento_parcelas']['Row']
@@ -190,6 +191,7 @@ export default function FinanciamentoBox({
     isModal = false,
 }: FinanciamentoBoxProps) {
 
+    const modules = useStoreModules()
     const formRef = useRef<HTMLFormElement>(null)
 
     const [isConfigModalOpen, setIsConfigModalOpen] = useState(false)
@@ -325,6 +327,10 @@ export default function FinanciamentoBox({
     // Estilos
     const labelStyle = 'block text-[10px] font-bold text-slate-400 mb-0.5 uppercase tracking-wider';
     const inputStyle = 'block w-full rounded-md border border-white/10 bg-white/5 shadow-sm text-slate-200 h-9 text-xs px-2 focus:ring-1 focus:ring-amber-500/50 focus:outline-none disabled:bg-white/5 disabled:text-slate-500 placeholder:text-slate-600 transition-all';
+
+    if (!modules.installments) {
+        return null
+    }
 
     const renderContent = () => (
         <>

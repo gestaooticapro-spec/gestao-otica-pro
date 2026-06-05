@@ -18,12 +18,14 @@ import {
     PackageSearch
 } from 'lucide-react';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
 
 export default function ReportsHubPage() {
     const router = useRouter();
     const params = useParams();
     const storeId = params.storeId as string;
     const { preference } = useBackgroundPreference();
+    const modules = useStoreModules();
 
     const reportCategories = [
         {
@@ -114,7 +116,12 @@ export default function ReportsHubPage() {
             tone: 'from-pink-600/20 via-pink-900/30 to-slate-900/80 hover:border-pink-500/50 hover:shadow-pink-500/20',
             iconTone: 'text-pink-400 bg-pink-500/20 ring-pink-400/30'
         }
-    ];
+    ].filter((category) => {
+        if (category.route.includes('/reports/parcelamento')) return modules.installments;
+        if (category.route.includes('/reports/cobranca-acoes')) return modules.installments;
+        if (category.route.includes('/reports/pos-venda')) return modules.postSales;
+        return true;
+    });
 
     return (
         <div className="min-h-full relative flex flex-col p-6 lg:p-10 z-0">

@@ -9,6 +9,7 @@ import { useModals } from '@/lib/contexts/ModalsContext';
 import { useState, useEffect, useRef } from 'react';
 import { searchCustomersQuick, CustomerSearchResult } from '@/lib/actions/customer-history.actions';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
 
 interface OperatorMenuAtendimentoProps {
     storeId: number;
@@ -119,6 +120,7 @@ export default function OperatorMenuAtendimento({
     const { openParcelaModal, openCustomerHistoryModal } = useModals();
     const { preference } = useBackgroundPreference();
     const [isSearchOpen, setIsSearchOpen] = useState(false);
+    const modules = useStoreModules();
 
     const [tooltip, setTooltip] = useState<{ visible: boolean, x: number, y: number, text: string }>({ visible: false, x: 0, y: 0, text: '' });
     const hoverTimeout = useRef<NodeJS.Timeout | null>(null);
@@ -208,7 +210,7 @@ export default function OperatorMenuAtendimento({
                                     </div>
                                 </button>
 
-                                {preSaleAnalysisEnabled && (
+                                {preSaleAnalysisEnabled && modules.evaluation && (
                                     <button
                                         onClick={() => onNavigate(`/dashboard/loja/${storeId}/avaliacao`)}
                                         onMouseEnter={(e) => handleHover(e, "Abra a tela de Avaliação para registrar análises pré-venda, importar o PDF do iVision e manter histórico individual por titular ou dependente.")}
@@ -260,7 +262,7 @@ export default function OperatorMenuAtendimento({
                                 </button>
 
                                 {/* Venda Rápida */}
-                                <button
+                                {modules.quickSale && <button
                                     onClick={() => onNavigate(`/dashboard/loja/${storeId}/pdv-express`)}
                                     onMouseEnter={(e) => handleHover(e, "Venda expressa avulsa. Ideal para óculos de sol, caixa de lentes de contato, líquidos e acessórios diversos de prateleira.")}
                                     onMouseMove={handleMove}
@@ -277,7 +279,7 @@ export default function OperatorMenuAtendimento({
                                     <div className="absolute top-1/2 right-4 -translate-y-1/2 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all duration-300">
                                         <ArrowRight className="w-5 h-5 text-blue-300" />
                                     </div>
-                                </button>
+                                </button>}
                             </div>
                         </div>
                     </div>
@@ -320,7 +322,7 @@ export default function OperatorMenuAtendimento({
                             </button>
 
                             {/* Baixa Parcelas */}
-                            <button
+                            {modules.installments && <button
                                 onClick={() => openParcelaModal()}
                                 onMouseEnter={(e) => handleHover(e, "Use este botão quando o cliente vier pagar uma parcela.")}
                                 onMouseMove={handleMove}
@@ -337,7 +339,7 @@ export default function OperatorMenuAtendimento({
                                 <div className="absolute top-1/2 right-4 -translate-y-1/2 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all duration-300">
                                     <ArrowRight className="w-5 h-5 text-amber-300" />
                                 </div>
-                            </button>
+                            </button>}
 
                             {/* Assistência */}
                             <button

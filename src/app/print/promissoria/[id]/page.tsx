@@ -1,6 +1,7 @@
 import { getFinanciamentoById } from '@/lib/actions/vendas.actions'
 import PromissoriaPhantom from '@/components/print/PromissoriaPhantom'
 import { notFound } from 'next/navigation'
+import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
 
 export default async function PrintPromissoriaPage({ params }: { params: { id: string } }) {
     const id = parseInt(params.id)
@@ -9,6 +10,12 @@ export default async function PrintPromissoriaPage({ params }: { params: { id: s
     const financiamento = await getFinanciamentoById(id)
 
     if (!financiamento) {
+        return notFound()
+    }
+
+    const storeId = Number((financiamento as { store_id: number }).store_id)
+    const enabled = await isStoreModuleEnabledForStore(storeId, 'installments')
+    if (!enabled) {
         return notFound()
     }
 

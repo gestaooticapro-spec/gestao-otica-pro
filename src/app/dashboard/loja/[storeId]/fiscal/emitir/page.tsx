@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
+import ModuleDisabledState from '@/components/modules/ModuleDisabledState';
 
 // Tipos
 type PendingSale = {
@@ -36,6 +38,7 @@ export default function EmitirNotaPage({ params }: { params: { storeId: string }
     const storeId = parseInt(params.storeId);
     const router = useRouter();
     const searchParams = useSearchParams();
+    const modules = useStoreModules();
     const environment = (searchParams.get('env') as 'production' | 'homologation') || 'production';
 
     // Estados
@@ -53,10 +56,10 @@ export default function EmitirNotaPage({ params }: { params: { storeId: string }
 
     // Carga Inicial
     useEffect(() => {
-        if (storeId) {
+        if (storeId && modules.fiscal) {
             loadPendingSales();
         }
-    }, [storeId]);
+    }, [storeId, modules.fiscal]);
 
     const loadPendingSales = async () => {
         setLoadingSales(true);
@@ -69,6 +72,10 @@ export default function EmitirNotaPage({ params }: { params: { storeId: string }
             setLoadingSales(false);
         }
     };
+
+    if (!modules.fiscal) {
+        return <ModuleDisabledState storeId={storeId} moduleLabel="Fiscal" backHref={`/dashboard/loja/${storeId}/fiscal`} />;
+    }
 
     const handleSelectSale = async (sale: PendingSale) => {
         setSelectedSale(sale);
