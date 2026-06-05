@@ -285,7 +285,7 @@ function MatrixTable({
                       diameter ? `Ø ${diameter}` : null,
                     ].filter(Boolean)
                     return items.length ? (
-                      <p className="mt-1 text-[10px] text-slate-500">{items.join(' â€¢ ')}</p>
+                      <p className="mt-1 text-[10px] text-slate-500">{items.join(' • ')}</p>
                     ) : null
                   })()}
                   <p className="text-[10px] text-slate-500">
@@ -493,7 +493,7 @@ function AtomicMatrixTable({
           <thead>
             <tr className="border-b border-white/8 bg-black/30">
               <th className="sticky left-0 z-10 bg-slate-900/95 px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 backdrop-blur-sm">
-                Ãndice
+                Índice
               </th>
               {matrix.colItems.map((col) => (
                 <th
@@ -542,7 +542,7 @@ function AtomicMatrixTable({
                   if (!offer) {
                     return (
                       <td key={col.key} className="px-3 py-3 text-left">
-                        <span className="text-slate-600">â€”</span>
+                        <span className="text-slate-600">—</span>
                       </td>
                     )
                   }
@@ -743,7 +743,7 @@ function FamilySection({
                               diameter ? `Ø ${diameter}` : null,
                             ].filter(Boolean)
                             return items.length ? (
-                              <p className="mt-1 text-[10px] text-slate-500">{items.join(' â€¢ ')}</p>
+                              <p className="mt-1 text-[10px] text-slate-500">{items.join(' • ')}</p>
                             ) : null
                           })()}
                         </div>

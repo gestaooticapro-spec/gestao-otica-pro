@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   Bot,
   Calendar,
+  ChevronDown,
   Check,
   CircleHelp,
   Copy,
@@ -26,7 +27,7 @@ import {
   Baby,
   UserRound,
   Briefcase,
-  Trash2, ShoppingCart, ArrowLeft
+  Trash2, ShoppingCart, ArrowLeft, Minus
 } from 'lucide-react'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import QuickCustomerModal from '@/components/modals/QuickCustomerModal'
@@ -137,7 +138,8 @@ type LensRecommendationActionPayload = {
 const LENS_ENGINE_DIAGNOSTIC_SUITE_NAME = 'Dossie Triplice do Motor'
 const LENS_ENGINE_DIAGNOSTIC_SUITE_RESTORE_KEY = 'dossie_triplice_motor'
 const LENS_DEMO_QUICK_FILL_RESTORE_KEY = 'demo_quick_fill_profiles'
-const SHOW_LENS_DEMO_QUICK_FILL = true
+// Preserve os perfis demo para calibracao futura, mas mantenha o card fora da UI.
+const SHOW_LENS_DEMO_QUICK_FILL = false
 
 type SuggestionGenerationResult =
   | { success: true; suggestion: ManualSuggestion }
@@ -151,7 +153,7 @@ type QuickRetentionIntent =
 
 const labelStyle = 'block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-[0.2em]'
 const inputStyle = 'block w-full rounded-xl border border-white/20 bg-slate-900/60 shadow-inner text-slate-100 h-10 text-sm px-3 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 font-bold placeholder:font-normal placeholder:text-slate-500 disabled:opacity-50 transition-all outline-none'
-const selectStyle = `${inputStyle} appearance-none bg-[url(data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%2394a3b8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22m6%208%204%204%204-4%22%2F%3E%3C%2Fsvg%3E)] bg-[length:1.25rem_1.25rem] bg-[right_0.5rem_center] bg-no-repeat pr-10`
+const selectStyle = 'hidden'
 const cardStyle = 'bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl shadow-xl'
 
 const AI_SEARCH_STEPS = [
@@ -2331,6 +2333,225 @@ function DegreeInput({
   )
 }
 
+function AgeStepper({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}) {
+  const rawValue = Number.isFinite(Number(value)) && value !== '' ? Number(value) : 0
+  const numericValue = Math.max(0, Math.min(120, rawValue))
+  const updateAge = (nextValue: number) => {
+    onChange(String(Math.max(0, Math.min(120, nextValue))))
+  }
+
+  return (
+    <div className="flex h-12 overflow-hidden rounded-xl border border-white/20 bg-slate-900/60 shadow-inner">
+      <button
+        type="button"
+        onClick={() => updateAge(numericValue - 1)}
+        className="flex w-12 shrink-0 items-center justify-center border-r border-white/10 text-slate-300 transition-colors hover:bg-white/10 active:bg-white/15"
+        title="Diminuir idade"
+      >
+        <Minus className="h-4 w-4" />
+      </button>
+      <input
+        type="number"
+        min="0"
+        max="120"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-full min-w-0 flex-1 border-0 bg-transparent px-3 text-center text-base font-black text-slate-100 outline-none"
+      />
+      <button
+        type="button"
+        onClick={() => updateAge(numericValue + 1)}
+        className="flex w-12 shrink-0 items-center justify-center border-l border-white/10 text-slate-300 transition-colors hover:bg-white/10 active:bg-white/15"
+        title="Aumentar idade"
+      >
+        <Plus className="h-4 w-4" />
+      </button>
+    </div>
+  )
+}
+
+function HourSlider({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+}) {
+  const rawValue = Number.isFinite(Number(value)) && value !== '' ? Number(value) : 0
+  const numericValue = Math.max(0, Math.min(12, rawValue))
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+          {label}
+        </label>
+        <span className="min-w-12 rounded-lg border border-indigo-400/20 bg-indigo-400/10 px-2 py-1 text-center text-xs font-black text-indigo-100">
+          {numericValue}h
+        </span>
+      </div>
+      <input
+        type="range"
+        min="0"
+        max="12"
+        step="1"
+        value={numericValue}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-12 w-full cursor-pointer accent-indigo-400"
+      />
+      <div className="-mt-1 flex justify-between px-1 text-[9px] font-bold uppercase tracking-[0.12em] text-slate-600">
+        <span>0</span>
+        <span>6</span>
+        <span>12</span>
+      </div>
+    </div>
+  )
+}
+
+type TabletChoiceOption = {
+  value: string
+  label: string
+}
+
+function TabletChoicePicker({
+  id,
+  label,
+  value,
+  options,
+  activePicker,
+  onOpen,
+  onChange,
+}: {
+  id: string
+  label: string
+  value: string
+  options: TabletChoiceOption[]
+  activePicker: string | null
+  onOpen: (id: string | null) => void
+  onChange: (value: string) => void
+}) {
+  const isOpen = activePicker === id
+  const selectedLabel = options.find((option) => option.value === value)?.label || label
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => onOpen(isOpen ? null : id)}
+        className={`flex min-h-12 w-full items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left transition-colors ${
+          isOpen
+            ? 'border-indigo-400/40 bg-indigo-500/15 text-indigo-50'
+            : 'border-white/10 bg-slate-900/60 text-slate-100 hover:bg-white/10'
+        }`}
+        aria-expanded={isOpen}
+      >
+        <span className="min-w-0 truncate text-sm font-black">{selectedLabel}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-indigo-200 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {isOpen && (
+        <div className="mt-3 flex flex-wrap gap-2 rounded-2xl border border-indigo-400/20 bg-indigo-500/5 p-2">
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => {
+                onChange(option.value)
+                onOpen(null)
+              }}
+              className={`min-h-11 rounded-xl border px-3 py-2 text-sm font-bold transition-colors ${
+                option.value === value
+                  ? 'border-indigo-300/50 bg-indigo-500 text-white'
+                  : 'border-white/10 bg-white/5 text-slate-200 hover:bg-white/10'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const LENS_TYPE_OPTIONS: TabletChoiceOption[] = [
+  { value: 'nao_informado', label: 'Nao informado' },
+  { value: 'visao_simples', label: 'Visao simples' },
+  { value: 'multifocal', label: 'Multifocal / progressiva' },
+  { value: 'ocupacional', label: 'Ocupacional' },
+  { value: 'bifocal', label: 'Bifocal' },
+]
+
+const ADAPTATION_OPTIONS: TabletChoiceOption[] = [
+  { value: 'nao_informado', label: 'Nao informado' },
+  { value: 'baixa', label: 'Boa adaptacao' },
+  { value: 'media', label: 'Alguma dificuldade' },
+  { value: 'alta', label: 'Muita dificuldade' },
+]
+
+const CHANGE_HISTORY_OPTIONS: TabletChoiceOption[] = [
+  { value: 'nao_informado', label: 'Nao informado' },
+  { value: 'nenhuma', label: 'Nenhuma recente' },
+  { value: 'uma', label: 'Uma troca recente' },
+  { value: 'mais_de_duas', label: 'Varias trocas / retrabalho' },
+]
+
+const PRIORITY_OPTIONS: TabletChoiceOption[] = [
+  { value: 'equilibrio', label: 'Equilibrio geral' },
+  { value: 'economia', label: 'Melhor custo-beneficio' },
+  { value: 'adaptacao', label: 'Adaptacao mais facil' },
+  { value: 'resistencia', label: 'Mais resistencia' },
+  { value: 'controle_miopia', label: 'Controle de miopia' },
+  { value: 'premium', label: 'Desempenho premium' },
+]
+
+const DISCOMFORT_OPTIONS: TabletChoiceOption[] = [
+  { value: 'nao_informado', label: 'Nao informado' },
+  { value: 'nenhum', label: 'Nenhum especifico' },
+  { value: 'perto', label: 'Perto' },
+  { value: 'longe', label: 'Longe' },
+  { value: 'intermediario', label: 'Intermediario / computador' },
+  { value: 'peso_espessura', label: 'Peso / espessura' },
+  { value: 'reflexo', label: 'Reflexo / brilho' },
+  { value: 'adaptacao', label: 'Dificuldade de adaptacao' },
+  { value: 'preco', label: 'Preco' },
+]
+
+const OBJECTIVE_OPTIONS: TabletChoiceOption[] = [
+  { value: 'nao_informado', label: 'Nao informado' },
+  { value: 'primeira_multifocal', label: 'Primeira multifocal' },
+  { value: 'upgrade', label: 'Upgrade de lente' },
+  { value: 'resolver_queixa', label: 'Resolver queixa' },
+  { value: 'economizar', label: 'Economizar' },
+  { value: 'trocar_marca', label: 'Trocar marca/lab' },
+  { value: 'oculos_escritorio', label: 'Oculos escritorio' },
+]
+
+const UNKNOWN_YES_NO_OPTIONS: TabletChoiceOption[] = [
+  { value: 'nao_informado', label: 'Nao informado' },
+  { value: 'sim', label: 'Sim' },
+  { value: 'nao', label: 'Nao' },
+]
+
+const YES_NO_OPTIONS: TabletChoiceOption[] = [
+  { value: 'nao', label: 'Nao' },
+  { value: 'sim', label: 'Sim' },
+]
+
+const IMPORTANCE_OPTIONS: TabletChoiceOption[] = [
+  { value: 'nao_informado', label: 'Nao informado' },
+  { value: 'baixa', label: 'Baixa' },
+  { value: 'media', label: 'Media' },
+  { value: 'alta', label: 'Alta' },
+]
+
 const createEmptyForm = () => ({
   sourceUrl: '',
   sourceSystem: 'manual' as EvaluationSourceSystem,
@@ -2341,15 +2562,15 @@ const createEmptyForm = () => ({
   sourceExamType: '',
   sourceExamDatetime: '',
   patientNameRaw: '',
-  ageYears: '',
-  estiloVidaUsoComputadorHoras: '',
-  estiloVidaDirigirHoras: '',
-  estiloVidaLeituraHoras: '',
-  estiloVidaUsoCelularHoras: '',
-  estiloVidaExposicaoSolHoras: '',
-  estiloVidaAmbienteInternoHoras: '',
-  estiloVidaAmbienteExternoHoras: '',
-  estiloVidaAssistirTvHoras: '',
+  ageYears: '30',
+  estiloVidaUsoComputadorHoras: '4',
+  estiloVidaDirigirHoras: '1',
+  estiloVidaLeituraHoras: '1',
+  estiloVidaUsoCelularHoras: '3',
+  estiloVidaExposicaoSolHoras: '1',
+  estiloVidaAmbienteInternoHoras: '8',
+  estiloVidaAmbienteExternoHoras: '1',
+  estiloVidaAssistirTvHoras: '2',
   marcaAtual: '',
   dificuldadeAdaptacao: 'nao_informado',
   queixaDirigirNoite: 'nao',
@@ -2600,6 +2821,9 @@ export default function EvaluationInterface({
   const [quickRetentionReply, setQuickRetentionReply] = useState<string | null>(null)
   const [ivisionReferenceSuggestion, setIvisionReferenceSuggestion] = useState<string | null>(null)
   const [ivisionReferenceSummary, setIvisionReferenceSummary] = useState<string | null>(null)
+  const [isLifestyleOpen, setIsLifestyleOpen] = useState(false)
+  const [isPrioritiesOpen, setIsPrioritiesOpen] = useState(false)
+  const [activePriorityPicker, setActivePriorityPicker] = useState<string | null>(null)
 
   const selectedDependente = useMemo(
     () => dependentes.find((dep) => dep.id === Number(selectedDependenteId)) || null,
@@ -3505,6 +3729,22 @@ export default function EvaluationInterface({
     !!form.sourceUrl &&
     (!!form.documentHash || !!form.extractedText)
   const hasSourceUrl = form.sourceUrl.trim().length > 0
+  const renderPriorityChoice = (
+    id: string,
+    label: string,
+    field: keyof ReturnType<typeof createEmptyForm>,
+    options: TabletChoiceOption[]
+  ) => (
+    <TabletChoicePicker
+      id={id}
+      label={label}
+      value={String(form[field] || '')}
+      options={options}
+      activePicker={activePriorityPicker}
+      onOpen={setActivePriorityPicker}
+      onChange={(value) => handleFormChange(field, value)}
+    />
+  )
 
   if (!authenticatedEmployee) {
     return (
@@ -4114,61 +4354,122 @@ export default function EvaluationInterface({
                   </div>
                 </div>
 
-                <div className={`${cardStyle} p-5`}>
-                  <h3 className="mb-4 text-sm font-black uppercase tracking-[0.2em] text-indigo-300">
-                    Estilo de Vida
-                  </h3>
-                  <div className="grid grid-cols-12 gap-4">
+                <div className={`${cardStyle} overflow-hidden`}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsLifestyleOpen((current) => !current)
+                      setIsPrioritiesOpen(false)
+                      setActivePriorityPicker(null)
+                    }}
+                    className="flex min-h-16 w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-white/[0.03]"
+                    aria-expanded={isLifestyleOpen}
+                  >
+                    <div>
+                      <h3 className="text-sm font-black uppercase tracking-[0.2em] text-indigo-300">
+                        Estilo de Vida
+                      </h3>
+                      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                        {isLifestyleOpen ? 'Rotina diaria aberta' : 'Rotina diaria recolhida'}
+                      </p>
+                    </div>
+                    <ChevronDown className={`h-5 w-5 shrink-0 text-indigo-200 transition-transform ${isLifestyleOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isLifestyleOpen && (
+                  <div className="grid grid-cols-12 gap-x-4 gap-y-5 border-t border-white/10 px-5 pb-5 pt-4">
                     <div className="col-span-12 md:col-span-3">
                       <label className={labelStyle}>Idade</label>
-                      <input
-                        type="number"
-                        min="0"
+                      <AgeStepper
                         value={form.ageYears}
-                        onChange={(e) => handleFormChange('ageYears', e.target.value)}
-                        className={inputStyle}
+                        onChange={(value) => handleFormChange('ageYears', value)}
                       />
                     </div>
                     <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Computador (h)</label>
-                      <input type="number" min="0" value={form.estiloVidaUsoComputadorHoras} onChange={(e) => handleFormChange('estiloVidaUsoComputadorHoras', e.target.value)} className={inputStyle} />
+                      <HourSlider
+                        label="Computador"
+                        value={form.estiloVidaUsoComputadorHoras}
+                        onChange={(value) => handleFormChange('estiloVidaUsoComputadorHoras', value)}
+                      />
                     </div>
                     <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Dirigir (h)</label>
-                      <input type="number" min="0" value={form.estiloVidaDirigirHoras} onChange={(e) => handleFormChange('estiloVidaDirigirHoras', e.target.value)} className={inputStyle} />
+                      <HourSlider
+                        label="Dirigir"
+                        value={form.estiloVidaDirigirHoras}
+                        onChange={(value) => handleFormChange('estiloVidaDirigirHoras', value)}
+                      />
                     </div>
                     <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Leitura (h)</label>
-                      <input type="number" min="0" value={form.estiloVidaLeituraHoras} onChange={(e) => handleFormChange('estiloVidaLeituraHoras', e.target.value)} className={inputStyle} />
+                      <HourSlider
+                        label="Leitura"
+                        value={form.estiloVidaLeituraHoras}
+                        onChange={(value) => handleFormChange('estiloVidaLeituraHoras', value)}
+                      />
                     </div>
                     <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Celular (h)</label>
-                      <input type="number" min="0" value={form.estiloVidaUsoCelularHoras} onChange={(e) => handleFormChange('estiloVidaUsoCelularHoras', e.target.value)} className={inputStyle} />
+                      <HourSlider
+                        label="Celular"
+                        value={form.estiloVidaUsoCelularHoras}
+                        onChange={(value) => handleFormChange('estiloVidaUsoCelularHoras', value)}
+                      />
                     </div>
                     <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Exposição ao Sol (h)</label>
-                      <input type="number" min="0" value={form.estiloVidaExposicaoSolHoras} onChange={(e) => handleFormChange('estiloVidaExposicaoSolHoras', e.target.value)} className={inputStyle} />
+                      <HourSlider
+                        label="Exposicao ao Sol"
+                        value={form.estiloVidaExposicaoSolHoras}
+                        onChange={(value) => handleFormChange('estiloVidaExposicaoSolHoras', value)}
+                      />
                     </div>
                     <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Ambiente Interno (h)</label>
-                      <input type="number" min="0" value={form.estiloVidaAmbienteInternoHoras} onChange={(e) => handleFormChange('estiloVidaAmbienteInternoHoras', e.target.value)} className={inputStyle} />
+                      <HourSlider
+                        label="Ambiente Interno"
+                        value={form.estiloVidaAmbienteInternoHoras}
+                        onChange={(value) => handleFormChange('estiloVidaAmbienteInternoHoras', value)}
+                      />
                     </div>
                     <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Ambiente Externo (h)</label>
-                      <input type="number" min="0" value={form.estiloVidaAmbienteExternoHoras} onChange={(e) => handleFormChange('estiloVidaAmbienteExternoHoras', e.target.value)} className={inputStyle} />
+                      <HourSlider
+                        label="Ambiente Externo"
+                        value={form.estiloVidaAmbienteExternoHoras}
+                        onChange={(value) => handleFormChange('estiloVidaAmbienteExternoHoras', value)}
+                      />
                     </div>
                     <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Assistir TV (h)</label>
-                      <input type="number" min="0" value={form.estiloVidaAssistirTvHoras} onChange={(e) => handleFormChange('estiloVidaAssistirTvHoras', e.target.value)} className={inputStyle} />
+                      <HourSlider
+                        label="Assistir TV"
+                        value={form.estiloVidaAssistirTvHoras}
+                        onChange={(value) => handleFormChange('estiloVidaAssistirTvHoras', value)}
+                      />
                     </div>
                   </div>
+                  )}
                 </div>
 
-                <div className={`${cardStyle} p-5`}>
-                  <h3 className="mb-4 text-sm font-black uppercase tracking-[0.2em] text-indigo-300">
-                    Queixas e Prioridades
-                  </h3>
-                  <div className="grid grid-cols-12 gap-4">
+                <div className={`${cardStyle} overflow-hidden`}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextOpen = !isPrioritiesOpen
+                      setIsPrioritiesOpen(nextOpen)
+                      setIsLifestyleOpen(false)
+                      setActivePriorityPicker(null)
+                    }}
+                    className="flex min-h-16 w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-white/[0.03]"
+                    aria-expanded={isPrioritiesOpen}
+                  >
+                    <div>
+                      <h3 className="text-sm font-black uppercase tracking-[0.2em] text-indigo-300">
+                        Queixas e Prioridades
+                      </h3>
+                      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                        {isPrioritiesOpen ? 'Preferencias abertas' : 'Preferencias recolhidas'}
+                      </p>
+                    </div>
+                    <ChevronDown className={`h-5 w-5 shrink-0 text-indigo-200 transition-transform ${isPrioritiesOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isPrioritiesOpen && (
+                  <div className="grid grid-cols-12 gap-4 border-t border-white/10 px-5 pb-5 pt-4">
                     {/* SUBSECTION 1: HISTÓRICO E ÓCULOS ATUAL */}
                     <div className="col-span-12">
                       <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 pb-2 border-b border-white/5">
@@ -4186,6 +4487,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Tipo da lente atual</label>
+                      {renderPriorityChoice('tipoLenteAtual', 'Tipo da lente atual', 'tipoLenteAtual', LENS_TYPE_OPTIONS)}
                       <select
                         value={form.tipoLenteAtual}
                         onChange={(e) => handleFormChange('tipoLenteAtual', e.target.value)}
@@ -4203,6 +4505,7 @@ export default function EvaluationInterface({
                         <label className={labelStyle}>Adaptação com lentes anteriores</label>
                         <select
                           value={form.dificuldadeAdaptacao}
+                          hidden
                           onChange={(e) => handleFormChange('dificuldadeAdaptacao', e.target.value)}
                           className={selectStyle}
                         >
@@ -4211,6 +4514,7 @@ export default function EvaluationInterface({
                           <option value="media">Alguma dificuldade</option>
                           <option value="alta">Muita dificuldade</option>
                         </select>
+                        {renderPriorityChoice('dificuldadeAdaptacao', 'Adaptacao com lentes anteriores', 'dificuldadeAdaptacao', ADAPTATION_OPTIONS)}
                       </div>
                     )}
                     {usedMultifocalBefore && !isChild && (
@@ -4226,6 +4530,7 @@ export default function EvaluationInterface({
                           <option value="uma">Uma troca recente</option>
                           <option value="mais_de_duas">Várias trocas / retrabalho</option>
                         </select>
+                        {renderPriorityChoice('historicoTrocasRecentes', 'Trocas recentes de lente', 'historicoTrocasRecentes', CHANGE_HISTORY_OPTIONS)}
                       </div>
                     )}
 
@@ -4237,6 +4542,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Prioridade principal</label>
+                      {renderPriorityChoice('prioridadePrincipal', 'Prioridade principal', 'prioridadePrincipal', PRIORITY_OPTIONS)}
                       <select
                         value={form.prioridadePrincipal}
                         onChange={(e) => handleFormChange('prioridadePrincipal', e.target.value)}
@@ -4252,6 +4558,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Principal incômodo atual</label>
+                      {renderPriorityChoice('principalIncomodoAtual', 'Principal incomodo atual', 'principalIncomodoAtual', DISCOMFORT_OPTIONS)}
                       <select
                         value={form.principalIncomodoAtual}
                         onChange={(e) => handleFormChange('principalIncomodoAtual', e.target.value)}
@@ -4270,6 +4577,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Objetivo desta compra</label>
+                      {renderPriorityChoice('objetivoCompra', 'Objetivo desta compra', 'objetivoCompra', OBJECTIVE_OPTIONS)}
                       <select
                         value={form.objetivoCompra}
                         onChange={(e) => handleFormChange('objetivoCompra', e.target.value)}
@@ -4297,6 +4605,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Aceita Lentes Premium?</label>
+                      {renderPriorityChoice('aceitaPremium', 'Aceita lentes premium?', 'aceitaPremium', UNKNOWN_YES_NO_OPTIONS)}
                       <select
                         value={form.aceitaPremium}
                         onChange={(e) => handleFormChange('aceitaPremium', e.target.value)}
@@ -4309,6 +4618,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Importância de estética/finura</label>
+                      {renderPriorityChoice('importanciaEstetica', 'Importancia de estetica/finura', 'importanciaEstetica', IMPORTANCE_OPTIONS)}
                       <select
                         value={form.importanciaEstetica}
                         onChange={(e) => handleFormChange('importanciaEstetica', e.target.value)}
@@ -4322,6 +4632,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Importância de resistência</label>
+                      {renderPriorityChoice('importanciaResistencia', 'Importancia de resistencia', 'importanciaResistencia', IMPORTANCE_OPTIONS)}
                       <select
                         value={form.importanciaResistencia}
                         onChange={(e) => handleFormChange('importanciaResistencia', e.target.value)}
@@ -4335,6 +4646,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Prefere Transitions?</label>
+                      {renderPriorityChoice('prefereTransitions', 'Prefere Transitions?', 'prefereTransitions', UNKNOWN_YES_NO_OPTIONS)}
                       <select
                         value={form.prefereTransitions}
                         onChange={(e) => handleFormChange('prefereTransitions', e.target.value)}
@@ -4347,6 +4659,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Prefere Blue/UV?</label>
+                      {renderPriorityChoice('prefereBlueUv', 'Prefere Blue/UV?', 'prefereBlueUv', UNKNOWN_YES_NO_OPTIONS)}
                       <select
                         value={form.prefereBlueUv}
                         onChange={(e) => handleFormChange('prefereBlueUv', e.target.value)}
@@ -4366,6 +4679,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Dificuldade para dirigir à noite</label>
+                      {renderPriorityChoice('queixaDirigirNoite', 'Dificuldade para dirigir a noite', 'queixaDirigirNoite', YES_NO_OPTIONS)}
                       <select
                         value={form.queixaDirigirNoite}
                         onChange={(e) => handleFormChange('queixaDirigirNoite', e.target.value)}
@@ -4377,6 +4691,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Sensibilidade à luz</label>
+                      {renderPriorityChoice('queixaSensibilidadeLuz', 'Sensibilidade a luz', 'queixaSensibilidadeLuz', YES_NO_OPTIONS)}
                       <select
                         value={form.queixaSensibilidadeLuz}
                         onChange={(e) => handleFormChange('queixaSensibilidadeLuz', e.target.value)}
@@ -4388,6 +4703,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Quebra óculos com frequência</label>
+                      {renderPriorityChoice('queixaQuebraOculos', 'Quebra oculos com frequencia', 'queixaQuebraOculos', YES_NO_OPTIONS)}
                       <select
                         value={form.queixaQuebraOculos}
                         onChange={(e) => handleFormChange('queixaQuebraOculos', e.target.value)}
@@ -4400,6 +4716,7 @@ export default function EvaluationInterface({
                     {isChild && (
                       <div className="col-span-12 md:col-span-4">
                         <label className={labelStyle}>Criança muito ativa</label>
+                        {renderPriorityChoice('queixaCriancaAtiva', 'Crianca muito ativa', 'queixaCriancaAtiva', YES_NO_OPTIONS)}
                         <select
                           value={form.queixaCriancaAtiva}
                           onChange={(e) => handleFormChange('queixaCriancaAtiva', e.target.value)}
@@ -4413,6 +4730,7 @@ export default function EvaluationInterface({
                     {isChild && (
                       <div className="col-span-12 md:col-span-4">
                         <label className={labelStyle}>Grau aumentando rápido</label>
+                        {renderPriorityChoice('queixaProgressaoRapida', 'Grau aumentando rapido', 'queixaProgressaoRapida', YES_NO_OPTIONS)}
                         <select
                           value={form.queixaProgressaoRapida}
                           onChange={(e) => handleFormChange('queixaProgressaoRapida', e.target.value)}
@@ -4440,6 +4758,7 @@ export default function EvaluationInterface({
                       />
                     </div>
                   </div>
+                  )}
                 </div>
 
                 {isIvisionMode && (
