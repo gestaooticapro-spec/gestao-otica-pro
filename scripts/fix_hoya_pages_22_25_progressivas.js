@@ -20,6 +20,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 const args = process.argv.slice(2)
 const versionId = args.find((arg) => arg.startsWith('--version-id='))?.split('=')[1]
 const commit = args.includes('--commit')
+const verbose = args.includes('--verbose')
 
 if (!versionId) {
   console.error('Uso: node scripts/fix_hoya_pages_22_25_progressivas.js --version-id=UUID [--commit]')
@@ -357,7 +358,7 @@ async function main() {
 
   const existingByKey = new Map()
   for (const o of existingOffers) {
-    const key = `${o.source_page_reference}||${o.family_id}||${o.features?.cor || ''}||${o.features?.tratamento || ''}||${o.base_price}`
+    const key = `${o.source_page_reference}||${o.family_id}||${o.material || ''}||${o.features?.cor || ''}||${o.features?.tratamento || ''}||${o.base_price}`
     existingByKey.set(key, o)
   }
 
@@ -393,7 +394,7 @@ async function main() {
     const canonical = canonicalLabelFor(row)
     const rawLabel = `${row.section} | ${row.treatment}`
     const idx = materialToIndex(row.material)
-    const key = `${row.page}||${familyId}||${row.section}||${row.treatment}||${row.price}`
+    const key = `${row.page}||${familyId}||${row.material}||${row.section}||${row.treatment}||${row.price}`
     const found = existingByKey.get(key) || null
 
     const pageCfg = cfgByPage.get(row.page)
@@ -501,6 +502,13 @@ async function main() {
   console.log(`To insert grids: ${gridInserts.length}`)
   console.log(`To update grids: ${gridUpdates.length}`)
 
+  if (verbose) {
+    console.log('\n[DEBUG] Offer updates')
+    console.log(JSON.stringify(offerUpdates, null, 2))
+    console.log('\n[DEBUG] Grid updates')
+    console.log(JSON.stringify(gridUpdates, null, 2))
+  }
+
   if (!commit) {
     console.log('\n[DRY-RUN] Rode com --commit para aplicar as mudancas.')
     return
@@ -531,4 +539,3 @@ main().catch((err) => {
   console.error('Erro fix hoya p22-p25:', err)
   process.exit(1)
 })
-

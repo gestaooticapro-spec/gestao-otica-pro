@@ -1,13 +1,20 @@
 import { listOSPendentesLab } from '@/lib/actions/medidas.actions'
 import Link from 'next/link'
 import { ArrowLeft, Camera, Ruler } from 'lucide-react'
+import { unstable_noStore as noStore } from 'next/cache'
+import { TabletOSAutoRefresh } from '@/components/tablet/TabletOSAutoRefresh'
+
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 export default async function TabletOSPage({ params }: { params: { storeId: string } }) {
+  noStore()
   const storeId = parseInt(params.storeId, 10)
   const lista   = await listOSPendentesLab(storeId)
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
+      <TabletOSAutoRefresh />
       <header className="flex items-center gap-3 px-4 py-4 border-b border-white/10 bg-slate-900">
         <Link href={`/tablet/${storeId}`} className="p-2 rounded-lg hover:bg-white/10 transition-colors">
           <ArrowLeft className="w-5 h-5" />
@@ -17,6 +24,16 @@ export default async function TabletOSPage({ params }: { params: { storeId: stri
           <p className="text-xs text-slate-400">{lista.length} OS aguardando envio para o lab</p>
         </div>
       </header>
+
+      <div className="border-b border-white/10 bg-slate-900/70 px-4 py-3">
+        <Link
+          href={`/medidas-armacao?storeId=${storeId}`}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 active:bg-indigo-700"
+        >
+          <Camera className="h-4 w-4" />
+          Tirar foto e informar OS depois
+        </Link>
+      </div>
 
       {lista.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-slate-500 text-sm">
