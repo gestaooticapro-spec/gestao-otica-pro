@@ -656,6 +656,7 @@ async function verificarPendenciasEmMassa(clientes: any[], storeId: number) {
     .eq('store_id', storeId)
     .in('customer_id', ids)
     .eq('status', 'Pendente')
+    .gt('valor_parcela', 0.01)
     .lt('data_vencimento', hoje); // Vencimento MENOR que hoje (Atrasado)
 
   // Cria um Set para busca rápida
@@ -2265,6 +2266,23 @@ function parseMoneySeguro(val: string | null) {
   return parseFloat(val)
 }
 
+async function quitarParcelasZeradasPendentes(financiamentoId: number, dataPagamento: string) {
+  const supabaseAdmin = createAdminClient()
+  const dataPagamentoIso = new Date(`${dataPagamento}T12:00:00Z`).toISOString()
+
+  const { error } = await (supabaseAdmin.from('financiamento_parcelas') as any)
+    .update({
+      status: 'Pago',
+      data_pagamento: dataPagamentoIso,
+      valor_parcela: 0
+    })
+    .eq('financiamento_id', financiamentoId)
+    .eq('status', 'Pendente')
+    .lte('valor_parcela', 0.01)
+
+  if (error) throw new Error(`Erro ao quitar parcelas zeradas: ${error.message}`)
+}
+
 export async function receberParcela(prevState: any, formData: FormData) {
   const supabaseAdmin = createAdminClient()
   const { data: { user } } = await createClient().auth.getUser()
@@ -2379,6 +2397,7 @@ export async function receberParcela(prevState: any, formData: FormData) {
           .eq('financiamento_id', parcelaAtual.financiamento_id)
           .gt('numero_parcela', parcelaAtual.numero_parcela)
           .eq('status', 'Pendente')
+          .gt('valor_parcela', 0.01)
           .order('numero_parcela', { ascending: true })
           .limit(1)
           .maybeSingle()
@@ -2416,6 +2435,7 @@ export async function receberParcela(prevState: any, formData: FormData) {
         .eq('financiamento_id', parcelaAtual.financiamento_id)
         .gt('numero_parcela', parcelaAtual.numero_parcela)
         .eq('status', 'Pendente')
+        .gt('valor_parcela', 0.01)
         .order('numero_parcela', { ascending: true })
 
       if (proximasParcelas) {
@@ -2430,9 +2450,13 @@ export async function receberParcela(prevState: any, formData: FormData) {
             if (errQuita) throw new Error(`Erro ao quitar parcela ${prox.numero_parcela}: ${errQuita.message}`)
             excedente -= prox.valor_parcela
           } else {
-            // Abate parcialmente na parcela atual
+            const saldoRestante = Number((prox.valor_parcela - excedente).toFixed(2))
+            const updateParcela = saldoRestante <= 0.01
+              ? { status: 'Pago', data_pagamento: new Date(`${data_pagamento}T12:00:00Z`).toISOString(), valor_parcela: 0 }
+              : { valor_parcela: saldoRestante }
+
             const { error: errAbate } = await (supabaseAdmin.from('financiamento_parcelas') as any)
-              .update({ valor_parcela: prox.valor_parcela - excedente })
+              .update(updateParcela)
               .eq('id', prox.id)
             if (errAbate) throw new Error(`Erro ao abater parcela ${prox.numero_parcela}: ${errAbate.message}`)
             excedente = 0
@@ -2440,6 +2464,8 @@ export async function receberParcela(prevState: any, formData: FormData) {
         }
       }
     }
+
+    await quitarParcelasZeradasPendentes(parcelaAtual.financiamento_id, data_pagamento)
 
     revalidatePath(`/dashboard/loja/${store_id}/vendas/${venda_id}`)
 
@@ -3069,7 +3095,11 @@ export async function searchPendenciasCliente(storeId: number, termo: string) {
     const parcelasPendentes = parcelas?.filter((p: any) => {
       const status = String(p.status || '').trim().toLowerCase()
       // Considera "em aberto" qualquer status que não represente parcela quitada/cancelada.
-      return status !== 'pago' && status !== 'quitado' && status !== 'cancelado' && status !== 'cancelada'
+      return Number(p.valor_parcela || 0) > 0.01
+        && status !== 'pago'
+        && status !== 'quitado'
+        && status !== 'cancelado'
+        && status !== 'cancelada'
     }) || []
     console.log(`ðŸ“¦ [DEBUG] Parcelas pendentes encontradas:`, parcelasPendentes.length)
 

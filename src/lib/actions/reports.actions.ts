@@ -251,6 +251,7 @@ export async function getParcelamentoMetrics(storeId: number) {
     .select('valor_parcela')
     .eq('store_id', storeId)
     .eq('status', 'Pendente')
+    .gt('valor_parcela', 0.01)
     .gte('data_vencimento', todayStr);
 
   const vincendas = (vincendasRaw || []) as any[];
@@ -262,6 +263,7 @@ export async function getParcelamentoMetrics(storeId: number) {
     .select('valor_parcela')
     .eq('store_id', storeId)
     .eq('status', 'Pendente')
+    .gt('valor_parcela', 0.01)
     .lt('data_vencimento', todayStr)
     .gte('data_vencimento', ninetyDaysAgoStr);
 
@@ -274,6 +276,7 @@ export async function getParcelamentoMetrics(storeId: number) {
     .select('valor_parcela')
     .eq('store_id', storeId)
     .eq('status', 'Pendente')
+    .gt('valor_parcela', 0.01)
     .lt('data_vencimento', ninetyDaysAgoStr);
 
   const perdidas = (perdidasRaw || []) as any[];
@@ -333,6 +336,7 @@ export async function getParcelasAtrasadas(storeId: number): Promise<ParcelaAtra
     `)
     .eq('store_id', storeId)
     .eq('status', 'Pendente')
+    .gt('valor_parcela', 0.01)
     .lt('data_vencimento', todayStr)
     .gte('data_vencimento', ninetyDaysAgoStr)
     .order('data_vencimento', { ascending: true })

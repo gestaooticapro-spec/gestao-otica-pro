@@ -276,6 +276,7 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
                 .eq('store_id', storeId)
                 .in('venda_id', vendasEmDividaIds)
                 .eq('status', 'Pendente')
+                .gt('valor_parcela', 0.01)
                 .lt('data_vencimento', hoje);
             
             isDevedor = (qtdParcelasAtrasadas || 0) > 0;

@@ -56,6 +56,7 @@ export async function getInadimplentes(storeId: number, filtro: 'cobrar' | 'ja_c
             `)
             .eq('store_id', storeId)
             .eq('status', 'Pendente')
+            .gt('valor_parcela', 0.01)
             .lt('data_vencimento', hoje)
             .order('data_vencimento', { ascending: true })
 
@@ -403,6 +404,7 @@ export async function getRetornosDeHoje(storeId: number): Promise<RetornoCobranc
             .select('customer_id')
             .eq('store_id', storeId)
             .eq('status', 'Pendente')
+            .gt('valor_parcela', 0.01)
             .in('customer_id', customerIds)
 
         // Set com IDs de clientes que AINDA devem

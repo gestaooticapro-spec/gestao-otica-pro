@@ -36,6 +36,10 @@ function validaCPF(cpf: string | null | undefined): boolean {
 }
 
 // --- Esquema de Validação ---
+function normalizeCpf(cpf: string | null | undefined) {
+  return cpf ? cpf.replace(/\D/g, '') : ''
+}
+
 const CustomerSchema = z.object({
   id: z.coerce.number().optional(),
   store_id: z.coerce.number(),
@@ -82,6 +86,58 @@ export type CustomerActionResult = {
   message: string
   data?: Customer
   errors?: Record<string, string[]>
+}
+
+async function validateCustomerNameDuplicatePolicy({
+  supabaseAdmin,
+  storeId,
+  fullName,
+  cpf,
+  currentCustomerId,
+}: {
+  supabaseAdmin: ReturnType<typeof createAdminClient>
+  storeId: number
+  fullName: string
+  cpf: string | null | undefined
+  currentCustomerId?: FormDataEntryValue | number | null
+}): Promise<CustomerActionResult | null> {
+  let queryDuplicidade = (supabaseAdmin
+    .from('customers') as any)
+    .select('id, cpf')
+    .eq('store_id', storeId)
+    .ilike('full_name', fullName.trim())
+
+  if (currentCustomerId) {
+    queryDuplicidade = queryDuplicidade.neq('id', currentCustomerId)
+  }
+
+  const { data: duplicados } = await queryDuplicidade.limit(10)
+
+  if (!duplicados || duplicados.length === 0) return null
+
+  const cpfAtual = normalizeCpf(cpf)
+
+  if (!validaCPF(cpfAtual)) {
+    return {
+      success: false,
+      message: `Ja existe cliente cadastrado com o nome "${fullName}". Para cadastrar homonimo, informe um CPF valido e diferente.`
+    }
+  }
+
+  const conflitoCpf = duplicados.find((cliente: any) => normalizeCpf(cliente.cpf) === cpfAtual)
+  if (conflitoCpf) {
+    return { success: false, message: 'Erro: Ja existe um cliente com este CPF.' }
+  }
+
+  const duplicadoSemCpfConfiavel = duplicados.find((cliente: any) => !validaCPF(normalizeCpf(cliente.cpf)))
+  if (duplicadoSemCpfConfiavel) {
+    return {
+      success: false,
+      message: `Ja existe cliente com o nome "${fullName}" sem CPF valido. Atualize o CPF do cadastro existente antes de criar um homonimo.`
+    }
+  }
+
+  return null
 }
 
 //================================================================
@@ -167,11 +223,28 @@ export async function saveCustomerDetails(
 
   const dataToSave: any = {
     ...customerData,
+    full_name: customerData.full_name.trim(),
     store_id: store_id,
     tenant_id: tenant_id,
   }
 
   const supabaseAdmin = createAdminClient();
+
+  if (cpfToSave && !validaCPF(cpfToSave)) {
+    return { success: false, message: 'CPF invalido.' }
+  }
+
+  const duplicatePolicyError = await validateCustomerNameDuplicatePolicy({
+    supabaseAdmin,
+    storeId: store_id,
+    fullName: dataToSave.full_name,
+    cpf: cpfToSave,
+    currentCustomerId: customerId,
+  })
+
+  if (duplicatePolicyError) {
+    return duplicatePolicyError
+  }
 
   // --- TRAVA DE SEGURANÇA ---
   let queryDuplicidade = (supabaseAdmin
@@ -184,9 +257,9 @@ export async function saveCustomerDetails(
     queryDuplicidade = queryDuplicidade.neq('id', customerId)
   }
 
-  const { data: duplicados } = await queryDuplicidade.limit(1)
+  const duplicados = [] as any[]
 
-  if (duplicados && duplicados.length > 0) {
+  if (false && duplicados && duplicados.length > 0) {
     return {
       success: false,
       message: `Atenção: Já existe um cliente cadastrado com o nome "${dataToSave.full_name}".`
@@ -411,6 +484,18 @@ export async function updateCustomerQuickInfo(
   const cpfLimpo = data.cpf.replace(/\D/g, '')
   if (cpfLimpo && !validaCPF(cpfLimpo)) {
     return { success: false, message: 'CPF inválido.' }
+  }
+
+  const duplicatePolicyError = await validateCustomerNameDuplicatePolicy({
+    supabaseAdmin,
+    storeId,
+    fullName: data.full_name,
+    cpf: cpfLimpo,
+    currentCustomerId: customerId,
+  })
+
+  if (duplicatePolicyError) {
+    return { success: false, message: duplicatePolicyError.message }
   }
 
   if (cpfLimpo) {

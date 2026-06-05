@@ -401,6 +401,7 @@ export async function getVencimentosProximos(storeId: number): Promise<Venciment
             `)
             .eq('store_id', storeId)
             .eq('status', 'Pendente')
+            .gt('valor_parcela', 0.01)
             .gte('data_vencimento', inicio)
             .lte('data_vencimento', fim)
             .order('data_vencimento', { ascending: true })
