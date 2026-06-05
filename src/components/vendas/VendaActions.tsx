@@ -195,7 +195,7 @@ export default function VendaActions({
             )}
 
             {/* BOTÃO IMPRIMIR (AGORA GLOBAL / SEMPRE VISÍVEL) */}
-            {modules.fiscal && <button
+            <button
                 type="button"
                 onClick={onPrint}
                 className="flex items-center gap-2 px-4 h-9 text-sm rounded-lg bg-slate-700 text-white hover:bg-slate-600 font-bold transition-colors shadow-lg shadow-black/30 uppercase tracking-wide"
@@ -203,10 +203,10 @@ export default function VendaActions({
             >
                 <Printer className="h-4 w-4" />
                 <span>Recibos</span>
-            </button>}
+            </button>
 
             {/* BOTÃO NFC-e */}
-            <button
+            {modules.fiscal && <button
                 type="button"
                 onClick={() => setIsFiscalModalOpen(true)}
                 className={`flex items-center gap-2.5 px-3 h-9 text-sm rounded-lg border font-bold transition-all uppercase tracking-wide ${
@@ -223,7 +223,7 @@ export default function VendaActions({
                         {nfEmitida ? 'EMITIDA' : 'PENDENTE'}
                     </span>
                 </div>
-            </button>
+            </button>}
 
             {/* MODAIS */}
             {isReturnModalOpen && (

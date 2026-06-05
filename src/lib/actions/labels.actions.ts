@@ -4,6 +4,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
+import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
 
 export type LabelQueueItem = {
     id: number
@@ -29,6 +30,10 @@ export async function addToLabelQueue(
     variantId: number | null,
     quantity: number = 1
 ): Promise<LabelActionResult> {
+    if (!(await isStoreModuleEnabledForStore(storeId, 'labels'))) {
+        return { success: false, message: 'Modulo de etiquetas desativado para esta loja.' }
+    }
+
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { success: false, message: 'Usuário não autenticado.' }
@@ -78,6 +83,10 @@ export async function addToLabelQueue(
 }
 
 export async function removeFromLabelQueue(itemId: number, storeId: number): Promise<LabelActionResult> {
+    if (!(await isStoreModuleEnabledForStore(storeId, 'labels'))) {
+        return { success: false, message: 'Modulo de etiquetas desativado para esta loja.' }
+    }
+
     const admin = createAdminClient()
 
     const { error } = await (admin.from('label_queue') as any)
@@ -95,6 +104,10 @@ export async function updateLabelQuantity(
     quantity: number,
     storeId: number
 ): Promise<LabelActionResult> {
+    if (!(await isStoreModuleEnabledForStore(storeId, 'labels'))) {
+        return { success: false, message: 'Modulo de etiquetas desativado para esta loja.' }
+    }
+
     if (quantity < 1) return removeFromLabelQueue(itemId, storeId)
 
     const admin = createAdminClient()
@@ -110,6 +123,8 @@ export async function updateLabelQuantity(
 }
 
 export async function getLabelQueue(storeId: number): Promise<LabelQueueItem[]> {
+    if (!(await isStoreModuleEnabledForStore(storeId, 'labels'))) return []
+
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return []
@@ -149,6 +164,10 @@ export async function getLabelQueue(storeId: number): Promise<LabelQueueItem[]> 
 }
 
 export async function clearLabelQueue(storeId: number): Promise<LabelActionResult> {
+    if (!(await isStoreModuleEnabledForStore(storeId, 'labels'))) {
+        return { success: false, message: 'Modulo de etiquetas desativado para esta loja.' }
+    }
+
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { success: false, message: 'Usuário não autenticado.' }
@@ -178,6 +197,8 @@ export async function suggestLabelsFromMovements(storeId: number): Promise<{
     quantity: number
     movement_date: string
 }[]> {
+    if (!(await isStoreModuleEnabledForStore(storeId, 'labels'))) return []
+
     const admin = createAdminClient()
 
     // Get last 7 days of "Entrada" movements

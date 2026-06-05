@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getNuvemFiscalToken } from "@/lib/nuvemfiscal";
 import { Database } from "@/lib/database.types";
+import { isStoreModuleEnabledForStore } from "@/lib/store-modules.server";
 
 // Sanitiza xNome para atender à regex do SEFAZ: ^([!-ỹ]{1}[ -ỹ]{0,}[!-ỹ]{1}|[!-ỹ]{1})$
 function sanitizeXNome(nome: string | null | undefined): string {
@@ -163,12 +164,20 @@ export async function emitirNFCe(payload: EmissionPayload) {
         }
 
         // 2. Buscar Token Nuvem Fiscal
-        const token = await getNuvemFiscalToken(env);
+        const fiscalModuleEnabled = payload.store_id
+            ? await isStoreModuleEnabledForStore(payload.store_id, "fiscal")
+            : false;
 
         // 3. Buscar dados da loja (fonte de dados fiscais na ótica)
         if (!payload.store_id) {
             throw new Error("store_id ausente no payload. Não é possível emitir sem identificar a loja.");
         }
+
+        if (!fiscalModuleEnabled) {
+            return { success: false, error: "Modulo fiscal desativado para esta loja." };
+        }
+
+        const token = await getNuvemFiscalToken(env);
 
         const { data: store } = await adminSupabase
             .from("stores")
@@ -559,6 +568,9 @@ export async function emitirNFSe(payload: EmissionPayload) {
     try {
         // 1. Buscar Token Nuvem Fiscal
         const env = payload.environment || 'production';
+        if (payload.store_id && !(await isStoreModuleEnabledForStore(payload.store_id, "fiscal"))) {
+            return { success: false, error: "Modulo fiscal desativado para esta loja." };
+        }
         const token = await getNuvemFiscalToken(env);
 
         // 2. Buscar Configurações da Empresa
@@ -724,6 +736,10 @@ export async function consultarNFCe(invoiceId: string) {
             return { success: false, error: "Nota não encontrada ou sem ID da NuvemFiscal." };
         }
 
+        if (invoice.store_id && !(await isStoreModuleEnabledForStore(invoice.store_id, "fiscal"))) {
+            return { success: false, error: "Modulo fiscal desativado para esta loja." };
+        }
+
         const env = (invoice.environment as 'production' | 'homologation') || 'production';
         const token = await getNuvemFiscalToken(env);
 
@@ -818,6 +834,10 @@ export async function recuperarXmlsNFCePeriodo(params: {
     const env = params.environment || "production";
 
     try {
+        if (!(await isStoreModuleEnabledForStore(params.storeId, "fiscal"))) {
+            return { success: false, error: "Modulo fiscal desativado para esta loja." };
+        }
+
         const start = new Date(Date.UTC(params.year, params.month, 1, 0, 0, 0)).toISOString();
         const end = new Date(Date.UTC(params.year, params.month + 1, 0, 23, 59, 59)).toISOString();
 
@@ -888,6 +908,10 @@ export async function inutilizarNumeracaoNFCe(params: {
     const env = params.environment || "production";
 
     try {
+        if (!(await isStoreModuleEnabledForStore(params.storeId, "fiscal"))) {
+            return { success: false, error: "Modulo fiscal desativado para esta loja." };
+        }
+
         if (!params.justificativa || params.justificativa.trim().length < 15) {
             return { success: false, error: "Justificativa deve ter ao menos 15 caracteres." };
         }
@@ -982,6 +1006,10 @@ export async function listarInutilizacoesNFCe(params: {
     const supabase = createAdminClient() as any;
     const env = params.environment || "production";
     try {
+        if (!(await isStoreModuleEnabledForStore(params.storeId, "fiscal"))) {
+            return { success: false, error: "Modulo fiscal desativado para esta loja." };
+        }
+
         const { data, error } = await supabase
             .from("fiscal_inutilizations")
             .select("id, environment, year, serie, numero_inicial, numero_final, justificativa, protocol, external_id, status, response_json, created_at")
@@ -1013,6 +1041,10 @@ export async function consultarNFSe(invoiceId: string) {
 
         if (!invoice || !invoice.nuvemfiscal_uuid) {
             return { success: false, error: "Nota não encontrada ou sem ID da NuvemFiscal." };
+        }
+
+        if (invoice.store_id && !(await isStoreModuleEnabledForStore(invoice.store_id, "fiscal"))) {
+            return { success: false, error: "Modulo fiscal desativado para esta loja." };
         }
 
         const env = (invoice.environment as 'production' | 'homologation') || 'production';
@@ -1156,6 +1188,10 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
 
         if (!invoice || !invoice.nuvemfiscal_uuid) {
             return { success: false, error: "Nota não encontrada ou sem ID da NuvemFiscal." };
+        }
+
+        if (invoice.store_id && !(await isStoreModuleEnabledForStore(invoice.store_id, "fiscal"))) {
+            return { success: false, error: "Modulo fiscal desativado para esta loja." };
         }
 
         const env = (invoice.environment as 'production' | 'homologation') || 'production';

@@ -235,7 +235,7 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                 </div>
             </div>
 
-            {devedor.isDevedor && (
+            {modules.installments && devedor.isDevedor && (
                 <div className="bg-red-950/25 border border-red-500/30 rounded-2xl p-4 backdrop-blur-md flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div className="flex items-start gap-3">
                         <div className="p-2 rounded-xl bg-red-500/15 ring-1 ring-red-500/30 shrink-0">

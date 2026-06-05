@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { format, parseISO, startOfDay, endOfDay, addDays, getDaysInMonth, startOfMonth, endOfMonth, isSameDay } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
 
 export interface VendaRelatorioItem {
   id: number
@@ -237,6 +238,10 @@ export async function getDailyFlowReport(storeId: number, monthStr: string, year
 }
 
 export async function getParcelamentoMetrics(storeId: number) {
+  if (!(await isStoreModuleEnabledForStore(storeId, 'installments'))) {
+    return { vincendasValor: 0, vincendasQtd: 0, atrasadasValor: 0, atrasadasQtd: 0, perdidasValor: 0, perdidasQtd: 0, clientesSpc: 0 }
+  }
+
   const supabase = createAdminClient();
   const todayStr = startOfDay(new Date()).toISOString();
   const ninetyDaysAgoStr = startOfDay(addDays(new Date(), -90)).toISOString();
@@ -309,6 +314,8 @@ export interface ParcelaAtrasadaItem {
 }
 
 export async function getParcelasAtrasadas(storeId: number): Promise<ParcelaAtrasadaItem[]> {
+  if (!(await isStoreModuleEnabledForStore(storeId, 'installments'))) return []
+
   const supabase = createAdminClient()
   const today = startOfDay(new Date())
   const todayStr = today.toISOString()
@@ -617,9 +624,12 @@ export async function getClientesMetrics(storeId: number) {
     console.error("Erro consultando clientes", err1);
   }
 
-  const { count: posVendasFeitos, error: err2 } = await supabase
-    .from('post_sales_interactions')
-    .select('*', { count: 'exact', head: true });
+  const postSalesEnabled = await isStoreModuleEnabledForStore(storeId, 'postSales')
+  const { count: posVendasFeitos } = postSalesEnabled
+    ? await supabase
+      .from('post_sales_interactions')
+      .select('*', { count: 'exact', head: true })
+    : { count: 0 }
 
   return {
     rankingVip,
@@ -684,6 +694,10 @@ export async function getMovimentoMetrics(storeId: number, monthStr: string, yea
 }
 
 export async function getCobrancaMetrics(storeId: number, monthStr: string, yearStr: string) {
+  if (!(await isStoreModuleEnabledForStore(storeId, 'installments'))) {
+    return { totalAcionamentos: 0, cobrancasComSucesso: 0, sucessoRate: 0, rankingOperadores: [], interacoesByType: [], timelineData: [] };
+  }
+
   const supabase = createAdminClient();
   const month = parseInt(monthStr) - 1;
   const year = parseInt(yearStr);
@@ -811,6 +825,25 @@ export async function getCobrancaMetrics(storeId: number, monthStr: string, year
 // 9. RELATÓRIO: PÓS-VENDA
 // ================================================================
 export async function getPosVendaMetrics(storeId: number, monthStr: string, yearStr: string) {
+  if (!(await isStoreModuleEnabledForStore(storeId, 'postSales'))) {
+    return {
+      totalPosVendas: 0,
+      concluidos: 0,
+      emAcompanhamento: 0,
+      notaMedia: 'N/A',
+      taxaConclusao: 0,
+      interactionsByType: [],
+      avaliacoesDistribuidas: [
+        { name: '5 Estrelas', value: 0 },
+        { name: '4 Estrelas', value: 0 },
+        { name: '3 Estrelas', value: 0 },
+        { name: '2 Estrelas', value: 0 },
+        { name: '1 Estrela', value: 0 },
+      ],
+      timelineData: []
+    }
+  }
+
   const supabase = createAdminClient();
   const month = parseInt(monthStr) - 1;
   const year = parseInt(yearStr);

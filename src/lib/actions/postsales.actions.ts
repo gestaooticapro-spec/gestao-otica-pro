@@ -4,6 +4,7 @@
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
 
 // TIPO ATUALIZADO COM DADOS FINANCEIROS E LENTES
 export type PostSaleQueueItem = {
@@ -35,6 +36,8 @@ export type Interaction = {
 
 // 1. BUSCAR FILA DE PÓS-VENDA
 export async function getFilaPosVenda(storeId: number) {
+  if (!(await isStoreModuleEnabledForStore(storeId, 'postSales'))) return []
+
   const supabaseAdmin = createAdminClient()
 
   const hoje = new Date()
@@ -112,6 +115,9 @@ export async function saveInteraction(formData: FormData) {
 
   const profile = await getProfileByAdmin(user.id) as any
   if (!profile?.tenant_id) return { success: false, message: 'Perfil erro' }
+  if (!(await isStoreModuleEnabledForStore(profile.store_id, 'postSales'))) {
+    return { success: false, message: 'Modulo de pos-venda desativado para esta loja.' }
+  }
 
   const osId = parseInt(formData.get('os_id') as string)
   const tipo = formData.get('tipo') as string
@@ -161,6 +167,9 @@ export async function concludePostSale(formData: FormData) {
   const supabaseAdmin = createAdminClient()
   const psId = parseInt(formData.get('post_sales_id') as string)
   const storeId = parseInt(formData.get('store_id') as string)
+  if (!(await isStoreModuleEnabledForStore(storeId, 'postSales'))) {
+    return { success: false, message: 'Modulo de pos-venda desativado para esta loja.' }
+  }
 
   try {
     await (supabaseAdmin.from('post_sales') as any).update({
@@ -179,6 +188,13 @@ export async function getInteractions(postSalesId: number | null) {
   if (!postSalesId) return []
   const supabaseAdmin = createAdminClient()
 
+  const { data: postSale } = await (supabaseAdmin.from('post_sales') as any)
+    .select('store_id')
+    .eq('id', postSalesId)
+    .maybeSingle()
+
+  if (!postSale?.store_id || !(await isStoreModuleEnabledForStore(postSale.store_id, 'postSales'))) return []
+
   const { data } = await (supabaseAdmin.from('post_sales_interactions') as any)
     .select('*')
     .eq('post_sales_id', postSalesId)
@@ -190,6 +206,15 @@ export async function getInteractions(postSalesId: number | null) {
 export async function getPostSaleDetails(osId: number) {
   const supabaseAdmin = createAdminClient()
   try {
+    const { data: osStore } = await (supabaseAdmin.from('service_orders') as any)
+      .select('store_id')
+      .eq('id', osId)
+      .maybeSingle()
+
+    if (!osStore?.store_id || !(await isStoreModuleEnabledForStore(osStore.store_id, 'postSales'))) {
+      return { success: false, message: 'Modulo de pos-venda desativado para esta loja.' }
+    }
+
     const { data, error } = await (supabaseAdmin
       .from('service_orders') as any)
       .select(`
@@ -217,6 +242,10 @@ export async function getPostSaleDetails(osId: number) {
 // ATUALIZAR TELEFONE DO CLIENTE (via OS ID)
 // ==============================================================================
 export async function updateCustomerPhoneByOs(osId: number, newPhone: string, storeId: number) {
+  if (!(await isStoreModuleEnabledForStore(storeId, 'postSales'))) {
+    return { success: false, message: 'Modulo de pos-venda desativado para esta loja.' }
+  }
+
   const supabaseAdmin = createAdminClient()
 
   try {

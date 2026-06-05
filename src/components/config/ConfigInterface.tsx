@@ -590,8 +590,12 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                 </div>
             </div>
 
-            {/* CONFIGURAÇÃO DO MOTOR DE IA */}
-            <AiSuggestionConfigPanel storeId={storeId} />
+            {activeModules.evaluation && (
+                <>
+                    {/* CONFIGURAÇÃO DO MOTOR DE IA */}
+                    <AiSuggestionConfigPanel storeId={storeId} />
+                </>
+            )}
         </div>
     )
 }

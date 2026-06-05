@@ -9,6 +9,7 @@ import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { useCredit } from './wallet.actions'
 import { calcularERegistrarComissao, cancelarComissao, calcularComissaoMedico } from './commission.actions'
 import { checkLensStock, confirmReservations, cancelReservations, getLensReservationForOsSlot, reserveLensByAdmin, type LensReservationSlot } from './stock.actions'
+import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
 
 // ================================================================
 // --- TIPOS GLOBAIS ---
@@ -1783,6 +1784,10 @@ export async function saveFinanciamentoLoja(...args: any[]) {
     .eq('id', venda_id)
     .single();
 
+  if (vendaReal?.store_id && !(await isStoreModuleEnabledForStore(vendaReal.store_id, 'installments'))) {
+    return { success: false, message: 'Modulo de parcelamento desativado para esta loja.' };
+  }
+
   if (erroVenda || !vendaReal) return { success: false, message: 'Venda não encontrada.' };
 
   // --- TRAVA DE SEGURANÃ‡A ---
@@ -2296,6 +2301,9 @@ export async function receberParcela(prevState: any, formData: FormData) {
 
   // Mantive os nomes originais das suas variáveis aqui para não mudar a lógica abaixo
   const { parcela_id, venda_id, store_id, employee_id, valor_original, valor_pago_total, valor_juros, forma_pagamento, estrategia, data_pagamento } = validated.data
+  if (!(await isStoreModuleEnabledForStore(store_id, 'installments'))) {
+    return { success: false, message: 'Modulo de parcelamento desativado para esta loja.' }
+  }
 
   const principalAbatido = valor_pago_total - valor_juros
   const diferencaDivida = valor_original - principalAbatido
@@ -2454,6 +2462,10 @@ export async function deleteFinanciamentoLoja(vendaId: number, storeId: number) 
   if (!profile) return { success: false, message: 'Perfil não encontrado.' };
 
   // --- TRAVA DE SEGURANÃ‡A ---
+  if (!(await isStoreModuleEnabledForStore(storeId, 'installments'))) {
+    return { success: false, message: 'Modulo de parcelamento desativado para esta loja.' };
+  }
+
   if (profile.role !== 'admin' && profile.store_id !== storeId) {
     return { success: false, message: 'Acesso Negado: Loja inválida.' };
   }
@@ -2537,6 +2549,9 @@ export async function finalizarVendaExpress(formData: FormData) {
   // CORREÃ‡ÃƒO 1: Conversão explícita para Number
   const storeId = parseInt(formData.get('store_id') as string)
   const employeeId = parseInt(formData.get('employee_id') as string)
+  if (!(await isStoreModuleEnabledForStore(storeId, 'quickSale'))) {
+    return { success: false, message: 'Modulo de venda rapida desativado para esta loja.' }
+  }
 
   const data = {
     store_id: storeId,
@@ -2644,6 +2659,9 @@ export async function criarVendaParcialCarnê(formData: FormData) {
   const storeId = parseInt(formData.get('store_id') as string)
   const customerId = parseInt(formData.get('customer_id') as string)
   const employeeId = parseInt(formData.get('employee_id') as string)
+  if (!(await isStoreModuleEnabledForStore(storeId, 'installments'))) {
+    return { success: false, message: 'Modulo de parcelamento desativado para esta loja.' }
+  }
 
   const rawItens = JSON.parse(formData.get('itens') as string)
   const totalVenda = rawItens.reduce((acc: number, item: any) => acc + (item.price * item.quantity), 0)
