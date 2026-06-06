@@ -154,7 +154,14 @@ async function auditWithOpenAI(prompt: string) {
     return text;
 }
 
-export async function auditarNFeAssistidaComIaAction(payload: FiscalAuditPayload) {
+export async function auditarNFeAssistidaComIaAction(
+    payload: FiscalAuditPayload,
+    attempt?: number,
+) {
+    if (attempt !== undefined && (!Number.isInteger(attempt) || attempt < 1 || attempt > 6)) {
+        return { success: false, error: "Tentativa de auditoria invalida." };
+    }
+
     const auth = await createClient();
     const { data: { user } } = await auth.auth.getUser();
     if (!user) return { success: false, error: "Usuario nao autenticado." };
@@ -220,6 +227,8 @@ ${JSON.stringify(payload, null, 2)}
 
     let lastError = "Nao foi possivel auditar o rascunho.";
     for (let index = 0; index < apiKeys.length; index++) {
+        if (attempt !== undefined && attempt !== index + 1) continue;
+
         try {
             const response = await fetch(
                 `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKeys[index]}`,
@@ -298,7 +307,11 @@ ${JSON.stringify(payload, null, 2)}
         }
     }
 
-    if (process.env.OPENAI_API_KEY) {
+    if (attempt !== undefined && attempt <= 5) {
+        return { success: false, error: lastError, retryable: true as const };
+    }
+
+    if (process.env.OPENAI_API_KEY && (attempt === undefined || attempt === 6)) {
         try {
             console.warn("[NFe IA Otica] Gemini indisponivel; tentando OpenAI.");
             const text = await auditWithOpenAI(prompt);

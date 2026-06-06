@@ -420,6 +420,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
     const [infAdFisco, setInfAdFisco] = useState("");
     const [aiAudit, setAiAudit] = useState<FiscalAuditUiResult | null>(null);
     const [aiAuditLoading, setAiAuditLoading] = useState(false);
+    const [aiAuditAttempt, setAiAuditAttempt] = useState<number | null>(null);
     const [advancedAuditConfirmed, setAdvancedAuditConfirmed] = useState(false);
     const [auditFingerprint, setAuditFingerprint] = useState("");
     const [emitting, setEmitting] = useState(false);
@@ -1130,15 +1131,26 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         setAdvancedAuditConfirmed(false);
         setError(null);
         try {
-            const result = await auditarNFeAssistidaComIaAction(payload);
-            if (!result.success || !result.audit) {
-                setError(result.error || "Nao foi possivel auditar a NF-e assistida.");
-                return false;
+            for (let attempt = 1; attempt <= 6; attempt++) {
+                setAiAuditAttempt(attempt);
+                const result = await auditarNFeAssistidaComIaAction(payload, attempt);
+                if (result.success && result.audit) {
+                    setAiAudit(result.audit);
+                    setAuditFingerprint(JSON.stringify(payload));
+                    return true;
+                }
+
+                const canRetry = "retryable" in result && result.retryable === true;
+                if (!canRetry) {
+                    setError(result.error || "Nao foi possivel auditar a NF-e assistida.");
+                    return false;
+                }
             }
-            setAiAudit(result.audit);
-            setAuditFingerprint(JSON.stringify(payload));
-            return true;
+
+            setError("Nenhum provedor de IA concluiu a auditoria.");
+            return false;
         } finally {
+            setAiAuditAttempt(null);
             setAiAuditLoading(false);
         }
     }
@@ -2248,7 +2260,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                             <button type="button" disabled={pendingIssues.length > 0 || emitting || aiAuditLoading || loadingSaleData} onClick={handleEmit} className="flex items-center gap-2 rounded-xl bg-[#FACC15] px-4 py-2 text-sm font-black text-[#1A1A1A] transition hover:bg-yellow-300 disabled:opacity-40">
                                 {(emitting || aiAuditLoading) ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                                 {aiAuditLoading
-                                    ? "Auditando..."
+                                    ? `Tentativa ${aiAuditAttempt || 1}/6`
                                     : emitting
                                     ? "Emitindo..."
                                     : operation === "advanced" && (!aiAudit || !advancedAuditConfirmed)
