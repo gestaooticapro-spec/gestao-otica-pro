@@ -369,11 +369,11 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                     listAuthorizedShipmentOriginsAction({ storeId, kind: "conserto" }),
                     listAuthorizedShipmentOriginsAction({ storeId, kind: "garantia" }),
                 ]);
-                setPendingSales(sales as unknown as PendingSale[]);
+                setPendingSales(Array.isArray(sales) ? sales as unknown as PendingSale[] : []);
                 setStoreUf(String(store?.state || "").toUpperCase());
-                setImportedOrigins(origins as ImportedNFeOrigin[]);
-                setConsertoOrigins(conserto as ShipmentOrigin[]);
-                setGarantiaOrigins(garantia as ShipmentOrigin[]);
+                setImportedOrigins(Array.isArray(origins) ? origins as ImportedNFeOrigin[] : []);
+                setConsertoOrigins(Array.isArray(conserto) ? conserto as ShipmentOrigin[] : []);
+                setGarantiaOrigins(Array.isArray(garantia) ? garantia as ShipmentOrigin[] : []);
             } catch (err) {
                 console.error(err);
             } finally {
@@ -894,7 +894,9 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
     const stepIndex = STEPS.findIndex((item) => item.id === step);
     const currentOperation = OPERATIONS.find((item) => item.id === operation) || OPERATIONS[0];
     const pendingIssues = getPendingIssues();
-    const shipmentOrigins = purpose === "Retorno de garantia" ? garantiaOrigins : consertoOrigins;
+    const shipmentOrigins = purpose === "Retorno de garantia"
+        ? (Array.isArray(garantiaOrigins) ? garantiaOrigins : [])
+        : (Array.isArray(consertoOrigins) ? consertoOrigins : []);
     const originLocked = operation === "return" || (operation === "shipment" && purpose.startsWith("Retorno"));
     const filteredSales = pendingSales.filter((sale) => {
         const term = saleSearch.trim().toLowerCase();
