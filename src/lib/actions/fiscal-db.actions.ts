@@ -302,6 +302,164 @@ function isDepositRemittanceInfNFe(infNFe: any) {
         || items.some((item) => ["5905", "6905"].includes(String(item.cfop || "")));
 }
 
+function isDemonstrationRemittanceInfNFe(infNFe: any) {
+    const natOp = String(infNFe?.ide?.natOp || "").toUpperCase();
+    const items = extractItemsFromInfNFe(infNFe);
+    return natOp.includes("DEMONSTRA") && !natOp.includes("RETORNO")
+        || items.some((item) => ["5912", "6912"].includes(String(item.cfop || "")));
+}
+
+async function listImportedOriginsByInfNFe(
+    storeId: number,
+    matcher: (infNFe: any) => boolean,
+    errorLabel: string,
+) {
+    const supabase = createAdminClient() as any;
+    const tenantId = await getTenantIdByStore(storeId);
+    if (!tenantId || !(await userOwnsStore(storeId, tenantId))) return [];
+
+    const { data: imported, error } = await supabase
+        .from("imported_invoices")
+        .select("id, access_key, nfe_number, series, imported_at")
+        .eq("tenant_id", tenantId)
+        .eq("store_id", storeId)
+        .order("imported_at", { ascending: false })
+        .limit(50);
+
+    if (error || !imported?.length) {
+        if (error) console.error(errorLabel, error);
+        return [];
+    }
+
+    const accessKeys = imported.map((invoice: any) => invoice.access_key).filter(Boolean);
+    const { data: queueItems } = await supabase
+        .from("nfe_import_queue")
+        .select("chave_acesso, emitente_nome, emitente_cnpj, data_emissao, valor_total, xml_content")
+        .eq("organization_id", tenantId)
+        .in("chave_acesso", accessKeys);
+
+    const queueByKey = new Map((queueItems || []).map((item: any) => [item.chave_acesso, item]));
+    const result = [];
+
+    for (const invoice of imported) {
+        const queue = queueByKey.get(invoice.access_key) as any;
+        if (!queue?.xml_content) continue;
+
+        try {
+            const parsed = await extractItemsFromXmlContent(queue.xml_content);
+            if (!matcher(parsed.infNFe)) continue;
+            result.push({
+                id: invoice.id,
+                accessKey: invoice.access_key,
+                number: invoice.nfe_number,
+                series: invoice.series,
+                issuedAt: queue.data_emissao || invoice.imported_at,
+                recipientName: queue.emitente_nome,
+                recipientCnpj: queue.emitente_cnpj,
+                total: queue.valor_total,
+            });
+        } catch {
+            continue;
+        }
+    }
+
+    return result;
+}
+
+async function getImportedOriginByInfNFe(params: {
+    storeId: number;
+    accessKey: string;
+    matcher: (infNFe: any) => boolean;
+    notImportedError: string;
+    wrongTypeError: string;
+}) {
+    const supabase = createAdminClient() as any;
+    const tenantId = await getTenantIdByStore(params.storeId);
+    const accessKey = String(params.accessKey || "").replace(/\D/g, "");
+
+    if (!tenantId || !(await userOwnsStore(params.storeId, tenantId))) {
+        return { success: false, error: "Esta loja nao pertence ao usuario autenticado." };
+    }
+    if (!/^\d{44}$/.test(accessKey)) {
+        return { success: false, error: "A chave da NF-e de origem deve ter 44 digitos." };
+    }
+
+    const { data: imported } = await supabase
+        .from("imported_invoices")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("store_id", params.storeId)
+        .eq("access_key", accessKey)
+        .maybeSingle();
+
+    if (!imported) {
+        return { success: false, error: params.notImportedError };
+    }
+
+    const { data: queueItem } = await supabase
+        .from("nfe_import_queue")
+        .select("id, xml_content")
+        .eq("organization_id", tenantId)
+        .eq("chave_acesso", accessKey)
+        .maybeSingle();
+
+    if (!queueItem) {
+        return { success: false, error: "O XML da NF-e de origem nao foi localizado na fila fiscal." };
+    }
+
+    let xmlContent = queueItem.xml_content as string | null;
+    if (!xmlContent) {
+        const xmlResult = await getNfeQueueXml(queueItem.id, params.storeId);
+        if (!xmlResult.success || !xmlResult.xmlContent) {
+            return { success: false, error: xmlResult.error || "Nao foi possivel recuperar o XML da NF-e de origem." };
+        }
+        xmlContent = xmlResult.xmlContent;
+    }
+
+    try {
+        const parsed = await extractItemsFromXmlContent(xmlContent);
+        if (!params.matcher(parsed.infNFe)) {
+            return { success: false, error: params.wrongTypeError };
+        }
+        if (!parsed.items.length) {
+            return { success: false, error: "A NF-e de origem nao possui itens." };
+        }
+
+        return {
+            success: true,
+            invoiceId: imported.id,
+            accessKey,
+            participant: participantFromOriginEmit(parsed.infNFe?.emit),
+            items: parsed.items,
+        };
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : "Nao foi possivel interpretar o XML da NF-e de origem.",
+        };
+    }
+}
+
+export async function listImportedDemonstrationOriginsAction(storeId: number) {
+    return listImportedOriginsByInfNFe(
+        storeId,
+        isDemonstrationRemittanceInfNFe,
+        "Erro ao listar remessas de demonstracao importadas:",
+    );
+}
+
+export async function getImportedDemonstrationOriginAction(params: {
+    storeId: number;
+    accessKey: string;
+}) {
+    return getImportedOriginByInfNFe({
+        ...params,
+        matcher: isDemonstrationRemittanceInfNFe,
+        notImportedError: "Esta NF-e de remessa para demonstracao nao foi importada nesta loja.",
+        wrongTypeError: "A NF-e selecionada nao e uma remessa para demonstracao.",
+    });
+}
+
 export async function listTenantTransferStoresAction(storeId: number) {
     const supabase = createAdminClient() as any;
     const tenantId = await getTenantIdByStore(storeId);

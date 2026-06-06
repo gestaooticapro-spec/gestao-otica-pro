@@ -150,6 +150,9 @@ Estado real da portabilidade:
 - [x] Autorizar e conferir Retorno de conserto em homologacao.
 - [x] Implementar Retorno de garantia com remessa autorizada e `NFref`.
 - [x] Autorizar e conferir Retorno de garantia em homologacao.
+- [x] Implementar Remessa para demonstracao com CFOP 5912/6912.
+- [x] Implementar Retorno de demonstracao baseado em NF-e de entrada importada, `NFref` e CFOP 5913/6913.
+- [ ] Autorizar e conferir separadamente Remessa e Retorno de demonstracao em homologacao.
 - [x] Implementar Transferencia entre filiais com destino restrito a lojas do mesmo tenant.
 - [x] Implementar Remessa para deposito com participante cadastrado e CFOP 5905/6905.
 - [x] Implementar Retorno de deposito baseado em NF-e de entrada importada, `NFref` e CFOP 5906/6906.

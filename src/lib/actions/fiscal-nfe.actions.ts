@@ -3,7 +3,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getNuvemFiscalToken } from "@/lib/nuvemfiscal";
 import { isStoreModuleEnabledForStore } from "@/lib/store-modules.server";
-import { getAuthorizedDepositTransferOriginAction, getAuthorizedShipmentOriginAction, getImportedNFeOriginAction, getTenantIdByStore, getTenantTransferStoreAction } from "@/lib/actions/fiscal-db.actions";
+import { getAuthorizedDepositTransferOriginAction, getAuthorizedShipmentOriginAction, getImportedDemonstrationOriginAction, getImportedNFeOriginAction, getTenantIdByStore, getTenantTransferStoreAction } from "@/lib/actions/fiscal-db.actions";
 
 type NFeEnvironment = "homologation" | "production";
 
@@ -27,7 +27,9 @@ type NFeShipmentPurpose =
     | "Remessa para conserto"
     | "Retorno de conserto"
     | "Remessa em garantia"
-    | "Retorno de garantia";
+    | "Retorno de garantia"
+    | "Remessa para demonstracao"
+    | "Retorno de demonstracao";
 type NFeTransferPurpose =
     | "Transferencia entre filiais"
     | "Transferencia para deposito"
@@ -752,6 +754,24 @@ async function ensureNoActiveDepositReturnForOrigin(supabase: any, organizationI
     if (data) throw new Error("Ja existe uma NF-e de retorno ativa para esta transferencia em homologacao.");
 }
 
+async function ensureNoActiveDemonstrationReturnForOrigin(supabase: any, organizationId: string, storeId: number, accessKey: string) {
+    const { data, error } = await supabase
+        .from("fiscal_invoices")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .eq("store_id", storeId)
+        .eq("tipo_documento", "NFe")
+        .eq("direction", "output")
+        .eq("environment", NFE_ENVIRONMENT)
+        .contains("payload_json", { _demonstration_origin_key: accessKey })
+        .in("status", ["draft", "processing", "authorized"])
+        .limit(1)
+        .maybeSingle();
+
+    if (error) throw new Error("Nao foi possivel validar duplicidade do retorno de demonstracao.");
+    if (data) throw new Error("Ja existe uma NF-e de retorno ativa para esta remessa de demonstracao em homologacao.");
+}
+
 async function buildFiscalItems(supabase: any, saleItems: SaleItemRow[]) {
     const productIds = saleItems
         .map((item) => item.product_id)
@@ -856,6 +876,8 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
         const referenceKey = cleanDigits(input.referenceKey);
         const shipmentPurpose: NFeShipmentPurpose = input.finalidade_remessa || "Remessa para conserto";
         const isShipmentReturn = isShipmentOperation && shipmentPurpose.startsWith("Retorno");
+        const isDemonstrationReturn = isShipmentOperation && shipmentPurpose === "Retorno de demonstracao";
+        const isRegularShipmentReturn = isShipmentReturn && !isDemonstrationReturn;
         const transferPurpose: NFeTransferPurpose = input.finalidade_transferencia || "Transferencia entre filiais";
         const isDepositReturn = isTransferOperation && transferPurpose === "Retorno de deposito";
 
@@ -868,11 +890,17 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
             }
             await ensureNoActiveReturnForOrigin(supabase, organizationId, input.storeId, referenceKey);
         }
-        if (isShipmentReturn) {
+        if (isRegularShipmentReturn) {
             if (!/^\d{44}$/.test(referenceKey)) {
                 throw new Error("Selecione uma NF-e de remessa autorizada para emitir o retorno.");
             }
             await ensureNoActiveShipmentReturnForOrigin(supabase, organizationId, input.storeId, referenceKey);
+        }
+        if (isDemonstrationReturn) {
+            if (!/^\d{44}$/.test(referenceKey)) {
+                throw new Error("Selecione uma NF-e de remessa para demonstracao importada.");
+            }
+            await ensureNoActiveDemonstrationReturnForOrigin(supabase, organizationId, input.storeId, referenceKey);
         }
         if (isDepositReturn) {
             if (!/^\d{44}$/.test(referenceKey)) {
@@ -899,7 +927,69 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
         let fiscalItems: FiscalItem[];
         let salePayments: any[] = input.pagamentos || [];
 
-        if (isDepositReturn) {
+        if (isDemonstrationReturn) {
+            const originResult = await getImportedDemonstrationOriginAction({
+                storeId: input.storeId,
+                accessKey: referenceKey,
+            });
+            if (!originResult.success || !originResult.participant || !originResult.items) {
+                throw new Error(originResult.error || "Nao foi possivel carregar a remessa de demonstracao.");
+            }
+
+            customer = {
+                full_name: originResult.participant.nome,
+                cpf: originResult.participant.cpf_cnpj,
+                email: originResult.participant.email,
+                rua: originResult.participant.logradouro,
+                numero: originResult.participant.numero,
+                complemento: "",
+                bairro: originResult.participant.bairro,
+                cidade: originResult.participant.cidade,
+                uf: originResult.participant.uf,
+                cep: originResult.participant.cep,
+                codigo_municipio_ibge: originResult.participant.codigo_municipio,
+                inscricao_estadual: originResult.participant.inscricao_estadual,
+                ind_ie_dest: Number(originResult.participant.ind_ie_dest || 9),
+            };
+
+            if (!input.itens?.length) {
+                throw new Error("Selecione ao menos um item da remessa de demonstracao para retornar.");
+            }
+
+            const requestedByCode = new Map(input.itens.map((item) => [cleanText(item.codigo), item]));
+            fiscalItems = originResult.items
+                .filter((originItem) => requestedByCode.has(cleanText(originItem.codigo)))
+                .map((originItem): FiscalItem => {
+                    const requested = requestedByCode.get(cleanText(originItem.codigo))!;
+                    const quantity = Number(requested.quantidade || 0);
+                    const originalQuantity = Number(originItem.quantidade || 0);
+                    const ncm = cleanDigits(originItem.ncm);
+
+                    if (quantity <= 0 || quantity > originalQuantity) {
+                        throw new Error(`Quantidade de retorno invalida para o item ${originItem.descricao}. Maximo: ${originalQuantity}.`);
+                    }
+                    if (!/^\d{8}$/.test(ncm) || ncm === "00000000") {
+                        throw new Error(`NCM invalido na remessa de demonstracao para o item ${originItem.descricao}.`);
+                    }
+
+                    return {
+                        codigo: cleanText(originItem.codigo),
+                        descricao: cleanText(originItem.descricao),
+                        ncm,
+                        cest: cleanDigits(originItem.cest) || undefined,
+                        unidade: normalizeFiscalUnit(originItem.unidade),
+                        quantidade: quantity,
+                        valor_unitario: money(originItem.valor_unitario),
+                        valor_total: money(quantity * Number(originItem.valor_unitario || 0)),
+                        origem: Number(originItem.origem || 0),
+                    };
+                });
+
+            if (fiscalItems.length !== input.itens.length) {
+                throw new Error("Um ou mais itens selecionados nao pertencem a remessa de demonstracao.");
+            }
+            salePayments = [];
+        } else if (isDepositReturn) {
             const originResult = await getAuthorizedDepositTransferOriginAction({
                 storeId: input.storeId,
                 accessKey: referenceKey,
@@ -990,7 +1080,7 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
             };
             fiscalItems = normalizeManualItems(input.itens);
             salePayments = [];
-        } else if (isShipmentReturn) {
+        } else if (isRegularShipmentReturn) {
             const kind = shipmentPurpose === "Retorno de garantia" ? "garantia" : "conserto";
             const originResult = await getAuthorizedShipmentOriginAction({
                 storeId: input.storeId,
@@ -1179,12 +1269,16 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
                             ? "REMESSA EM GARANTIA"
                             : shipmentPurpose === "Retorno de garantia"
                                 ? "RETORNO DE GARANTIA"
+                                : shipmentPurpose === "Remessa para demonstracao"
+                                    ? "REMESSA PARA DEMONSTRACAO"
+                                    : shipmentPurpose === "Retorno de demonstracao"
+                                        ? "RETORNO DE DEMONSTRACAO"
                                 : shipmentPurpose === "Retorno de conserto"
                                     ? "RETORNO DE CONSERTO"
                                     : "REMESSA PARA CONSERTO",
                         cfop: sameState
-                            ? isShipmentReturn ? "5916" : "5915"
-                            : isShipmentReturn ? "6916" : "6915",
+                            ? isDemonstrationReturn ? "5913" : shipmentPurpose === "Remessa para demonstracao" ? "5912" : isShipmentReturn ? "5916" : "5915"
+                            : isDemonstrationReturn ? "6913" : shipmentPurpose === "Remessa para demonstracao" ? "6912" : isShipmentReturn ? "6916" : "6915",
                         csosn: "400" as const,
                         indPres: 9,
                         finNFe: 1,
@@ -1194,6 +1288,10 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
                             ? "REMESSA DE MERCADORIA/BEM EM GARANTIA. SEM INCIDENCIA DE COBRANCA."
                             : shipmentPurpose === "Retorno de garantia"
                                 ? "RETORNO DE MERCADORIA/BEM REMETIDO EM GARANTIA. SEM INCIDENCIA DE COBRANCA."
+                                : shipmentPurpose === "Remessa para demonstracao"
+                                    ? "MERCADORIA REMETIDA PARA DEMONSTRACAO. SEM INCIDENCIA DE COBRANCA."
+                                    : shipmentPurpose === "Retorno de demonstracao"
+                                        ? "RETORNO DE MERCADORIA RECEBIDA PARA DEMONSTRACAO. NF-E DE ORIGEM REFERENCIADA."
                                 : shipmentPurpose === "Retorno de conserto"
                                     ? "RETORNO DE MERCADORIA/BEM RECEBIDO PARA CONSERTO OU REPARO. SEM INCIDENCIA DE COBRANCA."
                             : "REMESSA DE MERCADORIA/BEM PARA CONSERTO OU REPARO. SEM INCIDENCIA DE COBRANCA.",
@@ -1387,7 +1485,9 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
                 payload_json: isReturnOperation
                     ? { ...nfePayload, _entry_access_key: referenceKey }
                     : isShipmentReturn
-                        ? { ...nfePayload, _shipment_origin_key: referenceKey }
+                        ? isDemonstrationReturn
+                            ? { ...nfePayload, _demonstration_origin_key: referenceKey }
+                            : { ...nfePayload, _shipment_origin_key: referenceKey }
                         : isDepositReturn
                             ? { ...nfePayload, _transfer_deposit_origin_key: referenceKey }
                         : nfePayload,
