@@ -295,6 +295,202 @@ function shipmentKindFromPayload(payload: any) {
     return null;
 }
 
+function isDepositRemittanceInfNFe(infNFe: any) {
+    const natOp = String(infNFe?.ide?.natOp || "").toUpperCase();
+    const items = extractItemsFromInfNFe(infNFe);
+    return natOp.includes("DEPOSITO") && !natOp.includes("RETORNO")
+        || items.some((item) => ["5905", "6905"].includes(String(item.cfop || "")));
+}
+
+export async function listTenantTransferStoresAction(storeId: number) {
+    const supabase = createAdminClient() as any;
+    const tenantId = await getTenantIdByStore(storeId);
+    if (!tenantId || !(await userOwnsStore(storeId, tenantId))) return [];
+
+    const { data, error } = await supabase
+        .from("stores")
+        .select("id, name, razao_social, cnpj, inscricao_estadual, email, cep, street, number, neighborhood, city, state, codigo_municipio_ibge")
+        .eq("tenant_id", tenantId)
+        .neq("id", storeId)
+        .order("name");
+
+    if (error) {
+        console.error("Erro ao listar filiais para transferencia:", error);
+        return [];
+    }
+
+    return data || [];
+}
+
+export async function getTenantTransferStoreAction(params: {
+    storeId: number;
+    destinationStoreId: number;
+}) {
+    const supabase = createAdminClient() as any;
+    const tenantId = await getTenantIdByStore(params.storeId);
+    if (!tenantId || !(await userOwnsStore(params.storeId, tenantId))) {
+        return { success: false, error: "Esta loja nao pertence ao usuario autenticado." };
+    }
+    if (params.destinationStoreId === params.storeId) {
+        return { success: false, error: "A filial de destino deve ser diferente da loja emitente." };
+    }
+
+    const { data: store, error } = await supabase
+        .from("stores")
+        .select("id, name, razao_social, cnpj, inscricao_estadual, email, cep, street, number, neighborhood, city, state, codigo_municipio_ibge")
+        .eq("tenant_id", tenantId)
+        .eq("id", params.destinationStoreId)
+        .maybeSingle();
+
+    if (error || !store) {
+        return { success: false, error: "Filial de destino nao encontrada neste tenant." };
+    }
+
+    return {
+        success: true,
+        store,
+        participant: {
+            nome: store.razao_social || store.name || "",
+            cpf_cnpj: store.cnpj || "",
+            email: store.email || "",
+            logradouro: store.street || "",
+            numero: store.number || "",
+            complemento: "",
+            bairro: store.neighborhood || "",
+            cidade: store.city || "",
+            uf: store.state || "",
+            cep: store.cep || "",
+            codigo_municipio: store.codigo_municipio_ibge || "",
+            inscricao_estadual: store.inscricao_estadual || "",
+            ind_ie_dest: store.inscricao_estadual ? 1 : 9,
+        },
+    };
+}
+
+export async function listAuthorizedDepositTransferOriginsAction(storeId: number) {
+    const supabase = createAdminClient() as any;
+    const tenantId = await getTenantIdByStore(storeId);
+    if (!tenantId || !(await userOwnsStore(storeId, tenantId))) return [];
+
+    const { data: imported, error } = await supabase
+        .from("imported_invoices")
+        .select("id, access_key, nfe_number, series, imported_at")
+        .eq("tenant_id", tenantId)
+        .eq("store_id", storeId)
+        .order("imported_at", { ascending: false })
+        .limit(50);
+
+    if (error || !imported?.length) {
+        console.error("Erro ao listar transferencias para deposito:", error);
+        return [];
+    }
+
+    const accessKeys = imported.map((invoice: any) => invoice.access_key).filter(Boolean);
+    const { data: queueItems } = await supabase
+        .from("nfe_import_queue")
+        .select("chave_acesso, emitente_nome, emitente_cnpj, data_emissao, valor_total, xml_content")
+        .eq("organization_id", tenantId)
+        .in("chave_acesso", accessKeys);
+
+    const queueByKey = new Map((queueItems || []).map((item: any) => [item.chave_acesso, item]));
+    const result = [];
+
+    for (const invoice of imported) {
+        const queue = queueByKey.get(invoice.access_key) as any;
+        if (!queue?.xml_content) continue;
+
+        try {
+            const parsed = await extractItemsFromXmlContent(queue.xml_content);
+            if (!isDepositRemittanceInfNFe(parsed.infNFe)) continue;
+            result.push({
+                id: invoice.id,
+                accessKey: invoice.access_key,
+                number: invoice.nfe_number,
+                series: invoice.series,
+                issuedAt: queue.data_emissao || invoice.imported_at,
+                recipientName: queue.emitente_nome,
+                recipientCnpj: queue.emitente_cnpj,
+                total: queue.valor_total,
+            });
+        } catch {
+            continue;
+        }
+    }
+
+    return result;
+}
+
+export async function getAuthorizedDepositTransferOriginAction(params: {
+    storeId: number;
+    accessKey: string;
+}) {
+    const supabase = createAdminClient() as any;
+    const tenantId = await getTenantIdByStore(params.storeId);
+    const accessKey = String(params.accessKey || "").replace(/\D/g, "");
+
+    if (!tenantId || !(await userOwnsStore(params.storeId, tenantId))) {
+        return { success: false, error: "Esta loja nao pertence ao usuario autenticado." };
+    }
+    if (!/^\d{44}$/.test(accessKey)) {
+        return { success: false, error: "A chave da transferencia deve ter 44 digitos." };
+    }
+
+    const { data: imported } = await supabase
+        .from("imported_invoices")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("store_id", params.storeId)
+        .eq("access_key", accessKey)
+        .maybeSingle();
+
+    if (!imported) {
+        return { success: false, error: "Esta NF-e de remessa para deposito nao foi importada nesta loja." };
+    }
+
+    const { data: queueItem } = await supabase
+        .from("nfe_import_queue")
+        .select("id, xml_content")
+        .eq("organization_id", tenantId)
+        .eq("chave_acesso", accessKey)
+        .maybeSingle();
+
+    if (!queueItem) {
+        return { success: false, error: "O XML da remessa para deposito nao foi localizado na fila fiscal." };
+    }
+
+    let xmlContent = queueItem.xml_content as string | null;
+    if (!xmlContent) {
+        const xmlResult = await getNfeQueueXml(queueItem.id, params.storeId);
+        if (!xmlResult.success || !xmlResult.xmlContent) {
+            return { success: false, error: xmlResult.error || "Nao foi possivel recuperar o XML da remessa para deposito." };
+        }
+        xmlContent = xmlResult.xmlContent;
+    }
+
+    try {
+        const parsed = await extractItemsFromXmlContent(xmlContent);
+        if (!isDepositRemittanceInfNFe(parsed.infNFe)) {
+            return { success: false, error: "A NF-e selecionada nao e uma remessa para deposito fechado ou armazem geral." };
+        }
+        if (!parsed.items.length) {
+            return { success: false, error: "A remessa para deposito nao possui itens." };
+        }
+
+        return {
+            success: true,
+            invoiceId: imported.id,
+            accessKey,
+            participant: participantFromOriginEmit(parsed.infNFe?.emit),
+            items: parsed.items,
+        };
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : "Nao foi possivel interpretar o XML da remessa para deposito.",
+        };
+    }
+}
+
 export async function listAuthorizedShipmentOriginsAction(params: {
     storeId: number;
     kind: "conserto" | "garantia";

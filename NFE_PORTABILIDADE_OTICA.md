@@ -93,7 +93,7 @@ Esse marco valida apenas o nucleo da venda simples. Ele nao significa que a port
 
 Estado real da portabilidade:
 - A UI possui quatro etapas; o contrato da autoeletrica possui cinco, incluindo transporte, pagamento, totais e observacoes.
-- Venda, Bonificacao/Brinde/Doacao e Devolucao de compra possuem transmissao em homologacao. Remessa/retorno, transferencia, devolucao de venda e operacao assistida continuam bloqueadas.
+- Venda, Bonificacao/Brinde/Doacao, Devolucao de compra, Remessa/Retorno e Transferencia possuem transmissao em homologacao. Devolucao de venda e operacao assistida continuam bloqueadas.
 - A tributacao por item ainda esta fixa em `ICMSSN102`, PIS/COFINS zerados e sem editor de IPI.
 - Busca de notas clonaveis e leitura de itens existem no backend, mas a clonagem ainda nao esta ligada a UI.
 - A lista fiscal reconhece `NFe`, mas consulta automatica/manual de status ainda chama o fluxo de `NFCe`.
@@ -143,14 +143,17 @@ Estado real da portabilidade:
 - [x] Implementar Devolucao de compra baseada em NF-e de entrada importada e `NFref`.
 - [ ] Autorizar e conferir uma Devolucao de compra em homologacao. Bloqueado no momento por falta de NF-e emitida contra o CNPJ de teste em homologacao.
 - [x] Implementar Remessa para conserto em homologacao.
-- [ ] Autorizar e conferir Remessa para conserto em homologacao.
+- [x] Autorizar e conferir Remessa para conserto em homologacao.
 - [x] Implementar Remessa em garantia em homologacao.
-- [ ] Autorizar e conferir Remessa em garantia em homologacao.
+- [x] Autorizar e conferir Remessa em garantia em homologacao.
 - [x] Implementar Retorno de conserto com remessa autorizada e `NFref`.
-- [ ] Autorizar e conferir Retorno de conserto em homologacao.
+- [x] Autorizar e conferir Retorno de conserto em homologacao.
 - [x] Implementar Retorno de garantia com remessa autorizada e `NFref`.
-- [ ] Autorizar e conferir Retorno de garantia em homologacao.
-- [ ] Transferencia entre filiais/depositos.
+- [x] Autorizar e conferir Retorno de garantia em homologacao.
+- [x] Implementar Transferencia entre filiais com destino restrito a lojas do mesmo tenant.
+- [x] Implementar Remessa para deposito com participante cadastrado e CFOP 5905/6905.
+- [x] Implementar Retorno de deposito baseado em NF-e de entrada importada, `NFref` e CFOP 5906/6906.
+- [ ] Autorizar e conferir separadamente os tres templates de transferencia em homologacao.
 - [x] Implementar o template de Bonificacao, Brinde e Doacao.
 - [ ] Autorizar e conferir em homologacao Bonificacao, Brinde e Doacao. Brinde interno validado; faltam Bonificacao, Doacao e CFOP 6910.
 - [ ] Testar cada template isoladamente em homologacao.
@@ -205,10 +208,7 @@ Escopo atual:
 - Inclui botao "Nova NF-e" no painel fiscal.
 
 Operacoes exibidas mas ainda bloqueadas para transmissao:
-- Devolucao.
-- Remessa/Retorno.
-- Transferencia.
-- Bonificacao/Doacao.
+- Devolucao de venda.
 - Outra operacao / modo assistido.
 
 ## Cliente x Fornecedor

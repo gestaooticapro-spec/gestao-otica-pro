@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import ModuleDisabledState from "@/components/modules/ModuleDisabledState";
 import { useStoreModules } from "@/lib/contexts/StoreModulesContext";
-import { getAuthorizedShipmentOriginAction, getImportedNFeOriginAction, getPendingSales, getProductFiscalData, getSaleData, listAuthorizedShipmentOriginsAction, listImportedNFeOriginsAction, saveMissingProductNcmAction, saveNFeCustomerParticipantAction, searchNFeParticipantsAction, searchProducts } from "@/lib/actions/fiscal-db.actions";
+import { getAuthorizedDepositTransferOriginAction, getAuthorizedShipmentOriginAction, getImportedNFeOriginAction, getPendingSales, getProductFiscalData, getSaleData, getTenantTransferStoreAction, listAuthorizedDepositTransferOriginsAction, listAuthorizedShipmentOriginsAction, listImportedNFeOriginsAction, listTenantTransferStoresAction, saveMissingProductNcmAction, saveNFeCustomerParticipantAction, searchNFeParticipantsAction, searchProducts } from "@/lib/actions/fiscal-db.actions";
 import { emitirNFeVendaHomologacao } from "@/lib/actions/fiscal-nfe.actions";
 import { getStoreProfile } from "@/lib/actions/store.actions";
 
@@ -143,6 +143,15 @@ type ShipmentOrigin = {
     total: number | null;
 };
 
+type TransferStore = {
+    id: number;
+    name: string;
+    razao_social: string | null;
+    cnpj: string | null;
+    state: string | null;
+    city: string | null;
+};
+
 type NcmSuggestion = {
     code: string;
     description: string;
@@ -226,8 +235,8 @@ const OPERATIONS: {
         title: "Transferencia",
         subtitle: "Entre filiais ou depositos",
         icon: Warehouse,
-        purposes: ["Transferencia entre filiais"],
-        enabled: false,
+        purposes: ["Transferencia entre filiais", "Transferencia para deposito", "Retorno de deposito"],
+        enabled: true,
     },
     {
         id: "bonus",
@@ -337,6 +346,10 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
     const [consertoOrigins, setConsertoOrigins] = useState<ShipmentOrigin[]>([]);
     const [garantiaOrigins, setGarantiaOrigins] = useState<ShipmentOrigin[]>([]);
     const [selectedShipmentOrigin, setSelectedShipmentOrigin] = useState<ShipmentOrigin | null>(null);
+    const [transferStores, setTransferStores] = useState<TransferStore[]>([]);
+    const [selectedTransferStore, setSelectedTransferStore] = useState<TransferStore | null>(null);
+    const [depositTransferOrigins, setDepositTransferOrigins] = useState<ShipmentOrigin[]>([]);
+    const [selectedDepositTransferOrigin, setSelectedDepositTransferOrigin] = useState<ShipmentOrigin | null>(null);
     const [customerForm, setCustomerForm] = useState<CustomerForm>(emptyCustomerForm);
     const [participantMode, setParticipantMode] = useState<ParticipantMode>("search");
     const [participantSearch, setParticipantSearch] = useState("");
@@ -362,18 +375,22 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         async function loadInitialData() {
             setLoadingSales(true);
             try {
-                const [sales, store, origins, conserto, garantia] = await Promise.all([
+                const [sales, store, origins, conserto, garantia, siblingStores, depositOrigins] = await Promise.all([
                     getPendingSales(storeId),
                     getStoreProfile(storeId),
                     listImportedNFeOriginsAction(storeId),
                     listAuthorizedShipmentOriginsAction({ storeId, kind: "conserto" }),
                     listAuthorizedShipmentOriginsAction({ storeId, kind: "garantia" }),
+                    listTenantTransferStoresAction(storeId),
+                    listAuthorizedDepositTransferOriginsAction(storeId),
                 ]);
                 setPendingSales(Array.isArray(sales) ? sales as unknown as PendingSale[] : []);
                 setStoreUf(String(store?.state || "").toUpperCase());
                 setImportedOrigins(Array.isArray(origins) ? origins as ImportedNFeOrigin[] : []);
                 setConsertoOrigins(Array.isArray(conserto) ? conserto as ShipmentOrigin[] : []);
                 setGarantiaOrigins(Array.isArray(garantia) ? garantia as ShipmentOrigin[] : []);
+                setTransferStores(Array.isArray(siblingStores) ? siblingStores as TransferStore[] : []);
+                setDepositTransferOrigins(Array.isArray(depositOrigins) ? depositOrigins as ShipmentOrigin[] : []);
             } catch (err) {
                 console.error(err);
             } finally {
@@ -406,12 +423,104 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         setSelectedSale(null);
         setSelectedOrigin(null);
         setSelectedShipmentOrigin(null);
+        setSelectedTransferStore(null);
+        setSelectedDepositTransferOrigin(null);
         setSelectedParticipantId(null);
         setParticipantMode("manual");
         setCustomerForm(emptyCustomerForm);
         setItems([{ ...emptyItem }]);
         setError(null);
         setSuccess(null);
+    }
+
+    async function selectTransferStore(store: TransferStore) {
+        setLoadingOriginKey(`store-${store.id}`);
+        setError(null);
+        setSuccess(null);
+
+        const result = await getTenantTransferStoreAction({
+            storeId,
+            destinationStoreId: store.id,
+        });
+
+        setLoadingOriginKey(null);
+        if (!result.success || !result.participant) {
+            setError(result.error || "Nao foi possivel carregar a filial de destino.");
+            return;
+        }
+
+        setSelectedTransferStore(store);
+        setSelectedDepositTransferOrigin(null);
+        setSelectedOrigin(null);
+        setSelectedShipmentOrigin(null);
+        setSelectedSale(null);
+        setSelectedParticipantId(null);
+        setParticipantMode("manual");
+        setCustomerForm({
+            nome: result.participant.nome,
+            cpfCnpj: result.participant.cpf_cnpj,
+            email: result.participant.email,
+            logradouro: result.participant.logradouro,
+            numero: result.participant.numero,
+            complemento: "",
+            bairro: result.participant.bairro,
+            cidade: result.participant.cidade,
+            uf: result.participant.uf,
+            cep: result.participant.cep,
+            codigoMunicipioIbge: result.participant.codigo_municipio,
+            inscricaoEstadual: result.participant.inscricao_estadual,
+        });
+    }
+
+    async function selectDepositTransferOrigin(origin: ShipmentOrigin) {
+        setLoadingOriginKey(origin.accessKey);
+        setError(null);
+        setSuccess(null);
+
+        const result = await getAuthorizedDepositTransferOriginAction({
+            storeId,
+            accessKey: origin.accessKey,
+        });
+
+        setLoadingOriginKey(null);
+        if (!result.success || !result.participant || !result.items) {
+            setError(result.error || "Nao foi possivel carregar a transferencia para deposito.");
+            return;
+        }
+
+        setSelectedDepositTransferOrigin(origin);
+        setSelectedTransferStore(null);
+        setSelectedOrigin(null);
+        setSelectedShipmentOrigin(null);
+        setSelectedSale(null);
+        setSelectedParticipantId(null);
+        setParticipantMode("manual");
+        setCustomerForm({
+            nome: result.participant.nome,
+            cpfCnpj: result.participant.cpf_cnpj,
+            email: result.participant.email,
+            logradouro: result.participant.logradouro,
+            numero: result.participant.numero,
+            complemento: "",
+            bairro: result.participant.bairro,
+            cidade: result.participant.cidade,
+            uf: result.participant.uf,
+            cep: result.participant.cep,
+            codigoMunicipioIbge: result.participant.codigo_municipio,
+            inscricaoEstadual: result.participant.inscricao_estadual,
+        });
+        setItems(result.items.map((item) => ({
+            codigo: item.codigo,
+            descricao: item.descricao,
+            ncm: item.ncm,
+            cfop: storeUf && result.participant.uf && storeUf !== result.participant.uf ? "6906" : "5906",
+            unidade: item.unidade,
+            quantidade: item.quantidade,
+            maxQuantity: item.quantidade,
+            valorUnitario: item.valor_unitario,
+            valorTotal: item.valor_total,
+        })));
+        setStep("participant");
     }
 
     async function selectShipmentOrigin(origin: ShipmentOrigin) {
@@ -577,7 +686,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
     }
 
     async function saveParticipantOnBlur() {
-        if (operation === "return" || (operation === "shipment" && purpose.startsWith("Retorno"))) return;
+        if (participantLocked) return;
         if (!customerForm.nome.trim()) return;
 
         setParticipantSaveState("saving");
@@ -599,7 +708,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
     }
 
     async function lookupCepAndSave() {
-        if (operation === "return" || (operation === "shipment" && purpose.startsWith("Retorno"))) return;
+        if (participantLocked) return;
         const cep = onlyDigits(customerForm.cep);
         if (cep.length !== 8) {
             await saveParticipantOnBlur();
@@ -714,6 +823,13 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
             const destinationUf = customerForm.uf.trim().toUpperCase();
             return storeUf && destinationUf && storeUf !== destinationUf ? "6202" : "5202";
         }
+        if (operation === "transfer") {
+            const destinationUf = customerForm.uf.trim().toUpperCase();
+            const prefix = storeUf && destinationUf && storeUf !== destinationUf ? "6" : "5";
+            if (purpose === "Transferencia para deposito") return `${prefix}905`;
+            if (purpose === "Retorno de deposito") return `${prefix}906`;
+            return `${prefix}152`;
+        }
         return getSaleCfop();
     }
 
@@ -768,7 +884,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         const issues: string[] = [];
         const cpfCnpj = onlyDigits(customerForm.cpfCnpj);
 
-        if (!["sale", "bonus", "return", "shipment"].includes(operation)) {
+        if (!["sale", "bonus", "return", "shipment", "transfer"].includes(operation)) {
             issues.push("Esta operacao ainda nao esta liberada para transmissao.");
         }
         if (operation === "return") {
@@ -777,6 +893,15 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         }
         if (operation === "shipment" && purpose.startsWith("Retorno") && !selectedShipmentOrigin) {
             issues.push("Selecione uma NF-e de remessa autorizada para o retorno.");
+        }
+        if (operation === "transfer" && purpose === "Transferencia entre filiais" && !selectedTransferStore) {
+            issues.push("Selecione a filial de destino.");
+        }
+        if (operation === "transfer" && purpose === "Retorno de deposito" && !selectedDepositTransferOrigin) {
+            issues.push("Selecione uma remessa para deposito importada.");
+        }
+        if (operation === "transfer" && (cpfCnpj.length !== 14 || !onlyDigits(customerForm.inscricaoEstadual))) {
+            issues.push("Transferencias exigem destinatario com CNPJ e Inscricao Estadual.");
         }
         if (!customerForm.nome.trim()) issues.push("Informe nome/razao social do participante.");
         if (cpfCnpj.length !== 11 && cpfCnpj.length !== 14) issues.push("Informe CPF/CNPJ valido.");
@@ -823,17 +948,27 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                     ? "return"
                     : operation === "shipment"
                         ? "shipment"
+                        : operation === "transfer"
+                            ? "transfer"
                         : "sale",
             referenceKey: operation === "return"
                 ? selectedOrigin?.accessKey
                 : operation === "shipment" && purpose.startsWith("Retorno")
                     ? selectedShipmentOrigin?.accessKey
+                    : operation === "transfer" && purpose === "Retorno de deposito"
+                        ? selectedDepositTransferOrigin?.accessKey
                     : undefined,
             finalidade_bonus: operation === "bonus"
                 ? purpose as "Bonificacao" | "Brinde" | "Doacao"
                 : undefined,
             finalidade_remessa: operation === "shipment"
                 ? purpose as "Remessa para conserto" | "Retorno de conserto" | "Remessa em garantia" | "Retorno de garantia"
+                : undefined,
+            finalidade_transferencia: operation === "transfer"
+                ? purpose as "Transferencia entre filiais" | "Transferencia para deposito" | "Retorno de deposito"
+                : undefined,
+            destinationStoreId: operation === "transfer" && purpose === "Transferencia entre filiais"
+                ? selectedTransferStore?.id
                 : undefined,
             cliente: {
                 nome: customerForm.nome,
@@ -897,7 +1032,12 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
     const shipmentOrigins = purpose === "Retorno de garantia"
         ? (Array.isArray(garantiaOrigins) ? garantiaOrigins : [])
         : (Array.isArray(consertoOrigins) ? consertoOrigins : []);
-    const originLocked = operation === "return" || (operation === "shipment" && purpose.startsWith("Retorno"));
+    const participantLocked = operation === "return"
+        || (operation === "shipment" && purpose.startsWith("Retorno"))
+        || (operation === "transfer" && (purpose === "Transferencia entre filiais" || purpose === "Retorno de deposito"));
+    const itemsLocked = operation === "return"
+        || (operation === "shipment" && purpose.startsWith("Retorno"))
+        || (operation === "transfer" && purpose === "Retorno de deposito");
     const filteredSales = pendingSales.filter((sale) => {
         const term = saleSearch.trim().toLowerCase();
         if (!term) return true;
@@ -1018,6 +1158,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                 setSelectedSale(null);
                                                 setSelectedOrigin(null);
                                                 setSelectedShipmentOrigin(null);
+                                                setSelectedTransferStore(null);
+                                                setSelectedDepositTransferOrigin(null);
                                             }}
                                             className={`rounded-2xl border p-4 text-left transition ${
                                                 active ? "border-[#FACC15] bg-[#FACC15]/10 shadow-sm" : "border-stone-200 hover:border-stone-300 hover:bg-stone-50"
@@ -1045,6 +1187,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                     onChange={(e) => {
                                         setPurpose(e.target.value);
                                         setSelectedShipmentOrigin(null);
+                                        setSelectedTransferStore(null);
+                                        setSelectedDepositTransferOrigin(null);
                                     }}
                                     className={fieldClass}
                                 >
@@ -1194,6 +1338,91 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                     </div>
                                 </div>
                             )}
+
+                            {operation === "transfer" && purpose === "Transferencia entre filiais" && (
+                                <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
+                                    <p className="text-sm font-black text-violet-950">Filial de destino</p>
+                                    <p className="mt-1 text-xs font-medium text-violet-800">
+                                        Apenas lojas do mesmo tenant podem ser selecionadas. Os dados fiscais serao relidos no servidor.
+                                    </p>
+                                    <div className="mt-4 max-h-72 space-y-2 overflow-y-auto">
+                                        {transferStores.length === 0 ? (
+                                            <p className="rounded-xl bg-white px-4 py-4 text-center text-xs font-bold text-stone-500">
+                                                Nenhuma outra filial foi encontrada neste tenant.
+                                            </p>
+                                        ) : transferStores.map((store) => (
+                                            <button
+                                                key={store.id}
+                                                type="button"
+                                                onClick={() => void selectTransferStore(store)}
+                                                disabled={loadingOriginKey !== null}
+                                                className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left transition ${
+                                                    selectedTransferStore?.id === store.id
+                                                        ? "border-[#FACC15] bg-yellow-50"
+                                                        : "border-violet-100 bg-white hover:border-violet-300"
+                                                }`}
+                                            >
+                                                <span>
+                                                    <span className="block text-xs font-black text-stone-900">{store.razao_social || store.name}</span>
+                                                    <span className="mt-1 block text-[10px] font-bold text-stone-500">
+                                                        {store.cnpj || "CNPJ nao informado"} | {[store.city, store.state].filter(Boolean).join(" - ") || "Endereco incompleto"}
+                                                    </span>
+                                                </span>
+                                                {loadingOriginKey === `store-${store.id}` && <Loader2 size={14} className="animate-spin" />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {operation === "transfer" && purpose === "Transferencia para deposito" && (
+                                <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-xs font-bold text-violet-800">
+                                    O deposito sera informado como participante cadastrado na proxima etapa. A operacao usa CFOP 5905/6905 e nao gera cobranca.
+                                </div>
+                            )}
+
+                            {operation === "transfer" && purpose === "Retorno de deposito" && (
+                                <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
+                                    <p className="text-sm font-black text-violet-950">Remessa para deposito recebida</p>
+                                    <p className="mt-1 text-xs font-medium text-violet-800">
+                                        Selecione uma NF-e de entrada importada com CFOP 5905/6905. O retorno usa CFOP 5906/6906.
+                                    </p>
+                                    <div className="mt-4 max-h-72 space-y-2 overflow-y-auto">
+                                        {depositTransferOrigins.length === 0 ? (
+                                            <p className="rounded-xl bg-white px-4 py-4 text-center text-xs font-bold text-stone-500">
+                                                Nenhuma remessa para deposito importada foi encontrada nesta loja.
+                                            </p>
+                                        ) : depositTransferOrigins.map((origin) => (
+                                            <button
+                                                key={origin.id}
+                                                type="button"
+                                                onClick={() => void selectDepositTransferOrigin(origin)}
+                                                disabled={loadingOriginKey !== null}
+                                                className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left transition ${
+                                                    selectedDepositTransferOrigin?.id === origin.id
+                                                        ? "border-[#FACC15] bg-yellow-50"
+                                                        : "border-violet-100 bg-white hover:border-violet-300"
+                                                }`}
+                                            >
+                                                <span>
+                                                    <span className="block text-xs font-black text-stone-900">
+                                                        NF {origin.number || "-"} | {origin.recipientName || "Deposito"}
+                                                    </span>
+                                                    <span className="mt-1 block text-[10px] font-bold text-stone-500">
+                                                        {origin.issuedAt ? new Date(origin.issuedAt).toLocaleDateString("pt-BR") : "Data nao informada"}
+                                                        {" | "}
+                                                        {origin.recipientCnpj || "Documento nao informado"}
+                                                    </span>
+                                                </span>
+                                                <span className="flex items-center gap-2 text-xs font-black text-stone-800">
+                                                    {money(origin.total)}
+                                                    {loadingOriginKey === origin.accessKey && <Loader2 size={14} className="animate-spin" />}
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </section>
                     )}
 
@@ -1202,13 +1431,13 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                             <div>
                                 <h2 className="text-lg font-black text-[#1A1A1A]">Participante da nota</h2>
                                 <p className="text-sm text-stone-500">
-                                    {originLocked
+                                    {participantLocked
                                         ? "Nesta operacao, o participante vem da NF-e de origem e nao pode ser trocado."
                                         : "Busque um cadastro existente ou preencha um novo participante."}
                                 </p>
                             </div>
 
-                            {!originLocked && (
+                            {!participantLocked && (
                             <div className="inline-flex rounded-2xl border border-stone-200 bg-[#F8F7F2] p-1 shadow-sm">
                                 <button
                                     type="button"
@@ -1230,7 +1459,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                             </div>
                             )}
 
-                            {!originLocked && participantMode === "search" && (
+                            {!participantLocked && participantMode === "search" && (
                                 <div className="rounded-2xl border border-stone-100 bg-[#F8F7F2] p-4">
                                     <label className={labelClass}>Buscar por nome, CPF/CNPJ ou telefone</label>
                                     <div className="relative mt-1">
@@ -1274,7 +1503,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                 </div>
                             )}
 
-                            <fieldset disabled={originLocked} className={`rounded-2xl border border-stone-100 bg-white p-4 ${originLocked ? "opacity-80" : ""}`}>
+                            <fieldset disabled={participantLocked} className={`rounded-2xl border border-stone-100 bg-white p-4 ${participantLocked ? "opacity-80" : ""}`}>
                                 <div className="mb-3 flex items-center justify-between gap-3">
                                     <div>
                                         <h3 className="text-sm font-black text-[#1A1A1A]">Dados do participante</h3>
@@ -1326,7 +1555,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                     <h2 className="text-lg font-black text-[#1A1A1A]">Itens</h2>
                                     <p className="text-sm text-stone-500">Produtos/mercadorias que serao enviados no XML.</p>
                                 </div>
-                                {!originLocked && (
+                                {!itemsLocked && (
                                     <button type="button" onClick={addItem} className="rounded-xl bg-[#1A1A1A] px-4 py-2 text-xs font-black text-[#FACC15] transition hover:bg-black">
                                         Adicionar item
                                     </button>
@@ -1337,7 +1566,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                 {items.map((item, index) => (
                                     <div key={index} className="rounded-3xl border border-stone-100 bg-[#F8F7F2] p-5">
                                         <div className="space-y-4">
-                                            <fieldset disabled={originLocked} className={originLocked ? "opacity-80" : ""}>
+                                            <fieldset disabled={itemsLocked} className={itemsLocked ? "opacity-80" : ""}>
                                             <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:items-end">
                                                 <div className="xl:col-span-7">
                                                     <ProductField
@@ -1415,6 +1644,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                                     ? purpose.startsWith("Retorno") ? "CFOP retorno" : "CFOP remessa"
                                                                     : operation === "return"
                                                                         ? "CFOP devolucao"
+                                                                        : operation === "transfer"
+                                                                            ? purpose === "Retorno de deposito" ? "CFOP retorno" : "CFOP transferencia"
                                                                         : "CFOP venda"}
                                                         value={getItemCfop(item)}
                                                         onChange={(v) => updateItem(index, { cfop: onlyDigits(v).slice(0, 4) })}
@@ -1423,17 +1654,17 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                     />
                                                 </div>
                                                 <div className="xl:col-span-2">
-                                                    <UnitSelect value={item.unidade} onChange={(value) => updateItem(index, { unidade: value })} disabled={originLocked} />
+                                                    <UnitSelect value={item.unidade} onChange={(value) => updateItem(index, { unidade: value })} disabled={itemsLocked} />
                                                 </div>
                                                 <div className="xl:col-span-2">
                                                     <NumberField
-                                                        label={originLocked ? `Qtd (max. ${item.maxQuantity || item.quantidade})` : "Qtd"}
+                                                        label={itemsLocked ? `Qtd (max. ${item.maxQuantity || item.quantidade})` : "Qtd"}
                                                         value={item.quantidade}
                                                         onChange={(v) => updateItem(index, { quantidade: v })}
-                                                        max={originLocked ? item.maxQuantity : undefined}
+                                                        max={itemsLocked ? item.maxQuantity : undefined}
                                                     />
                                                 </div>
-                                                <div className="xl:col-span-3"><NumberField label="Unit." value={item.valorUnitario} onChange={(v) => updateItem(index, { valorUnitario: v })} disabled={originLocked} /></div>
+                                                <div className="xl:col-span-3"><NumberField label="Unit." value={item.valorUnitario} onChange={(v) => updateItem(index, { valorUnitario: v })} disabled={itemsLocked} /></div>
                                                 <div className="xl:col-span-3 rounded-2xl bg-white px-4 py-3 text-right">
                                                     <p className="text-[10px] font-black uppercase tracking-wider text-stone-400">Total do item</p>
                                                     <p className="mt-1 text-lg font-black text-[#1A1A1A]">{money(item.valorTotal)}</p>
@@ -1458,11 +1689,15 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                     label="Origem"
                                     value={selectedShipmentOrigin
                                         ? `Remessa NF-e ${selectedShipmentOrigin.number || "-"} | chave ${selectedShipmentOrigin.accessKey}`
-                                        : selectedOrigin
-                                        ? `NF-e ${selectedOrigin.number || "-"} | chave ${selectedOrigin.accessKey}`
-                                        : selectedSale
-                                            ? `Venda #${selectedSale.id}`
-                                            : "NF-e avulsa/manual"}
+                                        : selectedDepositTransferOrigin
+                                            ? `Transferencia NF-e ${selectedDepositTransferOrigin.number || "-"} | chave ${selectedDepositTransferOrigin.accessKey}`
+                                            : selectedTransferStore
+                                                ? `Filial ${selectedTransferStore.razao_social || selectedTransferStore.name}`
+                                                : selectedOrigin
+                                                    ? `NF-e ${selectedOrigin.number || "-"} | chave ${selectedOrigin.accessKey}`
+                                                    : selectedSale
+                                                        ? `Venda #${selectedSale.id}`
+                                                        : "NF-e avulsa/manual"}
                                 />
                                 <ReviewCard label="Destinatario" value={customerForm.nome || "Nao informado"} />
                                 <ReviewCard label="Documento" value={customerForm.cpfCnpj || "Nao informado"} />
@@ -1503,6 +1738,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                             ? "Emitir NF-e de Devolucao"
                                             : operation === "shipment"
                                                 ? `Emitir NF-e de ${purpose}`
+                                            : operation === "transfer"
+                                                ? `Emitir NF-e de ${purpose}`
                                             : "Emitir NF-e de Venda"}
                             </button>
                         )}
@@ -1519,11 +1756,15 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                 label="Origem"
                                 value={selectedShipmentOrigin
                                     ? `Remessa NF-e ${selectedShipmentOrigin.number || "-"}`
-                                    : selectedOrigin
-                                        ? `NF-e ${selectedOrigin.number || "-"}`
-                                        : selectedSale
-                                            ? `Venda #${selectedSale.id}`
-                                            : "Avulsa"}
+                                    : selectedDepositTransferOrigin
+                                        ? `Transferencia NF-e ${selectedDepositTransferOrigin.number || "-"}`
+                                        : selectedTransferStore
+                                            ? selectedTransferStore.name
+                                            : selectedOrigin
+                                                ? `NF-e ${selectedOrigin.number || "-"}`
+                                                : selectedSale
+                                                    ? `Venda #${selectedSale.id}`
+                                                    : "Avulsa"}
                             />
                             <SummaryRow label="Itens" value={String(items.length)} />
                             <SummaryRow label="Total" value={money(total)} strong />
@@ -1531,7 +1772,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                     </div>
 
                     <div className="rounded-2xl border border-stone-100 bg-white p-4 shadow-sm">
-                        {operation === "bonus" || operation === "return" || operation === "shipment" ? (
+                        {operation === "bonus" || operation === "return" || operation === "shipment" || operation === "transfer" ? (
                             <>
                                 <p className={labelClass}>Pagamento</p>
                                 <p className="mt-2 rounded-2xl bg-[#F8F7F2] px-4 py-3 text-sm font-black text-stone-700">Sem pagamento</p>
