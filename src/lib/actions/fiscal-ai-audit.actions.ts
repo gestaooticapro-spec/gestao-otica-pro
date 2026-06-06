@@ -204,6 +204,25 @@ ${JSON.stringify(payload, null, 2)}
         }
     }
 
-    console.error("[NFe IA Otica] Falha:", lastError);
-    return { success: false, error: lastError };
+    console.error("[NFe IA Otica] Falha, usando contingencia local:", lastError);
+    return {
+        success: true,
+        audit: {
+            status: "atencao" as const,
+            resumo: "A auditoria por IA esta temporariamente indisponivel. As validacoes locais foram executadas, mas o parecer automatico nao foi obtido.",
+            achados: [{
+                categoria: "confirmar_contador" as const,
+                severidade: "atencao" as const,
+                titulo: "Auditoria por IA indisponivel",
+                detalhe: lastError,
+                sugestao: "Confira natureza, CFOP, CSOSN, impostos, pagamento e observacoes com o contador antes de confirmar.",
+            }],
+            perguntas_contador: [
+                "A natureza, o CFOP e a tributacao informados representam corretamente esta operacao?",
+            ],
+            conclusao: "A emissao pode prosseguir apenas em homologacao e apos confirmacao manual do responsavel.",
+            aviso: "Contingencia local: nenhum parecer fiscal foi produzido pela IA.",
+        },
+        contingency: true,
+    };
 }
