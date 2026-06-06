@@ -228,11 +228,11 @@ type CloneInvoiceSummary = {
 };
 
 const STEPS: { id: StepId; label: string }[] = [
-    { id: "operation", label: "Operacao" },
+    { id: "operation", label: "Operação" },
     { id: "participant", label: "Participante" },
     { id: "items", label: "Itens" },
     { id: "transport", label: "Transporte" },
-    { id: "review", label: "Revisao" },
+    { id: "review", label: "Revisão" },
 ];
 
 const OPERATIONS: {
@@ -253,8 +253,8 @@ const OPERATIONS: {
     },
     {
         id: "return",
-        title: "Devolucao",
-        subtitle: "Devolucao com nota de origem",
+        title: "Devolução",
+        subtitle: "Devolução com nota de origem",
         icon: RotateCcw,
         purposes: ["Devolucao de compra", "Devolucao de venda"],
         enabled: true,
@@ -262,14 +262,14 @@ const OPERATIONS: {
     {
         id: "shipment",
         title: "Remessa/Retorno",
-        subtitle: "Conserto, garantia, demonstracao",
+        subtitle: "Conserto, garantia, demonstração",
         icon: Repeat2,
         purposes: ["Remessa para conserto", "Retorno de conserto", "Remessa em garantia", "Retorno de garantia", "Remessa para demonstracao", "Retorno de demonstracao"],
         enabled: true,
     },
     {
         id: "transfer",
-        title: "Transferencia",
+        title: "Transferência",
         subtitle: "Entre filiais ou depositos",
         icon: Warehouse,
         purposes: ["Transferencia entre filiais", "Transferencia para deposito", "Retorno de deposito"],
@@ -277,15 +277,15 @@ const OPERATIONS: {
     },
     {
         id: "bonus",
-        title: "Bonificacao/Doacao",
-        subtitle: "Bonificacao, brinde ou doacao",
+        title: "Bonificação/Doação",
+        subtitle: "Bonificação, brinde ou doação",
         icon: Gift,
         purposes: ["Bonificacao", "Brinde", "Doacao"],
         enabled: true,
     },
     {
         id: "advanced",
-        title: "Outra operacao",
+        title: "Outra operação",
         subtitle: "Modo assistido com contador",
         icon: ShieldCheck,
         purposes: ["Operacao avancada"],
@@ -346,6 +346,22 @@ function money(value?: number | null) {
     return Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function purposeLabel(value: string) {
+    const labels: Record<string, string> = {
+        "Devolucao de compra": "Devolução de compra",
+        "Devolucao de venda": "Devolução de venda",
+        "Remessa para demonstracao": "Remessa para demonstração",
+        "Retorno de demonstracao": "Retorno de demonstração",
+        "Transferencia entre filiais": "Transferência entre filiais",
+        "Transferencia para deposito": "Transferência para depósito",
+        "Retorno de deposito": "Retorno de depósito",
+        Bonificacao: "Bonificação",
+        Doacao: "Doação",
+        "Operacao avancada": "Operação avançada",
+    };
+    return labels[value] || value;
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
     return value && typeof value === "object" && !Array.isArray(value)
         ? value as Record<string, unknown>
@@ -403,7 +419,7 @@ function inferCloneOperation(infNFe: Record<string, unknown>): {
         }
     }
 
-    // Retornos, devolucoes e transferencias dependem de uma nova origem/destino.
+    // Retornos, devolucoes e transferências dependem de uma nova origem/destino.
     return {
         operation: "advanced",
         purpose: "Operacao avancada",
@@ -658,7 +674,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                 invoiceId: invoice.id,
             });
             if (!result.success || !result.invoice || !result.infNFe) {
-                setError(result.error || "Nao foi possivel ler os dados da NF-e selecionada.");
+                setError(result.error || "Não foi possível ler os dados da NF-e selecionada.");
                 return;
             }
 
@@ -747,7 +763,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
 
         setLoadingOriginKey(null);
         if (!result.success || !result.participant) {
-            setError(result.error || "Nao foi possivel carregar a filial de destino.");
+            setError(result.error || "Não foi possível carregar a filial de destino.");
             return;
         }
 
@@ -786,7 +802,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
 
         setLoadingOriginKey(null);
         if (!result.success || !result.participant || !result.items) {
-            setError(result.error || "Nao foi possivel carregar a transferencia para deposito.");
+            setError(result.error || "Não foi possível carregar a transferência para deposito.");
             return;
         }
 
@@ -839,7 +855,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
 
         setLoadingOriginKey(null);
         if (!result.success || !result.participant || !result.items) {
-            setError(result.error || "Nao foi possivel carregar a remessa autorizada.");
+            setError(result.error || "Não foi possível carregar a remessa autorizada.");
             return;
         }
 
@@ -888,7 +904,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
 
         setLoadingOriginKey(null);
         if (!result.success || !result.participant || !result.items) {
-            setError(result.error || "Nao foi possivel carregar a remessa de demonstracao importada.");
+            setError(result.error || "Não foi possível carregar a remessa de demonstração importada.");
             return;
         }
 
@@ -937,7 +953,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
 
         setLoadingOriginKey(null);
         if (!result.success || !result.participant || !result.items) {
-            setError(result.error || "Nao foi possivel carregar a NF-e importada.");
+            setError(result.error || "Não foi possível carregar a NF-e importada.");
             return;
         }
 
@@ -1023,7 +1039,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
             setStep("participant");
         } catch (err) {
             console.error(err);
-            setError("Nao foi possivel importar a venda.");
+            setError("Não foi possível importar a venda.");
         } finally {
             setSaleApplyingId(null);
             setLoadingSaleData(false);
@@ -1061,7 +1077,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         }
 
         setParticipantSaveState("error");
-        setParticipantSaveMessage(result.error || "Nao foi possivel salvar o participante.");
+        setParticipantSaveMessage(result.error || "Não foi possível salvar o participante.");
     }
 
     async function lookupCepAndSave() {
@@ -1107,7 +1123,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                 setParticipantSaveMessage(result.created ? "Cliente criado automaticamente." : "Cliente atualizado automaticamente.");
             } else {
                 setParticipantSaveState("error");
-                setParticipantSaveMessage(result.error || "Nao foi possivel salvar o participante.");
+                setParticipantSaveMessage(result.error || "Não foi possível salvar o participante.");
             }
         });
     }
@@ -1149,7 +1165,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                 tone: "green",
             });
         } else if (!result.success) {
-            setError(result.error || "Nao foi possivel salvar o NCM no produto.");
+            setError(result.error || "Não foi possível salvar o NCM no produto.");
         }
     }
 
@@ -1216,7 +1232,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                 ? { itemIndex: index, label: "Sem confianca", tone: "red" as const, confidence }
                 : data.needs_review
                     ? { itemIndex: index, label: "Revisar", tone: "yellow" as const, confidence }
-                    : { itemIndex: index, label: "Confiavel", tone: "green" as const, confidence };
+                    : { itemIndex: index, label: "Confiável", tone: "green" as const, confidence };
             setNcmAiStatus(status);
 
             if (data.options && data.options.length > 1) {
@@ -1230,7 +1246,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                 updateItem(index, { ncm });
                 await persistProductNcm(index, ncm);
             } else {
-                setError(data.error || "A IA nao conseguiu sugerir um NCM confiavel.");
+                setError(data.error || "A IA não conseguiu sugerir um NCM confiável.");
             }
         } catch (err) {
             setError(`Erro ao buscar NCM com IA: ${err instanceof Error ? err.message : "falha desconhecida"}`);
@@ -1244,25 +1260,25 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         const cpfCnpj = onlyDigits(customerForm.cpfCnpj);
 
         if (!["sale", "bonus", "return", "shipment", "transfer", "advanced"].includes(operation)) {
-            issues.push("Esta operacao ainda nao esta liberada para transmissao.");
+            issues.push("Esta operação ainda não está liberada para transmissão.");
         }
         if (operation === "advanced") {
-            if (!advancedNature.trim()) issues.push("Informe a natureza da operacao.");
+            if (!advancedNature.trim()) issues.push("Informe a natureza da operação.");
             if (referencedKey && onlyDigits(referencedKey).length !== 44) issues.push("A chave NF-e referenciada deve ter 44 digitos.");
-            if (modFrete === 9 && valorFrete > 0) issues.push("Frete deve ser zero quando nao houver transporte.");
+            if (modFrete === 9 && valorFrete > 0) issues.push("Frete deve ser zero quando não houver transporte.");
             if (modFrete !== 9 && ![11, 14].includes(onlyDigits(carrierDoc).length)) {
                 issues.push("Informe CPF/CNPJ da transportadora.");
             }
             if (indIntermed === 1 && (onlyDigits(intermediadorCnpj).length !== 14 || !intermediadorId.trim())) {
                 issues.push("Informe CNPJ e identificador do intermediador.");
             }
-            if (advancedTpNF === 1 && indPres === 0) issues.push("NF-e de saida nao pode usar presenca 0.");
+            if (advancedTpNF === 1 && indPres === 0) issues.push("NF-e de saída não pode usar presença 0.");
             if (valorDesconto > items.reduce((sum, item) => sum + Number(item.valorTotal || 0), 0)) {
-                issues.push("O desconto nao pode superar o total dos produtos.");
+                issues.push("O desconto não pode superar o total dos produtos.");
             }
         }
         if (operation === "return") {
-            if (purpose !== "Devolucao de compra") issues.push("Apenas Devolucao de compra esta liberada nesta etapa.");
+            if (purpose !== "Devolução de compra") issues.push("Apenas Devolução de compra está liberada nesta etapa.");
             if (!selectedOrigin) issues.push("Selecione uma NF-e de entrada importada.");
         }
         if (operation === "shipment" && purpose.startsWith("Retorno") && !selectedShipmentOrigin) {
@@ -1275,26 +1291,26 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
             issues.push("Selecione uma remessa para deposito importada.");
         }
         if (operation === "transfer" && (cpfCnpj.length !== 14 || !onlyDigits(customerForm.inscricaoEstadual))) {
-            issues.push("Transferencias exigem destinatario com CNPJ e Inscricao Estadual.");
+            issues.push("Transferências exigem destinatário com CNPJ e Inscrição Estadual.");
         }
         if (!customerForm.nome.trim()) issues.push("Informe nome/razao social do participante.");
-        if (cpfCnpj.length !== 11 && cpfCnpj.length !== 14) issues.push("Informe CPF/CNPJ valido.");
-        if (!customerForm.logradouro.trim() || !customerForm.numero.trim() || !customerForm.bairro.trim()) issues.push("Complete logradouro, numero e bairro.");
+        if (cpfCnpj.length !== 11 && cpfCnpj.length !== 14) issues.push("Informe CPF/CNPJ válido.");
+        if (!customerForm.logradouro.trim() || !customerForm.numero.trim() || !customerForm.bairro.trim()) issues.push("Complete logradouro, número e bairro.");
         if (!customerForm.cidade.trim() || !customerForm.uf.trim()) issues.push("Complete cidade e UF.");
         if (onlyDigits(customerForm.cep).length !== 8) issues.push("Informe CEP com 8 digitos.");
-        if (onlyDigits(customerForm.codigoMunicipioIbge).length !== 7) issues.push("Informe codigo IBGE do municipio.");
+        if (onlyDigits(customerForm.codigoMunicipioIbge).length !== 7) issues.push("Informe código IBGE do municipio.");
 
         items.forEach((item, index) => {
             if (!item.descricao.trim()) issues.push(`Item ${index + 1}: informe descricao.`);
             if (onlyDigits(item.ncm).length !== 8 || onlyDigits(item.ncm) === "00000000") {
-                issues.push(`Item ${index + 1}: informe NCM valido com 8 digitos.`);
+                issues.push(`Item ${index + 1}: informe NCM válido com 8 digitos.`);
             }
             if (operation === "advanced" && onlyDigits(item.cfop).length !== 4) issues.push(`Item ${index + 1}: informe CFOP com 4 digitos.`);
             if (operation === "advanced" && advancedTpNF === 0 && !["1", "2", "3"].includes(onlyDigits(item.cfop)[0])) {
-                issues.push(`Item ${index + 1}: CFOP nao corresponde a uma NF-e de entrada.`);
+                issues.push(`Item ${index + 1}: CFOP não corresponde a uma NF-e de entrada.`);
             }
             if (operation === "advanced" && advancedTpNF === 1 && !["5", "6", "7"].includes(onlyDigits(item.cfop)[0])) {
-                issues.push(`Item ${index + 1}: CFOP nao corresponde a uma NF-e de saida.`);
+                issues.push(`Item ${index + 1}: CFOP não corresponde a uma NF-e de saída.`);
             }
             if (operation === "advanced" && !["101", "102", "103", "201", "202", "203", "300", "400", "500", "900"].includes(item.csosn || "")) {
                 issues.push(`Item ${index + 1}: selecione um CSOSN suportado.`);
@@ -1304,7 +1320,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
             }
             if (Number(item.quantidade) <= 0) issues.push(`Item ${index + 1}: quantidade deve ser maior que zero.`);
             if (item.maxQuantity && Number(item.quantidade) > item.maxQuantity) {
-                issues.push(`Item ${index + 1}: quantidade maxima para devolucao e ${item.maxQuantity}.`);
+                issues.push(`Item ${index + 1}: quantidade máxima para devolução e ${item.maxQuantity}.`);
             }
             if (Number(item.valorUnitario) <= 0) issues.push(`Item ${index + 1}: valor unitario deve ser maior que zero.`);
         });
@@ -1386,7 +1402,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
 
                 const canRetry = "retryable" in result && result.retryable === true;
                 if (!canRetry) {
-                    setError(result.error || "Nao foi possivel auditar a NF-e assistida.");
+                    setError(result.error || "Não foi possível auditar a NF-e assistida.");
                     return false;
                 }
             }
@@ -1537,7 +1553,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         setEmitting(false);
 
         if (result.success) {
-            setSuccess(result.message || "NF-e enviada em homologacao.");
+            setSuccess(result.message || "NF-e enviada em homologação.");
             setTimeout(() => router.push(`/dashboard/loja/${storeId}/fiscal`), 900);
             return;
         }
@@ -1604,7 +1620,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                         </button>
                     </Link>
                     <div>
-                        <h1 className="text-3xl font-black text-white tracking-tight uppercase">Emissao completa de NF-e</h1>
+                        <h1 className="text-3xl font-black text-white tracking-tight uppercase">Emissão completa de NF-e</h1>
                         <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">
                             Rascunho guiado para venda comum, com estrutura preparada para outras operacoes.
                         </p>
@@ -1632,7 +1648,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                         </button>
                     </div>
                     <div className="flex w-fit items-center gap-1 rounded-xl border border-yellow-400/30 bg-yellow-400/10 p-1 text-yellow-200 shadow-sm lg:justify-self-end">
-                        <span className="rounded-lg px-4 py-2 text-xs font-black uppercase tracking-[0.16em]">Homologacao</span>
+                        <span className="rounded-lg px-4 py-2 text-xs font-black uppercase tracking-[0.16em]">Homologação</span>
                     </div>
                 </div>
             </div>
@@ -1684,7 +1700,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                     {clonedFrom.serie ? `, serie ${clonedFrom.serie}` : ""}.
                                 </p>
                                 <p className="mt-1 text-xs font-medium text-blue-700">
-                                    Numero, chave e protocolo anteriores nao serao reutilizados. Revise os campos antes de emitir.
+                                    Número, chave e protocolo anteriores não serao reutilizados. Revise os campos antes de emitir.
                                 </p>
                             </div>
                             <button
@@ -1700,8 +1716,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                     {step === "operation" && (
                         <section className="space-y-5">
                             <div>
-                                <h2 className="text-lg font-black text-[#1A1A1A]">Tipo de operacao</h2>
-                                <p className="text-sm text-stone-500">Venda, devolucao de compra, remessas e saidas sem cobranca transmitem em homologacao.</p>
+                                <h2 className="text-lg font-black text-[#1A1A1A]">Tipo de operação</h2>
+                                <p className="text-sm text-stone-500">Venda, devolução de compra, remessas e saídas sem cobrança transmitem em homologação.</p>
                             </div>
 
                             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -1754,8 +1770,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                         }}
                                         className={fieldClass}
                                     >
-                                        {currentOperation.purposes.map((item) => (
-                                            <option key={item} value={item}>{item}</option>
+                                            {currentOperation.purposes.map((item) => (
+                                                <option key={item} value={item}>{purposeLabel(item)}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -1764,13 +1780,13 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                             {operation === "advanced" && (
                                 <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
                                     <div>
-                                        <p className="text-sm font-black text-amber-950">Operacao assistida em homologacao</p>
+                                        <p className="text-sm font-black text-amber-950">Operação assistida em homologação</p>
                                         <p className="mt-1 text-xs font-medium text-amber-800">
-                                            Preencha conforme orientacao contabil. A IA revisa consistencia, mas nao substitui o contador.
+                                            Preencha conforme orientacao contabil. A IA revisa consistencia, mas não substitui o contador.
                                         </p>
                                     </div>
                                     <div>
-                                        <label className={labelClass}>Natureza da operacao</label>
+                                        <label className={labelClass}>Natureza da operação</label>
                                         <input
                                             value={advancedNature}
                                             onChange={(e) => setAdvancedNature(e.target.value)}
@@ -1792,7 +1808,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                 <option value={1}>1 - Normal</option>
                                                 <option value={2}>2 - Complementar</option>
                                                 <option value={3}>3 - Ajuste</option>
-                                                <option value={4}>4 - Devolucao</option>
+                                                <option value={4}>4 - Devolução</option>
                                             </select>
                                         </div>
                                     </div>
@@ -1832,7 +1848,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                 className="mt-1 w-full rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200"
                                             />
                                             <div className="mt-2 flex items-center justify-between gap-3 text-[10px] font-bold text-orange-700">
-                                                <span>Informe somente quando a operacao exigir referencia fiscal.</span>
+                                                <span>Informe somente quando a operação exigir referencia fiscal.</span>
                                                 <span className="shrink-0">{onlyDigits(referencedKey).length}/44</span>
                                             </div>
                                         </div>
@@ -1848,19 +1864,12 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                         </p>
                                         <p className="mt-1 text-xs font-medium text-blue-700">
                                             {selectedSale
-                                                ? `${selectedSale.clients?.nome || "Cliente nao informado"} | ${money(selectedSale.total)}`
+                                                ? `${selectedSale.clients?.nome || "Cliente não informado"} | ${money(selectedSale.total)}`
                                                 : "Nenhuma venda foi vinculada. Participante e itens serao preenchidos manualmente."}
                                         </p>
                                     </div>
-                                    <div className="mt-4 flex flex-wrap gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => setSaleModalOpen(true)}
-                                            className="rounded-xl bg-blue-700 px-3 py-2 text-xs font-black text-white hover:bg-blue-800"
-                                        >
-                                            {selectedSale ? "Trocar venda" : "Buscar venda"}
-                                        </button>
-                                        {selectedSale && (
+                                    {selectedSale && (
+                                        <div className="mt-4">
                                             <button
                                                 type="button"
                                                 onClick={() => {
@@ -1872,8 +1881,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                             >
                                                 Remover vinculo
                                             </button>
-                                        )}
-                                    </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
@@ -1888,7 +1897,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
 
                                     {purpose === "Devolucao de venda" ? (
                                         <p className="mt-4 rounded-xl border border-orange-200 bg-white px-4 py-3 text-xs font-bold text-orange-700">
-                                            Devolucao de venda ainda nao esta liberada. Selecione Devolucao de compra.
+                                            Devolução de venda ainda não está liberada. Selecione Devolução de compra.
                                         </p>
                                     ) : (
                                         <div className="mt-4 max-h-72 space-y-2 overflow-y-auto">
@@ -1913,9 +1922,9 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                             NF {origin.number || "-"} | {origin.issuerName || "Fornecedor"}
                                                         </span>
                                                         <span className="mt-1 block text-[10px] font-bold text-stone-500">
-                                                            {origin.issuedAt ? new Date(origin.issuedAt).toLocaleDateString("pt-BR") : "Data nao informada"}
+                                                            {origin.issuedAt ? new Date(origin.issuedAt).toLocaleDateString("pt-BR") : "Data não informada"}
                                                             {" | "}
-                                                            {origin.issuerCnpj || "CNPJ nao informado"}
+                                                            {origin.issuerCnpj || "CNPJ não informado"}
                                                         </span>
                                                     </span>
                                                     <span className="flex items-center gap-2 text-xs font-black text-stone-800">
@@ -1934,7 +1943,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                     <div>
                                         <p className="text-sm font-black text-cyan-950">
                                             {purpose === "Retorno de demonstracao"
-                                                ? "Remessa de demonstracao recebida"
+                                                ? "Remessa de demonstração recebida"
                                                 : "Remessa autorizada de origem"}
                                         </p>
                                         <p className="mt-1 text-xs font-medium text-cyan-800">
@@ -1948,8 +1957,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                         {shipmentOrigins.length === 0 ? (
                                             <p className="rounded-xl bg-white px-4 py-4 text-center text-xs font-bold text-stone-500">
                                                 {purpose === "Retorno de demonstracao"
-                                                    ? "Nenhuma remessa para demonstracao foi encontrada nas NF-e de entrada importadas."
-                                                    : "Nenhuma remessa autorizada deste tipo foi encontrada em homologacao."}
+                                                    ? "Nenhuma remessa para demonstração foi encontrada nas NF-e de entrada importadas."
+                                                    : "Nenhuma remessa autorizada deste tipo foi encontrada em homologação."}
                                             </p>
                                         ) : shipmentOrigins.map((origin) => (
                                             <button
@@ -1967,12 +1976,12 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                             >
                                                 <span>
                                                     <span className="block text-xs font-black text-stone-900">
-                                                        NF {origin.number || "-"} | {origin.recipientName || "Destinatario"}
+                                                        NF {origin.number || "-"} | {origin.recipientName || "Destinatário"}
                                                     </span>
                                                     <span className="mt-1 block text-[10px] font-bold text-stone-500">
-                                                        {origin.issuedAt ? new Date(origin.issuedAt).toLocaleDateString("pt-BR") : "Data nao informada"}
+                                                        {origin.issuedAt ? new Date(origin.issuedAt).toLocaleDateString("pt-BR") : "Data não informada"}
                                                         {" | "}
-                                                        {origin.recipientCnpj || "Documento nao informado"}
+                                                        {origin.recipientCnpj || "Documento não informado"}
                                                     </span>
                                                 </span>
                                                 <span className="flex items-center gap-2 text-xs font-black text-stone-800">
@@ -2011,7 +2020,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                 <span>
                                                     <span className="block text-xs font-black text-stone-900">{store.razao_social || store.name}</span>
                                                     <span className="mt-1 block text-[10px] font-bold text-stone-500">
-                                                        {store.cnpj || "CNPJ nao informado"} | {[store.city, store.state].filter(Boolean).join(" - ") || "Endereco incompleto"}
+                                                        {store.cnpj || "CNPJ não informado"} | {[store.city, store.state].filter(Boolean).join(" - ") || "Endereço incompleto"}
                                                     </span>
                                                 </span>
                                                 {loadingOriginKey === `store-${store.id}` && <Loader2 size={14} className="animate-spin" />}
@@ -2023,7 +2032,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
 
                             {operation === "transfer" && purpose === "Transferencia para deposito" && (
                                 <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-xs font-bold text-violet-800">
-                                    O deposito sera informado como participante cadastrado na proxima etapa. A operacao usa CFOP 5905/6905 e nao gera cobranca.
+                                    O deposito sera informado como participante cadastrado na proxima etapa. A operação usa CFOP 5905/6905 e não gera cobrança.
                                 </div>
                             )}
 
@@ -2055,9 +2064,9 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                         NF {origin.number || "-"} | {origin.recipientName || "Deposito"}
                                                     </span>
                                                     <span className="mt-1 block text-[10px] font-bold text-stone-500">
-                                                        {origin.issuedAt ? new Date(origin.issuedAt).toLocaleDateString("pt-BR") : "Data nao informada"}
+                                                        {origin.issuedAt ? new Date(origin.issuedAt).toLocaleDateString("pt-BR") : "Data não informada"}
                                                         {" | "}
-                                                        {origin.recipientCnpj || "Documento nao informado"}
+                                                        {origin.recipientCnpj || "Documento não informado"}
                                                     </span>
                                                 </span>
                                                 <span className="flex items-center gap-2 text-xs font-black text-stone-800">
@@ -2078,7 +2087,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                 <h2 className="text-lg font-black text-[#1A1A1A]">Participante da nota</h2>
                                 <p className="text-sm text-stone-500">
                                     {participantLocked
-                                        ? "Nesta operacao, o participante vem da NF-e de origem e nao pode ser trocado."
+                                        ? "Nesta operação, o participante vem da NF-e de origem e não pode ser trocado."
                                         : "Busque um cadastro existente ou preencha um novo participante."}
                                 </p>
                             </div>
@@ -2140,7 +2149,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                         {participant.cpf || "Sem CPF"} {participant.fone_movel || participant.phone ? `| ${participant.fone_movel || participant.phone}` : ""}
                                                     </p>
                                                     <p className="mt-1 text-[10px] font-medium text-stone-400">
-                                                        {[participant.rua, participant.numero, participant.bairro, participant.cidade, participant.uf].filter(Boolean).join(", ") || "Endereco nao cadastrado"}
+                                                        {[participant.rua, participant.numero, participant.bairro, participant.cidade, participant.uf].filter(Boolean).join(", ") || "Endereço não cadastrado"}
                                                     </p>
                                                 </button>
                                             ))
@@ -2162,11 +2171,11 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                     <Field label="Nome / Razao Social" value={customerForm.nome} onChange={(v) => updateCustomerForm("nome", v)} onBlur={saveParticipantOnBlur} />
                                     <Field label="CPF / CNPJ" value={customerForm.cpfCnpj} onChange={(v) => updateCustomerForm("cpfCnpj", v)} onBlur={saveParticipantOnBlur} />
                                     <Field label="Email" value={customerForm.email} onChange={(v) => updateCustomerForm("email", v)} onBlur={saveParticipantOnBlur} />
-                                    <Field label="Inscricao Estadual (se houver)" value={customerForm.inscricaoEstadual} onChange={(v) => updateCustomerForm("inscricaoEstadual", v)} onBlur={saveParticipantOnBlur} />
+                                    <Field label="Inscrição Estadual (se houver)" value={customerForm.inscricaoEstadual} onChange={(v) => updateCustomerForm("inscricaoEstadual", v)} onBlur={saveParticipantOnBlur} />
                                 </div>
 
                                 <div className="mt-4 rounded-2xl border border-stone-100 bg-[#F8F7F2] p-4">
-                                    <h3 className="mb-3 flex items-center gap-2 text-sm font-black text-[#1A1A1A]"><MapPin size={16} /> Endereco fiscal</h3>
+                                    <h3 className="mb-3 flex items-center gap-2 text-sm font-black text-[#1A1A1A]"><MapPin size={16} /> Endereço fiscal</h3>
                                     <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
                                         <div className="xl:col-span-3">
                                             <Field
@@ -2177,12 +2186,12 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                             />
                                         </div>
                                         <div className="xl:col-span-6"><Field label="Logradouro" value={customerForm.logradouro} onChange={(v) => updateCustomerForm("logradouro", v)} onBlur={saveParticipantOnBlur} /></div>
-                                        <div className="xl:col-span-3"><Field label="Numero" value={customerForm.numero} onChange={(v) => updateCustomerForm("numero", v)} onBlur={saveParticipantOnBlur} /></div>
+                                        <div className="xl:col-span-3"><Field label="Número" value={customerForm.numero} onChange={(v) => updateCustomerForm("numero", v)} onBlur={saveParticipantOnBlur} /></div>
                                         <div className="xl:col-span-6"><Field label="Complemento" value={customerForm.complemento} onChange={(v) => updateCustomerForm("complemento", v)} onBlur={saveParticipantOnBlur} /></div>
                                         <div className="xl:col-span-6"><Field label="Bairro" value={customerForm.bairro} onChange={(v) => updateCustomerForm("bairro", v)} onBlur={saveParticipantOnBlur} /></div>
                                         <div className="xl:col-span-5"><Field label="Cidade" value={customerForm.cidade} onChange={(v) => updateCustomerForm("cidade", v)} onBlur={saveParticipantOnBlur} /></div>
                                         <div className="xl:col-span-2"><Field label="UF" value={customerForm.uf} onChange={(v) => updateCustomerForm("uf", v.toUpperCase().slice(0, 2))} onBlur={saveParticipantOnBlur} /></div>
-                                        <div className="xl:col-span-5"><Field label="Codigo IBGE" value={customerForm.codigoMunicipioIbge} onChange={(v) => updateCustomerForm("codigoMunicipioIbge", onlyDigits(v).slice(0, 7))} onBlur={saveParticipantOnBlur} /></div>
+                                        <div className="xl:col-span-5"><Field label="Código IBGE" value={customerForm.codigoMunicipioIbge} onChange={(v) => updateCustomerForm("codigoMunicipioIbge", onlyDigits(v).slice(0, 7))} onBlur={saveParticipantOnBlur} /></div>
                                     </div>
                                     {participantSaveState !== "idle" && (
                                         <p className={`mt-3 text-xs font-bold ${participantSaveState === "error" ? "text-red-600" : participantSaveState === "saving" ? "text-stone-500" : "text-green-700"}`}>
@@ -2285,18 +2294,18 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                         label={operation === "advanced"
                                                             ? "CFOP"
                                                             : operation === "bonus"
-                                                                ? "CFOP bonificacao"
+                                                                ? "CFOP bonificação"
                                                                 : operation === "shipment"
                                                                     ? purpose.startsWith("Retorno") ? "CFOP retorno" : "CFOP remessa"
                                                                     : operation === "return"
-                                                                        ? "CFOP devolucao"
+                                                                        ? "CFOP devolução"
                                                                         : operation === "transfer"
-                                                                            ? purpose === "Retorno de deposito" ? "CFOP retorno" : "CFOP transferencia"
+                                                                            ? purpose === "Retorno de deposito" ? "CFOP retorno" : "CFOP transferência"
                                                                         : "CFOP venda"}
                                                         value={getItemCfop(item)}
                                                         onChange={(v) => updateItem(index, { cfop: onlyDigits(v).slice(0, 4) })}
                                                         disabled={operation !== "advanced"}
-                                                        title={operation === "advanced" ? "CFOP liberado para outra operacao." : "CFOP calculado pela UF da loja e do participante."}
+                                                        title={operation === "advanced" ? "CFOP liberado para outra operação." : "CFOP calculado pela UF da loja e do participante."}
                                                     />
                                                 </div>
                                                 <div className="xl:col-span-2">
@@ -2367,14 +2376,14 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                     <Truck size={20} />
                                 </div>
                                 <div>
-                                    <h2 className="text-lg font-black text-[#1A1A1A]">Transporte e observacoes</h2>
+                                    <h2 className="text-lg font-black text-[#1A1A1A]">Transporte e observações</h2>
                                     <p className="text-sm text-stone-500">Parametros adicionais que seguem no XML da NF-e.</p>
                                 </div>
                             </div>
 
                             {operation !== "advanced" ? (
                                 <div className="rounded-2xl border border-stone-200 bg-[#F8F7F2] p-5 text-sm font-semibold text-stone-600">
-                                    Nesta etapa os templates guiados continuam usando sem ocorrencia de transporte e suas observacoes padrao.
+                                    Nesta etapa os templates guiados continuam usando sem ocorrência de transporte e suas observações padrão.
                                 </div>
                             ) : (
                                 <>
@@ -2383,10 +2392,10 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                         <select value={modFrete} onChange={(e) => setModFrete(Number(e.target.value))} className={fieldClass}>
                                             <option value={9}>9 - Sem transporte</option>
                                             <option value={0}>0 - Por conta do emitente</option>
-                                            <option value={1}>1 - Por conta do destinatario</option>
+                                            <option value={1}>1 - Por conta do destinatário</option>
                                             <option value={2}>2 - Por conta de terceiros</option>
                                             <option value={3}>3 - Proprio por conta do remetente</option>
-                                            <option value={4}>4 - Proprio por conta do destinatario</option>
+                                            <option value={4}>4 - Proprio por conta do destinatário</option>
                                         </select>
                                         {modFrete !== 9 && (
                                             <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -2401,9 +2410,9 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                         <p className="text-sm font-black text-[#1A1A1A]">Parametros fiscais</p>
                                         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
                                             <div>
-                                                <label className={labelClass}>Presenca</label>
+                                                <label className={labelClass}>Presença</label>
                                                 <select value={indPres} onChange={(e) => setIndPres(Number(e.target.value))} className={fieldClass}>
-                                                    <option value={0}>0 - Nao se aplica</option>
+                                                    <option value={0}>0 - Não se aplica</option>
                                                     <option value={1}>1 - Presencial</option>
                                                     <option value={2}>2 - Internet</option>
                                                     <option value={3}>3 - Teleatendimento</option>
@@ -2414,7 +2423,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                 <label className={labelClass}>Consumidor final</label>
                                                 <select value={indFinal} onChange={(e) => setIndFinal(Number(e.target.value) as 0 | 1)} className={fieldClass}>
                                                     <option value={1}>1 - Sim</option>
-                                                    <option value={0}>0 - Nao</option>
+                                                    <option value={0}>0 - Não</option>
                                                 </select>
                                             </div>
                                             <div>
@@ -2429,8 +2438,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                 <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className={fieldClass}>
                                                     <option value="90">90 - Sem pagamento</option>
                                                     <option value="01">01 - Dinheiro</option>
-                                                    <option value="03">03 - Cartao de credito</option>
-                                                    <option value="04">04 - Cartao de debito</option>
+                                                    <option value="03">03 - Cartão de crédito</option>
+                                                    <option value="04">04 - Cartão de débito</option>
                                                     <option value="15">15 - Boleto</option>
                                                     <option value="17">17 - PIX</option>
                                                     <option value="99">99 - Outros</option>
@@ -2453,8 +2462,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                     </div>
 
                                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                                        <TextAreaField label="Informacoes complementares" value={infCpl} onChange={setInfCpl} />
-                                        <TextAreaField label="Informacoes ao Fisco" value={infAdFisco} onChange={setInfAdFisco} />
+                                        <TextAreaField label="Informações complementares" value={infCpl} onChange={setInfCpl} />
+                                        <TextAreaField label="Informações ao Fisco" value={infAdFisco} onChange={setInfAdFisco} />
                                     </div>
                                 </>
                             )}
@@ -2464,17 +2473,17 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                     {step === "review" && (
                         <section className="space-y-5">
                             <div>
-                                <h2 className="text-lg font-black text-[#1A1A1A]">Revisao</h2>
+                                <h2 className="text-lg font-black text-[#1A1A1A]">Revisão</h2>
                                 <p className="text-sm text-stone-500">Confira os dados principais antes de transmitir.</p>
                             </div>
                             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                                <ReviewCard label="Operacao" value={`${currentOperation.title} - ${purpose}`} />
+                                <ReviewCard label="Operação" value={`${currentOperation.title} - ${purposeLabel(purpose)}`} />
                                 <ReviewCard
                                     label="Origem"
                                     value={selectedShipmentOrigin
                                         ? `Remessa NF-e ${selectedShipmentOrigin.number || "-"} | chave ${selectedShipmentOrigin.accessKey}`
                                         : selectedDepositTransferOrigin
-                                            ? `Transferencia NF-e ${selectedDepositTransferOrigin.number || "-"} | chave ${selectedDepositTransferOrigin.accessKey}`
+                                            ? `Transferência NF-e ${selectedDepositTransferOrigin.number || "-"} | chave ${selectedDepositTransferOrigin.accessKey}`
                                             : selectedTransferStore
                                                 ? `Filial ${selectedTransferStore.razao_social || selectedTransferStore.name}`
                                                 : selectedOrigin
@@ -2483,21 +2492,21 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                         ? `Venda #${selectedSale.id}`
                                                         : "NF-e avulsa/manual"}
                                 />
-                                <ReviewCard label="Destinatario" value={customerForm.nome || "Nao informado"} />
-                                <ReviewCard label="Documento" value={customerForm.cpfCnpj || "Nao informado"} />
+                                <ReviewCard label="Destinatário" value={customerForm.nome || "Não informado"} />
+                                <ReviewCard label="Documento" value={customerForm.cpfCnpj || "Não informado"} />
                                 <ReviewCard label="Itens" value={String(items.length)} />
                                 <ReviewCard label="Total" value={money(total)} />
                             </div>
                             {pendingIssues.length > 0 ? (
                                 <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
-                                    <p className="font-black text-red-800">Pendencias antes de emitir</p>
+                                    <p className="font-black text-red-800">Pendências antes de emitir</p>
                                     <ul className="mt-2 space-y-1 text-xs font-bold text-red-700">
                                         {pendingIssues.map((issue) => <li key={issue}>{issue}</li>)}
                                     </ul>
                                 </div>
                             ) : (
                                 <div className="rounded-2xl border border-green-100 bg-green-50 p-4 text-sm font-black text-green-800">
-                                    Dados minimos completos para emissao em homologacao.
+                                    Dados mínimos completos para emissão em homologação.
                                 </div>
                             )}
                             {operation === "advanced" && aiAudit && (
@@ -2508,7 +2517,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                             ? "border-amber-200 bg-amber-50"
                                             : "border-green-200 bg-green-50"
                                 }`}>
-                                    <p className="font-black text-stone-900">Auditoria da operacao assistida</p>
+                                    <p className="font-black text-stone-900">Auditoria da operação assistida</p>
                                     <p className="mt-1 text-sm font-semibold text-stone-700">{aiAudit.resumo}</p>
                                     {aiAudit.achados.length > 0 && (
                                         <div className="mt-3 space-y-2">
@@ -2529,7 +2538,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                             onChange={(e) => setAdvancedAuditConfirmed(e.target.checked)}
                                             className="mt-0.5 h-4 w-4 accent-stone-900"
                                         />
-                                        Revisei os pontos com meu contador e confirmo a emissao deste rascunho.
+                                        Revisei os pontos com meu contador e confirmo a emissão deste rascunho.
                                     </label>
                                 </div>
                             )}
@@ -2542,7 +2551,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                         </button>
                         {step !== "review" ? (
                             <button type="button" onClick={goNext} className="flex items-center gap-2 rounded-xl bg-[#1A1A1A] px-4 py-2 text-sm font-black text-[#FACC15] transition hover:bg-black">
-                                Proximo <ChevronRight size={16} />
+                                Próximo <ChevronRight size={16} />
                             </button>
                         ) : (
                             <button type="button" disabled={pendingIssues.length > 0 || emitting || aiAuditLoading || loadingSaleData} onClick={handleEmit} className="flex items-center gap-2 rounded-xl bg-[#FACC15] px-4 py-2 text-sm font-black text-[#1A1A1A] transition hover:bg-yellow-300 disabled:opacity-40">
@@ -2552,15 +2561,15 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                     : emitting
                                     ? "Emitindo..."
                                     : operation === "advanced" && (!aiAudit || !advancedAuditConfirmed)
-                                        ? "Revisao final"
+                                        ? "Revisão final"
                                     : operation === "bonus"
-                                        ? `Emitir NF-e de ${purpose}`
+                                        ? `Emitir NF-e de ${purposeLabel(purpose)}`
                                         : operation === "return"
-                                            ? "Emitir NF-e de Devolucao"
+                                            ? "Emitir NF-e de Devolução"
                                             : operation === "shipment"
-                                                ? `Emitir NF-e de ${purpose}`
+                                                ? `Emitir NF-e de ${purposeLabel(purpose)}`
                                             : operation === "transfer"
-                                                ? `Emitir NF-e de ${purpose}`
+                                                ? `Emitir NF-e de ${purposeLabel(purpose)}`
                                             : operation === "advanced"
                                                 ? "Emitir NF-e assistida"
                                             : "Emitir NF-e de Venda"}
@@ -2573,14 +2582,14 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                     <div className="rounded-2xl border border-stone-100 bg-white p-4 shadow-sm">
                         <p className="text-xs font-black uppercase text-stone-400">Resumo</p>
                         <div className="mt-3 space-y-2 text-sm">
-                            <SummaryRow label="Operacao" value={currentOperation.title} />
-                            <SummaryRow label="Finalidade" value={purpose} />
+                            <SummaryRow label="Operação" value={currentOperation.title} />
+                            <SummaryRow label="Finalidade" value={purposeLabel(purpose)} />
                             <SummaryRow
                                 label="Origem"
                                 value={selectedShipmentOrigin
                                     ? `Remessa NF-e ${selectedShipmentOrigin.number || "-"}`
                                     : selectedDepositTransferOrigin
-                                        ? `Transferencia NF-e ${selectedDepositTransferOrigin.number || "-"}`
+                                        ? `Transferência NF-e ${selectedDepositTransferOrigin.number || "-"}`
                                         : selectedTransferStore
                                             ? selectedTransferStore.name
                                             : selectedOrigin
@@ -2607,8 +2616,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                 <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} className={fieldClass}>
                                     <option value="01">Dinheiro</option>
                                     <option value="17">Pix</option>
-                                    <option value="03">Cartao credito</option>
-                                    <option value="04">Cartao debito</option>
+                                    <option value="03">Cartão crédito</option>
+                                    <option value="04">Cartão débito</option>
                                     <option value="15">Boleto</option>
                                     <option value="99">Outro</option>
                                 </select>
@@ -2617,11 +2626,11 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                     </div>
 
                     <div className={`rounded-2xl border p-4 shadow-sm ${pendingIssues.length ? "border-red-100 bg-red-50" : "border-green-100 bg-green-50"}`}>
-                        <p className={`text-xs font-black uppercase ${pendingIssues.length ? "text-red-500" : "text-green-600"}`}>Validacao</p>
+                        <p className={`text-xs font-black uppercase ${pendingIssues.length ? "text-red-500" : "text-green-600"}`}>Validação</p>
                         {pendingIssues.length ? (
                             <p className="mt-2 text-sm font-bold text-red-800">{pendingIssues.length} pendencia(s) antes de emitir.</p>
                         ) : (
-                            <p className="mt-2 text-sm font-bold text-green-800">Pronto para homologacao.</p>
+                            <p className="mt-2 text-sm font-bold text-green-800">Pronto para homologação.</p>
                         )}
                     </div>
                 </aside>
@@ -2706,7 +2715,7 @@ function SaleSearchModal({
                             value={query}
                             onChange={(event) => setQuery(event.target.value)}
                             className="w-full rounded-xl border border-stone-200 py-2 pl-9 pr-3 text-sm font-bold outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20"
-                            placeholder="Numero da venda, cliente ou CPF/CNPJ"
+                            placeholder="Número da venda, cliente ou CPF/CNPJ"
                             autoFocus
                         />
                     </div>
@@ -2742,7 +2751,7 @@ function SaleSearchModal({
                                                 )}
                                             </div>
                                             <p className="mt-1 text-xs font-bold text-stone-500">
-                                                {sale.clients?.nome || "Cliente nao informado"}
+                                                {sale.clients?.nome || "Cliente não informado"}
                                             </p>
                                             <p className="mt-1 text-[10px] font-semibold text-stone-400">
                                                 {new Date(sale.created_at).toLocaleString("pt-BR")}
@@ -2790,7 +2799,7 @@ function CloneInvoiceModal({
                 <div className="flex items-center justify-between gap-3 border-b border-stone-100 p-5">
                     <div>
                         <p className="text-lg font-black text-[#1A1A1A]">Clonar NF-e</p>
-                        <p className="mt-1 text-xs font-bold text-stone-500">Notas emitidas em homologacao por esta loja.</p>
+                        <p className="mt-1 text-xs font-bold text-stone-500">Notas emitidas em homologação por esta loja.</p>
                     </div>
                     <button
                         type="button"
@@ -2809,7 +2818,7 @@ function CloneInvoiceModal({
                             value={query}
                             onChange={(event) => setQuery(event.target.value)}
                             className="w-full rounded-xl border border-stone-200 py-2 pl-9 pr-3 text-sm font-bold outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20"
-                            placeholder="Numero, destinatario, documento ou chave"
+                            placeholder="Número, destinatário, documento ou chave"
                             autoFocus
                         />
                     </div>
@@ -2838,7 +2847,7 @@ function CloneInvoiceModal({
                         <div className="space-y-2">
                             {invoices.map((invoice) => {
                                 const infNFe = asRecord(invoice.payload_json?.infNFe);
-                                const nature = String(asRecord(infNFe.ide).natOp || "Natureza nao informada");
+                                const nature = String(asRecord(infNFe.ide).natOp || "Natureza não informada");
                                 const applying = applyingId === invoice.id;
 
                                 return (
@@ -2853,14 +2862,14 @@ function CloneInvoiceModal({
                                             <div>
                                                 <div className="flex flex-wrap items-center gap-2">
                                                     <p className="font-black text-[#1A1A1A]">
-                                                        NF-e {invoice.numero || "-"} {invoice.serie ? `Serie ${invoice.serie}` : ""}
+                                                        NF-e {invoice.numero || "-"} {invoice.serie ? `Série ${invoice.serie}` : ""}
                                                     </p>
                                                     <span className="rounded-full bg-stone-100 px-2 py-1 text-[9px] font-black uppercase text-stone-500">
                                                         {invoice.status || "sem status"}
                                                     </span>
                                                 </div>
                                                 <p className="mt-1 text-xs font-bold text-stone-500">
-                                                    {invoice.destinatario_nome || "Destinatario sem nome"} | {invoice.destinatario_cnpj || "Documento pendente"}
+                                                    {invoice.destinatario_nome || "Destinatário sem nome"} | {invoice.destinatario_cnpj || "Documento pendente"}
                                                 </p>
                                                 <p className="mt-1 text-[11px] font-black text-blue-700">{nature}</p>
                                             </div>
@@ -2869,7 +2878,7 @@ function CloneInvoiceModal({
                                                 <p className="mt-1 text-[11px] font-bold text-stone-500">
                                                     {invoice.data_emissao
                                                         ? new Date(invoice.data_emissao).toLocaleDateString("pt-BR")
-                                                        : "Data nao informada"}
+                                                        : "Data não informada"}
                                                 </p>
                                                 {applying && (
                                                     <p className="mt-2 inline-flex items-center gap-1 text-[10px] font-black text-amber-700">
@@ -3130,7 +3139,7 @@ function ProductField({
                                 className="w-full px-3 py-2 text-left transition hover:bg-yellow-50"
                             >
                                 <p className="text-xs font-black text-[#1A1A1A]">{product.nome}</p>
-                                <p className="text-[10px] text-stone-400">{money(Number(product.preco_venda || 0))} | NCM {product.ncm || "nao informado"}</p>
+                                <p className="text-[10px] text-stone-400">{money(Number(product.preco_venda || 0))} | NCM {product.ncm || "não informado"}</p>
                             </button>
                         ))
                     )}
