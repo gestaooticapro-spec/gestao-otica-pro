@@ -6,7 +6,7 @@ import { isStoreModuleEnabledForStore } from "@/lib/store-modules.server";
 
 export type FiscalAuditPayload = {
     storeId: number;
-    ambiente: "homologation";
+    ambiente: "homologation" | "production";
     operacao: string;
     natureza: string;
     tipo_nfe: number;
@@ -344,7 +344,9 @@ ${JSON.stringify(payload, null, 2)}
             perguntas_contador: [
                 "A natureza, o CFOP e a tributacao informados representam corretamente esta operacao?",
             ],
-            conclusao: "A emissao pode prosseguir apenas em homologacao e apos confirmacao manual do responsavel.",
+            conclusao: payload.ambiente === "production"
+                ? "A emissao em producao exige revisao fiscal e confirmacao manual do responsavel."
+                : "A emissao pode prosseguir em homologacao apos confirmacao manual do responsavel.",
             aviso: "Contingencia local: nenhum parecer fiscal foi produzido pela IA.",
         },
         contingency: true,

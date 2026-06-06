@@ -667,6 +667,7 @@ export async function getAuthorizedDepositTransferOriginAction(params: {
 export async function listAuthorizedShipmentOriginsAction(params: {
     storeId: number;
     kind: "conserto" | "garantia";
+    environment?: "production" | "homologation";
 }) {
     const supabase = createAdminClient() as any;
     const tenantId = await getTenantIdByStore(params.storeId);
@@ -679,7 +680,7 @@ export async function listAuthorizedShipmentOriginsAction(params: {
         .eq("store_id", params.storeId)
         .eq("tipo_documento", "NFe")
         .eq("direction", "output")
-        .eq("environment", "homologation")
+        .eq("environment", params.environment === "production" ? "production" : "homologation")
         .eq("status", "authorized")
         .order("data_emissao", { ascending: false })
         .limit(50);
@@ -708,6 +709,7 @@ export async function getAuthorizedShipmentOriginAction(params: {
     storeId: number;
     accessKey: string;
     kind: "conserto" | "garantia";
+    environment?: "production" | "homologation";
 }) {
     const supabase = createAdminClient() as any;
     const tenantId = await getTenantIdByStore(params.storeId);
@@ -727,7 +729,7 @@ export async function getAuthorizedShipmentOriginAction(params: {
         .eq("store_id", params.storeId)
         .eq("tipo_documento", "NFe")
         .eq("direction", "output")
-        .eq("environment", "homologation")
+        .eq("environment", params.environment === "production" ? "production" : "homologation")
         .eq("status", "authorized")
         .eq("chave_acesso", accessKey)
         .maybeSingle();
@@ -906,7 +908,10 @@ export async function saveNFeCustomerParticipantAction(params: {
     }
 }
 
-export async function getPendingSales(storeId: number) {
+export async function getPendingSales(
+    storeId: number,
+    environment: "production" | "homologation" = "production",
+) {
     const supabase = createClient();
     const tenantId = await getTenantIdByStore(storeId);
 
@@ -919,6 +924,8 @@ export async function getPendingSales(storeId: number) {
         .from("fiscal_invoices")
         .select("work_order_id")
         .eq("organization_id", tenantId)
+        .eq("environment", environment)
+        .in("status", ["draft", "processing", "authorized"])
         .not("work_order_id", "is", null);
 
     const invoicedIds = invoices?.map(i => i.work_order_id) || [];

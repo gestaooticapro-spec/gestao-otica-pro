@@ -267,7 +267,7 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
                         </button>
                     </Link>
 
-                    <Link href={`/dashboard/loja/${storeId}/fiscal/nfe`}>
+                    <Link href={`/dashboard/loja/${storeId}/fiscal/nfe?env=${environment}`}>
                         <button className="bg-amber-500 hover:bg-amber-400 text-white px-5 py-2.5 rounded-full font-bold text-sm shadow-lg flex items-center gap-2 transition hover:scale-105">
                             <FileText size={18} /> Nova NF-e
                         </button>

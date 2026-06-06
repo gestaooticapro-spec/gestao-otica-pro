@@ -64,6 +64,7 @@ type NFeAdvancedConfig = {
 
 type NFeSaleInput = {
     storeId: number;
+    environment?: NFeEnvironment;
     saleId?: number;
     operation?: NFeOperation;
     finalidade_bonus?: NFeBonusPurpose;
@@ -173,8 +174,6 @@ type NuvemFiscalCompany = {
         codigo_municipio?: string | number | null;
     } | null;
 };
-
-const NFE_ENVIRONMENT: NFeEnvironment = "homologation";
 
 function cleanDigits(value?: string | number | null) {
     return String(value ?? "").replace(/\D/g, "");
@@ -397,7 +396,12 @@ function assertStoreReadyForNFe(store: NFeStoreData) {
     }
 }
 
-async function hydrateStoreFiscalDataFromNuvemFiscal(supabase: any, storeId: number, store: NFeStoreData) {
+async function hydrateStoreFiscalDataFromNuvemFiscal(
+    supabase: any,
+    storeId: number,
+    store: NFeStoreData,
+    environment: NFeEnvironment,
+) {
     const cnpj = cleanDigits(store.cnpj);
     if (!cnpj) return store;
 
@@ -414,8 +418,8 @@ async function hydrateStoreFiscalDataFromNuvemFiscal(supabase: any, storeId: num
     if (!missingLocalAddress) return store;
 
     try {
-        const token = await getNuvemFiscalToken(NFE_ENVIRONMENT);
-        const response = await fetch(`${getNuvemFiscalBaseUrl(NFE_ENVIRONMENT)}/empresas/${cnpj}`, {
+        const token = await getNuvemFiscalToken(environment);
+        const response = await fetch(`${getNuvemFiscalBaseUrl(environment)}/empresas/${cnpj}`, {
             headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -667,12 +671,18 @@ function buildOutputSnapshot(total: number, store: NFeStoreData, customer: any, 
     };
 }
 
-async function getNextNFeNumber(supabase: any, organizationId: string, storeId: number, serie: number) {
+async function getNextNFeNumber(
+    supabase: any,
+    organizationId: string,
+    storeId: number,
+    serie: number,
+    environment: NFeEnvironment,
+) {
     const { data, error } = await supabase.rpc("get_next_nfe_number", {
         p_org_id: organizationId,
         p_store_id: storeId,
         p_serie: serie,
-        p_environment: NFE_ENVIRONMENT,
+        p_environment: environment,
     });
 
     if (error || !data) {
@@ -683,7 +693,14 @@ async function getNextNFeNumber(supabase: any, organizationId: string, storeId: 
     return Number(data);
 }
 
-async function ensureNFeSequenceAtLeast(supabase: any, organizationId: string, storeId: number, serie: number, number: number) {
+async function ensureNFeSequenceAtLeast(
+    supabase: any,
+    organizationId: string,
+    storeId: number,
+    serie: number,
+    number: number,
+    environment: NFeEnvironment,
+) {
     if (!Number.isFinite(number) || number <= 0) return;
 
     const { error } = await supabase
@@ -692,7 +709,7 @@ async function ensureNFeSequenceAtLeast(supabase: any, organizationId: string, s
             organization_id: organizationId,
             store_id: storeId,
             serie,
-            environment: NFE_ENVIRONMENT,
+            environment,
             last_number: number,
             updated_at: new Date().toISOString(),
         }, { onConflict: "organization_id,store_id,serie,environment" });
@@ -821,7 +838,13 @@ async function fetchXmlContent(xmlUrl?: string | null) {
     }
 }
 
-async function ensureNoActiveNFeForSale(supabase: any, organizationId: string, storeId: number, saleId: number) {
+async function ensureNoActiveNFeForSale(
+    supabase: any,
+    organizationId: string,
+    storeId: number,
+    saleId: number,
+    environment: NFeEnvironment,
+) {
     const { data, error } = await supabase
         .from("fiscal_invoices")
         .select("id")
@@ -830,7 +853,7 @@ async function ensureNoActiveNFeForSale(supabase: any, organizationId: string, s
         .eq("work_order_id", saleId)
         .eq("tipo_documento", "NFe")
         .eq("direction", "output")
-        .eq("environment", NFE_ENVIRONMENT)
+        .eq("environment", environment)
         .in("status", ["draft", "processing", "authorized"])
         .limit(1)
         .maybeSingle();
@@ -840,11 +863,17 @@ async function ensureNoActiveNFeForSale(supabase: any, organizationId: string, s
     }
 
     if (data) {
-        throw new Error(`Ja existe NF-e ativa em ${NFE_ENVIRONMENT === "production" ? "producao" : "homologacao"} para esta venda.`);
+        throw new Error(`Ja existe NF-e ativa em ${environment === "production" ? "producao" : "homologacao"} para esta venda.`);
     }
 }
 
-async function ensureNoActiveReturnForOrigin(supabase: any, organizationId: string, storeId: number, accessKey: string) {
+async function ensureNoActiveReturnForOrigin(
+    supabase: any,
+    organizationId: string,
+    storeId: number,
+    accessKey: string,
+    environment: NFeEnvironment,
+) {
     const { data, error } = await supabase
         .from("fiscal_invoices")
         .select("id")
@@ -852,7 +881,7 @@ async function ensureNoActiveReturnForOrigin(supabase: any, organizationId: stri
         .eq("store_id", storeId)
         .eq("tipo_documento", "NFe")
         .eq("direction", "output")
-        .eq("environment", NFE_ENVIRONMENT)
+        .eq("environment", environment)
         .contains("payload_json", { _entry_access_key: accessKey })
         .in("status", ["draft", "processing", "authorized"])
         .limit(1)
@@ -862,11 +891,17 @@ async function ensureNoActiveReturnForOrigin(supabase: any, organizationId: stri
         throw new Error("Nao foi possivel validar duplicidade da devolucao.");
     }
     if (data) {
-        throw new Error("Ja existe uma NF-e de devolucao ativa para esta nota de entrada em homologacao.");
+        throw new Error(`Ja existe uma NF-e de devolucao ativa para esta nota de entrada em ${environment === "production" ? "producao" : "homologacao"}.`);
     }
 }
 
-async function ensureNoActiveShipmentReturnForOrigin(supabase: any, organizationId: string, storeId: number, accessKey: string) {
+async function ensureNoActiveShipmentReturnForOrigin(
+    supabase: any,
+    organizationId: string,
+    storeId: number,
+    accessKey: string,
+    environment: NFeEnvironment,
+) {
     const { data, error } = await supabase
         .from("fiscal_invoices")
         .select("id")
@@ -874,17 +909,23 @@ async function ensureNoActiveShipmentReturnForOrigin(supabase: any, organization
         .eq("store_id", storeId)
         .eq("tipo_documento", "NFe")
         .eq("direction", "output")
-        .eq("environment", NFE_ENVIRONMENT)
+        .eq("environment", environment)
         .contains("payload_json", { _shipment_origin_key: accessKey })
         .in("status", ["draft", "processing", "authorized"])
         .limit(1)
         .maybeSingle();
 
     if (error) throw new Error("Nao foi possivel validar duplicidade do retorno.");
-    if (data) throw new Error("Ja existe uma NF-e de retorno ativa para esta remessa em homologacao.");
+    if (data) throw new Error(`Ja existe uma NF-e de retorno ativa para esta remessa em ${environment === "production" ? "producao" : "homologacao"}.`);
 }
 
-async function ensureNoActiveDepositReturnForOrigin(supabase: any, organizationId: string, storeId: number, accessKey: string) {
+async function ensureNoActiveDepositReturnForOrigin(
+    supabase: any,
+    organizationId: string,
+    storeId: number,
+    accessKey: string,
+    environment: NFeEnvironment,
+) {
     const { data, error } = await supabase
         .from("fiscal_invoices")
         .select("id")
@@ -892,17 +933,23 @@ async function ensureNoActiveDepositReturnForOrigin(supabase: any, organizationI
         .eq("store_id", storeId)
         .eq("tipo_documento", "NFe")
         .eq("direction", "output")
-        .eq("environment", NFE_ENVIRONMENT)
+        .eq("environment", environment)
         .contains("payload_json", { _transfer_deposit_origin_key: accessKey })
         .in("status", ["draft", "processing", "authorized"])
         .limit(1)
         .maybeSingle();
 
     if (error) throw new Error("Nao foi possivel validar duplicidade do retorno de deposito.");
-    if (data) throw new Error("Ja existe uma NF-e de retorno ativa para esta transferencia em homologacao.");
+    if (data) throw new Error(`Ja existe uma NF-e de retorno ativa para esta transferencia em ${environment === "production" ? "producao" : "homologacao"}.`);
 }
 
-async function ensureNoActiveDemonstrationReturnForOrigin(supabase: any, organizationId: string, storeId: number, accessKey: string) {
+async function ensureNoActiveDemonstrationReturnForOrigin(
+    supabase: any,
+    organizationId: string,
+    storeId: number,
+    accessKey: string,
+    environment: NFeEnvironment,
+) {
     const { data, error } = await supabase
         .from("fiscal_invoices")
         .select("id")
@@ -910,14 +957,14 @@ async function ensureNoActiveDemonstrationReturnForOrigin(supabase: any, organiz
         .eq("store_id", storeId)
         .eq("tipo_documento", "NFe")
         .eq("direction", "output")
-        .eq("environment", NFE_ENVIRONMENT)
+        .eq("environment", environment)
         .contains("payload_json", { _demonstration_origin_key: accessKey })
         .in("status", ["draft", "processing", "authorized"])
         .limit(1)
         .maybeSingle();
 
     if (error) throw new Error("Nao foi possivel validar duplicidade do retorno de demonstracao.");
-    if (data) throw new Error("Ja existe uma NF-e de retorno ativa para esta remessa de demonstracao em homologacao.");
+    if (data) throw new Error(`Ja existe uma NF-e de retorno ativa para esta remessa de demonstracao em ${environment === "production" ? "producao" : "homologacao"}.`);
 }
 
 async function buildFiscalItems(supabase: any, saleItems: SaleItemRow[]) {
@@ -1014,11 +1061,13 @@ function normalizeManualItems(items: FiscalItem[] | undefined) {
     });
 }
 
-export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
+export async function emitirNFe(input: NFeSaleInput) {
     const supabase = createAdminClient() as any;
     let invoiceId: number | null = null;
 
     try {
+        const environment: NFeEnvironment = input.environment === "production" ? "production" : "homologation";
+
         if (!(await isStoreModuleEnabledForStore(input.storeId, "fiscal"))) {
             return { success: false, error: "Modulo fiscal desativado para esta loja." };
         }
@@ -1079,31 +1128,31 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
         }
 
         if (input.saleId && isSaleOperation) {
-            await ensureNoActiveNFeForSale(supabase, organizationId, input.storeId, input.saleId);
+            await ensureNoActiveNFeForSale(supabase, organizationId, input.storeId, input.saleId, environment);
         }
         if (isReturnOperation) {
             if (!/^\d{44}$/.test(referenceKey)) {
                 throw new Error("Selecione uma NF-e de entrada importada para emitir a devolucao.");
             }
-            await ensureNoActiveReturnForOrigin(supabase, organizationId, input.storeId, referenceKey);
+            await ensureNoActiveReturnForOrigin(supabase, organizationId, input.storeId, referenceKey, environment);
         }
         if (isRegularShipmentReturn) {
             if (!/^\d{44}$/.test(referenceKey)) {
                 throw new Error("Selecione uma NF-e de remessa autorizada para emitir o retorno.");
             }
-            await ensureNoActiveShipmentReturnForOrigin(supabase, organizationId, input.storeId, referenceKey);
+            await ensureNoActiveShipmentReturnForOrigin(supabase, organizationId, input.storeId, referenceKey, environment);
         }
         if (isDemonstrationReturn) {
             if (!/^\d{44}$/.test(referenceKey)) {
                 throw new Error("Selecione uma NF-e de remessa para demonstracao importada.");
             }
-            await ensureNoActiveDemonstrationReturnForOrigin(supabase, organizationId, input.storeId, referenceKey);
+            await ensureNoActiveDemonstrationReturnForOrigin(supabase, organizationId, input.storeId, referenceKey, environment);
         }
         if (isDepositReturn) {
             if (!/^\d{44}$/.test(referenceKey)) {
                 throw new Error("Selecione uma NF-e de transferencia para deposito autorizada.");
             }
-            await ensureNoActiveDepositReturnForOrigin(supabase, organizationId, input.storeId, referenceKey);
+            await ensureNoActiveDepositReturnForOrigin(supabase, organizationId, input.storeId, referenceKey, environment);
         }
 
         const { data: store } = await supabase
@@ -1114,7 +1163,7 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
 
         if (!store) throw new Error("Loja nao encontrada.");
 
-        const hydratedStore = await hydrateStoreFiscalDataFromNuvemFiscal(supabase, input.storeId, store);
+        const hydratedStore = await hydrateStoreFiscalDataFromNuvemFiscal(supabase, input.storeId, store, environment);
         assertStoreReadyForNFe(hydratedStore);
         if (isAdvancedOperation && Number(hydratedStore.regime_tributario || 1) !== 1) {
             throw new Error("A operacao assistida esta liberada apenas para CRT 1 enquanto o motor usar CSOSN.");
@@ -1286,6 +1335,7 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
                 storeId: input.storeId,
                 accessKey: referenceKey,
                 kind,
+                environment,
             });
             if (!originResult.success || !originResult.participant || !originResult.items) {
                 throw new Error(originResult.error || "Nao foi possivel carregar a remessa de origem.");
@@ -1567,7 +1617,7 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
                         : "SAIDA EM DOACAO SEM COBRANCA.",
                 };
         const serie = Number(hydratedStore.nfe_serie || 1);
-        const nextNumber = await getNextNFeNumber(supabase, organizationId, input.storeId, serie);
+        const nextNumber = await getNextNFeNumber(supabase, organizationId, input.storeId, serie, environment);
         const issuedAt = getSaoPauloIssuedAt();
         const cUF = Number(cleanDigits(hydratedStore.codigo_municipio_ibge).slice(0, 2));
         const cNF = generateNFeRandomCode(input.storeId, serie, nextNumber);
@@ -1624,7 +1674,7 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
                 vPag: cleanText(advanced.meio_pagamento) === "90" ? 0 : valorTotal,
             }]
             : template.detPag || buildPayments(salePayments, valorTotal);
-        const isProduction = NFE_ENVIRONMENT === "production";
+        const isProduction = environment === "production";
         const advancedReference = isAdvancedOperation && referenceKey ? { NFref: [{ refNFe: referenceKey }] } : {};
         const transportDoc = cleanDigits(advanced.transportadora?.cpf_cnpj);
         const advancedTransport = {
@@ -1768,11 +1818,11 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
                         : {}),
                 },
                 ...(intermediary ? { infIntermed: intermediary } : {}),
-                infRespTec: buildNFeInfRespTec(hydratedStore, cleanDigits(hydratedStore.cnpj), NFE_ENVIRONMENT),
+                infRespTec: buildNFeInfRespTec(hydratedStore, cleanDigits(hydratedStore.cnpj), environment),
             },
         };
 
-        logNFePayloadDiagnostic(nfePayload, accessKey, getNFePayloadDiagnosticSources(hydratedStore, NFE_ENVIRONMENT));
+        logNFePayloadDiagnostic(nfePayload, accessKey, getNFePayloadDiagnosticSources(hydratedStore, environment));
 
         const { data: invoice, error: dbError } = await supabase
             .from("fiscal_invoices")
@@ -1783,7 +1833,7 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
                 ...buildOutputSnapshot(valorTotal, hydratedStore, customer, issuedAt),
                 tipo_documento: "NFe",
                 status: "processing",
-                environment: NFE_ENVIRONMENT,
+                environment,
                 payload_json: isReturnOperation
                     ? { ...nfePayload, _entry_access_key: referenceKey }
                     : isShipmentReturn
@@ -1803,8 +1853,8 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
 
         invoiceId = invoice.id;
 
-        const token = await getNuvemFiscalToken(NFE_ENVIRONMENT);
-        const baseUrl = process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br";
+        const token = await getNuvemFiscalToken(environment);
+        const baseUrl = getNuvemFiscalBaseUrl(environment);
         const response = await fetch(`${baseUrl}/nfe`, {
             method: "POST",
             headers: {
@@ -1842,7 +1892,7 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
             const reason = result.autorizacao?.motivo_status || "Motivo nao informado";
             const rejectedNumber = Number(result.numero || nextNumber) || extractNFeNumberFromAccessKey(result.chave) || nextNumber;
             if (String(code) === "539") {
-                await ensureNFeSequenceAtLeast(supabase, organizationId, input.storeId, serie, rejectedNumber);
+                await ensureNFeSequenceAtLeast(supabase, organizationId, input.storeId, serie, rejectedNumber, environment);
             }
             await supabase
                 .from("fiscal_invoices")
@@ -1880,7 +1930,7 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
             invoiceId,
             status: update.status,
             message: update.status === "authorized"
-                ? `NF-e autorizada em ${NFE_ENVIRONMENT === "production" ? "producao" : "homologacao"}.`
+                ? `NF-e autorizada em ${environment === "production" ? "producao" : "homologacao"}.`
                 : "NF-e em processamento.",
         };
     } catch (error: any) {

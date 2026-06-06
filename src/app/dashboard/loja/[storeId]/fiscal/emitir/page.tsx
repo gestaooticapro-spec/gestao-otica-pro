@@ -59,12 +59,12 @@ export default function EmitirNotaPage({ params }: { params: { storeId: string }
         if (storeId && modules.fiscal) {
             loadPendingSales();
         }
-    }, [storeId, modules.fiscal]);
+    }, [storeId, modules.fiscal, environment]);
 
     const loadPendingSales = async () => {
         setLoadingSales(true);
         try {
-            const data = await getPendingSales(storeId);
+            const data = await getPendingSales(storeId, environment);
             setPendingSales(data as unknown as PendingSale[]);
         } catch (e) {
             console.error(e);
