@@ -186,7 +186,7 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
             case "cancelled":
                 return <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 w-fit"><XCircle size={12} /> Cancelada</span>;
             default:
-                return <span className="bg-stone-100 text-stone-600 px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 w-fit"><Clock size={12} /> Rascunho</span>;
+                return <span className="bg-white/10 text-slate-200 px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 w-fit"><Clock size={12} /> Rascunho</span>;
         }
     };
 
@@ -240,23 +240,23 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-stone-200 shadow-sm">
+                    <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/10 backdrop-blur-md shadow-sm">
                         <button
                             onClick={() => setEnvironment("homologation")}
-                            className={`px-4 py-2 rounded-lg text-sm font-bold transition ${environment === "homologation" ? "bg-yellow-100 text-yellow-700" : "text-stone-400 hover:text-stone-600"}`}
+                            className={`px-4 py-2 rounded-lg text-sm font-bold transition ${environment === "homologation" ? "bg-yellow-100 text-yellow-700" : "text-white/60 hover:text-white"}`}
                         >
                             Homologação
                         </button>
                         <button
                             onClick={() => setEnvironment("production")}
-                            className={`px-4 py-2 rounded-lg text-sm font-bold transition ${environment === "production" ? "bg-green-100 text-green-700" : "text-stone-400 hover:text-stone-600"}`}
+                            className={`px-4 py-2 rounded-lg text-sm font-bold transition ${environment === "production" ? "bg-green-100 text-green-700" : "text-white/60 hover:text-white"}`}
                         >
                             Produção
                         </button>
                     </div>
 
                     <Link href={`/dashboard/loja/${storeId}/fiscal/fechamento`}>
-                        <button className="bg-white border border-stone-200 hover:border-stone-400 text-stone-600 px-5 py-2.5 rounded-full font-bold text-sm shadow-sm flex items-center gap-2 transition hover:scale-105">
+                        <button className="bg-white/5 border border-white/10 hover:border-white/20 text-white/80 px-5 py-2.5 rounded-full font-bold text-sm shadow-sm flex items-center gap-2 transition hover:scale-105">
                             <FileArchive size={18} /> Exportar Contador
                         </button>
                     </Link>
@@ -268,7 +268,7 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
                     </Link>
 
                     <Link href={`/dashboard/loja/${storeId}/fiscal/nfe`}>
-                        <button className="bg-amber-500 hover:bg-amber-400 text-[#1A1A1A] px-5 py-2.5 rounded-full font-bold text-sm shadow-lg flex items-center gap-2 transition hover:scale-105">
+                        <button className="bg-amber-500 hover:bg-amber-400 text-white px-5 py-2.5 rounded-full font-bold text-sm shadow-lg flex items-center gap-2 transition hover:scale-105">
                             <FileText size={18} /> Nova NF-e
                         </button>
                     </Link>
@@ -277,46 +277,46 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
 
             {/* CARDS RESUMO */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white p-5 rounded-[20px] border border-stone-100 shadow-sm flex items-center gap-4">
-                    <div className="w-11 h-11 rounded-full bg-green-50 flex items-center justify-center text-green-600 shrink-0"><CheckCircle size={22} /></div>
+                <div className="bg-black/40 p-5 rounded-[20px] border border-white/10 backdrop-blur-md shadow-sm flex items-center gap-4">
+                    <div className="w-11 h-11 rounded-full bg-green-500/20 flex items-center justify-center text-green-400 shrink-0"><CheckCircle size={22} /></div>
                     <div className="flex-1">
                         <div className="flex items-baseline justify-between">
-                            <p className="text-2xl font-bold text-[#1A1A1A]">{countAuthorized}</p>
-                            <p className="font-bold text-green-600 text-sm">
+                            <p className="text-2xl font-bold text-white">{countAuthorized}</p>
+                            <p className="font-bold text-green-400 text-sm">
                                 {sumAuthorized.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                             </p>
                         </div>
-                        <p className="text-xs text-stone-500 font-bold uppercase">Autorizadas</p>
+                        <p className="text-xs text-white/60 font-bold uppercase">Autorizadas</p>
                     </div>
                 </div>
-                <div className="bg-white p-5 rounded-[20px] border border-stone-100 shadow-sm flex items-center gap-4">
-                    <div className="w-11 h-11 rounded-full bg-red-50 flex items-center justify-center text-red-500 shrink-0"><AlertCircle size={22} /></div>
+                <div className="bg-black/40 p-5 rounded-[20px] border border-white/10 backdrop-blur-md shadow-sm flex items-center gap-4">
+                    <div className="w-11 h-11 rounded-full bg-red-500/20 flex items-center justify-center text-red-400 shrink-0"><AlertCircle size={22} /></div>
                     <div>
-                        <p className="text-2xl font-bold text-[#1A1A1A]">{countError}</p>
-                        <p className="text-xs text-stone-500 font-bold uppercase">Com Erro / Rejeitadas</p>
+                        <p className="text-2xl font-bold text-white">{countError}</p>
+                        <p className="text-xs text-white/60 font-bold uppercase">Com Erro / Rejeitadas</p>
                     </div>
                 </div>
-                <div className="bg-white p-5 rounded-[20px] border border-stone-100 shadow-sm flex items-center gap-4">
-                    <div className="w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 shrink-0"><Clock size={22} /></div>
+                <div className="bg-black/40 p-5 rounded-[20px] border border-white/10 backdrop-blur-md shadow-sm flex items-center gap-4">
+                    <div className="w-11 h-11 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 shrink-0"><Clock size={22} /></div>
                     <div>
-                        <p className="text-2xl font-bold text-[#1A1A1A]">{countPending}</p>
-                        <p className="text-xs text-stone-500 font-bold uppercase">Pendentes</p>
+                        <p className="text-2xl font-bold text-white">{countPending}</p>
+                        <p className="text-xs text-white/60 font-bold uppercase">Pendentes</p>
                     </div>
                 </div>
             </div>
 
             {/* TABELA */}
-            <div className="bg-white rounded-[28px] border border-stone-100 shadow-sm overflow-hidden">
+            <div className="bg-black/40 rounded-[28px] border border-white/10 backdrop-blur-md shadow-lg overflow-hidden">
                 {/* Filtros */}
-                <div className="p-5 border-b border-stone-100 flex flex-col gap-3">
+                <div className="p-5 border-b border-white/10 flex flex-col gap-3">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
-                        <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2 shrink-0"><FileText size={18} /> Histórico de Emissões</h3>
+                        <h3 className="font-bold text-white flex items-center gap-2 shrink-0"><FileText size={18} /> Histórico de Emissões</h3>
 
                         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
                             <select
                                 value={statusFilter}
                                 onChange={(e) => setStatusFilter(e.target.value)}
-                                className="bg-white border border-stone-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] text-stone-600 font-medium cursor-pointer"
+                                className="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] text-white font-medium cursor-pointer"
                             >
                                 <option value="all">Status: Todos</option>
                                 <option value="authorized">Autorizadas</option>
@@ -330,26 +330,26 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
                                 type="date"
                                 value={startDate}
                                 onChange={(e) => setStartDate(e.target.value)}
-                                className="bg-white border border-stone-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] text-stone-600"
+                                className="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] text-white"
                                 title="Data inicial"
                             />
-                            <span className="text-stone-300 text-sm">até</span>
+                            <span className="text-white/40 text-sm">até</span>
                             <input
                                 type="date"
                                 value={endDate}
                                 onChange={(e) => setEndDate(e.target.value)}
-                                className="bg-white border border-stone-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] text-stone-600"
+                                className="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] text-white"
                                 title="Data final"
                             />
 
                             <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={15} />
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
                                 <input
                                     type="text"
                                     placeholder="Nº, cliente, chave..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="bg-white border border-stone-200 rounded-xl pl-9 pr-4 py-2 text-sm outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] w-48"
+                                    className="bg-black/20 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-sm outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] w-48"
                                 />
                             </div>
                         </div>
@@ -358,7 +358,7 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
 
                 <div className="overflow-x-auto">
                     <table className="w-full text-left min-w-[700px]">
-                        <thead className="bg-[#F8F7F2] text-stone-500 text-xs uppercase font-bold">
+                        <thead className="bg-white/5 text-slate-300 text-xs uppercase font-bold">
                             <tr>
                                 <th className="px-5 py-4">Nº / Série</th>
                                 <th className="px-5 py-4">Tipo</th>
@@ -373,29 +373,29 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
                             {loading ? (
                                 <tr><td colSpan={7} className="text-center py-12"><Loader2 className="animate-spin mx-auto text-[#FACC15]" size={28} /></td></tr>
                             ) : filteredInvoices.length === 0 ? (
-                                <tr><td colSpan={7} className="text-center py-12 text-stone-400">
+                                <tr><td colSpan={7} className="text-center py-12 text-slate-400">
                                     Nenhuma nota encontrada{environment === "homologation" ? " em homologação" : " em produção"}.
                                 </td></tr>
                             ) : (
                                 filteredInvoices.map((inv) => {
                                     const invDate = new Date(displayDate(inv));
                                     return (
-                                        <tr key={inv.id} className="border-b border-stone-50 hover:bg-[#F9F8F4] transition">
+                                        <tr key={inv.id} className="border-b border-white/5 hover:bg-white/5 transition">
                                             <td className="px-5 py-4">
-                                                <p className="font-bold text-[#1A1A1A]">{inv.numero ? `#${inv.numero}` : "S/N"}</p>
-                                                <p className="text-xs text-stone-400">Série {inv.serie || "—"}</p>
+                                                <p className="font-bold text-white">{inv.numero ? `#${inv.numero}` : "S/N"}</p>
+                                                <p className="text-xs text-slate-400">Série {inv.serie || "—"}</p>
                                             </td>
                                             <td className="px-5 py-4">
-                                                <span className="bg-stone-100 text-stone-600 px-2 py-1 rounded text-xs font-bold">{inv.tipo_documento}</span>
+                                                <span className="bg-white/10 text-slate-200 px-2 py-1 rounded text-xs font-bold">{inv.tipo_documento}</span>
                                             </td>
-                                            <td className="px-5 py-4 text-stone-700 max-w-[160px]">
+                                            <td className="px-5 py-4 text-slate-200 max-w-[160px]">
                                                 <p className="truncate">{inv.destinatario_nome || "—"}</p>
                                             </td>
-                                            <td className="px-5 py-4 text-stone-500 whitespace-nowrap">
+                                            <td className="px-5 py-4 text-slate-400 whitespace-nowrap">
                                                 {invDate.toLocaleDateString("pt-BR")}{" "}
-                                                <span className="text-stone-400 text-xs">{invDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+                                                <span className="text-slate-400 text-xs">{invDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
                                             </td>
-                                            <td className="px-5 py-4 text-stone-700 whitespace-nowrap">
+                                            <td className="px-5 py-4 text-slate-200 whitespace-nowrap">
                                                 {inv.valor_total != null
                                                     ? inv.valor_total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
                                                     : "—"}
@@ -403,12 +403,12 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
                                             <td className="px-5 py-4">
                                                 {getStatusBadge(inv.status)}
                                                 {(inv.error_message || inv.motivo_rejeicao) && (
-                                                    <p className="text-[10px] text-red-500 mt-1 max-w-[180px] truncate" title={inv.motivo_rejeicao || inv.error_message || ""}>
+                                                    <p className="text-[10px] text-red-400 mt-1 max-w-[180px] truncate" title={inv.motivo_rejeicao || inv.error_message || ""}>
                                                         {inv.motivo_rejeicao || inv.error_message}
                                                     </p>
                                                 )}
                                                 {inv.status === "authorized" && inv.chave_acesso && (
-                                                    <p className="text-[10px] text-stone-400 mt-1 font-mono truncate max-w-[180px]" title={inv.chave_acesso}>
+                                                    <p className="text-[10px] text-slate-400 mt-1 font-mono truncate max-w-[180px]" title={inv.chave_acesso}>
                                                         {inv.chave_acesso.slice(-8)}
                                                     </p>
                                                 )}
@@ -419,7 +419,7 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
                                                     {(inv.status === "authorized" || inv.status === "cancelled") && (
                                                         <button
                                                             onClick={() => handlePrint(inv.id)}
-                                                            className="p-2 bg-stone-50 hover:bg-stone-100 text-stone-600 rounded-lg transition"
+                                                            className="p-2 bg-white/5 hover:bg-white/10 text-slate-200 rounded-lg transition"
                                                             title="Imprimir DANFE"
                                                         >
                                                             <Printer size={15} />
@@ -432,7 +432,7 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
                                                             href={`/api/fiscal/print/${inv.id}?download=true`}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            className="p-2 bg-stone-50 hover:bg-stone-100 text-stone-600 rounded-lg transition"
+                                                            className="p-2 bg-white/5 hover:bg-white/10 text-slate-200 rounded-lg transition"
                                                             title="Baixar DANFE (PDF)"
                                                         >
                                                             <Download size={15} />
@@ -443,7 +443,7 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
                                                     {inv.status === "authorized" && (
                                                         <button
                                                             onClick={() => handleWhatsApp(inv)}
-                                                            className="p-2 bg-green-50 hover:bg-green-100 text-green-600 rounded-lg transition"
+                                                            className="p-2 bg-green-500/10 hover:bg-green-500/20 text-green-400 rounded-lg transition"
                                                             title="Compartilhar no WhatsApp"
                                                         >
                                                             <MessageCircle size={15} />
@@ -454,7 +454,7 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
                                                     {(inv.status === "processing" || inv.status === "error") && (
                                                         <button
                                                             onClick={() => handleRefreshStatus(inv.id)}
-                                                            className={`p-2 rounded-lg transition ${inv.status === "error" ? "bg-red-50 text-red-600 hover:bg-red-100" : "bg-blue-50 text-blue-600 hover:bg-blue-100"}`}
+                                                            className={`p-2 rounded-lg transition ${inv.status === "error" ? "bg-red-500/10 text-red-400 hover:bg-red-500/20" : "bg-blue-500/10 text-blue-400 hover:bg-blue-500/20"}`}
                                                             title={inv.status === "error" ? "Retentar / Ver status" : "Atualizar status"}
                                                         >
                                                             <RefreshCw size={15} />
@@ -465,7 +465,7 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
                                                     {(inv.status === "error" || inv.status === "rejected") && (
                                                         <button
                                                             onClick={() => alert(`Detalhes:\n\n${inv.motivo_rejeicao || inv.error_message || "Sem detalhes disponíveis."}`)}
-                                                            className="p-2 bg-orange-50 text-orange-600 hover:bg-orange-100 rounded-lg transition"
+                                                            className="p-2 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 rounded-lg transition"
                                                             title="Ver detalhes do erro"
                                                         >
                                                             <AlertCircle size={15} />
@@ -476,7 +476,7 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
                                                     {inv.status === "authorized" && (
                                                         <button
                                                             onClick={() => handleCancelar(inv.id)}
-                                                            className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition"
+                                                            className="p-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg transition"
                                                             title="Cancelar nota (30 min)"
                                                         >
                                                             <Ban size={15} />

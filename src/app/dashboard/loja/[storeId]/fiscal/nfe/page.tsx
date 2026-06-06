@@ -1621,9 +1621,6 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                     </Link>
                     <div>
                         <h1 className="text-3xl font-black text-white tracking-tight uppercase">Emissão completa de NF-e</h1>
-                        <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">
-                            Rascunho guiado para venda comum, com estrutura preparada para outras operacoes.
-                        </p>
                     </div>
                 </div>
 
@@ -1641,7 +1638,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                         <button
                             type="button"
                             onClick={() => setCloneModalOpen(true)}
-                            className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-black text-stone-700 shadow-sm transition hover:border-[#FACC15] hover:bg-yellow-50"
+                            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-xs font-black text-slate-200 shadow-sm transition hover:border-[#FACC15] hover:bg-white/10"
                         >
                             <Copy size={14} />
                             Clonar nota
@@ -1664,7 +1661,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
 
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-[260px_1fr_320px]">
                 <aside className="space-y-3">
-                    <div className="rounded-2xl border border-stone-100 bg-white p-3 shadow-sm">
+                    <div className="rounded-2xl border border-white/5 bg-black/40 p-3 shadow-sm">
                         {STEPS.map((item, index) => {
                             const active = item.id === step;
                             const done = index < stepIndex;
@@ -1674,11 +1671,11 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                     type="button"
                                     onClick={() => setStep(item.id)}
                                     className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition last:mb-0 ${
-                                        active ? "bg-[#1A1A1A] text-[#FACC15]" : "text-stone-900 hover:bg-stone-50"
+                                        active ? "bg-amber-500 text-black" : "text-stone-900 hover:bg-white/5"
                                     }`}
                                 >
                                     <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black ${
-                                        active ? "bg-[#FACC15] text-[#1A1A1A]" : done ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-500"
+                                        active ? "bg-[#FACC15] text-white" : done ? "bg-stone-900 text-white" : "bg-white/10 text-slate-400"
                                     }`}>
                                         {done ? <CheckCircle size={14} /> : index + 1}
                                     </span>
@@ -1691,22 +1688,22 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
 
                 </aside>
 
-                <main className="min-h-[640px] rounded-2xl border border-stone-100 bg-white p-5 shadow-sm">
+                <main className="min-h-[640px] rounded-2xl border border-white/5 bg-black/40 p-5 shadow-sm">
                     {clonedFrom && (
-                        <div className="mb-5 flex items-start justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                        <div className="mb-5 flex items-start justify-between gap-3 rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4">
                             <div>
                                 <p className="text-sm font-black text-blue-900">
                                     Rascunho clonado da NF-e {clonedFrom.numero || "-"}
                                     {clonedFrom.serie ? `, serie ${clonedFrom.serie}` : ""}.
                                 </p>
-                                <p className="mt-1 text-xs font-medium text-blue-700">
+                                <p className="mt-1 text-xs font-medium text-blue-400">
                                     Número, chave e protocolo anteriores não serao reutilizados. Revise os campos antes de emitir.
                                 </p>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => setClonedFrom(null)}
-                                className="shrink-0 rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-black text-blue-700 hover:bg-blue-100"
+                                className="shrink-0 rounded-xl border border-blue-500/20 bg-black/40 px-3 py-2 text-xs font-black text-blue-400 hover:bg-blue-500/10"
                             >
                                 Ocultar aviso
                             </button>
@@ -1716,8 +1713,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                     {step === "operation" && (
                         <section className="space-y-5">
                             <div>
-                                <h2 className="text-lg font-black text-[#1A1A1A]">Tipo de operação</h2>
-                                <p className="text-sm text-stone-500">Venda, devolução de compra, remessas e saídas sem cobrança transmitem em homologação.</p>
+                                <h2 className="text-lg font-black text-white">Tipo de operação</h2>
+                                <p className="text-sm text-slate-400">Venda, devolução de compra, remessas e saídas sem cobrança transmitem em homologação.</p>
                             </div>
 
                             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -1739,16 +1736,16 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                 if (item.id === "advanced") setPaymentMethod("90");
                                             }}
                                             className={`rounded-2xl border p-4 text-left transition ${
-                                                active ? "border-[#FACC15] bg-[#FACC15]/10 shadow-sm" : "border-stone-200 hover:border-stone-300 hover:bg-stone-50"
+                                                active ? "border-[#FACC15] bg-[#FACC15]/10 shadow-sm" : "border-white/10 hover:border-stone-300 hover:bg-white/5"
                                             } ${!item.enabled ? "opacity-70" : ""}`}
                                         >
                                             <div className="flex items-start gap-3">
-                                                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${active ? "bg-[#1A1A1A] text-[#FACC15]" : "bg-stone-100 text-stone-500"}`}>
+                                                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${active ? "bg-amber-500 text-black" : "bg-white/10 text-slate-400"}`}>
                                                     <Icon size={20} />
                                                 </div>
                                                 <div>
-                                                    <p className="font-black text-[#1A1A1A]">{item.title}</p>
-                                                    <p className="mt-1 text-xs font-medium text-stone-500">{item.subtitle}</p>
+                                                    <p className="font-black text-white">{item.title}</p>
+                                                    <p className="mt-1 text-xs font-medium text-slate-400">{item.subtitle}</p>
                                                     {!item.enabled && <p className="mt-2 text-[10px] font-black uppercase text-orange-500">A portar</p>}
                                                 </div>
                                             </div>
@@ -1758,7 +1755,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                             </div>
 
                             {operation !== "advanced" && (
-                                <div className="rounded-2xl border border-stone-100 bg-[#F8F7F2] p-4">
+                                <div className="rounded-2xl border border-white/5 bg-white/5 p-4">
                                     <label className={labelClass}>Finalidade especifica</label>
                                     <select
                                         value={purpose}
@@ -1778,10 +1775,10 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                             )}
 
                             {operation === "advanced" && (
-                                <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                                <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-500/10 p-4">
                                     <div>
-                                        <p className="text-sm font-black text-amber-950">Operação assistida em homologação</p>
-                                        <p className="mt-1 text-xs font-medium text-amber-800">
+                                        <p className="text-sm font-black text-amber-400">Operação assistida em homologação</p>
+                                        <p className="mt-1 text-xs font-medium text-amber-300">
                                             Preencha conforme orientacao contabil. A IA revisa consistencia, mas não substitui o contador.
                                         </p>
                                     </div>
@@ -1816,11 +1813,11 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                             )}
 
                             {operation === "advanced" && (
-                                <div className="rounded-2xl border border-orange-100 bg-orange-50 p-4">
+                                <div className="rounded-2xl border border-orange-500/20 bg-orange-500/10 p-4">
                                     <button
                                         type="button"
                                         onClick={() => setAdvancedOriginPanelOpen((current) => !current)}
-                                        className="flex w-full items-center justify-between rounded-xl border border-orange-200 bg-white px-3 py-3 text-left transition hover:bg-orange-50"
+                                        className="flex w-full items-center justify-between rounded-xl border border-orange-500/20 bg-black/40 px-3 py-3 text-left transition hover:bg-orange-500/20"
                                     >
                                         <span>
                                             <span className="block text-sm font-black text-orange-900">Nota de origem</span>
@@ -1845,7 +1842,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                 inputMode="numeric"
                                                 maxLength={44}
                                                 placeholder="44 digitos"
-                                                className="mt-1 w-full rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200"
+                                                className="mt-1 w-full rounded-xl border border-orange-500/20 bg-black/40 px-3 py-2 text-sm font-bold outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200"
                                             />
                                             <div className="mt-2 flex items-center justify-between gap-3 text-[10px] font-bold text-orange-700">
                                                 <span>Informe somente quando a operação exigir referencia fiscal.</span>
@@ -1857,12 +1854,12 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                             )}
 
                             {operation === "sale" && (
-                                <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                                <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4">
                                     <div>
                                         <p className="text-sm font-black text-blue-900">
                                             {selectedSale ? `Venda #${selectedSale.id} selecionada` : "NF-e avulsa"}
                                         </p>
-                                        <p className="mt-1 text-xs font-medium text-blue-700">
+                                        <p className="mt-1 text-xs font-medium text-blue-400">
                                             {selectedSale
                                                 ? `${selectedSale.clients?.nome || "Cliente não informado"} | ${money(selectedSale.total)}`
                                                 : "Nenhuma venda foi vinculada. Participante e itens serao preenchidos manualmente."}
@@ -1877,7 +1874,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                     setOperation("sale");
                                                     setPurpose("Venda comum");
                                                 }}
-                                                className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-black text-blue-700 hover:bg-blue-100"
+                                                className="rounded-xl border border-blue-500/20 bg-black/40 px-3 py-2 text-xs font-black text-blue-400 hover:bg-blue-500/10"
                                             >
                                                 Remover vinculo
                                             </button>
@@ -1887,22 +1884,22 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                             )}
 
                             {operation === "return" && (
-                                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                                <div className="rounded-2xl border border-amber-200 bg-amber-500/10 p-4">
                                     <div>
                                         <p className="text-sm font-black text-amber-900">NF-e de entrada importada</p>
-                                        <p className="mt-1 text-xs font-medium text-amber-800">
+                                        <p className="mt-1 text-xs font-medium text-amber-300">
                                             O fornecedor, os produtos e a chave referenciada serao carregados do XML original.
                                         </p>
                                     </div>
 
                                     {purpose === "Devolucao de venda" ? (
-                                        <p className="mt-4 rounded-xl border border-orange-200 bg-white px-4 py-3 text-xs font-bold text-orange-700">
+                                        <p className="mt-4 rounded-xl border border-orange-500/20 bg-black/40 px-4 py-3 text-xs font-bold text-orange-700">
                                             Devolução de venda ainda não está liberada. Selecione Devolução de compra.
                                         </p>
                                     ) : (
                                         <div className="mt-4 max-h-72 space-y-2 overflow-y-auto">
                                             {importedOrigins.length === 0 ? (
-                                                <p className="rounded-xl bg-white px-4 py-4 text-center text-xs font-bold text-stone-500">
+                                                <p className="rounded-xl bg-black/40 px-4 py-4 text-center text-xs font-bold text-slate-400">
                                                     Nenhuma NF-e de entrada importada foi encontrada nesta loja.
                                                 </p>
                                             ) : importedOrigins.map((origin) => (
@@ -1913,21 +1910,21 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                     disabled={loadingOriginKey !== null}
                                                     className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left transition ${
                                                         selectedOrigin?.id === origin.id
-                                                            ? "border-[#FACC15] bg-yellow-50"
-                                                            : "border-amber-100 bg-white hover:border-amber-300"
+                                                            ? "border-[#FACC15] bg-[#FACC15]/10"
+                                                            : "border-amber-100 bg-black/40 hover:border-amber-300"
                                                     }`}
                                                 >
                                                     <span>
                                                         <span className="block text-xs font-black text-stone-900">
                                                             NF {origin.number || "-"} | {origin.issuerName || "Fornecedor"}
                                                         </span>
-                                                        <span className="mt-1 block text-[10px] font-bold text-stone-500">
+                                                        <span className="mt-1 block text-[10px] font-bold text-slate-400">
                                                             {origin.issuedAt ? new Date(origin.issuedAt).toLocaleDateString("pt-BR") : "Data não informada"}
                                                             {" | "}
                                                             {origin.issuerCnpj || "CNPJ não informado"}
                                                         </span>
                                                     </span>
-                                                    <span className="flex items-center gap-2 text-xs font-black text-stone-800">
+                                                    <span className="flex items-center gap-2 text-xs font-black text-white">
                                                         {money(origin.total)}
                                                         {loadingOriginKey === origin.accessKey && <Loader2 size={14} className="animate-spin" />}
                                                     </span>
@@ -1939,14 +1936,14 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                             )}
 
                             {operation === "shipment" && purpose.startsWith("Retorno") && (
-                                <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4">
+                                <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
                                     <div>
                                         <p className="text-sm font-black text-cyan-950">
                                             {purpose === "Retorno de demonstracao"
                                                 ? "Remessa de demonstração recebida"
                                                 : "Remessa autorizada de origem"}
                                         </p>
-                                        <p className="mt-1 text-xs font-medium text-cyan-800">
+                                        <p className="mt-1 text-xs font-medium text-cyan-400">
                                             {purpose === "Retorno de demonstracao"
                                                 ? "Selecione uma NF-e de entrada importada com CFOP 5912/6912. Participante, itens e chave NFref serao carregados automaticamente."
                                                 : "Selecione a remessa correspondente. Participante, itens e chave NFref serao carregados automaticamente."}
@@ -1955,7 +1952,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
 
                                     <div className="mt-4 max-h-72 space-y-2 overflow-y-auto">
                                         {shipmentOrigins.length === 0 ? (
-                                            <p className="rounded-xl bg-white px-4 py-4 text-center text-xs font-bold text-stone-500">
+                                            <p className="rounded-xl bg-black/40 px-4 py-4 text-center text-xs font-bold text-slate-400">
                                                 {purpose === "Retorno de demonstracao"
                                                     ? "Nenhuma remessa para demonstração foi encontrada nas NF-e de entrada importadas."
                                                     : "Nenhuma remessa autorizada deste tipo foi encontrada em homologação."}
@@ -1970,21 +1967,21 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                 disabled={loadingOriginKey !== null}
                                                 className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left transition ${
                                                     selectedShipmentOrigin?.id === origin.id
-                                                        ? "border-[#FACC15] bg-yellow-50"
-                                                        : "border-cyan-100 bg-white hover:border-cyan-300"
+                                                        ? "border-[#FACC15] bg-[#FACC15]/10"
+                                                        : "border-cyan-100 bg-black/40 hover:border-cyan-300"
                                                 }`}
                                             >
                                                 <span>
                                                     <span className="block text-xs font-black text-stone-900">
                                                         NF {origin.number || "-"} | {origin.recipientName || "Destinatário"}
                                                     </span>
-                                                    <span className="mt-1 block text-[10px] font-bold text-stone-500">
+                                                    <span className="mt-1 block text-[10px] font-bold text-slate-400">
                                                         {origin.issuedAt ? new Date(origin.issuedAt).toLocaleDateString("pt-BR") : "Data não informada"}
                                                         {" | "}
                                                         {origin.recipientCnpj || "Documento não informado"}
                                                     </span>
                                                 </span>
-                                                <span className="flex items-center gap-2 text-xs font-black text-stone-800">
+                                                <span className="flex items-center gap-2 text-xs font-black text-white">
                                                     {money(origin.total)}
                                                     {loadingOriginKey === origin.accessKey && <Loader2 size={14} className="animate-spin" />}
                                                 </span>
@@ -1995,14 +1992,14 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                             )}
 
                             {operation === "transfer" && purpose === "Transferencia entre filiais" && (
-                                <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
+                                <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 p-4">
                                     <p className="text-sm font-black text-violet-950">Filial de destino</p>
-                                    <p className="mt-1 text-xs font-medium text-violet-800">
+                                    <p className="mt-1 text-xs font-medium text-violet-400">
                                         Apenas lojas do mesmo tenant podem ser selecionadas. Os dados fiscais serao relidos no servidor.
                                     </p>
                                     <div className="mt-4 max-h-72 space-y-2 overflow-y-auto">
                                         {transferStores.length === 0 ? (
-                                            <p className="rounded-xl bg-white px-4 py-4 text-center text-xs font-bold text-stone-500">
+                                            <p className="rounded-xl bg-black/40 px-4 py-4 text-center text-xs font-bold text-slate-400">
                                                 Nenhuma outra filial foi encontrada neste tenant.
                                             </p>
                                         ) : transferStores.map((store) => (
@@ -2013,13 +2010,13 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                 disabled={loadingOriginKey !== null}
                                                 className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left transition ${
                                                     selectedTransferStore?.id === store.id
-                                                        ? "border-[#FACC15] bg-yellow-50"
-                                                        : "border-violet-100 bg-white hover:border-violet-300"
+                                                        ? "border-[#FACC15] bg-[#FACC15]/10"
+                                                        : "border-violet-100 bg-black/40 hover:border-violet-300"
                                                 }`}
                                             >
                                                 <span>
                                                     <span className="block text-xs font-black text-stone-900">{store.razao_social || store.name}</span>
-                                                    <span className="mt-1 block text-[10px] font-bold text-stone-500">
+                                                    <span className="mt-1 block text-[10px] font-bold text-slate-400">
                                                         {store.cnpj || "CNPJ não informado"} | {[store.city, store.state].filter(Boolean).join(" - ") || "Endereço incompleto"}
                                                     </span>
                                                 </span>
@@ -2031,20 +2028,20 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                             )}
 
                             {operation === "transfer" && purpose === "Transferencia para deposito" && (
-                                <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-xs font-bold text-violet-800">
+                                <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 p-4 text-xs font-bold text-violet-400">
                                     O deposito sera informado como participante cadastrado na proxima etapa. A operação usa CFOP 5905/6905 e não gera cobrança.
                                 </div>
                             )}
 
                             {operation === "transfer" && purpose === "Retorno de deposito" && (
-                                <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
+                                <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 p-4">
                                     <p className="text-sm font-black text-violet-950">Remessa para deposito recebida</p>
-                                    <p className="mt-1 text-xs font-medium text-violet-800">
+                                    <p className="mt-1 text-xs font-medium text-violet-400">
                                         Selecione uma NF-e de entrada importada com CFOP 5905/6905. O retorno usa CFOP 5906/6906.
                                     </p>
                                     <div className="mt-4 max-h-72 space-y-2 overflow-y-auto">
                                         {depositTransferOrigins.length === 0 ? (
-                                            <p className="rounded-xl bg-white px-4 py-4 text-center text-xs font-bold text-stone-500">
+                                            <p className="rounded-xl bg-black/40 px-4 py-4 text-center text-xs font-bold text-slate-400">
                                                 Nenhuma remessa para deposito importada foi encontrada nesta loja.
                                             </p>
                                         ) : depositTransferOrigins.map((origin) => (
@@ -2055,21 +2052,21 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                 disabled={loadingOriginKey !== null}
                                                 className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left transition ${
                                                     selectedDepositTransferOrigin?.id === origin.id
-                                                        ? "border-[#FACC15] bg-yellow-50"
-                                                        : "border-violet-100 bg-white hover:border-violet-300"
+                                                        ? "border-[#FACC15] bg-[#FACC15]/10"
+                                                        : "border-violet-100 bg-black/40 hover:border-violet-300"
                                                 }`}
                                             >
                                                 <span>
                                                     <span className="block text-xs font-black text-stone-900">
                                                         NF {origin.number || "-"} | {origin.recipientName || "Deposito"}
                                                     </span>
-                                                    <span className="mt-1 block text-[10px] font-bold text-stone-500">
+                                                    <span className="mt-1 block text-[10px] font-bold text-slate-400">
                                                         {origin.issuedAt ? new Date(origin.issuedAt).toLocaleDateString("pt-BR") : "Data não informada"}
                                                         {" | "}
                                                         {origin.recipientCnpj || "Documento não informado"}
                                                     </span>
                                                 </span>
-                                                <span className="flex items-center gap-2 text-xs font-black text-stone-800">
+                                                <span className="flex items-center gap-2 text-xs font-black text-white">
                                                     {money(origin.total)}
                                                     {loadingOriginKey === origin.accessKey && <Loader2 size={14} className="animate-spin" />}
                                                 </span>
@@ -2084,8 +2081,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                     {step === "participant" && (
                         <section className="space-y-5">
                             <div>
-                                <h2 className="text-lg font-black text-[#1A1A1A]">Participante da nota</h2>
-                                <p className="text-sm text-stone-500">
+                                <h2 className="text-lg font-black text-white">Participante da nota</h2>
+                                <p className="text-sm text-slate-400">
                                     {participantLocked
                                         ? "Nesta operação, o participante vem da NF-e de origem e não pode ser trocado."
                                         : "Busque um cadastro existente ou preencha um novo participante."}
@@ -2093,11 +2090,11 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                             </div>
 
                             {!participantLocked && (
-                            <div className="inline-flex rounded-2xl border border-stone-200 bg-[#F8F7F2] p-1 shadow-sm">
+                            <div className="inline-flex rounded-2xl border border-white/10 bg-white/5 p-1 shadow-sm">
                                 <button
                                     type="button"
                                     onClick={() => setParticipantMode("search")}
-                                    className={`rounded-xl px-4 py-2 text-xs font-black transition ${participantMode === "search" ? "bg-[#1A1A1A] text-[#FACC15] shadow-sm" : "text-stone-700 hover:bg-white"}`}
+                                    className={`rounded-xl px-4 py-2 text-xs font-black transition ${participantMode === "search" ? "bg-amber-500 text-black shadow-sm" : "text-slate-200 hover:bg-black/40"}`}
                                 >
                                     Buscar cadastro
                                 </button>
@@ -2107,7 +2104,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                         setParticipantMode("manual");
                                         setSelectedParticipantId(null);
                                     }}
-                                    className={`rounded-xl px-4 py-2 text-xs font-black transition ${participantMode === "manual" ? "bg-[#1A1A1A] text-[#FACC15] shadow-sm" : "text-stone-700 hover:bg-white"}`}
+                                    className={`rounded-xl px-4 py-2 text-xs font-black transition ${participantMode === "manual" ? "bg-amber-500 text-black shadow-sm" : "text-slate-200 hover:bg-black/40"}`}
                                 >
                                     Novo participante
                                 </button>
@@ -2115,40 +2112,40 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                             )}
 
                             {!participantLocked && participantMode === "search" && (
-                                <div className="rounded-2xl border border-stone-100 bg-[#F8F7F2] p-4">
+                                <div className="rounded-2xl border border-white/5 bg-white/5 p-4">
                                     <label className={labelClass}>Buscar por nome, CPF/CNPJ ou telefone</label>
                                     <div className="relative mt-1">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={15} />
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15} />
                                         <input
                                             value={participantSearch}
                                             onChange={(event) => setParticipantSearch(event.target.value)}
-                                            className="w-full rounded-xl border border-stone-100 bg-white py-2.5 pl-9 pr-3 text-sm font-semibold text-[#1A1A1A] outline-none transition focus:border-[#FACC15] focus:ring-2 focus:ring-yellow-100"
+                                            className="w-full rounded-xl border border-white/5 bg-black/40 py-2.5 pl-9 pr-3 text-sm font-semibold text-white outline-none transition focus:border-[#FACC15] focus:ring-2 focus:ring-yellow-100"
                                             placeholder="Ex: Maria, 000.000.000-00 ou telefone"
                                         />
                                     </div>
 
                                     <div className="mt-3 max-h-64 overflow-y-auto space-y-2">
                                         {participantLoading ? (
-                                            <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-3 text-xs font-bold text-stone-400">
+                                            <div className="flex items-center gap-2 rounded-xl bg-black/40 px-3 py-3 text-xs font-bold text-slate-500">
                                                 <Loader2 size={14} className="animate-spin" /> Buscando cadastros...
                                             </div>
                                         ) : participantSearch.trim().length < 2 ? (
-                                            <p className="rounded-xl bg-white px-3 py-3 text-xs font-bold text-stone-400">Digite pelo menos 2 caracteres para buscar.</p>
+                                            <p className="rounded-xl bg-black/40 px-3 py-3 text-xs font-bold text-slate-500">Digite pelo menos 2 caracteres para buscar.</p>
                                         ) : participantResults.length === 0 ? (
-                                            <p className="rounded-xl bg-white px-3 py-3 text-xs font-bold text-stone-400">Nenhum cadastro encontrado. Use &quot;Novo participante&quot;.</p>
+                                            <p className="rounded-xl bg-black/40 px-3 py-3 text-xs font-bold text-slate-500">Nenhum cadastro encontrado. Use &quot;Novo participante&quot;.</p>
                                         ) : (
                                             participantResults.map((participant) => (
                                                 <button
                                                     key={participant.id}
                                                     type="button"
                                                     onClick={() => selectParticipant(participant)}
-                                                    className={`w-full rounded-xl border p-3 text-left transition ${selectedParticipantId === participant.id ? "border-[#FACC15] bg-yellow-50" : "border-stone-100 bg-white hover:bg-yellow-50"}`}
+                                                    className={`w-full rounded-xl border p-3 text-left transition ${selectedParticipantId === participant.id ? "border-[#FACC15] bg-[#FACC15]/10" : "border-white/5 bg-black/40 hover:bg-white/10"}`}
                                                 >
-                                                    <p className="text-sm font-black text-[#1A1A1A]">{participant.full_name}</p>
-                                                    <p className="mt-1 text-[10px] font-bold text-stone-500">
+                                                    <p className="text-sm font-black text-white">{participant.full_name}</p>
+                                                    <p className="mt-1 text-[10px] font-bold text-slate-400">
                                                         {participant.cpf || "Sem CPF"} {participant.fone_movel || participant.phone ? `| ${participant.fone_movel || participant.phone}` : ""}
                                                     </p>
-                                                    <p className="mt-1 text-[10px] font-medium text-stone-400">
+                                                    <p className="mt-1 text-[10px] font-medium text-slate-500">
                                                         {[participant.rua, participant.numero, participant.bairro, participant.cidade, participant.uf].filter(Boolean).join(", ") || "Endereço não cadastrado"}
                                                     </p>
                                                 </button>
@@ -2158,13 +2155,13 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                 </div>
                             )}
 
-                            <fieldset disabled={participantLocked} className={`rounded-2xl border border-stone-100 bg-white p-4 ${participantLocked ? "opacity-80" : ""}`}>
+                            <fieldset disabled={participantLocked} className={`rounded-2xl border border-white/5 bg-black/40 p-4 ${participantLocked ? "opacity-80" : ""}`}>
                                 <div className="mb-3 flex items-center justify-between gap-3">
                                     <div>
-                                        <h3 className="text-sm font-black text-[#1A1A1A]">Dados do participante</h3>
-                                        <p className="text-xs text-stone-500">Revise e complete antes de emitir.</p>
+                                        <h3 className="text-sm font-black text-white">Dados do participante</h3>
+                                        <p className="text-xs text-slate-400">Revise e complete antes de emitir.</p>
                                     </div>
-                                    {selectedParticipantId && <span className="rounded-full bg-green-100 px-3 py-1 text-[10px] font-black uppercase text-green-700">Cadastro selecionado</span>}
+                                    {selectedParticipantId && <span className="rounded-full bg-green-500/10 px-3 py-1 text-[10px] font-black uppercase text-green-400">Cadastro selecionado</span>}
                                 </div>
 
                                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -2174,8 +2171,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                     <Field label="Inscrição Estadual (se houver)" value={customerForm.inscricaoEstadual} onChange={(v) => updateCustomerForm("inscricaoEstadual", v)} onBlur={saveParticipantOnBlur} />
                                 </div>
 
-                                <div className="mt-4 rounded-2xl border border-stone-100 bg-[#F8F7F2] p-4">
-                                    <h3 className="mb-3 flex items-center gap-2 text-sm font-black text-[#1A1A1A]"><MapPin size={16} /> Endereço fiscal</h3>
+                                <div className="mt-4 rounded-2xl border border-white/5 bg-white/5 p-4">
+                                    <h3 className="mb-3 flex items-center gap-2 text-sm font-black text-white"><MapPin size={16} /> Endereço fiscal</h3>
                                     <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
                                         <div className="xl:col-span-3">
                                             <Field
@@ -2194,7 +2191,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                         <div className="xl:col-span-5"><Field label="Código IBGE" value={customerForm.codigoMunicipioIbge} onChange={(v) => updateCustomerForm("codigoMunicipioIbge", onlyDigits(v).slice(0, 7))} onBlur={saveParticipantOnBlur} /></div>
                                     </div>
                                     {participantSaveState !== "idle" && (
-                                        <p className={`mt-3 text-xs font-bold ${participantSaveState === "error" ? "text-red-600" : participantSaveState === "saving" ? "text-stone-500" : "text-green-700"}`}>
+                                        <p className={`mt-3 text-xs font-bold ${participantSaveState === "error" ? "text-red-600" : participantSaveState === "saving" ? "text-slate-400" : "text-green-400"}`}>
                                             {participantSaveState === "saving" ? "Salvando cliente..." : participantSaveMessage}
                                         </p>
                                     )}
@@ -2207,8 +2204,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                         <section className="space-y-5">
                             <div className="flex items-center justify-between gap-3">
                                 <div>
-                                    <h2 className="text-lg font-black text-[#1A1A1A]">Itens</h2>
-                                    <p className="text-sm text-stone-500">Produtos/mercadorias que serao enviados no XML.</p>
+                                    <h2 className="text-lg font-black text-white">Itens</h2>
+                                    <p className="text-sm text-slate-400">Produtos/mercadorias que serao enviados no XML.</p>
                                 </div>
                                 {!itemsLocked && (
                                     <button type="button" onClick={addItem} className="rounded-xl bg-[#1A1A1A] px-4 py-2 text-xs font-black text-[#FACC15] transition hover:bg-black">
@@ -2219,7 +2216,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
 
                             <div className="space-y-4">
                                 {items.map((item, index) => (
-                                    <div key={index} className="rounded-3xl border border-stone-100 bg-[#F8F7F2] p-5">
+                                    <div key={index} className="rounded-3xl border border-white/5 bg-white/5 p-5">
                                         <div className="space-y-4">
                                             <fieldset disabled={itemsLocked} className={itemsLocked ? "opacity-80" : ""}>
                                             <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:items-end">
@@ -2258,14 +2255,14 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                     />
                                                 </div>
                                                 <div className="xl:col-span-1 flex justify-end">
-                                                    <button type="button" onClick={() => removeItem(index)} className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-stone-400 transition hover:bg-red-50 hover:text-red-500">
+                                                    <button type="button" onClick={() => removeItem(index)} className="flex h-12 w-12 items-center justify-center rounded-2xl bg-black/40 text-slate-500 transition hover:bg-red-500/10 hover:text-red-500">
                                                         <Trash2 size={16} />
                                                     </button>
                                                 </div>
                                             </div>
                                             {ncmOptions?.itemIndex === index && (
-                                                <div className="rounded-2xl border border-yellow-100 bg-white p-3">
-                                                    <p className="text-[10px] font-black uppercase tracking-wider text-stone-400">Escolha o NCM sugerido</p>
+                                                <div className="rounded-2xl border border-yellow-100 bg-black/40 p-3">
+                                                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Escolha o NCM sugerido</p>
                                                     <div className="mt-2 grid gap-2 md:grid-cols-3">
                                                         {ncmOptions.options.map((option) => (
                                                             <button
@@ -2277,10 +2274,10 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                                 void persistProductNcm(index, ncm);
                                                                 setNcmOptions(null);
                                                             }}
-                                                                className="rounded-2xl border border-stone-100 bg-[#F8F7F2] p-3 text-left transition hover:border-[#FACC15] hover:bg-yellow-50"
+                                                                className="rounded-2xl border border-white/5 bg-white/5 p-3 text-left transition hover:border-[#FACC15] hover:bg-white/10"
                                                             >
-                                                                <p className="text-sm font-black text-[#1A1A1A]">{option.code}</p>
-                                                                <p className="mt-1 line-clamp-2 text-[10px] font-semibold text-stone-500">{option.description}</p>
+                                                                <p className="text-sm font-black text-white">{option.code}</p>
+                                                                <p className="mt-1 line-clamp-2 text-[10px] font-semibold text-slate-400">{option.description}</p>
                                                                 <p className="mt-2 text-[10px] font-black text-amber-700">{Math.round(option.confidence || 0)}% confianca</p>
                                                             </button>
                                                         ))}
@@ -2320,14 +2317,14 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                     />
                                                 </div>
                                                 <div className="xl:col-span-3"><NumberField label="Unit." value={item.valorUnitario} onChange={(v) => updateItem(index, { valorUnitario: v })} disabled={itemsLocked} /></div>
-                                                <div className="xl:col-span-3 rounded-2xl bg-white px-4 py-3 text-right">
-                                                    <p className="text-[10px] font-black uppercase tracking-wider text-stone-400">Total do item</p>
-                                                    <p className="mt-1 text-lg font-black text-[#1A1A1A]">{money(item.valorTotal)}</p>
+                                                <div className="xl:col-span-3 rounded-2xl bg-black/40 px-4 py-3 text-right">
+                                                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Total do item</p>
+                                                    <p className="mt-1 text-lg font-black text-white">{money(item.valorTotal)}</p>
                                                 </div>
                                             </div>
                                             {operation === "advanced" && (
-                                                <div className="space-y-4 rounded-2xl border border-amber-200 bg-white p-4">
-                                                    <p className="text-[11px] font-black uppercase tracking-wider text-amber-800">Tributacao assistida do item</p>
+                                                <div className="space-y-4 rounded-2xl border border-amber-200 bg-black/40 p-4">
+                                                    <p className="text-[11px] font-black uppercase tracking-wider text-amber-300">Tributacao assistida do item</p>
                                                     <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                                                         <NumberField label="Origem (0-8)" value={Number(item.origem || 0)} onChange={(v) => updateItem(index, { origem: v })} />
                                                         <div>
@@ -2372,22 +2369,22 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                     {step === "transport" && (
                         <section className="space-y-5">
                             <div className="flex items-center gap-3">
-                                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-stone-100 text-stone-600">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-slate-300">
                                     <Truck size={20} />
                                 </div>
                                 <div>
-                                    <h2 className="text-lg font-black text-[#1A1A1A]">Transporte e observações</h2>
-                                    <p className="text-sm text-stone-500">Parametros adicionais que seguem no XML da NF-e.</p>
+                                    <h2 className="text-lg font-black text-white">Transporte e observações</h2>
+                                    <p className="text-sm text-slate-400">Parametros adicionais que seguem no XML da NF-e.</p>
                                 </div>
                             </div>
 
                             {operation !== "advanced" ? (
-                                <div className="rounded-2xl border border-stone-200 bg-[#F8F7F2] p-5 text-sm font-semibold text-stone-600">
+                                <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-sm font-semibold text-slate-300">
                                     Nesta etapa os templates guiados continuam usando sem ocorrência de transporte e suas observações padrão.
                                 </div>
                             ) : (
                                 <>
-                                    <div className="rounded-2xl border border-stone-200 bg-[#F8F7F2] p-4">
+                                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                                         <label className={labelClass}>Modalidade do frete</label>
                                         <select value={modFrete} onChange={(e) => setModFrete(Number(e.target.value))} className={fieldClass}>
                                             <option value={9}>9 - Sem transporte</option>
@@ -2406,8 +2403,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                         )}
                                     </div>
 
-                                    <div className="rounded-2xl border border-stone-200 bg-[#F8F7F2] p-4">
-                                        <p className="text-sm font-black text-[#1A1A1A]">Parametros fiscais</p>
+                                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                                        <p className="text-sm font-black text-white">Parametros fiscais</p>
                                         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
                                             <div>
                                                 <label className={labelClass}>Presença</label>
@@ -2473,8 +2470,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                     {step === "review" && (
                         <section className="space-y-5">
                             <div>
-                                <h2 className="text-lg font-black text-[#1A1A1A]">Revisão</h2>
-                                <p className="text-sm text-stone-500">Confira os dados principais antes de transmitir.</p>
+                                <h2 className="text-lg font-black text-white">Revisão</h2>
+                                <p className="text-sm text-slate-400">Confira os dados principais antes de transmitir.</p>
                             </div>
                             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                                 <ReviewCard label="Operação" value={`${currentOperation.title} - ${purposeLabel(purpose)}`} />
@@ -2498,31 +2495,31 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                 <ReviewCard label="Total" value={money(total)} />
                             </div>
                             {pendingIssues.length > 0 ? (
-                                <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
-                                    <p className="font-black text-red-800">Pendências antes de emitir</p>
-                                    <ul className="mt-2 space-y-1 text-xs font-bold text-red-700">
+                                <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4">
+                                    <p className="font-black text-red-300">Pendências antes de emitir</p>
+                                    <ul className="mt-2 space-y-1 text-xs font-bold text-red-400">
                                         {pendingIssues.map((issue) => <li key={issue}>{issue}</li>)}
                                     </ul>
                                 </div>
                             ) : (
-                                <div className="rounded-2xl border border-green-100 bg-green-50 p-4 text-sm font-black text-green-800">
+                                <div className="rounded-2xl border border-green-500/20 bg-green-500/10 p-4 text-sm font-black text-green-300">
                                     Dados mínimos completos para emissão em homologação.
                                 </div>
                             )}
                             {operation === "advanced" && aiAudit && (
                                 <div className={`rounded-2xl border p-4 ${
                                     aiAudit.status === "inconsistente"
-                                        ? "border-red-200 bg-red-50"
+                                        ? "border-red-500/20 bg-red-500/10"
                                         : aiAudit.status === "atencao"
-                                            ? "border-amber-200 bg-amber-50"
-                                            : "border-green-200 bg-green-50"
+                                            ? "border-amber-200 bg-amber-500/10"
+                                            : "border-green-200 bg-green-500/10"
                                 }`}>
                                     <p className="font-black text-stone-900">Auditoria da operação assistida</p>
-                                    <p className="mt-1 text-sm font-semibold text-stone-700">{aiAudit.resumo}</p>
+                                    <p className="mt-1 text-sm font-semibold text-slate-200">{aiAudit.resumo}</p>
                                     {aiAudit.achados.length > 0 && (
                                         <div className="mt-3 space-y-2">
                                             {aiAudit.achados.map((finding, index) => (
-                                                <div key={`${finding.titulo || "achado"}-${index}`} className="rounded-xl bg-white/80 p-3 text-xs text-stone-700">
+                                                <div key={`${finding.titulo || "achado"}-${index}`} className="rounded-xl bg-black/80 p-3 text-xs text-slate-200">
                                                     <p className="font-black">{finding.titulo || "Ponto para revisar"}</p>
                                                     {finding.detalhe && <p className="mt-1">{finding.detalhe}</p>}
                                                     {finding.sugestao && <p className="mt-1 font-bold">Sugestao: {finding.sugestao}</p>}
@@ -2530,8 +2527,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                             ))}
                                         </div>
                                     )}
-                                    <p className="mt-3 text-xs font-bold text-stone-600">{aiAudit.aviso}</p>
-                                    <label className="mt-4 flex items-start gap-2 rounded-xl border border-stone-200 bg-white p-3 text-sm font-semibold text-stone-800">
+                                    <p className="mt-3 text-xs font-bold text-slate-300">{aiAudit.aviso}</p>
+                                    <label className="mt-4 flex items-start gap-2 rounded-xl border border-white/10 bg-black/40 p-3 text-sm font-semibold text-white">
                                         <input
                                             type="checkbox"
                                             checked={advancedAuditConfirmed}
@@ -2545,8 +2542,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                         </section>
                     )}
 
-                    <div className="mt-6 flex items-center justify-between border-t border-stone-100 pt-4">
-                        <button type="button" onClick={goBack} disabled={stepIndex === 0} className="flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm font-black text-stone-600 transition hover:bg-stone-50 disabled:opacity-40">
+                    <div className="mt-6 flex items-center justify-between border-t border-white/5 pt-4">
+                        <button type="button" onClick={goBack} disabled={stepIndex === 0} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-4 py-2 text-sm font-black text-slate-300 transition hover:bg-white/5 disabled:opacity-40">
                             <ChevronLeft size={16} /> Voltar
                         </button>
                         {step !== "review" ? (
@@ -2554,7 +2551,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                 Próximo <ChevronRight size={16} />
                             </button>
                         ) : (
-                            <button type="button" disabled={pendingIssues.length > 0 || emitting || aiAuditLoading || loadingSaleData} onClick={handleEmit} className="flex items-center gap-2 rounded-xl bg-[#FACC15] px-4 py-2 text-sm font-black text-[#1A1A1A] transition hover:bg-yellow-300 disabled:opacity-40">
+                            <button type="button" disabled={pendingIssues.length > 0 || emitting || aiAuditLoading || loadingSaleData} onClick={handleEmit} className="flex items-center gap-2 rounded-xl bg-[#FACC15] px-4 py-2 text-sm font-black text-white transition hover:bg-yellow-300 disabled:opacity-40">
                                 {(emitting || aiAuditLoading) ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                                 {aiAuditLoading
                                     ? `Tentativa ${aiAuditAttempt || 1}/6`
@@ -2579,8 +2576,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                 </main>
 
                 <aside className="space-y-3">
-                    <div className="rounded-2xl border border-stone-100 bg-white p-4 shadow-sm">
-                        <p className="text-xs font-black uppercase text-stone-400">Resumo</p>
+                    <div className="rounded-2xl border border-white/5 bg-black/40 p-4 shadow-sm">
+                        <p className="text-xs font-black uppercase text-slate-500">Resumo</p>
                         <div className="mt-3 space-y-2 text-sm">
                             <SummaryRow label="Operação" value={currentOperation.title} />
                             <SummaryRow label="Finalidade" value={purposeLabel(purpose)} />
@@ -2603,12 +2600,12 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                         </div>
                     </div>
 
-                    <div className="rounded-2xl border border-stone-100 bg-white p-4 shadow-sm">
+                    <div className="rounded-2xl border border-white/5 bg-black/40 p-4 shadow-sm">
                         {operation === "bonus" || operation === "return" || operation === "shipment" || operation === "transfer" ? (
                             <>
                                 <p className={labelClass}>Pagamento</p>
-                                <p className="mt-2 rounded-2xl bg-[#F8F7F2] px-4 py-3 text-sm font-black text-stone-700">Sem pagamento</p>
-                                <p className="mt-2 text-[10px] font-semibold text-stone-400">O template envia tPag 90 e vPag 0.</p>
+                                <p className="mt-2 rounded-2xl bg-white/5 px-4 py-3 text-sm font-black text-slate-200">Sem pagamento</p>
+                                <p className="mt-2 text-[10px] font-semibold text-slate-500">O template envia tPag 90 e vPag 0.</p>
                             </>
                         ) : (
                             <>
@@ -2625,12 +2622,12 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                         )}
                     </div>
 
-                    <div className={`rounded-2xl border p-4 shadow-sm ${pendingIssues.length ? "border-red-100 bg-red-50" : "border-green-100 bg-green-50"}`}>
-                        <p className={`text-xs font-black uppercase ${pendingIssues.length ? "text-red-500" : "text-green-600"}`}>Validação</p>
+                    <div className={`rounded-2xl border p-4 shadow-sm ${pendingIssues.length ? "border-red-500/20 bg-red-500/10" : "border-green-500/20 bg-green-500/10"}`}>
+                        <p className={`text-xs font-black uppercase ${pendingIssues.length ? "text-red-500" : "text-green-400"}`}>Validação</p>
                         {pendingIssues.length ? (
-                            <p className="mt-2 text-sm font-bold text-red-800">{pendingIssues.length} pendencia(s) antes de emitir.</p>
+                            <p className="mt-2 text-sm font-bold text-red-300">{pendingIssues.length} pendencia(s) antes de emitir.</p>
                         ) : (
-                            <p className="mt-2 text-sm font-bold text-green-800">Pronto para homologação.</p>
+                            <p className="mt-2 text-sm font-bold text-green-300">Pronto para homologação.</p>
                         )}
                     </div>
                 </aside>
@@ -2692,29 +2689,29 @@ function SaleSearchModal({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-            <div className="max-h-[86vh] w-full max-w-3xl overflow-hidden rounded-3xl border border-white/10 bg-white shadow-2xl">
-                <div className="flex items-center justify-between gap-3 border-b border-stone-100 p-5">
+            <div className="max-h-[86vh] w-full max-w-3xl overflow-hidden rounded-3xl border border-white/10 bg-black/40 shadow-2xl">
+                <div className="flex items-center justify-between gap-3 border-b border-white/5 p-5">
                     <div>
-                        <p className="text-lg font-black text-[#1A1A1A]">Buscar venda</p>
-                        <p className="mt-1 text-xs font-bold text-stone-500">As vendas mais recentes aparecem primeiro.</p>
+                        <p className="text-lg font-black text-white">Buscar venda</p>
+                        <p className="mt-1 text-xs font-bold text-slate-400">As vendas mais recentes aparecem primeiro.</p>
                     </div>
                     <button
                         type="button"
                         onClick={onClose}
                         disabled={applyingId !== null}
-                        className="rounded-xl border border-stone-200 px-3 py-2 text-xs font-black text-stone-600 hover:bg-stone-50 disabled:opacity-40"
+                        className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black text-slate-300 hover:bg-white/5 disabled:opacity-40"
                     >
                         Fechar
                     </button>
                 </div>
 
-                <div className="border-b border-stone-100 p-4">
+                <div className="border-b border-white/5 p-4">
                     <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={15} />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15} />
                         <input
                             value={query}
                             onChange={(event) => setQuery(event.target.value)}
-                            className="w-full rounded-xl border border-stone-200 py-2 pl-9 pr-3 text-sm font-bold outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20"
+                            className="w-full rounded-xl border border-white/10 py-2 pl-9 pr-3 text-sm font-bold outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20"
                             placeholder="Número da venda, cliente ou CPF/CNPJ"
                             autoFocus
                         />
@@ -2723,11 +2720,11 @@ function SaleSearchModal({
 
                 <div className="max-h-[58vh] overflow-y-auto p-4">
                     {loading ? (
-                        <div className="flex items-center gap-2 rounded-2xl bg-stone-50 p-4 text-sm font-bold text-stone-500">
+                        <div className="flex items-center gap-2 rounded-2xl bg-white/5 p-4 text-sm font-bold text-slate-400">
                             <Loader2 size={16} className="animate-spin" /> Buscando vendas...
                         </div>
                     ) : sales.length === 0 ? (
-                        <div className="rounded-2xl bg-stone-50 p-5 text-center text-sm font-bold text-stone-500">
+                        <div className="rounded-2xl bg-white/5 p-5 text-center text-sm font-bold text-slate-400">
                             Nenhuma venda elegivel encontrada.
                         </div>
                     ) : (
@@ -2738,27 +2735,27 @@ function SaleSearchModal({
                                     type="button"
                                     onClick={() => void onSelect(sale)}
                                     disabled={applyingId !== null}
-                                    className="w-full rounded-2xl border border-stone-200 bg-white p-4 text-left transition hover:border-[#FACC15] hover:bg-yellow-50/40 disabled:opacity-50"
+                                    className="w-full rounded-2xl border border-white/10 bg-black/40 p-4 text-left transition hover:border-[#FACC15] hover:bg-white/10 disabled:opacity-50"
                                 >
                                     <div className="flex items-center justify-between gap-3">
                                         <div>
                                             <div className="flex flex-wrap items-center gap-2">
-                                                <p className="font-black text-[#1A1A1A]">Venda #{sale.id}</p>
+                                                <p className="font-black text-white">Venda #{sale.id}</p>
                                                 {isToday(sale.created_at) && (
-                                                    <span className="rounded-full bg-[#FACC15] px-2 py-1 text-[9px] font-black uppercase text-[#1A1A1A]">
+                                                    <span className="rounded-full bg-[#FACC15] px-2 py-1 text-[9px] font-black uppercase text-white">
                                                         Hoje
                                                     </span>
                                                 )}
                                             </div>
-                                            <p className="mt-1 text-xs font-bold text-stone-500">
+                                            <p className="mt-1 text-xs font-bold text-slate-400">
                                                 {sale.clients?.nome || "Cliente não informado"}
                                             </p>
-                                            <p className="mt-1 text-[10px] font-semibold text-stone-400">
+                                            <p className="mt-1 text-[10px] font-semibold text-slate-500">
                                                 {new Date(sale.created_at).toLocaleString("pt-BR")}
                                             </p>
                                         </div>
                                         <div className="text-right">
-                                            <p className="text-sm font-black text-[#1A1A1A]">{money(sale.total)}</p>
+                                            <p className="text-sm font-black text-white">{money(sale.total)}</p>
                                             {applyingId === sale.id && <Loader2 size={14} className="ml-auto mt-2 animate-spin text-amber-600" />}
                                         </div>
                                     </div>
@@ -2795,29 +2792,29 @@ function CloneInvoiceModal({
 }) {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-            <div className="max-h-[86vh] w-full max-w-3xl overflow-hidden rounded-3xl border border-white/10 bg-white shadow-2xl">
-                <div className="flex items-center justify-between gap-3 border-b border-stone-100 p-5">
+            <div className="max-h-[86vh] w-full max-w-3xl overflow-hidden rounded-3xl border border-white/10 bg-black/40 shadow-2xl">
+                <div className="flex items-center justify-between gap-3 border-b border-white/5 p-5">
                     <div>
-                        <p className="text-lg font-black text-[#1A1A1A]">Clonar NF-e</p>
-                        <p className="mt-1 text-xs font-bold text-stone-500">Notas emitidas em homologação por esta loja.</p>
+                        <p className="text-lg font-black text-white">Clonar NF-e</p>
+                        <p className="mt-1 text-xs font-bold text-slate-400">Notas emitidas em homologação por esta loja.</p>
                     </div>
                     <button
                         type="button"
                         onClick={onClose}
                         disabled={applyingId !== null}
-                        className="rounded-xl border border-stone-200 px-3 py-2 text-xs font-black text-stone-600 hover:bg-stone-50 disabled:opacity-40"
+                        className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black text-slate-300 hover:bg-white/5 disabled:opacity-40"
                     >
                         Fechar
                     </button>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 border-b border-stone-100 p-4 md:grid-cols-[1fr_180px]">
+                <div className="grid grid-cols-1 gap-3 border-b border-white/5 p-4 md:grid-cols-[1fr_180px]">
                     <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={15} />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15} />
                         <input
                             value={query}
                             onChange={(event) => setQuery(event.target.value)}
-                            className="w-full rounded-xl border border-stone-200 py-2 pl-9 pr-3 text-sm font-bold outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20"
+                            className="w-full rounded-xl border border-white/10 py-2 pl-9 pr-3 text-sm font-bold outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20"
                             placeholder="Número, destinatário, documento ou chave"
                             autoFocus
                         />
@@ -2825,7 +2822,7 @@ function CloneInvoiceModal({
                     <select
                         value={status}
                         onChange={(event) => setStatus(event.target.value as "authorized" | "error" | "rejected" | "all")}
-                        className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm font-bold text-stone-700 outline-none focus:border-[#FACC15]"
+                        className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm font-bold text-slate-200 outline-none focus:border-[#FACC15]"
                     >
                         <option value="authorized">Autorizadas</option>
                         <option value="rejected">Rejeitadas</option>
@@ -2836,11 +2833,11 @@ function CloneInvoiceModal({
 
                 <div className="max-h-[58vh] overflow-y-auto p-4">
                     {loading ? (
-                        <div className="flex items-center gap-2 rounded-2xl bg-stone-50 p-4 text-sm font-bold text-stone-500">
+                        <div className="flex items-center gap-2 rounded-2xl bg-white/5 p-4 text-sm font-bold text-slate-400">
                             <Loader2 size={16} className="animate-spin" /> Buscando notas...
                         </div>
                     ) : invoices.length === 0 ? (
-                        <div className="rounded-2xl bg-stone-50 p-5 text-center text-sm font-bold text-stone-500">
+                        <div className="rounded-2xl bg-white/5 p-5 text-center text-sm font-bold text-slate-400">
                             Nenhuma NF-e encontrada para os filtros atuais.
                         </div>
                     ) : (
@@ -2856,26 +2853,26 @@ function CloneInvoiceModal({
                                         type="button"
                                         onClick={() => void onSelect(invoice)}
                                         disabled={applyingId !== null}
-                                        className="w-full rounded-2xl border border-stone-200 bg-white p-4 text-left transition hover:border-[#FACC15] hover:bg-yellow-50/40 disabled:opacity-50"
+                                        className="w-full rounded-2xl border border-white/10 bg-black/40 p-4 text-left transition hover:border-[#FACC15] hover:bg-white/10 disabled:opacity-50"
                                     >
                                         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                             <div>
                                                 <div className="flex flex-wrap items-center gap-2">
-                                                    <p className="font-black text-[#1A1A1A]">
+                                                    <p className="font-black text-white">
                                                         NF-e {invoice.numero || "-"} {invoice.serie ? `Série ${invoice.serie}` : ""}
                                                     </p>
-                                                    <span className="rounded-full bg-stone-100 px-2 py-1 text-[9px] font-black uppercase text-stone-500">
+                                                    <span className="rounded-full bg-white/10 px-2 py-1 text-[9px] font-black uppercase text-slate-400">
                                                         {invoice.status || "sem status"}
                                                     </span>
                                                 </div>
-                                                <p className="mt-1 text-xs font-bold text-stone-500">
+                                                <p className="mt-1 text-xs font-bold text-slate-400">
                                                     {invoice.destinatario_nome || "Destinatário sem nome"} | {invoice.destinatario_cnpj || "Documento pendente"}
                                                 </p>
-                                                <p className="mt-1 text-[11px] font-black text-blue-700">{nature}</p>
+                                                <p className="mt-1 text-[11px] font-black text-blue-400">{nature}</p>
                                             </div>
                                             <div className="text-left md:text-right">
-                                                <p className="text-sm font-black text-[#1A1A1A]">{money(invoice.valor_total)}</p>
-                                                <p className="mt-1 text-[11px] font-bold text-stone-500">
+                                                <p className="text-sm font-black text-white">{money(invoice.valor_total)}</p>
+                                                <p className="mt-1 text-[11px] font-bold text-slate-400">
                                                     {invoice.data_emissao
                                                         ? new Date(invoice.data_emissao).toLocaleDateString("pt-BR")
                                                         : "Data não informada"}
@@ -2898,8 +2895,8 @@ function CloneInvoiceModal({
     );
 }
 
-const labelClass = "ml-1 text-[10px] font-black uppercase tracking-wider text-stone-400";
-const fieldClass = "mt-1.5 w-full rounded-2xl border border-stone-100 bg-white px-4 py-3 text-sm font-semibold text-[#1A1A1A] outline-none transition focus:border-[#FACC15] focus:ring-2 focus:ring-yellow-100";
+const labelClass = "ml-1 text-[10px] font-black uppercase tracking-wider text-slate-500";
+const fieldClass = "mt-1.5 w-full rounded-2xl border border-white/5 bg-black/40 px-4 py-3 text-sm font-semibold text-white outline-none transition focus:border-[#FACC15] focus:ring-2 focus:ring-yellow-100";
 
 function Field({
     label,
@@ -2925,7 +2922,7 @@ function Field({
                 onBlur={onBlur}
                 disabled={disabled}
                 title={title}
-                className={`${fieldClass} disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-500`}
+                className={`${fieldClass} disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-400`}
             />
         </label>
     );
@@ -2977,7 +2974,7 @@ function NumberField({
                 value={value}
                 disabled={disabled}
                 onChange={(event) => onChange(Number(event.target.value))}
-                className={`${fieldClass} disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-500`}
+                className={`${fieldClass} disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-400`}
             />
         </label>
     );
@@ -2989,7 +2986,7 @@ function UnitSelect({ value, onChange, disabled }: { value: string; onChange: (v
     return (
         <label className="block">
             <span className={labelClass}>Unidade</span>
-            <select value={currentValue} disabled={disabled} onChange={(event) => onChange(event.target.value)} className={`${fieldClass} disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-500`}>
+            <select value={currentValue} disabled={disabled} onChange={(event) => onChange(event.target.value)} className={`${fieldClass} disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-400`}>
                 {UNIT_OPTIONS.map((unit) => (
                     <option key={unit} value={unit}>{unit}</option>
                 ))}
@@ -3018,15 +3015,15 @@ function NcmField({
 
     return (
         <label className="block">
-            <span className="ml-1 flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-stone-400">
+            <span className="ml-1 flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-slate-500">
                 NCM
                 {status && (
                     <span className={`rounded-full px-2 py-0.5 text-[9px] ${
                         status.tone === "green"
-                            ? "bg-emerald-100 text-emerald-700"
+                            ? "bg-emerald-500/10 text-emerald-700"
                             : status.tone === "yellow"
-                                ? "bg-amber-100 text-amber-700"
-                                : "bg-red-100 text-red-700"
+                                ? "bg-amber-500/10 text-amber-700"
+                                : "bg-red-500/10 text-red-400"
                     }`}>
                         {status.label}{typeof status.confidence === "number" ? ` ${status.confidence}%` : ""}
                     </span>
@@ -3038,14 +3035,14 @@ function NcmField({
                     onChange={(event) => onChange(event.target.value)}
                     onBlur={onBlur}
                     maxLength={8}
-                    className={`w-full rounded-2xl border border-stone-100 bg-white py-3 pl-4 text-sm font-semibold tracking-wider text-[#1A1A1A] outline-none transition focus:border-[#FACC15] focus:ring-2 focus:ring-yellow-100 ${hasNcm ? "pr-4" : "pr-12"}`}
+                    className={`w-full rounded-2xl border border-white/5 bg-black/40 py-3 pl-4 text-sm font-semibold tracking-wider text-white outline-none transition focus:border-[#FACC15] focus:ring-2 focus:ring-yellow-100 ${hasNcm ? "pr-4" : "pr-12"}`}
                 />
                 {!hasNcm && (
                     <button
                         type="button"
                         onClick={onFetch}
                         disabled={loading}
-                        className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-xl text-stone-500 transition hover:bg-yellow-50 hover:text-[#1A1A1A] disabled:opacity-60"
+                        className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-xl text-slate-400 transition hover:bg-white/10 hover:text-white disabled:opacity-60"
                         title="Sugerir NCM com IA"
                         aria-label="Sugerir NCM com IA"
                     >
@@ -3060,17 +3057,17 @@ function NcmField({
 function SummaryRow({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
     return (
         <div className="flex justify-between gap-3">
-            <span className="text-stone-500">{label}</span>
-            <span className={`text-right font-black ${strong ? "text-[#1A1A1A]" : "text-stone-800"}`}>{value}</span>
+            <span className="text-slate-400">{label}</span>
+            <span className={`text-right font-black ${strong ? "text-white" : "text-white"}`}>{value}</span>
         </div>
     );
 }
 
 function ReviewCard({ label, value }: { label: string; value: string }) {
     return (
-        <div className="rounded-2xl border border-stone-100 bg-[#F8F7F2] p-4">
-            <p className="text-[10px] font-black uppercase tracking-wider text-stone-400">{label}</p>
-            <p className="mt-1 text-sm font-black text-[#1A1A1A]">{value}</p>
+        <div className="rounded-2xl border border-white/5 bg-white/5 p-4">
+            <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{label}</p>
+            <p className="mt-1 text-sm font-black text-white">{value}</p>
         </div>
     );
 }
@@ -3119,13 +3116,13 @@ function ProductField({
                 className={fieldClass}
             />
             {open && value.trim().length >= 2 && (
-                <div className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-2xl border border-stone-100 bg-white shadow-xl">
+                <div className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-2xl border border-white/5 bg-black/40 shadow-xl">
                     {loading ? (
-                        <div className="flex items-center gap-2 px-3 py-3 text-xs text-stone-400">
+                        <div className="flex items-center gap-2 px-3 py-3 text-xs text-slate-500">
                             <Loader2 size={14} className="animate-spin" /> Buscando...
                         </div>
                     ) : results.length === 0 ? (
-                        <div className="px-3 py-3 text-xs text-stone-400">Nenhum produto encontrado.</div>
+                        <div className="px-3 py-3 text-xs text-slate-500">Nenhum produto encontrado.</div>
                     ) : (
                         results.map((product) => (
                             <button
@@ -3136,10 +3133,10 @@ function ProductField({
                                     onSelect(product);
                                     setOpen(false);
                                 }}
-                                className="w-full px-3 py-2 text-left transition hover:bg-yellow-50"
+                                className="w-full px-3 py-2 text-left transition hover:bg-white/10"
                             >
-                                <p className="text-xs font-black text-[#1A1A1A]">{product.nome}</p>
-                                <p className="text-[10px] text-stone-400">{money(Number(product.preco_venda || 0))} | NCM {product.ncm || "não informado"}</p>
+                                <p className="text-xs font-black text-white">{product.nome}</p>
+                                <p className="text-[10px] text-slate-500">{money(Number(product.preco_venda || 0))} | NCM {product.ncm || "não informado"}</p>
                             </button>
                         ))
                     )}

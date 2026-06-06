@@ -183,17 +183,17 @@ export default function EmitirNotaPage({ params }: { params: { storeId: string }
             {/* HEADER */}
             <div className="flex items-center gap-3 mb-6">
                 <Link href={`/dashboard/loja/${storeId}/fiscal`}>
-                    <button className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-sm hover:bg-stone-50 text-stone-600"><ArrowLeft size={16} /></button>
+                    <button className="w-8 h-8 bg-black/40 rounded-full flex items-center justify-center shadow-sm hover:bg-white/5 text-slate-300"><ArrowLeft size={16} /></button>
                 </Link>
                 <div>
                     <h1 className="text-xl font-bold text-[#1A1A1A]">Nova Emissão Fiscal</h1>
-                    <p className="text-stone-400 text-xs">NFC-e (Consumidor)</p>
+                    <p className="text-slate-500 text-xs">NFC-e (Consumidor)</p>
                 </div>
             </div>
 
             {/* STEP 1: SELEÇÃO */}
             {step === 1 && (
-                <div className="bg-white p-4 rounded-2xl border border-stone-100 shadow-sm">
+                <div className="bg-black/40 p-4 rounded-2xl border border-white/5 shadow-sm">
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="font-bold text-sm text-[#1A1A1A] flex items-center gap-2"><FileText size={16} /> Importar Venda Pendente</h3>
                         <button onClick={handleAvulsa} className="text-xs font-bold text-[#FACC15] bg-[#1A1A1A] px-3 py-1.5 rounded-full hover:scale-105 transition">
@@ -204,24 +204,24 @@ export default function EmitirNotaPage({ params }: { params: { storeId: string }
                     {loadingSales ? (
                         <div className="py-8 flex justify-center"><Loader2 className="animate-spin text-[#FACC15]" size={20} /></div>
                     ) : pendingSales.length === 0 ? (
-                        <div className="text-center py-8 text-stone-400 text-sm">
+                        <div className="text-center py-8 text-slate-500 text-sm">
                             <CheckCircle size={28} className="mx-auto mb-2 text-green-200" />
                             <p>Nenhuma venda pendente de nota.</p>
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                             {pendingSales.map(sale => (
-                                <div key={sale.id} className="border border-stone-100 p-3 rounded-xl flex justify-between items-center hover:bg-[#F9F8F4] transition cursor-pointer" onClick={() => handleSelectSale(sale)}>
+                                <div key={sale.id} className="border border-white/5 p-3 rounded-xl flex justify-between items-center hover:bg-[#F9F8F4] transition cursor-pointer" onClick={() => handleSelectSale(sale)}>
                                     <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 bg-stone-100 rounded-full flex items-center justify-center text-stone-500 font-bold text-[10px]">#{sale.id}</div>
+                                        <div className="w-8 h-8 bg-white/10 rounded-full flex items-center justify-center text-slate-400 font-bold text-[10px]">#{sale.id}</div>
                                         <div>
                                             <p className="font-bold text-xs text-[#1A1A1A]">{sale.clients?.nome || "Consumidor"}</p>
-                                            <p className="text-[10px] text-stone-500">{new Date(sale.created_at).toLocaleDateString()}</p>
+                                            <p className="text-[10px] text-slate-400">{new Date(sale.created_at).toLocaleDateString()}</p>
                                         </div>
                                     </div>
                                     <div className="text-right">
                                         <p className="font-bold text-xs text-[#1A1A1A]">R$ {sale.total.toFixed(2)}</p>
-                                        <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded">{sale.status}</span>
+                                        <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded">{sale.status}</span>
                                     </div>
                                 </div>
                             ))}
@@ -238,22 +238,22 @@ export default function EmitirNotaPage({ params }: { params: { storeId: string }
                     <div className="lg:col-span-3 space-y-4">
 
                         {/* DADOS CLIENTE */}
-                        <div className="bg-white p-4 rounded-2xl border border-stone-100 shadow-sm">
+                        <div className="bg-black/40 p-4 rounded-2xl border border-white/5 shadow-sm">
                             <h3 className="font-bold text-sm text-[#1A1A1A] mb-3 flex items-center gap-2"><User size={14} /> Destinatário</h3>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="text-[10px] font-bold text-stone-400 ml-1">NOME</label>
+                                    <label className="text-[10px] font-bold text-slate-500 ml-1">NOME</label>
                                     <input value={clienteNome} onChange={e => setClienteNome(e.target.value)} className="w-full bg-[#F8F7F2] p-2 rounded-lg text-sm font-medium outline-none" placeholder="Consumidor Final" />
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-bold text-stone-400 ml-1">CPF / CNPJ</label>
+                                    <label className="text-[10px] font-bold text-slate-500 ml-1">CPF / CNPJ</label>
                                     <input value={clienteDoc} onChange={e => setClienteDoc(e.target.value)} className="w-full bg-[#F8F7F2] p-2 rounded-lg text-sm font-medium outline-none" placeholder="000.000.000-00" />
                                 </div>
                             </div>
                         </div>
 
                         {/* PRODUTOS (NFC-e) */}
-                        <div className="bg-white p-4 rounded-2xl border border-stone-100 shadow-sm">
+                        <div className="bg-black/40 p-4 rounded-2xl border border-white/5 shadow-sm">
                             <h3 className="font-bold text-sm text-[#1A1A1A] mb-3 flex items-center gap-2"><ShoppingCart size={14} /> Produtos</h3>
                             <div className="space-y-2">
                                 {itens.map((item, idx) => (
@@ -269,7 +269,7 @@ export default function EmitirNotaPage({ params }: { params: { storeId: string }
                                                         newItens[idx].descricao = val;
                                                         setItens(newItens);
                                                     }}
-                                                    className="w-full bg-white p-1.5 rounded-lg text-xs font-medium outline-none border border-transparent focus:border-[#FACC15]"
+                                                    className="w-full bg-black/40 p-1.5 rounded-lg text-xs font-medium outline-none border border-transparent focus:border-[#FACC15]"
                                                     placeholder="Buscar Produto..."
                                                     onFocus={() => setFocusedField({ type: 'prod', idx })}
                                                     onBlur={() => setTimeout(() => setFocusedField(null), 200)}
@@ -277,7 +277,7 @@ export default function EmitirNotaPage({ params }: { params: { storeId: string }
 
                                                 {/* Botão de Busca Rápida (Simulação de Dropdown Customizado) */}
                                                 {focusedField?.type === 'prod' && focusedField?.idx === idx && (
-                                                    <div className="absolute top-full left-0 w-full bg-white shadow-xl rounded-lg z-[100] max-h-48 overflow-y-auto border border-stone-100">
+                                                    <div className="absolute top-full left-0 w-full bg-black/40 shadow-xl rounded-lg z-[100] max-h-48 overflow-y-auto border border-white/5">
                                                         <ProductSearch
                                                             query={item.descricao}
                                                             onSelect={(prod) => {
@@ -298,7 +298,7 @@ export default function EmitirNotaPage({ params }: { params: { storeId: string }
                                             <div className="col-span-2">
                                                 <input value={item.ncm} onChange={e => {
                                                     const newItens = [...itens]; newItens[idx].ncm = e.target.value; setItens(newItens);
-                                                }} className="w-full bg-white p-1.5 rounded-lg text-xs font-medium outline-none text-center" placeholder="NCM" />
+                                                }} className="w-full bg-black/40 p-1.5 rounded-lg text-xs font-medium outline-none text-center" placeholder="NCM" />
                                             </div>
                                             <div className="col-span-1">
                                                 <input type="number" value={item.quantidade} onChange={e => {
@@ -307,7 +307,7 @@ export default function EmitirNotaPage({ params }: { params: { storeId: string }
                                                     newItens[idx].quantidade = qtd;
                                                     newItens[idx].valor_total = qtd * newItens[idx].valor_unitario;
                                                     setItens(newItens);
-                                                }} className="w-full bg-white p-1.5 rounded-lg text-xs font-medium outline-none text-center" placeholder="Qtd" />
+                                                }} className="w-full bg-black/40 p-1.5 rounded-lg text-xs font-medium outline-none text-center" placeholder="Qtd" />
                                             </div>
                                             <div className="col-span-2">
                                                 <input
@@ -321,22 +321,22 @@ export default function EmitirNotaPage({ params }: { params: { storeId: string }
                                                         newItens[idx].valor_total = val * newItens[idx].quantidade;
                                                         setItens(newItens);
                                                     }}
-                                                    className="w-full bg-white p-1.5 rounded-lg text-xs font-medium outline-none text-right"
+                                                    className="w-full bg-black/40 p-1.5 rounded-lg text-xs font-medium outline-none text-right"
                                                     placeholder="Valor Unit."
                                                 />
                                             </div>
                                             <div className="col-span-1">
-                                                <div className="bg-stone-100 p-1.5 rounded-lg text-xs font-bold text-right">R$ {item.valor_total.toFixed(2)}</div>
+                                                <div className="bg-white/10 p-1.5 rounded-lg text-xs font-bold text-right">R$ {item.valor_total.toFixed(2)}</div>
                                             </div>
                                             <div className="col-span-2 flex justify-end">
                                                 <button onClick={() => {
                                                     const newItens = itens.filter((_, i) => i !== idx); setItens(newItens);
-                                                }} className="p-1.5 text-stone-400 hover:text-red-500 transition"><Trash2 size={14} /></button>
+                                                }} className="p-1.5 text-slate-500 hover:text-red-500 transition"><Trash2 size={14} /></button>
                                             </div>
                                         </div>
                                     </div>
                                 ))}
-                                <button onClick={() => setItens([...itens, { codigo: 'NEW', descricao: '', ncm: '', cfop: '5102', unidade: 'UN', quantidade: 1, valor_unitario: 0, valor_total: 0, tipo_origem: 'avulso' }])} className="w-full py-2 border-2 border-dashed border-stone-200 rounded-xl text-stone-400 text-xs font-bold hover:bg-stone-50 transition flex items-center justify-center gap-1">
+                                <button onClick={() => setItens([...itens, { codigo: 'NEW', descricao: '', ncm: '', cfop: '5102', unidade: 'UN', quantidade: 1, valor_unitario: 0, valor_total: 0, tipo_origem: 'avulso' }])} className="w-full py-2 border-2 border-dashed border-white/10 rounded-xl text-slate-500 text-xs font-bold hover:bg-white/5 transition flex items-center justify-center gap-1">
                                     <Plus size={14} /> Adicionar Produto
                                 </button>
                             </div>
@@ -363,7 +363,7 @@ export default function EmitirNotaPage({ params }: { params: { storeId: string }
                             <button
                                 onClick={handleEmitir}
                                 disabled={emitting}
-                                className="w-full bg-[#FACC15] text-[#1A1A1A] py-3 rounded-xl font-bold text-sm hover:bg-white transition shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                                className="w-full bg-[#FACC15] text-[#1A1A1A] py-3 rounded-xl font-bold text-sm hover:bg-black/40 transition shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
                             >
                                 {emitting ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
                                 {emitting ? "Emitindo..." : "Emitir NFC-e"}
@@ -405,23 +405,23 @@ function ProductSearch({ query, onSelect }: { query: string, onSelect: (prod: an
 
     return (
         <div className="p-2">
-            {loading && <div className="flex items-center gap-2 p-2 text-stone-400 text-xs"><Loader2 size={14} className="animate-spin" /> Buscando...</div>}
+            {loading && <div className="flex items-center gap-2 p-2 text-slate-500 text-xs"><Loader2 size={14} className="animate-spin" /> Buscando...</div>}
             {!loading && (
                 <div className="space-y-1">
                     {results.map(prod => (
                         <div
                             key={prod.id}
                             onMouseDown={(e) => { e.preventDefault(); onSelect(prod); }}
-                            className="p-2 hover:bg-stone-100 rounded-lg cursor-pointer text-xs"
+                            className="p-2 hover:bg-white/10 rounded-lg cursor-pointer text-xs"
                         >
                             <p className="font-bold text-[#1A1A1A]">{prod.nome}</p>
-                            <div className="flex justify-between text-[10px] text-stone-500">
+                            <div className="flex justify-between text-[10px] text-slate-400">
                                 <span>R$ {prod.preco_venda?.toFixed(2)}</span>
                             </div>
                         </div>
                     ))}
                     {results.length === 0 && (
-                        <p className="text-[10px] text-center text-stone-400 py-2">Nenhum produto encontrado.</p>
+                        <p className="text-[10px] text-center text-slate-500 py-2">Nenhum produto encontrado.</p>
                     )}
                 </div>
             )}
