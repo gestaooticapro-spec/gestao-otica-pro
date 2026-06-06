@@ -732,6 +732,11 @@ export default function FrameMeasurementTool({
           return
         }
 
+        if (found.os.foto_medicao_url) {
+          setOsLookupError('Esta OS já possui uma medição gravada. Não é possível gravar por cima.')
+          return
+        }
+
         setLinkedOS(found.os)
         targetOsId = found.os.id
       }

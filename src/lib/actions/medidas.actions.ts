@@ -24,6 +24,7 @@ export interface MedicaoOSLookup {
   protocolo_fisico: string | null
   customer_name: string | null
   dependente_name: string | null
+  foto_medicao_url?: string | null
 }
 
 export async function findMedicaoOSByNumber(
@@ -39,7 +40,7 @@ export async function findMedicaoOSByNumber(
   let query = (supabaseAdmin
     .from('service_orders') as any)
     .select(`
-      id, protocolo_fisico, store_id,
+      id, protocolo_fisico, store_id, foto_medicao_url,
       customer:customer_id ( full_name ),
       dependente:dependente_id ( full_name )
     `)
@@ -67,6 +68,7 @@ export async function findMedicaoOSByNumber(
       protocolo_fisico: row.protocolo_fisico,
       customer_name: row.customer?.full_name ?? null,
       dependente_name: row.dependente?.full_name ?? null,
+      foto_medicao_url: row.foto_medicao_url ?? null,
     },
   }
 }
@@ -78,17 +80,25 @@ export async function saveMedicaoOS(payload: MedicaoPayload): Promise<{ ok: bool
   const { data: { user } } = await supabase.auth.getUser()
   let allowAnonymousTablet = false
 
+  // Busca a OS para validar se já tem foto gravada e se o tablet avulso tem permissão
+  const { data: currentOS, error: fetchError } = await (supabaseAdmin
+    .from('service_orders') as any)
+    .select('id, store_id, foto_medicao_url')
+    .eq('id', payload.osId)
+    .maybeSingle()
+
+  if (fetchError || !currentOS) {
+    return { ok: false, error: 'OS nao encontrada' }
+  }
+
+  // Trava de segurança: impede regravar se já existe foto
+  if (currentOS.foto_medicao_url) {
+    return { ok: false, error: 'Esta OS já possui uma medição gravada. Não é possível gravar por cima.' }
+  }
+
   if (!user) {
     if (!payload.storeId) return { ok: false, error: 'Nao autenticado' }
-
-    const { data: osRow, error: osError } = await (supabaseAdmin
-      .from('service_orders') as any)
-      .select('id, store_id')
-      .eq('id', payload.osId)
-      .eq('store_id', payload.storeId)
-      .maybeSingle()
-
-    if (osError || !osRow) return { ok: false, error: 'OS nao encontrada para a loja informada' }
+    if (currentOS.store_id !== payload.storeId) return { ok: false, error: 'OS nao encontrada para a loja informada' }
     allowAnonymousTablet = true
   }
 
