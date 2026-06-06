@@ -99,3 +99,23 @@ export function participantFromOriginEmit(emit: any) {
         codigo_municipio: end?.cMun ? String(end.cMun) : "",
     };
 }
+
+export function participantFromOriginDest(dest: any) {
+    const end = dest?.enderDest || {};
+    return {
+        nome: dest?.xNome ? String(dest.xNome) : "",
+        cpf_cnpj: dest?.CNPJ || dest?.CPF ? String(dest.CNPJ || dest.CPF) : "",
+        inscricao_estadual: dest?.IE ? String(dest.IE) : "",
+        ind_ie_dest: dest?.indIEDest ? String(dest.indIEDest) : dest?.IE ? "1" : "9",
+        email: dest?.email ? String(dest.email) : "",
+        telefone: end?.fone ? String(end.fone) : "",
+        cep: end?.CEP ? String(end.CEP) : "",
+        logradouro: end?.xLgr ? String(end.xLgr) : "",
+        numero: end?.nro ? String(end.nro) : "",
+        complemento: end?.xCpl ? String(end.xCpl) : "",
+        bairro: end?.xBairro ? String(end.xBairro) : "",
+        cidade: end?.xMun ? String(end.xMun) : "",
+        uf: end?.UF ? String(end.UF).toUpperCase() : "",
+        codigo_municipio: end?.cMun ? String(end.cMun) : "",
+    };
+}

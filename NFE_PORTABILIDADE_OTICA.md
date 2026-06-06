@@ -146,8 +146,10 @@ Estado real da portabilidade:
 - [ ] Autorizar e conferir Remessa para conserto em homologacao.
 - [x] Implementar Remessa em garantia em homologacao.
 - [ ] Autorizar e conferir Remessa em garantia em homologacao.
-- [ ] Implementar Retorno de conserto com remessa autorizada e `NFref`.
-- [ ] Implementar Retorno de garantia com remessa autorizada e `NFref`.
+- [x] Implementar Retorno de conserto com remessa autorizada e `NFref`.
+- [ ] Autorizar e conferir Retorno de conserto em homologacao.
+- [x] Implementar Retorno de garantia com remessa autorizada e `NFref`.
+- [ ] Autorizar e conferir Retorno de garantia em homologacao.
 - [ ] Transferencia entre filiais/depositos.
 - [x] Implementar o template de Bonificacao, Brinde e Doacao.
 - [ ] Autorizar e conferir em homologacao Bonificacao, Brinde e Doacao. Brinde interno validado; faltam Bonificacao, Doacao e CFOP 6910.

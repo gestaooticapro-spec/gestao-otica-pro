@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getNfeQueueXml } from "@/lib/actions/nfe-import-queue.actions";
-import { extractItemsFromInfNFe, extractItemsFromXmlContent, participantFromOriginEmit } from "@/lib/nfe_xml";
+import { extractItemsFromInfNFe, extractItemsFromXmlContent, participantFromOriginDest, participantFromOriginEmit } from "@/lib/nfe_xml";
 import type { ParsedNFeItem } from "@/types/nfe";
 
 export type { ParsedNFeItem };
@@ -268,6 +268,132 @@ export async function getImportedNFeOriginAction(params: {
             error: error instanceof Error ? error.message : "Nao foi possivel interpretar o XML da NF-e.",
         };
     }
+}
+
+async function userOwnsStore(storeId: number, tenantId: string) {
+    const auth = await createClient();
+    const { data: { user } } = await auth.auth.getUser();
+    if (!user) return false;
+
+    const supabase = createAdminClient() as any;
+    const { data: profile } = await supabase
+        .from("profiles")
+        .select("tenant_id")
+        .eq("id", user.id)
+        .maybeSingle();
+
+    return profile?.tenant_id === tenantId;
+}
+
+function shipmentKindFromPayload(payload: any) {
+    const natOp = String(payload?.infNFe?.ide?.natOp || "").toUpperCase();
+    const infCpl = String(payload?.infNFe?.infAdic?.infCpl || "").toUpperCase();
+    const text = `${natOp} ${infCpl}`;
+    if (!natOp.includes("REMESSA")) return null;
+    if (text.includes("GARANTIA")) return "garantia" as const;
+    if (text.includes("CONSERTO") || text.includes("REPARO")) return "conserto" as const;
+    return null;
+}
+
+export async function listAuthorizedShipmentOriginsAction(params: {
+    storeId: number;
+    kind: "conserto" | "garantia";
+}) {
+    const supabase = createAdminClient() as any;
+    const tenantId = await getTenantIdByStore(params.storeId);
+    if (!tenantId || !(await userOwnsStore(params.storeId, tenantId))) return [];
+
+    const { data, error } = await supabase
+        .from("fiscal_invoices")
+        .select("id, numero, serie, chave_acesso, destinatario_nome, destinatario_cnpj, valor_total, data_emissao, payload_json")
+        .eq("organization_id", tenantId)
+        .eq("store_id", params.storeId)
+        .eq("tipo_documento", "NFe")
+        .eq("direction", "output")
+        .eq("environment", "homologation")
+        .eq("status", "authorized")
+        .order("data_emissao", { ascending: false })
+        .limit(50);
+
+    if (error) {
+        console.error("Erro ao listar remessas autorizadas:", error);
+        return [];
+    }
+
+    return (data || [])
+        .filter((invoice: any) => shipmentKindFromPayload(invoice.payload_json) === params.kind)
+        .filter((invoice: any) => /^\d{44}$/.test(String(invoice.chave_acesso || "")))
+        .map((invoice: any) => ({
+            id: invoice.id,
+            accessKey: invoice.chave_acesso,
+            number: invoice.numero,
+            series: invoice.serie,
+            issuedAt: invoice.data_emissao,
+            recipientName: invoice.destinatario_nome,
+            recipientCnpj: invoice.destinatario_cnpj,
+            total: invoice.valor_total,
+        }));
+}
+
+export async function getAuthorizedShipmentOriginAction(params: {
+    storeId: number;
+    accessKey: string;
+    kind: "conserto" | "garantia";
+}) {
+    const supabase = createAdminClient() as any;
+    const tenantId = await getTenantIdByStore(params.storeId);
+    const accessKey = String(params.accessKey || "").replace(/\D/g, "");
+
+    if (!tenantId || !(await userOwnsStore(params.storeId, tenantId))) {
+        return { success: false, error: "Esta loja nao pertence ao usuario autenticado." };
+    }
+    if (!/^\d{44}$/.test(accessKey)) {
+        return { success: false, error: "A chave da remessa deve ter 44 digitos." };
+    }
+
+    const { data: invoice, error } = await supabase
+        .from("fiscal_invoices")
+        .select("*")
+        .eq("organization_id", tenantId)
+        .eq("store_id", params.storeId)
+        .eq("tipo_documento", "NFe")
+        .eq("direction", "output")
+        .eq("environment", "homologation")
+        .eq("status", "authorized")
+        .eq("chave_acesso", accessKey)
+        .maybeSingle();
+
+    if (error || !invoice) {
+        return { success: false, error: "Remessa autorizada nao encontrada nesta loja." };
+    }
+    if (shipmentKindFromPayload(invoice.payload_json) !== params.kind) {
+        return {
+            success: false,
+            error: params.kind === "garantia"
+                ? "A NF-e selecionada nao e uma remessa em garantia."
+                : "A NF-e selecionada nao e uma remessa para conserto.",
+        };
+    }
+
+    let infNFe = invoice.payload_json?.infNFe;
+    let items = extractItemsFromInfNFe(infNFe);
+    if ((!infNFe || !items.length) && invoice.xml_content) {
+        const parsed = await extractItemsFromXmlContent(invoice.xml_content);
+        infNFe = parsed.infNFe;
+        items = parsed.items;
+    }
+
+    if (!infNFe || !items.length) {
+        return { success: false, error: "A remessa nao possui payload ou XML completo para montar o retorno." };
+    }
+
+    return {
+        success: true,
+        invoiceId: invoice.id,
+        accessKey,
+        participant: participantFromOriginDest(infNFe.dest),
+        items,
+    };
 }
 
 export async function searchNFeParticipantsAction(params: {
