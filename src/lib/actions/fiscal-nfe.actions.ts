@@ -21,14 +21,16 @@ type NFeCustomerAddress = {
     ind_ie_dest?: number | null;
 };
 
-type NFeOperation = "sale" | "bonus" | "return";
+type NFeOperation = "sale" | "bonus" | "return" | "shipment";
 type NFeBonusPurpose = "Bonificacao" | "Brinde" | "Doacao";
+type NFeShipmentPurpose = "Remessa para conserto" | "Remessa em garantia";
 
 type NFeSaleInput = {
     storeId: number;
     saleId?: number;
     operation?: NFeOperation;
     finalidade_bonus?: NFeBonusPurpose;
+    finalidade_remessa?: NFeShipmentPurpose;
     referenceKey?: string;
     cliente?: {
         nome?: string | null;
@@ -798,8 +800,12 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
         }
 
         const operation = input.operation || "sale";
+        if (!["sale", "bonus", "return", "shipment"].includes(operation)) {
+            throw new Error("Operacao NF-e ainda nao suportada.");
+        }
         const isSaleOperation = operation === "sale";
         const isReturnOperation = operation === "return";
+        const isShipmentOperation = operation === "shipment";
         const referenceKey = cleanDigits(input.referenceKey);
 
         if (input.saleId && isSaleOperation) {
@@ -924,6 +930,10 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
         const destUF = cleanText(dest.enderDest.UF).toUpperCase();
         const sameState = !destUF || destUF === emitUF;
         const bonusPurpose: NFeBonusPurpose = input.finalidade_bonus || "Bonificacao";
+        const shipmentPurpose: NFeShipmentPurpose = input.finalidade_remessa || "Remessa para conserto";
+        if (isShipmentOperation && !["Remessa para conserto", "Remessa em garantia"].includes(shipmentPurpose)) {
+            throw new Error("Nesta etapa, apenas remessas para conserto ou garantia estao liberadas.");
+        }
         const template = isSaleOperation
             ? {
                 natOp: "VENDA DE MERCADORIA",
@@ -946,6 +956,21 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
                     detPag: [{ tPag: "90", vPag: 0 }],
                     infCpl: "DEVOLUCAO DE COMPRA REFERENTE A NF-E DE ORIGEM INFORMADA.",
                 }
+                : isShipmentOperation
+                    ? {
+                        natOp: shipmentPurpose === "Remessa em garantia"
+                            ? "REMESSA EM GARANTIA"
+                            : "REMESSA PARA CONSERTO",
+                        cfop: sameState ? "5915" : "6915",
+                        csosn: "400" as const,
+                        indPres: 9,
+                        finNFe: 1,
+                        indFinal: dest.indIEDest === 9 ? 1 : 0,
+                        detPag: [{ tPag: "90", vPag: 0 }],
+                        infCpl: shipmentPurpose === "Remessa em garantia"
+                            ? "REMESSA DE MERCADORIA/BEM EM GARANTIA. SEM INCIDENCIA DE COBRANCA."
+                            : "REMESSA DE MERCADORIA/BEM PARA CONSERTO OU REPARO. SEM INCIDENCIA DE COBRANCA.",
+                    }
                 : {
                 natOp: bonusPurpose === "Bonificacao"
                     ? "BONIFICACAO"

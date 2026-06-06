@@ -208,7 +208,7 @@ const OPERATIONS: {
         subtitle: "Conserto, garantia, demonstracao",
         icon: Repeat2,
         purposes: ["Remessa para conserto", "Retorno de conserto", "Remessa em garantia", "Retorno de garantia"],
-        enabled: false,
+        enabled: true,
     },
     {
         id: "transfer",
@@ -634,6 +634,12 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
     function getItemCfop(item: NFeItemForm) {
         if (operation === "advanced") return item.cfop;
         if (operation === "bonus") return getBonusCfop();
+        if (operation === "shipment") {
+            const destinationUf = customerForm.uf.trim().toUpperCase();
+            const isReturn = purpose.startsWith("Retorno");
+            const prefix = storeUf && destinationUf && storeUf !== destinationUf ? "6" : "5";
+            return `${prefix}${isReturn ? "916" : "915"}`;
+        }
         if (operation === "return") {
             const destinationUf = customerForm.uf.trim().toUpperCase();
             return storeUf && destinationUf && storeUf !== destinationUf ? "6202" : "5202";
@@ -692,12 +698,15 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         const issues: string[] = [];
         const cpfCnpj = onlyDigits(customerForm.cpfCnpj);
 
-        if (!["sale", "bonus", "return"].includes(operation)) {
-            issues.push("Nesta etapa, apenas Venda, Devolucao de compra e Bonificacao/Brinde/Doacao estao liberadas para transmissao.");
+        if (!["sale", "bonus", "return", "shipment"].includes(operation)) {
+            issues.push("Esta operacao ainda nao esta liberada para transmissao.");
         }
         if (operation === "return") {
             if (purpose !== "Devolucao de compra") issues.push("Apenas Devolucao de compra esta liberada nesta etapa.");
             if (!selectedOrigin) issues.push("Selecione uma NF-e de entrada importada.");
+        }
+        if (operation === "shipment" && purpose.startsWith("Retorno")) {
+            issues.push("Retornos exigem uma NF-e de remessa autorizada como origem e ainda nao estao liberados.");
         }
         if (!customerForm.nome.trim()) issues.push("Informe nome/razao social do participante.");
         if (cpfCnpj.length !== 11 && cpfCnpj.length !== 14) issues.push("Informe CPF/CNPJ valido.");
@@ -738,10 +747,19 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         const result = await emitirNFeVendaHomologacao({
             storeId,
             saleId: operation === "sale" ? selectedSale?.id : undefined,
-            operation: operation === "bonus" ? "bonus" : operation === "return" ? "return" : "sale",
+            operation: operation === "bonus"
+                ? "bonus"
+                : operation === "return"
+                    ? "return"
+                    : operation === "shipment"
+                        ? "shipment"
+                        : "sale",
             referenceKey: operation === "return" ? selectedOrigin?.accessKey : undefined,
             finalidade_bonus: operation === "bonus"
                 ? purpose as "Bonificacao" | "Brinde" | "Doacao"
+                : undefined,
+            finalidade_remessa: operation === "shipment" && purpose.startsWith("Remessa")
+                ? purpose as "Remessa para conserto" | "Remessa em garantia"
                 : undefined,
             cliente: {
                 nome: customerForm.nome,
@@ -905,7 +923,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                         <section className="space-y-5">
                             <div>
                                 <h2 className="text-lg font-black text-[#1A1A1A]">Tipo de operacao</h2>
-                                <p className="text-sm text-stone-500">Escolha a natureza de negocio. Venda, devolucao de compra e saidas sem cobranca transmitem em homologacao.</p>
+                                <p className="text-sm text-stone-500">Venda, devolucao de compra, remessas e saidas sem cobranca transmitem em homologacao.</p>
                             </div>
 
                             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -1257,7 +1275,15 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12 xl:items-end">
                                                 <div className="xl:col-span-2">
                                                     <Field
-                                                        label={operation === "advanced" ? "CFOP" : operation === "bonus" ? "CFOP bonificacao" : "CFOP venda"}
+                                                        label={operation === "advanced"
+                                                            ? "CFOP"
+                                                            : operation === "bonus"
+                                                                ? "CFOP bonificacao"
+                                                                : operation === "shipment"
+                                                                    ? purpose.startsWith("Retorno") ? "CFOP retorno" : "CFOP remessa"
+                                                                    : operation === "return"
+                                                                        ? "CFOP devolucao"
+                                                                        : "CFOP venda"}
                                                         value={getItemCfop(item)}
                                                         onChange={(v) => updateItem(index, { cfop: onlyDigits(v).slice(0, 4) })}
                                                         disabled={operation !== "advanced"}
@@ -1341,6 +1367,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                         ? `Emitir NF-e de ${purpose}`
                                         : operation === "return"
                                             ? "Emitir NF-e de Devolucao"
+                                            : operation === "shipment"
+                                                ? `Emitir NF-e de ${purpose}`
                                             : "Emitir NF-e de Venda"}
                             </button>
                         )}
@@ -1360,7 +1388,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                     </div>
 
                     <div className="rounded-2xl border border-stone-100 bg-white p-4 shadow-sm">
-                        {operation === "bonus" || operation === "return" ? (
+                        {operation === "bonus" || operation === "return" || operation === "shipment" ? (
                             <>
                                 <p className={labelClass}>Pagamento</p>
                                 <p className="mt-2 rounded-2xl bg-[#F8F7F2] px-4 py-3 text-sm font-black text-stone-700">Sem pagamento</p>

@@ -141,9 +141,13 @@ Estado real da portabilidade:
 
 ### Bloco E - Operacoes Guiadas
 - [x] Implementar Devolucao de compra baseada em NF-e de entrada importada e `NFref`.
-- [ ] Autorizar e conferir uma Devolucao de compra em homologacao.
-- [ ] Remessa e retorno para conserto.
-- [ ] Remessa e retorno em garantia.
+- [ ] Autorizar e conferir uma Devolucao de compra em homologacao. Bloqueado no momento por falta de NF-e emitida contra o CNPJ de teste em homologacao.
+- [x] Implementar Remessa para conserto em homologacao.
+- [ ] Autorizar e conferir Remessa para conserto em homologacao.
+- [x] Implementar Remessa em garantia em homologacao.
+- [ ] Autorizar e conferir Remessa em garantia em homologacao.
+- [ ] Implementar Retorno de conserto com remessa autorizada e `NFref`.
+- [ ] Implementar Retorno de garantia com remessa autorizada e `NFref`.
 - [ ] Transferencia entre filiais/depositos.
 - [x] Implementar o template de Bonificacao, Brinde e Doacao.
 - [ ] Autorizar e conferir em homologacao Bonificacao, Brinde e Doacao. Brinde interno validado; faltam Bonificacao, Doacao e CFOP 6910.
