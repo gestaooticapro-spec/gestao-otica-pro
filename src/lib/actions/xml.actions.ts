@@ -1,10 +1,13 @@
 'use server'
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { XMLParser } from 'fast-xml-parser'
 import { revalidatePath } from 'next/cache'
 import { generateSmartBarcode } from '@/lib/actions/catalog.actions'
+import { markNfeQueueImported } from '@/lib/actions/nfe-import-queue.actions'
 
 // Tipos para o Preview
 export type XmlPreviewItem = {
@@ -29,6 +32,7 @@ export type XmlPreviewItem = {
 }
 
 export type XmlPreviewData = {
+    source_queue_id?: string | null
     access_key: string // Chave de Acesso (44 dígitos)
     nfe_numero: string
     nfe_serie: string
@@ -345,6 +349,10 @@ export async function saveImportedData(data: XmlPreviewData, storeId: number) {
             supplier_id: supplierId,
             imported_at: new Date().toISOString()
         })
+
+        if (data.source_queue_id) {
+            await markNfeQueueImported(data.source_queue_id, data.access_key)
+        }
 
         revalidatePath(`/dashboard/loja/${storeId}/cadastros`)
         return { success: true, message: "Importação concluída com sucesso!" }

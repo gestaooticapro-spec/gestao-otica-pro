@@ -234,8 +234,8 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
                         <ArrowLeft className="h-4 w-4" />
                     </Link>
                     <div>
-                        <h1 className="text-3xl font-black text-white tracking-tight uppercase">Fiscal (NFC-e)</h1>
-                        <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Gerencie suas notas fiscais de consumidor.</p>
+                        <h1 className="text-3xl font-black text-white tracking-tight uppercase">Fiscal</h1>
+                        <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Gerencie NFC-e, NF-e e documentos fiscais da loja.</p>
                     </div>
                 </div>
 
@@ -263,7 +263,13 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
 
                     <Link href={`/dashboard/loja/${storeId}/fiscal/emitir?env=${environment}`}>
                         <button className="bg-[#1A1A1A] hover:bg-black text-[#FACC15] px-5 py-2.5 rounded-full font-bold text-sm shadow-lg flex items-center gap-2 transition hover:scale-105">
-                            <Plus size={18} /> Nova Nota
+                            <Plus size={18} /> Nova NFC-e
+                        </button>
+                    </Link>
+
+                    <Link href={`/dashboard/loja/${storeId}/fiscal/nfe`}>
+                        <button className="bg-amber-500 hover:bg-amber-400 text-[#1A1A1A] px-5 py-2.5 rounded-full font-bold text-sm shadow-lg flex items-center gap-2 transition hover:scale-105">
+                            <FileText size={18} /> Nova NF-e
                         </button>
                     </Link>
                 </div>

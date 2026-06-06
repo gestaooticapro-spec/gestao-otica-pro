@@ -108,8 +108,17 @@ export interface Database {
           city: string | null
           state: string | null
           nfce_serie: number | null
+          nfe_serie: number | null
           codigo_municipio_ibge: string | null
           regime_tributario: string | null
+          rt_cnpj: string | null
+          rt_contato: string | null
+          rt_email: string | null
+          rt_fone: string | null
+          csrt_id_homologation: string | null
+          csrt_token_homologation: string | null
+          csrt_id_production: string | null
+          csrt_token_production: string | null
         }
         Insert: {
           id?: number
@@ -132,8 +141,17 @@ export interface Database {
           city?: string | null
           state?: string | null
           nfce_serie?: number | null
+          nfe_serie?: number | null
           codigo_municipio_ibge?: string | null
           regime_tributario?: string | null
+          rt_cnpj?: string | null
+          rt_contato?: string | null
+          rt_email?: string | null
+          rt_fone?: string | null
+          csrt_id_homologation?: string | null
+          csrt_token_homologation?: string | null
+          csrt_id_production?: string | null
+          csrt_token_production?: string | null
         }
         Update: {
           id?: number
@@ -156,8 +174,17 @@ export interface Database {
           city?: string | null
           state?: string | null
           nfce_serie?: number | null
+          nfe_serie?: number | null
           codigo_municipio_ibge?: string | null
           regime_tributario?: string | null
+          rt_cnpj?: string | null
+          rt_contato?: string | null
+          rt_email?: string | null
+          rt_fone?: string | null
+          csrt_id_homologation?: string | null
+          csrt_token_homologation?: string | null
+          csrt_id_production?: string | null
+          csrt_token_production?: string | null
         }
       }
 
@@ -392,6 +419,8 @@ export interface Database {
           cidade: string | null
           uf: string | null
           cep: string | null
+          codigo_municipio_ibge: string | null
+          inscricao_estadual: string | null
           complemento: string | null
           naturalidade: string | null
           estado_civil: string | null
@@ -425,6 +454,8 @@ export interface Database {
           store_id: number
           full_name: string
           cpf?: string | null
+          codigo_municipio_ibge?: string | null
+          inscricao_estadual?: string | null
           is_spc?: boolean | null
           tenant_id?: string
           [key: string]: any

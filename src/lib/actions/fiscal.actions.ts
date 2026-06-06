@@ -57,6 +57,27 @@ function normalizeDocument(value?: string | null) {
     return normalized || null;
 }
 
+function buildRespTec(company: any, fallbackCnpj?: string | null) {
+    return {
+        CNPJ: normalizeDocument(process.env.NFE_RT_CNPJ || fallbackCnpj) || "",
+        xContato: String(
+            process.env.NFE_RT_CONTATO ||
+            company.razao_social ||
+            "Responsavel Tecnico"
+        ).trim().substring(0, 60),
+        email: String(
+            process.env.NFE_RT_EMAIL ||
+            company.email_contato ||
+            "email@exemplo.com"
+        ).trim(),
+        fone: normalizeDocument(
+            process.env.NFE_RT_FONE ||
+            company.telefone ||
+            "0000000000"
+        ) || "0000000000",
+    };
+}
+
 function buildOutputInvoiceSnapshot(
     payload: EmissionPayload,
     company: any,
@@ -387,12 +408,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
                         return detPagList;
                     })()
                 },
-                infRespTec: {
-                    CNPJ: cnpj.replace(/\D/g, ""),
-                    xContato: company.razao_social ? company.razao_social.substring(0, 60) : "Responsavel Tecnico",
-                    email: company.email_contato || "email@exemplo.com",
-                    fone: company.telefone ? company.telefone.replace(/\D/g, "") : "0000000000"
-                }
+                infRespTec: buildRespTec(company, cnpj)
             }
         };
 
