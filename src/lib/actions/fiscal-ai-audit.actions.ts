@@ -230,7 +230,10 @@ ${JSON.stringify(payload, null, 2)}
                         contents: [{ parts: [{ text: prompt }] }],
                         generationConfig: {
                             temperature: 0.1,
-                            maxOutputTokens: 2200,
+                            maxOutputTokens: 4096,
+                            thinkingConfig: {
+                                thinkingBudget: 0,
+                            },
                             responseMimeType: "application/json",
                             responseSchema: {
                                 type: "OBJECT",
@@ -271,8 +274,9 @@ ${JSON.stringify(payload, null, 2)}
 
             const data = await response.json();
             const usage = data?.usageMetadata || {};
+            const finishReason = data?.candidates?.[0]?.finishReason ?? "?";
             console.log(
-                `[NFe IA Otica] model=${model} tentativa=${index + 1} tokens_in=${usage.promptTokenCount ?? "?"} tokens_out=${usage.candidatesTokenCount ?? "?"} tokens_total=${usage.totalTokenCount ?? "?"}`,
+                `[NFe IA Otica] model=${model} chave=${index + 1} finish=${finishReason} tokens_in=${usage.promptTokenCount ?? "?"} tokens_thinking=${usage.thoughtsTokenCount ?? 0} tokens_out=${usage.candidatesTokenCount ?? "?"} tokens_total=${usage.totalTokenCount ?? "?"}`,
             );
             const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
             if (!text) {
@@ -289,7 +293,7 @@ ${JSON.stringify(payload, null, 2)}
         } catch (error) {
             lastError = error instanceof Error ? error.message : "Falha desconhecida na auditoria.";
             console.warn(
-                `[NFe IA Otica] GEMINI_SECRET_KEY_${index + 1} falhou: ${lastError}; tentando proxima chave.`,
+                `[NFe IA Otica] resposta da GEMINI_SECRET_KEY_${index + 1} invalida: ${lastError}; tentando proxima chave.`,
             );
         }
     }
