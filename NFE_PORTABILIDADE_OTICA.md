@@ -92,14 +92,14 @@ Marco alcancado em homologacao:
 Esse marco valida apenas o nucleo da venda simples. Ele nao significa que a portabilidade completa esta proxima de producao.
 
 Estado real da portabilidade:
-- A UI possui quatro etapas; o contrato da autoeletrica possui cinco, incluindo transporte, pagamento, totais e observacoes.
-- Venda, Bonificacao/Brinde/Doacao, Devolucao de compra, Remessa/Retorno e Transferencia possuem transmissao em homologacao. Devolucao de venda e operacao assistida continuam bloqueadas.
-- A tributacao por item ainda esta fixa em `ICMSSN102`, PIS/COFINS zerados e sem editor de IPI.
+- A UI possui cinco etapas, incluindo transporte, pagamento, totais e observacoes. Os campos completos estao editaveis inicialmente na operacao assistida.
+- Venda, Bonificacao/Brinde/Doacao, Devolucao de compra, Remessa/Retorno e Transferencia possuem transmissao em homologacao. Devolucao de venda continua bloqueada; a operacao assistida foi implementada e aguarda teste fiscal.
+- Os templates guiados ainda usam tributacao padrao; a operacao assistida permite origem, CSOSN, CEST/cBenef, IPI, PIS e COFINS por item.
 - Busca de notas clonaveis e leitura de itens existem no backend, mas a clonagem ainda nao esta ligada a UI.
 - A lista fiscal reconhece `NFe`, mas consulta automatica/manual de status ainda chama o fluxo de `NFCe`.
 - A rota de XML/DANFE tem suporte inicial a `NFe`, mas recuperacao, persistencia e estados visuais ainda precisam de testes completos.
 - A inutilizacao e o fechamento continuam exclusivos de `NFCe`.
-- Nao existe ainda action de auditoria fiscal por IA para a operacao assistida.
+- A operacao assistida possui auditoria fiscal por IA, validacoes deterministicas e confirmacao obrigatoria do usuario.
 - Configuracoes fiscais por loja existem no banco/codigo, mas ainda nao possuem uma interface administrativa completa.
 
 ## Roteiro Renovado
@@ -117,7 +117,8 @@ Estado real da portabilidade:
 - [ ] Testar rejeicao, processamento, autorizacao e cancelamento sem regressao em NFC-e/NFS-e.
 
 ### Bloco B - Completar o Contrato da Tela
-- [ ] Adicionar a etapa `Transporte e observacoes`.
+- [x] Adicionar a etapa `Transporte e observacoes`.
+- [ ] Generalizar os campos de transporte e observacoes, hoje editaveis na operacao assistida, para os templates guiados que precisarem deles.
 - [ ] Implementar `modFrete`, transportadora, veiculo e volumes.
 - [ ] Implementar `indPres`, `indIntermed`, `indFinal` e intermediador.
 - [ ] Expor frete, seguro, desconto e outras despesas.
@@ -162,11 +163,12 @@ Estado real da portabilidade:
 - [ ] Testar cada template isoladamente em homologacao.
 
 ### Bloco F - Outra Operacao Assistida
-- [ ] Portar action de auditoria fiscal por IA.
-- [ ] Implementar validacoes deterministicas antes da IA.
-- [ ] Permitir `NFref` opcional.
-- [ ] Exigir confirmacao e revisao do contador.
-- [ ] Manter esse fluxo restrito a homologacao.
+- [x] Portar action de auditoria fiscal por IA.
+- [x] Implementar validacoes deterministicas antes da IA.
+- [x] Permitir `NFref` opcional.
+- [x] Exigir confirmacao e revisao do contador.
+- [x] Manter esse fluxo restrito a homologacao.
+- [ ] Testar uma operacao assistida completa e conferir XML/DANFE em homologacao.
 
 ### Bloco G - Operacao Fiscal e Fechamento
 - [ ] Inutilizacao de numeracao para modelo `NFe`.

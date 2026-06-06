@@ -23,15 +23,17 @@ import {
     ShieldCheck,
     Sparkles,
     Trash2,
+    Truck,
     Warehouse,
 } from "lucide-react";
 import ModuleDisabledState from "@/components/modules/ModuleDisabledState";
 import { useStoreModules } from "@/lib/contexts/StoreModulesContext";
 import { getAuthorizedDepositTransferOriginAction, getAuthorizedShipmentOriginAction, getImportedDemonstrationOriginAction, getImportedNFeOriginAction, getPendingSales, getProductFiscalData, getSaleData, getTenantTransferStoreAction, listAuthorizedDepositTransferOriginsAction, listAuthorizedShipmentOriginsAction, listImportedDemonstrationOriginsAction, listImportedNFeOriginsAction, listTenantTransferStoresAction, saveMissingProductNcmAction, saveNFeCustomerParticipantAction, searchNFeParticipantsAction, searchProducts } from "@/lib/actions/fiscal-db.actions";
 import { emitirNFeVendaHomologacao } from "@/lib/actions/fiscal-nfe.actions";
+import { auditarNFeAssistidaComIaAction, type FiscalAuditPayload, type FiscalAuditUiResult } from "@/lib/actions/fiscal-ai-audit.actions";
 import { getStoreProfile } from "@/lib/actions/store.actions";
 
-type StepId = "operation" | "participant" | "items" | "review";
+type StepId = "operation" | "participant" | "items" | "transport" | "review";
 type OperationGroup = "sale" | "return" | "shipment" | "transfer" | "bonus" | "advanced";
 
 type PendingSale = {
@@ -112,11 +114,28 @@ type NFeItemForm = {
     codigo: string;
     descricao: string;
     ncm: string;
+    cest?: string;
     cfop: string;
     unidade: string;
     quantidade: number;
     valorUnitario: number;
     valorTotal: number;
+    origem?: number;
+    csosn?: string;
+    cbenef?: string;
+    ipiCst?: string;
+    ipiCEnq?: string;
+    ipiBase?: number;
+    ipiAliquota?: number;
+    ipiValor?: number;
+    pisCst?: string;
+    pisBase?: number;
+    pisAliquota?: number;
+    pisValor?: number;
+    cofinsCst?: string;
+    cofinsBase?: number;
+    cofinsAliquota?: number;
+    cofinsValor?: number;
 };
 
 type ImportedNFeOrigin = {
@@ -195,6 +214,7 @@ const STEPS: { id: StepId; label: string }[] = [
     { id: "operation", label: "Operacao" },
     { id: "participant", label: "Participante" },
     { id: "items", label: "Itens" },
+    { id: "transport", label: "Transporte" },
     { id: "review", label: "Revisao" },
 ];
 
@@ -252,7 +272,7 @@ const OPERATIONS: {
         subtitle: "Modo assistido com contador",
         icon: ShieldCheck,
         purposes: ["Operacao avancada"],
-        enabled: false,
+        enabled: true,
     },
 ];
 
@@ -277,11 +297,28 @@ const emptyItem: NFeItemForm = {
     codigo: "1",
     descricao: "",
     ncm: "",
+    cest: "",
     cfop: "5102",
     unidade: "UN",
     quantidade: 1,
     valorUnitario: 0,
     valorTotal: 0,
+    origem: 0,
+    csosn: "102",
+    cbenef: "",
+    ipiCst: "",
+    ipiCEnq: "999",
+    ipiBase: 0,
+    ipiAliquota: 0,
+    ipiValor: 0,
+    pisCst: "99",
+    pisBase: 0,
+    pisAliquota: 0,
+    pisValor: 0,
+    cofinsCst: "99",
+    cofinsBase: 0,
+    cofinsAliquota: 0,
+    cofinsValor: 0,
 };
 
 function onlyDigits(value: string) {
@@ -362,6 +399,29 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
     const [cepLoading, setCepLoading] = useState(false);
     const [items, setItems] = useState<NFeItemForm[]>([{ ...emptyItem }]);
     const [paymentMethod, setPaymentMethod] = useState("01");
+    const [advancedNature, setAdvancedNature] = useState("");
+    const [advancedTpNF, setAdvancedTpNF] = useState<0 | 1>(1);
+    const [advancedFinNFe, setAdvancedFinNFe] = useState<1 | 2 | 3 | 4>(1);
+    const [referencedKey, setReferencedKey] = useState("");
+    const [modFrete, setModFrete] = useState(9);
+    const [carrierName, setCarrierName] = useState("");
+    const [carrierDoc, setCarrierDoc] = useState("");
+    const [volumes, setVolumes] = useState(0);
+    const [indPres, setIndPres] = useState(9);
+    const [indIntermed, setIndIntermed] = useState<0 | 1>(0);
+    const [indFinal, setIndFinal] = useState<0 | 1>(1);
+    const [intermediadorCnpj, setIntermediadorCnpj] = useState("");
+    const [intermediadorId, setIntermediadorId] = useState("");
+    const [valorFrete, setValorFrete] = useState(0);
+    const [valorSeguro, setValorSeguro] = useState(0);
+    const [valorDesconto, setValorDesconto] = useState(0);
+    const [valorOutrasDespesas, setValorOutrasDespesas] = useState(0);
+    const [infCpl, setInfCpl] = useState("");
+    const [infAdFisco, setInfAdFisco] = useState("");
+    const [aiAudit, setAiAudit] = useState<FiscalAuditUiResult | null>(null);
+    const [aiAuditLoading, setAiAuditLoading] = useState(false);
+    const [advancedAuditConfirmed, setAdvancedAuditConfirmed] = useState(false);
+    const [auditFingerprint, setAuditFingerprint] = useState("");
     const [emitting, setEmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
@@ -938,8 +998,23 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         const issues: string[] = [];
         const cpfCnpj = onlyDigits(customerForm.cpfCnpj);
 
-        if (!["sale", "bonus", "return", "shipment", "transfer"].includes(operation)) {
+        if (!["sale", "bonus", "return", "shipment", "transfer", "advanced"].includes(operation)) {
             issues.push("Esta operacao ainda nao esta liberada para transmissao.");
+        }
+        if (operation === "advanced") {
+            if (!advancedNature.trim()) issues.push("Informe a natureza da operacao.");
+            if (referencedKey && onlyDigits(referencedKey).length !== 44) issues.push("A chave NF-e referenciada deve ter 44 digitos.");
+            if (modFrete === 9 && valorFrete > 0) issues.push("Frete deve ser zero quando nao houver transporte.");
+            if (modFrete !== 9 && ![11, 14].includes(onlyDigits(carrierDoc).length)) {
+                issues.push("Informe CPF/CNPJ da transportadora.");
+            }
+            if (indIntermed === 1 && (onlyDigits(intermediadorCnpj).length !== 14 || !intermediadorId.trim())) {
+                issues.push("Informe CNPJ e identificador do intermediador.");
+            }
+            if (advancedTpNF === 1 && indPres === 0) issues.push("NF-e de saida nao pode usar presenca 0.");
+            if (valorDesconto > items.reduce((sum, item) => sum + Number(item.valorTotal || 0), 0)) {
+                issues.push("O desconto nao pode superar o total dos produtos.");
+            }
         }
         if (operation === "return") {
             if (purpose !== "Devolucao de compra") issues.push("Apenas Devolucao de compra esta liberada nesta etapa.");
@@ -970,6 +1045,18 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                 issues.push(`Item ${index + 1}: informe NCM valido com 8 digitos.`);
             }
             if (operation === "advanced" && onlyDigits(item.cfop).length !== 4) issues.push(`Item ${index + 1}: informe CFOP com 4 digitos.`);
+            if (operation === "advanced" && advancedTpNF === 0 && !["1", "2", "3"].includes(onlyDigits(item.cfop)[0])) {
+                issues.push(`Item ${index + 1}: CFOP nao corresponde a uma NF-e de entrada.`);
+            }
+            if (operation === "advanced" && advancedTpNF === 1 && !["5", "6", "7"].includes(onlyDigits(item.cfop)[0])) {
+                issues.push(`Item ${index + 1}: CFOP nao corresponde a uma NF-e de saida.`);
+            }
+            if (operation === "advanced" && !["101", "102", "103", "201", "202", "203", "300", "400", "500", "900"].includes(item.csosn || "")) {
+                issues.push(`Item ${index + 1}: selecione um CSOSN suportado.`);
+            }
+            if (operation === "advanced" && (!Number.isInteger(Number(item.origem)) || Number(item.origem) < 0 || Number(item.origem) > 8)) {
+                issues.push(`Item ${index + 1}: origem da mercadoria invalida.`);
+            }
             if (Number(item.quantidade) <= 0) issues.push(`Item ${index + 1}: quantidade deve ser maior que zero.`);
             if (item.maxQuantity && Number(item.quantidade) > item.maxQuantity) {
                 issues.push(`Item ${index + 1}: quantidade maxima para devolucao e ${item.maxQuantity}.`);
@@ -980,6 +1067,82 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         return issues;
     }
 
+    function buildAdvancedAuditPayload(): FiscalAuditPayload {
+        const totalProdutos = items.reduce((sum, item) => sum + Number(item.valorTotal || 0), 0);
+        return {
+            storeId,
+            ambiente: "homologation",
+            operacao: "Outra operacao",
+            natureza: advancedNature,
+            tipo_nfe: advancedTpNF,
+            finalidade_nfe: advancedFinNFe,
+            classificacao_destino: storeUf && customerForm.uf && storeUf !== customerForm.uf ? "interestadual" : "interna",
+            participante: customerForm,
+            itens: items.map((item) => ({
+                codigo: item.codigo,
+                descricao: item.descricao,
+                ncm: item.ncm,
+                cfop: item.cfop,
+                unidade: item.unidade,
+                quantidade: item.quantidade,
+                valor_unitario: item.valorUnitario,
+                origem: item.origem,
+                csosn: item.csosn,
+                cbenef: item.cbenef,
+                ipi: { cst: item.ipiCst, cenq: item.ipiCEnq, base: item.ipiBase, aliquota: item.ipiAliquota, valor: item.ipiValor },
+                pis: { cst: item.pisCst, base: item.pisBase, aliquota: item.pisAliquota, valor: item.pisValor },
+                cofins: { cst: item.cofinsCst, base: item.cofinsBase, aliquota: item.cofinsAliquota, valor: item.cofinsValor },
+            })),
+            transporte: {
+                modFrete,
+                transportadora: carrierName,
+                documento: carrierDoc,
+                volumes,
+                valor_frete: valorFrete,
+                valor_seguro: valorSeguro,
+            },
+            campos_tecnicos: {
+                indPres,
+                indIntermed,
+                indFinal,
+                intermediadorCnpj,
+                intermediadorId,
+                meioPagamento: paymentMethod,
+                valorDesconto,
+                valorOutrasDespesas,
+                referencedKey: onlyDigits(referencedKey),
+            },
+            observacoes: { infCpl, infAdFisco },
+            total: Number((
+                totalProdutos
+                + valorFrete
+                + valorSeguro
+                + valorOutrasDespesas
+                + items.reduce((sum, item) => sum + Number(item.ipiValor || 0), 0)
+                - valorDesconto
+            ).toFixed(2)),
+        };
+    }
+
+    async function runAdvancedAudit() {
+        const payload = buildAdvancedAuditPayload();
+        setAiAuditLoading(true);
+        setAdvancedAuditConfirmed(false);
+        setError(null);
+        try {
+            const result = await auditarNFeAssistidaComIaAction(payload);
+            if (!result.success || !result.audit) {
+                setError(result.error || "Nao foi possivel auditar a NF-e assistida.");
+                return false;
+            }
+            setAiAudit(result.audit);
+            setAuditFingerprint(JSON.stringify(payload));
+            return true;
+        } finally {
+            setAiAuditLoading(false);
+        }
+    }
+
     async function handleEmit() {
         const issues = getPendingIssues();
         if (issues.length > 0) {
@@ -988,6 +1151,18 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         }
 
         const total = items.reduce((sum, item) => sum + Number(item.valorTotal || 0), 0);
+
+        if (operation === "advanced") {
+            const currentFingerprint = JSON.stringify(buildAdvancedAuditPayload());
+            if (!aiAudit || auditFingerprint !== currentFingerprint) {
+                await runAdvancedAudit();
+                return;
+            }
+            if (!advancedAuditConfirmed) {
+                setError("Confirme que revisou a auditoria com o contador antes de emitir.");
+                return;
+            }
+        }
 
         setEmitting(true);
         setError(null);
@@ -1004,6 +1179,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                         ? "shipment"
                         : operation === "transfer"
                             ? "transfer"
+                        : operation === "advanced"
+                            ? "advanced"
                         : "sale",
             referenceKey: operation === "return"
                 ? selectedOrigin?.accessKey
@@ -1011,6 +1188,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                     ? selectedShipmentOrigin?.accessKey
                     : operation === "transfer" && purpose === "Retorno de deposito"
                         ? selectedDepositTransferOrigin?.accessKey
+                    : operation === "advanced"
+                        ? onlyDigits(referencedKey) || undefined
                     : undefined,
             finalidade_bonus: operation === "bonus"
                 ? purpose as "Bonificacao" | "Brinde" | "Doacao"
@@ -1023,6 +1202,34 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                 : undefined,
             destinationStoreId: operation === "transfer" && purpose === "Transferencia entre filiais"
                 ? selectedTransferStore?.id
+                : undefined,
+            advanced: operation === "advanced"
+                ? {
+                    audit_confirmed: advancedAuditConfirmed,
+                    natureza_operacao: advancedNature,
+                    tipo_nfe: advancedTpNF,
+                    finalidade_nfe: advancedFinNFe,
+                    ind_pres: indPres,
+                    ind_intermed: indIntermed,
+                    ind_final: indFinal,
+                    meio_pagamento: paymentMethod,
+                    mod_frete: modFrete,
+                    transportadora: {
+                        nome: carrierName,
+                        cpf_cnpj: carrierDoc,
+                        volumes,
+                    },
+                    intermediador: {
+                        cnpj: intermediadorCnpj,
+                        id_cadastro: intermediadorId,
+                    },
+                    valor_frete: valorFrete,
+                    valor_seguro: valorSeguro,
+                    valor_desconto: valorDesconto,
+                    valor_outras_despesas: valorOutrasDespesas,
+                    inf_cpl: infCpl,
+                    inf_ad_fisco: infAdFisco,
+                }
                 : undefined,
             cliente: {
                 nome: customerForm.nome,
@@ -1044,11 +1251,28 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                 codigo: item.codigo,
                 descricao: item.descricao,
                 ncm: item.ncm,
+                cest: item.cest,
                 cfop: getItemCfop(item),
                 unidade: item.unidade,
                 quantidade: Number(item.quantidade),
                 valor_unitario: Number(item.valorUnitario),
                 valor_total: Number(item.valorTotal),
+                origem: item.origem,
+                csosn: item.csosn,
+                cbenef: item.cbenef,
+                ipi_cst: item.ipiCst,
+                ipi_cenq: item.ipiCEnq,
+                ipi_base: item.ipiBase,
+                ipi_aliquota: item.ipiAliquota,
+                ipi_valor: item.ipiValor,
+                pis_cst: item.pisCst,
+                pis_base: item.pisBase,
+                pis_aliquota: item.pisAliquota,
+                pis_valor: item.pisValor,
+                cofins_cst: item.cofinsCst,
+                cofins_base: item.cofinsBase,
+                cofins_aliquota: item.cofinsAliquota,
+                cofins_valor: item.cofinsValor,
             })),
             valor_total: total,
             pagamentos: operation === "sale" ? [{ meio: paymentMethod, valor: total }] : [],
@@ -1079,7 +1303,15 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         return <ModuleDisabledState storeId={storeId} moduleLabel="Fiscal" backHref={`/dashboard/loja/${storeId}/fiscal`} />;
     }
 
-    const total = items.reduce((sum, item) => sum + Number(item.valorTotal || 0), 0);
+    const totalProdutos = items.reduce((sum, item) => sum + Number(item.valorTotal || 0), 0);
+    const total = operation === "advanced"
+        ? totalProdutos
+            + valorFrete
+            + valorSeguro
+            + valorOutrasDespesas
+            + items.reduce((sum, item) => sum + Number(item.ipiValor || 0), 0)
+            - valorDesconto
+        : totalProdutos;
     const stepIndex = STEPS.findIndex((item) => item.id === step);
     const currentOperation = OPERATIONS.find((item) => item.id === operation) || OPERATIONS[0];
     const pendingIssues = getPendingIssues();
@@ -1216,6 +1448,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                 setSelectedShipmentOrigin(null);
                                                 setSelectedTransferStore(null);
                                                 setSelectedDepositTransferOrigin(null);
+                                                if (item.id === "advanced") setPaymentMethod("90");
                                             }}
                                             className={`rounded-2xl border p-4 text-left transition ${
                                                 active ? "border-[#FACC15] bg-[#FACC15]/10 shadow-sm" : "border-stone-200 hover:border-stone-300 hover:bg-stone-50"
@@ -1253,6 +1486,53 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                     ))}
                                 </select>
                             </div>
+
+                            {operation === "advanced" && (
+                                <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                                    <div>
+                                        <p className="text-sm font-black text-amber-950">Operacao assistida em homologacao</p>
+                                        <p className="mt-1 text-xs font-medium text-amber-800">
+                                            Preencha conforme orientacao contabil. A IA revisa consistencia, mas nao substitui o contador.
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <label className={labelClass}>Natureza da operacao</label>
+                                        <input
+                                            value={advancedNature}
+                                            onChange={(e) => setAdvancedNature(e.target.value)}
+                                            placeholder="Ex.: REMESSA PARA EXPOSICAO"
+                                            className={fieldClass}
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                        <div>
+                                            <label className={labelClass}>Tipo da NF-e</label>
+                                            <select value={advancedTpNF} onChange={(e) => setAdvancedTpNF(Number(e.target.value) as 0 | 1)} className={fieldClass}>
+                                                <option value={1}>1 - Saida</option>
+                                                <option value={0}>0 - Entrada</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className={labelClass}>Finalidade da NF-e</label>
+                                            <select value={advancedFinNFe} onChange={(e) => setAdvancedFinNFe(Number(e.target.value) as 1 | 2 | 3 | 4)} className={fieldClass}>
+                                                <option value={1}>1 - Normal</option>
+                                                <option value={2}>2 - Complementar</option>
+                                                <option value={3}>3 - Ajuste</option>
+                                                <option value={4}>4 - Devolucao</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className={labelClass}>Chave NF-e referenciada (opcional)</label>
+                                        <input
+                                            value={referencedKey}
+                                            onChange={(e) => setReferencedKey(onlyDigits(e.target.value).slice(0, 44))}
+                                            placeholder="44 digitos, apenas quando o contador orientar"
+                                            className={fieldClass}
+                                        />
+                                    </div>
+                                </div>
+                            )}
 
                             {operation === "sale" && (
                             <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
@@ -1736,10 +2016,148 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                     <p className="mt-1 text-lg font-black text-[#1A1A1A]">{money(item.valorTotal)}</p>
                                                 </div>
                                             </div>
+                                            {operation === "advanced" && (
+                                                <div className="space-y-4 rounded-2xl border border-amber-200 bg-white p-4">
+                                                    <p className="text-[11px] font-black uppercase tracking-wider text-amber-800">Tributacao assistida do item</p>
+                                                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                                                        <NumberField label="Origem (0-8)" value={Number(item.origem || 0)} onChange={(v) => updateItem(index, { origem: v })} />
+                                                        <div>
+                                                            <label className={labelClass}>CSOSN</label>
+                                                            <select value={item.csosn || "102"} onChange={(e) => updateItem(index, { csosn: e.target.value })} className={fieldClass}>
+                                                                {["101", "102", "103", "201", "202", "203", "300", "400", "500", "900"].map((code) => (
+                                                                    <option key={code} value={code}>{code}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                        <Field label="CEST" value={item.cest || ""} onChange={(v) => updateItem(index, { cest: onlyDigits(v).slice(0, 7) })} />
+                                                        <Field label="cBenef" value={item.cbenef || ""} onChange={(v) => updateItem(index, { cbenef: v.trim().slice(0, 10) })} />
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+                                                        <Field label="IPI CST" value={item.ipiCst || ""} onChange={(v) => updateItem(index, { ipiCst: onlyDigits(v).slice(0, 2) })} />
+                                                        <Field label="IPI cEnq" value={item.ipiCEnq || "999"} onChange={(v) => updateItem(index, { ipiCEnq: onlyDigits(v).slice(0, 3) })} />
+                                                        <NumberField label="IPI base" value={Number(item.ipiBase || 0)} onChange={(v) => updateItem(index, { ipiBase: v })} />
+                                                        <NumberField label="IPI %" value={Number(item.ipiAliquota || 0)} onChange={(v) => updateItem(index, { ipiAliquota: v })} />
+                                                        <NumberField label="IPI valor" value={Number(item.ipiValor || 0)} onChange={(v) => updateItem(index, { ipiValor: v })} />
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                                                        <Field label="PIS CST" value={item.pisCst || "99"} onChange={(v) => updateItem(index, { pisCst: onlyDigits(v).slice(0, 2) })} />
+                                                        <NumberField label="PIS base" value={Number(item.pisBase || 0)} onChange={(v) => updateItem(index, { pisBase: v })} />
+                                                        <NumberField label="PIS %" value={Number(item.pisAliquota || 0)} onChange={(v) => updateItem(index, { pisAliquota: v })} />
+                                                        <NumberField label="PIS valor" value={Number(item.pisValor || 0)} onChange={(v) => updateItem(index, { pisValor: v })} />
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                                                        <Field label="COFINS CST" value={item.cofinsCst || "99"} onChange={(v) => updateItem(index, { cofinsCst: onlyDigits(v).slice(0, 2) })} />
+                                                        <NumberField label="COFINS base" value={Number(item.cofinsBase || 0)} onChange={(v) => updateItem(index, { cofinsBase: v })} />
+                                                        <NumberField label="COFINS %" value={Number(item.cofinsAliquota || 0)} onChange={(v) => updateItem(index, { cofinsAliquota: v })} />
+                                                        <NumberField label="COFINS valor" value={Number(item.cofinsValor || 0)} onChange={(v) => updateItem(index, { cofinsValor: v })} />
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 ))}
                             </div>
+                        </section>
+                    )}
+
+                    {step === "transport" && (
+                        <section className="space-y-5">
+                            <div className="flex items-center gap-3">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-stone-100 text-stone-600">
+                                    <Truck size={20} />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-black text-[#1A1A1A]">Transporte e observacoes</h2>
+                                    <p className="text-sm text-stone-500">Parametros adicionais que seguem no XML da NF-e.</p>
+                                </div>
+                            </div>
+
+                            {operation !== "advanced" ? (
+                                <div className="rounded-2xl border border-stone-200 bg-[#F8F7F2] p-5 text-sm font-semibold text-stone-600">
+                                    Nesta etapa os templates guiados continuam usando sem ocorrencia de transporte e suas observacoes padrao.
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="rounded-2xl border border-stone-200 bg-[#F8F7F2] p-4">
+                                        <label className={labelClass}>Modalidade do frete</label>
+                                        <select value={modFrete} onChange={(e) => setModFrete(Number(e.target.value))} className={fieldClass}>
+                                            <option value={9}>9 - Sem transporte</option>
+                                            <option value={0}>0 - Por conta do emitente</option>
+                                            <option value={1}>1 - Por conta do destinatario</option>
+                                            <option value={2}>2 - Por conta de terceiros</option>
+                                            <option value={3}>3 - Proprio por conta do remetente</option>
+                                            <option value={4}>4 - Proprio por conta do destinatario</option>
+                                        </select>
+                                        {modFrete !== 9 && (
+                                            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                                                <Field label="Transportadora" value={carrierName} onChange={setCarrierName} />
+                                                <Field label="CPF/CNPJ" value={carrierDoc} onChange={(v) => setCarrierDoc(onlyDigits(v).slice(0, 14))} />
+                                                <NumberField label="Volumes" value={volumes} onChange={setVolumes} />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="rounded-2xl border border-stone-200 bg-[#F8F7F2] p-4">
+                                        <p className="text-sm font-black text-[#1A1A1A]">Parametros fiscais</p>
+                                        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
+                                            <div>
+                                                <label className={labelClass}>Presenca</label>
+                                                <select value={indPres} onChange={(e) => setIndPres(Number(e.target.value))} className={fieldClass}>
+                                                    <option value={0}>0 - Nao se aplica</option>
+                                                    <option value={1}>1 - Presencial</option>
+                                                    <option value={2}>2 - Internet</option>
+                                                    <option value={3}>3 - Teleatendimento</option>
+                                                    <option value={9}>9 - Outros</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>Consumidor final</label>
+                                                <select value={indFinal} onChange={(e) => setIndFinal(Number(e.target.value) as 0 | 1)} className={fieldClass}>
+                                                    <option value={1}>1 - Sim</option>
+                                                    <option value={0}>0 - Nao</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>Intermediador</label>
+                                                <select value={indIntermed} onChange={(e) => setIndIntermed(Number(e.target.value) as 0 | 1)} className={fieldClass}>
+                                                    <option value={0}>0 - Sem intermediador</option>
+                                                    <option value={1}>1 - Com intermediador</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>Pagamento</label>
+                                                <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className={fieldClass}>
+                                                    <option value="90">90 - Sem pagamento</option>
+                                                    <option value="01">01 - Dinheiro</option>
+                                                    <option value="03">03 - Cartao de credito</option>
+                                                    <option value="04">04 - Cartao de debito</option>
+                                                    <option value="15">15 - Boleto</option>
+                                                    <option value="17">17 - PIX</option>
+                                                    <option value="99">99 - Outros</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        {indIntermed === 1 && (
+                                            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                                                <Field label="CNPJ intermediador" value={intermediadorCnpj} onChange={(v) => setIntermediadorCnpj(onlyDigits(v).slice(0, 14))} />
+                                                <Field label="ID cadastro intermediador" value={intermediadorId} onChange={setIntermediadorId} />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                                        <NumberField label="Frete" value={valorFrete} onChange={setValorFrete} />
+                                        <NumberField label="Seguro" value={valorSeguro} onChange={setValorSeguro} />
+                                        <NumberField label="Desconto" value={valorDesconto} onChange={setValorDesconto} />
+                                        <NumberField label="Outras despesas" value={valorOutrasDespesas} onChange={setValorOutrasDespesas} />
+                                    </div>
+
+                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                        <TextAreaField label="Informacoes complementares" value={infCpl} onChange={setInfCpl} />
+                                        <TextAreaField label="Informacoes ao Fisco" value={infAdFisco} onChange={setInfAdFisco} />
+                                    </div>
+                                </>
+                            )}
                         </section>
                     )}
 
@@ -1782,6 +2200,39 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                     Dados minimos completos para emissao em homologacao.
                                 </div>
                             )}
+                            {operation === "advanced" && aiAudit && (
+                                <div className={`rounded-2xl border p-4 ${
+                                    aiAudit.status === "inconsistente"
+                                        ? "border-red-200 bg-red-50"
+                                        : aiAudit.status === "atencao"
+                                            ? "border-amber-200 bg-amber-50"
+                                            : "border-green-200 bg-green-50"
+                                }`}>
+                                    <p className="font-black text-stone-900">Auditoria da operacao assistida</p>
+                                    <p className="mt-1 text-sm font-semibold text-stone-700">{aiAudit.resumo}</p>
+                                    {aiAudit.achados.length > 0 && (
+                                        <div className="mt-3 space-y-2">
+                                            {aiAudit.achados.map((finding, index) => (
+                                                <div key={`${finding.titulo || "achado"}-${index}`} className="rounded-xl bg-white/80 p-3 text-xs text-stone-700">
+                                                    <p className="font-black">{finding.titulo || "Ponto para revisar"}</p>
+                                                    {finding.detalhe && <p className="mt-1">{finding.detalhe}</p>}
+                                                    {finding.sugestao && <p className="mt-1 font-bold">Sugestao: {finding.sugestao}</p>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <p className="mt-3 text-xs font-bold text-stone-600">{aiAudit.aviso}</p>
+                                    <label className="mt-4 flex items-start gap-2 rounded-xl border border-stone-200 bg-white p-3 text-sm font-semibold text-stone-800">
+                                        <input
+                                            type="checkbox"
+                                            checked={advancedAuditConfirmed}
+                                            onChange={(e) => setAdvancedAuditConfirmed(e.target.checked)}
+                                            className="mt-0.5 h-4 w-4 accent-stone-900"
+                                        />
+                                        Revisei os pontos com meu contador e confirmo a emissao deste rascunho.
+                                    </label>
+                                </div>
+                            )}
                         </section>
                     )}
 
@@ -1794,10 +2245,14 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                 Proximo <ChevronRight size={16} />
                             </button>
                         ) : (
-                            <button type="button" disabled={pendingIssues.length > 0 || emitting || loadingSaleData} onClick={handleEmit} className="flex items-center gap-2 rounded-xl bg-[#FACC15] px-4 py-2 text-sm font-black text-[#1A1A1A] transition hover:bg-yellow-300 disabled:opacity-40">
-                                {emitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                                {emitting
+                            <button type="button" disabled={pendingIssues.length > 0 || emitting || aiAuditLoading || loadingSaleData} onClick={handleEmit} className="flex items-center gap-2 rounded-xl bg-[#FACC15] px-4 py-2 text-sm font-black text-[#1A1A1A] transition hover:bg-yellow-300 disabled:opacity-40">
+                                {(emitting || aiAuditLoading) ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                                {aiAuditLoading
+                                    ? "Auditando..."
+                                    : emitting
                                     ? "Emitindo..."
+                                    : operation === "advanced" && (!aiAudit || !advancedAuditConfirmed)
+                                        ? "Revisao final"
                                     : operation === "bonus"
                                         ? `Emitir NF-e de ${purpose}`
                                         : operation === "return"
@@ -1806,6 +2261,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                 ? `Emitir NF-e de ${purpose}`
                                             : operation === "transfer"
                                                 ? `Emitir NF-e de ${purpose}`
+                                            : operation === "advanced"
+                                                ? "Emitir NF-e assistida"
                                             : "Emitir NF-e de Venda"}
                             </button>
                         )}
@@ -1901,6 +2358,28 @@ function Field({
                 disabled={disabled}
                 title={title}
                 className={`${fieldClass} disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-500`}
+            />
+        </label>
+    );
+}
+
+function TextAreaField({
+    label,
+    value,
+    onChange,
+}: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+}) {
+    return (
+        <label className="block">
+            <span className={labelClass}>{label}</span>
+            <textarea
+                value={value}
+                onChange={(event) => onChange(event.target.value)}
+                rows={4}
+                className={`${fieldClass} resize-y`}
             />
         </label>
     );

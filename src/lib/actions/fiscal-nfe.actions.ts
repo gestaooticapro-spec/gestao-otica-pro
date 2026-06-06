@@ -21,7 +21,7 @@ type NFeCustomerAddress = {
     ind_ie_dest?: number | null;
 };
 
-type NFeOperation = "sale" | "bonus" | "return" | "shipment" | "transfer";
+type NFeOperation = "sale" | "bonus" | "return" | "shipment" | "transfer" | "advanced";
 type NFeBonusPurpose = "Bonificacao" | "Brinde" | "Doacao";
 type NFeShipmentPurpose =
     | "Remessa para conserto"
@@ -35,6 +35,33 @@ type NFeTransferPurpose =
     | "Transferencia para deposito"
     | "Retorno de deposito";
 
+type NFeAdvancedConfig = {
+    audit_confirmed?: boolean;
+    natureza_operacao?: string;
+    tipo_nfe?: 0 | 1;
+    finalidade_nfe?: 1 | 2 | 3 | 4;
+    ind_pres?: number;
+    ind_intermed?: 0 | 1;
+    ind_final?: 0 | 1;
+    meio_pagamento?: string;
+    mod_frete?: number;
+    transportadora?: {
+        nome?: string;
+        cpf_cnpj?: string;
+        volumes?: number;
+    };
+    intermediador?: {
+        cnpj?: string;
+        id_cadastro?: string;
+    };
+    valor_frete?: number;
+    valor_seguro?: number;
+    valor_desconto?: number;
+    valor_outras_despesas?: number;
+    inf_cpl?: string;
+    inf_ad_fisco?: string;
+};
+
 type NFeSaleInput = {
     storeId: number;
     saleId?: number;
@@ -44,6 +71,7 @@ type NFeSaleInput = {
     finalidade_transferencia?: NFeTransferPurpose;
     destinationStoreId?: number;
     referenceKey?: string;
+    advanced?: NFeAdvancedConfig;
     cliente?: {
         nome?: string | null;
         cpf_cnpj?: string | null;
@@ -80,6 +108,21 @@ type FiscalItem = {
     valor_unitario: number;
     valor_total: number;
     origem?: number | null;
+    csosn?: string | null;
+    cbenef?: string | null;
+    ipi_cst?: string | null;
+    ipi_cenq?: string | null;
+    ipi_base?: number | null;
+    ipi_aliquota?: number | null;
+    ipi_valor?: number | null;
+    pis_cst?: string | null;
+    pis_base?: number | null;
+    pis_aliquota?: number | null;
+    pis_valor?: number | null;
+    cofins_cst?: string | null;
+    cofins_base?: number | null;
+    cofins_aliquota?: number | null;
+    cofins_valor?: number | null;
     icms_base?: number | null;
     icms_aliquota?: number | null;
     icms_valor?: number | null;
@@ -507,6 +550,111 @@ function buildReturnItemTax(item: FiscalItem) {
     return buildItemTax(item, "102");
 }
 
+function buildAdvancedItemTax(item: FiscalItem) {
+    const csosn = cleanDigits(item.csosn) || "102";
+    const supportedCsosn = ["101", "102", "103", "201", "202", "203", "300", "400", "500", "900"];
+    if (!supportedCsosn.includes(csosn)) {
+        throw new Error(`CSOSN ${csosn} nao suportado na operacao assistida.`);
+    }
+
+    const origem = Number(item.origem ?? 0);
+    if (!Number.isInteger(origem) || origem < 0 || origem > 8) {
+        throw new Error(`Origem da mercadoria invalida no item ${item.descricao}.`);
+    }
+
+    const zeroSt = {
+        modBCST: 4,
+        pMVAST: 0,
+        pRedBCST: 0,
+        vBCST: 0,
+        pICMSST: 0,
+        vICMSST: 0,
+    };
+    const icms = csosn === "101"
+        ? { ICMSSN101: { orig: origem, CSOSN: csosn, pCredSN: 0, vCredICMSSN: 0 } }
+        : csosn === "201"
+            ? { ICMSSN201: { orig: origem, CSOSN: csosn, ...zeroSt, pCredSN: 0, vCredICMSSN: 0 } }
+            : csosn === "202" || csosn === "203"
+                ? { ICMSSN202: { orig: origem, CSOSN: csosn, ...zeroSt } }
+                : csosn === "500"
+                    ? {
+                        ICMSSN500: {
+                            orig: origem,
+                            CSOSN: csosn,
+                            vBCSTRet: 0,
+                            pST: 0,
+                            vICMSSubstituto: 0,
+                            vICMSSTRet: 0,
+                            vBCFCPSTRet: 0,
+                            pFCPSTRet: 0,
+                            vFCPSTRet: 0,
+                        },
+                    }
+                    : csosn === "900"
+                        ? {
+                            ICMSSN900: {
+                                orig: origem,
+                                CSOSN: csosn,
+                                modBC: 3,
+                                vBC: 0,
+                                pRedBC: 0,
+                                pICMS: 0,
+                                vICMS: 0,
+                                ...zeroSt,
+                                pCredSN: 0,
+                                vCredICMSSN: 0,
+                            },
+                        }
+                        : { ICMSSN102: { orig: origem, CSOSN: csosn } };
+
+    const ipiCst = leftPad(item.ipi_cst || "", 2);
+    const hasIpi = Boolean(cleanDigits(item.ipi_cst))
+        || Number(item.ipi_base || 0) > 0
+        || Number(item.ipi_aliquota || 0) > 0
+        || Number(item.ipi_valor || 0) > 0;
+    const nonTaxedIpi = ["01", "02", "03", "04", "05", "51", "52", "53", "54", "55"];
+    const taxedIpi = ["00", "49", "50", "99"];
+    let ipi: Record<string, unknown> | undefined;
+    if (hasIpi) {
+        if (!nonTaxedIpi.includes(ipiCst) && !taxedIpi.includes(ipiCst)) {
+            throw new Error(`CST de IPI invalido no item ${item.descricao}.`);
+        }
+        const cEnq = leftPad(item.ipi_cenq || "999", 3);
+        ipi = nonTaxedIpi.includes(ipiCst)
+            ? { cEnq, IPINT: { CST: ipiCst } }
+            : {
+                cEnq,
+                IPITrib: {
+                    CST: ipiCst,
+                    vBC: money(item.ipi_base),
+                    pIPI: money(item.ipi_aliquota),
+                    vIPI: money(item.ipi_valor),
+                },
+            };
+    }
+
+    return {
+        ICMS: icms,
+        PIS: {
+            PISOutr: {
+                CST: leftPad(item.pis_cst || "99", 2),
+                vBC: money(item.pis_base),
+                pPIS: money(item.pis_aliquota),
+                vPIS: money(item.pis_valor),
+            },
+        },
+        COFINS: {
+            COFINSOutr: {
+                CST: leftPad(item.cofins_cst || "99", 2),
+                vBC: money(item.cofins_base),
+                pCOFINS: money(item.cofins_aliquota),
+                vCOFINS: money(item.cofins_valor),
+            },
+        },
+        ...(ipi ? { IPI: ipi } : {}),
+    };
+}
+
 function buildOutputSnapshot(total: number, store: NFeStoreData, customer: any, issuedAt: string) {
     return {
         direction: "output",
@@ -847,6 +995,21 @@ function normalizeManualItems(items: FiscalItem[] | undefined) {
             valor_unitario: valorUnitario,
             valor_total: valorTotal,
             origem: item.origem ?? 0,
+            csosn: cleanDigits(item.csosn) || undefined,
+            cbenef: cleanText(item.cbenef) || undefined,
+            ipi_cst: cleanDigits(item.ipi_cst) || undefined,
+            ipi_cenq: cleanDigits(item.ipi_cenq) || undefined,
+            ipi_base: money(item.ipi_base),
+            ipi_aliquota: money(item.ipi_aliquota),
+            ipi_valor: money(item.ipi_valor),
+            pis_cst: cleanDigits(item.pis_cst) || "99",
+            pis_base: money(item.pis_base),
+            pis_aliquota: money(item.pis_aliquota),
+            pis_valor: money(item.pis_valor),
+            cofins_cst: cleanDigits(item.cofins_cst) || "99",
+            cofins_base: money(item.cofins_base),
+            cofins_aliquota: money(item.cofins_aliquota),
+            cofins_valor: money(item.cofins_valor),
         };
     });
 }
@@ -866,13 +1029,14 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
         }
 
         const operation = input.operation || "sale";
-        if (!["sale", "bonus", "return", "shipment", "transfer"].includes(operation)) {
+        if (!["sale", "bonus", "return", "shipment", "transfer", "advanced"].includes(operation)) {
             throw new Error("Operacao NF-e ainda nao suportada.");
         }
         const isSaleOperation = operation === "sale";
         const isReturnOperation = operation === "return";
         const isShipmentOperation = operation === "shipment";
         const isTransferOperation = operation === "transfer";
+        const isAdvancedOperation = operation === "advanced";
         const referenceKey = cleanDigits(input.referenceKey);
         const shipmentPurpose: NFeShipmentPurpose = input.finalidade_remessa || "Remessa para conserto";
         const isShipmentReturn = isShipmentOperation && shipmentPurpose.startsWith("Retorno");
@@ -880,6 +1044,39 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
         const isRegularShipmentReturn = isShipmentReturn && !isDemonstrationReturn;
         const transferPurpose: NFeTransferPurpose = input.finalidade_transferencia || "Transferencia entre filiais";
         const isDepositReturn = isTransferOperation && transferPurpose === "Retorno de deposito";
+        const advanced = input.advanced || {};
+
+        if (isAdvancedOperation) {
+            if (advanced.audit_confirmed !== true) {
+                throw new Error("Confirme a revisao da operacao assistida antes de emitir.");
+            }
+            if (!cleanText(advanced.natureza_operacao)) {
+                throw new Error("Informe a natureza da operacao assistida.");
+            }
+            if (![0, 1].includes(Number(advanced.tipo_nfe))) {
+                throw new Error("Tipo da NF-e invalido na operacao assistida.");
+            }
+            if (![1, 2, 3, 4].includes(Number(advanced.finalidade_nfe))) {
+                throw new Error("Finalidade da NF-e invalida na operacao assistida.");
+            }
+            if (referenceKey && !/^\d{44}$/.test(referenceKey)) {
+                throw new Error("A chave da NF-e referenciada deve ter 44 digitos.");
+            }
+            if (advanced.ind_intermed === 1) {
+                if (!/^\d{14}$/.test(cleanDigits(advanced.intermediador?.cnpj)) || !cleanText(advanced.intermediador?.id_cadastro)) {
+                    throw new Error("Intermediador exige CNPJ e identificador de cadastro validos.");
+                }
+            }
+            if (Number(advanced.mod_frete ?? 9) === 9 && Number(advanced.valor_frete || 0) > 0) {
+                throw new Error("Nao informe valor de frete quando a modalidade for sem transporte.");
+            }
+            if (Number(advanced.mod_frete ?? 9) !== 9) {
+                const transportDoc = cleanDigits(advanced.transportadora?.cpf_cnpj);
+                if (![11, 14].includes(transportDoc.length)) {
+                    throw new Error("Informe CPF/CNPJ da transportadora.");
+                }
+            }
+        }
 
         if (input.saleId && isSaleOperation) {
             await ensureNoActiveNFeForSale(supabase, organizationId, input.storeId, input.saleId);
@@ -919,6 +1116,9 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
 
         const hydratedStore = await hydrateStoreFiscalDataFromNuvemFiscal(supabase, input.storeId, store);
         assertStoreReadyForNFe(hydratedStore);
+        if (isAdvancedOperation && Number(hydratedStore.regime_tributario || 1) !== 1) {
+            throw new Error("A operacao assistida esta liberada apenas para CRT 1 enquanto o motor usar CSOSN.");
+        }
 
         let sale: any | null = null;
         let customer: any = input.cliente
@@ -1233,6 +1433,26 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
             fiscalItems = normalizeManualItems(input.itens);
         }
 
+        if (isAdvancedOperation) {
+            fiscalItems.forEach((item) => {
+                const cfop = cleanDigits(item.cfop);
+                if (!/^\d{4}$/.test(cfop)) {
+                    throw new Error(`CFOP invalido no item ${item.descricao}.`);
+                }
+                const isEntryCfop = ["1", "2", "3"].includes(cfop[0]);
+                const isOutputCfop = ["5", "6", "7"].includes(cfop[0]);
+                if (Number(advanced.tipo_nfe) === 0 && !isEntryCfop) {
+                    throw new Error(`CFOP ${cfop} nao corresponde a NF-e de entrada.`);
+                }
+                if (Number(advanced.tipo_nfe) === 1 && !isOutputCfop) {
+                    throw new Error(`CFOP ${cfop} nao corresponde a NF-e de saida.`);
+                }
+            });
+            if (Number(advanced.tipo_nfe) === 1 && Number(advanced.ind_pres ?? 9) === 0) {
+                throw new Error("NF-e de saida nao pode usar indPres 0 sem revisao do preenchimento.");
+            }
+        }
+
         const dest = buildDest(customer, isReturnOperation || isShipmentReturn || isDepositReturn || (isTransferOperation && transferPurpose === "Transferencia entre filiais") ? undefined : input.cliente);
         if (isTransferOperation && (!dest.CNPJ || dest.indIEDest !== 1 || !dest.IE)) {
             throw new Error("Transferencias exigem destinatario pessoa juridica com CNPJ e Inscricao Estadual.");
@@ -1317,7 +1537,18 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
                                 ? "TRANSFERENCIA DE MERCADORIA PARA DEPOSITO. SEM INCIDENCIA DE COBRANCA."
                                 : "RETORNO DE MERCADORIA RECEBIDA EM DEPOSITO. SEM INCIDENCIA DE COBRANCA.",
                     }
-                    : {
+                    : isAdvancedOperation
+                        ? {
+                            natOp: cleanText(advanced.natureza_operacao).toUpperCase(),
+                            cfop: "",
+                            csosn: "102" as const,
+                            indPres: Number(advanced.ind_pres ?? 9),
+                            finNFe: Number(advanced.finalidade_nfe ?? 1),
+                            indFinal: Number(advanced.ind_final ?? 1),
+                            detPag: null,
+                            infCpl: cleanText(advanced.inf_cpl) || cleanText(advanced.natureza_operacao).toUpperCase(),
+                        }
+                        : {
                 natOp: bonusPurpose === "Bonificacao"
                     ? "BONIFICACAO"
                     : bonusPurpose === "Brinde"
@@ -1351,15 +1582,70 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
         });
         const cDV = Number(accessKey.slice(-1));
         const valorProdutos = money(fiscalItems.reduce((sum, item) => sum + item.valor_total, 0));
-        const valorTotal = isReturnOperation || isShipmentReturn || isDepositReturn
+        const valorTotal = isAdvancedOperation
+            ? money(
+                valorProdutos
+                + Number(advanced.valor_frete || 0)
+                + Number(advanced.valor_seguro || 0)
+                + Number(advanced.valor_outras_despesas || 0)
+                + fiscalItems.reduce((sum, item) => sum + Number(item.ipi_valor || 0), 0)
+                - Number(advanced.valor_desconto || 0)
+            )
+            : isReturnOperation || isShipmentReturn || isDepositReturn
             ? valorProdutos
             : money(input.valor_total || sale?.valor_final || valorProdutos);
-        const descontoTotal = valorProdutos > valorTotal ? money(valorProdutos - valorTotal) : 0;
-        const outrasDespesasTotal = valorTotal > valorProdutos ? money(valorTotal - valorProdutos) : 0;
+        if (valorTotal <= 0) {
+            throw new Error("O valor total da NF-e precisa ser maior que zero.");
+        }
+        if (isAdvancedOperation && Number(advanced.valor_desconto || 0) > valorProdutos) {
+            throw new Error("O desconto nao pode ser maior que o total dos produtos.");
+        }
+        const descontoTotal = isAdvancedOperation
+            ? money(advanced.valor_desconto)
+            : valorProdutos > valorTotal ? money(valorProdutos - valorTotal) : 0;
+        const outrasDespesasTotal = isAdvancedOperation
+            ? money(advanced.valor_outras_despesas)
+            : valorTotal > valorProdutos ? money(valorTotal - valorProdutos) : 0;
         const descontosPorItem = distributeTotalAdjustment(descontoTotal, fiscalItems, valorProdutos);
         const outrasPorItem = distributeTotalAdjustment(outrasDespesasTotal, fiscalItems, valorProdutos);
-        const detPag = template.detPag || buildPayments(salePayments, valorTotal);
+        const fretesPorItem = distributeTotalAdjustment(
+            isAdvancedOperation ? Number(advanced.valor_frete || 0) : 0,
+            fiscalItems,
+            valorProdutos,
+        );
+        const segurosPorItem = distributeTotalAdjustment(
+            isAdvancedOperation ? Number(advanced.valor_seguro || 0) : 0,
+            fiscalItems,
+            valorProdutos,
+        );
+        const detPag = isAdvancedOperation
+            ? [{
+                tPag: cleanText(advanced.meio_pagamento) || "90",
+                vPag: cleanText(advanced.meio_pagamento) === "90" ? 0 : valorTotal,
+            }]
+            : template.detPag || buildPayments(salePayments, valorTotal);
         const isProduction = NFE_ENVIRONMENT === "production";
+        const advancedReference = isAdvancedOperation && referenceKey ? { NFref: [{ refNFe: referenceKey }] } : {};
+        const transportDoc = cleanDigits(advanced.transportadora?.cpf_cnpj);
+        const advancedTransport = {
+            modFrete: Number(advanced.mod_frete ?? 9),
+            ...(Number(advanced.mod_frete ?? 9) !== 9 ? {
+                transporta: {
+                    ...(transportDoc.length === 14 ? { CNPJ: transportDoc } : {}),
+                    ...(transportDoc.length === 11 ? { CPF: transportDoc } : {}),
+                    xNome: cleanText(advanced.transportadora?.nome) || undefined,
+                },
+                ...(Number(advanced.transportadora?.volumes || 0) > 0 ? {
+                    vol: [{ qVol: Number(advanced.transportadora?.volumes) }],
+                } : {}),
+            } : {}),
+        };
+        const intermediary = isAdvancedOperation && advanced.ind_intermed === 1
+            ? {
+                CNPJ: cleanDigits(advanced.intermediador?.cnpj),
+                idCadIntTran: cleanText(advanced.intermediador?.id_cadastro),
+            }
+            : undefined;
 
         const nfePayload = {
             ambiente: isProduction ? "producao" : "homologacao",
@@ -1373,7 +1659,7 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
                     serie,
                     nNF: nextNumber,
                     dhEmi: issuedAt,
-                    tpNF: 1,
+                    tpNF: isAdvancedOperation ? Number(advanced.tipo_nfe ?? 1) : 1,
                     idDest: sameState ? 1 : 2,
                     cMunFG: Number(cleanDigits(hydratedStore.codigo_municipio_ibge)),
                     tpImp: 1,
@@ -1383,10 +1669,11 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
                     finNFe: template.finNFe,
                     indFinal: template.indFinal,
                     indPres: template.indPres,
-                    indIntermed: 0,
+                    indIntermed: isAdvancedOperation ? Number(advanced.ind_intermed ?? 0) : 0,
                     procEmi: 0,
                     verProc: "GestaoOticaPro 1.0",
                     ...(isReturnOperation || isShipmentReturn || isDepositReturn ? { NFref: [{ refNFe: referenceKey }] } : {}),
+                    ...advancedReference,
                 },
                 emit: {
                     CNPJ: cleanDigits(hydratedStore.cnpj),
@@ -1414,12 +1701,15 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
                         cEAN: "SEM GTIN",
                         xProd: item.descricao,
                         NCM: item.ncm,
-                        CFOP: template.cfop,
+                        CFOP: isAdvancedOperation ? cleanDigits(item.cfop) : template.cfop,
                         ...(item.cest ? { CEST: item.cest } : {}),
+                        ...(isAdvancedOperation && item.cbenef ? { cBenef: item.cbenef } : {}),
                         uCom: item.unidade,
                         qCom: item.quantidade,
                         vUnCom: item.valor_unitario,
                         vProd: item.valor_total,
+                        ...(fretesPorItem[index] > 0 ? { vFrete: fretesPorItem[index] } : {}),
+                        ...(segurosPorItem[index] > 0 ? { vSeg: segurosPorItem[index] } : {}),
                         ...(descontosPorItem[index] > 0 ? { vDesc: descontosPorItem[index] } : {}),
                         ...(outrasPorItem[index] > 0 ? { vOutro: outrasPorItem[index] } : {}),
                         cEANTrib: "SEM GTIN",
@@ -1428,7 +1718,9 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
                         vUnTrib: item.valor_unitario,
                         indTot: 1,
                     },
-                    imposto: isReturnOperation
+                    imposto: isAdvancedOperation
+                        ? buildAdvancedItemTax(item)
+                        : isReturnOperation
                         ? buildReturnItemTax(item)
                         : buildItemTax(item, template.csosn),
                 })),
@@ -1447,25 +1739,35 @@ export async function emitirNFeVendaHomologacao(input: NFeSaleInput) {
                         vFCPST: 0,
                         vFCPSTRet: 0,
                         vProd: valorProdutos,
-                        vFrete: 0,
-                        vSeg: 0,
+                        vFrete: isAdvancedOperation ? money(advanced.valor_frete) : 0,
+                        vSeg: isAdvancedOperation ? money(advanced.valor_seguro) : 0,
                         vDesc: descontoTotal,
                         vII: 0,
-                        vIPI: 0,
+                        vIPI: isAdvancedOperation
+                            ? money(fiscalItems.reduce((sum, item) => sum + Number(item.ipi_valor || 0), 0))
+                            : 0,
                         vIPIDevol: 0,
-                        vPIS: 0,
-                        vCOFINS: 0,
+                        vPIS: isAdvancedOperation
+                            ? money(fiscalItems.reduce((sum, item) => sum + Number(item.pis_valor || 0), 0))
+                            : 0,
+                        vCOFINS: isAdvancedOperation
+                            ? money(fiscalItems.reduce((sum, item) => sum + Number(item.cofins_valor || 0), 0))
+                            : 0,
                         vOutro: outrasDespesasTotal,
                         vNF: valorTotal,
                     },
                 },
-                transp: { modFrete: 9 },
+                transp: isAdvancedOperation ? advancedTransport : { modFrete: 9 },
                 pag: { detPag },
                 infAdic: {
                     infCpl: isProduction
                         ? template.infCpl
                         : `${template.infCpl} EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL.`,
+                    ...(isAdvancedOperation && cleanText(advanced.inf_ad_fisco)
+                        ? { infAdFisco: cleanText(advanced.inf_ad_fisco) }
+                        : {}),
                 },
+                ...(intermediary ? { infIntermed: intermediary } : {}),
                 infRespTec: buildNFeInfRespTec(hydratedStore, cleanDigits(hydratedStore.cnpj), NFE_ENVIRONMENT),
             },
         };
