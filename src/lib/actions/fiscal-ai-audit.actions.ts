@@ -36,6 +36,30 @@ type FiscalAuditResponse = {
     conclusao?: string;
 };
 
+type OpenAIResponse = {
+    output_text?: string;
+    output?: Array<{
+        content?: Array<{
+            type?: string;
+            text?: string;
+        }>;
+    }>;
+    error?: {
+        message?: string;
+    };
+};
+
+type OpenAIChatResponse = {
+    choices?: Array<{
+        message?: {
+            content?: string;
+        };
+    }>;
+    error?: {
+        message?: string;
+    };
+};
+
 export type FiscalAuditUiResult = {
     status: "parece_correta" | "atencao" | "inconsistente";
     resumo: string;
@@ -70,6 +94,66 @@ function cleanJsonResponse(text: string) {
     return text.replace(/^```[a-z]*\s*/i, "").replace(/\s*```$/i, "").trim();
 }
 
+function extractOpenAIText(response: OpenAIResponse) {
+    if (response.output_text?.trim()) return response.output_text.trim();
+
+    return (response.output || [])
+        .flatMap((output) => output.content || [])
+        .filter((part) => part.type === "output_text" && part.text?.trim())
+        .map((part) => part.text!.trim())
+        .join("\n");
+}
+
+async function auditWithOpenAI(prompt: string) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) throw new Error("OPENAI_API_KEY nao configurada.");
+
+    const model = process.env.OPENAI_TEXT_MODEL || "gpt-4.1-nano";
+    const responsesResult = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            model,
+            input: prompt,
+            max_output_tokens: 2200,
+        }),
+    });
+    const responsesData = await responsesResult.json() as OpenAIResponse;
+    if (responsesResult.ok) {
+        const text = extractOpenAIText(responsesData);
+        if (text) return text;
+    }
+
+    console.warn(
+        `[NFe IA Otica] OpenAI Responses falhou HTTP ${responsesResult.status}; tentando Chat Completions.`,
+    );
+    const chatResult = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            model,
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.1,
+            max_completion_tokens: 2200,
+        }),
+    });
+    const chatData = await chatResult.json() as OpenAIChatResponse;
+    if (!chatResult.ok) {
+        const detail = chatData.error?.message || responsesData.error?.message;
+        throw new Error(`OpenAI respondeu HTTP ${chatResult.status}${detail ? `: ${detail}` : "."}`);
+    }
+
+    const text = chatData.choices?.[0]?.message?.content?.trim();
+    if (!text) throw new Error("OpenAI nao retornou conteudo.");
+    return text;
+}
+
 export async function auditarNFeAssistidaComIaAction(payload: FiscalAuditPayload) {
     const auth = await createClient();
     const { data: { user } } = await auth.auth.getUser();
@@ -96,7 +180,7 @@ export async function auditarNFeAssistidaComIaAction(payload: FiscalAuditPayload
     }
 
     const apiKeys = getGeminiKeys();
-    if (!apiKeys.length) {
+    if (!apiKeys.length && !process.env.OPENAI_API_KEY) {
         return { success: false, error: "Nenhuma chave de IA configurada." };
     }
 
@@ -179,6 +263,9 @@ ${JSON.stringify(payload, null, 2)}
 
             if (!response.ok) {
                 lastError = `Gemini respondeu HTTP ${response.status}.`;
+                console.warn(
+                    `[NFe IA Otica] GEMINI_SECRET_KEY_${index + 1} falhou HTTP ${response.status}; tentando proxima chave.`,
+                );
                 continue;
             }
 
@@ -201,6 +288,26 @@ ${JSON.stringify(payload, null, 2)}
             };
         } catch (error) {
             lastError = error instanceof Error ? error.message : "Falha desconhecida na auditoria.";
+            console.warn(
+                `[NFe IA Otica] GEMINI_SECRET_KEY_${index + 1} falhou: ${lastError}; tentando proxima chave.`,
+            );
+        }
+    }
+
+    if (process.env.OPENAI_API_KEY) {
+        try {
+            console.warn("[NFe IA Otica] Gemini indisponivel; tentando OpenAI.");
+            const text = await auditWithOpenAI(prompt);
+            const parsed = JSON.parse(cleanJsonResponse(text)) as FiscalAuditResponse;
+            return {
+                success: true,
+                audit: normalizeAudit(parsed),
+                raw: parsed,
+                provider: "openai" as const,
+            };
+        } catch (error) {
+            lastError = error instanceof Error ? error.message : "Falha desconhecida na OpenAI.";
+            console.error(`[NFe IA Otica] OpenAI falhou: ${lastError}`);
         }
     }
 
