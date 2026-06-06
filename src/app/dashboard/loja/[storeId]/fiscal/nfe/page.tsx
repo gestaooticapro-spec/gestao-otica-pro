@@ -10,12 +10,12 @@ import {
     CheckCircle,
     ChevronLeft,
     ChevronRight,
+    Copy,
     FileCheck2,
     FileText,
     Gift,
     Loader2,
     MapPin,
-    Package,
     Repeat2,
     RotateCcw,
     Search,
@@ -28,10 +28,11 @@ import {
 } from "lucide-react";
 import ModuleDisabledState from "@/components/modules/ModuleDisabledState";
 import { useStoreModules } from "@/lib/contexts/StoreModulesContext";
-import { getAuthorizedDepositTransferOriginAction, getAuthorizedShipmentOriginAction, getImportedDemonstrationOriginAction, getImportedNFeOriginAction, getPendingSales, getProductFiscalData, getSaleData, getTenantTransferStoreAction, listAuthorizedDepositTransferOriginsAction, listAuthorizedShipmentOriginsAction, listImportedDemonstrationOriginsAction, listImportedNFeOriginsAction, listTenantTransferStoresAction, saveMissingProductNcmAction, saveNFeCustomerParticipantAction, searchNFeParticipantsAction, searchProducts } from "@/lib/actions/fiscal-db.actions";
+import { getAuthorizedDepositTransferOriginAction, getAuthorizedShipmentOriginAction, getImportedDemonstrationOriginAction, getImportedNFeOriginAction, getNFeInvoiceWithItemsAction, getPendingSales, getProductFiscalData, getSaleData, getTenantTransferStoreAction, listAuthorizedDepositTransferOriginsAction, listAuthorizedShipmentOriginsAction, listImportedDemonstrationOriginsAction, listImportedNFeOriginsAction, listTenantTransferStoresAction, saveMissingProductNcmAction, saveNFeCustomerParticipantAction, searchCloneableNFeInvoicesAction, searchNFeParticipantsAction, searchProducts, type ParsedNFeItem } from "@/lib/actions/fiscal-db.actions";
 import { emitirNFeVendaHomologacao } from "@/lib/actions/fiscal-nfe.actions";
 import { auditarNFeAssistidaComIaAction, type FiscalAuditPayload, type FiscalAuditUiResult } from "@/lib/actions/fiscal-ai-audit.actions";
 import { getStoreProfile } from "@/lib/actions/store.actions";
+import { participantFromOriginDest } from "@/lib/nfe_xml";
 
 type StepId = "operation" | "participant" | "items" | "transport" | "review";
 type OperationGroup = "sale" | "return" | "shipment" | "transfer" | "bonus" | "advanced";
@@ -210,6 +211,22 @@ type ProductSearchResult = {
     unidade?: string | null;
 };
 
+type CloneInvoiceSummary = {
+    id: number;
+    numero: string | null;
+    serie: string | null;
+    status: string | null;
+    environment: string | null;
+    destinatario_nome: string | null;
+    destinatario_cnpj: string | null;
+    valor_total: number | null;
+    data_emissao: string | null;
+    chave_acesso: string | null;
+    payload_json?: {
+        infNFe?: Record<string, unknown>;
+    } | null;
+};
+
 const STEPS: { id: StepId; label: string }[] = [
     { id: "operation", label: "Operacao" },
     { id: "participant", label: "Participante" },
@@ -329,6 +346,103 @@ function money(value?: number | null) {
     return Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === "object" && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : {};
+}
+
+function firstRecord(value: unknown): Record<string, unknown> {
+    return Array.isArray(value) ? asRecord(value[0]) : asRecord(value);
+}
+
+function normalizeFiscalText(value: unknown) {
+    return String(value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toUpperCase();
+}
+
+function inferCloneOperation(infNFe: Record<string, unknown>): {
+    operation: OperationGroup;
+    purpose: string;
+    nature: string;
+    tipoNFe: 0 | 1;
+    finalidadeNFe: 1 | 2 | 3 | 4;
+} {
+    const ide = asRecord(infNFe.ide);
+    const nature = String(ide.natOp || "");
+    const normalizedNature = normalizeFiscalText(nature);
+    const tipoNFe = Number(ide.tpNF) === 0 ? 0 : 1;
+    const rawFinalidade = Number(ide.finNFe);
+    const finalidadeNFe = [1, 2, 3, 4].includes(rawFinalidade)
+        ? rawFinalidade as 1 | 2 | 3 | 4
+        : 1;
+
+    if (normalizedNature.includes("VENDA")) {
+        return { operation: "sale", purpose: "Venda comum", nature, tipoNFe, finalidadeNFe };
+    }
+    if (normalizedNature.includes("BONIFIC")) {
+        return { operation: "bonus", purpose: "Bonificacao", nature, tipoNFe, finalidadeNFe };
+    }
+    if (normalizedNature.includes("BRINDE")) {
+        return { operation: "bonus", purpose: "Brinde", nature, tipoNFe, finalidadeNFe };
+    }
+    if (normalizedNature.includes("DOAC")) {
+        return { operation: "bonus", purpose: "Doacao", nature, tipoNFe, finalidadeNFe };
+    }
+    if (normalizedNature.includes("REMESSA") && !normalizedNature.includes("RETORNO")) {
+        if (normalizedNature.includes("CONSERTO")) {
+            return { operation: "shipment", purpose: "Remessa para conserto", nature, tipoNFe, finalidadeNFe };
+        }
+        if (normalizedNature.includes("GARANT")) {
+            return { operation: "shipment", purpose: "Remessa em garantia", nature, tipoNFe, finalidadeNFe };
+        }
+        if (normalizedNature.includes("DEMONSTR")) {
+            return { operation: "shipment", purpose: "Remessa para demonstracao", nature, tipoNFe, finalidadeNFe };
+        }
+    }
+
+    // Retornos, devolucoes e transferencias dependem de uma nova origem/destino.
+    return {
+        operation: "advanced",
+        purpose: "Operacao avancada",
+        nature,
+        tipoNFe,
+        finalidadeNFe,
+    };
+}
+
+function cloneDraftItem(item: ParsedNFeItem, index: number): NFeItemForm {
+    return {
+        codigo: item.codigo || String(index + 1),
+        descricao: item.descricao || "",
+        ncm: onlyDigits(item.ncm || "").slice(0, 8),
+        cest: onlyDigits(item.cest || "").slice(0, 7),
+        cfop: onlyDigits(item.cfop || "").slice(0, 4),
+        unidade: item.unidade || "UN",
+        quantidade: Number(item.quantidade || 1),
+        valorUnitario: Number(item.valor_unitario || 0),
+        valorTotal: Number(item.valor_total || 0),
+        origem: Number(item.origem || 0),
+        csosn: item.csosn || "102",
+        cbenef: item.cbenef || "",
+        ipiCst: item.ipi_cst || "",
+        ipiCEnq: item.ipi_cenq || "999",
+        ipiBase: Number(item.ipi_base || 0),
+        ipiAliquota: Number(item.ipi_aliquota || 0),
+        ipiValor: Number(item.ipi_valor || 0),
+        pisCst: item.pis_cst || "99",
+        pisBase: Number(item.pis_base || 0),
+        pisAliquota: Number(item.pis_aliquota || 0),
+        pisValor: Number(item.pis_valor || 0),
+        cofinsCst: item.cofins_cst || "99",
+        cofinsBase: Number(item.cofins_base || 0),
+        cofinsAliquota: Number(item.cofins_aliquota || 0),
+        cofinsValor: Number(item.cofins_valor || 0),
+    };
+}
+
 function customerFormFromSale(saleData: SaleDataForNFe, fallbackSale: PendingSale): CustomerForm {
     const customer = Array.isArray(saleData?.customers) ? saleData.customers[0] : saleData?.customers;
     return {
@@ -372,11 +486,20 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
     const [step, setStep] = useState<StepId>("operation");
     const [operation, setOperation] = useState<OperationGroup>("sale");
     const [purpose, setPurpose] = useState("Venda comum");
+    const [saleModalOpen, setSaleModalOpen] = useState(false);
+    const [cloneModalOpen, setCloneModalOpen] = useState(false);
+    const [cloneSearch, setCloneSearch] = useState("");
+    const [cloneStatus, setCloneStatus] = useState<"authorized" | "error" | "rejected" | "all">("authorized");
+    const [cloneResults, setCloneResults] = useState<CloneInvoiceSummary[]>([]);
+    const [cloneLoading, setCloneLoading] = useState(false);
+    const [cloneApplyingId, setCloneApplyingId] = useState<number | null>(null);
+    const [clonedFrom, setClonedFrom] = useState<CloneInvoiceSummary | null>(null);
     const [pendingSales, setPendingSales] = useState<PendingSale[]>([]);
     const [loadingSales, setLoadingSales] = useState(true);
     const [saleSearch, setSaleSearch] = useState("");
     const [selectedSale, setSelectedSale] = useState<PendingSale | null>(null);
     const [loadingSaleData, setLoadingSaleData] = useState(false);
+    const [saleApplyingId, setSaleApplyingId] = useState<number | null>(null);
     const [importedOrigins, setImportedOrigins] = useState<ImportedNFeOrigin[]>([]);
     const [selectedOrigin, setSelectedOrigin] = useState<ImportedNFeOrigin | null>(null);
     const [loadingOriginKey, setLoadingOriginKey] = useState<string | null>(null);
@@ -403,6 +526,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
     const [advancedTpNF, setAdvancedTpNF] = useState<0 | 1>(1);
     const [advancedFinNFe, setAdvancedFinNFe] = useState<1 | 2 | 3 | 4>(1);
     const [referencedKey, setReferencedKey] = useState("");
+    const [advancedOriginPanelOpen, setAdvancedOriginPanelOpen] = useState(false);
     const [modFrete, setModFrete] = useState(9);
     const [carrierName, setCarrierName] = useState("");
     const [carrierDoc, setCarrierDoc] = useState("");
@@ -483,7 +607,33 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         return () => clearTimeout(timer);
     }, [participantMode, participantSearch, storeId]);
 
+    useEffect(() => {
+        if (!cloneModalOpen) return;
+
+        let cancelled = false;
+        const timer = setTimeout(async () => {
+            setCloneLoading(true);
+            try {
+                const data = await searchCloneableNFeInvoicesAction({
+                    storeId,
+                    environment: "homologation",
+                    query: cloneSearch,
+                    status: cloneStatus,
+                });
+                if (!cancelled) setCloneResults(data as CloneInvoiceSummary[]);
+            } finally {
+                if (!cancelled) setCloneLoading(false);
+            }
+        }, 300);
+
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [cloneModalOpen, cloneSearch, cloneStatus, storeId]);
+
     function resetToManual() {
+        setClonedFrom(null);
         setSelectedSale(null);
         setSelectedOrigin(null);
         setSelectedShipmentOrigin(null);
@@ -495,6 +645,94 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         setItems([{ ...emptyItem }]);
         setError(null);
         setSuccess(null);
+    }
+
+    async function applyCloneInvoice(invoice: CloneInvoiceSummary) {
+        setCloneApplyingId(invoice.id);
+        setError(null);
+        setSuccess(null);
+
+        try {
+            const result = await getNFeInvoiceWithItemsAction({
+                storeId,
+                invoiceId: invoice.id,
+            });
+            if (!result.success || !result.invoice || !result.infNFe) {
+                setError(result.error || "Nao foi possivel ler os dados da NF-e selecionada.");
+                return;
+            }
+
+            const infNFe = asRecord(result.infNFe);
+            const participant = participantFromOriginDest(infNFe.dest);
+            const inferred = inferCloneOperation(infNFe);
+            const transp = asRecord(infNFe.transp);
+            const carrier = asRecord(transp.transporta);
+            const volume = firstRecord(transp.vol);
+            const total = asRecord(asRecord(infNFe.total).ICMSTot);
+            const payment = firstRecord(asRecord(infNFe.pag).detPag);
+            const intermediary = asRecord(infNFe.infIntermed);
+            const additional = asRecord(infNFe.infAdic);
+            const ide = asRecord(infNFe.ide);
+
+            setOperation(inferred.operation);
+            setPurpose(inferred.purpose);
+            setAdvancedNature(inferred.nature);
+            setAdvancedTpNF(inferred.tipoNFe);
+            setAdvancedFinNFe(inferred.finalidadeNFe);
+            setReferencedKey("");
+            setAdvancedOriginPanelOpen(false);
+
+            setSelectedSale(null);
+            setSelectedOrigin(null);
+            setSelectedShipmentOrigin(null);
+            setSelectedTransferStore(null);
+            setSelectedDepositTransferOrigin(null);
+            setSelectedParticipantId(null);
+            setParticipantMode("manual");
+            setCustomerForm({
+                nome: participant.nome,
+                cpfCnpj: participant.cpf_cnpj,
+                email: participant.email,
+                logradouro: participant.logradouro,
+                numero: participant.numero,
+                complemento: participant.complemento,
+                bairro: participant.bairro,
+                cidade: participant.cidade,
+                uf: participant.uf,
+                cep: participant.cep,
+                codigoMunicipioIbge: participant.codigo_municipio,
+                inscricaoEstadual: participant.inscricao_estadual,
+            });
+
+            const clonedItems = (result.items || []).map((item: ParsedNFeItem, index: number) => cloneDraftItem(item, index));
+            setItems(clonedItems.length > 0 ? clonedItems : [{ ...emptyItem }]);
+
+            setModFrete(Number(transp.modFrete ?? 9));
+            setCarrierName(String(carrier.xNome || ""));
+            setCarrierDoc(String(carrier.CNPJ || carrier.CPF || ""));
+            setVolumes(Number(volume.qVol || 0));
+            setIndPres(Number(ide.indPres ?? 9));
+            setIndIntermed(Number(ide.indIntermed ?? 0) === 1 ? 1 : 0);
+            setIndFinal(Number(ide.indFinal ?? 1) === 0 ? 0 : 1);
+            setIntermediadorCnpj(String(intermediary.CNPJ || ""));
+            setIntermediadorId(String(intermediary.idCadIntTran || ""));
+            setPaymentMethod(String(payment.tPag || (inferred.operation === "sale" ? "01" : "90")));
+            setValorFrete(Number(total.vFrete || 0));
+            setValorSeguro(Number(total.vSeg || 0));
+            setValorDesconto(Number(total.vDesc || 0));
+            setValorOutrasDespesas(Number(total.vOutro || 0));
+            setInfCpl(String(additional.infCpl || ""));
+            setInfAdFisco(String(additional.infAdFisco || ""));
+
+            setAiAudit(null);
+            setAuditFingerprint("");
+            setAdvancedAuditConfirmed(false);
+            setClonedFrom(invoice);
+            setCloneModalOpen(false);
+            setStep("review");
+        } finally {
+            setCloneApplyingId(null);
+        }
     }
 
     async function selectTransferStore(store: TransferStore) {
@@ -736,6 +974,10 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
     }
 
     async function importSale(sale: PendingSale) {
+        setSaleApplyingId(sale.id);
+        setOperation("sale");
+        setPurpose("Venda comum");
+        setClonedFrom(null);
         setSelectedSale(sale);
         setError(null);
         setSuccess(null);
@@ -777,11 +1019,13 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
             }));
 
             setItems(saleItems.length ? saleItems : [{ ...emptyItem }]);
+            setSaleModalOpen(false);
             setStep("participant");
         } catch (err) {
             console.error(err);
             setError("Nao foi possivel importar a venda.");
         } finally {
+            setSaleApplyingId(null);
             setLoadingSaleData(false);
         }
     }
@@ -1338,15 +1582,17 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
     const itemsLocked = operation === "return"
         || (operation === "shipment" && purpose.startsWith("Retorno"))
         || (operation === "transfer" && purpose === "Retorno de deposito");
-    const filteredSales = pendingSales.filter((sale) => {
-        const term = saleSearch.trim().toLowerCase();
-        if (!term) return true;
-        return (
-            String(sale.id).includes(term) ||
-            (sale.clients?.nome || "").toLowerCase().includes(term) ||
-            (sale.clients?.cpf_cnpj || "").replace(/\D/g, "").includes(term.replace(/\D/g, ""))
-        );
-    });
+    const filteredSales = pendingSales
+        .filter((sale) => {
+            const term = saleSearch.trim().toLowerCase();
+            if (!term) return true;
+            return (
+                String(sale.id).includes(term) ||
+                (sale.clients?.nome || "").toLowerCase().includes(term) ||
+                (sale.clients?.cpf_cnpj || "").replace(/\D/g, "").includes(term.replace(/\D/g, ""))
+            );
+        })
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     return (
         <div className="mx-auto max-w-7xl space-y-5 pb-32 p-6">
@@ -1367,13 +1613,21 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
 
                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-[260px_1fr_320px] lg:items-center">
                     <div className="hidden lg:block" />
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex items-center justify-between gap-2">
                         <button
                             type="button"
-                            className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-black text-stone-700 shadow-sm transition hover:bg-stone-50 opacity-60"
-                            title="Sera portado em uma etapa futura"
+                            onClick={() => setSaleModalOpen(true)}
+                            className="inline-flex items-center gap-2 rounded-xl bg-[#FACC15] px-3 py-2 text-xs font-black text-[#1A1A1A] shadow-sm transition hover:bg-yellow-300"
                         >
-                            <FileText size={14} />
+                            <Search size={14} />
+                            Buscar venda
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setCloneModalOpen(true)}
+                            className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-black text-stone-700 shadow-sm transition hover:border-[#FACC15] hover:bg-yellow-50"
+                        >
+                            <Copy size={14} />
                             Clonar nota
                         </button>
                     </div>
@@ -1419,24 +1673,30 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                         })}
                     </div>
 
-                    <div className="rounded-2xl border border-stone-100 bg-white p-3 shadow-sm">
-                        <p className="px-2 pb-2 text-[10px] font-black uppercase tracking-widest text-stone-400">Atalhos</p>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                resetToManual();
-                                setOperation("sale");
-                                setPurpose("Venda comum");
-                                setStep("participant");
-                            }}
-                            className="mb-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-black text-stone-700 hover:bg-stone-50"
-                        >
-                            <Package size={14} /> NF-e avulsa/manual
-                        </button>
-                    </div>
                 </aside>
 
                 <main className="min-h-[640px] rounded-2xl border border-stone-100 bg-white p-5 shadow-sm">
+                    {clonedFrom && (
+                        <div className="mb-5 flex items-start justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                            <div>
+                                <p className="text-sm font-black text-blue-900">
+                                    Rascunho clonado da NF-e {clonedFrom.numero || "-"}
+                                    {clonedFrom.serie ? `, serie ${clonedFrom.serie}` : ""}.
+                                </p>
+                                <p className="mt-1 text-xs font-medium text-blue-700">
+                                    Numero, chave e protocolo anteriores nao serao reutilizados. Revise os campos antes de emitir.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setClonedFrom(null)}
+                                className="shrink-0 rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-black text-blue-700 hover:bg-blue-100"
+                            >
+                                Ocultar aviso
+                            </button>
+                        </div>
+                    )}
+
                     {step === "operation" && (
                         <section className="space-y-5">
                             <div>
@@ -1481,23 +1741,25 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                 })}
                             </div>
 
-                            <div className="rounded-2xl border border-stone-100 bg-[#F8F7F2] p-4">
-                                <label className={labelClass}>Finalidade especifica</label>
-                                <select
-                                    value={purpose}
-                                    onChange={(e) => {
-                                        setPurpose(e.target.value);
-                                        setSelectedShipmentOrigin(null);
-                                        setSelectedTransferStore(null);
-                                        setSelectedDepositTransferOrigin(null);
-                                    }}
-                                    className={fieldClass}
-                                >
-                                    {currentOperation.purposes.map((item) => (
-                                        <option key={item} value={item}>{item}</option>
-                                    ))}
-                                </select>
-                            </div>
+                            {operation !== "advanced" && (
+                                <div className="rounded-2xl border border-stone-100 bg-[#F8F7F2] p-4">
+                                    <label className={labelClass}>Finalidade especifica</label>
+                                    <select
+                                        value={purpose}
+                                        onChange={(e) => {
+                                            setPurpose(e.target.value);
+                                            setSelectedShipmentOrigin(null);
+                                            setSelectedTransferStore(null);
+                                            setSelectedDepositTransferOrigin(null);
+                                        }}
+                                        className={fieldClass}
+                                    >
+                                        {currentOperation.purposes.map((item) => (
+                                            <option key={item} value={item}>{item}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
 
                             {operation === "advanced" && (
                                 <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
@@ -1534,59 +1796,85 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                             </select>
                                         </div>
                                     </div>
-                                    <div>
-                                        <label className={labelClass}>Chave NF-e referenciada (opcional)</label>
-                                        <input
-                                            value={referencedKey}
-                                            onChange={(e) => setReferencedKey(onlyDigits(e.target.value).slice(0, 44))}
-                                            placeholder="44 digitos, apenas quando o contador orientar"
-                                            className={fieldClass}
+                                </div>
+                            )}
+
+                            {operation === "advanced" && (
+                                <div className="rounded-2xl border border-orange-100 bg-orange-50 p-4">
+                                    <button
+                                        type="button"
+                                        onClick={() => setAdvancedOriginPanelOpen((current) => !current)}
+                                        className="flex w-full items-center justify-between rounded-xl border border-orange-200 bg-white px-3 py-3 text-left transition hover:bg-orange-50"
+                                    >
+                                        <span>
+                                            <span className="block text-sm font-black text-orange-900">Nota de origem</span>
+                                            <span className="mt-0.5 block text-xs font-medium text-orange-700">
+                                                Opcional, para operacoes que precisam referenciar outra NF-e.
+                                            </span>
+                                        </span>
+                                        <ChevronRight
+                                            size={16}
+                                            className={`shrink-0 text-orange-700 transition ${advancedOriginPanelOpen ? "rotate-90" : ""}`}
                                         />
-                                    </div>
+                                    </button>
+
+                                    {advancedOriginPanelOpen && (
+                                        <div className="mt-4">
+                                            <label className="ml-1 text-[10px] font-black uppercase tracking-wider text-orange-600">
+                                                Chave de acesso da NF-e de origem
+                                            </label>
+                                            <input
+                                                value={referencedKey}
+                                                onChange={(e) => setReferencedKey(onlyDigits(e.target.value).slice(0, 44))}
+                                                inputMode="numeric"
+                                                maxLength={44}
+                                                placeholder="44 digitos"
+                                                className="mt-1 w-full rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200"
+                                            />
+                                            <div className="mt-2 flex items-center justify-between gap-3 text-[10px] font-bold text-orange-700">
+                                                <span>Informe somente quando a operacao exigir referencia fiscal.</span>
+                                                <span className="shrink-0">{onlyDigits(referencedKey).length}/44</span>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
                             {operation === "sale" && (
-                            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
-                                <div className="flex items-center justify-between gap-3">
+                                <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
                                     <div>
-                                        <p className="text-sm font-black text-blue-800">Importar venda e opcional</p>
-                                        <p className="mt-1 text-xs font-medium text-blue-700">A NF-e pode ser avulsa. A venda serve apenas para preencher cliente e itens.</p>
+                                        <p className="text-sm font-black text-blue-900">
+                                            {selectedSale ? `Venda #${selectedSale.id} selecionada` : "NF-e avulsa"}
+                                        </p>
+                                        <p className="mt-1 text-xs font-medium text-blue-700">
+                                            {selectedSale
+                                                ? `${selectedSale.clients?.nome || "Cliente nao informado"} | ${money(selectedSale.total)}`
+                                                : "Nenhuma venda foi vinculada. Participante e itens serao preenchidos manualmente."}
+                                        </p>
                                     </div>
-                                    <button type="button" onClick={resetToManual} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-blue-700 shadow-sm hover:bg-blue-50">
-                                        Usar avulsa
-                                    </button>
-                                </div>
-
-                                <div className="mt-4 rounded-2xl border border-blue-100 bg-white p-3">
-                                    <div className="relative">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={15} />
-                                        <input
-                                            value={saleSearch}
-                                            onChange={(e) => setSaleSearch(e.target.value)}
-                                            placeholder="Buscar venda, cliente ou CPF..."
-                                            className="w-full rounded-xl border border-stone-100 bg-[#F8F7F2] py-2 pl-9 pr-3 text-sm outline-none focus:border-[#FACC15]"
-                                        />
-                                    </div>
-                                    <div className="mt-3 max-h-52 overflow-y-auto space-y-2">
-                                        {loadingSales ? (
-                                            <div className="py-6 flex justify-center"><Loader2 className="animate-spin text-[#FACC15]" size={20} /></div>
-                                        ) : filteredSales.length === 0 ? (
-                                            <p className="py-4 text-center text-xs font-bold text-stone-400">Nenhuma venda elegivel encontrada.</p>
-                                        ) : (
-                                            filteredSales.map((sale) => (
-                                                <button key={sale.id} type="button" onClick={() => importSale(sale)} className="flex w-full justify-between rounded-xl border border-stone-100 p-3 text-left transition hover:bg-yellow-50">
-                                                    <span>
-                                                        <span className="block text-xs font-black text-stone-900">Venda #{sale.id}</span>
-                                                        <span className="block text-[10px] font-bold text-stone-500">{sale.clients?.nome || "Cliente nao informado"}</span>
-                                                    </span>
-                                                    <span className="text-xs font-black text-stone-800">{money(sale.total)}</span>
-                                                </button>
-                                            ))
+                                    <div className="mt-4 flex flex-wrap gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setSaleModalOpen(true)}
+                                            className="rounded-xl bg-blue-700 px-3 py-2 text-xs font-black text-white hover:bg-blue-800"
+                                        >
+                                            {selectedSale ? "Trocar venda" : "Buscar venda"}
+                                        </button>
+                                        {selectedSale && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    resetToManual();
+                                                    setOperation("sale");
+                                                    setPurpose("Venda comum");
+                                                }}
+                                                className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-black text-blue-700 hover:bg-blue-100"
+                                            >
+                                                Remover vinculo
+                                            </button>
                                         )}
                                     </div>
                                 </div>
-                            </div>
                             )}
 
                             {operation === "return" && (
@@ -2337,6 +2625,265 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                         )}
                     </div>
                 </aside>
+            </div>
+
+            {saleModalOpen && (
+                <SaleSearchModal
+                    query={saleSearch}
+                    setQuery={setSaleSearch}
+                    sales={filteredSales}
+                    loading={loadingSales}
+                    applyingId={saleApplyingId}
+                    onClose={() => setSaleModalOpen(false)}
+                    onSelect={importSale}
+                />
+            )}
+
+            {cloneModalOpen && (
+                <CloneInvoiceModal
+                    query={cloneSearch}
+                    setQuery={setCloneSearch}
+                    status={cloneStatus}
+                    setStatus={setCloneStatus}
+                    invoices={cloneResults}
+                    loading={cloneLoading}
+                    applyingId={cloneApplyingId}
+                    onClose={() => setCloneModalOpen(false)}
+                    onSelect={applyCloneInvoice}
+                />
+            )}
+        </div>
+    );
+}
+
+function SaleSearchModal({
+    query,
+    setQuery,
+    sales,
+    loading,
+    applyingId,
+    onClose,
+    onSelect,
+}: {
+    query: string;
+    setQuery: (value: string) => void;
+    sales: PendingSale[];
+    loading: boolean;
+    applyingId: number | null;
+    onClose: () => void;
+    onSelect: (sale: PendingSale) => Promise<void>;
+}) {
+    const today = new Date();
+    const isToday = (value: string) => {
+        const date = new Date(value);
+        return date.getDate() === today.getDate()
+            && date.getMonth() === today.getMonth()
+            && date.getFullYear() === today.getFullYear();
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+            <div className="max-h-[86vh] w-full max-w-3xl overflow-hidden rounded-3xl border border-white/10 bg-white shadow-2xl">
+                <div className="flex items-center justify-between gap-3 border-b border-stone-100 p-5">
+                    <div>
+                        <p className="text-lg font-black text-[#1A1A1A]">Buscar venda</p>
+                        <p className="mt-1 text-xs font-bold text-stone-500">As vendas mais recentes aparecem primeiro.</p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        disabled={applyingId !== null}
+                        className="rounded-xl border border-stone-200 px-3 py-2 text-xs font-black text-stone-600 hover:bg-stone-50 disabled:opacity-40"
+                    >
+                        Fechar
+                    </button>
+                </div>
+
+                <div className="border-b border-stone-100 p-4">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={15} />
+                        <input
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                            className="w-full rounded-xl border border-stone-200 py-2 pl-9 pr-3 text-sm font-bold outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20"
+                            placeholder="Numero da venda, cliente ou CPF/CNPJ"
+                            autoFocus
+                        />
+                    </div>
+                </div>
+
+                <div className="max-h-[58vh] overflow-y-auto p-4">
+                    {loading ? (
+                        <div className="flex items-center gap-2 rounded-2xl bg-stone-50 p-4 text-sm font-bold text-stone-500">
+                            <Loader2 size={16} className="animate-spin" /> Buscando vendas...
+                        </div>
+                    ) : sales.length === 0 ? (
+                        <div className="rounded-2xl bg-stone-50 p-5 text-center text-sm font-bold text-stone-500">
+                            Nenhuma venda elegivel encontrada.
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            {sales.map((sale) => (
+                                <button
+                                    key={sale.id}
+                                    type="button"
+                                    onClick={() => void onSelect(sale)}
+                                    disabled={applyingId !== null}
+                                    className="w-full rounded-2xl border border-stone-200 bg-white p-4 text-left transition hover:border-[#FACC15] hover:bg-yellow-50/40 disabled:opacity-50"
+                                >
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <p className="font-black text-[#1A1A1A]">Venda #{sale.id}</p>
+                                                {isToday(sale.created_at) && (
+                                                    <span className="rounded-full bg-[#FACC15] px-2 py-1 text-[9px] font-black uppercase text-[#1A1A1A]">
+                                                        Hoje
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="mt-1 text-xs font-bold text-stone-500">
+                                                {sale.clients?.nome || "Cliente nao informado"}
+                                            </p>
+                                            <p className="mt-1 text-[10px] font-semibold text-stone-400">
+                                                {new Date(sale.created_at).toLocaleString("pt-BR")}
+                                            </p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-sm font-black text-[#1A1A1A]">{money(sale.total)}</p>
+                                            {applyingId === sale.id && <Loader2 size={14} className="ml-auto mt-2 animate-spin text-amber-600" />}
+                                        </div>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function CloneInvoiceModal({
+    query,
+    setQuery,
+    status,
+    setStatus,
+    invoices,
+    loading,
+    applyingId,
+    onClose,
+    onSelect,
+}: {
+    query: string;
+    setQuery: (value: string) => void;
+    status: "authorized" | "error" | "rejected" | "all";
+    setStatus: (value: "authorized" | "error" | "rejected" | "all") => void;
+    invoices: CloneInvoiceSummary[];
+    loading: boolean;
+    applyingId: number | null;
+    onClose: () => void;
+    onSelect: (invoice: CloneInvoiceSummary) => Promise<void>;
+}) {
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+            <div className="max-h-[86vh] w-full max-w-3xl overflow-hidden rounded-3xl border border-white/10 bg-white shadow-2xl">
+                <div className="flex items-center justify-between gap-3 border-b border-stone-100 p-5">
+                    <div>
+                        <p className="text-lg font-black text-[#1A1A1A]">Clonar NF-e</p>
+                        <p className="mt-1 text-xs font-bold text-stone-500">Notas emitidas em homologacao por esta loja.</p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        disabled={applyingId !== null}
+                        className="rounded-xl border border-stone-200 px-3 py-2 text-xs font-black text-stone-600 hover:bg-stone-50 disabled:opacity-40"
+                    >
+                        Fechar
+                    </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 border-b border-stone-100 p-4 md:grid-cols-[1fr_180px]">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={15} />
+                        <input
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                            className="w-full rounded-xl border border-stone-200 py-2 pl-9 pr-3 text-sm font-bold outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20"
+                            placeholder="Numero, destinatario, documento ou chave"
+                            autoFocus
+                        />
+                    </div>
+                    <select
+                        value={status}
+                        onChange={(event) => setStatus(event.target.value as "authorized" | "error" | "rejected" | "all")}
+                        className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm font-bold text-stone-700 outline-none focus:border-[#FACC15]"
+                    >
+                        <option value="authorized">Autorizadas</option>
+                        <option value="rejected">Rejeitadas</option>
+                        <option value="error">Com erro</option>
+                        <option value="all">Todas</option>
+                    </select>
+                </div>
+
+                <div className="max-h-[58vh] overflow-y-auto p-4">
+                    {loading ? (
+                        <div className="flex items-center gap-2 rounded-2xl bg-stone-50 p-4 text-sm font-bold text-stone-500">
+                            <Loader2 size={16} className="animate-spin" /> Buscando notas...
+                        </div>
+                    ) : invoices.length === 0 ? (
+                        <div className="rounded-2xl bg-stone-50 p-5 text-center text-sm font-bold text-stone-500">
+                            Nenhuma NF-e encontrada para os filtros atuais.
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            {invoices.map((invoice) => {
+                                const infNFe = asRecord(invoice.payload_json?.infNFe);
+                                const nature = String(asRecord(infNFe.ide).natOp || "Natureza nao informada");
+                                const applying = applyingId === invoice.id;
+
+                                return (
+                                    <button
+                                        key={invoice.id}
+                                        type="button"
+                                        onClick={() => void onSelect(invoice)}
+                                        disabled={applyingId !== null}
+                                        className="w-full rounded-2xl border border-stone-200 bg-white p-4 text-left transition hover:border-[#FACC15] hover:bg-yellow-50/40 disabled:opacity-50"
+                                    >
+                                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                            <div>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <p className="font-black text-[#1A1A1A]">
+                                                        NF-e {invoice.numero || "-"} {invoice.serie ? `Serie ${invoice.serie}` : ""}
+                                                    </p>
+                                                    <span className="rounded-full bg-stone-100 px-2 py-1 text-[9px] font-black uppercase text-stone-500">
+                                                        {invoice.status || "sem status"}
+                                                    </span>
+                                                </div>
+                                                <p className="mt-1 text-xs font-bold text-stone-500">
+                                                    {invoice.destinatario_nome || "Destinatario sem nome"} | {invoice.destinatario_cnpj || "Documento pendente"}
+                                                </p>
+                                                <p className="mt-1 text-[11px] font-black text-blue-700">{nature}</p>
+                                            </div>
+                                            <div className="text-left md:text-right">
+                                                <p className="text-sm font-black text-[#1A1A1A]">{money(invoice.valor_total)}</p>
+                                                <p className="mt-1 text-[11px] font-bold text-stone-500">
+                                                    {invoice.data_emissao
+                                                        ? new Date(invoice.data_emissao).toLocaleDateString("pt-BR")
+                                                        : "Data nao informada"}
+                                                </p>
+                                                {applying && (
+                                                    <p className="mt-2 inline-flex items-center gap-1 text-[10px] font-black text-amber-700">
+                                                        <Loader2 size={12} className="animate-spin" /> Carregando rascunho
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

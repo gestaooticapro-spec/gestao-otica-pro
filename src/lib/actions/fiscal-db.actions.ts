@@ -43,20 +43,32 @@ export async function getFiscalInvoices(storeId: number) {
     return data;
 }
 
-export async function getNFeInvoiceWithItemsAction(invoiceId: number) {
+export async function getNFeInvoiceWithItemsAction(params: {
+    storeId: number;
+    invoiceId: number;
+}) {
     const supabase = createAdminClient() as any;
+    const tenantId = await getTenantIdByStore(params.storeId);
+    if (!tenantId || !(await userOwnsStore(params.storeId, tenantId))) {
+        return { success: false, error: "Esta loja nao pertence ao usuario autenticado." };
+    }
 
     const { data: invoice, error } = await supabase
         .from("fiscal_invoices")
         .select("*")
-        .eq("id", invoiceId)
+        .eq("id", params.invoiceId)
+        .eq("organization_id", tenantId)
+        .eq("store_id", params.storeId)
         .eq("tipo_documento", "NFe")
         .single();
 
-    if (error || !invoice) return null;
+    if (error || !invoice) {
+        return { success: false, error: "NF-e nao encontrada nesta loja." };
+    }
 
     let items: ParsedNFeItem[] = [];
     let xmlContent = invoice.xml_content;
+    let infNFe = invoice.payload_json?.infNFe || null;
 
     if (!xmlContent && invoice.xml_url) {
         try {
@@ -66,7 +78,9 @@ export async function getNFeInvoiceWithItemsAction(invoiceId: number) {
                 await supabase
                     .from("fiscal_invoices")
                     .update({ xml_content: xmlContent })
-                    .eq("id", invoiceId);
+                    .eq("id", params.invoiceId)
+                    .eq("organization_id", tenantId)
+                    .eq("store_id", params.storeId);
             }
         } catch (error) {
             console.warn("[getNFeInvoiceWithItemsAction] Nao foi possivel baixar XML da NF-e:", error);
@@ -77,16 +91,17 @@ export async function getNFeInvoiceWithItemsAction(invoiceId: number) {
         try {
             const parsed = await extractItemsFromXmlContent(xmlContent);
             items = parsed.items;
+            infNFe = infNFe || parsed.infNFe;
         } catch (error) {
             console.warn("[getNFeInvoiceWithItemsAction] Erro ao parsear XML:", error);
         }
     }
 
-    if (items.length === 0 && invoice.payload_json?.infNFe) {
-        items = extractItemsFromInfNFe(invoice.payload_json.infNFe);
+    if (items.length === 0 && infNFe) {
+        items = extractItemsFromInfNFe(infNFe);
     }
 
-    return { invoice, items };
+    return { success: true, invoice, items, infNFe };
 }
 
 export async function searchCloneableNFeInvoicesAction(params: {
@@ -97,7 +112,7 @@ export async function searchCloneableNFeInvoicesAction(params: {
 }) {
     const supabase = createAdminClient() as any;
     const tenantId = await getTenantIdByStore(params.storeId);
-    if (!tenantId) return [];
+    if (!tenantId || !(await userOwnsStore(params.storeId, tenantId))) return [];
 
     const term = (params.query || "").trim();
 
