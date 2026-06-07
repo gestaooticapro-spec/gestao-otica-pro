@@ -1,12 +1,14 @@
 import Link from 'next/link'
 import { ArrowRight, ClipboardList, Tag } from 'lucide-react'
 import { DesktopModeButton } from '@/components/tablet/DesktopModeButton'
+import FullscreenToggleButton from '@/components/FullscreenToggleButton'
 
 export default function TabletMenuPage({ params }: { params: { storeId: string } }) {
   const { storeId } = params
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-8 gap-8">
+      <FullscreenToggleButton />
       <h1 className="text-2xl font-bold tracking-wide">Menu Tablet</h1>
 
       <div className="grid grid-cols-1 gap-6 w-full max-w-lg">

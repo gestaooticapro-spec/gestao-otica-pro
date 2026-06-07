@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { ArrowLeft, Camera, Ruler } from 'lucide-react'
 import { unstable_noStore as noStore } from 'next/cache'
 import { TabletOSAutoRefresh } from '@/components/tablet/TabletOSAutoRefresh'
+import FullscreenToggleButton from '@/components/FullscreenToggleButton'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -15,6 +16,7 @@ export default async function TabletOSPage({ params }: { params: { storeId: stri
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
       <TabletOSAutoRefresh />
+      <FullscreenToggleButton />
       <header className="flex items-center gap-3 px-4 py-4 border-b border-white/10 bg-slate-900">
         <Link href={`/tablet/${storeId}`} className="p-2 rounded-lg hover:bg-white/10 transition-colors">
           <ArrowLeft className="w-5 h-5" />
