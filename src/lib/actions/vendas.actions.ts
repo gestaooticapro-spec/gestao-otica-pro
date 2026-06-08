@@ -989,11 +989,14 @@ export async function addVendaItem(
 
     if (rpcError) throw new Error(`Erro ao recalcular total: ${rpcError.message}`)
 
+    await calcularERegistrarComissao(data.venda_id)
+
     // CORREÃ‡ÃƒO 3: Cast no profile para o revalidatePath
     revalidatePath(`/dashboard/loja/${(profile as any).store_id
       } / vendas`)
     revalidatePath(`/ dashboard / loja / ${(profile as any).store_id
       } /vendas/${data.venda_id} `)
+    revalidatePath(`/dashboard/loja/${(profile as any).store_id}/financeiro/comissoes`)
 
     return { success: true, message: 'Item adicionado!', data: newItem as any }
   } catch (error: any) {
@@ -1031,8 +1034,11 @@ export async function deleteVendaItem(
 
     if (rpcError) throw new Error(`Erro ao recalcular total: ${rpcError.message} `)
 
+    await calcularERegistrarComissao(vendaId)
+
     revalidatePath(`/ dashboard / loja / ${storeId}/vendas`)
     revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}`)
+    revalidatePath(`/dashboard/loja/${storeId}/financeiro/comissoes`)
 
     return { success: true, message: 'Item removido.' }
   } catch (error: any) {
@@ -1246,8 +1252,11 @@ export async function deletePagamento(
 
     if (rpcError) throw new Error(`Erro ao recalcular total: ${rpcError.message}`)
 
+    await calcularERegistrarComissao(vendaId)
+
     revalidatePath(`/dashboard/loja/${storeId}/vendas`)
     revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}`)
+    revalidatePath(`/dashboard/loja/${storeId}/financeiro/comissoes`)
 
     return { success: true, message: 'Pagamento removido.' }
   } catch (error: any) {
@@ -1743,8 +1752,17 @@ export async function updateVendaDesconto(
 
     if (zeroError) throw zeroError
 
+    const { error: finalRpcError } = await supabase.rpc('update_venda_financeiro', {
+      p_venda_id: venda_id,
+    })
+
+    if (finalRpcError) throw new Error(`Erro RPC: ${finalRpcError.message}`)
+
+    await calcularERegistrarComissao(venda_id)
+
     revalidatePath(`/dashboard/loja/${store_id}/vendas`)
     revalidatePath(`/dashboard/loja/${store_id}/vendas/${venda_id}`)
+    revalidatePath(`/dashboard/loja/${store_id}/financeiro/comissoes`)
 
     return { success: true, message: 'Desconto aplicado e rateado nos itens!' }
   } catch (error: any) {
@@ -1906,7 +1924,11 @@ export async function saveFinanciamentoLoja(...args: any[]) {
 
   if (erroUpdate) return { success: false, message: `Erro ao atualizar venda: ${erroUpdate.message}` };
 
+  await calcularERegistrarComissao(venda_id);
+  await calcularComissaoMedico(venda_id);
+
   revalidatePath(`/vendas/${venda_id}`);
+  revalidatePath(`/dashboard/loja/${vendaReal.store_id}/financeiro/comissoes`);
   return { success: true, message: 'Carnê gerado com sucesso!', data: { id: capaCriada.id } };
 }
 
@@ -2725,6 +2747,10 @@ export async function criarVendaParcialCarnê(formData: FormData) {
 
   // Registra saídas de estoque (itens saem da loja mesmo com pagamento pendente)
   await registrarSaidaVenda(novaVenda.id, storeId, user!.id, (profile as any).tenant_id)
+
+  await calcularERegistrarComissao(novaVenda.id)
+
+  revalidatePath(`/dashboard/loja/${storeId}/financeiro/comissoes`)
 
   return { success: true, vendaId: novaVenda.id }
 }

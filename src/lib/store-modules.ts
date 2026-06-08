@@ -13,6 +13,7 @@ export type StoreModules = Record<StoreModuleKey, boolean>
 export type StoreSettings = {
   logo?: string
   receipt_type?: 'pre_printed' | 'half_a4'
+  commission_generation_mode?: 'closed_only' | 'open_or_closed'
   pre_sale_analysis_enabled?: boolean
   module_fiscal_enabled?: boolean
   module_installments_enabled?: boolean

@@ -4,6 +4,21 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 
+type CommissionGenerationMode = 'closed_only' | 'open_or_closed'
+type CommissionStage = 'provisional' | 'final'
+
+async function getCommissionGenerationMode(storeId: number): Promise<CommissionGenerationMode> {
+    const supabase = createAdminClient()
+
+    const { data } = await (supabase.from('stores') as any)
+        .select('settings')
+        .eq('id', storeId)
+        .maybeSingle()
+
+    const settings = (data?.settings || {}) as { commission_generation_mode?: unknown }
+    return settings.commission_generation_mode === 'open_or_closed' ? 'open_or_closed' : 'closed_only'
+}
+
 // ================================================================
 // CÁLCULO AUTOMÁTICO DE COMISSÃO (COMPLETO)
 // ================================================================
@@ -42,12 +57,18 @@ export async function calcularERegistrarComissao(vendaId: number) {
         }
 
         // Só gera comissão para vendas efetivamente fechadas
-        if (venda.status !== 'Fechada') {
+        const commissionMode = await getCommissionGenerationMode(venda.store_id)
+        const isOpenCommissionAllowed = commissionMode === 'open_or_closed'
+        const isCommissionableStatus = venda.status === 'Fechada' || (isOpenCommissionAllowed && venda.status === 'Em Aberto')
+
+        if (!isCommissionableStatus) {
+            await cancelarComissao(vendaId)
             return
         }
 
         const emp = venda.employees as any
-        const valorVenda = venda.valor_final
+        const valorVenda = venda.valor_final || 0
+        const commissionStage: CommissionStage = venda.status === 'Fechada' ? 'final' : 'provisional'
 
         // Extrai todas as taxas
         const rateGuaranteed = emp.comm_rate_guaranteed || 0
@@ -58,6 +79,11 @@ export async function calcularERegistrarComissao(vendaId: number) {
 
         // Se todas as INDIVIDUAIS forem zero, não há o que calcular
         if (rateGuaranteed === 0 && rateCredit === 0) {
+            await (supabase.from('commissions') as any)
+                .delete()
+                .eq('venda_id', vendaId)
+                .eq('type', 'individual')
+                .eq('status', 'Pendente')
             return
         }
 
@@ -92,14 +118,34 @@ export async function calcularERegistrarComissao(vendaId: number) {
         // -------------------------------------------------------
         // GRAVAÇÃO
         // -------------------------------------------------------
+        const { data: paidCommission } = await (supabase.from('commissions') as any)
+            .select('id')
+            .eq('venda_id', vendaId)
+            .eq('type', 'individual')
+            .eq('status', 'Pago')
+            .limit(1)
+
+        if (paidCommission && paidCommission.length > 0) return
+
+        if (comissaoTotal <= 0) {
+            await (supabase.from('commissions') as any).delete()
+                .eq('venda_id', vendaId)
+                .eq('type', 'individual')
+                .eq('status', 'Pendente')
+            return
+        }
+
         if (comissaoTotal > 0) {
             // Remove comissão individual anterior (caso de reprocessamento)
             await (supabase.from('commissions') as any).delete()
                 .eq('venda_id', vendaId)
                 .eq('type', 'individual') // Garante que só deleta as individuais
+                .eq('status', 'Pendente')
 
             // CORREÇÃO: Usa data_fechamento da venda como referência temporal da comissão
-            const dataComissao = venda.data_fechamento || new Date().toISOString()
+            const dataComissao = commissionStage === 'provisional'
+                ? (venda.created_at || new Date().toISOString())
+                : (venda.data_fechamento || new Date().toISOString())
 
             await (supabase.from('commissions') as any).insert({
                 tenant_id: venda.tenant_id,
@@ -108,6 +154,7 @@ export async function calcularERegistrarComissao(vendaId: number) {
                 venda_id: vendaId,
                 type: 'individual',
                 amount: parseFloat(comissaoTotal.toFixed(2)),
+                commission_stage: commissionStage,
                 status: 'Pendente',
                 created_at: dataComissao
             })
@@ -125,6 +172,7 @@ export async function cancelarComissao(vendaId: number) {
             .from('commissions') as any)
             .update({ status: 'Cancelado', reversal_reason: 'Venda Cancelada' })
             .eq('venda_id', vendaId)
+            .neq('status', 'Pago')
     } catch (e) {
         console.error("Erro silencioso ao cancelar comissão:", e)
     }
@@ -273,11 +321,12 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
         const { data: comissoes, error } = await (supabase
             .from('commissions') as any)
             .select(`
-                id, amount, status, created_at, venda_id, type, period_ref,
+                id, amount, status, created_at, venda_id, type, period_ref, commission_stage,
                 employees ( id, full_name ),
                 vendas ( valor_final, created_at, data_fechamento )
             `)
             .eq('store_id', storeId)
+            .not('employee_id', 'is', null)
             .not('status', 'in', '("Cancelado","Estornado")')
             .order('created_at', { ascending: false })
 
@@ -289,7 +338,12 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
             // Usa data_fechamento da venda como referência.
             // Se não existir (vendas antigas), faz fallback para created_at da comissão.
             // Trunca para 19 chars para evitar que o sufixo +00:00 quebre a comparação de strings.
-            const dataRef = (c.vendas?.data_fechamento || c.created_at || '').substring(0, 19)
+            const isProvisional = c.commission_stage === 'provisional'
+            const dataRef = ((isProvisional
+                ? (c.vendas?.created_at || c.created_at)
+                : (c.vendas?.data_fechamento || c.created_at)
+            ) || ''
+            ).substring(0, 19)
             return dataRef >= dataInicio && dataRef <= dataFim
         })
 
@@ -323,12 +377,15 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
             resumo.detalhes.push({
                 id: c.id,
                 // Mostra a data de fechamento da venda ou do período (para global)
-                data: c.vendas?.data_fechamento || c.created_at,
+                data: c.commission_stage === 'provisional'
+                    ? (c.vendas?.created_at || c.created_at)
+                    : (c.vendas?.data_fechamento || c.created_at),
                 venda_id: c.venda_id,
                 valor_venda: c.vendas?.valor_final || 0,
                 valor_comissao: valor,
                 status: c.status,
-                type: c.type || 'individual'
+                type: c.type || 'individual',
+                commission_stage: c.commission_stage || 'final'
             })
         })
 

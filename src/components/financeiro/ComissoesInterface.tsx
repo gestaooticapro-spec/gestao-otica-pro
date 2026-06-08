@@ -206,6 +206,11 @@ export default function ComissoesInterface({
                                                     <td className="px-5 py-3 text-slate-500 font-mono text-xs">{formatDate(det.data)}</td>
                                                     <td className={`px-5 py-3 font-bold text-xs ${det.type === 'global_store' ? 'text-indigo-600' : 'text-blue-600'}`}>
                                                         {det.type === 'global_store' ? '🎯 Faturamento Global' : `#${det.venda_id}`}
+                                                        {det.commission_stage === 'provisional' && (
+                                                            <span className="ml-2 text-[9px] font-black uppercase text-amber-700 bg-amber-50 border border-amber-100 rounded-full px-2 py-0.5">
+                                                                Provisoria
+                                                            </span>
+                                                        )}
                                                     </td>
                                                     <td className="px-5 py-3 text-right text-slate-600">
                                                         {det.type === 'global_store' ? <span className="text-[10px] text-slate-400">Todo o Mês</span> : formatCurrency(det.valor_venda)}

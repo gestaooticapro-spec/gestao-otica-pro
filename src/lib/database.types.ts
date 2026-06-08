@@ -822,6 +822,7 @@ export interface Database {
           venda_id: number | null
           type: string
           period_ref: string | null
+          commission_stage: string
           amount: number
           percentage: number | null
           status: string | null
@@ -837,6 +838,7 @@ export interface Database {
           venda_id?: number | null
           type?: string
           period_ref?: string | null
+          commission_stage?: string
           amount: number
           percentage?: number | null
           status?: string | null
@@ -848,6 +850,7 @@ export interface Database {
           venda_id?: number | null
           type?: string
           period_ref?: string | null
+          commission_stage?: string
           status?: string | null
           reversal_reason?: string | null
           updated_at?: string

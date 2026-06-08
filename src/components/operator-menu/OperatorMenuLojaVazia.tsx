@@ -598,7 +598,7 @@ export default function OperatorMenuLojaVazia({
 
                                 {/* ENTREGAS */}
                                 <RadarWidget
-                                    title="Entregas PrÃ³ximas"
+                                    title="Entregas Próximas"
                                     subtitle="Gaveta"
                                     icon={Package}
                                     colorClass="emerald"

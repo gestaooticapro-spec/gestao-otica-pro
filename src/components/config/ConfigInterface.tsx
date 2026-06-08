@@ -598,6 +598,48 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                         </div>
                     </div>
                 </div>
+
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4 transition-colors">
+                    <div className="flex items-start gap-3">
+                        <div className="h-10 w-10 rounded-xl border border-emerald-400/20 bg-emerald-500/15 flex items-center justify-center shrink-0">
+                            <Percent className="h-5 w-5 text-emerald-300" />
+                        </div>
+                        <div className="flex-1">
+                            <p className="text-sm font-black text-white uppercase tracking-[0.15em] mb-2">
+                                Geracao de Comissao
+                            </p>
+                            <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                                Define quando a comissao do vendedor nasce no financeiro.
+                            </p>
+                            <div className="flex flex-col gap-3">
+                                <label className="flex items-center gap-3 cursor-pointer group">
+                                    <input
+                                        type="radio"
+                                        name="commission_generation_mode"
+                                        value="closed_only"
+                                        checked={data?.settings?.commission_generation_mode !== 'open_or_closed'}
+                                        onChange={() => handleSettingChange('commission_generation_mode', 'closed_only')}
+                                        disabled={isSaving}
+                                        className="h-4 w-4 border-white/20 bg-slate-900 text-emerald-500 focus:ring-emerald-500 disabled:opacity-50"
+                                    />
+                                    <span className="text-sm text-slate-300 group-hover:text-white font-medium">Gerar apenas com vendas fechadas</span>
+                                </label>
+                                <label className="flex items-center gap-3 cursor-pointer group">
+                                    <input
+                                        type="radio"
+                                        name="commission_generation_mode"
+                                        value="open_or_closed"
+                                        checked={data?.settings?.commission_generation_mode === 'open_or_closed'}
+                                        onChange={() => handleSettingChange('commission_generation_mode', 'open_or_closed')}
+                                        disabled={isSaving}
+                                        className="h-4 w-4 border-white/20 bg-slate-900 text-emerald-500 focus:ring-emerald-500 disabled:opacity-50"
+                                    />
+                                    <span className="text-sm text-slate-300 group-hover:text-white font-medium">Gerar mesmo com a venda aberta</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {activeModules.evaluation && (
