@@ -156,7 +156,7 @@ async function getCashReceiptsByDateKeys(storeId: number, dateKeys: string[]) {
 // ============================================================================
 const AbrirCaixaSchema = z.object({
     store_id: z.coerce.number(),
-    saldo_inicial: z.coerce.number().min(0),
+    saldo_inicial: z.coerce.number().min(0).optional(),
 })
 
 export async function abrirCaixa(prevState: any, formData: FormData) {
@@ -167,9 +167,11 @@ export async function abrirCaixa(prevState: any, formData: FormData) {
     const profile = await getProfileByAdmin(user.id) as any
     if (!profile) return { success: false, message: 'Perfil não encontrado.' }
 
+    const saldoInicialRaw = formData.get('saldo_inicial')
+    const saldoInicial = saldoInicialRaw === null || saldoInicialRaw === '' ? undefined : saldoInicialRaw
     const val = AbrirCaixaSchema.safeParse({
         store_id: profile.store_id,
-        saldo_inicial: formData.get('saldo_inicial'),
+        saldo_inicial: saldoInicial,
     })
     if (!val.success) return { success: false, message: 'Valor inválido.' }
 
@@ -184,7 +186,8 @@ export async function abrirCaixa(prevState: any, formData: FormData) {
 
     // Fecha caixas anteriores
     const hoje = new Date()
-    const dataInicioHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 0, 0, 0, 0).toISOString()
+    const hojeKey = getStoreDateKey(hoje)
+    const { startIso: dataInicioHoje, endIso: dataFimHoje } = getStoreDayRange(hojeKey)
     const { data: caixasAnteriores } = await (supabaseAdmin.from('caixa_diario') as any)
         .select('id, saldo_inicial, created_at').eq('store_id', profile.store_id).eq('status', 'Aberto').lt('created_at', dataInicioHoje)
 
@@ -201,7 +204,7 @@ export async function abrirCaixa(prevState: any, formData: FormData) {
 
             // O fechamento automático usa o novo "saldo_inicial" do dia ATUAL
             // Isso garante que a gaveta abra certa hoje e a quebra inteira fique registrada no dia não fechado
-            const saldoFinalInformado = Number(val.data.saldo_inicial)
+            const saldoFinalInformado = Number(val.data.saldo_inicial ?? 0)
             const quebra = saldoFinalInformado - saldoEsperado
 
             await (supabaseAdmin.from('caixa_diario') as any).update({
@@ -215,15 +218,44 @@ export async function abrirCaixa(prevState: any, formData: FormData) {
         }
     }
 
-    const { data: existe } = await (supabaseAdmin.from('caixa_diario') as any).select('id').eq('store_id', profile.store_id).eq('status', 'Aberto').gte('created_at', dataInicioHoje).maybeSingle()
+    const { data: existe } = await (supabaseAdmin.from('caixa_diario') as any)
+        .select('id')
+        .eq('store_id', profile.store_id)
+        .eq('status', 'Aberto')
+        .gte('data_abertura', dataInicioHoje)
+        .lte('data_abertura', dataFimHoje)
+        .maybeSingle()
     if (existe) {
         revalidatePath(`/dashboard/loja/${profile.store_id}/financeiro/caixa`)
         return { success: true, message: 'Caixa já estava aberto.' }
     }
 
     try {
+        const { data: caixaFechadoHoje } = await (supabaseAdmin.from('caixa_diario') as any)
+            .select('id')
+            .eq('store_id', profile.store_id)
+            .eq('status', 'Fechado')
+            .gte('data_abertura', dataInicioHoje)
+            .lte('data_abertura', dataFimHoje)
+            .order('data_fechamento', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+        if (caixaFechadoHoje) {
+            await (supabaseAdmin.from('caixa_diario') as any).update({
+                status: 'Aberto',
+                data_fechamento: null,
+                fechado_por_id: null,
+                saldo_final: null,
+                quebra_caixa: null,
+                obs: 'REOPENED_SAME_DAY'
+            }).eq('id', caixaFechadoHoje.id)
+
+            revalidatePath(`/dashboard/loja/${profile.store_id}/financeiro/caixa`)
+            return { success: true, message: 'Caixa de hoje reaberto com sucesso!' }
+        }
         await (supabaseAdmin.from('caixa_diario') as any).insert({
-            tenant_id: finalTenantId, store_id: profile.store_id, aberto_por_id: user.id, data_abertura: new Date().toISOString(), saldo_inicial: val.data.saldo_inicial, status: 'Aberto'
+            tenant_id: finalTenantId, store_id: profile.store_id, aberto_por_id: user.id, data_abertura: new Date().toISOString(), saldo_inicial: val.data.saldo_inicial ?? 0, status: 'Aberto'
         })
         revalidatePath(`/dashboard/loja/${profile.store_id}/financeiro/caixa`)
         return { success: true, message: 'Caixa aberto com sucesso!' }
@@ -378,10 +410,44 @@ export async function fecharCaixa(prevState: any, formData: FormData) {
     return { success: true, message: 'Fechado.' }
 }
 
-export async function verificarStatusCaixa(storeId: number): Promise<boolean> {
-    const sb = createAdminClient(); const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
-    const { data } = await (sb.from('caixa_diario') as any).select('id').eq('store_id', storeId).eq('status', 'Aberto').gte('created_at', hoje.toISOString()).maybeSingle()
-    return !!data
+export async function verificarStatusCaixa(storeId: number): Promise<{
+    aberto: boolean
+    podeReabrirHoje: boolean
+    saldoInicialAnterior?: number | null
+    dataFechamento?: string | null
+}> {
+    const sb = createAdminClient()
+    const hojeKey = getStoreDateKey(new Date())
+    const { startIso, endIso } = getStoreDayRange(hojeKey)
+
+    const { data: caixaAberto } = await (sb.from('caixa_diario') as any)
+        .select('id')
+        .eq('store_id', storeId)
+        .eq('status', 'Aberto')
+        .gte('data_abertura', startIso)
+        .lte('data_abertura', endIso)
+        .maybeSingle()
+
+    if (caixaAberto) {
+        return { aberto: true, podeReabrirHoje: false }
+    }
+
+    const { data: caixaFechadoHoje } = await (sb.from('caixa_diario') as any)
+        .select('id, saldo_inicial, data_fechamento')
+        .eq('store_id', storeId)
+        .eq('status', 'Fechado')
+        .gte('data_abertura', startIso)
+        .lte('data_abertura', endIso)
+        .order('data_fechamento', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+    return {
+        aberto: false,
+        podeReabrirHoje: !!caixaFechadoHoje,
+        saldoInicialAnterior: caixaFechadoHoje?.saldo_inicial ?? null,
+        dataFechamento: caixaFechadoHoje?.data_fechamento ?? null
+    }
 }
 
 // 6. RELATÓRIOS

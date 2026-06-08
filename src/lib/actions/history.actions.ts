@@ -28,7 +28,7 @@ export interface CustomerXRayData {
         valorTotal: number
         status: string
         vendedor?: string
-        observacoes?: string
+        observacoes?: string | null
         itens: {
             produto: string
             valor: number
@@ -104,7 +104,7 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
         const { data: vendasData, error: vendasError } = await supabase
             .from('vendas')
             .select(`
-                id, created_at, valor_total, valor_restante, status,
+                id, created_at, valor_total, valor_restante, status, obs_geral,
                 vendedor:employees!employee_id(full_name),
                 itens:venda_itens(
                     id, valor_unitario, quantidade, product_id
@@ -342,6 +342,7 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
                 valorTotal: venda.valor_total,
                 status: venda.status,
                 vendedor: venda.vendedor?.full_name?.split(' ')[0] || 'Loja',
+                observacoes: venda.obs_geral || null,
                 itens,
                 pagamentos,
                 os

@@ -26,6 +26,9 @@ type ManualMatchProduct = {
 const money = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
+const DEFAULT_MARKUP = 2
+const roundCurrency = (value: number) => Math.round(value * 100) / 100
+const getSalePriceFromMarkup = (cost: number, markup: number) => roundCurrency(cost * markup)
 
 export default function ImportacaoPage() {
     const params = useParams()
@@ -47,6 +50,8 @@ export default function ImportacaoPage() {
     const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null)
     const [lastSyncInfo, setLastSyncInfo] = useState<{ type: 'success' | 'error', message: string, details?: string } | null>(null)
     const [sefazDiagnostic, setSefazDiagnostic] = useState<Record<string, unknown> | null>(null)
+    const [markupMultiplier, setMarkupMultiplier] = useState(DEFAULT_MARKUP)
+    const [markupInput, setMarkupInput] = useState(String(DEFAULT_MARKUP).replace('.', ','))
 
     // Tabs & Filters
     const [activeTab, setActiveTab] = useState<'found' | 'new'>('new')
@@ -74,6 +79,15 @@ export default function ImportacaoPage() {
             void loadQueue()
         }
     }, [sourceMode, loadQueue])
+
+    const buildPreviewWithMarkup = useCallback((data: XmlPreviewData, markup: number): XmlPreviewData => ({
+        ...data,
+        itens: data.itens.map((item) => ({
+            ...item,
+            preco_venda: item.preco_venda ?? getSalePriceFromMarkup(item.valor_unitario, markup),
+            preco_venda_editado: item.preco_venda_editado ?? false,
+        })),
+    }), [])
 
     // Estatísticas (Memoized)
     const stats = useMemo(() => {
@@ -114,6 +128,8 @@ export default function ImportacaoPage() {
             setErrorMessage(null)
             setSuccessMessage(null)
             setPreviewData(null)
+            setMarkupMultiplier(DEFAULT_MARKUP)
+            setMarkupInput(String(DEFAULT_MARKUP).replace('.', ','))
             setActiveTab('new') // Reset tab
         } else {
             setErrorMessage("Arquivo inválido. Por favor, envie um arquivo XML.")
@@ -128,7 +144,9 @@ export default function ImportacaoPage() {
         startTransition(async () => {
             const result = await parseNfeAndPreview(formData)
             if (result.success && result.data) {
-                setPreviewData(result.data)
+                setMarkupMultiplier(DEFAULT_MARKUP)
+                setMarkupInput(String(DEFAULT_MARKUP).replace('.', ','))
+                setPreviewData(buildPreviewWithMarkup(result.data, DEFAULT_MARKUP))
                 // Se detectar que maioria é 'Encontrado', pode mudar a tab se quiser, mas deixamos manual por enquanto
             } else {
                 setErrorMessage(result.message || "Erro desconhecido ao ler XML.")
@@ -143,7 +161,9 @@ export default function ImportacaoPage() {
         startTransition(async () => {
             const result = await parseNfeAndPreview(formData)
             if (result.success && result.data) {
-                setPreviewData({ ...result.data, source_queue_id: queueId })
+                setMarkupMultiplier(DEFAULT_MARKUP)
+                setMarkupInput(String(DEFAULT_MARKUP).replace('.', ','))
+                setPreviewData(buildPreviewWithMarkup({ ...result.data, source_queue_id: queueId }, DEFAULT_MARKUP))
                 setErrorMessage(null)
                 setSuccessMessage(null)
                 setActiveTab('new')
@@ -248,6 +268,8 @@ export default function ImportacaoPage() {
                 setSuccessMessage(result.message!)
                 setPreviewData(null)
                 setFile(null)
+                setMarkupMultiplier(DEFAULT_MARKUP)
+                setMarkupInput(String(DEFAULT_MARKUP).replace('.', ','))
             } else {
                 setErrorMessage(result.message || "Erro ao salvar dados.")
             }
@@ -259,6 +281,8 @@ export default function ImportacaoPage() {
         setPreviewData(null)
         setSuccessMessage(null)
         setErrorMessage(null)
+        setMarkupMultiplier(DEFAULT_MARKUP)
+        setMarkupInput(String(DEFAULT_MARKUP).replace('.', ','))
         if (fileInputRef.current) fileInputRef.current.value = ''
     }
 
@@ -310,6 +334,44 @@ export default function ImportacaoPage() {
         newItens[index] = {
             ...currentItem,
             skip_import: !currentItem.skip_import
+        }
+        setPreviewData({ ...previewData, itens: newItens })
+    }
+
+    const handleMarkupChange = (value: string) => {
+        setMarkupInput(value)
+
+        const normalizedValue = value.replace(',', '.')
+        const nextMarkup = Number(normalizedValue)
+        if (!Number.isFinite(nextMarkup) || nextMarkup <= 0) return
+
+        setMarkupMultiplier(nextMarkup)
+        if (!previewData) return
+
+        setPreviewData({
+            ...previewData,
+            itens: previewData.itens.map((item) => (
+                item.preco_venda_editado
+                    ? item
+                    : {
+                        ...item,
+                        preco_venda: getSalePriceFromMarkup(item.valor_unitario, nextMarkup),
+                    }
+            )),
+        })
+    }
+
+    const handleSalePriceChange = (index: number, value: string) => {
+        if (!previewData) return
+
+        const normalizedValue = value.replace(',', '.')
+        const parsedValue = Number(normalizedValue)
+        const nextValue = Number.isFinite(parsedValue) ? roundCurrency(Math.max(parsedValue, 0)) : 0
+        const newItens = [...previewData.itens]
+        newItens[index] = {
+            ...newItens[index],
+            preco_venda: nextValue,
+            preco_venda_editado: true,
         }
         setPreviewData({ ...previewData, itens: newItens })
     }
@@ -538,7 +600,7 @@ export default function ImportacaoPage() {
                 <div className="flex-1 flex flex-col overflow-hidden bg-white/5 rounded-xl border border-white/10 backdrop-blur-md animate-in fade-in slide-in-from-bottom-4">
 
                     {/* Invoice Summary */}
-                    <div className="p-4 border-b border-white/10 bg-slate-900/40 flex justify-between items-center flex-shrink-0">
+                    <div className="p-4 border-b border-white/10 bg-slate-900/40 flex justify-between items-center flex-shrink-0 gap-4">
                         <div className="flex gap-6">
                             <div>
                                 <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Fornecedor</p>
@@ -553,15 +615,36 @@ export default function ImportacaoPage() {
                             </div>
                         </div>
 
-                        <div className="text-right">
+                        <div className="flex items-center gap-6">
+                            <div className="min-w-[180px]">
+                                <label className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-2">
+                                    Markup PadrÃ£o
+                                </label>
+                                <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                                    <span className="text-sm font-bold text-slate-300">x</span>
+                                    <input
+                                        type="number"
+                                        min="0.01"
+                                        step="0.01"
+                                        value={markupInput.replace(',', '.')}
+                                        onChange={(e) => handleMarkupChange(e.target.value)}
+                                        className="w-full bg-transparent text-sm font-bold text-emerald-300 outline-none"
+                                    />
+                                </div>
+                                <p className="mt-1 text-[10px] text-slate-500">
+                                    Atualiza os itens que ainda nÃ£o tiveram venda editada manualmente.
+                                </p>
+                            </div>
+                            <div className="text-right">
                             <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Total dos Produtos</p>
-                            <p className="text-xl font-black text-emerald-400">
-                                {money(previewData.itens.filter((i) => !i.skip_import).reduce((acc, i) => acc + i.valor_total, 0))}
-                            </p>
+                                <p className="text-xl font-black text-slate-300">
+                                    {money(previewData.itens.filter((i) => !i.skip_import).reduce((acc, i) => acc + i.valor_total, 0))}
+                                </p>
                             <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                                 {previewData.itens.filter((i) => !i.skip_import).length} item(ns) ativos
                                 {previewData.itens.some((i) => i.skip_import) ? ` • ${previewData.itens.filter((i) => i.skip_import).length} ignorado(s)` : ''}
                             </p>
+                            </div>
                         </div>
                     </div>
 
@@ -723,8 +806,26 @@ export default function ImportacaoPage() {
                                         </td>
 
                                         {/* Venda */}
-                                        <td className="px-4 py-4 text-right align-top font-bold text-emerald-400">
-                                            {money(item.valor_unitario * 2)}
+                                        <td className="px-4 py-4 text-right align-top">
+                                            <div className="flex flex-col items-end gap-1">
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    value={(item.preco_venda ?? getSalePriceFromMarkup(item.valor_unitario, markupMultiplier)).toFixed(2)}
+                                                    onChange={(e) => handleSalePriceChange(item.originalIndex, e.target.value)}
+                                                    className="w-28 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-right font-bold text-emerald-300 outline-none"
+                                                />
+                                                {item.preco_venda_editado ? (
+                                                    <span className="text-[10px] uppercase tracking-wider text-amber-300">
+                                                        Editado
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-[10px] uppercase tracking-wider text-slate-500">
+                                                        Markup x{markupMultiplier.toFixed(2)}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
 
                                         {/* Ações (Only for auto-matches in Found tab) */}

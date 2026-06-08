@@ -9,40 +9,39 @@ import { revalidatePath } from 'next/cache'
 import { generateSmartBarcode } from '@/lib/actions/catalog.actions'
 import { markNfeQueueImported } from '@/lib/actions/nfe-import-queue.actions'
 
-// Tipos para o Preview
 export type XmlPreviewItem = {
     codigo_fornecedor: string
-    codigo_barras: string // cEAN
+    codigo_barras: string
     descricao: string
     ncm: string
     cest: string
     cfop: string
     unidade: string
     quantidade: number
-    valor_unitario: number // Custo Calculado (Com impostos)
+    valor_unitario: number
     valor_total: number
-    // Status para a UI
     status_sistema: 'Novo' | 'Encontrado' | 'Vinculado'
-    id_sistema?: number // Se já existir
+    id_sistema?: number
     estoque_atual?: number
-    // Campos para controle manual na tela de importação
     manual_match_id?: number | null
     use_xml_name?: boolean
     original_system_name?: string
     skip_import?: boolean
+    preco_venda?: number
+    preco_venda_editado?: boolean
 }
 
 export type XmlPreviewData = {
     source_queue_id?: string | null
-    access_key: string // Chave de Acesso (44 dígitos)
+    access_key: string
     nfe_numero: string
     nfe_serie: string
     data_emissao: string
     fornecedor: {
         cnpj: string
-        nome: string // xNome
-        fantasia: string // xFant
-        ie: string // IE
+        nome: string
+        fantasia: string
+        ie: string
         cidade: string
         uf: string
         status_sistema: 'Novo' | 'Cadastrado'
@@ -51,43 +50,35 @@ export type XmlPreviewData = {
     itens: XmlPreviewItem[]
 }
 
-// Helper para limpar string de chave (remove 'NFe' se tiver)
 const cleanKey = (key: string) => key?.replace('NFe', '') || ''
 
-// Helper seguro para float
 const parseFloatSafe = (val: any) => {
     if (!val) return 0
     return parseFloat(val)
 }
 
-// ============================================================================
-// 1. LER XML E GERAR PREVIEW (COM TRAVA E CUSTO EFETIVO)
-// ============================================================================
 export async function parseNfeAndPreview(formData: FormData): Promise<{ success: boolean, data?: XmlPreviewData, message?: string }> {
     const supabaseAdmin = createAdminClient()
     const { data: { user } } = await createClient().auth.getUser()
-    if (!user) return { success: false, message: 'Login necessário.' }
+    if (!user) return { success: false, message: 'Login necessario.' }
 
     const profile = await getProfileByAdmin(user.id)
-    if (!profile) return { success: false, message: 'Perfil não encontrado.' }
+    if (!profile) return { success: false, message: 'Perfil nao encontrado.' }
 
     const file = formData.get('xml_file') as File
-    if (!file) return { success: false, message: 'Arquivo não enviado.' }
+    if (!file) return { success: false, message: 'Arquivo nao enviado.' }
 
     try {
         const text = await file.text()
-        const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" })
+        const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' })
         const xmlObj = parser.parse(text)
 
-        // Navegar na estrutura NFe
         const nfeProc = xmlObj.nfeProc || xmlObj.NFe
-        if (!nfeProc || !nfeProc.NFe) throw new Error("XML inválido ou não é uma NFe.")
+        if (!nfeProc || !nfeProc.NFe) throw new Error('XML invalido ou nao e uma NFe.')
 
         const infNFe = nfeProc.NFe.infNFe
-
-        // 1. TRAVA DE SEGURANÇA: Verificar Chave de Acesso
-        const rawKey = infNFe["@_Id"]
-        if (!rawKey) throw new Error("Chave de acesso não encontrada no XML.")
+        const rawKey = infNFe['@_Id']
+        if (!rawKey) throw new Error('Chave de acesso nao encontrada no XML.')
 
         const accessKey = cleanKey(rawKey)
 
@@ -99,27 +90,24 @@ export async function parseNfeAndPreview(formData: FormData): Promise<{ success:
 
         if (invoiceExists) {
             const dataImp = new Date(invoiceExists.imported_at).toLocaleDateString('pt-BR')
-            return { success: false, message: `ATENÇÃO: Esta nota fiscal já foi importada no dia ${dataImp}.` }
+            return { success: false, message: `ATENCAO: Esta nota fiscal ja foi importada no dia ${dataImp}.` }
         }
 
-        // 2. Dados Gerais
         const emit = infNFe.emit
         const detList = Array.isArray(infNFe.det) ? infNFe.det : [infNFe.det]
 
-        // 3. Processar Fornecedor
         const cnpjFornecedor = emit.CNPJ
-        const fornecedorPreview = {
+        const fornecedorPreview: XmlPreviewData['fornecedor'] = {
             cnpj: cnpjFornecedor,
             nome: emit.xNome,
             fantasia: emit.xFant || emit.xNome,
             ie: emit.IE,
             cidade: emit.enderEmit?.xMun || '',
             uf: emit.enderEmit?.UF || '',
-            status_sistema: 'Novo' as 'Novo' | 'Cadastrado',
-            id_sistema: undefined as number | undefined
+            status_sistema: 'Novo',
+            id_sistema: undefined as number | undefined,
         }
 
-        // Verifica se fornecedor existe no banco
         const { data: existingSupplier } = await (supabaseAdmin.from('suppliers') as any)
             .select('id')
             .eq('store_id', (profile as any).store_id)
@@ -131,7 +119,6 @@ export async function parseNfeAndPreview(formData: FormData): Promise<{ success:
             fornecedorPreview.id_sistema = existingSupplier.id
         }
 
-        // 4. Processar Produtos
         const itensPreview: XmlPreviewItem[] = []
         const eansDoXml = detList.map((d: any) => d.prod.cEAN).filter((c: string) => c && c !== 'SEM GTIN')
 
@@ -144,20 +131,21 @@ export async function parseNfeAndPreview(formData: FormData): Promise<{ success:
             const prod = det.prod
             const impostos = det.imposto || {}
 
-            // CÁLCULO DO CUSTO EFETIVO (LANDED COST)
             const vProd = parseFloatSafe(prod.vProd)
             const qCom = parseFloatSafe(prod.qCom)
             const vDesc = parseFloatSafe(prod.vDesc)
             const vFrete = parseFloatSafe(prod.vFrete)
             const vSeg = parseFloatSafe(prod.vSeg)
             const vOutro = parseFloatSafe(prod.vOutro)
-
             const vIPI = parseFloatSafe(impostos.IPI?.IPITrib?.vIPI)
-            const vST = parseFloatSafe(impostos.ICMS?.ICMS10?.vICMSST) || parseFloatSafe(impostos.ICMS?.ICMS30?.vICMSST) || parseFloatSafe(impostos.ICMS?.ICMS70?.vICMSST) || parseFloatSafe(impostos.ICMS?.ICMS90?.vICMSST) || 0
+            const vST = parseFloatSafe(impostos.ICMS?.ICMS10?.vICMSST)
+                || parseFloatSafe(impostos.ICMS?.ICMS30?.vICMSST)
+                || parseFloatSafe(impostos.ICMS?.ICMS70?.vICMSST)
+                || parseFloatSafe(impostos.ICMS?.ICMS90?.vICMSST)
+                || 0
 
             const custoTotalItem = vProd + vIPI + vST + vFrete + vSeg + vOutro - vDesc
             const custoUnitarioReal = custoTotalItem / qCom
-
             const match = produtosExistentes?.find((p: any) => p.codigo_barras === prod.cEAN)
 
             itensPreview.push({
@@ -173,7 +161,7 @@ export async function parseNfeAndPreview(formData: FormData): Promise<{ success:
                 valor_total: vProd,
                 status_sistema: match ? 'Encontrado' : 'Novo',
                 id_sistema: match?.id,
-                estoque_atual: match?.estoque_atual
+                estoque_atual: match?.estoque_atual,
             })
         }
 
@@ -185,35 +173,30 @@ export async function parseNfeAndPreview(formData: FormData): Promise<{ success:
                 nfe_serie: infNFe.ide.serie,
                 data_emissao: infNFe.ide.dhEmi,
                 fornecedor: fornecedorPreview,
-                itens: itensPreview
-            }
+                itens: itensPreview,
+            },
         }
-
     } catch (e: any) {
-        console.error("Erro ao ler XML:", e)
-        return { success: false, message: "Erro ao processar XML: " + e.message }
+        console.error('Erro ao ler XML:', e)
+        return { success: false, message: `Erro ao processar XML: ${e.message}` }
     }
 }
 
-// ============================================================================
-// 2. GRAVAR DADOS (COMMIT)
-// ============================================================================
 export async function saveImportedData(data: XmlPreviewData, storeId: number) {
     const supabaseAdmin = createAdminClient()
     const { data: { user } } = await createClient().auth.getUser()
-    if (!user) return { success: false, message: 'Login necessário.' }
+    if (!user) return { success: false, message: 'Login necessario.' }
+
     const profile = await getProfileByAdmin(user.id)
-    if (!profile) return { success: false, message: 'Perfil inválido.' }
+    if (!profile) return { success: false, message: 'Perfil invalido.' }
 
     try {
         const itensParaImportar = data.itens.filter((item) => !item.skip_import)
         const itensIgnorados = data.itens.length - itensParaImportar.length
 
-        // 1. Salvar/Atualizar Fornecedor
         let supplierId = data.fornecedor.id_sistema
 
         if (!supplierId) {
-            // Se não existe, cria na tabela 'suppliers'
             const { data: newSup, error } = await (supabaseAdmin.from('suppliers') as any).insert({
                 tenant_id: (profile as any).tenant_id,
                 store_id: storeId,
@@ -222,16 +205,14 @@ export async function saveImportedData(data: XmlPreviewData, storeId: number) {
                 cnpj: data.fornecedor.cnpj,
                 inscricao_estadual: data.fornecedor.ie,
                 cidade: data.fornecedor.cidade,
-                uf: data.fornecedor.uf
+                uf: data.fornecedor.uf,
             }).select().single()
 
-            if (error) throw new Error("Erro ao criar fornecedor: " + error.message)
+            if (error) throw new Error(`Erro ao criar fornecedor: ${error.message}`)
             supplierId = newSup.id
         }
 
-        // 2. Processar Produtos
         for (const item of itensParaImportar) {
-
             const nome = item.descricao.toUpperCase()
             const ncmString = String(item.ncm || '')
             const ncm = ncmString.replace(/\./g, '')
@@ -239,35 +220,28 @@ export async function saveImportedData(data: XmlPreviewData, storeId: number) {
             let tipoDetectado = 'Outro'
             let categoriaDetectada = 'Importado XML'
 
-            // Lógica de Detecção de Tipo (Priorizando NCM)
-            // NCMs de Ótica: 9003 (Armações), 9004 (Óculos), 9001 (Lentes)
             if (ncm.startsWith('9003') || ncm.startsWith('9004')) {
                 tipoDetectado = 'Armacao'
-                categoriaDetectada = 'Armação'
+                categoriaDetectada = 'Armacao'
             } else if (ncm.startsWith('9001')) {
                 tipoDetectado = 'Lente'
-                categoriaDetectada = 'Lente Oftálmica'
-            } else {
-                // Fallback por Nome se NCM não for conclusivo
-                if (nome.includes('ARMA') || nome.includes('OCULOS') || nome.includes('SOLAR')) {
-                    tipoDetectado = 'Armacao'
-                    categoriaDetectada = 'Armação'
-                } else if (nome.includes('LENTE')) {
-                    tipoDetectado = 'Lente'
-                    categoriaDetectada = 'Lente Oftálmica'
-                }
+                categoriaDetectada = 'Lente Oftalmica'
+            } else if (nome.includes('ARMA') || nome.includes('OCULOS') || nome.includes('SOLAR')) {
+                tipoDetectado = 'Armacao'
+                categoriaDetectada = 'Armacao'
+            } else if (nome.includes('LENTE')) {
+                tipoDetectado = 'Lente'
+                categoriaDetectada = 'Lente Oftalmica'
             }
 
-            const precoVendaSugerido = item.valor_unitario * 2
-
+            const precoVendaFinal = item.preco_venda ?? (item.valor_unitario * 2)
             let productId = item.manual_match_id || item.id_sistema
 
             if (productId) {
-                // PRODUTO JÁ EXISTE: Atualiza estoque e custo (mas não mexe na marca/nome)
                 const { error: updateError } = await (supabaseAdmin as any).rpc('increment_stock', {
                     p_product_id: productId,
                     p_quantity: item.quantidade,
-                    p_new_cost: item.valor_unitario
+                    p_new_cost: item.valor_unitario,
                 })
 
                 if (updateError) {
@@ -276,25 +250,34 @@ export async function saveImportedData(data: XmlPreviewData, storeId: number) {
                         .eq('id', productId)
                         .single()
 
-                    await (supabaseAdmin.from('products') as any).update({
+                    const { error: fallbackUpdateError } = await (supabaseAdmin.from('products') as any).update({
                         estoque_atual: (prodAtual?.estoque_atual || 0) + item.quantidade,
                         preco_custo: item.valor_unitario,
+                        preco_venda: precoVendaFinal,
+                        ...(item.use_xml_name ? { nome: item.descricao } : {}),
                     }).eq('id', productId)
 
-                    // Se o usuário optou por usar o nome da nota, atualizamos o nome
-                    if (item.use_xml_name) {
-                        await (supabaseAdmin.from('products') as any).update({
-                            nome: item.descricao
-                        }).eq('id', productId)
+                    if (fallbackUpdateError) {
+                        throw new Error(`Erro ao atualizar produto ${item.descricao}: ${fallbackUpdateError.message}`)
                     }
-                } else if (item.use_xml_name) {
-                    // Caso não tenha erro no RPC, mas precisamos atualizar o nome
-                    await (supabaseAdmin.from('products') as any).update({
-                        nome: item.descricao
-                    }).eq('id', productId)
+                } else {
+                    const updates: Record<string, unknown> = {
+                        preco_venda: precoVendaFinal,
+                    }
+
+                    if (item.use_xml_name) {
+                        updates.nome = item.descricao
+                    }
+
+                    const { error: postUpdateError } = await (supabaseAdmin.from('products') as any)
+                        .update(updates)
+                        .eq('id', productId)
+
+                    if (postUpdateError) {
+                        throw new Error(`Erro ao atualizar produto ${item.descricao}: ${postUpdateError.message}`)
+                    }
                 }
             } else {
-                // PRODUTO NOVO: Cria o registro
                 let finalBarcode = item.codigo_barras || null
                 if (!finalBarcode) {
                     finalBarcode = await generateSmartBarcode(storeId, item.valor_unitario)
@@ -308,42 +291,37 @@ export async function saveImportedData(data: XmlPreviewData, storeId: number) {
                     referencia: item.codigo_fornecedor,
                     tipo_produto: tipoDetectado,
                     categoria: categoriaDetectada,
-
-                    // Marca: Deixamos NULL para preenchimento manual correto depois
                     marca: null,
-
                     preco_custo: item.valor_unitario,
-                    preco_venda: precoVendaSugerido,
+                    preco_venda: precoVendaFinal,
                     estoque_atual: item.quantidade,
                     estoque_minimo: 1,
                     gerencia_estoque: true,
-                    ncm: ncm,
+                    ncm,
                     cest: item.cest,
                     cfop: item.cfop,
                     unidade_medida: item.unidade,
                     origem_mercadoria: 0,
-                    supplier_id: supplierId, // Vínculo com a tabela Suppliers
-                    detalhes: {}
+                    supplier_id: supplierId,
+                    detalhes: {},
                 }).select().single()
 
                 if (insertError) throw new Error(`Erro ao criar produto ${item.descricao}: ${insertError.message}`)
                 productId = newProd.id
             }
 
-            // 3. Registrar Movimentação (Log)
             await (supabaseAdmin.from('stock_movements') as any).insert({
                 tenant_id: (profile as any).tenant_id,
                 store_id: storeId,
                 product_id: productId,
                 tipo: 'Entrada',
                 quantidade: item.quantidade,
-                motivo: `Importação NFe ${data.nfe_numero}`,
+                motivo: `Importacao NFe ${data.nfe_numero}`,
                 custo_unitario_momento: item.valor_unitario,
-                registrado_por_id: user.id
+                registrado_por_id: user.id,
             })
         }
 
-        // 4. Registrar a Nota na Tabela de Controle (Trava de Duplicidade)
         await (supabaseAdmin.from('imported_invoices') as any).insert({
             tenant_id: (profile as any).tenant_id,
             store_id: storeId,
@@ -351,7 +329,7 @@ export async function saveImportedData(data: XmlPreviewData, storeId: number) {
             nfe_number: data.nfe_numero,
             series: data.nfe_serie,
             supplier_id: supplierId,
-            imported_at: new Date().toISOString()
+            imported_at: new Date().toISOString(),
         })
 
         if (data.source_queue_id) {
@@ -362,22 +340,19 @@ export async function saveImportedData(data: XmlPreviewData, storeId: number) {
         return {
             success: true,
             message: itensIgnorados > 0
-                ? `Importação concluída com sucesso! ${itensParaImportar.length} item(ns) importado(s) e ${itensIgnorados} ignorado(s).`
-                : "Importação concluída com sucesso!"
+                ? `Importacao concluida com sucesso! ${itensParaImportar.length} item(ns) importado(s) e ${itensIgnorados} ignorado(s).`
+                : 'Importacao concluida com sucesso!',
         }
-
     } catch (e: any) {
         if (e.message?.includes('unique_invoice_key_per_store')) {
-            return { success: false, message: "Erro: Esta nota fiscal já foi registrada no sistema." }
+            return { success: false, message: 'Erro: Esta nota fiscal ja foi registrada no sistema.' }
         }
-        console.error("Erro ao salvar importação:", e)
+
+        console.error('Erro ao salvar importacao:', e)
         return { success: false, message: e.message }
     }
 }
 
-// ============================================================================
-// 3. BUSCA PARA VÍNCULO MANUAL
-// ============================================================================
 export async function searchProductsForManualMatch(term: string, storeId: number) {
     const supabaseAdmin = createAdminClient()
 
@@ -390,7 +365,7 @@ export async function searchProductsForManualMatch(term: string, storeId: number
         .limit(20)
 
     if (error) {
-        console.error("Erro na busca manual:", error)
+        console.error('Erro na busca manual:', error)
         return []
     }
 

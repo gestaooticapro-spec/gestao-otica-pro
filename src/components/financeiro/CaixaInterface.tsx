@@ -24,6 +24,12 @@ import CalculadoraNotasModal from '@/components/modals/CalculadoraNotasModal'
 
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const formatTime = (dateStr: string) => new Date(dateStr).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+const formatDateKey = (dateInput: string | Date) => new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+}).format(new Date(dateInput))
 
 // --- DESIGN SYSTEM (DARK GLASSMORPHISM) ---
 const labelStyle = "block text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-wider"
@@ -54,6 +60,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
     const [auditData, setAuditData] = useState<ResumoCaixa | null>(null)
     const [auditLoading, setAuditLoading] = useState(false)
     const [auditNotFound, setAuditNotFound] = useState(false)
+    const isSameDayReopen = !!ultimoFechamento && formatDateKey(ultimoFechamento.data_fechamento) === formatDateKey(new Date())
 
     const handleAuditDateChange = async (dateStr: string) => {
         setAuditDate(dateStr)
@@ -210,11 +217,19 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                             <Lock className="h-8 w-8 text-emerald-400" />
                         </div>
                         <h2 className="text-2xl font-black uppercase tracking-tight text-white">Caixa Fechado</h2>
-                        <p className="text-slate-400 text-sm mt-1 font-medium">Inicie o dia informando o fundo de troco.</p>
+                        <p className="text-slate-400 text-sm mt-1 font-medium">
+                            {isSameDayReopen
+                                ? 'Ja existe um caixa fechado hoje. Vamos reabrir esse mesmo caixa para manter os dados do dia organizados.'
+                                : 'Inicie o dia informando o fundo de troco.'}
+                        </p>
                     </div>
 
                     <form action={handleAbrir} className="space-y-4">
                         <input type="hidden" name="store_id" value={storeId} />
+                        {isSameDayReopen && (
+                            <input type="hidden" name="saldo_inicial" value={ultimoFechamento?.saldo_final ?? 0} />
+                        )}
+                        {!isSameDayReopen && (
                         <div>
                             <label className={labelStyle}>Saldo Inicial (Fundo de Caixa)</label>
                             <div className="relative">
@@ -239,9 +254,10 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                 </button>
                             </div>
                         </div>
+                        )}
 
                         {/* SUGESTÃO DE SALDO ANTERIOR */}
-                        {ultimoFechamento && (
+                        {ultimoFechamento && !isSameDayReopen && (
                             <div className="bg-emerald-500/10 p-3 rounded-lg border border-emerald-500/20 flex flex-col gap-2">
                                 <div className="flex items-center gap-2 text-[10px] text-emerald-400 uppercase font-bold tracking-wider">
                                     <Wallet className="h-3 w-3" />
@@ -260,12 +276,27 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                             </div>
                         )}
 
+                        {ultimoFechamento && isSameDayReopen && (
+                            <div className="bg-emerald-500/10 p-3 rounded-lg border border-emerald-500/20 flex flex-col gap-2">
+                                <div className="flex items-center gap-2 text-[10px] text-emerald-400 uppercase font-bold tracking-wider">
+                                    <Wallet className="h-3 w-3" />
+                                    Reabrindo o mesmo caixa de hoje
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-lg font-black text-white">{formatCurrency(ultimoFechamento.saldo_final)}</span>
+                                    <span className="text-[10px] text-emerald-300 uppercase font-bold">
+                                        Sem criar novo caixa
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+
                         <button
                             disabled={isPending}
                             className="w-full h-12 bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase rounded-lg transition-colors shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 disabled:opacity-50 border border-white/10"
                         >
                             {isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Unlock className="h-5 w-5" />}
-                            Abrir Caixa
+                            {isSameDayReopen ? 'Reabrir Caixa de Hoje' : 'Abrir Caixa'}
                         </button>
                     </form>
                 </div>
@@ -382,7 +413,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                     {/* --- TOPO: INDICADORES (KPIs) --- */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 shrink-0">
 
-                        {/* Card 0: FATURAMENTO MENSAL */}
+                        {false && (
                         <div className="bg-indigo-500/10 backdrop-blur-xl p-3 rounded-xl border border-white/5 transition-all hover:bg-indigo-500/20">
                             <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-1.5 text-indigo-300/80">
@@ -393,14 +424,15 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                             </div>
                             <div className="flex items-baseline gap-2">
                                 <p className="text-xl font-black font-mono tabular-nums text-white">
-                                    {formatCurrency(initialData.comparativo?.faturamento_mensal_atual || 0)}
+                                    {formatCurrency(initialData!.comparativo?.faturamento_mensal_atual || 0)}
                                 </p>
                             </div>
                             <div className="flex gap-3 mt-1.5 border-t border-white/5 pt-1.5 text-[9px] font-bold">
-                                <span className="text-emerald-400">V: {formatCurrency(initialData.comparativo?.faturamento_avista || 0)}</span>
-                                <span className="text-amber-400 pl-2 border-l border-white/10">P: {formatCurrency(initialData.comparativo?.faturamento_aprazo || 0)}</span>
+                                <span className="text-emerald-400">V: {formatCurrency(initialData!.comparativo?.faturamento_avista || 0)}</span>
+                                <span className="text-amber-400 pl-2 border-l border-white/10">P: {formatCurrency(initialData!.comparativo?.faturamento_aprazo || 0)}</span>
                             </div>
                         </div>
+                        )}
                         {/* Card 1: Saldo Gaveta */}
                         <div className="bg-emerald-500/10 backdrop-blur-xl p-3 rounded-xl border border-white/5 transition-all hover:bg-emerald-500/20">
                             <div className="flex items-center justify-between mb-2">

@@ -518,6 +518,17 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                                                 <p className="text-xs text-slate-500">Nenhuma O.S. vinculada</p>
                                             </div>
                                         )}
+
+                                        {selectedSale.observacoes?.trim() && (
+                                            <div className="mt-6">
+                                                <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                                                    <FileText className="w-3 h-3" /> Observacao da Venda
+                                                </h4>
+                                                <div className="bg-black/20 rounded-xl p-4 border border-white/5 text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
+                                                    {selectedSale.observacoes.trim()}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
