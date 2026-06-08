@@ -26,9 +26,9 @@ export type StoreSettings = {
 export const STORE_MODULE_LABELS: Record<StoreModuleKey, string> = {
   fiscal: 'Fiscal',
   installments: 'Parcelamento',
-  postSales: 'Pos-venda',
-  evaluation: 'Avaliacao',
-  quickSale: 'Venda rapida',
+  postSales: 'Pós-venda',
+  evaluation: 'Avaliação',
+  quickSale: 'Venda rápida',
   labels: 'Etiquetas',
 }
 

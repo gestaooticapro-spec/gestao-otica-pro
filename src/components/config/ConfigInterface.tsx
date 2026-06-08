@@ -454,8 +454,8 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                         {
                             key: 'module_fiscal_enabled',
                             moduleKey: 'fiscal',
-                            title: 'Modulo Fiscal',
-                            description: 'Controla emissao de notas, painel fiscal e fechamento mensal da NFC-e.',
+                            title: 'Módulo Fiscal',
+                            description: 'Controla emissão de notas, painel fiscal e fechamento mensal da NFC-e.',
                             icon: FileText,
                             accent: 'text-rose-300',
                             iconBg: 'bg-rose-500/15 border-rose-400/20',
@@ -463,8 +463,8 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                         {
                             key: 'module_installments_enabled',
                             moduleKey: 'installments',
-                            title: 'Modulo de Parcelamento',
-                            description: 'Liga ou desliga baixa de parcelas, cobranca e relatorios do crediario/carnes.',
+                            title: 'Módulo de Parcelamento',
+                            description: 'Liga ou desliga baixa de parcelas, cobrança e relatórios do crediário/carnês.',
                             icon: Wallet,
                             accent: 'text-amber-300',
                             iconBg: 'bg-amber-500/15 border-amber-400/20',
@@ -472,8 +472,8 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                         {
                             key: 'module_post_sales_enabled',
                             moduleKey: 'postSales',
-                            title: 'Modulo de Pos-venda',
-                            description: 'Habilita o fluxo de acompanhamento e os relatorios de pos-venda.',
+                            title: 'Módulo de Pós-venda',
+                            description: 'Habilita o fluxo de acompanhamento e os relatórios de pós-venda.',
                             icon: HeartHandshake,
                             accent: 'text-pink-300',
                             iconBg: 'bg-pink-500/15 border-pink-400/20',
@@ -481,8 +481,8 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                         {
                             key: 'pre_sale_analysis_enabled',
                             moduleKey: 'evaluation',
-                            title: 'Modulo de Avaliacao',
-                            description: 'Mantem a tela de Avaliacao disponivel no atendimento e na analise pre-venda.',
+                            title: 'Módulo de Avaliação',
+                            description: 'Mantém a tela de Avaliação disponível no atendimento e na análise pré-venda.',
                             icon: Sparkles,
                             accent: 'text-cyan-300',
                             iconBg: 'bg-cyan-500/15 border-cyan-400/20',
@@ -490,8 +490,8 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                         {
                             key: 'module_quick_sale_enabled',
                             moduleKey: 'quickSale',
-                            title: 'Modulo de Venda Rapida',
-                            description: 'Mostra ou esconde o fluxo de PDV Express para vendas de balcao.',
+                            title: 'Módulo de Venda Rápida',
+                            description: 'Mostra ou esconde o fluxo de PDV Express para vendas de balcão.',
                             icon: Zap,
                             accent: 'text-violet-300',
                             iconBg: 'bg-violet-500/15 border-violet-400/20',
@@ -499,8 +499,8 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                         {
                             key: 'module_labels_enabled',
                             moduleKey: 'labels',
-                            title: 'Modulo de Etiquetas',
-                            description: 'Controla a geracao e impressao de etiquetas dentro do estoque.',
+                            title: 'Módulo de Etiquetas',
+                            description: 'Controla a geração e impressão de etiquetas dentro do estoque.',
                             icon: Printer,
                             accent: 'text-teal-300',
                             iconBg: 'bg-teal-500/15 border-teal-400/20',
@@ -606,10 +606,10 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                         </div>
                         <div className="flex-1">
                             <p className="text-sm font-black text-white uppercase tracking-[0.15em] mb-2">
-                                Geracao de Comissao
+                                Geração de Comissão
                             </p>
                             <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                                Define quando a comissao do vendedor nasce no financeiro.
+                                Define quando a comissão do vendedor nasce no financeiro.
                             </p>
                             <div className="flex flex-col gap-3">
                                 <label className="flex items-center gap-3 cursor-pointer group">
