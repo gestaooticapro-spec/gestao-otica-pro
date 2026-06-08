@@ -30,7 +30,7 @@ export default async function DashboardLayout({
   if (userRole === 'store_operator' || userRole === 'manager') {
     return (
       <div className="min-h-screen">
-        <FullscreenToggleButton className="right-20 top-6" />
+        <FullscreenToggleButton className="left-4 top-6" />
         {children}
       </div>
     );
@@ -39,7 +39,7 @@ export default async function DashboardLayout({
   // 4. Para outros roles, renderiza com header normal
   return (
     <div className="min-h-screen bg-slate-950">
-      <FullscreenToggleButton className="right-20 top-20" />
+      <FullscreenToggleButton className="left-4 top-20" />
       <Header />
 
       {/* Container Principal: Header é compensado por pt-16 */}

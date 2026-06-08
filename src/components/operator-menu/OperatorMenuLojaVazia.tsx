@@ -500,7 +500,7 @@ export default function OperatorMenuLojaVazia({
 
                             <div className="space-y-4">
                                 {/* VENCIMENTOS */}
-                                <RadarWidget
+                                {modules.installments && <RadarWidget
                                     title="Vencimentos"
                                     subtitle="Próximos 3 Dias"
                                     icon={CalendarClock}
@@ -529,7 +529,7 @@ export default function OperatorMenuLojaVazia({
                                             </div>
                                         ))
                                     )}
-                                </RadarWidget>
+                                </RadarWidget>}
 
                                 {/* ANIVERSARIANTES */}
                                 <RadarWidget
@@ -563,7 +563,7 @@ export default function OperatorMenuLojaVazia({
 
 
                                 {/* RETORNOS DE COBRANÇA */}
-                                <RadarWidget
+                                {modules.installments && <RadarWidget
                                     title="Retornos Cobrança"
                                     subtitle="Agendados Hoje"
                                     icon={MessageCircle}
@@ -592,13 +592,13 @@ export default function OperatorMenuLojaVazia({
                                             </div>
                                         ))
                                     )}
-                                </RadarWidget>
+                                </RadarWidget>}
 
 
 
                                 {/* ENTREGAS */}
                                 <RadarWidget
-                                    title="Entregar Hoje"
+                                    title="Entregas PrÃ³ximas"
                                     subtitle="Gaveta"
                                     icon={Package}
                                     colorClass="emerald"

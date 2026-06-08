@@ -303,6 +303,17 @@ export default function ImportacaoPage() {
         setPreviewData({ ...previewData, itens: newItens })
     }
 
+    const toggleIgnoreItem = (index: number) => {
+        if (!previewData) return
+        const newItens = [...previewData.itens]
+        const currentItem = newItens[index]
+        newItens[index] = {
+            ...currentItem,
+            skip_import: !currentItem.skip_import
+        }
+        setPreviewData({ ...previewData, itens: newItens })
+    }
+
     // --- Render Lists ---
 
     const filteredItems = previewData?.itens.map((item, originalIndex) => ({ ...item, originalIndex })).filter(item => {
@@ -545,7 +556,11 @@ export default function ImportacaoPage() {
                         <div className="text-right">
                             <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Total dos Produtos</p>
                             <p className="text-xl font-black text-emerald-400">
-                                {money(previewData.itens.reduce((acc, i) => acc + i.valor_total, 0))}
+                                {money(previewData.itens.filter((i) => !i.skip_import).reduce((acc, i) => acc + i.valor_total, 0))}
+                            </p>
+                            <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                {previewData.itens.filter((i) => !i.skip_import).length} item(ns) ativos
+                                {previewData.itens.some((i) => i.skip_import) ? ` • ${previewData.itens.filter((i) => i.skip_import).length} ignorado(s)` : ''}
                             </p>
                         </div>
                     </div>
@@ -595,7 +610,7 @@ export default function ImportacaoPage() {
                                     </tr>
                                 )}
                                 {filteredItems.map((item) => (
-                                    <tr key={item.originalIndex} className="hover:bg-white/5 transition-colors group">
+                                    <tr key={item.originalIndex} className={`transition-colors group ${item.skip_import ? 'bg-rose-500/5' : 'hover:bg-white/5'}`}>
 
                                         {/* Coluna 1: Informações do Produto e Vínculo */}
                                         <td className="px-6 py-4 align-top">
@@ -603,11 +618,14 @@ export default function ImportacaoPage() {
                                                 {/* Nome na Nota */}
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-[10px] font-bold text-slate-500 border border-slate-700 rounded px-1">XML</span>
-                                                    <span className={`font-medium ${item.use_xml_name ? 'text-emerald-400' : 'text-slate-300'}`}>
+                                                    <span className={`font-medium ${item.skip_import ? 'text-slate-500 line-through' : item.use_xml_name ? 'text-emerald-400' : 'text-slate-300'}`}>
                                                         {item.descricao}
                                                     </span>
                                                     {item.status_sistema === 'Novo' && (
                                                         <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 rounded border border-amber-500/30">Novo</span>
+                                                    )}
+                                                    {item.skip_import && (
+                                                        <span className="text-[10px] bg-rose-500/20 text-rose-300 px-1.5 rounded border border-rose-500/30">Ignorado</span>
                                                     )}
                                                 </div>
                                                 <div className="text-xs text-slate-500 font-mono pl-10">
@@ -711,15 +729,24 @@ export default function ImportacaoPage() {
 
                                         {/* Ações (Only for auto-matches in Found tab) */}
                                         <td className="px-4 py-4 text-right align-top">
-                                            {activeTab === 'found' && (
+                                            <div className="flex justify-end gap-1">
                                                 <button
-                                                    onClick={() => handleUnlink(item.originalIndex)}
-                                                    className="p-2 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded transition-colors"
-                                                    title="Desvincular produto"
+                                                    onClick={() => toggleIgnoreItem(item.originalIndex)}
+                                                    className={`p-2 rounded transition-colors ${item.skip_import ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30' : 'hover:bg-rose-500/20 text-slate-400 hover:text-rose-400'}`}
+                                                    title={item.skip_import ? 'Voltar a importar este produto' : 'Ignorar este produto na importação'}
                                                 >
-                                                    <Unlink className="h-4 w-4" />
+                                                    {item.skip_import ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
                                                 </button>
-                                            )}
+                                                {activeTab === 'found' && (
+                                                    <button
+                                                        onClick={() => handleUnlink(item.originalIndex)}
+                                                        className="p-2 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded transition-colors"
+                                                        title="Desvincular produto"
+                                                    >
+                                                        <Unlink className="h-4 w-4" />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}

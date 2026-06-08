@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getFiscalInvoices } from "@/lib/actions/fiscal-db.actions";
 import { consultarNFCe, cancelarNota } from "@/lib/actions/fiscal.actions";
+import BackButton from "@/components/ui/BackButton";
 import {
     FileText, Plus, Search, Loader2, AlertCircle,
-    CheckCircle, XCircle, Clock, Download, RefreshCw, Ban, MessageCircle, FileArchive, ArrowLeft, Printer
+    CheckCircle, XCircle, Clock, Download, RefreshCw, Ban, MessageCircle, FileArchive, Printer
 } from "lucide-react";
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
 import ModuleDisabledState from '@/components/modules/ModuleDisabledState';
@@ -226,13 +227,7 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
             {/* CABEÇALHO */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="flex items-center gap-3">
-                    <Link
-                        href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
-                        className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
-                        title="Voltar para o Painel"
-                    >
-                        <ArrowLeft className="h-4 w-4" />
-                    </Link>
+                    <BackButton title="Voltar" fallbackHref={`/dashboard/loja/${storeId}?menu=loja-vazia`} />
                     <div>
                         <h1 className="text-3xl font-black text-white tracking-tight uppercase">Fiscal</h1>
                         <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Gerencie NFC-e, NF-e e documentos fiscais da loja.</p>

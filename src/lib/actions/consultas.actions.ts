@@ -31,7 +31,6 @@ export async function getAlertasOperacionais(storeId: number): Promise<Dashboard
     const hoje = new Date()
     const amanha = new Date(hoje)
     amanha.setDate(hoje.getDate() + 1)
-    const ontem = new Date(hoje.getTime() - (24 * 60 * 60 * 1000)).toISOString()
 
     try {
         // 1. Buscas Paralelas para otimizar tempo
@@ -51,7 +50,7 @@ export async function getAlertasOperacionais(storeId: number): Promise<Dashboard
                 .select('id, created_at, venda_id, customers(full_name)')
                 .eq('store_id', storeId)
                 .is('dt_pedido_em', null)
-                .lt('created_at', ontem)
+                .is('dt_entregue_em', null)
                 .order('created_at', { ascending: true }),
 
             // Contagem de Vendas em Aberto há mais de 21 dias (urgência)

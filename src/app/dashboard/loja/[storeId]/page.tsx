@@ -8,6 +8,7 @@ import { getProfileByAdmin, createAdminClient } from '@/lib/supabase/admin'
 import { getManagerKPIs, getAdminKPIs } from '@/lib/actions/dashboard.actions'
 import { getAlertasOperacionais, getAniversariantes, getVencimentosProximos } from '@/lib/actions/consultas.actions'
 import { getRetornosDeHoje } from '@/lib/actions/collection.actions'
+import { getStoreModulesForStore } from '@/lib/store-modules.server'
 
 // Importação dos Painéis Visuais
 import { ManagerDashboard, AdminDashboard } from '@/components/dashboard/DashboardViews'
@@ -68,11 +69,12 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
     }
 
     // 3. OPERADOR / VENDEDOR (Dashboard Operacional)
+    const modules = await getStoreModulesForStore(storeId)
     const [alertas, aniversariantes, vencimentos, retornos] = await Promise.all([
         getAlertasOperacionais(storeId),
         getAniversariantes(storeId),
-        getVencimentosProximos(storeId),
-        getRetornosDeHoje(storeId)
+        modules.installments ? getVencimentosProximos(storeId) : Promise.resolve([]),
+        modules.installments ? getRetornosDeHoje(storeId) : Promise.resolve([])
     ])
 
     return (

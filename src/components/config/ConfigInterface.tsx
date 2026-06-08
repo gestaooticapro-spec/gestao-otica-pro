@@ -59,6 +59,16 @@ type StoreData = {
 const labelStyle = "block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-[0.2em]";
 const inputStyle = "block w-full rounded-lg border border-white/10 bg-black/20 shadow-inner text-slate-200 h-9 text-sm px-3 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 font-bold placeholder:font-normal placeholder:text-slate-500 disabled:bg-black/10 disabled:text-slate-500 transition-all outline-none backdrop-blur-sm";
 const cardStyle = "bg-white/5 backdrop-blur-xl border border-white/10 p-5 rounded-xl shadow-xl mb-4 relative overflow-hidden";
+const EMPTY_EMPLOYEE_FORM = {
+    full_name: '',
+    pin: '',
+    role: 'vendedor' as 'vendedor' | 'gerente' | 'tecnico',
+    comm_rate_guaranteed: 0,
+    comm_rate_store_credit: 0,
+    comm_rate_store_total: 0,
+    comm_rate_received: 0,
+    comm_rate_profit: 0
+};
 
 // --- SUB-COMPONENTE: FORMULÁRIO DA LOJA ---
 function StoreDataForm({ storeId }: { storeId: number }) {
@@ -604,20 +614,12 @@ function ResourcesForm({ storeId }: { storeId: number }) {
 function TeamManagement({ storeId }: { storeId: number }) {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [selectedId, setSelectedId] = useState<number | null>(null);
+    const [isCreatingNew, setIsCreatingNew] = useState(false);
     const [loadingList, setLoadingList] = useState(true);
     const [isSaving, startTransition] = useTransition();
 
     // Formulário
-    const [formData, setFormData] = useState({
-        full_name: '',
-        pin: '',
-        role: 'vendedor' as 'vendedor' | 'gerente' | 'tecnico',
-        comm_rate_guaranteed: 0,
-        comm_rate_store_credit: 0,
-        comm_rate_store_total: 0,
-        comm_rate_received: 0,
-        comm_rate_profit: 0
-    });
+    const [formData, setFormData] = useState(EMPTY_EMPLOYEE_FORM);
 
     useEffect(() => {
         loadData();
@@ -633,6 +635,7 @@ function TeamManagement({ storeId }: { storeId: number }) {
 
     const handleSelect = (emp: Employee) => {
         setSelectedId(emp.id);
+        setIsCreatingNew(false);
             setFormData({
                 full_name: emp.full_name || '',
                 pin: emp.pin || '',
@@ -645,12 +648,16 @@ function TeamManagement({ storeId }: { storeId: number }) {
         });
     };
 
+    const resetEditor = () => {
+        setSelectedId(null);
+        setIsCreatingNew(false);
+        setFormData(EMPTY_EMPLOYEE_FORM);
+    };
+
     const handleNew = () => {
         setSelectedId(null);
-        setFormData({
-            full_name: '', pin: '', role: 'vendedor',
-            comm_rate_guaranteed: 0, comm_rate_store_credit: 0, comm_rate_store_total: 0, comm_rate_received: 0, comm_rate_profit: 0
-        });
+        setIsCreatingNew(true);
+        setFormData(EMPTY_EMPLOYEE_FORM);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -671,7 +678,7 @@ function TeamManagement({ storeId }: { storeId: number }) {
             const result = await saveEmployee({ success: false, message: '' }, payload);
             if (result.success) {
                 alert(result.message);
-                if (!selectedId) handleNew();
+                if (!selectedId) resetEditor();
                 loadData();
             } else {
                 alert(`Erro: ${result.message}`);
@@ -686,7 +693,7 @@ function TeamManagement({ storeId }: { storeId: number }) {
             const result = await toggleEmployeeStatus(emp.id, emp.is_active ?? true, storeId);
             if (result.success) {
                 loadData();
-                if (selectedId === emp.id) handleNew();
+                if (selectedId === emp.id) resetEditor();
             } else {
                 alert(result.message);
             }
@@ -708,9 +715,6 @@ function TeamManagement({ storeId }: { storeId: number }) {
                         <h2 className="font-bold text-sm flex items-center gap-2 uppercase tracking-wide">
                             <ShieldCheck className="h-5 w-5" /> Equipe
                         </h2>
-                        <button onClick={handleNew} className="bg-white/10 hover:bg-white/20 text-indigo-200 px-3 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors border border-white/10">
-                            <Plus className="h-3 w-3" /> NOVO
-                        </button>
                     </div>
                 </div>
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
@@ -759,10 +763,19 @@ function TeamManagement({ storeId }: { storeId: number }) {
             <div className="flex-1 bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl shadow-xl flex flex-col overflow-hidden">
                 <div className="bg-slate-900/60 px-6 py-4 border-b border-white/10 shadow-sm shrink-0 backdrop-blur-md">
                     <h2 className="text-lg font-bold text-slate-200 flex items-center gap-2">
-                        {selectedId ? `Editando: ${formData.full_name}` : 'Novo Cadastro'}
+                        {selectedId ? `Editando: ${formData.full_name}` : isCreatingNew ? 'Novo Cadastro' : 'Equipe & Acesso'}
                     </h2>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                    {!selectedId && !isCreatingNew ? (
+                        <div className="flex h-full min-h-[420px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 bg-black/10 px-8 text-center">
+                            <Users className="mb-4 h-10 w-10 text-slate-500" />
+                            <h3 className="text-lg font-black text-slate-200">Nenhum colaborador selecionado</h3>
+                            <p className="mt-2 max-w-md text-sm text-slate-400">
+                                Escolha um nome na lista ao lado para editar ou clique em <span className="font-bold text-indigo-300">Novo</span> para cadastrar outro acesso.
+                            </p>
+                        </div>
+                    ) : (
                     <form onSubmit={handleSubmit} className="space-y-6">
                         {/* SEÇÃO 1: ACESSO */}
                         <div className={cardStyle}>
@@ -861,13 +874,30 @@ function TeamManagement({ storeId }: { storeId: number }) {
                                     <Power className="h-4 w-4" /> {employees.find(e => e.id === selectedId)?.is_active ? 'BLOQUEAR' : 'DESBLOQUEAR'}
                                 </button>
                             ) : <div></div>}
-                            <button type="submit" disabled={isSaving} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs shadow-lg shadow-indigo-500/20 transition-transform active:scale-95 flex items-center gap-2 disabled:opacity-50 border border-white/10">
-                                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                                SALVAR DADOS
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button type="button" onClick={handleNew} disabled={isSaving} className="px-4 py-2 bg-white/10 hover:bg-white/20 text-indigo-200 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors border border-white/10 disabled:opacity-50">
+                                    <Plus className="h-4 w-4" /> NOVO
+                                </button>
+                                <button type="submit" disabled={isSaving} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs shadow-lg shadow-indigo-500/20 transition-transform active:scale-95 flex items-center gap-2 disabled:opacity-50 border border-white/10">
+                                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                    SALVAR DADOS
+                                </button>
+                            </div>
                         </div>
                     </form>
+                    )}
                 </div>
+                {!selectedId && !isCreatingNew && (
+                    <div className="bg-slate-900/60 backdrop-blur-xl border-t border-white/10 p-3 shadow-[0_-5px_20px_rgba(0,0,0,0.2)] flex justify-end gap-2 z-20 shrink-0">
+                        <button
+                            type="button"
+                            onClick={handleNew}
+                            className="px-4 py-2 text-xs font-bold text-indigo-200 bg-white/10 hover:bg-white/20 border border-white/10 rounded-lg transition-colors flex items-center gap-2"
+                        >
+                            <Plus className="h-4 w-4" /> NOVO
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     )

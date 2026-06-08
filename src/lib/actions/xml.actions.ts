@@ -29,6 +29,7 @@ export type XmlPreviewItem = {
     manual_match_id?: number | null
     use_xml_name?: boolean
     original_system_name?: string
+    skip_import?: boolean
 }
 
 export type XmlPreviewData = {
@@ -205,6 +206,9 @@ export async function saveImportedData(data: XmlPreviewData, storeId: number) {
     if (!profile) return { success: false, message: 'Perfil inválido.' }
 
     try {
+        const itensParaImportar = data.itens.filter((item) => !item.skip_import)
+        const itensIgnorados = data.itens.length - itensParaImportar.length
+
         // 1. Salvar/Atualizar Fornecedor
         let supplierId = data.fornecedor.id_sistema
 
@@ -226,7 +230,7 @@ export async function saveImportedData(data: XmlPreviewData, storeId: number) {
         }
 
         // 2. Processar Produtos
-        for (const item of data.itens) {
+        for (const item of itensParaImportar) {
 
             const nome = item.descricao.toUpperCase()
             const ncmString = String(item.ncm || '')
@@ -355,7 +359,12 @@ export async function saveImportedData(data: XmlPreviewData, storeId: number) {
         }
 
         revalidatePath(`/dashboard/loja/${storeId}/cadastros`)
-        return { success: true, message: "Importação concluída com sucesso!" }
+        return {
+            success: true,
+            message: itensIgnorados > 0
+                ? `Importação concluída com sucesso! ${itensParaImportar.length} item(ns) importado(s) e ${itensIgnorados} ignorado(s).`
+                : "Importação concluída com sucesso!"
+        }
 
     } catch (e: any) {
         if (e.message?.includes('unique_invoice_key_per_store')) {

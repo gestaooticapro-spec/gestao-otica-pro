@@ -992,7 +992,7 @@ ${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tok
                                         )}
                                         <button
                                             type="button"
-                                            onClick={() => { setLongeOdEsf('+0,00'); setLongeOdCil('+0,00'); setLongeOdEixo('0'); setLongeOeEsf('+0,00'); setLongeOeCil('+0,00'); setLongeOeCil('+0,00'); setLongeOeEixo('0'); }}
+                                            onClick={() => { setLongeOdEsf('+0,00'); setLongeOdCil('+0,00'); setLongeOdEixo('0'); setLongeOeEsf('+0,00'); setLongeOeCil('+0,00'); setLongeOeEixo('0'); setAdicao('+0,00'); }}
                                             className="text-[10px] font-bold text-slate-400 border border-white/10 hover:bg-white/5 hover:text-white px-3 py-1 rounded-lg transition-colors uppercase tracking-wide"
                                         >
                                             <FileDown className="h-3 w-3 inline mr-1" /> Zerar
