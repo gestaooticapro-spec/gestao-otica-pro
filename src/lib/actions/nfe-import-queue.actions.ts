@@ -44,6 +44,7 @@ type DistribuicaoDocumento = {
 const NFE_IMPORT_LOOKBACK_DAYS = 60
 const NFE_ENVIRONMENT = 'production' as const
 const NFE_AMBIENTE = 'producao'
+const ACCEPTED_DISTRIBUTION_DOC_TYPES = new Set(['nota', 'nfe', 'resumo_nfe'])
 
 function onlyDigits(value?: string | null) {
     return String(value || '').replace(/\D/g, '')
@@ -59,6 +60,11 @@ function parseJsonSafe(text: string) {
     } catch {
         return text || null
     }
+}
+
+function isAcceptedDistributionDocType(tipoDocumento?: string | null) {
+    if (!tipoDocumento) return true
+    return ACCEPTED_DISTRIBUTION_DOC_TYPES.has(String(tipoDocumento).trim().toLowerCase())
 }
 
 async function getTenantAndCompany(storeId?: number) {
@@ -372,7 +378,7 @@ export async function syncNfeFromSefaz(storeId?: number) {
         let skippedMissingKey = 0
 
         for (const doc of docs) {
-            if (doc.tipo_documento && doc.tipo_documento !== 'nota') {
+            if (!isAcceptedDistributionDocType(doc.tipo_documento)) {
                 skippedNonNote++
                 continue
             }
@@ -490,7 +496,7 @@ export async function searchNfeByAccessKey(chaveAcesso: string, storeId?: number
         }
 
         const docs = ((result.documentos || []) as DistribuicaoDocumento[])
-            .filter((doc) => (!doc.tipo_documento || doc.tipo_documento === 'nota') && doc.chave_acesso)
+            .filter((doc) => isAcceptedDistributionDocType(doc.tipo_documento) && doc.chave_acesso)
 
         if (docs.length === 0) {
             return {
