@@ -125,7 +125,19 @@ export async function calcularERegistrarComissao(vendaId: number) {
             .eq('status', 'Pago')
             .limit(1)
 
-        if (paidCommission && paidCommission.length > 0) return
+        if (paidCommission && paidCommission.length > 0) {
+            if (commissionStage === 'final') {
+                await (supabase.from('commissions') as any)
+                    .update({
+                        commission_stage: 'final',
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('venda_id', vendaId)
+                    .eq('type', 'individual')
+                    .eq('status', 'Pago')
+            }
+            return
+        }
 
         if (comissaoTotal <= 0) {
             await (supabase.from('commissions') as any).delete()
@@ -286,6 +298,7 @@ export async function calcularComissoesGlobais(storeId: number, inicio: string, 
                     venda_id: null,
                     type: 'global_store',
                     period_ref: periodRef,
+                    commission_stage: 'final',
                     amount: parseFloat(totalGlobal.toFixed(2)),
                     status: 'Pendente',
                     created_at: dataFim // Força pra data final, assim entra no filtro da tela sem problemas
@@ -351,6 +364,8 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
         const mapa = new Map<number, ResumoComissao>()
 
         comissoesFiltradas.forEach((c: any) => {
+            if (!c.employees?.id) return
+
             const empId = c.employees.id
             const empName = c.employees.full_name
             const valor = c.amount

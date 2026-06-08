@@ -818,8 +818,9 @@ export interface Database {
           id: number
           tenant_id: string | null
           store_id: number
-          employee_id: number
+          employee_id: number | null
           venda_id: number | null
+          oftalmologista_id: number | null
           type: string
           period_ref: string | null
           commission_stage: string
@@ -834,8 +835,9 @@ export interface Database {
           id?: number
           tenant_id?: string | null
           store_id: number
-          employee_id: number
+          employee_id?: number | null
           venda_id?: number | null
+          oftalmologista_id?: number | null
           type?: string
           period_ref?: string | null
           commission_stage?: string
@@ -848,6 +850,8 @@ export interface Database {
         }
         Update: {
           venda_id?: number | null
+          oftalmologista_id?: number | null
+          employee_id?: number | null
           type?: string
           period_ref?: string | null
           commission_stage?: string
