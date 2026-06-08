@@ -5,7 +5,7 @@
 'use client'
 
 import { useState, useTransition, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
     searchCustomersByName,
@@ -24,6 +24,7 @@ import {
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { Database } from '@/lib/database.types'
 import QuickCustomerModal from '@/components/modals/QuickCustomerModal'
+import { currentPathWithSearch, withReturnTo } from '@/lib/return-navigation'
 
 
 type Employee = Database['public']['Tables']['employees']['Row']
@@ -176,9 +177,12 @@ function HistoryCard({ data, customerObs }: { data: CustomerSaleHistory, custome
 // --- PÁGINA PRINCIPAL ---
 export default function AtendimentoPage() {
     const params = useParams()
+    const pathname = usePathname()
+    const searchParams = useSearchParams()
     const { push } = useRouter()
     const { preference } = useBackgroundPreference();
     const storeId = parseInt(params.storeId as string, 10)
+    const currentUrl = currentPathWithSearch(pathname, searchParams)
 
     // UI States
     const [query, setQuery] = useState('')
@@ -267,7 +271,7 @@ export default function AtendimentoPage() {
         startCreateTransition(async () => {
             const result = await createNewVenda(selectedCustomer.id, parseInt(selectedEmployeeId))
             if (result.success && result.data) {
-                push(`/dashboard/loja/${storeId}/vendas/${result.data.id}/experimental`)
+                push(withReturnTo(`/dashboard/loja/${storeId}/vendas/${result.data.id}/experimental`, currentUrl))
             } else {
                 alert(result.message || 'Erro ao criar venda.')
             }
@@ -287,9 +291,9 @@ export default function AtendimentoPage() {
             <div className="relative z-30 bg-white/5 backdrop-blur-xl border-b border-white/10 px-6 py-3 flex items-center shrink-0 shadow-2xl h-14">
                 <div className="flex items-center gap-3">
                     <Link
-                        href={`/dashboard/loja/${storeId}/vendas`}
+                        href={`/dashboard/loja/${storeId}?menu=atendimento`}
                         className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
-                        title="Voltar para Vendas"
+                        title="Voltar para Atendimento"
                     >
                         <ArrowLeft className="h-5 w-5" />
                     </Link>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
     AlertTriangle,
@@ -31,6 +31,7 @@ import {
     getReadyOSForDelivery,
     updateLabTracking
 } from '@/lib/actions/lab.actions'
+import { currentPathWithSearch, withReturnTo } from '@/lib/return-navigation'
 
 
 function formatForInput(isoString: string | null) {
@@ -48,9 +49,12 @@ function getDaysWaiting(dateString: string | null) {
 
 export default function EntregaPage() {
     const params = useParams()
+    const pathname = usePathname()
     const router = useRouter()
+    const searchParams = useSearchParams()
     const storeId = parseInt(params.storeId as string, 10)
     const { preference } = useBackgroundPreference()
+    const currentUrl = currentPathWithSearch(pathname, searchParams)
 
     const [items, setItems] = useState<LabOSResult[]>([])
     const [employees, setEmployees] = useState<EmployeeSimple[]>([])
@@ -101,7 +105,7 @@ export default function EntregaPage() {
     const handleSelect = (item: LabOSResult) => {
         if (item.status === 'Em Aberto') {
             if (item.venda_id) {
-                router.push(`/dashboard/loja/${storeId}/vendas/${item.venda_id}/experimental`)
+                router.push(withReturnTo(`/dashboard/loja/${storeId}/vendas/${item.venda_id}/experimental`, currentUrl))
             } else {
                 router.push(`/dashboard/loja/${storeId}/vendas`)
             }
@@ -422,7 +426,10 @@ export default function EntregaPage() {
                                     <div className="p-4 border-t border-white/10 bg-white/5 flex flex-col sm:flex-row gap-3 sm:justify-between sm:items-center">
                                         <button
                                             type="button"
-                                            onClick={() => selectedOS.venda_id && router.push(`/dashboard/loja/${storeId}/vendas/${selectedOS.venda_id}/os?os_id=${selectedOS.id}`)}
+                                            onClick={() => selectedOS.venda_id && router.push(withReturnTo(
+                                                `/dashboard/loja/${storeId}/vendas/${selectedOS.venda_id}/os?os_id=${selectedOS.id}`,
+                                                withReturnTo(`/dashboard/loja/${storeId}/vendas/${selectedOS.venda_id}/experimental`, currentUrl)
+                                            ))}
                                             className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-white/5 text-slate-300 hover:bg-white/10 border border-white/10 transition-all"
                                         >
                                             <Search className="h-4 w-4" />

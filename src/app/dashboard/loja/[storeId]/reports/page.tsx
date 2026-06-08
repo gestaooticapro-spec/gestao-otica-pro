@@ -148,7 +148,7 @@ export default function ReportsHubPage() {
                         </div>
                     </div>
                     <Link
-                        href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                        href={`/dashboard/loja/${storeId}`}
                         className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
                         title="Voltar para o Painel"
                     >

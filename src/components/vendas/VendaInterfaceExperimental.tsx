@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
     ShoppingBag, DollarSign, FileText, User,
@@ -25,6 +25,7 @@ import UpdateCpfModal from '@/components/modals/UpdateCpfModal'
 import TransferVendaModal from '@/components/modals/TransferVendaModal'
 import CustomerQuickInfoModal from '@/components/modals/CustomerQuickInfoModal'
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
+import { currentPathWithSearch, withReturnTo } from '@/lib/return-navigation'
 
 import { Database } from '@/lib/database.types'
 
@@ -211,6 +212,8 @@ export default function VendaInterfaceExperimental({
 }: VendaInterfaceProps) {
 
     const router = useRouter()
+    const pathname = usePathname()
+    const searchParams = useSearchParams()
     const modules = useStoreModules()
     const { preference } = useBackgroundPreference();
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false)
@@ -228,6 +231,12 @@ export default function VendaInterfaceExperimental({
 
     const vendedorNome = employee?.full_name || 'N/A'
     const employeeIdFinanceiro = employee?.id || 0
+    const returnTo = searchParams.get('returnTo')
+    const currentSaleUrl = currentPathWithSearch(pathname, searchParams)
+    const saleOsUrl = withReturnTo(
+        `/dashboard/loja/${venda.store_id}/vendas/${venda.id}/os?employee_id=${employee?.id}&employee_name=${employee?.full_name}`,
+        currentSaleUrl
+    )
 
     const closeModal = () => setActiveModal('none')
     const hasCpf = !!customer?.cpf?.toString().replace(/\D/g, '')
@@ -287,7 +296,17 @@ export default function VendaInterfaceExperimental({
             <div className="relative z-30 bg-white/5 backdrop-blur-xl border-b border-white/10 px-4 py-2 flex items-center justify-between shrink-0 shadow-lg h-14">
                 {/* Esquerda: Voltar e ID */}
                 <div className="flex items-center gap-3 relative z-10">
-                    <button onClick={() => router.back()} className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95" title="Voltar para lista de vendas">
+                    <button
+                        onClick={() => {
+                            if (returnTo) {
+                                router.push(returnTo)
+                                return
+                            }
+                            router.back()
+                        }}
+                        className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
+                        title="Voltar"
+                    >
                         <ArrowLeft className="h-4 w-4" />
                     </button>
                     <div className="h-6 w-px bg-white/10 mx-1"></div>
@@ -361,7 +380,7 @@ export default function VendaInterfaceExperimental({
                         title="Protocolo (OS)"
                         count={serviceOrders.length}
                         icon={Wrench}
-                        onAdd={isVendaFechadaOuCancelada ? undefined : () => router.push(`/dashboard/loja/${venda.store_id}/vendas/${venda.id}/os?employee_id=${employee?.id}&employee_name=${employee?.full_name}`)}
+                        onAdd={isVendaFechadaOuCancelada ? undefined : () => router.push(saleOsUrl)}
                         actionLabel="Nova OS"
                         theme="slate"
                     >
@@ -374,6 +393,7 @@ export default function VendaInterfaceExperimental({
                                 employeeName={vendedorNome}
                                 disabled={isVendaFechadaOuCancelada}
                                 hideHeader={true}
+                                returnTo={currentSaleUrl}
                             />
                         </div>
                     </SectionCard>

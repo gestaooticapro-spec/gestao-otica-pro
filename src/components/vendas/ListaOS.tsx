@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { Database } from '@/lib/database.types'
 import { FileText, PlusCircle, PenTool } from 'lucide-react'
+import { withReturnTo } from '@/lib/return-navigation'
 
 type ServiceOrder = Database['public']['Tables']['service_orders']['Row']
 
@@ -15,6 +16,7 @@ type ListaOSProps = {
   employeeName: string
   disabled: boolean
   hideHeader?: boolean
+  returnTo?: string
 }
 
 // --- Funções Helper ---
@@ -37,6 +39,7 @@ export default function ListaOS({
   employeeName,
   disabled,
   hideHeader = false,
+  returnTo,
 }: ListaOSProps) {
   // A URL base para a Ficha Técnica
   const linkBase = `/dashboard/loja/${storeId}/vendas/${vendaId}/os`
@@ -46,7 +49,7 @@ export default function ListaOS({
   const commonParams = `employee_id=${employeeId}&employee_name=${employeeName}`
 
   // O link para CRIAR uma nova OS (Sem ID = Nova)
-  const linkNovaOS = `${linkBase}?${commonParams}`
+  const linkNovaOS = withReturnTo(`${linkBase}?${commonParams}`, returnTo)
 
   return (
     <div className="flex flex-col h-full">
@@ -87,7 +90,7 @@ export default function ListaOS({
 
               {/* CORREÇÃO AQUI: Passamos 'os_id' explicitamente na URL */}
               <Link
-                href={`${linkBase}?os_id=${os.id}&${commonParams}`}
+                href={withReturnTo(`${linkBase}?os_id=${os.id}&${commonParams}`, returnTo)}
                 className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 hover:border-blue-500/40 transition-all"
                 title="Ver e editar ficha técnica"
               >

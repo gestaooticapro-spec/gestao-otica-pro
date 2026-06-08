@@ -2,6 +2,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { usePathname, useSearchParams } from 'next/navigation'
 import {
   useReactTable,
   getCoreRowModel,
@@ -14,6 +15,7 @@ import {
 import { VendaRelatorioItem } from '@/lib/actions/reports.actions'
 import { ArrowUp, ArrowDown, ArrowUpDown, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
+import { currentPathWithSearch, withReturnTo } from '@/lib/return-navigation'
 
 // Helpers
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -38,6 +40,9 @@ function Filter({ column }: { column: any }) {
 
 export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioItem[], storeId: number }) {
   const [sorting, setSorting] = useState<SortingState>([])
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const currentUrl = currentPathWithSearch(pathname, searchParams)
 
   const columnHelper = createColumnHelper<VendaRelatorioItem>()
 
@@ -168,7 +173,7 @@ export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioIt
       header: 'Ver',
       cell: (props) => (
         <Link
-          href={`/dashboard/loja/${storeId}/vendas/${props.row.original.id}/experimental`}
+          href={withReturnTo(`/dashboard/loja/${storeId}/vendas/${props.row.original.id}/experimental`, currentUrl)}
           className="flex justify-center items-center text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 w-8 h-8 rounded transition-colors"
           title="Abrir Venda"
         >

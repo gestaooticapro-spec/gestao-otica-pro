@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Plus, ShoppingCart, Calendar, User, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, XCircle, Clock, RefreshCcw } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import VendasFilter from '@/components/vendas/VendasFilter'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
+import { currentPathWithSearch, withReturnTo } from '@/lib/return-navigation'
 
 interface VendasListInterfaceProps {
     vendas: any[]
@@ -19,7 +20,10 @@ interface VendasListInterfaceProps {
 export default function VendasListInterface({ vendas, storeId, mode, startDate, endDate }: VendasListInterfaceProps) {
     const { preference } = useBackgroundPreference()
     const router = useRouter()
+    const pathname = usePathname()
+    const searchParams = useSearchParams()
     const [isRefreshing, setIsRefreshing] = useState(false)
+    const currentListUrl = currentPathWithSearch(pathname, searchParams)
 
     // Função de Refresh manual
     const handleRefresh = () => {
@@ -205,7 +209,7 @@ export default function VendasListInterface({ vendas, storeId, mode, startDate, 
                                             </td>
                                             <td className="p-3 text-center">
                                                 <Link
-                                                    href={`/dashboard/loja/${storeId}/vendas/${venda.id}/experimental`}
+                                                    href={withReturnTo(`/dashboard/loja/${storeId}/vendas/${venda.id}/experimental`, currentListUrl)}
                                                     className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white/5 text-slate-400 hover:bg-indigo-500/20 hover:text-indigo-300 border border-transparent hover:border-indigo-500/30 transition-all"
                                                     title="Ver Detalhes"
                                                 >
