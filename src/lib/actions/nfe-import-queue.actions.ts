@@ -44,7 +44,9 @@ type DistribuicaoDocumento = {
 const NFE_IMPORT_LOOKBACK_DAYS = 60
 const NFE_ENVIRONMENT = 'production' as const
 const NFE_AMBIENTE = 'producao'
-const ACCEPTED_DISTRIBUTION_DOC_TYPES = new Set(['nota', 'nfe', 'resumo_nfe'])
+const SEFAZ_WAIT_WINDOW_MS = 60 * 60 * 1000
+const DISTRIBUTION_POLL_INTERVAL_MS = 750
+const DISTRIBUTION_POLL_MAX_ATTEMPTS = 12
 
 function onlyDigits(value?: string | null) {
     return String(value || '').replace(/\D/g, '')
@@ -64,7 +66,182 @@ function parseJsonSafe(text: string) {
 
 function isAcceptedDistributionDocType(tipoDocumento?: string | null) {
     if (!tipoDocumento) return true
-    return ACCEPTED_DISTRIBUTION_DOC_TYPES.has(String(tipoDocumento).trim().toLowerCase())
+    return String(tipoDocumento).trim().toLowerCase() === 'nota'
+}
+
+function queueItemBelongsToStore(
+    item: { metadata?: Record<string, any> | null },
+    storeId: number,
+    cpfCnpj: string,
+) {
+    const metadataStoreId = Number(item.metadata?.store_id)
+    const metadataCpfCnpj = onlyDigits(item.metadata?.cpf_cnpj)
+    if (Number.isInteger(metadataStoreId) && metadataStoreId > 0) {
+        return metadataStoreId === storeId
+    }
+    return Boolean(metadataCpfCnpj) && metadataCpfCnpj === cpfCnpj
+}
+
+function buildQueueMetadata(doc: DistribuicaoDocumento, storeId: number, cpfCnpj: string) {
+    return {
+        ...doc,
+        store_id: storeId,
+        cpf_cnpj: cpfCnpj,
+    }
+}
+
+function toFiniteNumber(value: unknown) {
+    const numericValue = Number(value)
+    return Number.isFinite(numericValue) ? numericValue : null
+}
+
+function isRateLimitStatus(status: unknown) {
+    return toFiniteNumber(status) === 656
+}
+
+function getNextAllowedSyncAt(lastSyncAt?: string | null) {
+    if (!lastSyncAt) return null
+    const lastSyncTime = new Date(lastSyncAt).getTime()
+    if (!Number.isFinite(lastSyncTime)) return null
+    return new Date(lastSyncTime + SEFAZ_WAIT_WINDOW_MS).toISOString()
+}
+
+function hasReliableMaxNsu(ultimoNsu: unknown, maxNsu: unknown) {
+    const ultimo = toFiniteNumber(ultimoNsu)
+    const max = toFiniteNumber(maxNsu)
+    return ultimo !== null && max !== null && max > 0 && max >= ultimo
+}
+
+function sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function requestNfeDistribution(
+    requestPayload: Record<string, unknown>,
+    token: string,
+) {
+    const endpoint = `${nfeBaseUrl()}/distribuicao/nfe`
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestPayload),
+        cache: 'no-store',
+    })
+    const responseText = await response.text()
+    const initialResult = parseJsonSafe(responseText) || {}
+
+    if (!response.ok) {
+        throw new Error(
+            (initialResult as any)?.error?.message
+            || (initialResult as any)?.message
+            || responseText
+            || 'Falha ao consultar distribuicao NF-e.',
+        )
+    }
+
+    let result = initialResult as Record<string, any>
+    let pollAttempts = 0
+
+    while (String(result.status || '').toLowerCase() === 'processando') {
+        const distributionId = String(result.id || '').trim()
+        if (!distributionId) {
+            throw new Error('A Nuvem Fiscal iniciou uma consulta assincrona sem retornar o identificador do pedido.')
+        }
+        if (pollAttempts >= DISTRIBUTION_POLL_MAX_ATTEMPTS) {
+            throw new Error('A consulta ainda esta sendo processada pela Nuvem Fiscal. Tente novamente em alguns instantes.')
+        }
+
+        pollAttempts++
+        await sleep(DISTRIBUTION_POLL_INTERVAL_MS)
+
+        const pollResponse = await fetch(`${endpoint}/${distributionId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+            cache: 'no-store',
+        })
+        const pollText = await pollResponse.text()
+        const pollResult = parseJsonSafe(pollText) || {}
+
+        if (!pollResponse.ok) {
+            throw new Error(
+                (pollResult as any)?.error?.message
+                || (pollResult as any)?.message
+                || pollText
+                || 'Falha ao acompanhar a consulta de distribuicao NF-e.',
+            )
+        }
+
+        result = pollResult as Record<string, any>
+    }
+
+    if (String(result.status || '').toLowerCase() === 'erro') {
+        throw new Error(
+            result?.error?.message
+            || result?.mensagem
+            || result?.motivo_status
+            || 'A Nuvem Fiscal nao conseguiu concluir a consulta de distribuicao NF-e.',
+        )
+    }
+
+    return {
+        endpoint,
+        httpStatus: response.status,
+        initialResult,
+        result,
+        pollAttempts,
+    }
+}
+
+async function touchDistributionState(params: {
+    organizationId: string
+    cpfCnpj: string
+    ambiente: string
+    ultimoNsu?: unknown
+    maxNsu?: unknown
+}) {
+    const supabaseAdmin = createAdminClient() as any
+    const now = new Date().toISOString()
+
+    let { data: state } = await supabaseAdmin
+        .from('nfe_distribution_state')
+        .select('id, ultimo_nsu, max_nsu, initial_sync_completed')
+        .eq('organization_id', params.organizationId)
+        .eq('cpf_cnpj', params.cpfCnpj)
+        .eq('ambiente', params.ambiente)
+        .maybeSingle()
+
+    if (!state) {
+        const { data: insertedState, error: insertError } = await supabaseAdmin
+            .from('nfe_distribution_state')
+            .insert({
+                organization_id: params.organizationId,
+                cpf_cnpj: params.cpfCnpj,
+                ambiente: params.ambiente,
+                ultimo_nsu: 0,
+                initial_sync_completed: false,
+                last_sync_at: now,
+                updated_at: now,
+            })
+            .select('id, ultimo_nsu, max_nsu, initial_sync_completed')
+            .single()
+
+        if (insertError) throw insertError
+        state = insertedState
+    }
+
+    const nextUltimoNsu = toFiniteNumber(params.ultimoNsu) ?? Number(state.ultimo_nsu || 0)
+    const nextMaxNsu = toFiniteNumber(params.maxNsu)
+
+    const { error } = await supabaseAdmin
+        .from('nfe_distribution_state')
+        .update({
+            ultimo_nsu: nextUltimoNsu,
+            max_nsu: nextMaxNsu ?? state.max_nsu ?? null,
+            last_sync_at: now,
+            updated_at: now,
+        })
+        .eq('id', state.id)
+
+    if (error) throw error
 }
 
 async function getTenantAndCompany(storeId?: number) {
@@ -207,25 +384,30 @@ async function downloadDocumentXml(documentId: string, token: string) {
 
 export async function listNfeImportQueue(storeId?: number) {
     try {
-        const { organizationId } = await getTenantAndCompany(storeId)
+        const { organizationId, storeId: resolvedStoreId, cpfCnpj } = await getTenantAndCompany(storeId)
         const supabaseAdmin = createAdminClient() as any
 
         const { data, error } = await supabaseAdmin
             .from('nfe_import_queue')
-            .select('id, chave_acesso, nuvemfiscal_document_id, nsu, resumo, status, numero, serie, emitente_nome, emitente_cnpj, data_emissao, valor_total, error_message, created_at, xml_content')
+            .select('id, chave_acesso, nuvemfiscal_document_id, nsu, resumo, status, numero, serie, emitente_nome, emitente_cnpj, data_emissao, valor_total, error_message, created_at, xml_content, metadata')
             .eq('organization_id', organizationId)
             .in('status', ['pending', 'error'])
             .order('data_emissao', { ascending: false, nullsFirst: false })
 
         if (error) throw error
 
-        const queueItems = ((data || []) as any[]).map((item) => {
-            const { xml_content, ...queueItem } = item
+        const queueItems = ((data || []) as any[])
+            .filter((item) => queueItemBelongsToStore(item, resolvedStoreId, cpfCnpj))
+            .map((item) => {
+            const queueItem = { ...item }
+            const xmlContent = queueItem.xml_content
+            delete queueItem.xml_content
+            delete queueItem.metadata
             return {
                 ...queueItem,
-                xml_completo_disponivel: xml_content ? hasCompleteNfeItems(String(xml_content)) : false,
+                xml_completo_disponivel: xmlContent ? hasCompleteNfeItems(String(xmlContent)) : false,
             } as NfeQueueItem
-        })
+            })
 
         const keys = queueItems.map((item) => item.chave_acesso).filter(Boolean)
         if (keys.length === 0) return { success: true, data: queueItems }
@@ -234,6 +416,7 @@ export async function listNfeImportQueue(storeId?: number) {
             .from('imported_invoices')
             .select('access_key')
             .eq('tenant_id', organizationId)
+            .eq('store_id', resolvedStoreId)
             .in('access_key', keys)
 
         if (importedError) throw importedError
@@ -248,6 +431,7 @@ export async function listNfeImportQueue(storeId?: number) {
                     updated_at: new Date().toISOString(),
                 })
                 .eq('organization_id', organizationId)
+                .contains('metadata', { store_id: resolvedStoreId })
                 .in('chave_acesso', Array.from(importedKeys))
         }
 
@@ -325,7 +509,6 @@ export async function syncNfeFromSefaz(storeId?: number) {
             }
         }
 
-        const endpoint = `${nfeBaseUrl()}/distribuicao/nfe`
         const requestPayload = {
             cpf_cnpj: cpfCnpj,
             ambiente: NFE_AMBIENTE,
@@ -333,21 +516,21 @@ export async function syncNfeFromSefaz(storeId?: number) {
             dist_nsu: Number(state.ultimo_nsu || 0),
             ignorar_tempo_espera: false,
         }
-        const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestPayload),
-        })
-
-        const responseText = await response.text()
-        const result = parseJsonSafe(responseText) || {}
+        const distribution = await requestNfeDistribution(requestPayload, token)
+        const result = distribution.result
         const resultDocuments = Array.isArray((result as any)?.documentos) ? (result as any).documentos : []
 
         diagnostico.consulta = {
-            endpoint,
+            endpoint: distribution.endpoint,
             method: 'POST',
             request: requestPayload,
-            httpStatus: response.status,
+            httpStatus: distribution.httpStatus,
+            processamento: {
+                statusInicial: (distribution.initialResult as any)?.status ?? null,
+                pedidoId: (distribution.initialResult as any)?.id ?? null,
+                tentativasAcompanhamento: distribution.pollAttempts,
+                statusFinal: (result as any)?.status ?? null,
+            },
             response: {
                 codigo_status: (result as any)?.codigo_status ?? null,
                 motivo_status: (result as any)?.motivo_status ?? null,
@@ -359,10 +542,27 @@ export async function syncNfeFromSefaz(storeId?: number) {
             },
         }
 
-        if (!response.ok) {
+        if (isRateLimitStatus((result as any)?.codigo_status)) {
+            const nextAttemptAt = getNextAllowedSyncAt(state.last_sync_at)
+            diagnostico.proximaTentativaSugerida = nextAttemptAt
+
             return {
-                success: false,
-                error: (result as any)?.error?.message || (result as any)?.message || responseText || 'Falha ao consultar distribuicao NF-e.',
+                success: true,
+                inserted: 0,
+                received: 0,
+                skippedOld: 0,
+                skippedDuplicated: 0,
+                skippedNonNote: 0,
+                skippedMissingKey: 0,
+                ultimoNsu: (result as any)?.ultimo_nsu ?? state.ultimo_nsu ?? null,
+                maxNsu: (result as any)?.max_nsu ?? state.max_nsu ?? null,
+                codigoStatus: (result as any)?.codigo_status ?? null,
+                motivoStatus: (result as any)?.motivo_status ?? null,
+                cpfCnpj,
+                initialSync: isInitialSync,
+                initialSyncCompleted: Boolean(state.initial_sync_completed),
+                blockedByRateLimit: true,
+                nextAttemptAt,
                 diagnostico,
             }
         }
@@ -391,6 +591,7 @@ export async function syncNfeFromSefaz(storeId?: number) {
                 .from('imported_invoices')
                 .select('id')
                 .eq('tenant_id', organizationId)
+                .eq('store_id', resolvedStoreId)
                 .eq('access_key', doc.chave_acesso)
                 .maybeSingle()
 
@@ -419,7 +620,7 @@ export async function syncNfeFromSefaz(storeId?: number) {
                     emitente_cnpj: doc.emitente_cpf_cnpj || null,
                     data_emissao: doc.data_emissao || null,
                     valor_total: doc.valor_nfe || null,
-                    metadata: doc,
+                    metadata: buildQueueMetadata(doc, resolvedStoreId, cpfCnpj),
                     updated_at: new Date().toISOString(),
                 }, { onConflict: 'organization_id,chave_acesso' })
 
@@ -427,15 +628,19 @@ export async function syncNfeFromSefaz(storeId?: number) {
             inserted++
         }
 
-        const initialSyncCompleted = isInitialSync
-            ? docs.length === 0 || Number(result.ultimo_nsu || 0) >= Number(result.max_nsu || 0)
-            : true
+        const numericUltimoNsu = toFiniteNumber((result as any)?.ultimo_nsu) ?? Number(state.ultimo_nsu || 0)
+        const numericMaxNsu = toFiniteNumber((result as any)?.max_nsu)
+        const reachedReliableMaxNsu = hasReliableMaxNsu(numericUltimoNsu, numericMaxNsu)
+            && numericUltimoNsu >= Number(numericMaxNsu)
+        const initialSyncCompleted = isInitialSync ? reachedReliableMaxNsu : true
 
         await supabaseAdmin
             .from('nfe_distribution_state')
             .update({
-                ultimo_nsu: result.ultimo_nsu ?? state.ultimo_nsu ?? 0,
-                max_nsu: result.max_nsu ?? state.max_nsu ?? null,
+                ultimo_nsu: numericUltimoNsu,
+                max_nsu: reachedReliableMaxNsu || hasReliableMaxNsu(numericUltimoNsu, numericMaxNsu)
+                    ? numericMaxNsu
+                    : state.max_nsu ?? null,
                 initial_sync_completed: initialSyncCompleted,
                 last_sync_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
@@ -472,28 +677,27 @@ export async function searchNfeByAccessKey(chaveAcesso: string, storeId?: number
             throw new Error('Chave de acesso invalida. Informe os 44 digitos da NF-e.')
         }
 
-        const { organizationId, cpfCnpj } = await getTenantAndCompany(storeId)
+        const { organizationId, cpfCnpj, storeId: resolvedStoreId } = await getTenantAndCompany(storeId)
         const supabaseAdmin = createAdminClient() as any
         const token = await getNuvemFiscalToken(NFE_ENVIRONMENT, 'empresa nfe distribuicao-nfe')
         await ensureDistributionConfig(cpfCnpj, token)
 
-        const response = await fetch(`${nfeBaseUrl()}/distribuicao/nfe`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                cpf_cnpj: cpfCnpj,
-                ambiente: NFE_AMBIENTE,
-                tipo_consulta: 'cons-chave',
-                cons_chave: cleanKey,
-                ignorar_tempo_espera: false,
-            }),
-        })
+        const distribution = await requestNfeDistribution({
+            cpf_cnpj: cpfCnpj,
+            ambiente: NFE_AMBIENTE,
+            tipo_consulta: 'cons-chave',
+            cons_chave: cleanKey,
+            ignorar_tempo_espera: false,
+        }, token)
+        const result = distribution.result
 
-        const responseText = await response.text()
-        const result = responseText ? JSON.parse(responseText) : {}
-        if (!response.ok) {
-            throw new Error(result?.error?.message || result?.message || responseText || 'Falha ao consultar NF-e por chave.')
-        }
+        await touchDistributionState({
+            organizationId,
+            cpfCnpj,
+            ambiente: NFE_AMBIENTE,
+            ultimoNsu: result.ultimo_nsu,
+            maxNsu: result.max_nsu,
+        })
 
         const docs = ((result.documentos || []) as DistribuicaoDocumento[])
             .filter((doc) => isAcceptedDistributionDocType(doc.tipo_documento) && doc.chave_acesso)
@@ -515,6 +719,7 @@ export async function searchNfeByAccessKey(chaveAcesso: string, storeId?: number
             .from('imported_invoices')
             .select('id, nfe_number, imported_at')
             .eq('tenant_id', organizationId)
+            .eq('store_id', resolvedStoreId)
             .eq('access_key', doc.chave_acesso)
             .maybeSingle()
 
@@ -545,7 +750,7 @@ export async function searchNfeByAccessKey(chaveAcesso: string, storeId?: number
                 emitente_cnpj: doc.emitente_cpf_cnpj || null,
                 data_emissao: doc.data_emissao || doc.data_evento || null,
                 valor_total: doc.valor_nfe || null,
-                metadata: doc,
+                metadata: buildQueueMetadata(doc, resolvedStoreId, cpfCnpj),
                 updated_at: new Date().toISOString(),
             }, { onConflict: 'organization_id,chave_acesso' })
             .select('id')
@@ -571,7 +776,7 @@ export async function searchNfeByAccessKey(chaveAcesso: string, storeId?: number
 
 export async function getNfeQueueXml(queueId: string, storeId?: number) {
     try {
-        const { organizationId, cpfCnpj } = await getTenantAndCompany(storeId)
+        const { organizationId, cpfCnpj, storeId: resolvedStoreId } = await getTenantAndCompany(storeId)
         const supabaseAdmin = createAdminClient() as any
         const { data: queueItem, error } = await supabaseAdmin
             .from('nfe_import_queue')
@@ -582,6 +787,9 @@ export async function getNfeQueueXml(queueId: string, storeId?: number) {
 
         if (error) throw error
         if (!queueItem) throw new Error('Nota nao encontrada na fila.')
+        if (!queueItemBelongsToStore(queueItem, resolvedStoreId, cpfCnpj)) {
+            throw new Error('Esta nota pertence a outra loja.')
+        }
 
         let xmlContent = queueItem.xml_content as string | null
         const cachedXmlHasItems = xmlContent ? hasCompleteNfeItems(xmlContent) : false
@@ -627,10 +835,30 @@ export async function getNfeQueueXml(queueId: string, storeId?: number) {
     }
 }
 
-export async function markNfeQueueImported(queueId?: string | null, chaveAcesso?: string) {
+export async function markNfeQueueImported(queueId?: string | null, chaveAcesso?: string, storeId?: number) {
     try {
-        const { organizationId } = await getTenantAndCompany()
+        const { organizationId, cpfCnpj, storeId: resolvedStoreId } = await getTenantAndCompany(storeId)
         const supabaseAdmin = createAdminClient() as any
+
+        let lookup = supabaseAdmin
+            .from('nfe_import_queue')
+            .select('id, metadata')
+            .eq('organization_id', organizationId)
+
+        if (queueId) {
+            lookup = lookup.eq('id', queueId)
+        } else if (chaveAcesso) {
+            lookup = lookup.eq('chave_acesso', chaveAcesso)
+        } else {
+            throw new Error('Informe o item da fila ou a chave de acesso da NF-e.')
+        }
+
+        const { data: queueItem, error: lookupError } = await lookup.maybeSingle()
+        if (lookupError) throw lookupError
+        if (!queueItem || !queueItemBelongsToStore(queueItem, resolvedStoreId, cpfCnpj)) {
+            throw new Error('Item da fila nao encontrado para esta loja.')
+        }
+
         let query = supabaseAdmin
             .from('nfe_import_queue')
             .update({
@@ -644,8 +872,6 @@ export async function markNfeQueueImported(queueId?: string | null, chaveAcesso?
             query = query.eq('id', queueId)
         } else if (chaveAcesso) {
             query = query.eq('chave_acesso', chaveAcesso)
-        } else {
-            throw new Error('Informe o item da fila ou a chave de acesso da NF-e.')
         }
 
         const { error } = await query

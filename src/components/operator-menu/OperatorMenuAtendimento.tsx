@@ -10,6 +10,7 @@ import { useState, useEffect, useRef } from 'react';
 import { searchCustomersQuick, CustomerSearchResult } from '@/lib/actions/customer-history.actions';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
+import FullscreenToggleButton from '@/components/FullscreenToggleButton';
 
 interface OperatorMenuAtendimentoProps {
     storeId: number;
@@ -155,7 +156,8 @@ export default function OperatorMenuAtendimento({
             />
 
             {/* Toggle de Fundo */}
-            <div className="absolute top-6 right-6 z-50">
+            <div className="absolute top-6 right-6 z-50 flex items-center gap-3">
+                <FullscreenToggleButton className="right-20 top-6" />
                 <BackgroundToggle />
             </div>
 

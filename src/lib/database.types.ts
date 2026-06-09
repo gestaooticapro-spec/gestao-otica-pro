@@ -322,6 +322,11 @@ export interface Database {
           created_by_user_id: string | null
           created_at: string
           updated_at: string
+          // Recorrência e parcelamento
+          is_recurring: boolean | null
+          recurring_group_id: string | null
+          installment_number: number | null
+          installment_total: number | null
         }
         Insert: {
           id?: number
@@ -338,6 +343,10 @@ export interface Database {
           created_by_user_id?: string | null
           created_at?: string
           updated_at?: string
+          is_recurring?: boolean | null
+          recurring_group_id?: string | null
+          installment_number?: number | null
+          installment_total?: number | null
         }
         Update: {
           [key: string]: any

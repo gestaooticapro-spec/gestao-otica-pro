@@ -84,6 +84,7 @@ const formatDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { day:
 const formatMoney = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
+import FullscreenToggleButton from '@/components/FullscreenToggleButton';
 
 export default function OperatorMenuLojaVazia({
     storeId,
@@ -241,7 +242,8 @@ export default function OperatorMenuLojaVazia({
     return (
         <div className="min-h-screen relative flex flex-col items-center p-6 overflow-hidden bg-slate-950 font-sans transition-colors duration-500">
             {/* Toggle de Fundo */}
-            <div className="absolute top-6 right-6 z-50">
+            <div className="absolute top-6 right-6 z-50 flex items-center gap-3">
+                <FullscreenToggleButton className="right-20 top-6" />
                 <BackgroundToggle />
             </div>
 

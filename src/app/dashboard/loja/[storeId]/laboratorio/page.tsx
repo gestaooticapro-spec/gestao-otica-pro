@@ -270,7 +270,7 @@ export default function LaboratorioPage() {
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                     <div className="flex items-center gap-4">
                         <Link
-                            href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                            href={`/dashboard/loja/${storeId}?menu=gerencia`}
                             className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
                             title="Voltar para o Painel"
                         >

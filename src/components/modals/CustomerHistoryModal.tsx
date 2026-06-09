@@ -11,8 +11,8 @@ import {
     getCustomerPrescriptionSummary,
     type CustomerSearchResult,
     type FinancialSummary,
-    type PrescriptionSummary,
-    type ParcelaDetail
+    type PrescriptionSummaryGroup,
+    type PrescriptionSummary
 } from '@/lib/actions/customer-history.actions'
 
 // =============================================
@@ -70,7 +70,8 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
 
     // Estados de dados
     const [financialData, setFinancialData] = useState<FinancialSummary | null>(null)
-    const [prescriptionData, setPrescriptionData] = useState<PrescriptionSummary[]>([])
+    const [prescriptionGroups, setPrescriptionGroups] = useState<PrescriptionSummaryGroup[]>([])
+    const [selectedPrescriptionGroupId, setSelectedPrescriptionGroupId] = useState('titular')
     const [isLoadingData, setIsLoadingData] = useState(false)
 
     // Reset ao fechar
@@ -80,7 +81,8 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
             setSearchResults([])
             setSelectedCustomer(null)
             setFinancialData(null)
-            setPrescriptionData([])
+            setPrescriptionGroups([])
+            setSelectedPrescriptionGroupId('titular')
             setActiveTab('financeiro')
         }
     }, [isOpen])
@@ -121,7 +123,8 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                 getCustomerPrescriptionSummary(customer.id, storeId)
             ])
             setFinancialData(financial)
-            setPrescriptionData(prescriptions)
+            setPrescriptionGroups(prescriptions)
+            setSelectedPrescriptionGroupId('titular')
         } finally {
             setIsLoadingData(false)
         }
@@ -131,8 +134,17 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
     const handleBack = () => {
         setSelectedCustomer(null)
         setFinancialData(null)
-        setPrescriptionData([])
+        setPrescriptionGroups([])
+        setSelectedPrescriptionGroupId('titular')
     }
+
+    const selectedPrescriptionGroup =
+        prescriptionGroups.find((group) => group.id === selectedPrescriptionGroupId) || prescriptionGroups[0] || null
+    const prescriptionData: PrescriptionSummary[] = selectedPrescriptionGroup?.receitas || []
+    const selectedPrescriptionGroupLabel =
+        selectedPrescriptionGroup?.dependenteId === null
+            ? selectedCustomer?.nome || 'Titular'
+            : selectedPrescriptionGroup?.label || 'Dependente'
 
     // =============================================
     // WHATSAPP - FORMATAÇÃO DAS MENSAGENS
@@ -171,9 +183,9 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
     }
 
     const getPrescriptionWhatsAppMessage = (): string => {
-        if (!prescriptionData.length || !selectedCustomer) return ''
+        if (!prescriptionData.length || !selectedCustomer || !selectedPrescriptionGroup) return ''
 
-        let msg = `Seus ultimos graus:\n`
+        let msg = `Ultimos graus de ${selectedPrescriptionGroupLabel}:\n`
 
         prescriptionData.slice(0, 5).forEach((rx) => {
             const data = formatMonthYear(rx.dataCompra)
@@ -494,6 +506,22 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                                 ) : (
                                     // === TAB RECEITAS ===
                                     <div className="space-y-3">
+                                        <div className="flex flex-wrap gap-2">
+                                            {prescriptionGroups.map((group) => (
+                                                <button
+                                                    key={group.id}
+                                                    onClick={() => setSelectedPrescriptionGroupId(group.id)}
+                                                    className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors border ${
+                                                        selectedPrescriptionGroupId === group.id
+                                                            ? 'border-sky-400/40 bg-sky-500/20 text-sky-200'
+                                                            : 'border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-200'
+                                                    }`}
+                                                >
+                                                    {group.dependenteId === null ? selectedCustomer.nome : group.label}
+                                                </button>
+                                            ))}
+                                        </div>
+
                                         {prescriptionData.length > 0 ? (
                                             prescriptionData.map((rx) => (
                                                 <div key={rx.id} className="bg-white/5 rounded-xl border border-white/10 p-4 backdrop-blur-sm">
@@ -542,7 +570,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                                         ) : (
                                             <div className="text-center py-10 text-slate-500">
                                                 <Glasses className="h-10 w-10 mx-auto mb-2 opacity-50" />
-                                                <p>Nenhuma receita encontrada</p>
+                                                <p>Nenhuma receita encontrada para {selectedPrescriptionGroupLabel || 'esta selecao'}</p>
                                             </div>
                                         )}
                                     </div>
@@ -566,7 +594,9 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                                         className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-lg shadow-emerald-500/20 border border-white/10"
                                     >
                                         <MessageCircle className="h-5 w-5" />
-                                        Enviar via WhatsApp
+                                        {activeTab === 'receitas'
+                                            ? `Enviar receita de ${selectedPrescriptionGroupLabel} via WhatsApp`
+                                            : 'Enviar financeiro via WhatsApp'}
                                     </button>
                                 </div>
                             )}

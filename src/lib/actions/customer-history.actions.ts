@@ -74,6 +74,13 @@ export interface PrescriptionSummary {
     medico: string | null
 }
 
+export interface PrescriptionSummaryGroup {
+    id: string
+    label: string
+    dependenteId: number | null
+    receitas: PrescriptionSummary[]
+}
+
 // =============================================
 // 1. BUSCA RÁPIDA DE CLIENTES
 // =============================================
@@ -220,7 +227,7 @@ export async function getCustomerFinancialSummary(
 export async function getCustomerPrescriptionSummary(
     customerId: number,
     storeId: number
-): Promise<PrescriptionSummary[]> {
+): Promise<PrescriptionSummaryGroup[]> {
     const supabaseAdmin = createAdminClient()
 
     const { data, error } = await (supabaseAdmin
@@ -228,6 +235,7 @@ export async function getCustomerPrescriptionSummary(
         .select(`
             id,
             created_at,
+            dependente_id,
             receita_longe_od_esferico,
             receita_longe_od_cilindrico,
             receita_longe_od_eixo,
@@ -241,7 +249,8 @@ export async function getCustomerPrescriptionSummary(
             receita_perto_oe_cilindrico,
             receita_perto_oe_eixo,
             receita_adicao,
-            oftalmologistas (nome_completo)
+            oftalmologistas (nome_completo),
+            dependentes (full_name)
         `)
         .eq('store_id', storeId)
         .eq('customer_id', customerId)
@@ -255,22 +264,52 @@ export async function getCustomerPrescriptionSummary(
         return []
     }
 
-    return (data || []).map((os: any) => ({
-        id: os.id,
-        dataCompra: os.created_at,
-        longeOdEsf: os.receita_longe_od_esferico,
-        longeOdCil: os.receita_longe_od_cilindrico,
-        longeOdEixo: os.receita_longe_od_eixo,
-        longeOeEsf: os.receita_longe_oe_esferico,
-        longeOeCil: os.receita_longe_oe_cilindrico,
-        longeOeEixo: os.receita_longe_oe_eixo,
-        pertoOdEsf: os.receita_perto_od_esferico,
-        pertoOdCil: os.receita_perto_od_cilindrico,
-        pertoOdEixo: os.receita_perto_od_eixo,
-        pertoOeEsf: os.receita_perto_oe_esferico,
-        pertoOeCil: os.receita_perto_oe_cilindrico,
-        pertoOeEixo: os.receita_perto_oe_eixo,
-        adicao: os.receita_adicao,
-        medico: os.oftalmologistas?.nome_completo || null
-    }))
+    const groupedMap = new Map<string, PrescriptionSummaryGroup>()
+
+    for (const os of data || []) {
+        const dependenteId = os.dependente_id ?? null
+        const groupId = dependenteId ? `dependente-${dependenteId}` : 'titular'
+        const groupLabel = dependenteId ? os.dependentes?.full_name || 'Dependente' : 'Titular'
+
+        if (!groupedMap.has(groupId)) {
+            groupedMap.set(groupId, {
+                id: groupId,
+                label: groupLabel,
+                dependenteId,
+                receitas: []
+            })
+        }
+
+        groupedMap.get(groupId)?.receitas.push({
+            id: os.id,
+            dataCompra: os.created_at,
+            longeOdEsf: os.receita_longe_od_esferico,
+            longeOdCil: os.receita_longe_od_cilindrico,
+            longeOdEixo: os.receita_longe_od_eixo,
+            longeOeEsf: os.receita_longe_oe_esferico,
+            longeOeCil: os.receita_longe_oe_cilindrico,
+            longeOeEixo: os.receita_longe_oe_eixo,
+            pertoOdEsf: os.receita_perto_od_esferico,
+            pertoOdCil: os.receita_perto_od_cilindrico,
+            pertoOdEixo: os.receita_perto_od_eixo,
+            pertoOeEsf: os.receita_perto_oe_esferico,
+            pertoOeCil: os.receita_perto_oe_cilindrico,
+            pertoOeEixo: os.receita_perto_oe_eixo,
+            adicao: os.receita_adicao,
+            medico: os.oftalmologistas?.nome_completo || null
+        })
+    }
+
+    const titular: PrescriptionSummaryGroup = groupedMap.get('titular') || {
+        id: 'titular',
+        label: 'Titular',
+        dependenteId: null,
+        receitas: []
+    }
+
+    const dependentes = Array.from(groupedMap.values())
+        .filter((group) => group.id !== 'titular')
+        .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'))
+
+    return [titular, ...dependentes]
 }

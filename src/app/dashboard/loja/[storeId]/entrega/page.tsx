@@ -55,6 +55,7 @@ export default function EntregaPage() {
     const storeId = parseInt(params.storeId as string, 10)
     const { preference } = useBackgroundPreference()
     const currentUrl = currentPathWithSearch(pathname, searchParams)
+    const backHref = searchParams.get('returnTo') || `/dashboard/loja/${storeId}?menu=atendimento`
 
     const [items, setItems] = useState<LabOSResult[]>([])
     const [employees, setEmployees] = useState<EmployeeSimple[]>([])
@@ -142,9 +143,9 @@ export default function EntregaPage() {
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                     <div className="flex items-center gap-3">
                         <Link
-                            href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                            href={backHref}
                             className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
-                            title="Voltar para o Painel"
+                            title="Voltar para Atendimento"
                         >
                             <ArrowLeft className="h-4 w-4" />
                         </Link>

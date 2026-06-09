@@ -227,7 +227,7 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
             {/* CABEÇALHO */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="flex items-center gap-3">
-                    <BackButton title="Voltar" fallbackHref={`/dashboard/loja/${storeId}?menu=loja-vazia`} />
+                    <BackButton title="Voltar" fallbackHref={`/dashboard/loja/${storeId}?menu=gerencia`} />
                     <div>
                         <h1 className="text-3xl font-black text-white tracking-tight uppercase">Fiscal</h1>
                         <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Gerencie NFC-e, NF-e e documentos fiscais da loja.</p>

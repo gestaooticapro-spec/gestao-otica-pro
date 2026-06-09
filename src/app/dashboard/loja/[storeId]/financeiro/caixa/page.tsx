@@ -25,7 +25,7 @@ export default async function CaixaPage({ params }: { params: { storeId: string 
         <div className="bg-slate-900/40 backdrop-blur-xl border-b border-white/10 px-6 py-4 shadow-xl shadow-black/20 flex-shrink-0 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link
-              href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+              href={`/dashboard/loja/${storeId}?menu=gerencia`}
               className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
               title="Voltar para o Painel"
             >

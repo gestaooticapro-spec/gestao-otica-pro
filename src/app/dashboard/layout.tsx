@@ -4,7 +4,6 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import Header from '@/components/header';
 import { getProfileByAdmin } from '@/lib/supabase/admin';
-import FullscreenToggleButton from '@/components/FullscreenToggleButton';
 
 type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor' | 'tecnico';
 type ProfileWithRole = { role?: string | null };
@@ -30,7 +29,6 @@ export default async function DashboardLayout({
   if (userRole === 'store_operator' || userRole === 'manager') {
     return (
       <div className="min-h-screen">
-        <FullscreenToggleButton className="left-4 top-6" />
         {children}
       </div>
     );
@@ -39,7 +37,6 @@ export default async function DashboardLayout({
   // 4. Para outros roles, renderiza com header normal
   return (
     <div className="min-h-screen bg-slate-950">
-      <FullscreenToggleButton className="left-4 top-20" />
       <Header />
 
       {/* Container Principal: Header é compensado por pt-16 */}

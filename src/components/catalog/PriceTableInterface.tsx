@@ -346,11 +346,18 @@ function getAtomicOfferTreatmentColumn(offer: PriceTableOffer): string | null {
   const explicit = getFeatureString(offer.features || {}, 'treatment_column')
   if (explicit) return explicit
 
+  const importedTreatment =
+    getFeatureString(offer.features || {}, 'tratamento') ||
+    getFeatureString(offer.features || {}, 'treatment_group')
+  if (importedTreatment) return importedTreatment
+
   // Best-effort fallback: parse label tail.
   const label = getOfferLabel(offer)
   const normalized = label.replace(/\s+/g, ' ').trim()
   const withoutPhoto = normalized.replace(/\s+Fotossensivel\b/i, '').trim()
-  const m = withoutPhoto.match(/\b(Verniz\s+Anti\s+Risco|Antirreflexo\s+.+)$/i)
+  const m = withoutPhoto.match(
+    /\b(Verniz\s+Anti\s+Risco|Antirreflexo\s+.+|Crizal\s+.+|Optifog|No\s+Reflex|Trio\s+.+)$/i,
+  )
   if (m) return m[1].trim()
   return null
 }
@@ -359,7 +366,50 @@ function isAtomicOfferPhoto(offer: PriceTableOffer): boolean {
   const explicit = getFeatureBoolean(offer.features || {}, 'photo')
   if (explicit === true) return true
   if (explicit === false) return false
-  return /\b(fotossensivel|transitions|foto)\b/i.test(getOfferLabel(offer))
+  if (getFeatureBoolean(offer.features || {}, 'transitions') === true) return true
+  const normalizedLabel = getOfferLabel(offer)
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+  return /\b(fotossensivel|transitions|foto)\b/i.test(normalizedLabel)
+}
+
+function getAtomicOfferPhotoTechnology(offer: PriceTableOffer): string | null {
+  if (!isAtomicOfferPhoto(offer)) return null
+
+  const features = offer.features || {}
+  const explicitKeys = [
+    'photo_technology',
+    'photo_type',
+    'photo_brand',
+    'photo_variant',
+    'variant',
+    'variante',
+  ]
+  for (const key of explicitKeys) {
+    const value = getFeatureString(features, key)
+    if (value && /\b(photo|foto|transition|sensity|photofusion|acclimates|sun light)\b/i.test(value)) {
+      return value
+    }
+  }
+
+  const label = getOfferLabel(offer).replace(/\s+/g, ' ').trim()
+  const patterns: Array<[RegExp, string | ((match: RegExpMatchArray) => string)]> = [
+    [/\bTransitions\s+Gen(?:eration)?\s*S\b/i, 'Transitions Gen S'],
+    [/\bTransitions\s+Gen(?:eration)?\s*8\b/i, 'Transitions Gen 8'],
+    [/\bTransitions\b/i, 'Transitions'],
+    [/\bSensity(?:\s+\d+)?\b/i, (match) => match[0]],
+    [/\bPhotoFusion(?:\s+X)?\b/i, (match) => match[0]],
+    [/\bAcclimates(?:\s+(?:III|3|new|cinza))*\b/i, (match) => match[0]],
+    [/\bSun\s+Light(?:\s+Protection)?\s+Photo\b/i, (match) => match[0]],
+    [/\bFoto\s+Haytek\b/i, 'Foto Haytek'],
+  ]
+
+  for (const [pattern, result] of patterns) {
+    const match = label.match(pattern)
+    if (match) return typeof result === 'string' ? result : result(match)
+  }
+
+  return 'Fotossensivel'
 }
 
 function getAtomicOfferIndexLabel(offer: PriceTableOffer): string {
@@ -382,6 +432,34 @@ function AtomicMatrixTable({
   gridSummaryByOffer: Map<string, OfferGridSummary>
 }) {
   const [photoMode, setPhotoMode] = useState<AtomicMatrixPhotoMode>('normal')
+  const [selectedPhotoTechnology, setSelectedPhotoTechnology] = useState<string | null>(null)
+  const [selectedOffer, setSelectedOffer] = useState<PriceTableOffer | null>(null)
+
+  const photoTechnologies = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          offers
+            .map((offer) => getAtomicOfferPhotoTechnology(offer))
+            .filter((technology): technology is string => Boolean(technology)),
+        ),
+      ).sort((a, b) => a.localeCompare(b)),
+    [offers],
+  )
+
+  const activePhotoTechnology =
+    selectedPhotoTechnology && photoTechnologies.includes(selectedPhotoTechnology)
+      ? selectedPhotoTechnology
+      : photoTechnologies[0] || null
+
+  useEffect(() => {
+    if (!selectedOffer) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectedOffer(null)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedOffer])
 
   const matrix = useMemo(() => {
     const rows = new Map<string, { indexLabel: string; indexValue: number | null }>()
@@ -396,6 +474,13 @@ function AtomicMatrixTable({
       const isFoto = isAtomicOfferPhoto(offer)
       if (photoMode === 'normal' && isFoto) continue
       if (photoMode === 'foto' && !isFoto) continue
+      if (
+        photoMode === 'foto' &&
+        activePhotoTechnology &&
+        getAtomicOfferPhotoTechnology(offer) !== activePhotoTechnology
+      ) {
+        continue
+      }
 
       const idxLabel = getAtomicOfferIndexLabel(offer)
       const idxValue = offer.indiceRefracao != null && Number.isFinite(Number(offer.indiceRefracao)) ? Number(offer.indiceRefracao) : null
@@ -444,15 +529,7 @@ function AtomicMatrixTable({
     })
 
     return { rowItems, colItems, cells, rowSampleOffer }
-  }, [offers, photoMode])
-
-  if (!matrix.colItems.length) {
-    return (
-      <div className="rounded-2xl border border-white/8 bg-black/20 p-4 text-sm text-slate-400">
-        Não foi possível montar matriz para estas ofertas (sem colunas detectáveis).
-      </div>
-    )
-  }
+  }, [activePhotoTechnology, offers, photoMode])
 
   const displayColName = (raw: string) => {
     const cleaned = raw.replace(/^Antirreflexo\s+/i, '').trim()
@@ -483,11 +560,35 @@ function AtomicMatrixTable({
               photoMode === 'foto' ? 'bg-cyan-500/12 text-cyan-200' : 'text-slate-500 hover:text-white'
             }`}
           >
-            Foto
+            {photoTechnologies.length === 1
+              ? `Foto - ${photoTechnologies[0]}`
+              : photoTechnologies.length > 1
+                ? `Foto - ${photoTechnologies.length} tipos`
+                : 'Foto'}
           </button>
         </div>
       </div>
 
+      {photoMode === 'foto' && photoTechnologies.length > 1 && (
+        <div className="flex flex-wrap gap-2">
+          {photoTechnologies.map((technology) => (
+            <button
+              key={technology}
+              type="button"
+              onClick={() => setSelectedPhotoTechnology(technology)}
+              className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition ${
+                activePhotoTechnology === technology
+                  ? 'border-amber-300/40 bg-amber-400/12 text-amber-200'
+                  : 'border-white/10 bg-black/10 text-slate-500 hover:border-white/20 hover:text-white'
+              }`}
+            >
+              {technology}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {matrix.colItems.length ? (
       <div className="overflow-x-auto rounded-2xl border border-white/8">
         <table className="w-full text-sm">
           <thead>
@@ -548,9 +649,14 @@ function AtomicMatrixTable({
                   }
                   return (
                     <td key={col.key} className="px-3 py-3 text-left">
-                      <span className="font-mono text-xs font-black text-white">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedOffer(offer)}
+                        className="rounded-lg px-2 py-1 font-mono text-xs font-black text-white transition hover:bg-cyan-500/12 hover:text-cyan-200 focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
+                        title={`Ver detalhes de ${getOfferLabel(offer)}`}
+                      >
                         {formatCurrency(offer.basePrice)}
-                      </span>
+                      </button>
                     </td>
                   )
                 })}
@@ -559,6 +665,110 @@ function AtomicMatrixTable({
           </tbody>
         </table>
       </div>
+      ) : (
+        <div className="rounded-2xl border border-white/8 bg-black/20 p-4 text-sm text-slate-400">
+          {photoMode === 'foto'
+            ? 'Nao ha ofertas foto detectaveis para esta familia.'
+            : 'Nao foi possivel montar matriz para estas ofertas (sem colunas detectaveis).'}
+        </div>
+      )}
+
+      {selectedOffer && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="atomic-offer-detail-title"
+          onClick={() => setSelectedOffer(null)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-3xl border border-white/10 bg-slate-900 p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300">
+                  Detalhes da oferta
+                </p>
+                <h2 id="atomic-offer-detail-title" className="mt-2 text-xl font-black text-white">
+                  {getOfferLabel(selectedOffer)}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedOffer(null)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-400 transition hover:text-white"
+                aria-label="Fechar detalhes"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              {getAtomicOfferPhotoTechnology(selectedOffer) && (
+                <span className="rounded-full border border-amber-300/25 bg-amber-400/10 px-3 py-1 text-xs font-bold text-amber-200">
+                  Foto: {getAtomicOfferPhotoTechnology(selectedOffer)}
+                </span>
+              )}
+              {selectedOffer.material && (
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold text-slate-300">
+                  Material: {selectedOffer.material}
+                </span>
+              )}
+              {selectedOffer.indiceRefracao != null && (
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold text-slate-300">
+                  Indice: {selectedOffer.indiceRefracao}
+                </span>
+              )}
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold text-slate-300">
+                {getClinicalLabel(selectedOffer.clinicalCategory)}
+              </span>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                  Preco final
+                </p>
+                <p className="mt-1 text-2xl font-black text-white">
+                  {formatCurrency(selectedOffer.basePrice)}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                  Tratamento embutido
+                </p>
+                <p className="mt-1 text-sm font-bold text-white">
+                  {getAtomicOfferTreatmentColumn(selectedOffer) || 'Nao informado'}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-2xl border border-white/8 bg-black/20 p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                Grade e disponibilidade
+              </p>
+              <p className="mt-2 text-sm leading-relaxed text-slate-300">
+                {buildOfferDetailTitle(
+                  gridSummaryByOffer.get(selectedOffer.globalOfferId) || null,
+                  getFeatureNumber(selectedOffer.features || {}, 'min_fitting_height'),
+                )}
+              </p>
+            </div>
+
+            {(selectedOffer.canonicalLabel || selectedOffer.rawLabel) !== getOfferLabel(selectedOffer) && (
+              <div className="mt-3 rounded-2xl border border-white/8 bg-black/20 p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                  Nome no catalogo
+                </p>
+                <p className="mt-2 text-sm text-slate-300">
+                  {selectedOffer.canonicalLabel || selectedOffer.rawLabel}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

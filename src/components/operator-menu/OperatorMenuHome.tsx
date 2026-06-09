@@ -4,6 +4,7 @@ import { ShoppingCart, Archive, LogOut, ArrowRight, Store, ArrowLeft } from 'luc
 import Image from 'next/image';
 
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
+import FullscreenToggleButton from '@/components/FullscreenToggleButton';
 
 interface OperatorMenuHomeProps {
     storeId: number;
@@ -27,7 +28,8 @@ export default function OperatorMenuHome({
 
     return (
         <div className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-950 font-sans transition-colors duration-500">
-            <div className="absolute top-6 right-6 z-50">
+            <div className="absolute top-6 right-6 z-50 flex items-center gap-3">
+                <FullscreenToggleButton className="right-20 top-6" />
                 <BackgroundToggle />
             </div>
 

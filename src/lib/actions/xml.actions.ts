@@ -333,7 +333,7 @@ export async function saveImportedData(data: XmlPreviewData, storeId: number) {
         })
 
         if (data.source_queue_id) {
-            await markNfeQueueImported(data.source_queue_id, data.access_key)
+            await markNfeQueueImported(data.source_queue_id, data.access_key, storeId)
         }
 
         revalidatePath(`/dashboard/loja/${storeId}/cadastros`)

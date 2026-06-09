@@ -65,7 +65,7 @@ export default function PosVendaReportPage() {
             {/* Cabeçalho */}
             <div className="mb-8 max-w-7xl mx-auto w-full animate-in slide-in-from-top-5 duration-700">
                 <Link
-                    href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                    href={`/dashboard/loja/${storeId}?menu=gerencia`}
                     className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95 w-fit"
                     title="Voltar para o Painel"
                 >

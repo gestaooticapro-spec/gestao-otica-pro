@@ -48,7 +48,7 @@ export default function ImportacaoPage() {
     const [searchingKey, setSearchingKey] = useState(false)
     const [accessKeyInput, setAccessKeyInput] = useState('')
     const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null)
-    const [lastSyncInfo, setLastSyncInfo] = useState<{ type: 'success' | 'error', message: string, details?: string } | null>(null)
+    const [lastSyncInfo, setLastSyncInfo] = useState<{ type: 'success' | 'error' | 'warning', message: string, details?: string } | null>(null)
     const [sefazDiagnostic, setSefazDiagnostic] = useState<Record<string, unknown> | null>(null)
     const [markupMultiplier, setMarkupMultiplier] = useState(DEFAULT_MARKUP)
     const [markupInput, setMarkupInput] = useState(String(DEFAULT_MARKUP).replace('.', ','))
@@ -184,6 +184,17 @@ export default function ImportacaoPage() {
             }
             if (!result.success) throw new Error(result.error)
             await loadQueue()
+            if (result.blockedByRateLimit) {
+                const nextAttemptText = result.nextAttemptAt
+                    ? new Date(result.nextAttemptAt).toLocaleString('pt-BR')
+                    : 'cerca de 1 hora apos a ultima consulta'
+                setLastSyncInfo({
+                    type: 'warning',
+                    message: 'A SEFAZ/Nuvem Fiscal recusou a consulta temporariamente com status 656.',
+                    details: `CNPJ: ${result.cpfCnpj || '-'} | Nova tentativa sugerida: ${nextAttemptText}.`,
+                })
+                return
+            }
             const loteInfo = result.initialSync && !result.initialSyncCompleted
                 ? ' Primeira carga ainda em andamento; clique novamente para continuar o proximo lote.'
                 : ''
@@ -192,7 +203,7 @@ export default function ImportacaoPage() {
                 message: (result.inserted || 0) > 0
                     ? `${result.inserted} emissao(oes) nova(s) adicionada(s) na fila.`
                     : 'Verificacao concluida sem novas emissoes para importar.',
-                details: `CNPJ: ${result.cpfCnpj || '-'} | Recebidas: ${result.received || 0} | Ja importadas: ${result.skippedDuplicated || 0} | Fora dos 60 dias iniciais: ${result.skippedOld || 0} | ultNSU: ${result.ultimoNsu || 0} | maxNSU: ${result.maxNsu || 0}.${loteInfo}`,
+                details: `CNPJ: ${result.cpfCnpj || '-'} | Recebidas: ${result.received || 0} | Ja importadas: ${result.skippedDuplicated || 0} | Fora dos 60 dias iniciais: ${result.skippedOld || 0}.${loteInfo}`,
             })
         } catch (error: unknown) {
             setLastSyncInfo({ type: 'error', message: 'A verificacao de emissoes falhou.', details: getErrorMessage(error) })
@@ -390,7 +401,7 @@ export default function ImportacaoPage() {
             {/* Header */}
             <div className="mb-6 flex items-center gap-4 flex-shrink-0">
                 <Link
-                    href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                    href={`/dashboard/loja/${storeId}?menu=gerencia`}
                     className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
                     title="Voltar para o Painel"
                 >
@@ -530,7 +541,11 @@ export default function ImportacaoPage() {
                         </div>
 
                         {lastSyncInfo && (
-                            <div className={`m-4 p-3 rounded-lg border text-sm ${lastSyncInfo.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-300' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-200'}`}>
+                            <div className={`m-4 p-3 rounded-lg border text-sm ${lastSyncInfo.type === 'error'
+                                ? 'bg-red-500/10 border-red-500/20 text-red-300'
+                                : lastSyncInfo.type === 'warning'
+                                    ? 'bg-amber-500/10 border-amber-500/20 text-amber-200'
+                                    : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-200'}`}>
                                 <p className="font-bold">{lastSyncInfo.message}</p>
                                 {lastSyncInfo.details && <p className="text-xs opacity-80 mt-1">{lastSyncInfo.details}</p>}
                             </div>

@@ -21,8 +21,8 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { OperatorLayout } from '@/components/operator-menu';
-import { useEffect } from 'react';
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
+import FullscreenToggleButton from '@/components/FullscreenToggleButton';
 
 type ManualManagerState = 'home' | 'gerencia' | 'operator';
 type ManagerState = ManualManagerState | 'page';
@@ -102,14 +102,11 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
     const menuParam = searchParams.get('menu');
     const [manualState, setManualState] = useState<ManualManagerState>('home');
 
-    useEffect(() => {
-        if (menuParam === 'atendimento' || menuParam === 'loja-vazia') {
-            setManualState('operator');
-        }
-    }, [menuParam]);
-
     const storeHomePath = `/dashboard/loja/${storeId}`;
-    const currentState: ManagerState = pathname !== storeHomePath && manualState !== 'operator' ? 'page' : manualState;
+    const effectiveManualState: ManualManagerState =
+        menuParam === 'atendimento' || menuParam === 'loja-vazia' ? 'operator' : manualState;
+    const currentState: ManagerState =
+        pathname !== storeHomePath && effectiveManualState !== 'operator' ? 'page' : effectiveManualState;
 
     const handleLogout = async () => {
         const { error } = await supabase.auth.signOut();
@@ -152,12 +149,18 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
                         Hub Gerencial
                     </button>
                     <span className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em]">{storeName}</span>
-                    <button
-                        onClick={handleLogout}
-                        className="text-slate-500 hover:text-red-400 transition-colors text-sm font-medium"
-                    >
-                        Sair
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <FullscreenToggleButton
+                            variant="inline"
+                            className="h-9 w-9 bg-slate-900/80 text-white/65 hover:bg-slate-900"
+                        />
+                        <button
+                            onClick={handleLogout}
+                            className="text-slate-500 hover:text-red-400 transition-colors text-sm font-medium"
+                        >
+                            Sair
+                        </button>
+                    </div>
                 </div>
 
                 <main className="overflow-y-auto" style={{ height: 'calc(100vh - 57px)' }}>
@@ -169,7 +172,8 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
 
     return (
         <div className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-950 font-sans transition-colors duration-500">
-            <div className="absolute top-6 right-6 z-50">
+            <div className="absolute top-6 right-6 z-50 flex items-center gap-3">
+                <FullscreenToggleButton className="right-20 top-6" />
                 <BackgroundToggle />
             </div>
 

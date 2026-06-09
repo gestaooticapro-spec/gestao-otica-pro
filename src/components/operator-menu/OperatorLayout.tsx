@@ -7,6 +7,7 @@ import OperatorMenuHome from './OperatorMenuHome';
 import OperatorMenuAtendimento from './OperatorMenuAtendimento';
 import OperatorMenuLojaVazia from './OperatorMenuLojaVazia';
 import { getStoreProfile } from '@/lib/actions/store.actions';
+import FullscreenToggleButton from '@/components/FullscreenToggleButton';
 
 type MenuState = 'home' | 'atendimento' | 'loja-vazia' | 'page';
 type HomeSelection = 'atendimento' | 'loja-vazia' | null;
@@ -134,6 +135,10 @@ export default function OperatorLayout({
                 </button>
                 <span className="text-slate-500 text-xs font-bold uppercase tracking-widest">{storeName}</span>
                 <div className="flex items-center gap-4">
+                    <FullscreenToggleButton
+                        variant="inline"
+                        className="h-9 w-9 bg-slate-900/80 text-white/65 hover:bg-slate-900"
+                    />
                     {onBackToHub && (
                         <button
                             onClick={onBackToHub}

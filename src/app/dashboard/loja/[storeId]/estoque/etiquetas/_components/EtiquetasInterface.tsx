@@ -124,7 +124,7 @@ export default function EtiquetasInterface({ storeId, initialQueue, suggestions 
                     <div className="flex items-center justify-between mb-3">
                         <h2 className="font-black text-sm flex items-center gap-2 uppercase tracking-wide text-teal-400">
                             <Link
-                                href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                                href={`/dashboard/loja/${storeId}?menu=gerencia`}
                                 className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-all active:scale-95"
                                 title="Voltar para o Painel"
                             >
