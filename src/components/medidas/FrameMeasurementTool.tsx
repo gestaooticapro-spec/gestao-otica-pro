@@ -177,6 +177,7 @@ export default function FrameMeasurementTool({
     leftPct: number
     balanceDiff: number
   } | null>(null)
+  const isDetachedFlow = !osId
 
   useEffect(() => { imgBoundsRef.current = imgBounds   }, [imgBounds])
   useEffect(() => { activeGrpRef.current = activeGroup }, [activeGroup])
@@ -708,37 +709,53 @@ export default function FrameMeasurementTool({
   }
 
   // ── Salvar medidas na OS (fluxo tablet) ──────────────────────────────────
+  async function lookupOS() {
+    if (!storeId) {
+      setOsLookupError('Loja nao identificada para buscar a OS.')
+      return null
+    }
+
+    setSaving(true)
+    setOsLookupError(null)
+    setLinkedOS(null)
+    try {
+      const found = await findMedicaoOSByNumber(storeId, osNumberInput)
+      if (!found.ok || !found.os) {
+        setOsLookupError(found.error ?? 'Nao foi possivel encontrar a OS.')
+        return null
+      }
+
+      if (found.os.foto_medicao_url) {
+        setOsLookupError('Esta OS ja possui uma medicao gravada. Nao e possivel gravar por cima.')
+        return null
+      }
+
+      setLinkedOS(found.os)
+      return found.os
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function saveToOS() {
     if (!pts) return
     if (!storeId && !osId) {
       setOsLookupError('Loja nao identificada para buscar a OS.')
       return
     }
+    if (isDetachedFlow && !linkedOS) {
+      setOsLookupError('Busque e confirme a OS antes de salvar a medicao.')
+      return
+    }
 
     setSaving(true)
     setOsLookupError(null)
     try {
-      let targetOsId = linkedOS?.id ?? osId
+      const targetOsId = linkedOS?.id ?? osId
 
       if (!targetOsId) {
-        if (!storeId) {
-          setOsLookupError('Loja nao identificada para buscar a OS.')
-          return
-        }
-
-        const found = await findMedicaoOSByNumber(storeId, osNumberInput)
-        if (!found.ok || !found.os) {
-          setOsLookupError(found.error ?? 'Nao foi possivel encontrar a OS.')
-          return
-        }
-
-        if (found.os.foto_medicao_url) {
-          setOsLookupError('Esta OS já possui uma medição gravada. Não é possível gravar por cima.')
-          return
-        }
-
-        setLinkedOS(found.os)
-        targetOsId = found.os.id
+        setOsLookupError('Busque e confirme a OS antes de salvar a medicao.')
+        return
       }
 
       const m = calc(pts)
@@ -1208,20 +1225,30 @@ export default function FrameMeasurementTool({
                 )}
                 {step === 'done' && !saved && (
                   <>
-                    {!osId && (
+                    {isDetachedFlow && (
                       <div className="w-full rounded-xl border border-white/10 bg-black/25 p-2">
                         <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
                           Numero da OS
                         </label>
-                        <input
-                          value={osNumberInput}
-                          onChange={e => {
-                            setOsNumberInput(e.target.value)
-                            setOsLookupError(null)
-                          }}
-                          placeholder="Digite o numero/protocolo"
-                          className="h-9 w-full rounded-lg border border-white/10 bg-black/30 px-3 text-sm font-semibold text-white outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-500/30"
-                        />
+                        <div className="flex gap-2">
+                          <input
+                            value={osNumberInput}
+                            onChange={e => {
+                              setOsNumberInput(e.target.value)
+                              setLinkedOS(null)
+                              setOsLookupError(null)
+                            }}
+                            placeholder="Digite o numero/protocolo"
+                            className="h-10 min-w-0 flex-1 rounded-lg border border-white/10 bg-black/30 px-3 text-sm font-semibold text-white outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-500/30"
+                          />
+                          <button
+                            onClick={lookupOS}
+                            disabled={saving || !osNumberInput.trim()}
+                            className="h-10 shrink-0 rounded-lg bg-cyan-700 px-3 text-xs font-bold text-white transition-colors hover:bg-cyan-600 disabled:opacity-50"
+                          >
+                            {saving ? 'Buscando...' : 'Buscar OS'}
+                          </button>
+                        </div>
                         {linkedOS && (
                           <p className="mt-1 text-[11px] text-emerald-300">
                             OS {linkedOS.protocolo_fisico ?? linkedOS.id} vinculada a {linkedOS.dependente_name ?? linkedOS.customer_name ?? 'cliente'}
@@ -1234,7 +1261,7 @@ export default function FrameMeasurementTool({
                       className={`flex-1 py-2 rounded-xl text-xs font-medium border transition-colors ${showDiam ? 'bg-indigo-900/60 border-indigo-500 text-indigo-200' : 'bg-white/5 border-white/10 text-slate-300'}`}>
                       {showDiam ? 'Ocultar Ø' : 'Calcular Ø'}
                     </button>
-                    {(osId || linkedOS || osNumberInput.trim()) ? (
+                    {osId || linkedOS ? (
                       <button onClick={saveToOS} disabled={saving}
                         className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors">
                         {saving
