@@ -151,11 +151,13 @@ async function getManageContext(storeId: number) {
     throw new Error('Acesso negado.')
   }
 
-  const { data: store, error: storeError } = await context.supabaseAdmin
+  const { data: rawStore, error: storeError } = await context.supabaseAdmin
     .from('stores')
     .select('id,tenant_id')
     .eq('id', storeId)
     .single()
+
+  const store = rawStore as any
 
   if (storeError || !store) {
     throw storeError || new Error('Loja nao encontrada.')
@@ -212,8 +214,7 @@ export async function getStoreGlobalCatalogOverview(storeId: number): Promise<St
       .from('global_catalog_versions')
       .select('id,laboratorio,versao,status,published_at,created_at')
       .order('created_at', { ascending: false }),
-    supabaseAdmin
-      .from('tenant_catalog_activations')
+      (supabaseAdmin.from('tenant_catalog_activations') as any)
       .select('id,global_version_id,status,activated_at,last_synced_at')
       .eq('store_id', storeId)
       .order('activated_at', { ascending: false }),
@@ -343,11 +344,13 @@ export async function activateGlobalCatalogForStore(
     debugContext.tenantId = store.tenant_id
 
     step = 'carregando versao global'
-    const { data: version, error: versionError } = await supabaseAdmin
+    const { data: rawVersion, error: versionError } = await supabaseAdmin
       .from('global_catalog_versions')
       .select('id,laboratorio')
       .eq('id', versionId)
       .single()
+
+    const version = rawVersion as any
 
     if (versionError || !version) {
       throw new Error('Versao global nao encontrada.')
@@ -401,9 +404,8 @@ export async function activateGlobalCatalogForStore(
     )
 
     if (sameLabVersionIds.length) {
-      const { error: deactivateSameLabError } = await supabaseAdmin
-        .from('tenant_catalog_activations')
-        .update({ status: 'inactive' })
+      const { error: deactivateSameLabError } = await (supabaseAdmin.from('tenant_catalog_activations') as any)
+        .update({ status: 'inactive' } as any)
         .eq('store_id', storeId)
         .eq('status', 'active')
         .in('global_version_id', sameLabVersionIds)
@@ -413,8 +415,7 @@ export async function activateGlobalCatalogForStore(
     }
 
     step = 'gravando ativacao da loja'
-    const { data: activation, error: activationError } = await supabaseAdmin
-      .from('tenant_catalog_activations')
+    const { data: rawActivation, error: activationError } = await (supabaseAdmin.from('tenant_catalog_activations') as any)
       .upsert(
         {
           tenant_id: store.tenant_id,
@@ -423,11 +424,13 @@ export async function activateGlobalCatalogForStore(
           status: 'active',
           activated_at: now,
           last_synced_at: now,
-        },
+        } as any,
         { onConflict: 'store_id,global_version_id' },
       )
       .select('id')
       .single()
+
+    const activation = rawActivation as any
 
     if (activationError || !activation) {
       throw activationError || new Error('Nao foi possivel ativar o catalogo.')
@@ -438,15 +441,13 @@ export async function activateGlobalCatalogForStore(
     step = 'carregando ofertas e tratamentos ja sincronizados'
     const [existingOffers, existingTreatments] = await Promise.all([
       fetchAllRows<ExistingTenantOfferRow>((from, to) =>
-        supabaseAdmin
-          .from('tenant_commercial_offers')
+        (supabaseAdmin.from('tenant_commercial_offers') as any)
           .select('global_offer_id')
           .eq('activation_id', activation.id)
           .range(from, to),
       ),
       fetchAllRows<ExistingTenantTreatmentRow>((from, to) =>
-        supabaseAdmin
-          .from('tenant_commercial_treatments')
+        (supabaseAdmin.from('tenant_commercial_treatments') as any)
           .select('global_treatment_id')
           .eq('activation_id', activation.id)
           .range(from, to),
@@ -487,9 +488,8 @@ export async function activateGlobalCatalogForStore(
 
     if (missingOffers.length) {
       step = 'sincronizando ofertas da loja'
-      const { error } = await supabaseAdmin
-        .from('tenant_commercial_offers')
-        .upsert(missingOffers, { onConflict: 'activation_id,global_offer_id' })
+      const { error } = await (supabaseAdmin.from('tenant_commercial_offers') as any)
+        .upsert(missingOffers as any, { onConflict: 'activation_id,global_offer_id' })
 
       if (error) throw error
     }
@@ -507,8 +507,7 @@ export async function activateGlobalCatalogForStore(
       )
 
       for (const offerIdChunk of chunkValues(offerIdsWithCost)) {
-        const { data: tenantOffersToPatch, error: tenantOffersToPatchError } = await supabaseAdmin
-          .from('tenant_commercial_offers')
+        const { data: tenantOffersToPatch, error: tenantOffersToPatchError } = await (supabaseAdmin.from('tenant_commercial_offers') as any)
           .select('id,global_offer_id,price_cost')
           .eq('activation_id', activation.id)
           .in('global_offer_id', offerIdChunk)
@@ -520,9 +519,8 @@ export async function activateGlobalCatalogForStore(
           const nextCost = offerCostById.get(tenantOffer.global_offer_id)
           if (nextCost == null) continue
 
-          const { error } = await supabaseAdmin
-            .from('tenant_commercial_offers')
-            .update({ price_cost: nextCost })
+          const { error } = await (supabaseAdmin.from('tenant_commercial_offers') as any)
+            .update({ price_cost: nextCost } as any)
             .eq('id', tenantOffer.id)
 
           if (error) throw error
@@ -532,17 +530,15 @@ export async function activateGlobalCatalogForStore(
 
     if (missingTreatments.length) {
       step = 'sincronizando tratamentos da loja'
-      const { error } = await supabaseAdmin
-        .from('tenant_commercial_treatments')
-        .upsert(missingTreatments, { onConflict: 'activation_id,global_treatment_id' })
+      const { error } = await (supabaseAdmin.from('tenant_commercial_treatments') as any)
+        .upsert(missingTreatments as any, { onConflict: 'activation_id,global_treatment_id' })
 
       if (error) throw error
     }
 
     step = 'atualizando metadados finais da ativacao'
-    const { error: refreshActivationError } = await supabaseAdmin
-      .from('tenant_catalog_activations')
-      .update({ status: 'active', last_synced_at: now })
+    const { error: refreshActivationError } = await (supabaseAdmin.from('tenant_catalog_activations') as any)
+      .update({ status: 'active', last_synced_at: now } as any)
       .eq('id', activation.id)
 
     if (refreshActivationError) throw refreshActivationError
@@ -592,12 +588,13 @@ export async function deactivateGlobalCatalogForStore(
     const { supabaseAdmin } = await getManageContext(storeId)
     const now = new Date().toISOString()
 
-    const { data: activation, error: activationError } = await supabaseAdmin
-      .from('tenant_catalog_activations')
+    const { data: rawDeactivation, error: activationError } = await (supabaseAdmin.from('tenant_catalog_activations') as any)
       .select('id,status')
       .eq('store_id', storeId)
       .eq('global_version_id', versionId)
       .single()
+
+    const activation = rawDeactivation as any
 
     if (activationError || !activation) {
       throw activationError || new Error('Ativacao nao encontrada.')
@@ -607,9 +604,8 @@ export async function deactivateGlobalCatalogForStore(
       return { success: true, message: 'Catalogo ja esta desativado.' }
     }
 
-    const { error: updateError } = await supabaseAdmin
-      .from('tenant_catalog_activations')
-      .update({ status: 'inactive', last_synced_at: now })
+    const { error: updateError } = await (supabaseAdmin.from('tenant_catalog_activations') as any)
+      .update({ status: 'inactive', last_synced_at: now } as any)
       .eq('id', activation.id)
 
     if (updateError) throw updateError
