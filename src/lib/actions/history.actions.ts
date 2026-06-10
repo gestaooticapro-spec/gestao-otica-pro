@@ -40,6 +40,15 @@ export interface CustomerXRayData {
             valor: number
             parcelas: string
             data: string
+            isParcela: boolean
+        }[]
+        parcelasPendentes: {
+            id: number
+            numero_parcela: number
+            data_vencimento: string
+            valor_parcela: number
+            status: string
+            isAtrasada: boolean
         }[]
         os: {
             id: number
@@ -110,7 +119,12 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
                     id, valor_unitario, quantidade, product_id
                 ),
                 pagamentos:pagamentos(
-                    forma_pagamento, valor_pago, parcelas, created_at
+                    forma_pagamento, valor_pago, parcelas, created_at, obs
+                ),
+                financiamento_loja!financiamento_loja_venda_id_fkey (
+                    financiamento_parcelas (
+                        id, numero_parcela, data_vencimento, valor_parcela, status, data_pagamento
+                    )
                 ),
                 os:service_orders(
                     *,
@@ -259,28 +273,32 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
         let paraSi = 0
         let paraDependentes = 0
 
-        const vendasComSaldoFechadas = vendas.filter((venda: any) => 
-            (venda.status === 'Fechada' || venda.status === 'Entregue') && 
-            Number(venda.valor_restante || 0) > 0
-        )
-        const saldoPendente = vendasComSaldoFechadas.reduce((acc: number, venda: any) => acc + Number(venda.valor_restante || 0), 0)
-        const totalVendasComSaldo = vendasComSaldoFechadas.length
-        
+        const hoje = new Date().toISOString().split('T')[0];
+        const { data: pendingParcelas, error: pendingError } = await (supabase
+            .from('financiamento_parcelas') as any)
+            .select('valor_parcela, data_vencimento, venda_id')
+            .eq('store_id', storeId)
+            .eq('customer_id', customerId)
+            .eq('status', 'Pendente')
+            .gt('valor_parcela', 0.01);
+
         let isDevedor = false;
-        if (vendasComSaldoFechadas.length > 0) {
-            const vendasEmDividaIds = vendasComSaldoFechadas.map((v: any) => v.id);
-            const hoje = new Date().toISOString().split('T')[0];
-            const { count: qtdParcelasAtrasadas } = await (supabase
-                .from('financiamento_parcelas') as any)
-                .select('id', { count: 'exact', head: true })
-                .eq('store_id', storeId)
-                .in('venda_id', vendasEmDividaIds)
-                .eq('status', 'Pendente')
-                .gt('valor_parcela', 0.01)
-                .lt('data_vencimento', hoje);
-            
-            isDevedor = (qtdParcelasAtrasadas || 0) > 0;
+        let saldoPendente = 0;
+        const vendasComSaldoSet = new Set<number>();
+
+        if (pendingParcelas && !pendingError) {
+            pendingParcelas.forEach((p: any) => {
+                saldoPendente += Number(p.valor_parcela || 0);
+                if (p.venda_id) {
+                    vendasComSaldoSet.add(p.venda_id);
+                }
+                const vencStr = p.data_vencimento ? p.data_vencimento.split('T')[0] : '';
+                if (vencStr < hoje) {
+                    isDevedor = true;
+                }
+            });
         }
+        const totalVendasComSaldo = vendasComSaldoSet.size;
 
 
         // Process Sales
@@ -329,12 +347,32 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
             })
 
             // Process Payments
-            const pagamentos = (venda.pagamentos || []).map((pg: any) => ({
-                metodo: pg.forma_pagamento,
-                valor: pg.valor_pago,
-                parcelas: pg.parcelas > 1 ? `${pg.parcelas}x` : 'À vista',
-                data: pg.created_at
-            }))
+            const pagamentos = (venda.pagamentos || []).map((pg: any) => {
+                const isParcela = pg.obs ? (pg.obs.includes('Parc.') || pg.obs.toLowerCase().includes('parcela')) : false
+                return {
+                    metodo: pg.forma_pagamento,
+                    valor: pg.valor_pago,
+                    parcelas: pg.parcelas > 1 ? `${pg.parcelas}x` : 'À vista',
+                    data: pg.created_at,
+                    isParcela
+                }
+            })
+
+            // Process Pending Installments
+            const financiamentoLoja = venda.financiamento_loja?.[0]
+            const parcelasFiltradas = (financiamentoLoja?.financiamento_parcelas || []).filter((p: any) => p.status === 'Pendente')
+            const hojeStr = new Date().toISOString().split('T')[0]
+            const parcelasPendentes = parcelasFiltradas.map((p: any) => {
+                const vencStr = p.data_vencimento ? p.data_vencimento.split('T')[0] : ''
+                return {
+                    id: p.id,
+                    numero_parcela: p.numero_parcela,
+                    data_vencimento: p.data_vencimento,
+                    valor_parcela: p.valor_parcela,
+                    status: p.status,
+                    isAtrasada: vencStr < hojeStr
+                }
+            }).sort((a: any, b: any) => new Date(a.data_vencimento).getTime() - new Date(b.data_vencimento).getTime())
 
             return {
                 id: venda.id,
@@ -345,6 +383,7 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
                 observacoes: venda.obs_geral || null,
                 itens,
                 pagamentos,
+                parcelasPendentes,
                 os
             }
         })

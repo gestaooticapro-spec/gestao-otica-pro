@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { CustomerXRayData } from '@/lib/actions/history.actions'
 import {
     User, ShoppingBag, TrendingUp, Calendar,
     ArrowUpRight, Clock, Star, Search, Users, Wallet, FileText, Eye, EyeOff, ChevronDown, AlertTriangle, X,
-    Stethoscope
+    Stethoscope, ChevronUp, Filter, Loader2
 } from 'lucide-react'
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
+import { getCustomerParcelasFiltradas, ParcelaFiltro } from '@/lib/actions/parcelas.actions'
 
 interface CustomerHistoryPageProps {
     data: CustomerXRayData
@@ -50,6 +51,63 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
     const [selectedSaleId, setSelectedSaleId] = useState<number | null>(sales[0]?.id || null)
     const [expandedOsId, setExpandedOsId] = useState<number | null>(null)
     const [isPostSalesModalOpen, setIsPostSalesModalOpen] = useState(false)
+
+    // States for Installments (Parcelas) Modal
+    const [isParcelasModalOpen, setIsParcelasModalOpen] = useState(false)
+    const [parcelasFiltros, setParcelasFiltros] = useState<ParcelaFiltro>({
+        status: 'todas',
+        dataInicial: '',
+        dataFinal: '',
+        busca: ''
+    })
+    const [parcelasModalData, setParcelasModalData] = useState<any[]>([])
+    const [isParcelasLoading, setIsParcelasLoading] = useState(false)
+    const [expandedSales, setExpandedSales] = useState<Record<number, boolean>>({})
+
+    const fetchParcelas = async (currentFilters: ParcelaFiltro = parcelasFiltros) => {
+        setIsParcelasLoading(true)
+        const res = await getCustomerParcelasFiltradas(storeId, customer.id, currentFilters)
+        if (res.success) {
+            setParcelasModalData(res.data || [])
+            const uniqueVendas = Array.from(new Set((res.data || []).map((p: any) => p.financiamento_loja?.venda_id || 0)))
+            const initialExpanded: Record<number, boolean> = {}
+            uniqueVendas.forEach(vid => {
+                initialExpanded[Number(vid)] = true
+            })
+            setExpandedSales(initialExpanded)
+        } else {
+            setParcelasModalData([])
+        }
+        setIsParcelasLoading(false)
+    }
+
+    useEffect(() => {
+        if (isParcelasModalOpen) {
+            fetchParcelas({
+                status: 'todas',
+                dataInicial: '',
+                dataFinal: '',
+                busca: ''
+            })
+            setParcelasFiltros({
+                status: 'todas',
+                dataInicial: '',
+                dataFinal: '',
+                busca: ''
+            })
+        }
+    }, [isParcelasModalOpen])
+
+    const groupedSalesInModal = useMemo(() => {
+        return parcelasModalData.reduce((acc: Record<number, any[]>, p: any) => {
+            const vendaId = p.financiamento_loja?.venda_id || 0
+            if (!acc[vendaId]) {
+                acc[vendaId] = []
+            }
+            acc[vendaId].push(p)
+            return acc
+        }, {} as Record<number, any[]>)
+    }, [parcelasModalData])
 
     const selectedSale = useMemo(() =>
         sales.find(s => s.id === selectedSaleId),
@@ -221,8 +279,17 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                         </div>
                     </div>}
                     {modules.installments && <div className="bg-orange-950/30 border border-orange-500/20 rounded-2xl p-4 flex flex-col justify-between backdrop-blur-md hover:bg-orange-900/20 transition-colors duration-300">
-                        <div className="p-2 bg-orange-500/10 rounded-xl ring-1 ring-orange-500/20 w-fit">
-                            <Wallet className="w-4 h-4 text-orange-300" />
+                        <div className="flex items-start justify-between gap-2">
+                            <div className="p-2 bg-orange-500/10 rounded-xl ring-1 ring-orange-500/20 w-fit">
+                                <Wallet className="w-4 h-4 text-orange-300" />
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsParcelasModalOpen(true)}
+                                className="px-2 py-1 rounded-lg border text-[9px] font-bold uppercase tracking-wider transition-colors text-orange-200 bg-orange-500/10 border-orange-500/30 hover:bg-orange-500/20"
+                            >
+                                Ver parcelas
+                            </button>
                         </div>
                         <div>
                             <p className="text-xl font-black text-white mt-2 tracking-tight">{cobranca.valorMetrica}</p>
@@ -236,20 +303,42 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
             </div>
 
             {modules.installments && devedor.isDevedor && (
-                <div className="bg-red-950/25 border border-red-500/30 rounded-2xl p-4 backdrop-blur-md flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div className="flex items-start gap-3">
-                        <div className="p-2 rounded-xl bg-red-500/15 ring-1 ring-red-500/30 shrink-0">
-                            <AlertTriangle className="w-4 h-4 text-red-300" />
+                <div className="bg-red-950/25 border border-red-500/30 rounded-2xl p-4 backdrop-blur-md flex flex-col gap-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-start gap-3">
+                            <div className="p-2 rounded-xl bg-red-500/15 ring-1 ring-red-500/30 shrink-0">
+                                <AlertTriangle className="w-4 h-4 text-red-300" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-black text-red-200 uppercase tracking-wider">Cliente devedor</p>
+                                <p className="text-xs text-red-200/80 font-medium">{devedor.vendasComSaldo} venda(s) com saldo pendente.</p>
+                            </div>
                         </div>
-                        <div>
-                            <p className="text-sm font-black text-red-200 uppercase tracking-wider">Cliente devedor</p>
-                            <p className="text-xs text-red-200/80 font-medium">{devedor.vendasComSaldo} venda(s) com saldo pendente.</p>
+                        <div className="sm:text-right">
+                            <p className="text-[10px] font-bold text-red-200/70 uppercase tracking-wider">Saldo pendente</p>
+                            <p className="text-xl font-black text-red-200">{formatCurrency(devedor.saldoPendente)}</p>
                         </div>
                     </div>
-                    <div className="sm:text-right">
-                        <p className="text-[10px] font-bold text-red-200/70 uppercase tracking-wider">Saldo pendente</p>
-                        <p className="text-xl font-black text-red-200">{formatCurrency(devedor.saldoPendente)}</p>
-                    </div>
+                    {(() => {
+                        const todasAtrasadas = sales.flatMap(s => (s as any).parcelasPendentes || []).filter((p: any) => p.isAtrasada);
+                        if (todasAtrasadas.length === 0) return null;
+                        return (
+                            <div className="mt-1 border-t border-red-500/20 pt-3">
+                                <p className="text-xs font-bold text-red-300 mb-2 uppercase tracking-wider">Parcelas Atrasadas</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2">
+                                    {todasAtrasadas.map((p: any) => (
+                                        <div key={p.id} className="bg-red-950/40 p-2.5 rounded-xl border border-red-500/20 flex justify-between items-center hover:bg-red-900/30 transition-colors">
+                                            <div>
+                                                <p className="text-[9px] text-red-300/70 uppercase font-bold tracking-wider mb-0.5">Venc. {new Date(p.data_vencimento).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</p>
+                                                <p className="text-[11px] font-bold text-red-200">Parcela {p.numero_parcela}</p>
+                                            </div>
+                                            <p className="text-xs font-black text-red-400">{formatCurrency(p.valor_parcela)}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             )}
 
@@ -374,7 +463,13 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                                                 {selectedSale.pagamentos.map((pg, i) => (
                                                     <div key={i} className="flex justify-between items-center p-3 rounded-xl bg-emerald-900/10 border border-emerald-500/10">
                                                         <div>
-                                                            <p className="text-sm font-bold text-white">{pg.metodo}</p>
+                                                            <div className="flex items-center gap-2">
+                                                                <p className="text-sm font-bold text-white">{pg.metodo}</p>
+                                                                {(pg as any).isParcela
+                                                                    ? <span className="text-[8px] bg-orange-500/20 text-orange-300 px-1.5 py-0.5 rounded uppercase font-bold border border-orange-500/30">Parcela</span>
+                                                                    : <span className="text-[8px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded uppercase font-bold border border-emerald-500/30">Compra</span>
+                                                                }
+                                                            </div>
                                                             <p className="text-[9px] text-emerald-400 font-medium uppercase tracking-wider">{pg.parcelas}</p>
                                                         </div>
                                                         <p className="text-sm font-black text-emerald-400">{formatCurrency(pg.valor)}</p>
@@ -610,6 +705,213 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                                         </p>
                                     </div>
                                 ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {modules.installments && isParcelasModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <button
+                        type="button"
+                        className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+                        onClick={() => setIsParcelasModalOpen(false)}
+                        aria-label="Fechar modal"
+                    />
+                    <div className="relative w-full max-w-4xl max-h-[90vh] rounded-3xl bg-slate-950/95 border border-white/15 shadow-2xl flex flex-col overflow-hidden">
+                        {/* Header */}
+                        <div className="p-5 border-b border-white/10 bg-white/5 flex items-center justify-between shrink-0">
+                            <div>
+                                <p className="text-[10px] font-black text-orange-400 uppercase tracking-[0.2em]">Financeiro</p>
+                                <h3 className="text-lg font-black text-white">Parcelamentos do Cliente</h3>
+                                <p className="text-[11px] text-slate-400">{customer.nome}</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsParcelasModalOpen(false)}
+                                className="w-9 h-9 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors flex items-center justify-center"
+                                aria-label="Fechar"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        {/* Filtros */}
+                        <div className="bg-slate-900/60 border-b border-white/10 p-4 flex flex-wrap items-end gap-3 shrink-0">
+                            <div className="flex flex-col gap-1 w-full sm:w-auto sm:flex-1 min-w-[150px]">
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Busca Venda (ID)</label>
+                                <div className="relative">
+                                    <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                                        <Search className="h-3 w-3 text-slate-500" />
+                                    </div>
+                                    <input
+                                        type="text"
+                                        className="w-full bg-slate-950 border border-white/10 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all placeholder:text-slate-600"
+                                        placeholder="Venda ID..."
+                                        value={parcelasFiltros.busca}
+                                        onChange={e => setParcelasFiltros({ ...parcelasFiltros, busca: e.target.value })}
+                                        onKeyDown={e => e.key === 'Enter' && fetchParcelas()}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col gap-1 w-[120px]">
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Status</label>
+                                <select
+                                    className="w-full bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all"
+                                    value={parcelasFiltros.status}
+                                    onChange={e => setParcelasFiltros({ ...parcelasFiltros, status: e.target.value as any })}
+                                >
+                                    <option value="todas">Todas</option>
+                                    <option value="pendente">Pendentes</option>
+                                    <option value="atrasado">Atrasadas</option>
+                                    <option value="pago">Pagas</option>
+                                </select>
+                            </div>
+
+                            <div className="flex flex-col gap-1 w-[120px]">
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Venc. Inicial</label>
+                                <input
+                                    type="date"
+                                    className="w-full bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all color-scheme-dark"
+                                    value={parcelasFiltros.dataInicial}
+                                    onChange={e => setParcelasFiltros({ ...parcelasFiltros, dataInicial: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="flex flex-col gap-1 w-[120px]">
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Venc. Final</label>
+                                <input
+                                    type="date"
+                                    className="w-full bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all color-scheme-dark"
+                                    value={parcelasFiltros.dataFinal}
+                                    onChange={e => setParcelasFiltros({ ...parcelasFiltros, dataFinal: e.target.value })}
+                                />
+                            </div>
+
+                            <button
+                                onClick={() => fetchParcelas()}
+                                disabled={isParcelasLoading}
+                                className="h-[32px] px-4 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
+                            >
+                                {isParcelasLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Filter className="h-3 w-3" />}
+                                Filtrar
+                            </button>
+                        </div>
+
+                        {/* Conteúdo (Scrollable) */}
+                        <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar bg-slate-950/60">
+                            {isParcelasLoading ? (
+                                <div className="py-12 flex flex-col items-center justify-center">
+                                    <Loader2 className="h-8 w-8 text-orange-500 animate-spin mb-4" />
+                                    <p className="text-xs text-slate-400 font-medium">Buscando parcelamento...</p>
+                                </div>
+                            ) : Object.keys(groupedSalesInModal).length === 0 ? (
+                                <div className="py-12 text-center rounded-2xl border border-white/10 bg-white/5">
+                                    <AlertTriangle className="h-8 w-8 text-slate-500 mx-auto mb-3" />
+                                    <p className="text-sm font-bold text-slate-300">Nenhum parcelamento encontrado.</p>
+                                    <p className="text-xs text-slate-500 mt-1">Experimente remover os filtros de busca ou período.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {Object.keys(groupedSalesInModal).map((vendaIdStr) => {
+                                        const vendaId = Number(vendaIdStr)
+                                        const saleParcelas = groupedSalesInModal[vendaId]
+                                        const isExpanded = expandedSales[vendaId] ?? true
+                                        
+                                        const totalSaleValue = saleParcelas.reduce((acc: number, p: any) => acc + Number(p.valor_parcela || 0), 0)
+                                        const paidSaleValue = saleParcelas.filter((p: any) => p.status === 'pago' || p.data_pagamento !== null).reduce((acc: number, p: any) => acc + Number(p.valor_parcela || 0), 0)
+                                        const pendingSaleValue = totalSaleValue - paidSaleValue
+
+                                        return (
+                                            <div key={vendaId} className="border border-white/10 bg-slate-900/40 rounded-2xl overflow-hidden backdrop-blur-md">
+                                                <div 
+                                                    onClick={() => setExpandedSales(prev => ({ ...prev, [vendaId]: !isExpanded }))}
+                                                    className="bg-white/5 px-4 py-3 border-b border-white/10 flex items-center justify-between cursor-pointer hover:bg-white/10 transition-colors"
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Venda</span>
+                                                            <span className="text-sm font-black text-white font-mono">#{vendaId}</span>
+                                                        </div>
+                                                        <div className="hidden sm:flex items-center gap-4 text-xs font-medium text-slate-400 border-l border-white/10 pl-4">
+                                                            <span>Total: <strong className="text-white">{formatCurrency(totalSaleValue)}</strong></span>
+                                                            <span>Pendente: <strong className="text-orange-400">{formatCurrency(pendingSaleValue)}</strong></span>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div className="flex items-center gap-3">
+                                                        {vendaId > 0 && (
+                                                            <a 
+                                                                href={`/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-orange-600 hover:bg-orange-500 rounded-lg text-[10px] font-bold text-white transition-all shadow-md shadow-orange-500/10"
+                                                            >
+                                                                Ver Venda
+                                                            </a>
+                                                        )}
+                                                        <button type="button" className="text-slate-400 hover:text-white transition-colors">
+                                                            <ChevronDown className={`w-4 h-4 transform transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {isExpanded && (
+                                                    <div className="overflow-x-auto border-t border-white/5 bg-black/10">
+                                                        <table className="w-full text-left border-collapse text-xs">
+                                                            <thead>
+                                                                <tr className="border-b border-white/5">
+                                                                    <th className="px-4 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider">Nº Parcela</th>
+                                                                    <th className="px-4 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider">Status</th>
+                                                                    <th className="px-4 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider">Vencimento</th>
+                                                                    <th className="px-4 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider">Data Pagamento</th>
+                                                                    <th className="px-4 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider text-right">Valor</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-white/5">
+                                                                {saleParcelas.map((p: any) => {
+                                                                    const isPago = p.status === 'pago' || p.data_pagamento !== null
+                                                                    const vencStr = p.data_vencimento ? p.data_vencimento.split('T')[0] : ''
+                                                                    const hojeStr2 = new Date().toISOString().split('T')[0]
+                                                                    const isAtrasado = !isPago && vencStr < hojeStr2
+
+                                                                    return (
+                                                                        <tr key={p.id} className="hover:bg-white/5 transition-colors">
+                                                                            <td className="px-4 py-2 text-slate-300 font-bold">
+                                                                                {p.numero_parcela}
+                                                                            </td>
+                                                                            <td className="px-4 py-2">
+                                                                                {isPago ? (
+                                                                                    <span className="px-1.5 py-0.5 bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 rounded-md text-[9px] font-bold uppercase tracking-wider">Pago</span>
+                                                                                ) : isAtrasado ? (
+                                                                                    <span className="px-1.5 py-0.5 bg-rose-500/15 text-rose-400 border border-rose-500/20 rounded-md text-[9px] font-bold uppercase tracking-wider">Atrasado</span>
+                                                                                ) : (
+                                                                                    <span className="px-1.5 py-0.5 bg-amber-500/15 text-amber-400 border border-amber-500/20 rounded-md text-[9px] font-bold uppercase tracking-wider">Pendente</span>
+                                                                                )}
+                                                                            </td>
+                                                                            <td className="px-4 py-2 text-slate-400">
+                                                                                {p.data_vencimento ? new Date(p.data_vencimento).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '-'}
+                                                                            </td>
+                                                                            <td className="px-4 py-2 text-slate-400">
+                                                                                {p.data_pagamento ? new Date(p.data_pagamento).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '-'}
+                                                                            </td>
+                                                                            <td className="px-4 py-2 text-right text-white font-bold">
+                                                                                {formatCurrency(p.valor_parcela)}
+                                                                            </td>
+                                                                        </tr>
+                                                                    )
+                                                                })}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )
+                                    })}
+                                </div>
                             )}
                         </div>
                     </div>
