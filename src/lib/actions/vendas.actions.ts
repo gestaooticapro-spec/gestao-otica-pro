@@ -3075,126 +3075,92 @@ export async function searchPendenciasCliente(storeId: number, termo: string) {
   const firstToken = searchTokens[0] || ''
   const cpfDigits = cleanTerm.replace(/\D/g, '')
 
-  console.log(`ðŸ” [DEBUG] Iniciando busca para: "${cleanTerm}" na Loja: ${storeId}`)
+  console.log(`[DEBUG] Iniciando busca para: "${cleanTerm}" na Loja: ${storeId}`)
 
   try {
-    // PASSO 1: Busca Clientes
-    let customerQuery = supabaseAdmin
-      .from('customers')
-      .select('id, full_name, cpf')
-      .eq('store_id', storeId)
-      .limit(50)
-
-    if (cpfDigits.length > 0) {
-      customerQuery = customerQuery.or(`cpf.ilike.%${cpfDigits}%,full_name.ilike.%${firstToken || cleanTerm}%`)
-    } else if (firstToken) {
-      customerQuery = customerQuery.ilike('full_name', `%${firstToken}%`)
-    }
-
-    const { data: clientes, error: errCli } = await customerQuery
-
-    if (errCli) {
-      console.error("âŒ [DEBUG] Erro ao buscar clientes:", errCli.message)
-      return []
-    }
-
-    console.log(`ðŸ‘¤ [DEBUG] Clientes encontrados:`, clientes?.length || 0)
-
-    const clientesFiltrados = (clientes || []).filter((cliente: any) => {
-      const normalizedName = normalizeSearch(cliente.full_name || '')
-      const normalizedCpf = String(cliente.cpf || '').replace(/\D/g, '')
-
-      if (cpfDigits.length > 0 && normalizedCpf.includes(cpfDigits)) return true
-      if (searchTokens.length === 0) return true
-
-      return searchTokens.every(token => normalizedName.includes(token))
-    })
-
-    if (clientesFiltrados.length === 0) return []
-
-    const idsClientes = clientesFiltrados.map((c: any) => c.id)
-
-    // PASSO 2: Busca Parcelas
-    const { data: parcelas, error: errParc } = await (supabaseAdmin
-      .from('financiamento_parcelas') as any)
-      .select(`
-                id,
-                numero_parcela,
-                valor_parcela,
-                data_vencimento,
-                financiamento_id,
-                customer_id,
-                status,
-                financiamento_loja (
-                    venda_id,
-                    vendas!financiamento_loja_venda_id_fkey (
-                        created_at,
-                        service_orders (
-                            dependente_id,
-                            dependentes ( full_name )
-                        )
+    let parcelasQuery = supabaseAdmin
+        .from('financiamento_parcelas')
+        .select(`
+            id,
+            numero_parcela,
+            valor_parcela,
+            data_vencimento,
+            financiamento_id,
+            customer_id,
+            status,
+            financiamento_loja (
+                venda_id,
+                vendas!financiamento_loja_venda_id_fkey (
+                    created_at,
+                    service_orders (
+                        dependente_id,
+                        dependentes ( full_name )
                     )
                 )
-            `)
-      .in('customer_id', idsClientes)
-      .eq('store_id', storeId)
-      .order('data_vencimento', { ascending: true })
+            ),
+            customers!inner(id, full_name, cpf)
+        `)
+        .eq('store_id', storeId)
+        .gt('valor_parcela', 0.01)
+        .not('status', 'in', '("Pago","Quitado","Cancelado","Cancelada","pago","quitado","cancelado","cancelada")')
+
+    if (cpfDigits.length > 0) {
+        parcelasQuery = parcelasQuery.or(`cpf.ilike.%${cpfDigits}%,full_name.ilike.%${firstToken || cleanTerm}%`, { referencedTable: 'customers' })
+    } else if (firstToken) {
+        parcelasQuery = parcelasQuery.ilike('customers.full_name', `%${firstToken}%`)
+    }
+
+    const { data: parcelasBrutas, error: errParc } = await parcelasQuery.limit(500)
 
     if (errParc) {
-      console.error("âŒ [DEBUG] Erro ao buscar parcelas:", errParc.message)
+      console.error("[DEBUG] Erro ao buscar parcelas:", errParc.message)
       return []
     }
 
-    const parcelasPendentes = parcelas?.filter((p: any) => {
-      const status = String(p.status || '').trim().toLowerCase()
-      // Considera "em aberto" qualquer status que não represente parcela quitada/cancelada.
-      return Number(p.valor_parcela || 0) > 0.01
-        && status !== 'pago'
-        && status !== 'quitado'
-        && status !== 'cancelado'
-        && status !== 'cancelada'
-    }) || []
-    console.log(`ðŸ“¦ [DEBUG] Parcelas pendentes encontradas:`, parcelasPendentes.length)
+    const parcelas = parcelasBrutas || []
 
-    // PASSO 3: Agrupamento
-    const resultado = clientesFiltrados.map((cli: any) => {
-      const parcs = parcelasPendentes.filter((p: any) => p.customer_id === cli.id)
+    const parcelasFiltradas = parcelas.filter((p: any) => {
+        const clienteName = normalizeSearch(p.customers?.full_name || '')
+        if (searchTokens.length <= 1) return true
+        return searchTokens.every((token: string) => clienteName.includes(token))
+    })
 
-      if (parcs.length === 0) return null
+    console.log(`[DEBUG] Parcelas pendentes encontradas:`, parcelasFiltradas.length)
 
-      const parcsFormatadas = parcs.map((p: any) => {
+    const agrupado = parcelasFiltradas.reduce((acc: any, p: any) => {
+        const cliId = p.customer_id
+        if (!acc[cliId]) {
+            acc[cliId] = {
+                cliente: p.customers,
+                parcelas: []
+            }
+        }
+        
         const venda = p.financiamento_loja?.vendas
         const os = venda?.service_orders?.[0]
-
         const nomeDependente = os?.dependentes?.full_name
-        const nomeTitular = cli.full_name
+        const nomeTitular = p.customers?.full_name
+        const beneficiario = (nomeDependente && nomeDependente !== nomeTitular) ? nomeDependente : null
 
-        const beneficiario = (nomeDependente && nomeDependente !== nomeTitular)
-          ? nomeDependente
-          : null
+        acc[cliId].parcelas.push({
+            id: p.id,
+            numero_parcela: p.numero_parcela,
+            valor_parcela: p.valor_parcela,
+            data_vencimento: p.data_vencimento,
+            venda_id: p.financiamento_loja?.venda_id,
+            data_venda: venda?.created_at,
+            beneficiario: beneficiario
+        })
+        return acc
+    }, {})
 
-        return {
-          id: p.id,
-          numero_parcela: p.numero_parcela,
-          valor_parcela: p.valor_parcela,
-          data_vencimento: p.data_vencimento,
-          venda_id: p.financiamento_loja?.venda_id,
-          data_venda: venda?.created_at,
-          beneficiario: beneficiario
-        }
-      })
+    const resultado = Object.values(agrupado)
 
-      return {
-        cliente: cli,
-        parcelas: parcsFormatadas
-      }
-    }).filter(Boolean)
-
-    console.log(`ðŸš€ [DEBUG] Sucesso! Retornando ${resultado.length} grupos.`)
+    console.log(`[DEBUG] Sucesso! Retornando ${resultado.length} grupos.`)
     return resultado
 
   } catch (e) {
-    console.error("ðŸ”¥ [DEBUG] Exceção crítica:", e)
+    console.error("[DEBUG] Exceção crítica:", e)
     return []
   }
 }

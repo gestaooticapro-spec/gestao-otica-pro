@@ -483,6 +483,16 @@ export default function OperatorMenuLojaVazia({
                                             <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">Gerenciar</span>
                                         </div>
                                     </button>
+                                    {/* Parcelamentos */}
+                                    {modules.installments && <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/financeiro/parcelas`)} onMouseEnter={(e) => handleHover(e, "Acompanhe e pesquise todas as parcelas e carnês gerados pela loja.")} onMouseMove={handleMove} onMouseLeave={handleLeave} className="group bg-gradient-to-br from-rose-600/12 via-rose-900/25 to-slate-900/60 hover:from-rose-500/22 hover:via-rose-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-rose-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(244,63,94,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40">
+                                        <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
+                                            <CalendarCheck className="w-6 h-6" strokeWidth={1.5} />
+                                        </div>
+                                        <div className="text-left">
+                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Parcelamentos</span>
+                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">Visualizar</span>
+                                        </div>
+                                    </button>}
                                 </div>
                             </div>
                         </div>

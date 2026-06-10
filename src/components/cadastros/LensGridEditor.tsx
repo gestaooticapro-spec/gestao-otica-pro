@@ -185,7 +185,7 @@ export default function LensGridEditor({ isOpen, onClose, productId, storeId, pr
                                                                     type="number"
                                                                     min="0"
                                                                     className={`w-full text-center text-xs font-bold bg-transparent border-none focus:ring-0 p-1 rounded
-                                                                        ${variant.estoque_atual > 0 ? 'text-blue-700' : 'text-slate-300'}
+                                                                        ${variant.estoque_atual > 0 ? 'text-blue-700' : 'text-red-500'}
                                                                     `}
                                                                     value={variant.estoque_atual}
                                                                     onChange={(e) => handleStockChange(variant.id, parseInt(e.target.value) || 0)}

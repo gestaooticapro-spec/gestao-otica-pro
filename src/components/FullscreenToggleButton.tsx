@@ -12,17 +12,19 @@ export default function FullscreenToggleButton({
   className = '',
   variant = 'floating',
 }: FullscreenToggleButtonProps) {
-  const [isFullscreen, setIsFullscreen] = useState(() => {
-    if (typeof document === 'undefined') return false
-    return Boolean(document.fullscreenElement)
-  })
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
   const customClass = className.trim()
   const isSupported =
     typeof document !== 'undefined' &&
     typeof document.documentElement.requestFullscreen === 'function'
 
   useEffect(() => {
+    setMounted(true)
     if (!isSupported) return
+
+    setIsFullscreen(Boolean(document.fullscreenElement))
 
     const handleFullscreenChange = () => {
       setIsFullscreen(Boolean(document.fullscreenElement))
@@ -35,7 +37,7 @@ export default function FullscreenToggleButton({
     }
   }, [isSupported])
 
-  if (!isSupported) return null
+  if (!mounted || !isSupported) return null
 
   const baseClass =
     'p-2 flex items-center justify-center rounded-full bg-black/20 hover:bg-black/40 text-white/50 hover:text-white border border-white/5 hover:border-white/20 transition-all backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/70'
