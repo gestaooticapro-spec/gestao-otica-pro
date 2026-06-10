@@ -90,18 +90,31 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
 
     }, [isOpen])
 
+    useEffect(() => {
+        if (!isOpen) return
+
+        const timer = setTimeout(() => {
+            if (query.trim().length >= 3) {
+                startSearch(async () => {
+                    try {
+                        const res = await searchPendenciasCliente(storeId, query)
+                        setResults(res as any[])
+                        setHasSearched(true)
+                    } catch (error) {
+                        console.error("[DEBUG] Erro na busca:", error)
+                    }
+                })
+            } else {
+                setResults([])
+                setHasSearched(false)
+            }
+        }, 300)
+
+        return () => clearTimeout(timer)
+    }, [query, storeId, isOpen])
+
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault()
-        if (query.trim().length < 2) return
-        startSearch(async () => {
-            try {
-                const res = await searchPendenciasCliente(storeId, query)
-                setResults(res as any[])
-                setHasSearched(true)
-            } catch (error) {
-                console.error("[DEBUG] Erro na busca:", error)
-            }
-        })
     }
 
     const handleSelectClient = (clientData: any) => {
@@ -211,8 +224,8 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
 
     return createPortal(
         <>
-            <div className="fixed inset-0 z-[50] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                <div className="bg-slate-950 w-full max-w-lg rounded-2xl shadow-2xl border border-white/10 overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="fixed inset-0 z-[50] flex items-start pt-20 justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                <div className="bg-slate-950 w-full max-w-lg rounded-2xl shadow-2xl border border-white/10 overflow-hidden flex flex-col h-[600px]">
 
                     {/* Header Amber (Financeiro) */}
                     <div className="bg-amber-950/30 border-b border-amber-500/20 px-6 py-4 flex justify-between items-center text-amber-100 shrink-0">

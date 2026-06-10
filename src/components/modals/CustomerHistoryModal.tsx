@@ -89,7 +89,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
 
     // Busca com debounce
     const handleSearch = useCallback(async (termo: string) => {
-        if (termo.length < 2) {
+        if (termo.length < 3) {
             setSearchResults([])
             return
         }
@@ -239,7 +239,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
             onClick={onClose}
         >
             <div
-                className="relative w-full max-w-2xl bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl shadow-black/50 border border-white/10 overflow-hidden flex flex-col max-h-[85vh] min-h-[600px]"
+                className="relative w-full max-w-2xl bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl shadow-black/50 border border-white/10 overflow-hidden flex flex-col h-[600px]"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
@@ -314,7 +314,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                                             <ChevronRight className="h-5 w-5 text-slate-600 group-hover:text-indigo-400 transition-colors" />
                                         </button>
                                     ))
-                                ) : searchTerm.length >= 2 && !isSearching ? (
+                                ) : searchTerm.length >= 3 && !isSearching ? (
                                     <div className="text-center py-8 text-slate-500">
                                         <AlertCircle className="h-10 w-10 mx-auto mb-2 opacity-50" />
                                         <p>Nenhum cliente encontrado</p>
