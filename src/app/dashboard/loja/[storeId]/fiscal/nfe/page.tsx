@@ -1032,7 +1032,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         setLoadingSaleData(true);
 
         try {
-            const data = await getSaleData(sale.id);
+            const data = await getSaleData(storeId, sale.id);
             setCustomerForm(customerFormFromSale(data, sale));
             setParticipantDirty(false);
             setParticipantSaveState("idle");

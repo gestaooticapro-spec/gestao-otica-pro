@@ -57,6 +57,85 @@ function normalizeDocument(value?: string | null) {
     return normalized || null;
 }
 
+function normalizeText(value?: string | null) {
+    return String(value ?? "").trim();
+}
+
+function normalizeIbgeCode(value?: string | number | null) {
+    return String(value ?? "").replace(/\D/g, "");
+}
+
+const VALID_IBGE_UF_CODES = new Set([
+    "11", "12", "13", "14", "15", "16", "17",
+    "21", "22", "23", "24", "25", "26", "27", "28", "29",
+    "31", "32", "33", "35",
+    "41", "42", "43",
+    "50", "51", "52", "53",
+]);
+
+function isValidIbgeMunicipalityCode(value?: string | number | null) {
+    const code = normalizeIbgeCode(value);
+    return code.length === 7 && VALID_IBGE_UF_CODES.has(code.slice(0, 2));
+}
+
+async function hydrateStoreFiscalDataFromNuvemFiscal(
+    company: any,
+    env: "production" | "homologation",
+    token: string
+) {
+    const cnpj = normalizeDocument(company.cnpj || company.cpf_cnpj);
+    if (!cnpj) return company;
+
+    const hasValidIbge = isValidIbgeMunicipalityCode(company.codigo_municipio_ibge);
+    const hasAddressBasics =
+        normalizeText(company.logradouro) &&
+        normalizeText(company.numero) &&
+        normalizeText(company.bairro) &&
+        normalizeText(company.cidade) &&
+        normalizeText(company.uf) &&
+        normalizeDocument(company.cep);
+
+    if (hasValidIbge && hasAddressBasics) return company;
+
+    try {
+        const baseUrl = env === "production"
+            ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
+            : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
+
+        const response = await fetch(`${baseUrl}/empresas/${cnpj}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (!response.ok) return company;
+
+        const remoteCompany = await response.json();
+        const address = remoteCompany?.endereco || {};
+        const remoteIbge = normalizeIbgeCode(address?.codigo_municipio);
+        const resolvedIbge = hasValidIbge
+            ? normalizeIbgeCode(company.codigo_municipio_ibge)
+            : isValidIbgeMunicipalityCode(remoteIbge)
+                ? remoteIbge
+                : normalizeIbgeCode(company.codigo_municipio_ibge);
+
+        return {
+            ...company,
+            razao_social: normalizeText(company.razao_social) || normalizeText(remoteCompany?.nome_razao_social) || company.razao_social,
+            nome_fantasia: normalizeText(company.nome_fantasia) || normalizeText(remoteCompany?.nome_fantasia) || company.nome_fantasia,
+            logradouro: normalizeText(company.logradouro) || normalizeText(address?.logradouro) || company.logradouro,
+            numero: normalizeText(company.numero) || normalizeText(address?.numero) || company.numero,
+            bairro: normalizeText(company.bairro) || normalizeText(address?.bairro) || company.bairro,
+            codigo_municipio_ibge: resolvedIbge,
+            cidade: normalizeText(company.cidade) || normalizeText(address?.cidade) || company.cidade,
+            uf: normalizeText(company.uf || address?.uf).toUpperCase() || company.uf,
+            cep: normalizeDocument(company.cep) || normalizeDocument(address?.cep) || company.cep,
+            inscricao_estadual: normalizeDocument(company.inscricao_estadual) || normalizeDocument(remoteCompany?.inscricao_estadual) || company.inscricao_estadual,
+        };
+    } catch (error) {
+        console.warn("[emitirNFCe] Nao foi possivel complementar dados da loja pela Nuvem Fiscal:", error);
+        return company;
+    }
+}
+
 function buildRespTec(company: any, fallbackCnpj?: string | null) {
     return {
         CNPJ: normalizeDocument(process.env.NFE_RT_CNPJ || fallbackCnpj) || "",
@@ -212,7 +291,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
         }
 
         // Mapear campos da tabela stores para o formato esperado pelo payload NFCe
-        const company = {
+        let company = {
             cnpj: store.cnpj,
             cpf_cnpj: store.cnpj,
             razao_social: store.razao_social || store.name,
@@ -231,6 +310,8 @@ export async function emitirNFCe(payload: EmissionPayload) {
             telefone: store.phone || store.whatsapp,
         };
 
+        company = await hydrateStoreFiscalDataFromNuvemFiscal(company, env, token);
+
         console.log("[emitirNFCe] Dados da loja:", JSON.stringify(company, null, 2));
 
         const cnpj = company.cnpj;
@@ -243,6 +324,12 @@ export async function emitirNFCe(payload: EmissionPayload) {
         }
 
         // 4. Buscar série NFCe configurada na loja
+        const codigoMunicipioIbge = normalizeIbgeCode(company.codigo_municipio_ibge);
+        if (!isValidIbgeMunicipalityCode(codigoMunicipioIbge)) {
+            throw new Error(`Codigo IBGE do municipio invalido na loja ${payload.store_id}: "${company.codigo_municipio_ibge || ""}". Informe os 7 digitos corretos nas configuracoes da loja.`);
+        }
+
+        const emitUf = normalizeText(company.uf).toUpperCase();
         const currentSerie = store.nfce_serie || 1;
 
         // 5. Obter próxima numeração sequencial de forma atômica via RPC
@@ -267,7 +354,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
             infNFe: {
                 versao: "4.00",
                 ide: {
-                    cUF: Number(company.codigo_municipio_ibge?.substring(0, 2)),
+                    cUF: Number(codigoMunicipioIbge.substring(0, 2)),
                     natOp: "VENDA DE MERCADORIA",
                     mod: 65, // 65 = NFC-e
                     serie: currentSerie,
@@ -275,7 +362,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
                     dhEmi: issuedAt,
                     tpNF: 1, // 1 = Saída
                     idDest: 1, // 1 = Interna
-                    cMunFG: Number(company.codigo_municipio_ibge),
+                    cMunFG: Number(codigoMunicipioIbge),
                     tpImp: 4, // 4 = DANFE NFC-e
                     tpEmis: 1, // 1 = Normal
                     tpAmb: env === 'production' ? 1 : 2, // 1 = Produção, 2 = Homologação
@@ -294,10 +381,10 @@ export async function emitirNFCe(payload: EmissionPayload) {
                         nro: (company.numero?.trim() && company.numero.trim() !== "") ? company.numero.trim() : "S/N",
                         xCpl: company.complemento?.trim() || undefined,
                         xBairro: company.bairro?.trim() && company.bairro.trim().length >= 2 ? company.bairro.trim() : "Não Informado",
-                        cMun: Number(company.codigo_municipio_ibge),
+                        cMun: Number(codigoMunicipioIbge),
                         xMun: company.cidade?.trim() || "Não Informado",
-                        UF: company.uf,
-                        CEP: company.cep?.replace(/\D/g, ""),
+                        UF: emitUf,
+                        CEP: normalizeDocument(company.cep) || undefined,
                         cPais: "1058",
                         xPais: "BRASIL"
                     },
@@ -1308,9 +1395,9 @@ export async function syncStoreFiscalData(
                     numero: storeData.number,
                     complemento: null,
                     bairro: storeData.neighborhood,
-                    codigo_municipio: "0000000", // TODO: IBGE real
+                    codigo_municipio: normalizeIbgeCode(storeData.codigo_municipio_ibge) || undefined,
                     cidade: storeData.city,
-                    uf: storeData.state,
+                    uf: normalizeText(storeData.state).toUpperCase() || undefined,
                     cep: storeData.cep?.replace(/\D/g, ""),
                     pais: "BRASIL"
                 }

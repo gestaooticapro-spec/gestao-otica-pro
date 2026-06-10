@@ -912,23 +912,34 @@ export async function getPendingSales(
     storeId: number,
     environment: "production" | "homologation" = "production",
 ) {
-    const supabase = createClient();
+    const supabase = createAdminClient() as any;
     const tenantId = await getTenantIdByStore(storeId);
 
-    if (!tenantId) return [];
+    if (!tenantId || !(await userOwnsStore(storeId, tenantId))) return [];
 
     // Busca Vendas que estão 'Fechada' mas ainda não têm nota fiscal emitida
     // Mapeamos work_order_id da tabela fiscal_invoices para o ID da venda
 
-    const { data: invoices } = await supabase
+    const { data: invoices, error: invoicesError } = await supabase
         .from("fiscal_invoices")
         .select("work_order_id")
         .eq("organization_id", tenantId)
+        .eq("store_id", storeId)
+        .eq("tipo_documento", "NFe")
         .eq("environment", environment)
         .in("status", ["draft", "processing", "authorized"])
         .not("work_order_id", "is", null);
 
-    const invoicedIds = invoices?.map(i => i.work_order_id) || [];
+    if (invoicesError) {
+        console.error("Erro ao validar vendas ja vinculadas a NF-e:", {
+            storeId,
+            environment,
+            message: invoicesError.message,
+        });
+        return [];
+    }
+
+    const invoicedIds = invoices?.map((i: { work_order_id: number | null }) => i.work_order_id) || [];
 
     let query = supabase
         .from("vendas")
@@ -951,11 +962,19 @@ export async function getPendingSales(
     const { data, error } = await query;
 
     if (error) {
-        console.error("Erro ao buscar Vendas pendentes:", error);
+        console.error("Erro ao buscar Vendas pendentes para NF-e:", {
+            storeId,
+            environment,
+            tenantId,
+            message: error.message,
+            details: (error as any).details,
+            hint: (error as any).hint,
+            code: (error as any).code,
+        });
         return [];
     }
 
-    return data.map(v => {
+    return data.map((v: any) => {
         const rawCustomer = v.customers as any;
         const customer = Array.isArray(rawCustomer) ? rawCustomer[0] : rawCustomer;
 
@@ -973,8 +992,10 @@ export async function getPendingSales(
     });
 }
 
-export async function getSaleData(saleId: number) {
-    const supabase = createClient();
+export async function getSaleData(storeId: number, saleId: number) {
+    const supabase = createAdminClient() as any;
+    const tenantId = await getTenantIdByStore(storeId);
+    if (!tenantId || !(await userOwnsStore(storeId, tenantId))) return null;
 
     // Busca dados da venda e itens
     const { data: venda, error } = await supabase
@@ -986,9 +1007,20 @@ export async function getSaleData(saleId: number) {
             pagamentos (*)
         `)
         .eq("id", saleId)
+        .eq("store_id", storeId)
+        .eq("tenant_id", tenantId)
         .single();
 
-    if (error) return null;
+    if (error) {
+        console.error("Erro ao buscar dados completos da venda para NF-e:", {
+            saleId,
+            message: error.message,
+            details: (error as any).details,
+            hint: (error as any).hint,
+            code: (error as any).code,
+        });
+        return null;
+    }
 
     return venda;
 }

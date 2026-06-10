@@ -31,7 +31,11 @@ const StoreProfileSchema = z.object({
     csc_producao: z.string().optional().nullable(),
     csc_id_producao: z.string().optional().nullable(),
     nfce_serie: z.coerce.number().int().min(1).max(999).optional().nullable(),
-    codigo_municipio_ibge: z.string().optional().nullable(),
+    nfe_serie: z.coerce.number().int().min(1).max(999).optional().nullable(),
+    codigo_municipio_ibge: z.string()
+        .refine(value => !value || /^\d{7}$/.test(value), "Codigo IBGE deve ter 7 digitos")
+        .optional()
+        .nullable(),
     regime_tributario: z.string().optional().nullable(),
 })
 
@@ -68,6 +72,15 @@ type TenantTableApi = {
 
 function toErrorMessage(error: unknown, fallback: string) {
     return error instanceof Error ? error.message : fallback
+}
+
+function onlyDigits(value: FormDataEntryValue | null) {
+    return String(value ?? '').replace(/\D/g, '')
+}
+
+function normalizeTextValue(value: FormDataEntryValue | null) {
+    const normalized = String(value ?? '').trim()
+    return normalized || null
 }
 
 export async function getStoreProfile(storeId: number): Promise<StoreRow | null> {
@@ -110,29 +123,30 @@ export async function updateStoreProfile(
 
     const rawData = {
         id: formData.get('id'),
-        name: formData.get('name'),
-        razao_social: formData.get('razao_social'),
-        cnpj: formData.get('cnpj'),
-        inscricao_estadual: formData.get('inscricao_estadual'),
-        whatsapp: formData.get('whatsapp'),
-        phone: formData.get('phone'),
-        email: formData.get('email'),
-        website: formData.get('website'),
-        cep: formData.get('cep'),
-        street: formData.get('street'),
-        number: formData.get('number'),
-        neighborhood: formData.get('neighborhood'),
-        city: formData.get('city'),
-        state: formData.get('state'),
-        pix_key: formData.get('pix_key'),
-        pix_city: formData.get('pix_city'),
-        csc_homologacao: formData.get('csc_homologacao'),
-        csc_id_homologacao: formData.get('csc_id_homologacao'),
-        csc_producao: formData.get('csc_producao'),
-        csc_id_producao: formData.get('csc_id_producao'),
+        name: normalizeTextValue(formData.get('name')),
+        razao_social: normalizeTextValue(formData.get('razao_social')),
+        cnpj: onlyDigits(formData.get('cnpj')),
+        inscricao_estadual: onlyDigits(formData.get('inscricao_estadual')),
+        whatsapp: normalizeTextValue(formData.get('whatsapp')),
+        phone: normalizeTextValue(formData.get('phone')),
+        email: normalizeTextValue(formData.get('email')),
+        website: normalizeTextValue(formData.get('website')),
+        cep: onlyDigits(formData.get('cep')),
+        street: normalizeTextValue(formData.get('street')),
+        number: normalizeTextValue(formData.get('number')),
+        neighborhood: normalizeTextValue(formData.get('neighborhood')),
+        city: normalizeTextValue(formData.get('city')),
+        state: String(formData.get('state') ?? '').trim().toUpperCase(),
+        pix_key: normalizeTextValue(formData.get('pix_key')),
+        pix_city: normalizeTextValue(formData.get('pix_city')),
+        csc_homologacao: normalizeTextValue(formData.get('csc_homologacao')),
+        csc_id_homologacao: normalizeTextValue(formData.get('csc_id_homologacao')),
+        csc_producao: normalizeTextValue(formData.get('csc_producao')),
+        csc_id_producao: normalizeTextValue(formData.get('csc_id_producao')),
         nfce_serie: formData.get('nfce_serie'),
-        codigo_municipio_ibge: formData.get('codigo_municipio_ibge'),
-        regime_tributario: formData.get('regime_tributario'),
+        nfe_serie: formData.get('nfe_serie'),
+        codigo_municipio_ibge: onlyDigits(formData.get('codigo_municipio_ibge')),
+        regime_tributario: normalizeTextValue(formData.get('regime_tributario')),
     }
     const validated = StoreProfileSchema.safeParse(rawData)
     if (!validated.success) {

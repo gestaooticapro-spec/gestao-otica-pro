@@ -46,11 +46,21 @@ type StoreData = {
     csc_producao?: string | null;
     csc_id_producao?: string | null;
     nfce_serie?: number | null;
+    nfe_serie?: number | null;
     codigo_municipio_ibge?: string | null;
     regime_tributario?: string | null;
     certificate_thumbprint?: string | null;
     certificate_valid_until?: string | null;
     settings: StoreFeatureSettings | null;
+};
+
+type ViaCepResponse = {
+    logradouro?: string;
+    bairro?: string;
+    localidade?: string;
+    uf?: string;
+    ibge?: string;
+    erro?: boolean;
 };
 
 // ═══════════════════════════════════════════════
@@ -59,6 +69,7 @@ type StoreData = {
 const labelStyle = "block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-[0.2em]";
 const inputStyle = "block w-full rounded-lg border border-white/10 bg-black/20 shadow-inner text-slate-200 h-9 text-sm px-3 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 font-bold placeholder:font-normal placeholder:text-slate-500 disabled:bg-black/10 disabled:text-slate-500 transition-all outline-none backdrop-blur-sm";
 const cardStyle = "bg-white/5 backdrop-blur-xl border border-white/10 p-5 rounded-xl shadow-xl mb-4 relative overflow-hidden";
+const helpTextStyle = "text-[9px] mt-1";
 const EMPTY_EMPLOYEE_FORM = {
     full_name: '',
     pin: '',
@@ -75,6 +86,20 @@ function StoreDataForm({ storeId }: { storeId: number }) {
     const [data, setData] = useState<StoreData | null>(null)
     const [loading, setLoading] = useState(true)
     const [isSaving, startTransition] = useTransition()
+    const [cep, setCep] = useState('')
+    const [street, setStreet] = useState('')
+    const [neighborhood, setNeighborhood] = useState('')
+    const [city, setCity] = useState('')
+    const [stateUf, setStateUf] = useState('')
+    const [codigoMunicipioIbge, setCodigoMunicipioIbge] = useState('')
+    const [isCepLoading, setIsCepLoading] = useState(false)
+    const [cepMessage, setCepMessage] = useState<string | null>(null)
+
+    const maskCep = (value: string) => {
+        const digits = value.replace(/\D/g, '').slice(0, 8)
+        if (digits.length <= 5) return digits
+        return `${digits.slice(0, 5)}-${digits.slice(5)}`
+    }
 
     useEffect(() => {
         getStoreProfile(storeId).then(res => {
@@ -83,8 +108,115 @@ function StoreDataForm({ storeId }: { storeId: number }) {
         })
     }, [storeId])
 
+    useEffect(() => {
+        if (!data) return
+        setCep(maskCep(data.cep ?? ''))
+        setStreet(data.street ?? '')
+        setNeighborhood(data.neighborhood ?? '')
+        setCity(data.city ?? '')
+        setStateUf((data.state ?? '').toUpperCase())
+        setCodigoMunicipioIbge(data.codigo_municipio_ibge ?? '')
+    }, [data])
+
+    useEffect(() => {
+        const ibgeInput = document.querySelector<HTMLInputElement>('input[name="codigo_municipio_ibge"]')
+        if (!ibgeInput) return
+
+        ibgeInput.value = codigoMunicipioIbge
+        ibgeInput.readOnly = true
+        ibgeInput.placeholder = 'Preenchido pelo CEP'
+        ibgeInput.title = 'Codigo IBGE preenchido automaticamente a partir do CEP'
+        ibgeInput.classList.add('cursor-not-allowed')
+    }, [codigoMunicipioIbge])
+
+    const handleCepChange = (value: string) => {
+        setCep(maskCep(value))
+        setCepMessage(null)
+    }
+
+    const resolveCepData = async (rawCep: string) => {
+        const cleanCep = rawCep.replace(/\D/g, '')
+        if (cleanCep.length !== 8) {
+            setCepMessage('Informe um CEP com 8 digitos.')
+            return null
+        }
+
+        setIsCepLoading(true)
+        setCepMessage(null)
+
+        try {
+            const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`)
+            if (!response.ok) throw new Error('Falha ao consultar CEP.')
+
+            const result = await response.json() as ViaCepResponse
+            if (result.erro) {
+                setCepMessage('CEP nao encontrado.')
+                return null
+            }
+
+            const resolved = {
+                cep: maskCep(cleanCep),
+                street: result.logradouro ?? '',
+                neighborhood: result.bairro ?? '',
+                city: result.localidade ?? '',
+                stateUf: (result.uf ?? '').toUpperCase(),
+                codigoMunicipioIbge: result.ibge ?? '',
+            }
+
+            setCepMessage(result.ibge ? 'Endereco e codigo IBGE preenchidos automaticamente.' : 'Endereco encontrado, mas o IBGE nao veio na consulta.')
+            return resolved
+        } catch (error) {
+            console.error('Erro ao consultar CEP da loja:', error)
+            setCepMessage('Nao foi possivel consultar o CEP.')
+            return null
+        } finally {
+            setIsCepLoading(false)
+        }
+    }
+
+    const applyResolvedCepData = (resolved: NonNullable<Awaited<ReturnType<typeof resolveCepData>>>) => {
+        setStreet(resolved.street)
+        setNeighborhood(resolved.neighborhood)
+        setCity(resolved.city)
+        setStateUf(resolved.stateUf)
+        setCodigoMunicipioIbge(resolved.codigoMunicipioIbge)
+        setCep(resolved.cep)
+    }
+
+    const handleCepLookup = async () => {
+        const resolved = await resolveCepData(cep)
+        if (!resolved) return
+        applyResolvedCepData(resolved)
+    }
+
     const handleSave = (formData: FormData) => {
         startTransition(async () => {
+            let nextCep = cep
+            let nextStreet = street
+            let nextNeighborhood = neighborhood
+            let nextCity = city
+            let nextStateUf = stateUf
+            let nextCodigoMunicipioIbge = codigoMunicipioIbge
+
+            if (cep.replace(/\D/g, '').length === 8 && (!codigoMunicipioIbge || !city || !stateUf)) {
+                const resolved = await resolveCepData(cep)
+                if (resolved) {
+                    applyResolvedCepData(resolved)
+                    nextCep = resolved.cep
+                    nextStreet = resolved.street
+                    nextNeighborhood = resolved.neighborhood
+                    nextCity = resolved.city
+                    nextStateUf = resolved.stateUf
+                    nextCodigoMunicipioIbge = resolved.codigoMunicipioIbge
+                }
+            }
+
+            formData.set('cep', nextCep.replace(/\D/g, ''))
+            formData.set('street', nextStreet)
+            formData.set('neighborhood', nextNeighborhood)
+            formData.set('city', nextCity)
+            formData.set('state', nextStateUf)
+            formData.set('codigo_municipio_ibge', nextCodigoMunicipioIbge)
             const res = await updateStoreProfile(null, formData)
             if (res.success) alert(res.message)
             else alert("Erro: " + res.message)
@@ -216,15 +348,29 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                 <div className="grid grid-cols-6 gap-3">
                     <div className="col-span-2">
                         <label className={labelStyle}>CEP</label>
-                        <input name="cep" defaultValue={data.cep ?? ''} className={inputStyle} />
+                        <input
+                            name="cep"
+                            value={cep}
+                            onChange={(e) => handleCepChange(e.target.value)}
+                            onBlur={() => {
+                                if (cep.replace(/\D/g, '').length === 8) void handleCepLookup()
+                            }}
+                            className={inputStyle}
+                            placeholder={isCepLoading ? 'Buscando CEP...' : '00000-000'}
+                        />
+                        {cepMessage && (
+                            <p className={`${helpTextStyle} ${cepMessage.includes('automaticamente') ? 'text-emerald-400' : 'text-amber-400'}`}>
+                                {cepMessage}
+                            </p>
+                        )}
                     </div>
                     <div className="col-span-2">
                         <label className={labelStyle}>Cidade</label>
-                        <input name="city" defaultValue={data.city ?? ''} className={inputStyle} />
+                        <input name="city" value={city} onChange={(e) => setCity(e.target.value)} className={inputStyle} />
                     </div>
                     <div className="col-span-1">
                         <label className={labelStyle}>UF</label>
-                        <input name="state" defaultValue={data.state ?? ''} className={inputStyle} maxLength={2} />
+                        <input name="state" value={stateUf} onChange={(e) => setStateUf(e.target.value.toUpperCase().slice(0, 2))} className={inputStyle} maxLength={2} />
                     </div>
                     <div className="col-span-1">
                         <label className={labelStyle}>Cód. IBGE</label>
@@ -232,7 +378,7 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                     </div>
                     <div className="col-span-4">
                         <label className={labelStyle}>Logradouro</label>
-                        <input name="street" defaultValue={data.street ?? ''} className={inputStyle} />
+                        <input name="street" value={street} onChange={(e) => setStreet(e.target.value)} className={inputStyle} />
                     </div>
                     <div className="col-span-2">
                         <label className={labelStyle}>Número</label>
@@ -240,7 +386,7 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                     </div>
                     <div className="col-span-3">
                         <label className={labelStyle}>Bairro</label>
-                        <input name="neighborhood" defaultValue={data.neighborhood ?? ''} className={inputStyle} />
+                        <input name="neighborhood" value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} className={inputStyle} />
                     </div>
                 </div>
             </div>
@@ -288,7 +434,7 @@ function StoreDataForm({ storeId }: { storeId: number }) {
 
                         <div className="bg-indigo-500/10 p-3 rounded-lg border border-indigo-500/20">
                             <p className="text-[10px] font-bold text-indigo-300 uppercase mb-2">Numeração & Regime</p>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-3 gap-3">
                                 <div>
                                     <label className={labelStyle}>Série NFCe</label>
                                     <input
@@ -302,6 +448,21 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                                     />
                                     <p className="text-[9px] text-indigo-400/60 mt-1 leading-tight">
                                         Use séries diferentes para lojas do mesmo CNPJ.
+                                    </p>
+                                </div>
+                                <div>
+                                    <label className={labelStyle}>Série NFe</label>
+                                    <input
+                                        name="nfe_serie"
+                                        type="number"
+                                        min="1"
+                                        max="999"
+                                        defaultValue={data.nfe_serie ?? 1}
+                                        className={inputStyle}
+                                        placeholder="Ex: 1"
+                                    />
+                                    <p className="text-[9px] text-indigo-400/60 mt-1 leading-tight">
+                                        Usada na NF-e modelo 55.
                                     </p>
                                 </div>
                                 <div>
