@@ -160,6 +160,7 @@ export default function FrameMeasurementTool({
   const [linkedOS, setLinkedOS] = useState<MedicaoOSLookup | null>(null)
   const [osNumberInput, setOsNumberInput] = useState('')
   const [osLookupError, setOsLookupError] = useState<string | null>(null)
+  const [showOsModal, setShowOsModal] = useState(false)
   const [cardMm,      setCardMm]      = useState(85.6)
   const [cardInput,   setCardInput]   = useState('85.6')
   const [cameraOpen,  setCameraOpen]  = useState(false)
@@ -1225,56 +1226,25 @@ export default function FrameMeasurementTool({
                 )}
                 {step === 'done' && !saved && (
                   <>
-                    {isDetachedFlow && (
-                      <div className="w-full rounded-xl border border-white/10 bg-black/25 p-2">
-                        <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                          Numero da OS
-                        </label>
-                        <div className="flex gap-2">
-                          <input
-                            value={osNumberInput}
-                            onChange={e => {
-                              setOsNumberInput(e.target.value)
-                              setLinkedOS(null)
-                              setOsLookupError(null)
-                            }}
-                            placeholder="Digite o numero/protocolo"
-                            className="h-10 min-w-0 flex-1 rounded-lg border border-white/10 bg-black/30 px-3 text-sm font-semibold text-white outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-500/30"
-                          />
-                          <button
-                            onClick={lookupOS}
-                            disabled={saving || !osNumberInput.trim()}
-                            className="h-10 shrink-0 rounded-lg bg-cyan-700 px-3 text-xs font-bold text-white transition-colors hover:bg-cyan-600 disabled:opacity-50"
-                          >
-                            {saving ? 'Buscando...' : 'Buscar OS'}
-                          </button>
-                        </div>
-                        {linkedOS && (
-                          <p className="mt-1 text-[11px] text-emerald-300">
-                            OS {linkedOS.protocolo_fisico ?? linkedOS.id} vinculada a {linkedOS.dependente_name ?? linkedOS.customer_name ?? 'cliente'}
-                          </p>
-                        )}
-                        {osLookupError && <p className="mt-1 text-[11px] text-rose-300">{osLookupError}</p>}
-                      </div>
-                    )}
                     <button onClick={() => setShowDiam(v => !v)}
                       className={`flex-1 py-2 rounded-xl text-xs font-medium border transition-colors ${showDiam ? 'bg-indigo-900/60 border-indigo-500 text-indigo-200' : 'bg-white/5 border-white/10 text-slate-300'}`}>
                       {showDiam ? 'Ocultar Ø' : 'Calcular Ø'}
                     </button>
-                    {osId || linkedOS ? (
-                      <button onClick={saveToOS} disabled={saving}
-                        className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors">
-                        {saving
-                          ? <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                          : <Save className="w-3.5 h-3.5" />}
-                        {saving ? 'Salvando...' : 'Salvar na OS'}
-                      </button>
-                    ) : (
-                      <button onClick={copyResults}
-                        className={`flex-1 py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors ${copied ? 'bg-emerald-700 text-emerald-100' : 'bg-slate-700 hover:bg-slate-600'}`}>
-                        <Copy className="w-3.5 h-3.5" />{copied ? 'Copiado!' : 'Copiar'}
-                      </button>
-                    )}
+                    <button onClick={copyResults}
+                      className={`flex-1 py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors ${copied ? 'bg-emerald-700 text-emerald-100' : 'bg-slate-700 hover:bg-slate-600'}`}>
+                      <Copy className="w-3.5 h-3.5" />{copied ? 'Copiado!' : 'Copiar'}
+                    </button>
+                    <button onClick={() => {
+                        if (osId || linkedOS) saveToOS()
+                        else setShowOsModal(true)
+                      }} 
+                      disabled={saving}
+                      className="flex-[1.5] py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors">
+                      {saving
+                        ? <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" />
+                        : <Save className="w-3.5 h-3.5" />}
+                      {saving ? 'Salvando...' : 'Salvar na OS'}
+                    </button>
                   </>
                 )}
 
@@ -1300,6 +1270,58 @@ export default function FrameMeasurementTool({
             </div>
           )}
         </>
+      )}
+
+      {/* Modal de OS */}
+      {showOsModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-sm p-6 shadow-2xl flex flex-col">
+            <h3 className="text-lg font-bold text-white mb-2">Vincular Ordem de Serviço</h3>
+            <p className="text-sm text-slate-400 mb-6">Digite o número ou protocolo da OS para salvar estas medidas.</p>
+            
+            <div className="space-y-4">
+              <div>
+                <input
+                  value={osNumberInput}
+                  onChange={e => {
+                    setOsNumberInput(e.target.value)
+                    setLinkedOS(null)
+                    setOsLookupError(null)
+                  }}
+                  placeholder="Nº da OS"
+                  className="w-full h-12 rounded-xl border border-white/10 bg-black/30 px-4 text-base font-semibold text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+                  autoFocus
+                />
+              </div>
+              
+              {linkedOS && (
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl animate-in slide-in-from-top-2">
+                  <p className="text-sm font-semibold text-emerald-400 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4" /> OS encontrada!
+                  </p>
+                  <p className="text-xs text-emerald-300/80 mt-1.5">Cliente: {linkedOS.dependente_name ?? linkedOS.customer_name ?? 'Não identificado'}</p>
+                </div>
+              )}
+              
+              {osLookupError && <p className="text-sm text-rose-400">{osLookupError}</p>}
+
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => setShowOsModal(false)} className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-slate-300 rounded-xl font-medium text-sm transition-colors">
+                  Cancelar
+                </button>
+                {!linkedOS ? (
+                  <button onClick={lookupOS} disabled={saving || !osNumberInput.trim()} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium text-sm transition-colors disabled:opacity-50 flex justify-center items-center gap-2">
+                    {saving ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" /> : 'Buscar'}
+                  </button>
+                ) : (
+                  <button onClick={() => { setShowOsModal(false); saveToOS() }} disabled={saving} className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-medium text-sm transition-colors disabled:opacity-50 flex justify-center items-center gap-2">
+                    Salvar Medidas
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

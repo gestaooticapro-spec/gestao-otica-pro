@@ -107,7 +107,7 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
         // 2. Fetch All Sales with Items and Dependents
         console.log('[X-Ray] Fetching sales for customer:', customerId, 'store:', storeId)
 
-        // Try with explicit FK hint first
+        // Try without explicit FK hint to avoid stack overflow bug in Supabase
         let vendas: any[] = []
 
         const { data: vendasData, error: vendasError } = await supabase
@@ -120,11 +120,6 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
                 ),
                 pagamentos:pagamentos(
                     forma_pagamento, valor_pago, parcelas, created_at, obs
-                ),
-                financiamento_loja!financiamento_loja_venda_id_fkey (
-                    financiamento_parcelas (
-                        id, numero_parcela, data_vencimento, valor_parcela, status, data_pagamento
-                    )
                 ),
                 os:service_orders(
                     *,
@@ -143,6 +138,30 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
 
         vendas = vendasData as any[]
         console.log('[X-Ray] Found', vendas.length, 'sales')
+
+        if (vendas.length > 0) {
+            // Fetch financiamento_loja separately to avoid postgrest embedding bugs
+            const vendasIds = vendas.map(v => v.id)
+            const { data: finDataResult, error: finError } = await supabase
+                .from('financiamento_loja')
+                .select(`
+                    id, venda_id,
+                    financiamento_parcelas (
+                        id, numero_parcela, data_vencimento, valor_parcela, status, data_pagamento
+                    )
+                `)
+                .in('venda_id', vendasIds)
+
+            const finData = finDataResult as any[]
+
+            if (!finError && finData) {
+                // Attach them back
+                for (const venda of vendas) {
+                    venda.financiamento_loja = finData.filter(f => f.venda_id === venda.id)
+                }
+            }
+        }
+
 
         // 2c. Fetch service orders for customer (for robust post-sales lookup)
         let serviceOrders: any[] = []
