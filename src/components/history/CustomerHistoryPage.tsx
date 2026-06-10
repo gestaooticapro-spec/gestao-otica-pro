@@ -54,19 +54,13 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
 
     // States for Installments (Parcelas) Modal
     const [isParcelasModalOpen, setIsParcelasModalOpen] = useState(false)
-    const [parcelasFiltros, setParcelasFiltros] = useState<ParcelaFiltro>({
-        status: 'todas',
-        dataInicial: '',
-        dataFinal: '',
-        busca: ''
-    })
     const [parcelasModalData, setParcelasModalData] = useState<any[]>([])
     const [isParcelasLoading, setIsParcelasLoading] = useState(false)
     const [expandedSales, setExpandedSales] = useState<Record<number, boolean>>({})
 
-    const fetchParcelas = async (currentFilters: ParcelaFiltro = parcelasFiltros) => {
+    const fetchParcelas = async () => {
         setIsParcelasLoading(true)
-        const res = await getCustomerParcelasFiltradas(storeId, customer.id, currentFilters)
+        const res = await getCustomerParcelasFiltradas(storeId, customer.id, { status: 'todas' })
         if (res.success) {
             setParcelasModalData(res.data || [])
             const uniqueVendas = Array.from(new Set((res.data || []).map((p: any) => p.financiamento_loja?.venda_id || 0)))
@@ -83,18 +77,7 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
 
     useEffect(() => {
         if (isParcelasModalOpen) {
-            fetchParcelas({
-                status: 'todas',
-                dataInicial: '',
-                dataFinal: '',
-                busca: ''
-            })
-            setParcelasFiltros({
-                status: 'todas',
-                dataInicial: '',
-                dataFinal: '',
-                busca: ''
-            })
+            fetchParcelas()
         }
     }, [isParcelasModalOpen])
 
@@ -737,68 +720,7 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                             </button>
                         </div>
 
-                        {/* Filtros */}
-                        <div className="bg-slate-900/60 border-b border-white/10 p-4 flex flex-wrap items-end gap-3 shrink-0">
-                            <div className="flex flex-col gap-1 w-full sm:w-auto sm:flex-1 min-w-[150px]">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Busca Venda (ID)</label>
-                                <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
-                                        <Search className="h-3 w-3 text-slate-500" />
-                                    </div>
-                                    <input
-                                        type="text"
-                                        className="w-full bg-slate-950 border border-white/10 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all placeholder:text-slate-600"
-                                        placeholder="Venda ID..."
-                                        value={parcelasFiltros.busca}
-                                        onChange={e => setParcelasFiltros({ ...parcelasFiltros, busca: e.target.value })}
-                                        onKeyDown={e => e.key === 'Enter' && fetchParcelas()}
-                                    />
-                                </div>
-                            </div>
 
-                            <div className="flex flex-col gap-1 w-[120px]">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Status</label>
-                                <select
-                                    className="w-full bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all"
-                                    value={parcelasFiltros.status}
-                                    onChange={e => setParcelasFiltros({ ...parcelasFiltros, status: e.target.value as any })}
-                                >
-                                    <option value="todas">Todas</option>
-                                    <option value="pendente">Pendentes</option>
-                                    <option value="atrasado">Atrasadas</option>
-                                    <option value="pago">Pagas</option>
-                                </select>
-                            </div>
-
-                            <div className="flex flex-col gap-1 w-[120px]">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Venc. Inicial</label>
-                                <input
-                                    type="date"
-                                    className="w-full bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all color-scheme-dark"
-                                    value={parcelasFiltros.dataInicial}
-                                    onChange={e => setParcelasFiltros({ ...parcelasFiltros, dataInicial: e.target.value })}
-                                />
-                            </div>
-
-                            <div className="flex flex-col gap-1 w-[120px]">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Venc. Final</label>
-                                <input
-                                    type="date"
-                                    className="w-full bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all color-scheme-dark"
-                                    value={parcelasFiltros.dataFinal}
-                                    onChange={e => setParcelasFiltros({ ...parcelasFiltros, dataFinal: e.target.value })}
-                                />
-                            </div>
-
-                            <button
-                                onClick={() => fetchParcelas()}
-                                disabled={isParcelasLoading}
-                                className="h-[32px] px-4 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
-                            >
-                                {isParcelasLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Filter className="h-3 w-3" />}
-                                Filtrar
-                            </button>
-                        </div>
 
                         {/* Conteúdo (Scrollable) */}
                         <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar bg-slate-950/60">
