@@ -539,6 +539,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
     const [selectedParticipantId, setSelectedParticipantId] = useState<number | null>(null);
     const [participantSaveState, setParticipantSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
     const [participantSaveMessage, setParticipantSaveMessage] = useState("");
+    const [participantDirty, setParticipantDirty] = useState(false);
     const [cepLoading, setCepLoading] = useState(false);
     const [items, setItems] = useState<NFeItemForm[]>([{ ...emptyItem }]);
     const [paymentMethod, setPaymentMethod] = useState("01");
@@ -667,6 +668,9 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         setSelectedParticipantId(null);
         setParticipantMode("manual");
         setCustomerForm(emptyCustomerForm);
+        setParticipantDirty(false);
+        setParticipantSaveState("idle");
+        setParticipantSaveMessage("");
         setItems([{ ...emptyItem }]);
         setError(null);
         setSuccess(null);
@@ -728,6 +732,9 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                 codigoMunicipioIbge: participant.codigo_municipio,
                 inscricaoEstadual: participant.inscricao_estadual,
             });
+            setParticipantDirty(false);
+            setParticipantSaveState("idle");
+            setParticipantSaveMessage("");
 
             const clonedItems = (result.items || []).map((item: ParsedNFeItem, index: number) => cloneDraftItem(item, index));
             setItems(clonedItems.length > 0 ? clonedItems : [{ ...emptyItem }]);
@@ -797,6 +804,9 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
             codigoMunicipioIbge: result.participant.codigo_municipio,
             inscricaoEstadual: result.participant.inscricao_estadual,
         });
+        setParticipantDirty(false);
+        setParticipantSaveState("idle");
+        setParticipantSaveMessage("");
     }
 
     async function selectDepositTransferOrigin(origin: ShipmentOrigin) {
@@ -836,6 +846,9 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
             codigoMunicipioIbge: result.participant.codigo_municipio,
             inscricaoEstadual: result.participant.inscricao_estadual,
         });
+        setParticipantDirty(false);
+        setParticipantSaveState("idle");
+        setParticipantSaveMessage("");
         setItems(result.items.map((item) => ({
             codigo: item.codigo,
             descricao: item.descricao,
@@ -888,6 +901,9 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
             codigoMunicipioIbge: result.participant.codigo_municipio,
             inscricaoEstadual: result.participant.inscricao_estadual,
         });
+        setParticipantDirty(false);
+        setParticipantSaveState("idle");
+        setParticipantSaveMessage("");
         setItems(result.items.map((item) => ({
             codigo: item.codigo,
             descricao: item.descricao,
@@ -937,6 +953,9 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
             codigoMunicipioIbge: result.participant.codigo_municipio,
             inscricaoEstadual: result.participant.inscricao_estadual,
         });
+        setParticipantDirty(false);
+        setParticipantSaveState("idle");
+        setParticipantSaveMessage("");
         setItems(result.items.map((item) => ({
             codigo: item.codigo,
             descricao: item.descricao,
@@ -985,6 +1004,9 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
             codigoMunicipioIbge: result.participant.codigo_municipio,
             inscricaoEstadual: result.participant.inscricao_estadual,
         });
+        setParticipantDirty(false);
+        setParticipantSaveState("idle");
+        setParticipantSaveMessage("");
         setItems(result.items.map((item) => ({
             codigo: item.codigo,
             descricao: item.descricao,
@@ -1012,6 +1034,9 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         try {
             const data = await getSaleData(sale.id);
             setCustomerForm(customerFormFromSale(data, sale));
+            setParticipantDirty(false);
+            setParticipantSaveState("idle");
+            setParticipantSaveMessage("");
             setSelectedParticipantId(null);
             setParticipantMode("manual");
 
@@ -1059,6 +1084,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
     function updateCustomerForm(field: keyof CustomerForm, value: string) {
         setCustomerForm((current) => ({ ...current, [field]: value }));
         setParticipantSaveState("idle");
+        setParticipantSaveMessage("");
+        setParticipantDirty(true);
     }
 
     function selectParticipant(participant: ParticipantResult) {
@@ -1068,23 +1095,60 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         setParticipantResults([]);
         setHideParticipantResults(true);
         setParticipantSaveState("idle");
+        setParticipantSaveMessage("");
+        setParticipantDirty(false);
+    }
+
+    async function resolveCustomerFormWithCep(form: CustomerForm) {
+        const cep = onlyDigits(form.cep);
+        if (cep.length !== 8) return form;
+
+        setCepLoading(true);
+        try {
+            const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+            const data = await response.json() as ViaCepResponse;
+
+            if (data?.erro) return { ...form, cep };
+
+            return {
+                ...form,
+                cep,
+                logradouro: form.logradouro || data.logradouro || "",
+                bairro: form.bairro || data.bairro || "",
+                cidade: form.cidade || data.localidade || "",
+                uf: form.uf || data.uf || "",
+                codigoMunicipioIbge: form.codigoMunicipioIbge || data.ibge || "",
+            };
+        } catch (err) {
+            console.warn("Erro ao buscar CEP:", err);
+            return { ...form, cep };
+        } finally {
+            setCepLoading(false);
+        }
     }
 
     async function saveParticipantOnBlur() {
         if (participantLocked) return;
         if (!customerForm.nome.trim()) return;
+        if (!participantDirty) return;
+
+        const nextForm = await resolveCustomerFormWithCep(customerForm);
+        if (nextForm !== customerForm) {
+            setCustomerForm(nextForm);
+        }
 
         setParticipantSaveState("saving");
         const result = await saveNFeCustomerParticipantAction({
             storeId,
             customerId: selectedParticipantId,
-            participant: customerForm,
+            participant: nextForm,
         });
 
         if (result.success) {
             setSelectedParticipantId(result.customerId || selectedParticipantId);
             setParticipantSaveState("saved");
             setParticipantSaveMessage(result.created ? "Cliente criado automaticamente." : "Cliente atualizado automaticamente.");
+            setParticipantDirty(false);
             return;
         }
 
@@ -1092,14 +1156,16 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         setParticipantSaveMessage(result.error || "Não foi possível salvar o participante.");
     }
 
-    async function lookupCepAndSave() {
+    async function lookupCepPreview() {
         if (participantLocked) return;
-        const cep = onlyDigits(customerForm.cep);
-        if (cep.length !== 8) {
-            await saveParticipantOnBlur();
-            return;
-        }
+        if (onlyDigits(customerForm.cep).length !== 8) return;
 
+        const resolvedForm = await resolveCustomerFormWithCep(customerForm);
+        if (resolvedForm !== customerForm) {
+            setCustomerForm(resolvedForm);
+            setParticipantDirty(true);
+        }
+        const cep = onlyDigits(customerForm.cep);
         setCepLoading(true);
         let nextForm = { ...customerForm, cep };
         try {
@@ -1138,6 +1204,15 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                 setParticipantSaveMessage(result.error || "Não foi possível salvar o participante.");
             }
         });
+    }
+
+    function handleParticipantCardBlur(event: React.FocusEvent<HTMLElement>) {
+        const nextFocused = event.relatedTarget;
+        if (nextFocused instanceof Node && event.currentTarget.contains(nextFocused)) {
+            return;
+        }
+
+        void saveParticipantOnBlur();
     }
 
     function updateItem(index: number, patch: Partial<NFeItemForm>) {
@@ -2096,7 +2171,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                     )}
 
                     {step === "participant" && (
-                        <section className="space-y-5">
+                        <section className="space-y-5" onBlur={handleParticipantCardBlur}>
                             <div>
                                 <h2 className="text-lg font-black text-white">Participante da nota</h2>
                                 <p className="text-sm text-slate-400">
@@ -2113,6 +2188,9 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                     onClick={() => {
                                         setParticipantMode("search");
                                         setHideParticipantResults(false);
+                                        setParticipantDirty(false);
+                                        setParticipantSaveState("idle");
+                                        setParticipantSaveMessage("");
                                     }}
                                     className={`rounded-xl px-4 py-2 text-xs font-black transition ${participantMode === "search" ? "bg-amber-500 text-black shadow-sm" : "text-slate-200 hover:bg-black/40"}`}
                                 >
@@ -2124,6 +2202,9 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                         setParticipantMode("manual");
                                         setSelectedParticipantId(null);
                                         setHideParticipantResults(false);
+                                        setParticipantDirty(false);
+                                        setParticipantSaveState("idle");
+                                        setParticipantSaveMessage("");
                                     }}
                                     className={`rounded-xl px-4 py-2 text-xs font-black transition ${participantMode === "manual" ? "bg-amber-500 text-black shadow-sm" : "text-slate-200 hover:bg-black/40"}`}
                                 >
@@ -2179,7 +2260,10 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                 </div>
                             )}
 
-                            <fieldset disabled={participantLocked} className={`rounded-2xl border border-white/5 bg-black/40 p-4 ${participantLocked ? "opacity-80" : ""}`}>
+                            <fieldset
+                                disabled={participantLocked}
+                                className={`rounded-2xl border border-white/5 bg-black/40 p-4 ${participantLocked ? "opacity-80" : ""}`}
+                            >
                                 <div className="mb-3 flex items-center justify-between gap-3">
                                     <div>
                                         <h3 className="text-sm font-black text-white">Dados do participante</h3>
@@ -2189,10 +2273,10 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                 </div>
 
                                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                                    <Field label="Nome / Razao Social" value={customerForm.nome} onChange={(v) => updateCustomerForm("nome", v)} onBlur={saveParticipantOnBlur} />
-                                    <Field label="CPF / CNPJ" value={customerForm.cpfCnpj} onChange={(v) => updateCustomerForm("cpfCnpj", v)} onBlur={saveParticipantOnBlur} />
-                                    <Field label="Email" value={customerForm.email} onChange={(v) => updateCustomerForm("email", v)} onBlur={saveParticipantOnBlur} />
-                                    <Field label="Inscrição Estadual (se houver)" value={customerForm.inscricaoEstadual} onChange={(v) => updateCustomerForm("inscricaoEstadual", v)} onBlur={saveParticipantOnBlur} />
+                                    <Field label="Nome / Razao Social" value={customerForm.nome} onChange={(v) => updateCustomerForm("nome", v)} />
+                                    <Field label="CPF / CNPJ" value={customerForm.cpfCnpj} onChange={(v) => updateCustomerForm("cpfCnpj", v)} />
+                                    <Field label="Email" value={customerForm.email} onChange={(v) => updateCustomerForm("email", v)} />
+                                    <Field label="Inscrição Estadual (se houver)" value={customerForm.inscricaoEstadual} onChange={(v) => updateCustomerForm("inscricaoEstadual", v)} />
                                 </div>
 
                                 <div className="mt-4 rounded-2xl border border-white/5 bg-white/5 p-4">
@@ -2203,16 +2287,15 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                 label={cepLoading ? "CEP buscando..." : "CEP"}
                                                 value={customerForm.cep}
                                                 onChange={(v) => updateCustomerForm("cep", v)}
-                                                onBlur={lookupCepAndSave}
                                             />
                                         </div>
-                                        <div className="xl:col-span-6"><Field label="Logradouro" value={customerForm.logradouro} onChange={(v) => updateCustomerForm("logradouro", v)} onBlur={saveParticipantOnBlur} /></div>
-                                        <div className="xl:col-span-3"><Field label="Número" value={customerForm.numero} onChange={(v) => updateCustomerForm("numero", v)} onBlur={saveParticipantOnBlur} /></div>
-                                        <div className="xl:col-span-6"><Field label="Complemento" value={customerForm.complemento} onChange={(v) => updateCustomerForm("complemento", v)} onBlur={saveParticipantOnBlur} /></div>
-                                        <div className="xl:col-span-6"><Field label="Bairro" value={customerForm.bairro} onChange={(v) => updateCustomerForm("bairro", v)} onBlur={saveParticipantOnBlur} /></div>
-                                        <div className="xl:col-span-5"><Field label="Cidade" value={customerForm.cidade} onChange={(v) => updateCustomerForm("cidade", v)} onBlur={saveParticipantOnBlur} /></div>
-                                        <div className="xl:col-span-2"><Field label="UF" value={customerForm.uf} onChange={(v) => updateCustomerForm("uf", v.toUpperCase().slice(0, 2))} onBlur={saveParticipantOnBlur} /></div>
-                                        <div className="xl:col-span-5"><Field label="Código IBGE" value={customerForm.codigoMunicipioIbge} onChange={(v) => updateCustomerForm("codigoMunicipioIbge", onlyDigits(v).slice(0, 7))} onBlur={saveParticipantOnBlur} /></div>
+                                        <div className="xl:col-span-6"><Field label="Logradouro" value={customerForm.logradouro} onChange={(v) => updateCustomerForm("logradouro", v)} /></div>
+                                        <div className="xl:col-span-3"><Field label="Número" value={customerForm.numero} onChange={(v) => updateCustomerForm("numero", v)} /></div>
+                                        <div className="xl:col-span-6"><Field label="Complemento" value={customerForm.complemento} onChange={(v) => updateCustomerForm("complemento", v)} /></div>
+                                        <div className="xl:col-span-6"><Field label="Bairro" value={customerForm.bairro} onChange={(v) => updateCustomerForm("bairro", v)} /></div>
+                                        <div className="xl:col-span-5"><Field label="Cidade" value={customerForm.cidade} onChange={(v) => updateCustomerForm("cidade", v)} /></div>
+                                        <div className="xl:col-span-2"><Field label="UF" value={customerForm.uf} onChange={(v) => updateCustomerForm("uf", v.toUpperCase().slice(0, 2))} /></div>
+                                        <div className="xl:col-span-5"><Field label="Código IBGE" value={customerForm.codigoMunicipioIbge} onChange={(v) => updateCustomerForm("codigoMunicipioIbge", onlyDigits(v).slice(0, 7))} /></div>
                                     </div>
                                     {participantSaveState !== "idle" && (
                                         <p className={`mt-3 text-xs font-bold ${participantSaveState === "error" ? "text-red-600" : participantSaveState === "saving" ? "text-slate-400" : "text-green-400"}`}>

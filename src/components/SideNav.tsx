@@ -233,6 +233,8 @@ export default function SideNav({ userRole, storeId, storeName, logoUrl }: SideN
                         if (sub.route.includes('/pos-venda')) return modules.postSales;
                         if (sub.route.includes('/estoque/etiquetas')) return modules.labels;
                         if (sub.route.includes('/fiscal')) return modules.fiscal;
+                        if (sub.route.includes('/tabela-precos')) return modules.globalTables;
+                        if (sub.route.includes('/catalogo-global')) return modules.globalTables;
                         return true;
                     }).map(sub => {
                         let activeClass = 'bg-white/10 text-white font-bold border border-white/10 shadow-lg';

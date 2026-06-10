@@ -5,6 +5,7 @@ export type StoreModuleKey =
   | 'installments'
   | 'postSales'
   | 'evaluation'
+  | 'globalTables'
   | 'quickSale'
   | 'labels'
 
@@ -15,6 +16,7 @@ export type StoreSettings = {
   receipt_type?: 'pre_printed' | 'half_a4'
   commission_generation_mode?: 'closed_only' | 'open_or_closed'
   pre_sale_analysis_enabled?: boolean
+  module_global_tables_enabled?: boolean
   module_fiscal_enabled?: boolean
   module_installments_enabled?: boolean
   module_post_sales_enabled?: boolean
@@ -28,6 +30,7 @@ export const STORE_MODULE_LABELS: Record<StoreModuleKey, string> = {
   installments: 'Parcelamento',
   postSales: 'Pós-venda',
   evaluation: 'Avaliação',
+  globalTables: 'Tabelas Globais',
   quickSale: 'Venda rápida',
   labels: 'Etiquetas',
 }
@@ -37,16 +40,22 @@ export const DEFAULT_STORE_MODULES: StoreModules = {
   installments: true,
   postSales: true,
   evaluation: false,
+  globalTables: false,
   quickSale: true,
   labels: true,
 }
 
 export function getStoreModules(settings?: StoreSettings | null): StoreModules {
+  const evaluationEnabled = settings?.pre_sale_analysis_enabled === true
+  const globalTablesEnabled =
+    evaluationEnabled || settings?.module_global_tables_enabled === true
+
   return {
     fiscal: settings?.module_fiscal_enabled !== false,
     installments: settings?.module_installments_enabled !== false,
     postSales: settings?.module_post_sales_enabled !== false,
-    evaluation: settings?.pre_sale_analysis_enabled === true,
+    evaluation: evaluationEnabled,
+    globalTables: globalTablesEnabled,
     quickSale: settings?.module_quick_sale_enabled !== false,
     labels: settings?.module_labels_enabled !== false,
   }

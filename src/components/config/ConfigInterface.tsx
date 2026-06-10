@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition } from 'react';
 import {
     Users, Plus, Save, Power, Loader2, Lock, User,
     ShieldCheck, Briefcase, Wrench, BadgeCheck, Percent, CheckCircle2,
-    Store, MapPin, Phone, QrCode, ArrowLeft, AlertCircle, Sparkles, FileText, Wallet, HeartHandshake, Zap, Printer
+    Store, MapPin, Phone, QrCode, ArrowLeft, AlertCircle, Sparkles, FileText, Wallet, HeartHandshake, Zap, Printer, UploadCloud
 } from 'lucide-react';
 import { getEmployees, saveEmployee, toggleEmployeeStatus } from '@/lib/actions/employee.actions';
 import { getStoreProfile, updateStoreProfile, updateStoreSettings } from '@/lib/actions/store.actions';
@@ -488,6 +488,15 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                             iconBg: 'bg-cyan-500/15 border-cyan-400/20',
                         },
                         {
+                            key: 'module_global_tables_enabled',
+                            moduleKey: 'globalTables',
+                            title: 'Tabelas Globais',
+                            description: 'Libera catálogo global, importação de lentes e consulta visual das tabelas de laboratório.',
+                            icon: UploadCloud,
+                            accent: 'text-sky-300',
+                            iconBg: 'bg-sky-500/15 border-sky-400/20',
+                        },
+                        {
                             key: 'module_quick_sale_enabled',
                             moduleKey: 'quickSale',
                             title: 'Módulo de Venda Rápida',
@@ -507,6 +516,12 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                         },
                     ].map((module) => {
                         const Icon = module.icon
+                        const isGlobalTables = module.moduleKey === 'globalTables'
+                        const isForcedByEvaluation = isGlobalTables && activeModules.evaluation
+                        const isChecked = activeModules[module.moduleKey as keyof typeof activeModules]
+                        const description = isForcedByEvaluation
+                            ? 'Enquanto Avaliação estiver ligada, Tabelas Globais fica ativa obrigatoriamente para sustentar catálogo, importação e consulta.'
+                            : module.description
 
                         return (
                             <label
@@ -515,9 +530,9 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                             >
                                 <input
                                     type="checkbox"
-                                    checked={activeModules[module.moduleKey as keyof typeof activeModules]}
+                                    checked={isChecked}
                                     onChange={(e) => handleSettingChange(module.key, e.target.checked)}
-                                    disabled={isSaving}
+                                    disabled={isSaving || isForcedByEvaluation}
                                     className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-900 text-cyan-500 focus:ring-cyan-500 disabled:opacity-50"
                                 />
                                 <div className="flex-1">
@@ -530,12 +545,16 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                                                 {module.title}
                                             </p>
                                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 mt-1">
-                                                {activeModules[module.moduleKey as keyof typeof activeModules] ? 'Ativado' : 'Desativado'}
+                                                {isForcedByEvaluation
+                                                    ? 'Ativado pela Avaliação'
+                                                    : isChecked
+                                                        ? 'Ativado'
+                                                        : 'Desativado'}
                                             </p>
                                         </div>
                                     </div>
                                     <p className="mt-3 text-xs text-slate-400 leading-relaxed">
-                                        {module.description}
+                                        {description}
                                     </p>
                                 </div>
                             </label>

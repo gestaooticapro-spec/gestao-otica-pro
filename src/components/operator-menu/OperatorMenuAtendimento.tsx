@@ -378,7 +378,13 @@ export default function OperatorMenuAtendimento({
                         Apoio Operacional
                         <span className="w-8 h-px bg-slate-600"></span>
                     </h2>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+                    <div
+                        className={`grid grid-cols-1 sm:grid-cols-2 gap-4 w-full ${
+                            modules.globalTables
+                                ? 'lg:grid-cols-4'
+                                : 'lg:grid-cols-3 max-w-4xl mx-auto'
+                        }`}
+                    >
                         {/* Clientes */}
                         <button
                             onClick={() => onNavigate(`/dashboard/loja/${storeId}/clientes`)}
@@ -431,7 +437,7 @@ export default function OperatorMenuAtendimento({
                         </button>
 
                         {/* Tabela de Preços */}
-                        <button
+                        {modules.globalTables && <button
                             onClick={() => onNavigate(`/dashboard/loja/${storeId}/tabela-precos`)}
                             onMouseEnter={(e) => handleHover(e, "Consulte a tabela de preços do laboratório ativo. Compare ofertas, tratamentos e valores lado a lado.")}
                             onMouseMove={handleMove}
@@ -445,7 +451,7 @@ export default function OperatorMenuAtendimento({
                                 <span className="text-slate-200 text-sm font-bold block group-hover:text-white transition-colors">Tabela de Preços</span>
                                 <span className="text-slate-500 text-[10px] group-hover:text-slate-300 transition-colors">Laboratório</span>
                             </div>
-                        </button>
+                        </button>}
                     </div>
                 </div>
             </div>

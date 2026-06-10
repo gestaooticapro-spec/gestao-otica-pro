@@ -12,6 +12,8 @@ import {
 import PriceTableHeader from '@/components/catalog/PriceTableHeader'
 import PriceTableInterface from '@/components/catalog/PriceTableInterface'
 import PriceTableLensSearchInterface from '@/components/catalog/PriceTableLensSearchInterface'
+import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
+import ModuleDisabledState from '@/components/modules/ModuleDisabledState'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,6 +67,17 @@ export default async function StorePriceTablePage({
           </Link>
         </div>
       </div>
+    )
+  }
+
+  const globalTablesEnabled = await isStoreModuleEnabledForStore(storeId, 'globalTables')
+  if (!globalTablesEnabled) {
+    return (
+      <ModuleDisabledState
+        storeId={storeId}
+        moduleLabel="Tabelas Globais"
+        backHref={`/dashboard/loja/${storeId}`}
+      />
     )
   }
 

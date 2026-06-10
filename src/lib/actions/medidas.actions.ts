@@ -45,6 +45,7 @@ export async function findMedicaoOSByNumber(
       dependente:dependente_id ( full_name )
     `)
     .eq('store_id', storeId)
+    .is('dt_pedido_em', null)
 
   if (numericId !== null) {
     query = query.or(`id.eq.${numericId},protocolo_fisico.eq.${normalized}`)
@@ -57,7 +58,7 @@ export async function findMedicaoOSByNumber(
     .limit(2)
 
   if (error) return { ok: false, error: error.message }
-  if (!data?.length) return { ok: false, error: 'OS nao encontrada nessa loja' }
+  if (!data?.length) return { ok: false, error: 'OS nao encontrada entre as lentes nao pedidas ao laboratorio' }
   if (data.length > 1) return { ok: false, error: 'Mais de uma OS encontrada. Use o ID interno da OS.' }
 
   const row = data[0]
@@ -83,12 +84,16 @@ export async function saveMedicaoOS(payload: MedicaoPayload): Promise<{ ok: bool
   // Busca a OS para validar se já tem foto gravada e se o tablet avulso tem permissão
   const { data: currentOS, error: fetchError } = await (supabaseAdmin
     .from('service_orders') as any)
-    .select('id, store_id, foto_medicao_url')
+    .select('id, store_id, foto_medicao_url, dt_pedido_em')
     .eq('id', payload.osId)
     .maybeSingle()
 
   if (fetchError || !currentOS) {
     return { ok: false, error: 'OS nao encontrada' }
+  }
+
+  if (currentOS.dt_pedido_em) {
+    return { ok: false, error: 'Esta OS ja teve a lente pedida ao laboratorio. Use apenas OS ainda nao pedidas.' }
   }
 
   // Trava de segurança: impede regravar se já existe foto

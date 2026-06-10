@@ -275,7 +275,11 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {GERENCIA_LINKS.filter((item) => item.id !== 'fiscal' || modules.fiscal).map((item) => {
+                            {GERENCIA_LINKS.filter((item) => {
+                                if (item.id === 'fiscal') return modules.fiscal;
+                                if (item.id === 'catalogo-global') return modules.globalTables;
+                                return true;
+                            }).map((item) => {
                                 const Icon = item.icon;
                                 return (
                                     <button

@@ -92,7 +92,7 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault()
-        if (query.length < 3) return
+        if (query.trim().length < 2) return
         startSearch(async () => {
             try {
                 const res = await searchPendenciasCliente(storeId, query)

@@ -3064,17 +3064,34 @@ export async function getCustomerPrescriptionHistory(
 export async function searchPendenciasCliente(storeId: number, termo: string) {
   const supabaseAdmin = createAdminClient()
   const cleanTerm = termo.trim()
+  const normalizeSearch = (value: string) =>
+    value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+  const normalizedTerm = normalizeSearch(cleanTerm)
+  const searchTokens = normalizedTerm.split(/\s+/).filter(Boolean)
+  const firstToken = searchTokens[0] || ''
+  const cpfDigits = cleanTerm.replace(/\D/g, '')
 
   console.log(`ðŸ” [DEBUG] Iniciando busca para: "${cleanTerm}" na Loja: ${storeId}`)
 
   try {
     // PASSO 1: Busca Clientes
-    const { data: clientes, error: errCli } = await supabaseAdmin
+    let customerQuery = supabaseAdmin
       .from('customers')
       .select('id, full_name, cpf')
       .eq('store_id', storeId)
-      .or(`full_name.ilike.%${cleanTerm}%,cpf.ilike.%${cleanTerm}%`)
       .limit(50)
+
+    if (cpfDigits.length > 0) {
+      customerQuery = customerQuery.or(`cpf.ilike.%${cpfDigits}%,full_name.ilike.%${firstToken || cleanTerm}%`)
+    } else if (firstToken) {
+      customerQuery = customerQuery.ilike('full_name', `%${firstToken}%`)
+    }
+
+    const { data: clientes, error: errCli } = await customerQuery
 
     if (errCli) {
       console.error("âŒ [DEBUG] Erro ao buscar clientes:", errCli.message)
@@ -3083,9 +3100,19 @@ export async function searchPendenciasCliente(storeId: number, termo: string) {
 
     console.log(`ðŸ‘¤ [DEBUG] Clientes encontrados:`, clientes?.length || 0)
 
-    if (!clientes || clientes.length === 0) return []
+    const clientesFiltrados = (clientes || []).filter((cliente: any) => {
+      const normalizedName = normalizeSearch(cliente.full_name || '')
+      const normalizedCpf = String(cliente.cpf || '').replace(/\D/g, '')
 
-    const idsClientes = clientes.map((c: any) => c.id)
+      if (cpfDigits.length > 0 && normalizedCpf.includes(cpfDigits)) return true
+      if (searchTokens.length === 0) return true
+
+      return searchTokens.every(token => normalizedName.includes(token))
+    })
+
+    if (clientesFiltrados.length === 0) return []
+
+    const idsClientes = clientesFiltrados.map((c: any) => c.id)
 
     // PASSO 2: Busca Parcelas
     const { data: parcelas, error: errParc } = await (supabaseAdmin
@@ -3130,7 +3157,7 @@ export async function searchPendenciasCliente(storeId: number, termo: string) {
     console.log(`ðŸ“¦ [DEBUG] Parcelas pendentes encontradas:`, parcelasPendentes.length)
 
     // PASSO 3: Agrupamento
-    const resultado = clientes.map((cli: any) => {
+    const resultado = clientesFiltrados.map((cli: any) => {
       const parcs = parcelasPendentes.filter((p: any) => p.customer_id === cli.id)
 
       if (parcs.length === 0) return null
