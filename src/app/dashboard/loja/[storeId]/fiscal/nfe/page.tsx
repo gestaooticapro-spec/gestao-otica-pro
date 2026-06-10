@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import ModuleDisabledState from "@/components/modules/ModuleDisabledState";
 import { useStoreModules } from "@/lib/contexts/StoreModulesContext";
-import { getAuthorizedDepositTransferOriginAction, getAuthorizedShipmentOriginAction, getImportedDemonstrationOriginAction, getImportedNFeOriginAction, getNFeInvoiceWithItemsAction, getPendingSales, getProductFiscalData, getSaleData, getTenantTransferStoreAction, listAuthorizedDepositTransferOriginsAction, listAuthorizedShipmentOriginsAction, listImportedDemonstrationOriginsAction, listImportedNFeOriginsAction, listTenantTransferStoresAction, saveMissingProductNcmAction, saveNFeCustomerParticipantAction, searchCloneableNFeInvoicesAction, searchNFeParticipantsAction, searchProducts, type ParsedNFeItem } from "@/lib/actions/fiscal-db.actions";
+import { getAuthorizedDepositTransferOriginAction, getAuthorizedShipmentOriginAction, getImportedDemonstrationOriginAction, getImportedNFeOriginAction, getNFeInvoiceWithItemsAction, getPendingSales, getProductFiscalData, getSaleDataForNFe, getTenantTransferStoreAction, listAuthorizedDepositTransferOriginsAction, listAuthorizedShipmentOriginsAction, listImportedDemonstrationOriginsAction, listImportedNFeOriginsAction, listTenantTransferStoresAction, saveMissingProductNcmAction, saveNFeCustomerParticipantAction, searchCloneableNFeInvoicesAction, searchNFeParticipantsAction, searchProducts, type ParsedNFeItem } from "@/lib/actions/fiscal-db.actions";
 import { emitirNFe } from "@/lib/actions/fiscal-nfe.actions";
 import { auditarNFeAssistidaComIaAction, type FiscalAuditPayload, type FiscalAuditUiResult } from "@/lib/actions/fiscal-ai-audit.actions";
 import { getStoreProfile } from "@/lib/actions/store.actions";
@@ -1032,7 +1032,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         setLoadingSaleData(true);
 
         try {
-            const data = await getSaleData(storeId, sale.id);
+            const data = await getSaleDataForNFe(storeId, sale.id);
             setCustomerForm(customerFormFromSale(data, sale));
             setParticipantDirty(false);
             setParticipantSaveState("idle");

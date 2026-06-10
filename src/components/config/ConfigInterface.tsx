@@ -118,19 +118,9 @@ function StoreDataForm({ storeId }: { storeId: number }) {
         setCodigoMunicipioIbge(data.codigo_municipio_ibge ?? '')
     }, [data])
 
-    useEffect(() => {
-        const ibgeInput = document.querySelector<HTMLInputElement>('input[name="codigo_municipio_ibge"]')
-        if (!ibgeInput) return
-
-        ibgeInput.value = codigoMunicipioIbge
-        ibgeInput.readOnly = true
-        ibgeInput.placeholder = 'Preenchido pelo CEP'
-        ibgeInput.title = 'Codigo IBGE preenchido automaticamente a partir do CEP'
-        ibgeInput.classList.add('cursor-not-allowed')
-    }, [codigoMunicipioIbge])
-
     const handleCepChange = (value: string) => {
         setCep(maskCep(value))
+        setCodigoMunicipioIbge('')
         setCepMessage(null)
     }
 
@@ -200,15 +190,15 @@ function StoreDataForm({ storeId }: { storeId: number }) {
 
             if (cep.replace(/\D/g, '').length === 8 && (!codigoMunicipioIbge || !city || !stateUf)) {
                 const resolved = await resolveCepData(cep)
-                if (resolved) {
-                    applyResolvedCepData(resolved)
-                    nextCep = resolved.cep
-                    nextStreet = resolved.street
-                    nextNeighborhood = resolved.neighborhood
-                    nextCity = resolved.city
-                    nextStateUf = resolved.stateUf
-                    nextCodigoMunicipioIbge = resolved.codigoMunicipioIbge
-                }
+                if (!resolved?.codigoMunicipioIbge) return
+
+                applyResolvedCepData(resolved)
+                nextCep = resolved.cep
+                nextStreet = resolved.street
+                nextNeighborhood = resolved.neighborhood
+                nextCity = resolved.city
+                nextStateUf = resolved.stateUf
+                nextCodigoMunicipioIbge = resolved.codigoMunicipioIbge
             }
 
             formData.set('cep', nextCep.replace(/\D/g, ''))
@@ -374,7 +364,14 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                     </div>
                     <div className="col-span-1">
                         <label className={labelStyle}>Cód. IBGE</label>
-                        <input name="codigo_municipio_ibge" defaultValue={data.codigo_municipio_ibge ?? ''} className={inputStyle} placeholder="Ex: 4108809" title="Código IBGE do município (obrigatório para NFCe)" />
+                        <input
+                            name="codigo_municipio_ibge"
+                            value={codigoMunicipioIbge}
+                            readOnly
+                            className={`${inputStyle} cursor-not-allowed`}
+                            placeholder="Preenchido pelo CEP"
+                            title="Codigo IBGE preenchido automaticamente a partir do CEP"
+                        />
                     </div>
                     <div className="col-span-4">
                         <label className={labelStyle}>Logradouro</label>

@@ -65,17 +65,22 @@ function normalizeIbgeCode(value?: string | number | null) {
     return String(value ?? "").replace(/\D/g, "");
 }
 
-const VALID_IBGE_UF_CODES = new Set([
-    "11", "12", "13", "14", "15", "16", "17",
-    "21", "22", "23", "24", "25", "26", "27", "28", "29",
-    "31", "32", "33", "35",
-    "41", "42", "43",
-    "50", "51", "52", "53",
-]);
+const IBGE_UF_CODES: Record<string, string> = {
+    RO: "11", AC: "12", AM: "13", RR: "14", PA: "15", AP: "16", TO: "17",
+    MA: "21", PI: "22", CE: "23", RN: "24", PB: "25", PE: "26", AL: "27", SE: "28", BA: "29",
+    MG: "31", ES: "32", RJ: "33", SP: "35",
+    PR: "41", SC: "42", RS: "43",
+    MS: "50", MT: "51", GO: "52", DF: "53",
+};
 
-function isValidIbgeMunicipalityCode(value?: string | number | null) {
+function isValidIbgeMunicipalityCode(value?: string | number | null, uf?: string | null) {
     const code = normalizeIbgeCode(value);
-    return code.length === 7 && VALID_IBGE_UF_CODES.has(code.slice(0, 2));
+    if (code.length !== 7 || !Object.values(IBGE_UF_CODES).includes(code.slice(0, 2))) {
+        return false;
+    }
+
+    const normalizedUf = normalizeText(uf).toUpperCase();
+    return !normalizedUf || IBGE_UF_CODES[normalizedUf] === code.slice(0, 2);
 }
 
 async function hydrateStoreFiscalDataFromNuvemFiscal(
@@ -86,7 +91,7 @@ async function hydrateStoreFiscalDataFromNuvemFiscal(
     const cnpj = normalizeDocument(company.cnpj || company.cpf_cnpj);
     if (!cnpj) return company;
 
-    const hasValidIbge = isValidIbgeMunicipalityCode(company.codigo_municipio_ibge);
+    const hasValidIbge = isValidIbgeMunicipalityCode(company.codigo_municipio_ibge, company.uf);
     const hasAddressBasics =
         normalizeText(company.logradouro) &&
         normalizeText(company.numero) &&
@@ -113,7 +118,7 @@ async function hydrateStoreFiscalDataFromNuvemFiscal(
         const remoteIbge = normalizeIbgeCode(address?.codigo_municipio);
         const resolvedIbge = hasValidIbge
             ? normalizeIbgeCode(company.codigo_municipio_ibge)
-            : isValidIbgeMunicipalityCode(remoteIbge)
+            : isValidIbgeMunicipalityCode(remoteIbge, address?.uf)
                 ? remoteIbge
                 : normalizeIbgeCode(company.codigo_municipio_ibge);
 
@@ -325,7 +330,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
         // 4. Buscar série NFCe configurada na loja
         const codigoMunicipioIbge = normalizeIbgeCode(company.codigo_municipio_ibge);
-        if (!isValidIbgeMunicipalityCode(codigoMunicipioIbge)) {
+        if (!isValidIbgeMunicipalityCode(codigoMunicipioIbge, company.uf)) {
             throw new Error(`Codigo IBGE do municipio invalido na loja ${payload.store_id}: "${company.codigo_municipio_ibge || ""}". Informe os 7 digitos corretos nas configuracoes da loja.`);
         }
 

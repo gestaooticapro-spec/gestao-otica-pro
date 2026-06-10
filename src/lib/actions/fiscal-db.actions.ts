@@ -992,7 +992,25 @@ export async function getPendingSales(
     });
 }
 
-export async function getSaleData(storeId: number, saleId: number) {
+export async function getSaleData(saleId: number) {
+    const supabase = createClient();
+
+    const { data: venda, error } = await supabase
+        .from("vendas")
+        .select(`
+            *,
+            customers (*),
+            venda_itens (*),
+            pagamentos (*)
+        `)
+        .eq("id", saleId)
+        .single();
+
+    if (error) return null;
+    return venda;
+}
+
+export async function getSaleDataForNFe(storeId: number, saleId: number) {
     const supabase = createAdminClient() as any;
     const tenantId = await getTenantIdByStore(storeId);
     if (!tenantId || !(await userOwnsStore(storeId, tenantId))) return null;
