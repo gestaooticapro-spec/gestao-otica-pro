@@ -670,6 +670,19 @@ const isPendingLensReservationMovement = (movement: { motivo?: string | null | u
     return reason.startsWith('reserva automatica') || reason.startsWith('reserva manual')
 }
 
+const isReservationFlowMovement = (movement: {
+    tipo?: string | null | undefined
+    motivo?: string | null | undefined
+} | null | undefined) => {
+    const reason = movement?.motivo?.toLowerCase() || ''
+
+    return (
+        isPendingLensReservationMovement(movement) ||
+        reason.startsWith('troca de lente reservada') ||
+        reason.startsWith('estorno de reserva')
+    )
+}
+
 async function restoreReservationMovement(
     supabaseAdmin: ReturnType<typeof createAdminClient>,
     reservation: any,
@@ -726,6 +739,61 @@ async function restoreReservationMovement(
     await (supabaseAdmin.from('stock_movements') as any)
         .update({ tipo: 'Devolucao' })
         .eq('id', reservation.id)
+}
+
+export async function releaseReservationsForServiceOrder(
+    osId: number,
+    vendaId?: number
+): Promise<StockActionResult> {
+    const supabaseAdmin = createAdminClient()
+
+    const { data: movements, error } = await (supabaseAdmin.from('stock_movements') as any)
+        .select('*')
+        .eq('related_os_id', osId)
+
+    if (error) {
+        return {
+            success: false,
+            message: `Erro ao verificar reservas da OS: ${error.message}`
+        }
+    }
+
+    const safeMovements = (movements || []).filter((movement: any) => isReservationFlowMovement(movement))
+    const blockingMovements = (movements || []).filter((movement: any) => !isReservationFlowMovement(movement))
+
+    if (blockingMovements.length > 0) {
+        return {
+            success: false,
+            message: 'Esta OS possui movimentacoes de estoque definitivas ou manuais e nao pode ser excluida automaticamente.'
+        }
+    }
+
+    const pendingReservations = safeMovements.filter((movement: any) =>
+        ['Reserva', 'Saida'].includes(movement.tipo || '') && isPendingLensReservationMovement(movement)
+    )
+
+    for (const reservation of pendingReservations) {
+        await restoreReservationMovement(
+            supabaseAdmin,
+            reservation,
+            vendaId
+                ? `Estorno de Reserva (OS #${osId} excluida da Venda #${vendaId})`
+                : `Estorno de Reserva (OS #${osId} excluida)`
+        )
+    }
+
+    const { error: unlinkError } = await (supabaseAdmin.from('stock_movements') as any)
+        .update({ related_os_id: null })
+        .eq('related_os_id', osId)
+
+    if (unlinkError) {
+        return {
+            success: false,
+            message: `Erro ao desvincular movimentacoes de estoque da OS: ${unlinkError.message}`
+        }
+    }
+
+    return { success: true, message: 'Reservas da OS liberadas com sucesso.' }
 }
 
 async function reserveLensWithAdminContext(params: {

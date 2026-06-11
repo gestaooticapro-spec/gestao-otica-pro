@@ -3118,15 +3118,30 @@ function CurrencyField({
     disabled?: boolean;
     align?: "left" | "right" | "center";
 }) {
+    const [localValue, setLocalValue] = useState(() => formatCurrencyInputValue(value));
+    const [isFocused, setIsFocused] = useState(false);
+
     return (
         <label className="flex flex-col gap-1.5">
             <span className={labelClass}>{label}</span>
             <input
                 type="text"
                 inputMode="decimal"
-                value={formatCurrencyInputValue(value)}
+                value={isFocused ? localValue : formatCurrencyInputValue(value)}
                 disabled={disabled}
-                onChange={(event) => onChange(parseCurrencyInputValue(event.target.value))}
+                onFocus={() => {
+                    setLocalValue(formatCurrencyInputValue(value));
+                    setIsFocused(true);
+                }}
+                onBlur={() => {
+                    setIsFocused(false);
+                    setLocalValue(formatCurrencyInputValue(parseCurrencyInputValue(localValue)));
+                }}
+                onChange={(event) => {
+                    const nextValue = event.target.value;
+                    setLocalValue(nextValue);
+                    onChange(parseCurrencyInputValue(nextValue));
+                }}
                 className={`${controlClass} ${align ? 'text-' + align : 'text-left'} disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-400`}
             />
         </label>

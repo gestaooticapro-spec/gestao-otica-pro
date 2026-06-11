@@ -401,7 +401,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                     <select
                         value={month}
                         onChange={e => setMonth(parseInt(e.target.value))}
-                        className="border border-stone-300 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] bg-black/40 cursor-pointer"
+                        className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] cursor-pointer"
                     >
                         {MONTHS.map((m, i) => (
                             <option key={i} value={i}>{m}</option>
@@ -411,7 +411,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                     <select
                         value={year}
                         onChange={e => setYear(parseInt(e.target.value))}
-                        className="border border-stone-300 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] bg-black/40 cursor-pointer"
+                        className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] cursor-pointer"
                     >
                         {years.map(y => (
                             <option key={y} value={y}>{y}</option>
@@ -515,7 +515,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                             <select
                                 value={invalidateEnvironment}
                                 onChange={e => setInvalidateEnvironment(e.target.value as "production" | "homologation")}
-                                className="border border-stone-300 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] bg-black/40 cursor-pointer"
+                                className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] cursor-pointer"
                             >
                                 <option value="production">Produção</option>
                                 <option value="homologation">Homologação</option>
@@ -524,7 +524,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                                 type="number"
                                 value={invalidateSerie}
                                 onChange={e => setInvalidateSerie(parseInt(e.target.value || "0", 10))}
-                                className="border border-stone-300 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15]"
+                                className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] placeholder-slate-400"
                                 placeholder="Série"
                                 min={1}
                             />
@@ -532,7 +532,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                                 type="number"
                                 value={invalidateStart}
                                 onChange={e => setInvalidateStart(e.target.value)}
-                                className="border border-stone-300 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15]"
+                                className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] placeholder-slate-400"
                                 placeholder="Nº inicial"
                                 min={1}
                             />
@@ -540,7 +540,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                                 type="number"
                                 value={invalidateEnd}
                                 onChange={e => setInvalidateEnd(e.target.value)}
-                                className="border border-stone-300 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15]"
+                                className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] placeholder-slate-400"
                                 placeholder="Nº final"
                                 min={1}
                             />
@@ -562,7 +562,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                             value={invalidateReason}
                             onChange={e => setInvalidateReason(e.target.value)}
                             rows={3}
-                            className="mt-3 w-full border border-stone-300 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15]"
+                            className="mt-3 w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] placeholder-slate-400"
                             placeholder="Justificativa (mínimo 15 caracteres)"
                         />
                         <div className="mt-5">
@@ -590,7 +590,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                                                 </button>
                                                 <button
                                                     onClick={() => downloadJson(item)}
-                                                    className="bg-stone-200 hover:bg-stone-300 text-white px-3 py-1.5 rounded-lg text-xs font-bold"
+                                                    className="bg-stone-200 hover:bg-stone-300 text-stone-900 px-3 py-1.5 rounded-lg text-xs font-bold"
                                                 >
                                                     Baixar JSON
                                                 </button>

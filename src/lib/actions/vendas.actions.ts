@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { useCredit } from './wallet.actions'
 import { calcularERegistrarComissao, cancelarComissao, calcularComissaoMedico } from './commission.actions'
-import { checkLensStock, confirmReservations, cancelReservations, getLensReservationForOsSlot, reserveLensByAdmin, type LensReservationSlot } from './stock.actions'
+import { checkLensStock, confirmReservations, cancelReservations, getLensReservationForOsSlot, releaseReservationsForServiceOrder, reserveLensByAdmin, type LensReservationSlot } from './stock.actions'
 import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
 
 // ================================================================
@@ -608,6 +608,43 @@ export async function deleteServiceOrder(id: number, storeId: number, vendaId: n
       if (unlinkError) throw unlinkError
     }
 
+    const { data: linkedPostSale } = await (supabaseAdmin.from('post_sales') as any)
+      .select('id')
+      .eq('service_order_id', id)
+      .limit(1)
+
+    if (linkedPostSale && linkedPostSale.length > 0) {
+      return {
+        success: false,
+        message: 'Esta OS possui registro de pos-venda vinculado e nao pode ser excluida automaticamente.',
+        timestamp: Date.now()
+      }
+    }
+
+    const reservationRelease = await releaseReservationsForServiceOrder(id, vendaId)
+    if (!reservationRelease.success) {
+      return { success: false, message: reservationRelease.message, timestamp: Date.now() }
+    }
+
+    const { error: linksDeleteError } = await (supabaseAdmin.from('venda_itens_os_links') as any)
+      .delete()
+      .eq('service_order_id', id)
+
+    if (linksDeleteError) throw linksDeleteError
+
+    const { data: linkedFiscalInvoice } = await (supabaseAdmin.from('fiscal_invoices') as any)
+      .select('id, status, tipo_documento')
+      .eq('work_order_id', id)
+      .limit(1)
+
+    if (linkedFiscalInvoice && linkedFiscalInvoice.length > 0) {
+      return {
+        success: false,
+        message: 'Esta OS possui documento fiscal vinculado e nao pode ser excluida automaticamente.',
+        timestamp: Date.now()
+      }
+    }
+
     const { error } = await supabaseAdmin.from('service_orders').delete().eq('id', id)
     if (error) throw error
 
@@ -617,6 +654,14 @@ export async function deleteServiceOrder(id: number, storeId: number, vendaId: n
 
     return { success: true, message: 'OS excluída.', timestamp: Date.now() }
   } catch (e: any) {
+    if (e?.code === '23503') {
+      return {
+        success: false,
+        message: 'Nao foi possivel excluir a OS porque ainda existem registros vinculados a ela. Verifique estoque, pos-venda ou documentos fiscais.',
+        timestamp: Date.now()
+      }
+    }
+
     return { success: false, message: e.message, timestamp: Date.now() }
   }
 }

@@ -543,7 +543,17 @@ export async function syncNfeFromSefaz(storeId?: number) {
         }
 
         if (isRateLimitStatus((result as any)?.codigo_status)) {
-            const nextAttemptAt = getNextAllowedSyncAt(state.last_sync_at)
+            // Update last_sync_at even if rate limited, so the UI correctly reflects the new blocked window
+            await touchDistributionState({
+                organizationId,
+                cpfCnpj,
+                ambiente: NFE_AMBIENTE,
+                ultimoNsu: Number(state.ultimo_nsu || 0),
+                maxNsu: state.max_nsu ?? null,
+            })
+
+            // Recalculate nextAttemptAt based on the updated time (which is now)
+            const nextAttemptAt = getNextAllowedSyncAt(new Date().toISOString())
             diagnostico.proximaTentativaSugerida = nextAttemptAt
 
             return {
@@ -879,5 +889,71 @@ export async function markNfeQueueImported(queueId?: string | null, chaveAcesso?
         return { success: true }
     } catch (error: any) {
         return { success: false, error: error.message }
+    }
+}
+
+export async function setNfeQueueStatus(queueId: string, status: QueueStatus, storeId?: number) {
+    try {
+        const { organizationId, cpfCnpj, storeId: resolvedStoreId } = await getTenantAndCompany(storeId)
+        const supabaseAdmin = createAdminClient() as any
+
+        const { data: queueItem, error: lookupError } = await supabaseAdmin
+            .from('nfe_import_queue')
+            .select('id, metadata')
+            .eq('id', queueId)
+            .eq('organization_id', organizationId)
+            .maybeSingle()
+
+        if (lookupError) throw lookupError
+        if (!queueItem || !queueItemBelongsToStore(queueItem, resolvedStoreId, cpfCnpj)) {
+            throw new Error('Item da fila nao encontrado para esta loja.')
+        }
+
+        const { error } = await supabaseAdmin
+            .from('nfe_import_queue')
+            .update({
+                status: status,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', queueId)
+            .eq('organization_id', organizationId)
+
+        if (error) throw error
+        return { success: true }
+    } catch (error: any) {
+        return { success: false, error: error.message }
+    }
+}
+
+export async function listArchivedNfeQueue(storeId?: number) {
+    try {
+        const { organizationId, storeId: resolvedStoreId, cpfCnpj } = await getTenantAndCompany(storeId)
+        const supabaseAdmin = createAdminClient() as any
+
+        const { data, error } = await supabaseAdmin
+            .from('nfe_import_queue')
+            .select('id, chave_acesso, nuvemfiscal_document_id, nsu, resumo, status, numero, serie, emitente_nome, emitente_cnpj, data_emissao, valor_total, error_message, created_at, xml_content, metadata')
+            .eq('organization_id', organizationId)
+            .eq('status', 'ignored')
+            .order('data_emissao', { ascending: false, nullsFirst: false })
+
+        if (error) throw error
+
+        const queueItems = ((data || []) as any[])
+            .filter((item) => queueItemBelongsToStore(item, resolvedStoreId, cpfCnpj))
+            .map((item) => {
+                const queueItem = { ...item }
+                const xmlContent = queueItem.xml_content
+                delete queueItem.xml_content
+                delete queueItem.metadata
+                return {
+                    ...queueItem,
+                    xml_completo_disponivel: xmlContent ? hasCompleteNfeItems(String(xmlContent)) : false,
+                } as NfeQueueItem
+            })
+
+        return { success: true, data: queueItems }
+    } catch (error: any) {
+        return { success: false, error: error.message, data: [] as NfeQueueItem[] }
     }
 }

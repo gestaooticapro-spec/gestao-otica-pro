@@ -3,7 +3,7 @@
 import { useState, useTransition, useRef, useMemo, useCallback, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { UploadCloud, FileText, CheckCircle, AlertTriangle, Loader2, Save, ArrowLeft, Search, Link as LinkIcon, Unlink, AlertCircle, X, Check, Inbox, RefreshCw, Copy, CloudDownload } from 'lucide-react'
+import { UploadCloud, FileText, CheckCircle, AlertTriangle, Loader2, Save, ArrowLeft, Search, Link as LinkIcon, Unlink, AlertCircle, X, Check, Inbox, RefreshCw, Copy, CloudDownload, Archive, ArchiveRestore } from 'lucide-react'
 import { parseNfeAndPreview, saveImportedData, type XmlPreviewData } from '@/lib/actions/xml.actions'
 import { ProductSearchCombobox } from '@/components/importacao/ProductSearchCombobox'
 import {
@@ -11,6 +11,8 @@ import {
     listNfeImportQueue,
     searchNfeByAccessKey,
     syncNfeFromSefaz,
+    setNfeQueueStatus,
+    listArchivedNfeQueue,
     type NfeQueueItem,
 } from '@/lib/actions/nfe-import-queue.actions'
 
@@ -23,6 +25,14 @@ type ManualMatchProduct = {
 }
 
 // Helper para formatar moeda
+const NFE_PORTAL_CONSULTA_URL = "https://www.nfe.fazenda.gov.br/portal/consultaRecaptcha.aspx?tipoConsulta=resumo&tipoConteudo=7PhJ+gAVw2g="
+
+function buildNFePortalConsultaUrl(chaveAcesso: string) {
+    const url = new URL(NFE_PORTAL_CONSULTA_URL)
+    url.searchParams.set("nfe", chaveAcesso)
+    return url.toString()
+}
+
 const money = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
@@ -53,6 +63,10 @@ export default function ImportacaoPage() {
     const [markupMultiplier, setMarkupMultiplier] = useState(DEFAULT_MARKUP)
     const [markupInput, setMarkupInput] = useState(String(DEFAULT_MARKUP).replace('.', ','))
 
+    const [archivedQueueItems, setArchivedQueueItems] = useState<NfeQueueItem[]>([])
+    const [archivedQueueLoading, setArchivedQueueLoading] = useState(false)
+    const [isArchivedModalOpen, setIsArchivedModalOpen] = useState(false)
+
     // Tabs & Filters
     const [activeTab, setActiveTab] = useState<'found' | 'new'>('new')
 
@@ -74,11 +88,25 @@ export default function ImportacaoPage() {
         }
     }, [storeId])
 
+    const loadArchivedQueue = useCallback(async () => {
+        setArchivedQueueLoading(true)
+        try {
+            const result = await listArchivedNfeQueue(storeId)
+            if (!result.success) throw new Error(result.error)
+            setArchivedQueueItems(result.data || [])
+        } catch (error: unknown) {
+            setErrorMessage("Erro ao carregar fila arquivada: " + getErrorMessage(error))
+        } finally {
+            setArchivedQueueLoading(false)
+        }
+    }, [storeId])
+
     useEffect(() => {
         if (sourceMode === 'sefaz') {
             void loadQueue()
+            void loadArchivedQueue()
         }
-    }, [sourceMode, loadQueue])
+    }, [sourceMode, loadQueue, loadArchivedQueue])
 
     const buildPreviewWithMarkup = useCallback((data: XmlPreviewData, markup: number): XmlPreviewData => ({
         ...data,
@@ -266,6 +294,32 @@ export default function ImportacaoPage() {
             setLastSyncInfo({ type: 'success', message: 'Chave de acesso copiada.' })
         } catch {
             setLastSyncInfo({ type: 'error', message: `Nao foi possivel copiar automaticamente. Chave: ${chaveAcesso}` })
+        }
+    }
+
+    const handleArchiveItem = async (queueId: string) => {
+        setErrorMessage(null)
+        try {
+            const result = await setNfeQueueStatus(queueId, 'ignored', storeId)
+            if (!result.success) throw new Error(result.error)
+            await loadQueue()
+            await loadArchivedQueue()
+            setLastSyncInfo({ type: 'success', message: 'Nota arquivada com sucesso.' })
+        } catch (error: unknown) {
+            setErrorMessage("Erro ao arquivar nota: " + getErrorMessage(error))
+        }
+    }
+
+    const handleUnarchiveItem = async (queueId: string) => {
+        setErrorMessage(null)
+        try {
+            const result = await setNfeQueueStatus(queueId, 'pending', storeId)
+            if (!result.success) throw new Error(result.error)
+            await loadArchivedQueue()
+            await loadQueue()
+            setLastSyncInfo({ type: 'success', message: 'Nota desarquivada com sucesso. Ela voltou para a fila principal.' })
+        } catch (error: unknown) {
+            setErrorMessage("Erro ao desarquivar nota: " + getErrorMessage(error))
         }
     }
 
@@ -537,6 +591,13 @@ export default function ImportacaoPage() {
                                     {syncingSefaz ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                                     Verificar novas
                                 </button>
+                                <button
+                                    onClick={() => setIsArchivedModalOpen(true)}
+                                    className="px-4 py-2 bg-slate-800/40 hover:bg-slate-800/60 text-slate-300 rounded-lg font-bold border border-white/10 flex items-center justify-center gap-2"
+                                >
+                                    <Archive className="h-4 w-4" />
+                                    Notas Arquivadas
+                                </button>
                             </div>
                         </div>
 
@@ -594,6 +655,21 @@ export default function ImportacaoPage() {
                                                 <span className="font-bold text-slate-100 text-right">{money(Number(note.valor_total || 0))}</span>
                                                 <button type="button" onClick={() => handleCopyAccessKey(note.chave_acesso)} className="px-3 py-2 rounded-lg text-xs font-bold border border-white/10 text-slate-300 hover:bg-white/10 flex items-center justify-center gap-2">
                                                     <Copy className="h-4 w-4" /> Copiar
+                                                </button>
+                                                <a
+                                                    href={buildNFePortalConsultaUrl(note.chave_acesso)}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    onClick={() => {
+                                                        void navigator.clipboard?.writeText(note.chave_acesso).catch(() => undefined)
+                                                    }}
+                                                    className="px-3 py-2 rounded-lg text-xs font-bold border border-white/10 text-slate-300 hover:bg-white/10 flex items-center justify-center gap-2"
+                                                    title="Abre o Portal NF-e e copia a chave para consulta manual"
+                                                >
+                                                    <Search className="h-4 w-4" /> Portal NF-e
+                                                </a>
+                                                <button type="button" onClick={() => handleArchiveItem(note.id)} disabled={isProcessing || selectedQueueId === note.id} className="px-3 py-2 rounded-lg text-xs font-bold border border-white/10 text-slate-300 hover:bg-white/10 flex items-center justify-center gap-2 disabled:opacity-50" title="Arquivar sem importar">
+                                                    <Archive className="h-4 w-4" />
                                                 </button>
                                                 <button type="button" onClick={() => handleOpenQueueItem(note)} disabled={isProcessing || selectedQueueId === note.id} className="px-3 py-2 rounded-lg text-xs font-bold border border-emerald-500/40 bg-emerald-600/20 text-emerald-100 hover:bg-emerald-600/30 flex items-center justify-center gap-2 disabled:opacity-50">
                                                     {selectedQueueId === note.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />}
@@ -886,6 +962,98 @@ export default function ImportacaoPage() {
                             {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                             CONFIRMAR IMPORTAÇÃO
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Archived Notes Modal */}
+            {isArchivedModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+                        {/* Header */}
+                        <div className="flex items-center justify-between p-6 border-b border-white/10 bg-slate-900/50">
+                            <div>
+                                <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
+                                    <Archive className="h-6 w-6 text-slate-400" />
+                                    Notas Arquivadas
+                                </h2>
+                                <p className="text-sm text-slate-400 mt-1">Notas da SEFAZ que foram ignoradas/arquivadas.</p>
+                            </div>
+                            <button
+                                onClick={() => setIsArchivedModalOpen(false)}
+                                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 overflow-auto p-4 custom-scrollbar">
+                            {archivedQueueLoading ? (
+                                <div className="py-12 flex flex-col items-center justify-center text-slate-400 gap-3">
+                                    <Loader2 className="h-8 w-8 animate-spin text-slate-500" />
+                                    <p>Carregando notas arquivadas...</p>
+                                </div>
+                            ) : archivedQueueItems.length === 0 ? (
+                                <div className="py-12 flex flex-col items-center justify-center text-slate-500 gap-3">
+                                    <Archive className="h-12 w-12 text-slate-600" />
+                                    <p>Nenhuma nota arquivada no momento.</p>
+                                </div>
+                            ) : (
+                                <div className="divide-y divide-white/5 border border-white/5 rounded-xl overflow-hidden bg-slate-950/30">
+                                    {archivedQueueItems.map((note) => (
+                                        <div key={note.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-white/5 transition-colors">
+                                            <div className="min-w-0 flex-1">
+                                                <p className="font-bold text-slate-200 truncate">{note.emitente_nome || 'Fornecedor não identificado'}</p>
+                                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-slate-400">
+                                                    <span>NF {note.numero || '-'}</span>
+                                                    {note.data_emissao && (
+                                                        <span>• {new Date(note.data_emissao).toLocaleDateString('pt-BR')}</span>
+                                                    )}
+                                                    <span className="font-mono text-slate-500" title="Chave de Acesso">• {note.chave_acesso}</span>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
+                                                <span className="font-bold text-slate-300">{money(Number(note.valor_total || 0))}</span>
+                                                <button type="button" onClick={() => handleCopyAccessKey(note.chave_acesso)} className="px-3 py-2 rounded-lg text-xs font-bold border border-white/10 text-slate-300 hover:bg-white/10 flex items-center justify-center gap-2">
+                                                    <Copy className="h-4 w-4" /> Copiar
+                                                </button>
+                                                <a
+                                                    href={buildNFePortalConsultaUrl(note.chave_acesso)}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    onClick={() => {
+                                                        void navigator.clipboard?.writeText(note.chave_acesso).catch(() => undefined)
+                                                    }}
+                                                    className="px-3 py-2 rounded-lg text-xs font-bold border border-white/10 text-slate-300 hover:bg-white/10 flex items-center justify-center gap-2"
+                                                    title="Abre o Portal NF-e e copia a chave para consulta manual"
+                                                >
+                                                    <Search className="h-4 w-4" /> Portal NF-e
+                                                </a>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleUnarchiveItem(note.id)}
+                                                    className="px-3 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 rounded-lg text-xs font-bold border border-indigo-500/20 flex items-center gap-2 transition-colors"
+                                                >
+                                                    <ArchiveRestore className="h-4 w-4" />
+                                                    Desarquivar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 border-t border-white/10 bg-slate-900/50 flex justify-end">
+                            <button
+                                onClick={() => setIsArchivedModalOpen(false)}
+                                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-lg transition-colors border border-white/10"
+                            >
+                                Fechar
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
