@@ -247,15 +247,30 @@ export async function calcularComissoesGlobais(storeId: number, inicio: string, 
         if (globalEmployees.length === 0) return
 
         // 2. Busca totais da loja no período
-        const { data: vendas } = await (supabase.from('vendas') as any)
+        const commissionMode = await getCommissionGenerationMode(storeId)
+        let vendasQuery = (supabase.from('vendas') as any)
             .select(`
-                id, valor_final, data_fechamento,
+                id, valor_final, created_at, data_fechamento, status,
                 venda_itens ( quantidade, product_id, produtos:products(preco_custo) )
             `)
             .eq('store_id', storeId)
-            .eq('status', 'Fechada')
-            .gte('data_fechamento', dataInicio)
-            .lte('data_fechamento', dataFim)
+
+        if (commissionMode === 'open_or_closed') {
+            // Mantem a venda no mes de criacao durante todo o ciclo. Assim uma
+            // venda aberta em um mes e fechada no seguinte nao entra duas vezes.
+            vendasQuery = vendasQuery
+                .in('status', ['Em Aberto', 'Fechada'])
+                .gte('created_at', dataInicio)
+                .lte('created_at', dataFim)
+        } else {
+            vendasQuery = vendasQuery
+                .eq('status', 'Fechada')
+                .gte('data_fechamento', dataInicio)
+                .lte('data_fechamento', dataFim)
+        }
+
+        const { data: vendas, error: vendasError } = await vendasQuery
+        if (vendasError) throw vendasError
 
         const { data: pagamentos } = await (supabase.from('pagamentos') as any)
             .select('valor_pago, created_at')
