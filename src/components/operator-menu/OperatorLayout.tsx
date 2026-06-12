@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { logoutAndRedirect } from '@/lib/auth/logout';
 import OperatorMenuHome from './OperatorMenuHome';
 import OperatorMenuAtendimento from './OperatorMenuAtendimento';
 import OperatorMenuLojaVazia from './OperatorMenuLojaVazia';
@@ -34,7 +34,6 @@ export default function OperatorLayout({
     const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
-    const supabase = createClient();
 
     const [homeSelection, setHomeSelection] = useState<HomeSelection>(null);
     const [livePreSaleAnalysisEnabled, setLivePreSaleAnalysisEnabled] = useState(preSaleAnalysisEnabled);
@@ -78,12 +77,7 @@ export default function OperatorLayout({
     })();
 
     const handleLogout = async () => {
-        const { error } = await supabase.auth.signOut();
-        if (error) {
-            alert('Erro ao sair');
-            return;
-        }
-        window.location.href = '/login';
+        await logoutAndRedirect();
     };
 
     const handleNavigate = (menu: 'atendimento' | 'loja-vazia') => {

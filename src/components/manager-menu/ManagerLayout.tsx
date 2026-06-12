@@ -18,7 +18,7 @@ import {
     Store
 } from 'lucide-react';
 
-import { createClient } from '@/lib/supabase/client';
+import { logoutAndRedirect } from '@/lib/auth/logout';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { OperatorLayout } from '@/components/operator-menu';
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
@@ -95,7 +95,6 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
     const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
-    const supabase = createClient();
     const { preference } = useBackgroundPreference();
     const modules = useStoreModules();
 
@@ -109,12 +108,7 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
         pathname !== storeHomePath && effectiveManualState !== 'operator' ? 'page' : effectiveManualState;
 
     const handleLogout = async () => {
-        const { error } = await supabase.auth.signOut();
-        if (error) {
-            alert('Erro ao sair');
-            return;
-        }
-        window.location.href = '/login';
+        await logoutAndRedirect();
     };
 
     if (currentState === 'operator') {

@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useParams, useRouter } from 'next/navigation'
 import { getStorePublicProfile, getTenantName } from '@/lib/actions/store.actions'
 import FullscreenToggleButton from '@/components/FullscreenToggleButton'
+import { logoutAndRedirect } from '@/lib/auth/logout'
 
 type HeaderBrandState = {
   storeName: string | null
@@ -101,8 +102,7 @@ export default function Header() {
   }, [storeId])
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    window.location.href = '/login'
+    await logoutAndRedirect()
   }
 
   return (

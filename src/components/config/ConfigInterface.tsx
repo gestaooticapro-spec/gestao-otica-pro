@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition } from 'react';
 import {
-    Users, Plus, Save, Power, Loader2, Lock, User,
+    Users, Plus, Save, Power, Loader2, Lock, User, KeyRound, Eye, EyeOff, Mail,
     ShieldCheck, Briefcase, Wrench, BadgeCheck, Percent, CheckCircle2,
     Store, MapPin, Phone, QrCode, ArrowLeft, AlertCircle, Sparkles, FileText, Wallet, HeartHandshake, Zap, Printer, UploadCloud
 } from 'lucide-react';
@@ -14,6 +14,11 @@ import Link from 'next/link';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import dynamic from 'next/dynamic';
 import { StoreSettings as SharedStoreSettings, getStoreModules } from '@/lib/store-modules';
+import {
+    getStoreAccessAccounts,
+    updateStoreAccessPassword,
+    type StoreAccessAccount
+} from '@/lib/actions/password.actions';
 
 const AiSuggestionConfigPanel = dynamic(() => import('@/components/config/AiSuggestionConfigPanel'), {
     loading: () => <div className="p-6 text-center"><Loader2 className="animate-spin h-6 w-6 text-cyan-400 mx-auto" /></div>,
@@ -1122,9 +1127,250 @@ function TeamManagement({ storeId }: { storeId: number }) {
     )
 }
 
+function PasswordManagement({ storeId }: { storeId: number }) {
+    const [accounts, setAccounts] = useState<StoreAccessAccount[]>([])
+    const [selectedId, setSelectedId] = useState<string | null>(null)
+    const [newPassword, setNewPassword] = useState('')
+    const [confirmPassword, setConfirmPassword] = useState('')
+    const [showPassword, setShowPassword] = useState(false)
+    const [loading, setLoading] = useState(true)
+    const [isSaving, startTransition] = useTransition()
+    const [feedback, setFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null)
+
+    useEffect(() => {
+        let active = true
+
+        getStoreAccessAccounts(storeId).then(data => {
+            if (!active) return
+            setAccounts(data)
+            setSelectedId(current => current || data[0]?.id || null)
+            setLoading(false)
+        })
+
+        return () => {
+            active = false
+        }
+    }, [storeId])
+
+    const selectedAccount = accounts.find(account => account.id === selectedId)
+    const passwordIsValid = newPassword.length >= 6
+    const passwordsMatch = newPassword === confirmPassword
+
+    const handleSelect = (account: StoreAccessAccount) => {
+        setSelectedId(account.id)
+        setNewPassword('')
+        setConfirmPassword('')
+        setFeedback(null)
+    }
+
+    const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        setFeedback(null)
+
+        if (!selectedAccount) {
+            setFeedback({ type: 'error', message: 'Selecione uma conta de acesso.' })
+            return
+        }
+
+        if (!passwordIsValid) {
+            setFeedback({ type: 'error', message: 'A senha deve ter pelo menos 6 caracteres.' })
+            return
+        }
+
+        if (!passwordsMatch) {
+            setFeedback({ type: 'error', message: 'A confirmacao nao corresponde a nova senha.' })
+            return
+        }
+
+        startTransition(async () => {
+            const result = await updateStoreAccessPassword(storeId, selectedAccount.id, newPassword)
+            setFeedback({
+                type: result.success ? 'success' : 'error',
+                message: result.message
+            })
+
+            if (result.success) {
+                setNewPassword('')
+                setConfirmPassword('')
+            }
+        })
+    }
+
+    const roleLabel = (role: string) => {
+        if (role === 'manager') return 'Gerente'
+        if (role === 'store_operator') return 'Operador da loja'
+        if (role === 'admin') return 'Administrador'
+        return role
+    }
+
+    return (
+        <div className="mx-auto grid h-full max-w-6xl grid-cols-1 gap-4 lg:grid-cols-[340px_1fr]">
+            <section className="flex min-h-[520px] flex-col overflow-hidden rounded-xl border border-white/10 bg-white/5 shadow-xl backdrop-blur-xl">
+                <div className="border-b border-violet-500/20 bg-gradient-to-br from-violet-900/60 to-slate-900/60 p-4">
+                    <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-violet-200">
+                        <KeyRound className="h-5 w-5" /> Contas de login
+                    </h2>
+                    <p className="mt-2 text-[10px] leading-relaxed text-slate-400">
+                        Estas contas entram pela tela inicial. Os PINs de vendedores continuam na aba Equipe & Acesso.
+                    </p>
+                </div>
+
+                <div className="flex-1 space-y-2 overflow-y-auto p-2 custom-scrollbar">
+                    {loading ? (
+                        <div className="flex justify-center p-8">
+                            <Loader2 className="h-6 w-6 animate-spin text-violet-400" />
+                        </div>
+                    ) : accounts.length === 0 ? (
+                        <p className="p-6 text-center text-xs text-slate-500">Nenhuma conta de login vinculada a esta loja.</p>
+                    ) : accounts.map(account => (
+                        <button
+                            key={account.id}
+                            type="button"
+                            onClick={() => handleSelect(account)}
+                            className={`w-full rounded-xl border p-3 text-left transition-all ${
+                                selectedId === account.id
+                                    ? 'border-violet-500/40 bg-violet-500/20 shadow-lg shadow-violet-500/10'
+                                    : 'border-white/5 bg-white/5 hover:border-white/10 hover:bg-white/10'
+                            }`}
+                        >
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                    <p className="truncate text-xs font-bold text-slate-200">{account.email}</p>
+                                    <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                                        {roleLabel(account.role)}
+                                    </p>
+                                </div>
+                                {account.isCurrentUser && (
+                                    <span className="shrink-0 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[8px] font-black uppercase text-cyan-300">
+                                        Voce
+                                    </span>
+                                )}
+                            </div>
+                        </button>
+                    ))}
+                </div>
+            </section>
+
+            <section className="flex min-h-[520px] flex-col overflow-hidden rounded-xl border border-white/10 bg-white/5 shadow-xl backdrop-blur-xl">
+                <div className="border-b border-white/10 bg-slate-900/60 px-6 py-4">
+                    <h2 className="flex items-center gap-2 text-lg font-bold text-slate-200">
+                        <Lock className="h-5 w-5 text-violet-400" />
+                        {selectedAccount ? `Alterar senha de ${selectedAccount.email}` : 'Troca de senha'}
+                    </h2>
+                </div>
+
+                <div className="flex flex-1 items-center justify-center overflow-y-auto p-6 custom-scrollbar">
+                    {!selectedAccount ? (
+                        <div className="text-center">
+                            <KeyRound className="mx-auto mb-4 h-10 w-10 text-slate-600" />
+                            <p className="text-sm text-slate-400">Selecione uma conta para definir uma nova senha.</p>
+                        </div>
+                    ) : (
+                        <form onSubmit={handleSubmit} className="w-full max-w-xl space-y-5">
+                            <div className={cardStyle}>
+                                <div className="absolute left-0 top-0 h-full w-1 bg-violet-500" />
+                                <div className="mb-5 flex items-start gap-3">
+                                    <div className="rounded-xl border border-violet-500/20 bg-violet-500/10 p-3 text-violet-300">
+                                        <Mail className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-black text-slate-200">{selectedAccount.email}</p>
+                                        <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-500">
+                                            {roleLabel(selectedAccount.role)}
+                                            {selectedAccount.lastSignInAt
+                                                ? ` · Ultimo acesso: ${new Date(selectedAccount.lastSignInAt).toLocaleString('pt-BR')}`
+                                                : ' · Nunca acessou'}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className={labelStyle}>Nova senha</label>
+                                        <div className="relative">
+                                            <input
+                                                type={showPassword ? 'text' : 'password'}
+                                                value={newPassword}
+                                                onChange={event => setNewPassword(event.target.value)}
+                                                className={`${inputStyle} pr-11`}
+                                                placeholder="Minimo de 6 caracteres"
+                                                autoComplete="new-password"
+                                                disabled={isSaving}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPassword(current => !current)}
+                                                className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 transition-colors hover:text-slate-200"
+                                                title={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                                            >
+                                                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className={labelStyle}>Confirmar nova senha</label>
+                                        <input
+                                            type={showPassword ? 'text' : 'password'}
+                                            value={confirmPassword}
+                                            onChange={event => setConfirmPassword(event.target.value)}
+                                            className={inputStyle}
+                                            placeholder="Digite novamente"
+                                            autoComplete="new-password"
+                                            disabled={isSaving}
+                                        />
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-2 text-[9px] font-bold uppercase tracking-wider">
+                                        <span className={`rounded-full border px-2 py-1 ${
+                                            passwordIsValid
+                                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                                                : 'border-white/10 bg-white/5 text-slate-500'
+                                        }`}>
+                                            6+ caracteres
+                                        </span>
+                                        <span className={`rounded-full border px-2 py-1 ${
+                                            confirmPassword && passwordsMatch
+                                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                                                : 'border-white/10 bg-white/5 text-slate-500'
+                                        }`}>
+                                            Senhas iguais
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {feedback && (
+                                <div className={`rounded-xl border p-3 text-xs font-bold ${
+                                    feedback.type === 'success'
+                                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                                        : 'border-red-500/30 bg-red-500/10 text-red-300'
+                                }`}>
+                                    {feedback.message}
+                                </div>
+                            )}
+
+                            <div className="flex justify-end">
+                                <button
+                                    type="submit"
+                                    disabled={isSaving || !passwordIsValid || !passwordsMatch}
+                                    className="flex items-center gap-2 rounded-lg border border-white/10 bg-violet-600 px-6 py-2.5 text-xs font-bold text-white shadow-lg shadow-violet-500/20 transition-all hover:bg-violet-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                                    ALTERAR SENHA
+                                </button>
+                            </div>
+                        </form>
+                    )}
+                </div>
+            </section>
+        </div>
+    )
+}
+
 // --- COMPONENTE PRINCIPAL (COM ABAS) ---
 export default function ConfigInterface({ storeId }: { storeId: number }) {
-    const [activeTab, setActiveTab] = useState<'loja' | 'recursos' | 'equipe'>('loja')
+    const [activeTab, setActiveTab] = useState<'loja' | 'recursos' | 'equipe' | 'senhas'>('loja')
     const router = useRouter()
     const { preference } = useBackgroundPreference()
 
@@ -1138,7 +1384,7 @@ export default function ConfigInterface({ storeId }: { storeId: number }) {
             </div>
 
             {/* Header de Abas */}
-            <div className="relative z-20 bg-slate-900/60 backdrop-blur-xl border-b border-white/10 px-6 flex items-center gap-6 shadow-lg shrink-0">
+            <div className="relative z-20 bg-slate-900/60 backdrop-blur-xl border-b border-white/10 px-6 flex items-center gap-6 shadow-lg shrink-0 overflow-x-auto">
                 <button
                     onClick={() => router.back()}
                     className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
@@ -1167,6 +1413,12 @@ export default function ConfigInterface({ storeId }: { storeId: number }) {
                 >
                     <Users className="h-4 w-4" /> Equipe & Acesso
                 </button>
+                <button
+                    onClick={() => setActiveTab('senhas')}
+                    className={`py-4 text-[10px] font-black border-b-2 transition-colors flex items-center gap-2 uppercase tracking-[0.2em] ${activeTab === 'senhas' ? 'border-violet-500 text-violet-300' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
+                >
+                    <KeyRound className="h-4 w-4" /> Senhas
+                </button>
 
                 <div className="flex-1" />
                 <BackgroundToggle />
@@ -1176,6 +1428,7 @@ export default function ConfigInterface({ storeId }: { storeId: number }) {
                 {activeTab === 'loja' && <StoreDataForm storeId={storeId} />}
                 {activeTab === 'recursos' && <ResourcesForm storeId={storeId} />}
                 {activeTab === 'equipe' && <TeamManagement storeId={storeId} />}
+                {activeTab === 'senhas' && <PasswordManagement storeId={storeId} />}
             </div>
         </div>
     )

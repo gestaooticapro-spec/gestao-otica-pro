@@ -12,9 +12,9 @@ import {
     FileInput, ArrowLeftRight, FileSpreadsheet, CalendarRange, Percent, Home, LifeBuoy,
     CheckCircle2, Tag, ChevronRight, ChevronLeft, PanelLeftClose, PanelLeftOpen, X, Globe, Printer
 } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
 import { useModals } from '@/lib/contexts/ModalsContext';
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
+import { logoutAndRedirect } from '@/lib/auth/logout';
 
 type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor' | 'tecnico';
 
@@ -159,7 +159,6 @@ const MENU_STRUCTURE: MenuGroup[] = [
 export default function SideNav({ userRole, storeId, storeName, logoUrl }: SideNavProps) {
     const router = useRouter();
     const pathname = usePathname();
-    const supabase = createClient();
     const modules = useStoreModules();
 
     // --- ESTADOS ---
@@ -176,9 +175,7 @@ export default function SideNav({ userRole, storeId, storeName, logoUrl }: SideN
     }, [pathname]);
 
     const handleLogout = async () => {
-        const { error } = await supabase.auth.signOut();
-        if (error) alert('Erro ao sair');
-        window.location.href = '/login';
+        await logoutAndRedirect();
     };
 
     const handleMainClick = (group: MenuGroup) => {
