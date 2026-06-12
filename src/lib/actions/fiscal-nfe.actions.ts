@@ -175,6 +175,23 @@ type NuvemFiscalCompany = {
     } | null;
 };
 
+type NFeStatusResult = {
+    status?: string;
+    numero?: string | number | null;
+    serie?: string | number | null;
+    chave?: string | null;
+    xml_url?: string | null;
+    pdf_url?: string | null;
+    link_url?: string | null;
+    motivo_status?: string | null;
+    autorizacao?: {
+        motivo_status?: string | null;
+    } | null;
+    error?: {
+        message?: string | null;
+    } | null;
+};
+
 function cleanDigits(value?: string | number | null) {
     return String(value ?? "").replace(/\D/g, "");
 }
@@ -827,10 +844,13 @@ function getNFePayloadDiagnosticSources(store: NFeStoreData, environment: NFeEnv
     };
 }
 
-async function fetchXmlContent(xmlUrl?: string | null) {
+async function fetchXmlContent(xmlUrl?: string | null, token?: string | null) {
     if (!xmlUrl) return null;
     try {
-        const response = await fetch(xmlUrl);
+        const response = await fetch(xmlUrl, {
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+            cache: "no-store",
+        });
         if (!response.ok) return null;
         return await response.text();
     } catch {
@@ -1911,7 +1931,7 @@ export async function emitirNFe(input: NFeSaleInput) {
             return { success: false, error: `NF-e rejeitada: ${code} - ${reason}${retryHint}`, invoiceId };
         }
 
-        const xmlContent = await fetchXmlContent(result.xml_url);
+        const xmlContent = await fetchXmlContent(result.xml_url, token);
         const update: Record<string, any> = {
             status: result.status === "autorizado" ? "authorized" : "processing",
             nuvemfiscal_uuid: result.id,
@@ -1942,5 +1962,112 @@ export async function emitirNFe(input: NFeSaleInput) {
                 .eq("id", invoiceId);
         }
         return { success: false, error: error.message || "Erro inesperado ao emitir NF-e." };
+    }
+}
+
+export async function consultarNFe(invoiceId: string) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const supabase = createAdminClient() as any;
+
+    try {
+        const { data: invoice, error: invoiceError } = await supabase
+            .from("fiscal_invoices")
+            .select("*")
+            .eq("id", invoiceId)
+            .single();
+
+        if (invoiceError || !invoice || !invoice.nuvemfiscal_uuid) {
+            return { success: false, error: "NF-e nao encontrada ou sem ID da Nuvem Fiscal." };
+        }
+
+        if (invoice.tipo_documento !== "NFe") {
+            return { success: false, error: "O documento informado nao e uma NF-e." };
+        }
+
+        if (invoice.store_id && !(await isStoreModuleEnabledForStore(invoice.store_id, "fiscal"))) {
+            return { success: false, error: "Modulo fiscal desativado para esta loja." };
+        }
+
+        const environment = (invoice.environment as NFeEnvironment) || "production";
+        const token = await getNuvemFiscalToken(environment);
+        const baseUrl = getNuvemFiscalBaseUrl(environment);
+        const response = await fetch(`${baseUrl}/nfe/${invoice.nuvemfiscal_uuid}`, {
+            method: "GET",
+            headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+            },
+            cache: "no-store",
+        });
+
+        const responseText = await response.text();
+        let result: NFeStatusResult = {};
+        try {
+            result = responseText ? JSON.parse(responseText) as NFeStatusResult : {};
+        } catch {
+            return {
+                success: false,
+                error: `Resposta invalida ao consultar NF-e (${response.status}).`,
+            };
+        }
+
+        if (!response.ok) {
+            return {
+                success: false,
+                error: stringifyProviderError(result) || "Erro ao consultar status da NF-e.",
+            };
+        }
+
+        let status = invoice.status;
+        let errorMessage: string | null = null;
+        if (result.status === "autorizado") {
+            status = "authorized";
+        } else if (result.status === "rejeitado") {
+            status = "rejected";
+            errorMessage =
+                result.autorizacao?.motivo_status ||
+                result.motivo_status ||
+                "NF-e rejeitada pela SEFAZ.";
+        } else if (result.status === "erro" || result.status === "negado") {
+            status = "error";
+            errorMessage = result.motivo_status || "Erro na autorizacao da NF-e.";
+        } else if (result.status === "cancelado") {
+            status = "cancelled";
+        }
+
+        const xmlContent =
+            (status === "authorized" || status === "cancelled") && !invoice.xml_content
+                ? await fetchXmlContent(result.xml_url, token)
+                : null;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const update: Record<string, any> = {
+            status,
+            numero: String(result.numero || invoice.numero || ""),
+            serie: String(result.serie || invoice.serie || ""),
+            chave_acesso: result.chave || invoice.chave_acesso,
+            xml_url: result.xml_url || invoice.xml_url,
+            pdf_url: result.pdf_url || result.link_url || invoice.pdf_url,
+            error_message: errorMessage,
+            motivo_rejeicao: status === "rejected" ? errorMessage : null,
+        };
+        if (xmlContent) update.xml_content = xmlContent;
+
+        const { error: updateError } = await supabase
+            .from("fiscal_invoices")
+            .update(update)
+            .eq("id", invoiceId);
+        if (updateError) {
+            return { success: false, error: updateError.message };
+        }
+
+        return { success: true, status, data: result };
+    } catch (error: unknown) {
+        console.error("[NF-e] Erro ao consultar status:", error);
+        return {
+            success: false,
+            error: error instanceof Error
+                ? error.message
+                : "Erro inesperado ao consultar NF-e.",
+        };
     }
 }
