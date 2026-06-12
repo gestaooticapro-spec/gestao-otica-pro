@@ -229,6 +229,21 @@ export async function getCustomerPrescriptionSummary(
     storeId: number
 ): Promise<PrescriptionSummaryGroup[]> {
     const supabaseAdmin = createAdminClient()
+    const prescriptionPresenceFilter = [
+        'receita_longe_od_esferico.not.is.null',
+        'receita_longe_od_cilindrico.not.is.null',
+        'receita_longe_od_eixo.not.is.null',
+        'receita_longe_oe_esferico.not.is.null',
+        'receita_longe_oe_cilindrico.not.is.null',
+        'receita_longe_oe_eixo.not.is.null',
+        'receita_perto_od_esferico.not.is.null',
+        'receita_perto_od_cilindrico.not.is.null',
+        'receita_perto_od_eixo.not.is.null',
+        'receita_perto_oe_esferico.not.is.null',
+        'receita_perto_oe_cilindrico.not.is.null',
+        'receita_perto_oe_eixo.not.is.null',
+        'receita_adicao.not.is.null'
+    ].join(',')
 
     const { data, error } = await (supabaseAdmin
         .from('service_orders') as any)
@@ -254,8 +269,8 @@ export async function getCustomerPrescriptionSummary(
         `)
         .eq('store_id', storeId)
         .eq('customer_id', customerId)
-        // Apenas OSs que tenham algum dado de receita preenchido
-        .not('receita_longe_od_esferico', 'is', null)
+        // Considera qualquer campo de receita preenchido, nao apenas o OD esferico.
+        .or(prescriptionPresenceFilter)
         .order('created_at', { ascending: false })
         .limit(20)
 
