@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getFiscalInvoices } from "@/lib/actions/fiscal-db.actions";
 import { consultarNFCe, cancelarNota } from "@/lib/actions/fiscal.actions";
-import { consultarNFe } from "@/lib/actions/fiscal-nfe.actions";
 import BackButton from "@/components/ui/BackButton";
 import {
     FileText, Plus, Search, Loader2, AlertCircle,
@@ -67,10 +66,8 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
 
             let updated = false;
             for (const inv of processingInvoices) {
-                if (inv.tipo_documento === "NFCe" || inv.tipo_documento === "NFe") {
-                    const res = inv.tipo_documento === "NFe"
-                        ? await consultarNFe(inv.id)
-                        : await consultarNFCe(inv.id);
+                if (inv.tipo_documento === "NFCe") {
+                    const res = await consultarNFCe(inv.id);
                     if (res.success && res.status !== "processing") updated = true;
                 }
             }
@@ -110,12 +107,10 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
         }
     };
 
-    const handleRefreshStatus = async (invoiceId: string, documentType: string) => {
+    const handleRefreshStatus = async (invoiceId: string) => {
         alert("Consultando status na Nuvem Fiscal...");
         try {
-            const res = documentType === "NFe"
-                ? await consultarNFe(invoiceId)
-                : await consultarNFCe(invoiceId);
+            const res = await consultarNFCe(invoiceId);
             if (res.success) {
                 if (res.status === "error" || res.status === "rejected") {
                     let msg = res.data?.autorizacao?.motivo_status || res.data?.motivo_status || res.data?.error?.message;
@@ -453,7 +448,7 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
                                                     {/* Atualizar status (processing/error) */}
                                                     {(inv.status === "processing" || inv.status === "error") && (
                                                         <button
-                                                            onClick={() => handleRefreshStatus(inv.id, inv.tipo_documento)}
+                                                            onClick={() => handleRefreshStatus(inv.id)}
                                                             className={`p-2 rounded-lg transition ${inv.status === "error" ? "bg-red-500/10 text-red-400 hover:bg-red-500/20" : "bg-blue-500/10 text-blue-400 hover:bg-blue-500/20"}`}
                                                             title={inv.status === "error" ? "Retentar / Ver status" : "Atualizar status"}
                                                         >
