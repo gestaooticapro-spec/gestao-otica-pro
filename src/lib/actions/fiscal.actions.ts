@@ -182,9 +182,32 @@ function extractProtocolFromInutilization(result: any) {
     const directProtocol = result?.numero_protocolo || result?.autorizacao?.numero_protocolo;
     if (directProtocol) return String(directProtocol);
 
-    const motivo = String(result?.motivo_status || result?.autorizacao?.motivo_status || "");
+    const motivo = String(result?.motivo_status || result?.autorizacao?.motivo_status || result?.error?.message || "");
     const match = motivo.match(/nProt:?\s*(\d+)/i);
     return match?.[1] || null;
+}
+
+function isDuplicateInutilizationWithProtocol(result: Parameters<typeof extractProtocolFromInutilization>[0]) {
+    const statusCode = result?.codigo_status || result?.autorizacao?.codigo_status || result?.error?.codigo_status;
+    const message = String(
+        result?.motivo_status
+        || result?.autorizacao?.motivo_status
+        || result?.error?.message
+        || ""
+    );
+
+    return (!statusCode || Number(statusCode) === 563) && /Ja existe pedido de Inutilizacao|J[aá] existe pedido de Inutiliza[cç][aã]o/i.test(message) && Boolean(extractProtocolFromInutilization(result));
+}
+
+function buildInutilizationExternalId(params: {
+    environment: string;
+    cnpj: string;
+    year: number;
+    serie: number;
+    numeroInicial: number;
+    numeroFinal: number;
+}) {
+    return `nfce-inutilizacao:${params.environment}:${params.cnpj}:${params.year}:${params.serie}:${params.numeroInicial}:${params.numeroFinal}`;
 }
 
 async function tryFetchXmlContent(xmlUrl?: string | null) {
@@ -1067,39 +1090,78 @@ export async function inutilizarNumeracaoNFCe(params: {
         });
 
         const result = await response.json();
-        if (!response.ok) {
+        const duplicateAlreadyInutilized = !response.ok && isDuplicateInutilizationWithProtocol(result);
+        if (!response.ok && !duplicateAlreadyInutilized) {
             const apiError = result?.error?.message || "Erro ao solicitar inutilização na Nuvem Fiscal.";
             return { success: false, error: apiError, details: result };
         }
 
+        let persistWarning: string | null = null;
+
         // Persistir histórico local para permitir download posterior de comprovantes
         try {
             const protocol = extractProtocolFromInutilization(result);
-            const externalId = result?.id || result?.autorizacao?.id || null;
-            const status = result?.status || result?.autorizacao?.status || null;
-
-            await supabase
-                .from("fiscal_inutilizations")
-                .upsert({
-                    store_id: params.storeId,
-                    tenant_id: store.tenant_id || null,
+            const externalId = result?.id
+                || result?.autorizacao?.id
+                || buildInutilizationExternalId({
                     environment: env,
-                    model: "NFCe",
+                    cnpj,
                     year: params.year,
                     serie: params.serie,
-                    numero_inicial: params.numeroInicial,
-                    numero_final: params.numeroFinal,
-                    justificativa: params.justificativa.trim(),
-                    protocol,
-                    external_id: externalId,
-                    status,
-                    response_json: result,
-                }, { onConflict: "external_id" });
+                    numeroInicial: params.numeroInicial,
+                    numeroFinal: params.numeroFinal,
+                });
+            const status = duplicateAlreadyInutilized
+                ? "ja_inutilizado"
+                : (result?.status || result?.autorizacao?.status || null);
+
+            const payloadToPersist = {
+                store_id: params.storeId,
+                tenant_id: store.tenant_id || null,
+                environment: env,
+                model: "NFCe",
+                year: params.year,
+                serie: params.serie,
+                numero_inicial: params.numeroInicial,
+                numero_final: params.numeroFinal,
+                justificativa: params.justificativa.trim(),
+                protocol,
+                external_id: externalId,
+                status,
+                response_json: duplicateAlreadyInutilized
+                    ? { ...result, recovered_from_duplicate_response: true }
+                    : result,
+            };
+
+            const { data: existingInutilization, error: lookupError } = await supabase
+                .from("fiscal_inutilizations")
+                .select("id")
+                .eq("external_id", externalId)
+                .maybeSingle();
+
+            if (lookupError) throw lookupError;
+
+            const persistQuery = existingInutilization
+                ? supabase.from("fiscal_inutilizations").update(payloadToPersist).eq("id", existingInutilization.id)
+                : supabase.from("fiscal_inutilizations").insert(payloadToPersist);
+
+            const { error: persistError } = await persistQuery;
+            if (persistError) throw persistError;
         } catch (persistErr) {
             console.warn("[Fiscal] Não foi possível persistir histórico de inutilização localmente.", persistErr);
+            const persistErrorMessage = persistErr instanceof Error ? persistErr.message : null;
+            persistWarning = persistErrorMessage
+                ? `Inutilizacao confirmada pela SEFAZ, mas nao foi possivel salvar o historico local: ${persistErrorMessage}`
+                : "Inutilizacao confirmada pela SEFAZ, mas nao foi possivel salvar o historico local.";
         }
 
-        return { success: true, data: result };
+        return {
+            success: true,
+            warning: persistWarning,
+            data: duplicateAlreadyInutilized
+                ? { ...result, status: "ja_inutilizado", recovered_from_duplicate_response: true }
+                : result,
+        };
     } catch (error: any) {
         console.error("Erro ao inutilizar numeração NFC-e:", error);
         return { success: false, error: error.message || "Erro inesperado na inutilização." };

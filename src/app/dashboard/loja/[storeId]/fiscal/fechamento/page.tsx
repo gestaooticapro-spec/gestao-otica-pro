@@ -365,7 +365,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                 || String(res.data?.motivo_status || "").match(/nProt:?\s*(\d+)/i)?.[1]
                 || "N/A";
             const status = res.data?.status || res.data?.autorizacao?.status || "solicitado";
-            alert(`Inutilização enviada com sucesso.\nStatus: ${status}\nProtocolo: ${protocolo}`);
+            alert(`${res.warning || "Inutilização enviada com sucesso."}\nStatus: ${status}\nProtocolo: ${protocolo}`);
             const updated = await listarInutilizacoesNFCe({ storeId, year, environment: invalidateEnvironment });
             if (updated.success) setInutilizacoes((updated.data as InutilizacaoItem[]) || []);
         } catch (err: any) {

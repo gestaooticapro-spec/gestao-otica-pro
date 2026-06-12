@@ -6,8 +6,33 @@ type CachedToken = {
 };
 
 const TOKEN_EXPIRY_SAFETY_MS = 60_000;
+const OFFICIAL_AUTH_URL = "https://auth.nuvemfiscal.com.br/oauth/token";
 const tokenCache: Record<string, CachedToken | undefined> = {};
 const tokenRequests: Record<string, Promise<string> | undefined> = {};
+
+function resolveAuthUrl(environment: 'production' | 'homologation') {
+    const explicitAuthUrl = environment === 'production'
+        ? process.env.NUVEMFISCAL_PROD_AUTH_URL
+        : process.env.NUVEMFISCAL_HOM_AUTH_URL;
+
+    if (explicitAuthUrl) {
+        return explicitAuthUrl.replace(/\/$/, '');
+    }
+
+    const baseUrl = environment === 'production'
+        ? process.env.NUVEMFISCAL_PROD_URL
+        : process.env.NUVEMFISCAL_HOM_URL;
+
+    const isLocalOverride = Boolean(
+        baseUrl && /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?(?:\/|$)/i.test(baseUrl)
+    );
+
+    if (isLocalOverride) {
+        return `${baseUrl!.replace(/\/$/, '')}/oauth/token`;
+    }
+
+    return OFFICIAL_AUTH_URL;
+}
 
 export async function getNuvemFiscalToken(
     environment: 'production' | 'homologation' = 'production',
@@ -51,7 +76,7 @@ async function fetchNuvemFiscalToken(
         clientSecret = process.env.NUVEMFISCAL_HOM_CLIENT_SECRET;
     }
 
-    const authUrl = "https://auth.nuvemfiscal.com.br/oauth/token";
+    const authUrl = resolveAuthUrl(environment);
 
     console.log(`[NuvemFiscal] Tentando autenticar em ${environment.toUpperCase()}...`);
     console.log('[NuvemFiscal] Auth URL:', authUrl);
