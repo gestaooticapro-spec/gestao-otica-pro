@@ -6,6 +6,11 @@ import { revalidatePath } from 'next/cache'
 
 type CommissionGenerationMode = 'closed_only' | 'open_or_closed'
 type CommissionStage = 'provisional' | 'final'
+type ExistingGlobalCommission = {
+    id: number
+    amount: number | null
+    status: string
+}
 
 async function getCommissionGenerationMode(storeId: number): Promise<CommissionGenerationMode> {
     const supabase = createAdminClient()
@@ -270,28 +275,43 @@ export async function calcularComissoesGlobais(storeId: number, inicio: string, 
         })
         const totalLucro = Math.max(0, totalVendido - totalCusto)
 
-        // 3. Atualiza ou cria uma única comissão global por funcionário/período
+        // 3. Preserva parcelas pagas e mantem apenas o saldo atual como pendente.
         for (const emp of globalEmployees) {
-            // Se já pagou parte global desse período, não recalcula
-            const { data: existingPaid } = await (supabase.from('commissions') as any)
-                .select('id')
+            const { data: existingCommissions, error: existingError } = await (supabase.from('commissions') as any)
+                .select('id, amount, status')
                 .eq('store_id', storeId)
                 .eq('employee_id', emp.id)
                 .eq('type', 'global_store')
                 .eq('period_ref', periodRef)
-                .eq('status', 'Pago')
-                .limit(1)
             
-            if (existingPaid && existingPaid.length > 0) continue; 
+            if (existingError) throw existingError
 
+            const currentCommissions = (existingCommissions || []) as ExistingGlobalCommission[]
             const cTotal = totalVendido * ((emp.comm_rate_store_total || 0) / 100)
             const cRec = totalRecebido * ((emp.comm_rate_received || 0) / 100)
             const cProf = totalLucro * ((emp.comm_rate_profit || 0) / 100)
 
             const totalGlobal = cTotal + cRec + cProf
+            const totalPago = currentCommissions
+                .filter(commission => commission.status === 'Pago')
+                .reduce((acc, commission) => acc + Number(commission.amount || 0), 0)
+            const saldoPendente = parseFloat(Math.max(0, totalGlobal - totalPago).toFixed(2))
+            const existingPending = currentCommissions
+                .find(commission => commission.status === 'Pendente')
 
-            if (totalGlobal > 0) {
-                const { error: upsertError } = await (supabase.from('commissions') as any).upsert({
+            if (saldoPendente <= 0) {
+                if (existingPending) {
+                    const { error: deleteError } = await (supabase.from('commissions') as any)
+                        .delete()
+                        .eq('id', existingPending.id)
+
+                    if (deleteError) throw deleteError
+                }
+                continue
+            }
+
+            if (existingPending) {
+                const { error: updateError } = await (supabase.from('commissions') as any).update({
                     tenant_id: emp.tenant_id,
                     store_id: storeId,
                     employee_id: emp.id,
@@ -299,14 +319,28 @@ export async function calcularComissoesGlobais(storeId: number, inicio: string, 
                     type: 'global_store',
                     period_ref: periodRef,
                     commission_stage: 'final',
-                    amount: parseFloat(totalGlobal.toFixed(2)),
+                    amount: saldoPendente,
                     status: 'Pendente',
                     created_at: dataFim // Força pra data final, assim entra no filtro da tela sem problemas
-                }, {
-                    onConflict: 'store_id,employee_id,type,period_ref'
+                })
+                    .eq('id', existingPending.id)
+
+                if (updateError) throw updateError
+            } else {
+                const { error: insertError } = await (supabase.from('commissions') as any).insert({
+                    tenant_id: emp.tenant_id,
+                    store_id: storeId,
+                    employee_id: emp.id,
+                    venda_id: null,
+                    type: 'global_store',
+                    period_ref: periodRef,
+                    commission_stage: 'final',
+                    amount: saldoPendente,
+                    status: 'Pendente',
+                    created_at: dataFim
                 })
 
-                if (upsertError) throw upsertError
+                if (insertError) throw insertError
             }
         }
     } catch (e) {
