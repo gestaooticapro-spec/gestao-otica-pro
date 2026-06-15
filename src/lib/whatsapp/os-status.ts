@@ -2,8 +2,7 @@ export type WhatsAppOsStatusCode =
   | 'ready_for_pickup'
   | 'lens_arrived_needs_frame'
   | 'lens_arrived_assembling'
-  | 'at_lab'
-  | 'preparing'
+  | 'lens_in_production'
 
 export type WhatsAppOpenOs = {
   id: number
@@ -27,33 +26,26 @@ export function describeOpenOs(
   if (serviceOrder.dt_montado_em) {
     return {
       statusCode: 'ready_for_pickup',
-      replyText: `Olá, ${firstName}! O óculos${patient} está pronto e aguardando retirada na loja.`,
+      replyText: `Ola, ${firstName}! Oculos${patient} pronto. Pode vir retirar.`,
     }
   }
 
   if (serviceOrder.dt_lente_chegou && serviceOrder.armacao_com_cliente) {
     return {
       statusCode: 'lens_arrived_needs_frame',
-      replyText: `Olá, ${firstName}! A lente${patient} chegou. Você já pode levar a armação à loja para fazermos a montagem.`,
+      replyText: `Ola, ${firstName}! Lente${patient} chegou, aguardando armacao.`,
     }
   }
 
   if (serviceOrder.dt_lente_chegou) {
     return {
       statusCode: 'lens_arrived_assembling',
-      replyText: `Olá, ${firstName}! A lente${patient} chegou e o óculos está em montagem.`,
-    }
-  }
-
-  if (serviceOrder.dt_pedido_em) {
-    return {
-      statusCode: 'at_lab',
-      replyText: `Olá, ${firstName}! O pedido${patient} está no laboratório. Avisaremos quando avançar para a próxima etapa.`,
+      replyText: `Ola, ${firstName}! Lente${patient} chegou, na fila da montagem.`,
     }
   }
 
   return {
-    statusCode: 'preparing',
-    replyText: `Olá, ${firstName}! A ordem de serviço${patient} está aberta e em preparação.`,
+    statusCode: 'lens_in_production',
+    replyText: `Ola, ${firstName}! Lente${patient} em producao.`,
   }
 }

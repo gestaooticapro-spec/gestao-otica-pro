@@ -2,8 +2,10 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { Json } from '@/lib/database.types'
-import { describeOpenOs } from './os-status'
+import { describeOpenOs, WhatsAppOsStatusCode } from './os-status'
 import { digitsOnly, phonesMatch, toEvolutionNumber } from './phone'
+
+const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
 
 type ChannelRow = {
   id: number
@@ -31,6 +33,11 @@ export type CustomerStatusResponse = {
   statusCode?: string
   replyText?: string
   outboundMessageId?: number
+}
+
+type LastOutboundStatusRow = {
+  created_at: string
+  payload: Json | null
 }
 
 async function findActiveChannel(instanceKey: string): Promise<ChannelRow | null> {
@@ -98,6 +105,44 @@ async function findLatestOpenOs(storeId: number, customerId: number) {
   }
 }
 
+async function findLastOutboundStatus(channelId: number, phone: string): Promise<LastOutboundStatusRow | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await (supabase.from('whatsapp_outbound_messages') as any)
+    .select('created_at, payload')
+    .eq('channel_id', channelId)
+    .eq('remote_phone', phone)
+    .eq('message_type', 'os_status')
+    .in('status', ['pending', 'sent'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw error
+  return data ?? null
+}
+
+function extractStatusCode(payload: Json | null): WhatsAppOsStatusCode | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null
+
+  const statusCode = payload.statusCode
+  return typeof statusCode === 'string' ? (statusCode as WhatsAppOsStatusCode) : null
+}
+
+function shouldSilenceRepeatedStatus(
+  lastOutbound: LastOutboundStatusRow | null,
+  currentStatusCode: WhatsAppOsStatusCode
+) {
+  if (!lastOutbound) return false
+
+  const lastStatusCode = extractStatusCode(lastOutbound.payload)
+  if (!lastStatusCode || lastStatusCode !== currentStatusCode) return false
+
+  const lastCreatedAt = new Date(lastOutbound.created_at).getTime()
+  if (Number.isNaN(lastCreatedAt)) return false
+
+  return Date.now() - lastCreatedAt < SAME_STATUS_SILENCE_WINDOW_MS
+}
+
 export async function resolveCustomerStatus(
   input: CustomerStatusRequest
 ): Promise<CustomerStatusResponse> {
@@ -144,6 +189,15 @@ export async function resolveCustomerStatus(
   }
 
   const status = describeOpenOs(customer.full_name, serviceOrder)
+  const lastOutbound = await findLastOutboundStatus(channel.id, normalizedPhone)
+
+  if (shouldSilenceRepeatedStatus(lastOutbound, status.statusCode)) {
+    await (supabase.from('whatsapp_inbound_messages') as any)
+      .update({ status: 'ignored' })
+      .eq('id', inbound.id)
+    return { shouldReply: false }
+  }
+
   const { data: outbound, error: outboundError } = await (supabase.from('whatsapp_outbound_messages') as any)
     .insert({
       tenant_id: channel.tenant_id,
@@ -154,6 +208,7 @@ export async function resolveCustomerStatus(
       message_text: status.replyText,
       message_type: 'os_status',
       status: 'pending',
+      payload: { statusCode: status.statusCode },
     })
     .select('id')
     .single()
