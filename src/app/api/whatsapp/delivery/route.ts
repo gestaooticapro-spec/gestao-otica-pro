@@ -28,12 +28,29 @@ export async function POST(request: Request) {
     }
 
     const supabase = createAdminClient()
+    const { data: existing, error: existingError } = await (supabase.from('whatsapp_outbound_messages') as any)
+      .select('payload')
+      .eq('id', parsed.data.outboundMessageId)
+      .maybeSingle()
+
+    if (existingError) throw existingError
+
+    const existingPayload =
+      existing?.payload && typeof existing.payload === 'object' && !Array.isArray(existing.payload)
+        ? existing.payload
+        : {}
+
+    const nextPayload = {
+      ...existingPayload,
+      delivery: (parsed.data.payload ?? null) as Json,
+    }
+
     const { error } = await (supabase.from('whatsapp_outbound_messages') as any)
       .update({
         status: parsed.data.status,
         provider_message_id: parsed.data.providerMessageId ?? null,
         error_message: parsed.data.errorMessage ?? null,
-        payload: (parsed.data.payload ?? null) as Json,
+        payload: nextPayload,
         sent_at: parsed.data.status === 'sent' ? new Date().toISOString() : null,
       })
       .eq('id', parsed.data.outboundMessageId)

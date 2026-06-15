@@ -37,6 +37,7 @@ export type CustomerStatusResponse = {
 
 type LastOutboundStatusRow = {
   created_at: string
+  message_text: string
   payload: Json | null
 }
 
@@ -108,7 +109,7 @@ async function findLatestOpenOs(storeId: number, customerId: number) {
 async function findLastOutboundStatus(channelId: number, phone: string): Promise<LastOutboundStatusRow | null> {
   const supabase = createAdminClient()
   const { data, error } = await (supabase.from('whatsapp_outbound_messages') as any)
-    .select('created_at, payload')
+    .select('created_at, message_text, payload')
     .eq('channel_id', channelId)
     .eq('remote_phone', phone)
     .eq('message_type', 'os_status')
@@ -128,6 +129,35 @@ function extractStatusCode(payload: Json | null): WhatsAppOsStatusCode | null {
   return typeof statusCode === 'string' ? (statusCode as WhatsAppOsStatusCode) : null
 }
 
+function inferStatusCodeFromText(messageText: string): WhatsAppOsStatusCode | null {
+  const normalized = messageText
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+
+  if (normalized.includes('pode vir retirar') || normalized.includes('ficou pronto')) {
+    return 'ready_for_pickup'
+  }
+
+  if (normalized.includes('aguardando armacao') || normalized.includes('trazer na loja')) {
+    return 'lens_arrived_needs_frame'
+  }
+
+  if (normalized.includes('fila da montagem') || normalized.includes('entrou na fila de montagem')) {
+    return 'lens_arrived_assembling'
+  }
+
+  if (
+    normalized.includes('em producao')
+    || normalized.includes('no laboratorio')
+    || normalized.includes('aberta e em preparacao')
+  ) {
+    return 'lens_in_production'
+  }
+
+  return null
+}
+
 function shouldSilenceRepeatedStatus(
   lastOutbound: LastOutboundStatusRow | null,
   currentStatusCode: WhatsAppOsStatusCode
@@ -135,6 +165,7 @@ function shouldSilenceRepeatedStatus(
   if (!lastOutbound) return false
 
   const lastStatusCode = extractStatusCode(lastOutbound.payload)
+    ?? inferStatusCodeFromText(lastOutbound.message_text)
   if (!lastStatusCode || lastStatusCode !== currentStatusCode) return false
 
   const lastCreatedAt = new Date(lastOutbound.created_at).getTime()
@@ -208,7 +239,9 @@ export async function resolveCustomerStatus(
       message_text: status.replyText,
       message_type: 'os_status',
       status: 'pending',
-      payload: { statusCode: status.statusCode },
+      payload: {
+        statusCode: status.statusCode,
+      },
     })
     .select('id')
     .single()

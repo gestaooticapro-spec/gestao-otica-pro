@@ -26,26 +26,26 @@ export function describeOpenOs(
   if (serviceOrder.dt_montado_em) {
     return {
       statusCode: 'ready_for_pickup',
-      replyText: `Ola, ${firstName}! Oculos${patient} pronto. Pode vir retirar.`,
+      replyText: `Oi, ${firstName}! Seu oculos${patient} ficou pronto e ja pode ser retirado na loja.`,
     }
   }
 
   if (serviceOrder.dt_lente_chegou && serviceOrder.armacao_com_cliente) {
     return {
       statusCode: 'lens_arrived_needs_frame',
-      replyText: `Ola, ${firstName}! Lente${patient} chegou, aguardando armacao.`,
+      replyText: `Oi, ${firstName}! Boa noticia: a lente${patient} ja chegou. Quando puder, traga a armacao na loja para fazermos a montagem.`,
     }
   }
 
   if (serviceOrder.dt_lente_chegou) {
     return {
       statusCode: 'lens_arrived_assembling',
-      replyText: `Ola, ${firstName}! Lente${patient} chegou, na fila da montagem.`,
+      replyText: `Oi, ${firstName}! A lente${patient} ja chegou e seu oculos entrou na fila de montagem. Assim que ficar pronto, avisamos voce.`,
     }
   }
 
   return {
     statusCode: 'lens_in_production',
-    replyText: `Ola, ${firstName}! Lente${patient} em producao.`,
+    replyText: `Oi, ${firstName}! Seu pedido${patient} esta em producao no laboratorio. Assim que houver novidade, avisamos voce.`,
   }
 }
