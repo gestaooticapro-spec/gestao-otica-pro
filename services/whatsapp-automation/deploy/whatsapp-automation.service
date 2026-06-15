@@ -1,0 +1,26 @@
+[Unit]
+Description=Gestao Otica WhatsApp Automation
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=whatsappautomation
+Group=whatsappautomation
+WorkingDirectory=/opt/whatsapp-automation
+EnvironmentFile=/etc/whatsapp-automation.env
+ExecStart=/usr/bin/node /opt/whatsapp-automation/server.mjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=whatsapp-automation
+
+[Install]
+WantedBy=multi-user.target

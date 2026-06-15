@@ -4,7 +4,8 @@ import { useState, useEffect, useTransition } from 'react';
 import {
     Users, Plus, Save, Power, Loader2, Lock, User, KeyRound, Eye, EyeOff, Mail,
     ShieldCheck, Briefcase, Wrench, BadgeCheck, Percent, CheckCircle2,
-    Store, MapPin, Phone, QrCode, ArrowLeft, AlertCircle, Sparkles, FileText, Wallet, HeartHandshake, Zap, Printer, UploadCloud
+    Store, MapPin, Phone, QrCode, ArrowLeft, AlertCircle, Sparkles, FileText, Wallet, HeartHandshake, Zap, Printer, UploadCloud,
+    MessageCircle
 } from 'lucide-react';
 import { getEmployees, saveEmployee, toggleEmployeeStatus } from '@/lib/actions/employee.actions';
 import { getStoreProfile, updateStoreProfile, updateStoreSettings } from '@/lib/actions/store.actions';
@@ -22,6 +23,11 @@ import {
 
 const AiSuggestionConfigPanel = dynamic(() => import('@/components/config/AiSuggestionConfigPanel'), {
     loading: () => <div className="p-6 text-center"><Loader2 className="animate-spin h-6 w-6 text-cyan-400 mx-auto" /></div>,
+    ssr: false,
+});
+
+const WhatsAppChannelPanel = dynamic(() => import('@/components/config/WhatsAppChannelPanel'), {
+    loading: () => <div className="p-6 text-center"><Loader2 className="animate-spin h-6 w-6 text-emerald-400 mx-auto" /></div>,
     ssr: false,
 });
 
@@ -1370,7 +1376,7 @@ function PasswordManagement({ storeId }: { storeId: number }) {
 
 // --- COMPONENTE PRINCIPAL (COM ABAS) ---
 export default function ConfigInterface({ storeId }: { storeId: number }) {
-    const [activeTab, setActiveTab] = useState<'loja' | 'recursos' | 'equipe' | 'senhas'>('loja')
+    const [activeTab, setActiveTab] = useState<'loja' | 'whatsapp' | 'recursos' | 'equipe' | 'senhas'>('loja')
     const router = useRouter()
     const { preference } = useBackgroundPreference()
 
@@ -1402,6 +1408,12 @@ export default function ConfigInterface({ storeId }: { storeId: number }) {
                     <Store className="h-4 w-4" /> Dados da Loja
                 </button>
                 <button
+                    onClick={() => setActiveTab('whatsapp')}
+                    className={`py-4 text-[10px] font-black border-b-2 transition-colors flex items-center gap-2 uppercase tracking-[0.2em] ${activeTab === 'whatsapp' ? 'border-emerald-500 text-emerald-300' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
+                >
+                    <MessageCircle className="h-4 w-4" /> WhatsApp
+                </button>
+                <button
                     onClick={() => setActiveTab('recursos')}
                     className={`py-4 text-[10px] font-black border-b-2 transition-colors flex items-center gap-2 uppercase tracking-[0.2em] ${activeTab === 'recursos' ? 'border-cyan-500 text-cyan-300' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
                 >
@@ -1426,6 +1438,7 @@ export default function ConfigInterface({ storeId }: { storeId: number }) {
 
             <div className="relative z-10 flex-1 overflow-y-auto p-6 custom-scrollbar">
                 {activeTab === 'loja' && <StoreDataForm storeId={storeId} />}
+                {activeTab === 'whatsapp' && <WhatsAppChannelPanel storeId={storeId} />}
                 {activeTab === 'recursos' && <ResourcesForm storeId={storeId} />}
                 {activeTab === 'equipe' && <TeamManagement storeId={storeId} />}
                 {activeTab === 'senhas' && <PasswordManagement storeId={storeId} />}

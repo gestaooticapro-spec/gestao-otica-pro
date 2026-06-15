@@ -48,6 +48,7 @@ next-env.d.ts
 /.agent/
 /.claude/
 /.migracao_nfce/
+/supabase/.temp/
 
 # Heavy Files & Archives
 *.pdf

@@ -188,6 +188,116 @@ export interface Database {
         }
       }
 
+      whatsapp_store_channels: {
+        Row: {
+          id: number
+          tenant_id: string
+          store_id: number
+          provider: 'evolution'
+          instance_key: string
+          phone_number: string
+          is_active: boolean
+          connection_status: 'unknown' | 'connecting' | 'connected' | 'disconnected'
+          last_connection_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          tenant_id: string
+          store_id: number
+          provider?: 'evolution'
+          instance_key: string
+          phone_number: string
+          is_active?: boolean
+          connection_status?: 'unknown' | 'connecting' | 'connected' | 'disconnected'
+          last_connection_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          instance_key?: string
+          phone_number?: string
+          is_active?: boolean
+          connection_status?: 'unknown' | 'connecting' | 'connected' | 'disconnected'
+          last_connection_at?: string | null
+          updated_at?: string
+        }
+      }
+
+      whatsapp_inbound_messages: {
+        Row: {
+          id: number
+          tenant_id: string
+          store_id: number
+          channel_id: number
+          provider_message_id: string
+          remote_phone: string
+          message_text: string | null
+          payload: Json | null
+          status: 'received' | 'ignored' | 'processed' | 'failed'
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          tenant_id: string
+          store_id: number
+          channel_id: number
+          provider_message_id: string
+          remote_phone: string
+          message_text?: string | null
+          payload?: Json | null
+          status?: 'received' | 'ignored' | 'processed' | 'failed'
+          created_at?: string
+        }
+        Update: {
+          status?: 'received' | 'ignored' | 'processed' | 'failed'
+          payload?: Json | null
+        }
+      }
+
+      whatsapp_outbound_messages: {
+        Row: {
+          id: number
+          tenant_id: string
+          store_id: number
+          channel_id: number
+          inbound_message_id: number | null
+          provider_message_id: string | null
+          remote_phone: string
+          message_text: string
+          message_type: string
+          status: 'pending' | 'sent' | 'failed' | 'cancelled'
+          payload: Json | null
+          error_message: string | null
+          sent_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          tenant_id: string
+          store_id: number
+          channel_id: number
+          inbound_message_id?: number | null
+          provider_message_id?: string | null
+          remote_phone: string
+          message_text: string
+          message_type?: string
+          status?: 'pending' | 'sent' | 'failed' | 'cancelled'
+          payload?: Json | null
+          error_message?: string | null
+          sent_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          provider_message_id?: string | null
+          status?: 'pending' | 'sent' | 'failed' | 'cancelled'
+          payload?: Json | null
+          error_message?: string | null
+          sent_at?: string | null
+        }
+      }
+
       fiscal_invoices: {
         Row: {
           id: number
@@ -1175,6 +1285,9 @@ export interface Database {
       service_orders: {
         Row: {
           id: number
+          tenant_id: string
+          store_id: number
+          customer_id: number
           venda_id: number
           created_at: string
           receita_longe_od_esferico: string | null
@@ -1218,6 +1331,8 @@ export interface Database {
           dependente_id: number | null
           oftalmologista_id: number | null
           source_optical_evaluation_id: number | null
+          armacao_com_cliente: boolean
+          os_enviada_ao_lab: boolean
           // NOVA TABELA ASSISTÊNCIA PODE TER RELAÇÃO, MAS NÃO ALTEROU OS AQUI
         }
         Insert: {
