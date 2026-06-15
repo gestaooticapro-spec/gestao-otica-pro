@@ -40,12 +40,12 @@ export function describeOpenOs(
   if (serviceOrder.dt_lente_chegou) {
     return {
       statusCode: 'lens_arrived_assembling',
-      replyText: `Oi, ${firstName}! A lente${patient} ja chegou e seu oculos entrou na fila de montagem. Assim que ficar pronto, avisamos voce.`,
+      replyText: `Oi, ${firstName}! A lente${patient} ja chegou e seu oculos entrou na fila de montagem.`,
     }
   }
 
   return {
     statusCode: 'lens_in_production',
-    replyText: `Oi, ${firstName}! Seu pedido${patient} esta em producao no laboratorio. Assim que houver novidade, avisamos voce.`,
+    replyText: `Oi, ${firstName}! Seu pedido${patient} esta em producao no laboratorio no momento.`,
   }
 }
