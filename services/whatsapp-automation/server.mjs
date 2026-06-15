@@ -37,6 +37,11 @@ function isAuthorizedWebhook(request, url) {
     || querySecret === config.webhookSecret
 }
 
+function isAuthorizedAdmin(request) {
+  const authorization = request.headers.authorization || ''
+  return authorization === `Bearer ${config.internalSecret}`
+}
+
 function eventName(payload) {
   return String(payload.event || payload.type || '').trim().toLowerCase()
 }
@@ -124,6 +129,121 @@ async function sendEvolutionText(instanceKey, phone, text) {
   return result
 }
 
+async function evolutionRequest(path, options = {}) {
+  const response = await fetch(`${config.evolutionBaseUrl}${path}`, {
+    ...options,
+    headers: {
+      apikey: config.evolutionApiKey,
+      'content-type': 'application/json',
+      ...(options.headers || {}),
+    },
+    signal: AbortSignal.timeout(30000),
+  })
+
+  const result = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const error = new Error(`Evolution request failed (${response.status}): ${JSON.stringify(result)}`)
+    error.status = response.status
+    error.payload = result
+    throw error
+  }
+  return result
+}
+
+async function fetchEvolutionInstances() {
+  return evolutionRequest('/instance/fetchInstances')
+}
+
+function instanceExists(instances, instanceKey) {
+  return (Array.isArray(instances) ? instances : []).some((item) => {
+    const name = item?.name || item?.instance?.instanceName || item?.instanceName
+    return name === instanceKey
+  })
+}
+
+function extractQrCodeBase64(payload) {
+  return payload?.qrcode?.base64
+    || payload?.qrcode?.base64Image
+    || payload?.base64
+    || null
+}
+
+function extractConnectionState(payload) {
+  return String(
+    payload?.instance?.state
+    || payload?.state
+    || payload?.status
+    || ''
+  ).toLowerCase() || 'unknown'
+}
+
+async function createEvolutionInstance(instanceKey) {
+  return evolutionRequest('/instance/create', {
+    method: 'POST',
+    body: JSON.stringify({
+      instanceName: instanceKey,
+      integration: 'WHATSAPP-BAILEYS',
+      qrcode: true,
+    }),
+  })
+}
+
+async function connectEvolutionInstance(instanceKey) {
+  return evolutionRequest(`/instance/connect/${encodeURIComponent(instanceKey)}`)
+}
+
+async function getEvolutionConnectionState(instanceKey) {
+  return evolutionRequest(`/instance/connectionState/${encodeURIComponent(instanceKey)}`)
+}
+
+async function configureEvolutionWebhook(instanceKey) {
+  const webhookUrl = `http://whatsapp-automation:8080/webhooks/evolution/${encodeURIComponent(instanceKey)}?token=${encodeURIComponent(config.webhookSecret)}`
+
+  return evolutionRequest(`/webhook/set/${encodeURIComponent(instanceKey)}`, {
+    method: 'POST',
+    body: JSON.stringify({
+      webhook: {
+        enabled: true,
+        url: webhookUrl,
+        webhookByEvents: false,
+        webhookBase64: false,
+        events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
+      },
+    }),
+  })
+}
+
+async function setupEvolutionInstance(instanceKey) {
+  const instances = await fetchEvolutionInstances()
+  let qrCodeBase64 = null
+
+  if (!instanceExists(instances, instanceKey)) {
+    const created = await createEvolutionInstance(instanceKey)
+    qrCodeBase64 = extractQrCodeBase64(created)
+  }
+
+  await configureEvolutionWebhook(instanceKey)
+
+  const statePayload = await getEvolutionConnectionState(instanceKey).catch(() => null)
+  const state = extractConnectionState(statePayload)
+
+  if (state !== 'open' && state !== 'connected') {
+    const connected = await connectEvolutionInstance(instanceKey)
+    qrCodeBase64 = extractQrCodeBase64(connected) || qrCodeBase64
+    return {
+      instanceKey,
+      connectionStatus: 'connecting',
+      qrCodeBase64,
+    }
+  }
+
+  return {
+    instanceKey,
+    connectionStatus: 'connected',
+    qrCodeBase64,
+  }
+}
+
 async function updateDelivery(outboundMessageId, status, details = {}) {
   try {
     await appRequest('/api/whatsapp/delivery', {
@@ -180,6 +300,48 @@ const server = createServer(async (request, response) => {
 
   if (request.method === 'GET' && url.pathname === '/health') {
     return jsonResponse(response, 200, { ok: true })
+  }
+
+  if (url.pathname.startsWith('/admin/instances/')) {
+    if (!isAuthorizedAdmin(request)) {
+      return jsonResponse(response, 401, { error: 'Unauthorized' })
+    }
+
+    try {
+      const payload = await readJson(request)
+      const instanceKey = String(payload.instanceKey || '').trim()
+      if (!/^[a-zA-Z0-9_-]{2,120}$/.test(instanceKey)) {
+        return jsonResponse(response, 400, { error: 'Invalid instance key' })
+      }
+
+      if (request.method === 'POST' && url.pathname === '/admin/instances/setup') {
+        const result = await setupEvolutionInstance(instanceKey)
+        return jsonResponse(response, 200, result)
+      }
+
+      if (request.method === 'POST' && url.pathname === '/admin/instances/connect') {
+        const result = await connectEvolutionInstance(instanceKey)
+        return jsonResponse(response, 200, {
+          instanceKey,
+          connectionStatus: 'connecting',
+          qrCodeBase64: extractQrCodeBase64(result),
+        })
+      }
+
+      if (request.method === 'POST' && url.pathname === '/admin/instances/status') {
+        const result = await getEvolutionConnectionState(instanceKey)
+        const state = extractConnectionState(result)
+        return jsonResponse(response, 200, {
+          instanceKey,
+          connectionStatus: state === 'open' || state === 'connected' ? 'connected' : state === 'connecting' ? 'connecting' : 'disconnected',
+        })
+      }
+
+      return jsonResponse(response, 404, { error: 'Not found' })
+    } catch (error) {
+      console.error('[admin] Request failed:', error)
+      return jsonResponse(response, 500, { error: 'Admin request failed' })
+    }
   }
 
   const match = url.pathname.match(/^\/webhooks\/evolution\/([^/]+)$/)

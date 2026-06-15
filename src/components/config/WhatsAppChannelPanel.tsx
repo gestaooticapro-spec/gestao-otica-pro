@@ -1,34 +1,53 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { CheckCircle2, Loader2, MessageCircle, RefreshCw, Save, Wifi, WifiOff } from 'lucide-react'
+import Image from 'next/image'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ClipboardCheck,
+  Loader2,
+  MessageCircle,
+  QrCode,
+  RefreshCw,
+  ShieldAlert,
+  Wifi,
+  WifiOff,
+} from 'lucide-react'
 import {
   getWhatsAppChannel,
-  saveWhatsAppChannel,
+  refreshWhatsAppConnection,
+  requestWhatsAppQrCode,
+  startWhatsAppActivation,
   type WhatsAppChannel,
 } from '@/lib/actions/whatsapp.actions'
 
 const statusLabels: Record<WhatsAppChannel['connection_status'], string> = {
-  unknown: 'Aguardando informação',
-  connecting: 'Conectando',
+  unknown: 'Aguardando ativacao',
+  connecting: 'Aguardando leitura do QR Code',
   connected: 'Conectado',
   disconnected: 'Desconectado',
 }
 
+function qrImageSource(qrCodeBase64: string | null) {
+  if (!qrCodeBase64) return null
+  return qrCodeBase64.startsWith('data:image/')
+    ? qrCodeBase64
+    : `data:image/png;base64,${qrCodeBase64}`
+}
+
 export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
   const [channel, setChannel] = useState<WhatsAppChannel | null>(null)
-  const [instanceKey, setInstanceKey] = useState('')
   const [phoneNumber, setPhoneNumber] = useState('')
-  const [isActive, setIsActive] = useState(false)
+  const [acceptedRisk, setAcceptedRisk] = useState(false)
+  const [qrCodeBase64, setQrCodeBase64] = useState<string | null>(null)
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
   const [isPending, startTransition] = useTransition()
   const [isLoading, setIsLoading] = useState(true)
 
   const applyChannel = (next: WhatsAppChannel | null) => {
     setChannel(next)
-    setInstanceKey(next?.instance_key ?? '')
     setPhoneNumber(next?.phone_number ?? '')
-    setIsActive(next?.is_active ?? false)
   }
 
   const loadChannel = () => {
@@ -50,14 +69,64 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId])
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  useEffect(() => {
+    if (channel?.connection_status !== 'connecting') return
+
+    const timer = window.setInterval(() => {
+      startTransition(async () => {
+        const result = await refreshWhatsAppConnection(storeId)
+        if (result.success) {
+          applyChannel(result.channel ?? null)
+          if (result.channel?.connection_status === 'connected') {
+            setQrCodeBase64(null)
+            setMessage({ kind: 'success', text: result.message })
+          }
+        }
+      })
+    }, 5000)
+
+    return () => window.clearInterval(timer)
+  }, [channel?.connection_status, storeId])
+
+  const handleActivate = () => {
+    setMessage(null)
+    setQrCodeBase64(null)
+
+    startTransition(async () => {
+      const result = await startWhatsAppActivation({ storeId, phoneNumber, acceptedRisk })
+      if (result.success) {
+        applyChannel(result.channel ?? null)
+        setQrCodeBase64(result.qrCodeBase64 ?? null)
+        setMessage({ kind: 'success', text: result.message })
+      } else {
+        setMessage({ kind: 'error', text: result.message })
+      }
+    })
+  }
+
+  const handleRefreshStatus = () => {
     setMessage(null)
 
     startTransition(async () => {
-      const result = await saveWhatsAppChannel({ storeId, instanceKey, phoneNumber, isActive })
+      const result = await refreshWhatsAppConnection(storeId)
       if (result.success) {
         applyChannel(result.channel ?? null)
+        if (result.channel?.connection_status === 'connected') setQrCodeBase64(null)
+        setMessage({ kind: 'success', text: result.message })
+      } else {
+        setMessage({ kind: 'error', text: result.message })
+      }
+    })
+  }
+
+  const handleRefreshQr = () => {
+    setMessage(null)
+
+    startTransition(async () => {
+      const result = await requestWhatsAppQrCode(storeId)
+      if (result.success) {
+        applyChannel(result.channel ?? null)
+        setQrCodeBase64(result.qrCodeBase64 ?? null)
         setMessage({ kind: 'success', text: result.message })
       } else {
         setMessage({ kind: 'error', text: result.message })
@@ -67,6 +136,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
 
   const status = channel?.connection_status ?? 'unknown'
   const isConnected = status === 'connected'
+  const qrSource = qrImageSource(qrCodeBase64)
 
   return (
     <div className="mx-auto max-w-4xl animate-in fade-in space-y-5">
@@ -79,22 +149,22 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                 <MessageCircle className="h-6 w-6 text-emerald-300" />
               </div>
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-emerald-300/70">Evolution API</p>
-                <h2 className="text-xl font-black text-white">Canal automatizado da loja</h2>
+                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-emerald-300/70">WhatsApp da loja</p>
+                <h2 className="text-xl font-black text-white">Atendimento automatico por consulta de OS</h2>
               </div>
             </div>
             <p className="mt-4 max-w-2xl text-sm leading-relaxed text-slate-300">
-              Este número recebe consultas de clientes e responde somente quando encontra uma OS aberta vinculada ao telefone.
+              A loja conecta o proprio WhatsApp por QR Code. O sistema responde apenas quando encontra uma OS aberta para o telefone do cliente.
             </p>
           </div>
 
-          <div className={`min-w-48 rounded-2xl border p-4 ${isConnected ? 'border-emerald-400/25 bg-emerald-400/10' : 'border-white/10 bg-black/20'}`}>
+          <div className={`min-w-52 rounded-2xl border p-4 ${isConnected ? 'border-emerald-400/25 bg-emerald-400/10' : 'border-white/10 bg-black/20'}`}>
             <div className="flex items-center gap-3">
               {isConnected
                 ? <Wifi className="h-5 w-5 text-emerald-300" />
                 : <WifiOff className="h-5 w-5 text-slate-400" />}
               <div>
-                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Conexão</p>
+                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Status</p>
                 <p className={`text-sm font-black ${isConnected ? 'text-emerald-200' : 'text-slate-300'}`}>
                   {statusLabels[status]}
                 </p>
@@ -109,82 +179,129 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl backdrop-blur-xl">
-        <div className="grid gap-5 md:grid-cols-2">
-          <div>
+      <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl backdrop-blur-xl">
+          <div className="flex items-start gap-3">
+            <ShieldAlert className="mt-0.5 h-5 w-5 text-amber-300" />
+            <div>
+              <h3 className="text-sm font-black text-white">Antes de ativar</h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-300">
+                Esta integracao usa conexao por aparelho conectado e nao e uma API oficial da Meta. O uso excessivo,
+                disparos em massa ou mensagens fora do contexto de atendimento podem aumentar o risco de bloqueio ou
+                banimento do numero. Use apenas para responder consultas reais dos clientes sobre OS.
+              </p>
+            </div>
+          </div>
+
+          <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-amber-300/20 bg-amber-300/10 p-4 transition hover:bg-amber-300/15">
+            <input
+              type="checkbox"
+              checked={acceptedRisk}
+              onChange={(event) => setAcceptedRisk(event.target.checked)}
+              disabled={isPending || isLoading || isConnected}
+              className="mt-1 h-5 w-5 rounded border-amber-300/40 bg-slate-950 text-amber-400 focus:ring-amber-400"
+            />
+            <span className="text-sm font-bold leading-relaxed text-amber-100">
+              Entendi que esta integracao nao e oficial do WhatsApp e quero continuar com a ativacao.
+            </span>
+          </label>
+
+          <div className="mt-6">
             <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-              Número do WhatsApp
+              Numero do WhatsApp da loja
             </label>
             <input
               value={phoneNumber}
               onChange={(event) => setPhoneNumber(event.target.value)}
-              placeholder="(11) 99999-9999"
+              placeholder="(44) 99999-9999"
               className="h-11 w-full rounded-xl border border-white/10 bg-black/25 px-4 text-sm font-bold text-white outline-none transition focus:border-emerald-400/50 focus:ring-2 focus:ring-emerald-400/10"
-              disabled={isPending || isLoading}
+              disabled={isPending || isLoading || isConnected}
             />
-            <p className="mt-2 text-[10px] leading-relaxed text-slate-500">Número conectado à instância da Evolution para esta loja.</p>
+            <p className="mt-2 text-[10px] leading-relaxed text-slate-500">
+              Use o numero que sera conectado pelo QR Code.
+            </p>
           </div>
 
-          <div>
-            <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-              Identificador da instância
-            </label>
-            <input
-              value={instanceKey}
-              onChange={(event) => setInstanceKey(event.target.value)}
-              placeholder={`loja-${storeId}`}
-              className="h-11 w-full rounded-xl border border-white/10 bg-black/25 px-4 font-mono text-sm font-bold text-cyan-200 outline-none transition focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/10"
-              disabled={isPending || isLoading}
-            />
-            <p className="mt-2 text-[10px] leading-relaxed text-slate-500">Deve ser exatamente o nome configurado na Evolution API.</p>
+          {channel?.instance_key && (
+            <div className="mt-5 rounded-xl border border-white/10 bg-black/20 p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Identificador tecnico</p>
+              <p className="mt-2 break-all font-mono text-sm font-bold text-cyan-200">{channel.instance_key}</p>
+            </div>
+          )}
+
+          {message && (
+            <div className={`mt-5 flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-bold ${
+              message.kind === 'success'
+                ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200'
+                : 'border-red-400/20 bg-red-400/10 text-red-200'
+            }`}>
+              {message.kind === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+              {message.text}
+            </div>
+          )}
+
+          <div className="mt-6 flex flex-wrap justify-end gap-3">
+            <button
+              type="button"
+              onClick={handleRefreshStatus}
+              disabled={isPending || isLoading || !channel}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 text-xs font-black uppercase tracking-wider text-slate-300 transition hover:bg-white/10 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${isPending || isLoading ? 'animate-spin' : ''}`} />
+              Verificar
+            </button>
+            <button
+              type="button"
+              onClick={handleActivate}
+              disabled={isPending || isLoading || isConnected}
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-500 px-5 text-xs font-black uppercase tracking-wider text-emerald-950 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-400 disabled:opacity-50"
+            >
+              {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
+              {channel ? 'Continuar ativacao' : 'Ativar WhatsApp'}
+            </button>
           </div>
         </div>
 
-        <label className="mt-6 flex cursor-pointer items-center justify-between rounded-2xl border border-white/10 bg-black/20 p-4 transition hover:bg-white/5">
-          <div>
-            <p className="text-sm font-black text-white">Ativar respostas automáticas</p>
-            <p className="mt-1 text-xs text-slate-400">Quando desligado, mensagens recebidas por este canal não serão processadas.</p>
+        <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-6 shadow-xl">
+          <div className="flex items-center gap-3">
+            <QrCode className="h-5 w-5 text-cyan-300" />
+            <div>
+              <h3 className="text-sm font-black text-white">QR Code</h3>
+              <p className="text-xs text-slate-500">Escaneie em Aparelhos conectados no WhatsApp.</p>
+            </div>
           </div>
-          <input
-            type="checkbox"
-            checked={isActive}
-            onChange={(event) => setIsActive(event.target.checked)}
-            disabled={isPending || isLoading}
-            className="h-5 w-5 rounded border-white/20 bg-slate-900 text-emerald-500 focus:ring-emerald-500"
-          />
-        </label>
 
-        {message && (
-          <div className={`mt-5 flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-bold ${
-            message.kind === 'success'
-              ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200'
-              : 'border-red-400/20 bg-red-400/10 text-red-200'
-          }`}>
-            {message.kind === 'success' && <CheckCircle2 className="h-4 w-4" />}
-            {message.text}
+          <div className="mt-5 flex min-h-72 items-center justify-center rounded-xl border border-white/10 bg-white p-4">
+            {qrSource ? (
+              <Image
+                src={qrSource}
+                alt="QR Code para conectar o WhatsApp da loja"
+                width={256}
+                height={256}
+                unoptimized
+                className="h-64 w-64 object-contain"
+              />
+            ) : (
+              <div className="max-w-56 text-center">
+                <QrCode className="mx-auto h-10 w-10 text-slate-300" />
+                <p className="mt-3 text-sm font-bold text-slate-500">
+                  {isConnected ? 'WhatsApp conectado.' : 'O QR Code aparece aqui durante a ativacao.'}
+                </p>
+              </div>
+            )}
           </div>
-        )}
 
-        <div className="mt-6 flex flex-wrap justify-end gap-3">
           <button
             type="button"
-            onClick={loadChannel}
-            disabled={isPending || isLoading}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 text-xs font-black uppercase tracking-wider text-slate-300 transition hover:bg-white/10 disabled:opacity-50"
+            onClick={handleRefreshQr}
+            disabled={isPending || isLoading || !channel || isConnected}
+            className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-4 text-xs font-black uppercase tracking-wider text-cyan-100 transition hover:bg-cyan-300/15 disabled:opacity-50"
           >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-            Atualizar
-          </button>
-          <button
-            type="submit"
-            disabled={isPending || isLoading}
-            className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-500 px-5 text-xs font-black uppercase tracking-wider text-emerald-950 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-400 disabled:opacity-50"
-          >
-            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Salvar canal
+            <RefreshCw className={`h-4 w-4 ${isPending ? 'animate-spin' : ''}`} />
+            Gerar novo QR Code
           </button>
         </div>
-      </form>
+      </div>
     </div>
   )
 }
