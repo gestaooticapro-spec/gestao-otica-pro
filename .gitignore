@@ -69,3 +69,5 @@ next-env.d.ts
 *.log
 PROJETO_COMPLETO_IA.txt
 build.log
+
+.vercel
