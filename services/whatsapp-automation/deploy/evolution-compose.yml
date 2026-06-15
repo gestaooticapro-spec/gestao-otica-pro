@@ -1,4 +1,18 @@
 services:
+  whatsapp-automation:
+    build:
+      context: ..
+    container_name: whatsapp_automation
+    restart: unless-stopped
+    depends_on:
+      - evolution-api
+    env_file:
+      - automation.env
+    ports:
+      - "127.0.0.1:8081:8080"
+    networks:
+      - evolution
+
   evolution-api:
     image: evoapicloud/evolution-api:latest
     container_name: evolution_api

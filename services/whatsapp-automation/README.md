@@ -41,10 +41,11 @@ endpoints internos autenticados do app.
 
 Os arquivos em `deploy/` seguem o mesmo padrão operacional do serviço fiscal:
 
-- `whatsapp-automation.service`: processo Node na porta local `8081`;
+- `whatsapp-automation.service`: alternativa para executar o processo via `systemd`;
 - `whatsapp-automation.env.example`: ambiente da automação;
 - `evolution-compose.yml`: Evolution API, PostgreSQL e Redis;
 - `evolution.env.example`: ambiente mínimo da Evolution.
 
-A Evolution fica em `127.0.0.1:8080` e a automação em `127.0.0.1:8081`. Nenhuma
-dessas portas deve ser publicada diretamente na internet.
+A composição de produção também inclui o container da automação. A Evolution
+fica em `127.0.0.1:8080`, a automação expõe apenas o healthcheck em
+`127.0.0.1:8081` e a comunicação entre ambas ocorre pela rede privada Docker.
