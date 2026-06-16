@@ -91,7 +91,7 @@ function menuText() {
     '',
     'Nossa equipe pode estar em atendimento no momento, mas consigo te ajudar com algumas coisas por aqui:',
     '',
-    '1 - Ver status do oculos / OS',
+    '1 - Ver se meu oculos ta pronto',
     '2 - Falar com atendente',
     '',
     'Digite o numero da opcao desejada.',
