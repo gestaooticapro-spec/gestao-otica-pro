@@ -107,10 +107,10 @@ export default async function AvaliacoesFuncionariosPage({
             <div>
               <h1 className="flex items-center gap-2 text-xl font-black text-white">
                 <ClipboardCheck className="h-5 w-5 text-emerald-300" />
-                Avaliacao da Equipe
+                Avaliação da Equipe
               </h1>
               <p className="mt-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
-                Conversao de avaliacoes opticas
+                Conversão de avaliações ópticas
               </p>
             </div>
           </div>
@@ -124,7 +124,7 @@ export default async function AvaliacoesFuncionariosPage({
                 defaultValue={dataInicio}
                 className="bg-transparent text-xs font-bold text-slate-200 outline-none [color-scheme:dark]"
               />
-              <span className="mx-2 text-slate-500">ate</span>
+              <span className="mx-2 text-slate-500">até</span>
               <input
                 name="fim"
                 type="date"
@@ -138,7 +138,7 @@ export default async function AvaliacoesFuncionariosPage({
               className="rounded-xl border border-emerald-500/20 bg-slate-900 px-3 py-2 text-xs font-bold text-white shadow-inner outline-none transition-colors focus:border-emerald-400/50"
             >
               <option value="" className="bg-slate-900 text-white">
-                Visao geral
+                Visão geral
               </option>
               {employeeOptions.map((employee) => (
                 <option key={employee.id} value={employee.id} className="bg-slate-900 text-white">
@@ -157,7 +157,7 @@ export default async function AvaliacoesFuncionariosPage({
                 href={`/dashboard/loja/${storeId}/reports/avaliacoes?inicio=${dataInicio}&fim=${dataFim}`}
                 className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-300 transition-colors hover:text-white"
               >
-                Limpar funcionario
+                Limpar funcionário
               </Link>
             )}
           </form>
@@ -169,37 +169,37 @@ export default async function AvaliacoesFuncionariosPage({
           <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-5 py-4 text-sm text-emerald-100">
             <strong className="font-black">Recorte individual ativo:</strong> {selectedEmployee.employeeName}.
             <span className="ml-2 text-emerald-200/80">
-              A visao geral do periodo continua abaixo, e o painel individual aparece em seguida.
+              A visão geral do período continua abaixo, e o painel individual aparece em seguida.
             </span>
           </div>
         )}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <KpiCard
-            label="Avaliacoes"
+            label="Avaliações"
             value={formatNumber(totals.evaluations)}
-            hint="Atendimentos opticos registrados no periodo."
+            hint="Atendimentos ópticos registrados no período."
             icon={ClipboardCheck}
             tone="bg-emerald-500/15 text-emerald-300"
           />
           <KpiCard
             label="Vinculadas"
             value={formatPercent(totals.linkedRate)}
-            hint={`${formatNumber(totals.linkedSales)} avaliacoes chegaram a uma venda/OS vinculada.`}
+            hint={`${formatNumber(totals.linkedSales)} avaliações chegaram a uma venda/OS vinculada.`}
             icon={LineChart}
             tone="bg-cyan-500/15 text-cyan-300"
           />
           <KpiCard
             label="Fechamento"
             value={formatPercent(totals.conversionRate)}
-            hint={`${formatNumber(totals.closedSales)} vendas fechadas a partir de avaliacao.`}
+            hint={`${formatNumber(totals.closedSales)} vendas fechadas a partir de avaliação.`}
             icon={CircleDollarSign}
             tone="bg-amber-500/15 text-amber-300"
           />
           <KpiCard
             label="Retomadas"
             value={formatNumber(totals.openRecent)}
-            hint="Avaliacoes abertas e recentes, ainda dentro da janela de 7 dias."
+            hint="Avaliações abertas e recentes, ainda dentro da janela de 7 dias."
             icon={Clock}
             tone="bg-indigo-500/15 text-indigo-300"
           />
@@ -221,7 +221,7 @@ export default async function AvaliacoesFuncionariosPage({
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 backdrop-blur-md">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Sugestao versus venda</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Sugestão versus venda</p>
             <div className="mt-4 grid grid-cols-3 gap-3">
               <div className="rounded-xl bg-emerald-500/10 p-4 text-emerald-200">
                 <TrendingUp className="mb-2 h-4 w-4" />
@@ -231,7 +231,7 @@ export default async function AvaliacoesFuncionariosPage({
               <div className="rounded-xl bg-slate-500/10 p-4 text-slate-200">
                 <Users className="mb-2 h-4 w-4" />
                 <p className="text-xl font-black">{formatNumber(totals.sameRange)}</p>
-                <p className="text-[10px] font-bold uppercase">Mesmo nivel</p>
+                <p className="text-[10px] font-bold uppercase">Mesmo nível</p>
               </div>
               <div className="rounded-xl bg-rose-500/10 p-4 text-rose-200">
                 <TrendingDown className="mb-2 h-4 w-4" />
@@ -245,11 +245,11 @@ export default async function AvaliacoesFuncionariosPage({
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Ticket e ajuste</p>
             <div className="mt-4 space-y-3">
               <div className="flex items-center justify-between rounded-xl bg-black/20 p-4">
-                <span className="text-xs font-bold text-slate-400">Ticket medio fechado</span>
+                <span className="text-xs font-bold text-slate-400">Ticket médio fechado</span>
                 <strong className="text-sm text-white">{formatMoney(totals.averageSoldTicket)}</strong>
               </div>
               <div className="flex items-center justify-between rounded-xl bg-black/20 p-4">
-                <span className="text-xs font-bold text-slate-400">Delta medio lente</span>
+                <span className="text-xs font-bold text-slate-400">Delta médio lente</span>
                 <strong className={totals.averageDelta >= 0 ? 'text-sm text-emerald-300' : 'text-sm text-rose-300'}>
                   {formatMoney(totals.averageDelta)}
                 </strong>
@@ -266,23 +266,23 @@ export default async function AvaliacoesFuncionariosPage({
                   Leitura Individual
                 </h2>
                 <p className="mt-1 text-xs font-semibold text-slate-400">
-                  Indicadores de {selectedEmployee.employeeName} no mesmo periodo.
+                  Indicadores de {selectedEmployee.employeeName} no mesmo período.
                 </p>
               </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <KpiCard
-                label="Avaliacoes"
+                label="Avaliações"
                 value={formatNumber(selectedEmployee.evaluations)}
-                hint="Avaliacoes registradas por este funcionario."
+                hint="Avaliações registradas por este funcionário."
                 icon={ClipboardCheck}
                 tone="bg-emerald-500/15 text-emerald-300"
               />
               <KpiCard
                 label="Vinculadas"
                 value={formatPercent(selectedEmployee.linkedRate)}
-                hint={`${formatNumber(selectedEmployee.linkedSales)} avaliacoes seguiram para venda/OS.`}
+                hint={`${formatNumber(selectedEmployee.linkedSales)} avaliações seguiram para venda/OS.`}
                 icon={LineChart}
                 tone="bg-cyan-500/15 text-cyan-300"
               />
@@ -296,7 +296,7 @@ export default async function AvaliacoesFuncionariosPage({
               <KpiCard
                 label="Retomadas"
                 value={formatNumber(selectedEmployee.openRecent)}
-                hint="Avaliacoes abertas deste funcionario ainda na janela de 7 dias."
+                hint="Avaliações abertas deste funcionário ainda na janela de 7 dias."
                 icon={Clock}
                 tone="bg-indigo-500/15 text-indigo-300"
               />
@@ -306,14 +306,14 @@ export default async function AvaliacoesFuncionariosPage({
 
         <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-md">
           <div className="border-b border-white/10 px-5 py-4">
-            <h2 className="text-sm font-black uppercase tracking-[0.16em] text-white">Por funcionario</h2>
+            <h2 className="text-sm font-black uppercase tracking-[0.16em] text-white">Por funcionário</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[980px] text-left text-sm">
               <thead className="bg-black/20 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
                 <tr>
-                  <th className="px-5 py-3">Funcionario</th>
-                  <th className="px-4 py-3 text-right">Avaliacoes</th>
+                  <th className="px-5 py-3">Funcionário</th>
+                  <th className="px-4 py-3 text-right">Avaliações</th>
                   <th className="px-4 py-3 text-right">Vinculadas</th>
                   <th className="px-4 py-3 text-right">Fechadas</th>
                   <th className="px-4 py-3 text-right">Conv.</th>
@@ -322,14 +322,14 @@ export default async function AvaliacoesFuncionariosPage({
                   <th className="px-4 py-3 text-right">Perdidas</th>
                   <th className="px-4 py-3 text-right">Up</th>
                   <th className="px-4 py-3 text-right">Down</th>
-                  <th className="px-5 py-3 text-right">Ticket medio</th>
+                  <th className="px-5 py-3 text-right">Ticket médio</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
                 {report.employees.length === 0 ? (
                   <tr>
                     <td className="px-5 py-10 text-center text-slate-400" colSpan={11}>
-                      Nenhuma avaliacao encontrada no periodo.
+                      Nenhuma avaliação encontrada no período.
                     </td>
                   </tr>
                 ) : (
