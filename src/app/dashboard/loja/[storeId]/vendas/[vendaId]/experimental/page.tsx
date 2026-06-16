@@ -31,6 +31,10 @@ export default async function VendaPageExperimental({ params }: Props) {
         pagamentos,
         serviceOrders,
         financiamento,
+        storeSettings,
+        dependentes,
+        oftalmologistas,
+        employees,
         lentes,
         armacoes,
         tratamentos
@@ -56,6 +60,10 @@ export default async function VendaPageExperimental({ params }: Props) {
             serviceOrders={serviceOrders}
             pagamentos={pagamentos}
             financiamento={financiamento}
+            storeSettings={storeSettings}
+            dependentes={dependentes}
+            oftalmologistas={oftalmologistas}
+            employees={employees}
             lentes={lentes || []}
             armacoes={armacoes || []}
             tratamentos={tratamentos || []}

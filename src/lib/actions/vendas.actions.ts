@@ -28,6 +28,7 @@ type FinanciamentoParcela = Database['public']['Tables']['financiamento_parcelas
 type Employee = Database['public']['Tables']['employees']['Row']
 type StoreSettings = {
   pre_sale_analysis_enabled?: boolean
+  service_order_mode?: 'single' | 'multiple'
 }
 
 type ServiceOrderWithLinks = ServiceOrder & {
@@ -73,9 +74,13 @@ export type VendaPageData = {
   customer: Customer | null
   employee: Employee | null
   vendaItens: VendaItem[]
-  serviceOrders: ServiceOrder[]
+  serviceOrders: ServiceOrderWithLinks[]
   pagamentos: Pagamento[]
   financiamento: (Financiamento & { financiamento_parcelas: FinanciamentoParcela[] }) | null
+  storeSettings: StoreSettings
+  dependentes: Dependente[]
+  oftalmologistas: Oftalmologista[]
+  employees: Employee[]
   // CORREÃ‡ÃƒO: Agora são listas de Product
   lentes: Product[]
   armacoes: Product[]
@@ -860,6 +865,10 @@ export async function getVendaPageData(
       osRes,
       pagamentosRes,
       financiamentoRes,
+      storeRes,
+      dependentesRes,
+      oftalmosRes,
+      employeesRes,
       // BUSCA AGORA NA TABELA PRODUCTS COM FILTRO
       lentesRes,
       armacoesRes,
@@ -868,10 +877,17 @@ export async function getVendaPageData(
       supabaseAdmin.from('customers').select('*').eq('id', customer_id).single(),
       employee_id ? supabaseAdmin.from('employees').select('*').eq('id', employee_id).single() : Promise.resolve({ data: null }),
       supabaseAdmin.from('venda_itens').select('*').eq('venda_id', vendaId).order('id'),
-      supabaseAdmin.from('service_orders').select('*').eq('venda_id', vendaId),
+      supabaseAdmin.from('service_orders')
+        .select('*, links:venda_itens_os_links(venda_item_id, uso_na_os)')
+        .eq('venda_id', vendaId)
+        .order('created_at'),
       // CORREÇÃO: Cast 'as any' para buscar relacionamento com employees
       (supabaseAdmin.from('pagamentos') as any).select('*, employee:employees(full_name)').eq('venda_id', vendaId).order('data_pagamento'),
       supabaseAdmin.from('financiamento_loja').select('*, financiamento_parcelas(*), employee:employees(full_name)').eq('venda_id', vendaId).maybeSingle(),
+      supabaseAdmin.from('stores').select('settings').eq('id', storeId).single(),
+      supabaseAdmin.from('dependentes').select('*').eq('customer_id', customer_id).order('full_name'),
+      supabaseAdmin.from('oftalmologistas').select('*').eq('store_id', storeId).order('nome_completo'),
+      supabaseAdmin.from('employees').select('*').eq('store_id', storeId).eq('is_active', true).order('full_name'),
 
       // Consultas unificadas
       supabaseAdmin.from('products').select('*').eq('store_id', storeId).eq('tipo_produto', 'Lente'),
@@ -914,6 +930,10 @@ export async function getVendaPageData(
       serviceOrders: osRes.data || [],
       pagamentos: pagamentosRes.data as any || [], // Cast as any para aceitar o campo employee extra
       financiamento: financiamentoData,
+      storeSettings: ((storeRes.data as { settings?: unknown } | null)?.settings || {}) as StoreSettings,
+      dependentes: dependentesRes.data || [],
+      oftalmologistas: oftalmosRes.data || [],
+      employees: employeesRes.data || [],
       lentes: lentesRes.data || [],
       armacoes: armacoesRes.data || [],
       tratamentos: tratamentosRes.data || [],

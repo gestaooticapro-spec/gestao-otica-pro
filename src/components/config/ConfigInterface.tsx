@@ -574,6 +574,7 @@ function ResourcesForm({ storeId }: { storeId: number }) {
     const [loading, setLoading] = useState(true)
     const [isSaving, startTransition] = useTransition()
     const deliveryDateEnabled = data?.settings?.delivery_date_enabled !== false
+    const serviceOrderMode = data?.settings?.service_order_mode === 'single' ? 'single' : 'multiple'
 
     useEffect(() => {
         getStoreProfile(storeId).then(res => {
@@ -751,6 +752,29 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                         >
                             <option value="enabled">Usa data de entrega</option>
                             <option value="disabled">Não usa data de entrega</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4 transition-colors">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                        <div className="flex-1">
+                            <p className="text-sm font-black text-white uppercase tracking-[0.15em]">
+                                Modelo de Ordem de ServiÃ§o
+                            </p>
+                            <p className="mt-2 text-xs text-slate-400 leading-relaxed">
+                                Define se cada venda pode ter vÃ¡rias fichas tÃ©cnicas ou se a venda experimental usa uma Ãºnica OS embutida na prÃ³pria venda.
+                            </p>
+                        </div>
+
+                        <select
+                            value={serviceOrderMode}
+                            onChange={(e) => handleSettingChange('service_order_mode', e.target.value)}
+                            disabled={isSaving}
+                            className="min-w-[240px] rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-200 outline-none transition-colors focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/40 disabled:opacity-50"
+                        >
+                            <option value="multiple">VÃ¡rias OSs por venda</option>
+                            <option value="single">OS Ãºnica por venda</option>
                         </select>
                     </div>
                 </div>
