@@ -1702,7 +1702,7 @@ const generateManualSuggestion = (form: ReturnType<typeof createEmptyForm>): Man
 
 const buildAiRecommendationLabel = (option: RecommendationOption) => {
   const treatmentPart = option.treatmentName ? ` + ${option.treatmentName}` : ''
-  const sourcePart = option.sourceLaboratorio ? ` Â· ${option.sourceLaboratorio}` : ''
+  const sourcePart = option.sourceLaboratorio ? ` · ${option.sourceLaboratorio}` : ''
   return `${option.familyName} | ${option.offerLabel}${treatmentPart}${sourcePart}`
 }
 
@@ -1864,7 +1864,7 @@ const buildAiCommercialSummary = (option: RecommendationOption) => {
   const explanation = option.treatmentExplainWhy || option.commercialSummary || option.recommendationNotes || ''
   const reasons = option.reasons.slice(0, 3).map(humanizeRecommendationReason).join(', ')
   return [
-    `${buildAiRecommendationLabel(option)} â€” ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(option.finalPrice)}`,
+    `${buildAiRecommendationLabel(option)} — ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(option.finalPrice)}`,
     explanation,
     reasons ? `Motivos considerados: ${reasons}.` : ''
   ]
@@ -1918,7 +1918,7 @@ const buildAiOptionDetails = (option: RecommendationOption) => {
 
   return [
     supportText ? `Contexto da configuração:\n${supportText}` : '',
-    reasons.length ? `Critérios considerados:\n${reasons.map((reason) => `â€¢ ${reason}`).join('\n')}` : ''
+    reasons.length ? `Critérios considerados:\n${reasons.map((reason) => `• ${reason}`).join('\n')}` : ''
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -2663,7 +2663,7 @@ function validateRecommendationFormConsistency(form: ReturnType<typeof createEmp
   if (isChild && wantsFirstMultifocal) {
     issues.push({
       severity: 'blocker',
-      message: 'Paciente infantil nao deve ser marcado como primeira multifocal/progressiva.',
+      message: 'Paciente infantil não deve ser marcado como primeira multifocal/progressiva.',
       suggestion: 'Troque o objetivo para resolver queixa, controle de miopia ou outra necessidade coerente com a idade.',
     })
   }
@@ -2672,32 +2672,32 @@ function validateRecommendationFormConsistency(form: ReturnType<typeof createEmp
     issues.push({
       severity: 'blocker',
       message: wantsOfficeLens
-        ? 'Oculos de escritorio/ocupacional precisa de adicao informada para o motor avaliar corretamente.'
-        : 'Primeira multifocal precisa de adicao informada.',
-      suggestion: 'Preencha a adicao ou altere o objetivo da compra.',
+        ? 'Óculos de escritório/ocupacional precisam de adição informada para o motor avaliar corretamente.'
+        : 'Primeira multifocal precisa de adição informada.',
+      suggestion: 'Preencha a adição ou altere o objetivo da compra.',
     })
   }
 
   if (add !== null && add > 0 && !hasPresbyopicContext) {
     issues.push({
       severity: 'warning',
-      message: 'Ha adicao preenchida, mas o restante do formulario ainda nao indica claramente necessidade de multifocal ou ocupacional.',
-      suggestion: 'Confirme se o cliente precisa de lente para perto/intermediario, primeira multifocal ou oculos de escritorio.',
+      message: 'Há adição preenchida, mas o restante do formulário ainda não indica claramente necessidade de multifocal ou ocupacional.',
+      suggestion: 'Confirme se o cliente precisa de lente para perto/intermediário, primeira multifocal ou óculos de escritório.',
     })
   }
 
   if (isChild && add !== null && add > 0) {
     issues.push({
       severity: 'warning',
-      message: 'Crianca com adicao preenchida merece dupla checagem da receita e do objetivo da compra.',
-      suggestion: 'Confirme se a adicao esta correta e se o caso e realmente multifocal/ocupacional, nao apenas controle de miopia ou visao simples.',
+      message: 'Criança com adição preenchida merece dupla checagem da receita e do objetivo da compra.',
+      suggestion: 'Confirme se a adição está correta e se o caso é realmente multifocal/ocupacional, não apenas controle de miopia ou visão simples.',
     })
   }
 
   if (wantsSolar && add !== null) {
     issues.push({
       severity: 'warning',
-      message: 'Objetivo solar com adicao preenchida pode misturar necessidades diferentes.',
+      message: 'Objetivo solar com adição preenchida pode misturar necessidades diferentes.',
       suggestion: 'Confirme se o cliente quer solar plano, solar com grau de longe ou multifocal solar.',
     })
   }
@@ -2705,31 +2705,31 @@ function validateRecommendationFormConsistency(form: ReturnType<typeof createEmp
   if (targetBudget !== null && targetBudget <= 800 && wantsPremium) {
     issues.push({
       severity: 'warning',
-      message: 'Ha desejo por recursos premium com orcamento muito baixo.',
-      suggestion: 'Confirme se a prioridade e manter preco baixo ou abrir espaco para uma solucao superior.',
+      message: 'Há desejo por recursos premium com orçamento muito baixo.',
+      suggestion: 'Confirme se a prioridade é manter preço baixo ou abrir espaço para uma solução superior.',
     })
   }
 
   if (targetBudget !== null && targetBudget <= 1600 && wantsManyUpgrades) {
     issues.push({
       severity: 'warning',
-      message: 'O cliente pediu varias melhorias ao mesmo tempo dentro de um alvo de preco apertado.',
-      suggestion: 'Alinhe uma prioridade principal antes de gerar: preco, estetica, resistencia, fotossensivel ou tratamento.',
+      message: 'O cliente pediu várias melhorias ao mesmo tempo dentro de um alvo de preço apertado.',
+      suggestion: 'Alinhe uma prioridade principal antes de gerar: preço, estética, resistência, fotossensível ou tratamento.',
     })
   }
 
   if (form.queixaDirigirNoite === 'sim' && targetBudget !== null && targetBudget <= 800) {
     issues.push({
       severity: 'warning',
-      message: 'Queixa de dirigir a noite costuma exigir melhor antirreflexo, mas o orcamento esta baixo.',
-      suggestion: 'Confirme se o cliente aceita ultrapassar o alvo para priorizar seguranca/conforto noturno.',
+      message: 'Queixa de dirigir à noite costuma exigir melhor antirreflexo, mas o orçamento está baixo.',
+      suggestion: 'Confirme se o cliente aceita ultrapassar o alvo para priorizar segurança/conforto noturno.',
     })
   }
 
   if (form.queixaProgressaoRapida === 'sim' && isChild && form.prioridadePrincipal !== 'controle_miopia') {
     issues.push({
       severity: 'warning',
-      message: 'Crianca com progressao rapida deve ter controle de miopia como prioridade clinica.',
+      message: 'Criança com progressão rápida deve ter controle de miopia como prioridade clínica.',
       suggestion: 'Considere mudar a prioridade principal para controle de miopia antes de gerar.',
     })
   }
@@ -2745,16 +2745,16 @@ function validateRecommendationFormConsistency(form: ReturnType<typeof createEmp
   if (add !== null && add >= 3.5) {
     issues.push({
       severity: 'warning',
-      message: 'Adicao alta restringe disponibilidade de multifocais.',
-      suggestion: 'Mantenha atencao a grade; talvez aparecam menos opcoes e isso pode estar correto.',
+      message: 'Adição alta restringe disponibilidade de multifocais.',
+      suggestion: 'Mantenha atenção à grade; talvez apareçam menos opções e isso pode estar correto.',
     })
   }
 
   if (sphere !== null && Math.abs(sphere) >= 6 && targetBudget !== null && targetBudget <= 1600) {
     issues.push({
       severity: 'warning',
-      message: 'Grau alto com orcamento apertado pode limitar estetica, espessura e tratamentos.',
-      suggestion: 'Confirme se o cliente prioriza preco ou melhor resultado estetico/visual.',
+      message: 'Grau alto com orçamento apertado pode limitar estética, espessura e tratamentos.',
+      suggestion: 'Confirme se o cliente prioriza preço ou melhor resultado estético/visual.',
     })
   }
 
@@ -3316,7 +3316,7 @@ export default function EvaluationInterface({
 
     if (evaluationId && storeId) {
       updateEvaluationPanicReason(evaluationId, storeId, intent).catch(() => {
-        // silencioso â€” não bloqueia o fluxo do consultor
+        // silencioso — não bloqueia o fluxo do consultor
       })
     }
   }
@@ -3898,7 +3898,7 @@ export default function EvaluationInterface({
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300">Responsável</p>
                   <p className="mt-2 text-lg font-black text-white">{selectedCustomer.full_name}</p>
                   <p className="mt-1 text-xs font-bold text-slate-400">
-                    {selectedCustomer.cpf || 'Sem CPF'} ââ‚¬Â¢ {selectedCustomer.fone_movel || 'Sem telefone'}
+                    {selectedCustomer.cpf || 'Sem CPF'} • {selectedCustomer.fone_movel || 'Sem telefone'}
                   </p>
                 </div>
 
@@ -4969,7 +4969,7 @@ export default function EvaluationInterface({
                             </p>
                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-400 flex items-center gap-2">
-                                <Sparkles className="h-3 w-3" /> Debug IA â€” Auditoria da Indicação
+                                <Sparkles className="h-3 w-3" /> Debug IA — Auditoria da Indicação
                               </p>
                               <button
                                 type="button"
@@ -4995,7 +4995,7 @@ export default function EvaluationInterface({
                             </p>
                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 flex items-center gap-2">
-                                <FileSearch className="h-3 w-3" /> Debug IA â€” Payload da Auditoria
+                                <FileSearch className="h-3 w-3" /> Debug IA — Payload da Auditoria
                               </p>
                               <button
                                 type="button"
