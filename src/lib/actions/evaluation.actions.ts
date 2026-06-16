@@ -179,6 +179,13 @@ export type EvaluationActionResult<T = undefined> = {
   data?: T
 }
 
+export type CreateSaleFromEvaluationResult = {
+  vendaId: number
+  serviceOrderId: number
+  vendaItemId: number
+  tenantCommercialOfferId: string | null
+}
+
 const SaveEvaluationSchema = z
   .object({
     storeId: z.coerce.number(),
@@ -244,6 +251,18 @@ const SaveEvaluationSchema = z
       })
     }
   })
+
+const CreateSaleFromEvaluationSchema = z.object({
+  storeId: z.coerce.number(),
+  evaluationId: z.coerce.number(),
+  employeeId: z.coerce.number().nullable().optional(),
+  source: z.enum(['ai', 'ivision']),
+  displayName: z.string().min(2),
+  globalOfferId: z.string().nullable().optional(),
+  finalPrice: z.coerce.number().nullable().optional(),
+  commercialSummary: z.string().nullable().optional(),
+  optionSnapshot: z.record(z.string(), z.unknown()).nullable().optional(),
+})
 
 function normalizeText(value: string | null | undefined) {
   return value?.trim() ? value.trim() : null
@@ -891,6 +910,255 @@ export async function updateEvaluationOutcomeStatus(
     return { success: true, message: 'Desfecho registrado com sucesso.' }
   } catch {
     return { success: false, message: 'Falha ao registrar desfecho.' }
+  }
+}
+
+export async function createSaleAndServiceOrderFromEvaluation(
+  input: z.infer<typeof CreateSaleFromEvaluationSchema>
+): Promise<EvaluationActionResult<CreateSaleFromEvaluationResult>> {
+  const validated = CreateSaleFromEvaluationSchema.safeParse(input)
+  if (!validated.success) {
+    return { success: false, message: validated.error.issues[0]?.message || 'Dados invalidos.' }
+  }
+
+  const data = validated.data
+  const auth = await getAuthorizedContext(data.storeId)
+  if (!auth.ok) return { success: false, message: auth.message }
+
+  const supabaseAdmin = createAdminClient()
+  let createdVendaId: number | null = null
+  let createdVendaItemId: number | null = null
+  let createdServiceOrderId: number | null = null
+
+  try {
+    const { data: evaluation, error: evaluationError } = await (supabaseAdmin.from('optical_evaluations') as any)
+      .select('*')
+      .eq('id', data.evaluationId)
+      .eq('store_id', data.storeId)
+      .maybeSingle()
+
+    if (evaluationError || !evaluation) {
+      return { success: false, message: 'Avaliacao nao encontrada para criar a venda.' }
+    }
+
+    if (evaluation.exported_venda_id) {
+      return {
+        success: true,
+        message: 'Esta avaliacao ja possui venda vinculada.',
+        data: {
+          vendaId: evaluation.exported_venda_id,
+          serviceOrderId: evaluation.exported_service_order_id || 0,
+          vendaItemId: 0,
+          tenantCommercialOfferId: null,
+        },
+      }
+    }
+
+    const customerId = evaluation.responsible_customer_id || evaluation.evaluated_customer_id
+    if (!customerId) {
+      return { success: false, message: 'Nao foi possivel identificar o titular para criar a venda.' }
+    }
+
+    let tenantCommercialOffer: {
+      id: string
+      display_name: string | null
+      price_sell: number | null
+      global_offer_id: string
+    } | null = null
+
+    if (data.globalOfferId) {
+      const { data: offerMatch } = await (supabaseAdmin.from('tenant_commercial_offers') as any)
+        .select('id,display_name,price_sell,global_offer_id')
+        .eq('store_id', data.storeId)
+        .eq('global_offer_id', data.globalOfferId)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle()
+
+      tenantCommercialOffer = offerMatch || null
+    }
+
+    const resolvedPrice =
+      data.finalPrice ??
+      (tenantCommercialOffer?.price_sell != null ? Number(tenantCommercialOffer.price_sell) : 0)
+    const itemDescription = tenantCommercialOffer?.display_name || data.displayName
+
+    const { data: venda, error: vendaError } = await (supabaseAdmin.from('vendas') as any)
+      .insert({
+        tenant_id: auth.tenantId,
+        store_id: data.storeId,
+        customer_id: customerId,
+        employee_id: data.employeeId ?? evaluation.employee_id ?? null,
+        created_by_user_id: auth.userId,
+        status: 'Em Aberto',
+        valor_total: 0,
+        valor_desconto: 0,
+        valor_final: 0,
+      })
+      .select('*')
+      .single()
+
+    if (vendaError || !venda) throw vendaError || new Error('Falha ao criar venda.')
+    createdVendaId = venda.id
+
+    const snapshot = {
+      source: data.source,
+      resolution_status: tenantCommercialOffer ? 'matched' : 'snapshot_only',
+      tenant_commercial_offer_id: tenantCommercialOffer?.id || null,
+      global_offer_id: data.globalOfferId || tenantCommercialOffer?.global_offer_id || null,
+      display_name: itemDescription,
+      final_price: resolvedPrice,
+      commercial_summary: data.commercialSummary || null,
+      option_snapshot: data.optionSnapshot || null,
+      optical_evaluation_id: evaluation.id,
+    }
+
+    const { data: vendaItem, error: itemError } = await (supabaseAdmin.from('venda_itens') as any)
+      .insert({
+        tenant_id: auth.tenantId,
+        store_id: data.storeId,
+        venda_id: venda.id,
+        product_id: null,
+        variant_id: null,
+        item_tipo: 'Lente',
+        descricao: itemDescription,
+        quantidade: 1,
+        valor_unitario: resolvedPrice,
+        valor_total_item: resolvedPrice,
+        unidade: 'Par',
+        detalhes_avulsos: {
+          original_price: resolvedPrice,
+          selected_recommendation: snapshot,
+        },
+      })
+      .select('*')
+      .single()
+
+    if (itemError || !vendaItem) throw itemError || new Error('Falha ao criar item da venda.')
+    createdVendaItemId = vendaItem.id
+
+    const obsParts = [
+      `Lente escolhida na avaliacao: ${itemDescription}`,
+      data.commercialSummary || evaluation.commercial_recommendation_raw || null,
+      data.source === 'ivision' ? 'Origem: sugestao importada do iVision.' : 'Origem: sugestao assistida por IA.',
+    ].filter(Boolean)
+
+    const { data: serviceOrder, error: osError } = await (supabaseAdmin.from('service_orders') as any)
+      .insert({
+        tenant_id: auth.tenantId,
+        store_id: data.storeId,
+        venda_id: venda.id,
+        customer_id: customerId,
+        dependente_id: evaluation.evaluated_dependente_id || null,
+        receita_longe_od_esferico: evaluation.receita_longe_od_esferico,
+        receita_longe_od_cilindrico: evaluation.receita_longe_od_cilindrico,
+        receita_longe_od_eixo: evaluation.receita_longe_od_eixo,
+        receita_longe_oe_esferico: evaluation.receita_longe_oe_esferico,
+        receita_longe_oe_cilindrico: evaluation.receita_longe_oe_cilindrico,
+        receita_longe_oe_eixo: evaluation.receita_longe_oe_eixo,
+        receita_perto_od_esferico: evaluation.receita_perto_od_esferico,
+        receita_perto_od_cilindrico: evaluation.receita_perto_od_cilindrico,
+        receita_perto_od_eixo: evaluation.receita_perto_od_eixo,
+        receita_perto_oe_esferico: evaluation.receita_perto_oe_esferico,
+        receita_perto_oe_cilindrico: evaluation.receita_perto_oe_cilindrico,
+        receita_perto_oe_eixo: evaluation.receita_perto_oe_eixo,
+        receita_adicao: evaluation.receita_adicao,
+        medida_dnp_od: evaluation.medida_dnp_od,
+        medida_dnp_oe: evaluation.medida_dnp_oe,
+        medida_altura_od: evaluation.medida_altura_od,
+        medida_altura_oe: evaluation.medida_altura_oe,
+        lab_pedido_por_id: data.employeeId ?? evaluation.employee_id ?? null,
+        source_optical_evaluation_id: evaluation.id,
+        obs_os: obsParts.join('\n\n'),
+      })
+      .select('id')
+      .single()
+
+    if (osError || !serviceOrder) throw osError || new Error('Falha ao criar OS.')
+    createdServiceOrderId = serviceOrder.id
+
+    await (supabaseAdmin.from('service_orders') as any)
+      .update({ protocolo_fisico: String(serviceOrder.id) })
+      .eq('id', serviceOrder.id)
+      .is('protocolo_fisico', null)
+
+    const { error: linkError } = await (supabaseAdmin.from('venda_itens_os_links') as any)
+      .insert([
+        {
+          tenant_id: auth.tenantId,
+          store_id: data.storeId,
+          service_order_id: serviceOrder.id,
+          venda_item_id: vendaItem.id,
+          uso_na_os: 'lente_od',
+        },
+        {
+          tenant_id: auth.tenantId,
+          store_id: data.storeId,
+          service_order_id: serviceOrder.id,
+          venda_item_id: vendaItem.id,
+          uso_na_os: 'lente_oe',
+        },
+      ])
+
+    if (linkError) throw linkError
+
+    const { error: rpcError } = await (supabaseAdmin as any).rpc('update_venda_financeiro', {
+      p_venda_id: venda.id,
+    })
+    if (rpcError) throw new Error(`Erro ao recalcular total: ${rpcError.message}`)
+
+    const { error: evaluationUpdateError } = await (supabaseAdmin.from('optical_evaluations') as any)
+      .update({
+        recommended_lens_name: itemDescription,
+        commercial_recommendation_raw: data.commercialSummary || evaluation.commercial_recommendation_raw,
+        recommended_items: [snapshot],
+        exported_venda_id: venda.id,
+        exported_service_order_id: serviceOrder.id,
+        outcome_status: 'venda_fechada',
+        status: 'exportada',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', evaluation.id)
+      .eq('store_id', data.storeId)
+
+    if (evaluationUpdateError) throw evaluationUpdateError
+
+    revalidatePath(`/dashboard/loja/${data.storeId}/vendas/${venda.id}/experimental`)
+    revalidatePath(`/dashboard/loja/${data.storeId}/avaliacao`)
+
+    return {
+      success: true,
+      message: 'Venda e OS criadas com a opcao escolhida.',
+      data: {
+        vendaId: venda.id,
+        serviceOrderId: serviceOrder.id,
+        vendaItemId: vendaItem.id,
+        tenantCommercialOfferId: tenantCommercialOffer?.id || null,
+      },
+    }
+  } catch (error: any) {
+    if (createdServiceOrderId) {
+      await (supabaseAdmin.from('venda_itens_os_links') as any)
+        .delete()
+        .eq('service_order_id', createdServiceOrderId)
+      await (supabaseAdmin.from('service_orders') as any)
+        .delete()
+        .eq('id', createdServiceOrderId)
+    }
+
+    if (createdVendaItemId) {
+      await (supabaseAdmin.from('venda_itens') as any)
+        .delete()
+        .eq('id', createdVendaItemId)
+    }
+
+    if (createdVendaId) {
+      await (supabaseAdmin.from('vendas') as any)
+        .delete()
+        .eq('id', createdVendaId)
+    }
+
+    return { success: false, message: error?.message || 'Falha ao criar venda a partir da avaliacao.' }
   }
 }
 

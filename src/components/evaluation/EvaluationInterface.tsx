@@ -36,6 +36,7 @@ import { getDependentes } from '@/lib/actions/dependents.actions'
 import { searchCustomersByName, createNewVenda, type CustomerSearchResult } from '@/lib/actions/vendas.actions'
 import {
   getOpticalEvaluationsForSubject,
+  createSaleAndServiceOrderFromEvaluation,
   upsertOpticalEvaluation,
   type OpticalEvaluationListItem
 } from '@/lib/actions/evaluation.actions'
@@ -2791,6 +2792,7 @@ export default function EvaluationInterface({
   const [form, setForm] = useState(createEmptyForm())
   const [evaluationId, setEvaluationId] = useState<number | null>(null)
   const evaluationIdRef = useRef<number | null>(null)
+  const isCreatingSaleRef = useRef(false)
   const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [searchError, setSearchError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
@@ -3323,18 +3325,194 @@ export default function EvaluationInterface({
     }
   }
 
-  const handleApplyAiRecommendation = (option: RecommendationOption) => {
-    setForm((prev) => ({
-      ...prev,
-      recommendedLensName: buildAiRecommendationLabel(option),
-      commercialRecommendationRaw:
-        getSalesAssistOptionText(option, lensSalesAssist) ||
-        buildAiCommercialSummary(option)
-    }))
-    setFeedback('Sugestão da IA aplicada aos campos comerciais. Revise antes de salvar.')
-    setFormError(null)
+  const persistEvaluationForSale = async (recommendation: {
+    displayName: string
+    commercialSummary: string | null
+    recommendedItems: unknown[] | null
+  }) => {
+    if (!selectedCustomer) {
+      setFormError('Selecione o titular antes de criar a venda.')
+      return null
+    }
+    if (!isSubjectChosen) {
+      setFormError('Escolha primeiro o paciente avaliado antes de criar a venda.')
+      return null
+    }
+    if (selectedSubjectType === 'dependente' && !selectedDependente) {
+      setFormError('Selecione o dependente avaliado antes de criar a venda.')
+      return null
+    }
+
+    const derivedStatus: EvaluationStatus = form.sourceSystem === 'ivision' ? 'importada' : 'concluida'
+    const result = await upsertOpticalEvaluation({
+      evaluationId: evaluationIdRef.current || undefined,
+      storeId,
+      evaluatedCustomerId: selectedSubjectType === 'customer' ? selectedCustomer.id : null,
+      evaluatedDependenteId: selectedSubjectType === 'dependente' ? Number(selectedDependenteId) : null,
+      responsibleCustomerId: selectedSubjectType === 'dependente' ? selectedCustomer.id : null,
+      evaluatedNameSnapshot: selectedSubjectType === 'dependente' ? (selectedDependente?.full_name || '') : selectedCustomer.full_name,
+      responsibleNameSnapshot: selectedSubjectType === 'dependente' ? selectedCustomer.full_name : null,
+      relationshipSnapshot: selectedSubjectType === 'dependente' ? (selectedDependente?.parentesco || 'Dependente') : 'Titular',
+      employeeId: authenticatedEmployee?.id ?? undefined,
+      sourceSystem: form.sourceSystem,
+      status: derivedStatus,
+      parseStatus: form.parseStatus,
+      sourceDocumentUrl: form.sourceUrl || null,
+      sourceDocumentHost: form.sourceDocumentHost || null,
+      sourceOsNumber: form.sourceOsNumber || null,
+      sourceExamType: form.sourceExamType || null,
+      sourceExamDatetime: form.sourceExamDatetime || null,
+      patientNameRaw: form.patientNameRaw || null,
+      ageYears: form.ageYears ? Number(form.ageYears) : null,
+      estiloVidaUsoComputadorHoras: form.estiloVidaUsoComputadorHoras ? Number(form.estiloVidaUsoComputadorHoras) : null,
+      estiloVidaDirigirHoras: form.estiloVidaDirigirHoras ? Number(form.estiloVidaDirigirHoras) : null,
+      estiloVidaLeituraHoras: form.estiloVidaLeituraHoras ? Number(form.estiloVidaLeituraHoras) : null,
+      estiloVidaUsoCelularHoras: form.estiloVidaUsoCelularHoras ? Number(form.estiloVidaUsoCelularHoras) : null,
+      estiloVidaExposicaoSolHoras: form.estiloVidaExposicaoSolHoras ? Number(form.estiloVidaExposicaoSolHoras) : null,
+      estiloVidaAmbienteInternoHoras: form.estiloVidaAmbienteInternoHoras ? Number(form.estiloVidaAmbienteInternoHoras) : null,
+      estiloVidaAmbienteExternoHoras: form.estiloVidaAmbienteExternoHoras ? Number(form.estiloVidaAmbienteExternoHoras) : null,
+      estiloVidaAssistirTvHoras: form.estiloVidaAssistirTvHoras ? Number(form.estiloVidaAssistirTvHoras) : null,
+      receitaLongeOdEsferico: form.receitaLongeOdEsferico || null,
+      receitaLongeOdCilindrico: form.receitaLongeOdCilindrico || null,
+      receitaLongeOdEixo: form.receitaLongeOdEixo || null,
+      receitaLongeOeEsferico: form.receitaLongeOeEsferico || null,
+      receitaLongeOeCilindrico: form.receitaLongeOeCilindrico || null,
+      receitaLongeOeEixo: form.receitaLongeOeEixo || null,
+      receitaPertoOdEsferico: form.receitaPertoOdEsferico || null,
+      receitaPertoOdCilindrico: form.receitaPertoOdCilindrico || null,
+      receitaPertoOdEixo: form.receitaPertoOdEixo || null,
+      receitaPertoOeEsferico: form.receitaPertoOeEsferico || null,
+      receitaPertoOeCilindrico: form.receitaPertoOeCilindrico || null,
+      receitaPertoOeEixo: form.receitaPertoOeEixo || null,
+      receitaAdicao: form.receitaAdicao || null,
+      medidaDnpOd: form.medidaDnpOd || null,
+      medidaDnpOe: form.medidaDnpOe || null,
+      medidaAlturaOd: form.medidaAlturaOd || null,
+      medidaAlturaOe: form.medidaAlturaOe || null,
+      recommendedLensName: recommendation.displayName,
+      commercialRecommendationRaw: recommendation.commercialSummary,
+      recommendedItems: recommendation.recommendedItems,
+      extractedText: form.extractedText || null,
+      rawPayloadJson: form.rawPayloadJson,
+      parseWarning: form.parseWarning || null,
+      documentHash: form.documentHash || null
+    })
+
+    if (!result.success || !result.data) {
+      setFormError(result.message || 'Nao foi possivel salvar a avaliacao antes de criar a venda.')
+      return null
+    }
+
+    setCurrentEvaluationId(result.data.id)
+    return result.data.id
   }
 
+  const handleCreateSaleFromRecommendation = (recommendation: {
+    source: 'ai' | 'ivision'
+    displayName: string
+    globalOfferId?: string | null
+    finalPrice?: number | null
+    commercialSummary?: string | null
+    optionSnapshot?: Record<string, unknown> | null
+  }) => {
+    if (isCreatingSaleRef.current || isCreatingVenda) return
+
+    isCreatingSaleRef.current = true
+
+    const confirmed = window.confirm(
+      `Confirmar criacao da venda?\n\nPaciente: ${selectedSubjectLabel}\nLente: ${recommendation.displayName}\n\nA venda sera criada e a OS abrira pre-configurada com grau, medidas e lente escolhida.`
+    )
+    if (!confirmed) {
+      isCreatingSaleRef.current = false
+      return
+    }
+
+    setFormError(null)
+    setFeedback('Criando venda e OS com a opcao escolhida...')
+
+    startCreateVendaTransition(async () => {
+      try {
+        const evaluationIdForSale = await persistEvaluationForSale({
+          displayName: recommendation.displayName,
+          commercialSummary: recommendation.commercialSummary || null,
+          recommendedItems: recommendation.optionSnapshot ? [recommendation.optionSnapshot] : null,
+        })
+        if (!evaluationIdForSale) return
+
+        const result = await createSaleAndServiceOrderFromEvaluation({
+          storeId,
+          evaluationId: evaluationIdForSale,
+          employeeId: authenticatedEmployee?.id ?? null,
+          source: recommendation.source,
+          displayName: recommendation.displayName,
+          globalOfferId: recommendation.globalOfferId || null,
+          finalPrice: recommendation.finalPrice ?? null,
+          commercialSummary: recommendation.commercialSummary || null,
+          optionSnapshot: recommendation.optionSnapshot || null,
+        })
+
+        if (!result.success || !result.data) {
+          setFormError(result.message || 'Nao foi possivel criar a venda com esta opcao.')
+          return
+        }
+
+        router.push(`/dashboard/loja/${storeId}/vendas/${result.data.vendaId}/experimental`)
+      } finally {
+        isCreatingSaleRef.current = false
+      }
+    })
+  }
+
+  const handleApplyAiRecommendation = (option: RecommendationOption) => {
+    const displayName = buildAiRecommendationLabel(option)
+    const commercialSummary =
+      getSalesAssistOptionText(option, lensSalesAssist) ||
+      buildAiCommercialSummary(option)
+
+    setForm((prev) => ({
+      ...prev,
+      recommendedLensName: displayName,
+      commercialRecommendationRaw: commercialSummary
+    }))
+    setFeedback('Sugestao da IA aplicada aos campos comerciais.')
+    setFormError(null)
+
+    handleCreateSaleFromRecommendation({
+      source: 'ai',
+      displayName,
+      globalOfferId: option.offerId,
+      finalPrice: option.finalPrice,
+      commercialSummary,
+      optionSnapshot: option as unknown as Record<string, unknown>,
+    })
+  }
+
+  const handleApplyIvisionRecommendation = () => {
+    if (!ivisionReferenceSuggestion) return
+
+    const commercialSummary = ivisionReferenceSummary || form.commercialRecommendationRaw || null
+    setForm((prev) => ({
+      ...prev,
+      recommendedLensName: ivisionReferenceSuggestion,
+      commercialRecommendationRaw: commercialSummary || ''
+    }))
+    setFeedback('Sugestao do iVision aplicada aos campos comerciais.')
+    setFormError(null)
+
+    handleCreateSaleFromRecommendation({
+      source: 'ivision',
+      displayName: ivisionReferenceSuggestion,
+      finalPrice: null,
+      commercialSummary,
+      optionSnapshot: {
+        source: 'ivision',
+        displayName: ivisionReferenceSuggestion,
+        summary: commercialSummary,
+        sourceOsNumber: form.sourceOsNumber || null,
+        sourceExamType: form.sourceExamType || null,
+      },
+    })
+  }
   const handleQueryChange = (value: string) => {
     setQuery(value)
     if (value.trim().length < 2) {
@@ -5076,6 +5254,15 @@ export default function EvaluationInterface({
                                   {ivisionReferenceSummary}
                                 </p>
                               )}
+                              <button
+                                type="button"
+                                onClick={handleApplyIvisionRecommendation}
+                                disabled={isCreatingVenda}
+                                className="mt-4 inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-white hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {isCreatingVenda ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                                Aplicar opção iVision
+                              </button>
                             </div>
                             <div className="col-span-12 lg:col-span-6 rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/10 p-4">
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-300">
@@ -5100,8 +5287,10 @@ export default function EvaluationInterface({
                                   <button
                                     type="button"
                                     onClick={() => handleApplyAiRecommendation(aiTopRecommendation)}
-                                    className="mt-auto ml-auto inline-flex items-center gap-2 rounded-xl bg-fuchsia-500 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-white hover:bg-fuchsia-400"
+                                    disabled={isCreatingVenda}
+                                    className="mt-auto ml-auto inline-flex items-center gap-2 rounded-xl bg-fuchsia-500 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-white hover:bg-fuchsia-400 disabled:cursor-not-allowed disabled:opacity-50"
                                   >
+                                    {isCreatingVenda ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                                     Aplicar esta opção
                                   </button>
                                 </div>
@@ -5169,8 +5358,10 @@ export default function EvaluationInterface({
                                     <button
                                       type="button"
                                       onClick={() => handleApplyAiRecommendation(option)}
-                                      className="mt-auto ml-auto inline-flex items-center gap-2 self-end rounded-xl bg-fuchsia-500 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-white hover:bg-fuchsia-400"
+                                      disabled={isCreatingVenda}
+                                      className="mt-auto ml-auto inline-flex items-center gap-2 self-end rounded-xl bg-fuchsia-500 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-white hover:bg-fuchsia-400 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
+                                      {isCreatingVenda ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                                       Aplicar esta opção
                                     </button>
                                   </div>
