@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { getFechamentoData } from "@/lib/actions/fiscal-db.actions";
-import { recuperarXmlsNFCePeriodo, inutilizarNumeracaoNFCe, listarInutilizacoesNFCe } from "@/lib/actions/fiscal.actions";
+import { recuperarXmlsNFCePeriodo, inutilizarNumeracaoFiscal, listarInutilizacoesFiscal } from "@/lib/actions/fiscal.actions";
 import { getStoreProfile } from "@/lib/actions/store.actions";
 import {
     Download, Loader2, FileArchive, FileText,
@@ -39,6 +39,7 @@ type FiscalSummary = {
 
 type InutilizacaoItem = {
     id: number;
+    model?: "NFCe" | "NFe";
     environment: "production" | "homologation";
     year: number;
     serie: number;
@@ -77,6 +78,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
 
     const [recovering, setRecovering] = useState(false);
     const [invalidating, setInvalidating] = useState(false);
+    const [invalidateModel, setInvalidateModel] = useState<"NFCe" | "NFe">("NFCe");
     const [invalidateEnvironment, setInvalidateEnvironment] = useState<"production" | "homologation">("production");
     const [invalidateSerie, setInvalidateSerie] = useState(2);
     const [invalidateStart, setInvalidateStart] = useState("");
@@ -96,6 +98,29 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
         }
     }, []);
 
+    useEffect(() => {
+        let active = true;
+
+        const loadInutilizacoes = async () => {
+            const res = await listarInutilizacoesFiscal({
+                storeId,
+                year,
+                model: invalidateModel,
+                environment: invalidateEnvironment,
+            });
+
+            if (active && res.success) {
+                setInutilizacoes((res.data as InutilizacaoItem[]) || []);
+            }
+        };
+
+        void loadInutilizacoes();
+
+        return () => {
+            active = false;
+        };
+    }, [storeId, year, invalidateModel, invalidateEnvironment]);
+
     const fetchSummary = async () => {
         setLoading(true);
         setSummary(null);
@@ -103,7 +128,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
             const [all, profile, inutilRes] = await Promise.all([
                 getFechamentoData(storeId, month, year),
                 getStoreProfile(storeId),
-                listarInutilizacoesNFCe({ storeId, year, environment: invalidateEnvironment }),
+                listarInutilizacoesFiscal({ storeId, year, model: invalidateModel, environment: invalidateEnvironment }),
             ]);
             if (!all) throw new Error("Loja não encontrada.");
             if (profile) {
@@ -141,14 +166,16 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
     };
 
     const downloadJson = (item: InutilizacaoItem) => {
+        const model = item.model || "NFCe";
         const blob = new Blob([JSON.stringify(item.response_json, null, 2)], { type: "application/json;charset=utf-8" });
-        saveAs(blob, `Inutilizacao_NFCe_S${item.serie}_${item.numero_inicial}-${item.numero_final}_${item.year}.json`);
+        saveAs(blob, `Inutilizacao_${model}_S${item.serie}_${item.numero_inicial}-${item.numero_final}_${item.year}.json`);
     };
 
     const downloadPdf = (item: InutilizacaoItem) => {
+        const model = item.model || "NFCe";
         const doc = new jsPDF();
         doc.setFontSize(14);
-        doc.text("Comprovante de Inutilizacao de Numeracao NFC-e", 14, 18);
+        doc.text(`Comprovante de Inutilizacao de Numeracao ${model}`, 14, 18);
         doc.setFontSize(10);
         doc.text(`Loja: ${storeInfo?.name || storeId}`, 14, 28);
         doc.text(`CNPJ: ${storeInfo?.cnpj || "-"}`, 14, 34);
@@ -169,7 +196,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
             styles: { fontSize: 9, cellWidth: "wrap" },
             headStyles: { fillColor: [26, 26, 26] },
         });
-        doc.save(`Comprovante_Inutilizacao_NFCe_S${item.serie}_${item.numero_inicial}-${item.numero_final}_${item.year}.pdf`);
+        doc.save(`Comprovante_Inutilizacao_${model}_S${item.serie}_${item.numero_inicial}-${item.numero_final}_${item.year}.pdf`);
     };
 
     const handleExportZip = async () => {
@@ -177,7 +204,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
         setExporting(true);
 
         try {
-            const inutilRes = await listarInutilizacoesNFCe({ storeId, year, environment: "production" });
+            const inutilRes = await listarInutilizacoesFiscal({ storeId, year, model: "NFCe", environment: "production" });
             const inutilizacoesExport = inutilRes.success ? ((inutilRes.data as InutilizacaoItem[]) || []) : [];
 
             const zip = new JSZip();
@@ -339,19 +366,20 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
             return;
         }
         const envLabel = invalidateEnvironment === "production" ? "produção" : "homologação";
-        if (!confirm(`Confirmar inutilização NFC-e série ${invalidateSerie}, faixa ${start} a ${end}, ano ${year}, em ${envLabel}?`)) {
+        if (!confirm(`Confirmar inutilização ${invalidateModel} série ${invalidateSerie}, faixa ${start} a ${end}, ano ${year}, em ${envLabel}?`)) {
             return;
         }
 
         setInvalidating(true);
         try {
-            const res = await inutilizarNumeracaoNFCe({
+            const res = await inutilizarNumeracaoFiscal({
                 storeId,
                 year,
                 serie: invalidateSerie,
                 numeroInicial: start,
                 numeroFinal: end,
                 justificativa: invalidateReason,
+                model: invalidateModel,
                 environment: invalidateEnvironment,
             });
 
@@ -366,7 +394,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                 || "N/A";
             const status = res.data?.status || res.data?.autorizacao?.status || "solicitado";
             alert(`${res.warning || "Inutilização enviada com sucesso."}\nStatus: ${status}\nProtocolo: ${protocolo}`);
-            const updated = await listarInutilizacoesNFCe({ storeId, year, environment: invalidateEnvironment });
+            const updated = await listarInutilizacoesFiscal({ storeId, year, model: invalidateModel, environment: invalidateEnvironment });
             if (updated.success) setInutilizacoes((updated.data as InutilizacaoItem[]) || []);
         } catch (err: any) {
             alert("Erro ao inutilizar faixa: " + err.message);
@@ -507,11 +535,19 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                     </div>
 
                     <div className="bg-black/40 rounded-2xl border border-white/10 shadow-sm p-6 mt-4">
-                        <p className="font-bold text-white">Inutilização de Numeração NFC-e</p>
+                        <p className="font-bold text-white">Inutilização de numeração</p>
                         <p className="text-xs text-slate-400 mt-1">
-                            Automatiza o envio da solicitação para SEFAZ via Nuvem Fiscal no ambiente escolhido. A autorização depende da SEFAZ.
+                            Automatiza o envio da solicitação para SEFAZ via Nuvem Fiscal no modelo e ambiente escolhidos. Antes do envio, validamos o cadastro/contrato da empresa na Nuvem Fiscal.
                         </p>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-4">
+                            <select
+                                value={invalidateModel}
+                                onChange={e => setInvalidateModel(e.target.value as "NFCe" | "NFe")}
+                                className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] cursor-pointer"
+                            >
+                                <option value="NFCe">NFC-e</option>
+                                <option value="NFe">NF-e</option>
+                            </select>
                             <select
                                 value={invalidateEnvironment}
                                 onChange={e => setInvalidateEnvironment(e.target.value as "production" | "homologation")}
@@ -556,7 +592,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                             </button>
                         </div>
                         <p className="text-xs mt-2 font-semibold text-amber-700">
-                            Ambiente atual da inutilização: {invalidateEnvironment === "production" ? "Produção" : "Homologação"}.
+                            Modelo atual: {invalidateModel}. Ambiente atual da inutilização: {invalidateEnvironment === "production" ? "Produção" : "Homologação"}.
                         </p>
                         <textarea
                             value={invalidateReason}
@@ -568,14 +604,14 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                         <div className="mt-5">
                             <p className="font-semibold text-white text-sm">Comprovantes salvos</p>
                             {inutilizacoes.length === 0 ? (
-                                <p className="text-xs text-slate-400 mt-1">Nenhuma inutilização salva para {year} neste ambiente.</p>
+                                <p className="text-xs text-slate-400 mt-1">Nenhuma inutilização salva de {invalidateModel} para {year} neste ambiente.</p>
                             ) : (
                                 <div className="mt-2 space-y-2">
                                     {inutilizacoes.map(item => (
                                         <div key={item.id} className="border border-white/10 rounded-xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                                             <div>
                                                 <p className="text-sm font-semibold text-white">
-                                                    Série {item.serie} • Faixa {item.numero_inicial} a {item.numero_final}
+                                                    {(item.model || invalidateModel)} • Série {item.serie} • Faixa {item.numero_inicial} a {item.numero_final}
                                                 </p>
                                                 <p className="text-xs text-slate-400">
                                                     Protocolo: {item.protocol || "-"} • Status: {item.status || "-"} • {new Date(item.created_at).toLocaleString("pt-BR")}

@@ -200,6 +200,7 @@ function isDuplicateInutilizationWithProtocol(result: Parameters<typeof extractP
 }
 
 function buildInutilizationExternalId(params: {
+    model: "NFCe" | "NFe";
     environment: string;
     cnpj: string;
     year: number;
@@ -207,7 +208,97 @@ function buildInutilizationExternalId(params: {
     numeroInicial: number;
     numeroFinal: number;
 }) {
-    return `nfce-inutilizacao:${params.environment}:${params.cnpj}:${params.year}:${params.serie}:${params.numeroInicial}:${params.numeroFinal}`;
+    return `${params.model.toLowerCase()}-inutilizacao:${params.environment}:${params.cnpj}:${params.year}:${params.serie}:${params.numeroInicial}:${params.numeroFinal}`;
+}
+
+function parseCompanyContractStatus(company: any, model: "NFCe" | "NFe") {
+    const lowerModel = model.toLowerCase();
+    const directKeys = [
+        lowerModel,
+        `${lowerModel}_config`,
+        `${lowerModel}_contrato`,
+        `${lowerModel}_contratado`,
+        `${lowerModel}_habilitado`,
+    ];
+
+    for (const key of directKeys) {
+        const value = company?.[key];
+        if (typeof value === "boolean") {
+            return { known: true, enabled: value };
+        }
+        if (value && typeof value === "object") {
+            const enabledCandidate = value.habilitado ?? value.ativo ?? value.enabled ?? value.contratado;
+            if (typeof enabledCandidate === "boolean") {
+                return { known: true, enabled: enabledCandidate };
+            }
+        }
+    }
+
+    const contractLists = [
+        company?.contratos,
+        company?.contrato,
+        company?.servicos,
+        company?.servicos_habilitados,
+        company?.modulos,
+        company?.planos,
+    ].filter(Array.isArray);
+
+    for (const list of contractLists) {
+        const match = list.find((item: any) => {
+            const text = JSON.stringify(item).toLowerCase();
+            return text.includes(lowerModel);
+        });
+
+        if (match) {
+            const enabledCandidate = match.habilitado ?? match.ativo ?? match.enabled ?? match.contratado ?? true;
+            return { known: true, enabled: Boolean(enabledCandidate) };
+        }
+    }
+
+    return { known: false, enabled: true };
+}
+
+async function verifyCompanyInutilizationContract(params: {
+    cnpj: string;
+    environment: "production" | "homologation";
+    model: "NFCe" | "NFe";
+}) {
+    const token = await getNuvemFiscalToken(params.environment);
+    const baseUrl = params.environment === "production"
+        ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
+        : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
+
+    const response = await fetch(`${baseUrl}/empresas/${params.cnpj}`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+        },
+    });
+
+    if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        const providerMessage = result?.error?.message || result?.message;
+        return {
+            success: false as const,
+            error: providerMessage || `Nao foi possivel validar o cadastro da empresa na Nuvem Fiscal para ${params.model}.`,
+        };
+    }
+
+    const company = await response.json().catch(() => ({}));
+    const contractStatus = parseCompanyContractStatus(company, params.model);
+
+    if (contractStatus.known && !contractStatus.enabled) {
+        return {
+            success: false as const,
+            error: `A empresa nao esta habilitada para inutilizacao de ${params.model} na Nuvem Fiscal neste ambiente.`,
+        };
+    }
+
+    return {
+        success: true as const,
+        token,
+        baseUrl,
+    };
 }
 
 async function tryFetchXmlContent(xmlUrl?: string | null) {
@@ -1026,17 +1117,19 @@ export async function recuperarXmlsNFCePeriodo(params: {
     }
 }
 
-export async function inutilizarNumeracaoNFCe(params: {
+export async function inutilizarNumeracaoFiscal(params: {
     storeId: number;
     year: number;
     serie: number;
     numeroInicial: number;
     numeroFinal: number;
     justificativa: string;
+    model?: "NFCe" | "NFe";
     environment?: "production" | "homologation";
 }) {
     const supabase = createAdminClient() as any;
     const env = params.environment || "production";
+    const model = params.model === "NFe" ? "NFe" : "NFCe";
 
     try {
         if (!(await isStoreModuleEnabledForStore(params.storeId, "fiscal"))) {
@@ -1065,10 +1158,16 @@ export async function inutilizarNumeracaoNFCe(params: {
             return { success: false, error: "CNPJ inválido na loja." };
         }
 
-        const token = await getNuvemFiscalToken(env);
-        const baseUrl = env === "production"
-            ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
-            : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
+        const companyCheck = await verifyCompanyInutilizationContract({
+            cnpj,
+            environment: env,
+            model,
+        });
+        if (!companyCheck.success) {
+            return companyCheck;
+        }
+
+        const { token, baseUrl } = companyCheck;
 
         const payload = {
             ambiente: env === "production" ? "producao" : "homologacao",
@@ -1080,7 +1179,8 @@ export async function inutilizarNumeracaoNFCe(params: {
             justificativa: params.justificativa.trim(),
         };
 
-        const response = await fetch(`${baseUrl}/nfce/inutilizacoes`, {
+        const endpoint = model === "NFe" ? "nfe" : "nfce";
+        const response = await fetch(`${baseUrl}/${endpoint}/inutilizacoes`, {
             method: "POST",
             headers: {
                 "Authorization": `Bearer ${token}`,
@@ -1104,6 +1204,7 @@ export async function inutilizarNumeracaoNFCe(params: {
             const externalId = result?.id
                 || result?.autorizacao?.id
                 || buildInutilizationExternalId({
+                    model,
                     environment: env,
                     cnpj,
                     year: params.year,
@@ -1119,7 +1220,7 @@ export async function inutilizarNumeracaoNFCe(params: {
                 store_id: params.storeId,
                 tenant_id: store.tenant_id || null,
                 environment: env,
-                model: "NFCe",
+                model,
                 year: params.year,
                 serie: params.serie,
                 numero_inicial: params.numeroInicial,
@@ -1163,18 +1264,20 @@ export async function inutilizarNumeracaoNFCe(params: {
                 : result,
         };
     } catch (error: any) {
-        console.error("Erro ao inutilizar numeração NFC-e:", error);
+        console.error(`Erro ao inutilizar numeracao ${model}:`, error);
         return { success: false, error: error.message || "Erro inesperado na inutilização." };
     }
 }
 
-export async function listarInutilizacoesNFCe(params: {
+export async function listarInutilizacoesFiscal(params: {
     storeId: number;
     year: number;
+    model?: "NFCe" | "NFe";
     environment?: "production" | "homologation";
 }) {
     const supabase = createAdminClient() as any;
     const env = params.environment || "production";
+    const model = params.model === "NFe" ? "NFe" : "NFCe";
     try {
         if (!(await isStoreModuleEnabledForStore(params.storeId, "fiscal"))) {
             return { success: false, error: "Modulo fiscal desativado para esta loja." };
@@ -1184,7 +1287,7 @@ export async function listarInutilizacoesNFCe(params: {
             .from("fiscal_inutilizations")
             .select("id, environment, year, serie, numero_inicial, numero_final, justificativa, protocol, external_id, status, response_json, created_at")
             .eq("store_id", params.storeId)
-            .eq("model", "NFCe")
+            .eq("model", model)
             .eq("environment", env)
             .eq("year", params.year)
             .order("created_at", { ascending: false });
@@ -1197,6 +1300,26 @@ export async function listarInutilizacoesNFCe(params: {
     } catch (error: any) {
         return { success: false, error: error.message || "Erro ao listar inutilizações.", data: [] };
     }
+}
+
+export async function inutilizarNumeracaoNFCe(params: {
+    storeId: number;
+    year: number;
+    serie: number;
+    numeroInicial: number;
+    numeroFinal: number;
+    justificativa: string;
+    environment?: "production" | "homologation";
+}) {
+    return inutilizarNumeracaoFiscal({ ...params, model: "NFCe" });
+}
+
+export async function listarInutilizacoesNFCe(params: {
+    storeId: number;
+    year: number;
+    environment?: "production" | "homologation";
+}) {
+    return listarInutilizacoesFiscal({ ...params, model: "NFCe" });
 }
 
 export async function consultarNFSe(invoiceId: string) {

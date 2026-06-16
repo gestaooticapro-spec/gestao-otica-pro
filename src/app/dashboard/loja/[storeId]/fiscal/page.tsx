@@ -252,7 +252,7 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
 
                     <Link href={`/dashboard/loja/${storeId}/fiscal/fechamento`}>
                         <button className="bg-white/5 border border-white/10 hover:border-white/20 text-white/80 px-5 py-2.5 rounded-full font-bold text-sm shadow-sm flex items-center gap-2 transition hover:scale-105">
-                            <FileArchive size={18} /> Exportar Contador
+                            <FileArchive size={18} /> Área Contabilidade
                         </button>
                     </Link>
 

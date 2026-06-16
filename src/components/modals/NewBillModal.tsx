@@ -22,6 +22,7 @@ function SubmitButton({ installments, isEditing }: { installments: number, isEdi
 
 const labelStyle = "block text-[10px] font-bold text-slate-400 uppercase mb-1.5 tracking-wider"
 const inputStyle = "block w-full rounded-lg border border-white/10 bg-black/20 shadow-inner text-slate-200 h-10 text-sm px-3 focus:ring-1 focus:ring-rose-500/50 focus:border-rose-500/50 font-bold placeholder:font-normal placeholder:text-slate-500 transition-all outline-none [color-scheme:dark]"
+const selectStyle = `${inputStyle} pl-9 cursor-pointer bg-slate-950 text-slate-100 border-white/15 hover:border-white/25`
 
 export default function NewBillModal({ isOpen, onClose, storeId, bill }: { isOpen: boolean, onClose: () => void, storeId: number, bill?: Bill | null }) {
     const [state, dispatch] = useFormState(saveBill, { success: false, message: '' })
@@ -213,7 +214,7 @@ export default function NewBillModal({ isOpen, onClose, storeId, bill }: { isOpe
                         <label className={labelStyle}>Categoria</label>
                         <div className="relative">
                             <Tag className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 pointer-events-none" />
-                            <select name="category" className={`${inputStyle} pl-9 cursor-pointer`} defaultValue={bill?.category || 'Fixa'}>
+                            <select name="category" className={selectStyle} defaultValue={bill?.category || 'Fixa'}>
                                 <option value="Fixa">Despesa Fixa (Aluguel, Luz)</option>
                                 <option value="Fornecedor">Fornecedor / Produtos</option>
                                 <option value="Pessoal">Pessoal / Salários</option>
