@@ -760,10 +760,10 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                     <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                         <div className="flex-1">
                             <p className="text-sm font-black text-white uppercase tracking-[0.15em]">
-                                Modelo de Ordem de ServiÃ§o
+                                Modelo de Ordem de Serviço
                             </p>
                             <p className="mt-2 text-xs text-slate-400 leading-relaxed">
-                                Define se cada venda pode ter vÃ¡rias fichas tÃ©cnicas ou se a venda experimental usa uma Ãºnica OS embutida na prÃ³pria venda.
+                                Define se cada venda pode ter várias fichas técnicas ou se a venda experimental usa uma única OS embutida na própria venda.
                             </p>
                         </div>
 
@@ -773,8 +773,8 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                             disabled={isSaving}
                             className="min-w-[240px] rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-200 outline-none transition-colors focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/40 disabled:opacity-50"
                         >
-                            <option value="multiple">VÃ¡rias OSs por venda</option>
-                            <option value="single">OS Ãºnica por venda</option>
+                            <option value="multiple">Várias OSs por venda</option>
+                            <option value="single">OS única por venda</option>
                         </select>
                     </div>
                 </div>

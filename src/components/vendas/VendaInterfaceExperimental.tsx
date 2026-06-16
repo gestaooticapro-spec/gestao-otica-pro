@@ -433,7 +433,7 @@ function SingleServiceOrderCard({
                             <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-xs font-black uppercase tracking-[0.16em] text-slate-200 flex items-center gap-2">
                                     <Stethoscope className="h-4 w-4 text-cyan-300" />
-                                    MÃ©dico
+                                    Médico
                                 </h3>
                                 <button
                                     type="button"
@@ -477,7 +477,7 @@ function SingleServiceOrderCard({
                                 </select>
                             </div>
                             <div>
-                                <label className={osLabelStyle}>ArmaÃ§Ã£o</label>
+                                <label className={osLabelStyle}>Armação</label>
                                 <select value={armacaoItemId} onChange={(e) => setArmacaoItemId(e.target.value)} disabled={disabled} className={osInputStyle}>
                                     <option value="">Selecione...</option>
                                     {itensArmacao.map((item) => (
@@ -496,8 +496,8 @@ function SingleServiceOrderCard({
                             </h3>
                             <div className="grid grid-cols-7 gap-2 mb-2 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                                 <div></div>
-                                <div className="col-span-2">EsfÃ©rico</div>
-                                <div className="col-span-2">CilÃ­ndrico</div>
+                                <div className="col-span-2">Esférico</div>
+                                <div className="col-span-2">Cilíndrico</div>
                                 <div className="col-span-2">Eixo</div>
                             </div>
                             <div className="grid grid-cols-7 gap-2 mb-2 items-center">
@@ -513,7 +513,7 @@ function SingleServiceOrderCard({
                                 <div className="col-span-2"><input name="receita_longe_oe_eixo" value={longeOeEixo} onChange={(e) => setLongeOeEixo(e.target.value)} disabled={disabled} className={osGridInput} /></div>
                             </div>
                             <div className="max-w-44">
-                                <label className={osLabelStyle}>AdiÃ§Ã£o</label>
+                                <label className={osLabelStyle}>Adição</label>
                                 <DegreeInput name="receita_adicao" value={adicao} onChange={setAdicao} className={osGridInput} />
                             </div>
                         </div>
@@ -521,7 +521,7 @@ function SingleServiceOrderCard({
                         <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                             <h3 className="text-xs font-black uppercase tracking-[0.16em] text-slate-200 mb-3 flex items-center gap-2">
                                 <Wrench className="h-4 w-4 text-cyan-300" />
-                                Medidas TÃ©cnicas
+                                Medidas Técnicas
                             </h3>
                             <div className="grid grid-cols-3 gap-2 mb-3 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                                 <div></div>
@@ -539,7 +539,7 @@ function SingleServiceOrderCard({
                                 <input name="medida_altura_oe" value={altOe} onChange={(e) => setAltOe(e.target.value)} disabled={disabled} className={osGridInput} />
                             </div>
                             <div className="grid grid-cols-3 gap-2 mb-4 items-center">
-                                <label className={`${osLabelStyle} text-right pr-1 mb-0`}>DiÃ¢m.</label>
+                                <label className={`${osLabelStyle} text-right pr-1 mb-0`}>Diâm.</label>
                                 <input name="medida_diametro_od" value={diamOd} onChange={(e) => setDiamOd(e.target.value)} disabled={disabled} className={osGridInput} />
                                 <input name="medida_diametro_oe" value={diamOe} onChange={(e) => setDiamOe(e.target.value)} disabled={disabled} className={osGridInput} />
                             </div>
@@ -554,16 +554,16 @@ function SingleServiceOrderCard({
                         <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                             <h3 className="text-xs font-black uppercase tracking-[0.16em] text-slate-200 mb-3 flex items-center gap-2">
                                 <Briefcase className="h-4 w-4 text-cyan-300" />
-                                LaboratÃ³rio
+                                Laboratório
                             </h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <label className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-slate-300">
                                     <input type="checkbox" name="armacao_com_cliente" checked={armacaoComCliente} onChange={(e) => setArmacaoComCliente(e.target.checked)} disabled={disabled} className="h-4 w-4 rounded border-white/20 bg-slate-900 text-cyan-500 focus:ring-cyan-500" />
-                                    ArmaÃ§Ã£o com cliente
+                                    Armação com cliente
                                 </label>
                                 <label className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-slate-300">
                                     <input type="checkbox" name="os_enviada_ao_lab" checked={osEnviadaAoLab} onChange={(e) => setOsEnviadaAoLab(e.target.checked)} disabled={disabled} className="h-4 w-4 rounded border-white/20 bg-slate-900 text-cyan-500 focus:ring-cyan-500" />
-                                    OS enviada pra montagem no laboratÃ³rio
+                                    OS enviada pra montagem no laboratório
                                 </label>
                             </div>
                         </div>
@@ -800,7 +800,7 @@ export default function VendaInterfaceExperimental({
                                     ? undefined
                                     : () => router.push(saleOsUrl)
                         }
-                        actionLabel={isSingleOSMode ? 'LanÃ§ar OS' : 'Nova OS'}
+                        actionLabel={isSingleOSMode ? 'Lançar OS' : 'Nova OS'}
                         theme="slate"
                     >
                         {isSingleOSMode ? (
@@ -823,7 +823,7 @@ export default function VendaInterfaceExperimental({
                             ) : (
                                 <div className="p-2">
                                     <div className="text-center py-6 text-slate-500 text-xs font-medium italic border-2 border-dashed border-white/10 rounded-xl bg-white/5">
-                                        Nenhuma OS registrada. Clique em "LanÃ§ar OS" para criar a OS desta venda.
+                                        Nenhuma OS registrada. Clique em "Lançar OS" para criar a OS desta venda.
                                     </div>
                                 </div>
                             )
