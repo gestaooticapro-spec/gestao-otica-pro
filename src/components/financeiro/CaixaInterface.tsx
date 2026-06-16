@@ -310,6 +310,13 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
     const activeData = auditMode && auditData ? auditData : initialData
     const isReadOnly = auditMode && auditData !== null
     const { totais, vendas, movimentacoes, movimentacoes_detalhadas, categoriasUsadas } = activeData
+    const valorInicialGaveta = Number(activeData.caixa?.saldo_inicial || 0)
+    const valorFinalGaveta = activeData.caixa?.status === 'Fechado' && activeData.caixa?.saldo_final !== null
+        ? Number(activeData.caixa.saldo_final)
+        : totais.saldo_esperado_dinheiro
+    const totalDinheiro = vendas.total_dinheiro
+    const totalMaquina = vendas.total_pix + vendas.total_cartao
+    const totalDiario = vendas.total_dinheiro + vendas.total_pix + vendas.total_cartao + vendas.total_outros
 
     return (
         <div className="flex flex-col h-full space-y-4">
@@ -411,7 +418,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                 <>
 
                     {/* --- TOPO: INDICADORES (KPIs) --- */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 shrink-0">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 shrink-0">
 
                         {false && (
                         <div className="bg-indigo-500/10 backdrop-blur-xl p-3 rounded-xl border border-white/5 transition-all hover:bg-indigo-500/20">
@@ -433,22 +440,20 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                             </div>
                         </div>
                         )}
-                        {/* Card 1: Saldo Gaveta */}
+                        {/* Card 1: Valor Inicial Gaveta */}
                         <div className="bg-emerald-500/10 backdrop-blur-xl p-3 rounded-xl border border-white/5 transition-all hover:bg-emerald-500/20">
                             <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-1.5 text-emerald-300/80">
                                     <Wallet className="h-3 w-3" />
-                                    <p className="text-[10px] font-black uppercase tracking-wider">Saldo Gaveta</p>
+                                    <p className="text-[10px] font-black uppercase tracking-wider">Valor Inicial Gaveta</p>
                                 </div>
-                                <HelpTooltip text="Dinheiro físico na gaveta AGORA." />
+                                <HelpTooltip text="Valor informado na abertura do caixa como fundo inicial da gaveta." />
                             </div>
                             <p className="text-xl font-black font-mono tabular-nums text-white mb-1.5">
-                                {formatCurrency(totais.saldo_esperado_dinheiro)}
+                                {formatCurrency(valorInicialGaveta)}
                             </p>
                             <div className="flex items-center justify-between border-t border-white/5 pt-1.5">
-                                <p className="text-[9px] text-slate-400">
-                                    {isReadOnly ? 'Fundo no dia:' : 'Fundo:'} <span className="text-white font-mono">{formatCurrency(activeData.caixa?.saldo_inicial || 0)}</span>
-                                </p>
+                                <p className="text-[9px] text-slate-400">Fundo de abertura do dia</p>
                                 {!isReadOnly && (
                                     <button
                                         type="button"
@@ -461,25 +466,45 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                             </div>
                         </div>
 
-                        {/* Card 2: Movimentação Dinheiro */}
+                        {/* Card 2: Valor Final Gaveta */}
+                        <div className="bg-white/5 backdrop-blur-xl p-3 rounded-xl border border-white/5 hover:bg-white/10 transition-all">
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-1.5 text-slate-400">
+                                    <Wallet className="h-3 w-3" />
+                                    <p className="text-[10px] font-black uppercase tracking-wider">Valor Final Gaveta</p>
+                                </div>
+                                <HelpTooltip text={activeData.caixa?.status === 'Fechado' ? 'Valor contado e informado no fechamento do caixa.' : 'Valor esperado em dinheiro na gaveta neste momento.'} />
+                            </div>
+                            <p className="text-lg font-black font-mono tabular-nums text-emerald-400">
+                                {formatCurrency(valorFinalGaveta)}
+                            </p>
+                            <div className="flex gap-2 mt-1 text-[8px] font-bold text-slate-400 uppercase">
+                                <span>{activeData.caixa?.status === 'Fechado' ? 'Fechado' : 'Atual'}</span>
+                            </div>
+                        </div>
+
+                        {/* Card 3: Total Dinheiro */}
                         <div className="bg-white/5 backdrop-blur-xl p-3 rounded-xl border border-white/5 hover:bg-white/10 transition-all">
                             <div className="flex items-center gap-1.5 text-slate-400 mb-2">
                                 <Package className="h-3 w-3" />
-                                <p className="text-[10px] font-black uppercase tracking-wider">No Caixa (Hoje)</p>
+                                <p className="text-[10px] font-black uppercase tracking-wider">Total Dinheiro</p>
                             </div>
                             <p className="text-lg font-black font-mono tabular-nums text-emerald-400">
-                                {formatCurrency(vendas.total_dinheiro + totais.entradas_manuais - totais.saidas_manuais)}
+                                {formatCurrency(totalDinheiro)}
                             </p>
+                            <div className="flex gap-2 mt-1 text-[8px] font-bold text-slate-400 uppercase">
+                                <span>Recebimentos em espécie</span>
+                            </div>
                         </div>
 
-                        {/* Card 3: Movimentação Banco */}
+                        {/* Card 4: Total Máquina */}
                         <div className="bg-white/5 backdrop-blur-xl p-3 rounded-xl border border-white/5 hover:bg-white/10 transition-all">
                             <div className="flex items-center gap-1.5 text-slate-400 mb-2">
                                 <TrendingUp className="h-3 w-3" />
-                                <p className="text-[10px] font-black uppercase tracking-wider">No Banco (Hoje)</p>
+                                <p className="text-[10px] font-black uppercase tracking-wider">Total Máquina</p>
                             </div>
                             <p className="text-lg font-black font-mono tabular-nums text-sky-400">
-                                {formatCurrency(vendas.total_pix + vendas.total_cartao)}
+                                {formatCurrency(totalMaquina)}
                             </p>
                             <div className="flex gap-2 mt-1 text-[8px] font-bold text-sky-300/60 uppercase">
                                 <span>Pix: {formatCurrency(vendas.total_pix)}</span>
@@ -487,18 +512,22 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                             </div>
                         </div>
 
-                        {/* Card 4: Total Geral */}
+                        {/* Card 5: Total Diário */}
                         <div className="bg-white/5 backdrop-blur-xl p-3 rounded-xl border border-white/5 hover:bg-white/10 transition-all">
                             <div className="flex items-center gap-1.5 text-slate-400 mb-2">
                                 <ArrowUpCircle className="h-3 w-3" />
-                                <p className="text-[10px] font-black uppercase tracking-wider">Recebido Geral</p>
+                                <p className="text-[10px] font-black uppercase tracking-wider">Total Diário</p>
                             </div>
                             <p className="text-lg font-black font-mono tabular-nums text-white">
-                                {formatCurrency((vendas.total_dinheiro + totais.entradas_manuais) + vendas.total_pix + vendas.total_cartao)}
+                                {formatCurrency(totalDiario)}
                             </p>
+                            <div className="flex gap-2 mt-1 text-[8px] font-bold text-slate-400 uppercase">
+                                <span>Dinheiro + Pix + Cartão</span>
+                                {vendas.total_outros > 0 && <span>+ Outros</span>}
+                            </div>
                         </div>
 
-                        {/* Card 5: Sangrias e Divergências */}
+                        {/* Card 6: Sangrias e Divergências */}
                         <div className="bg-white/5 backdrop-blur-xl p-3 rounded-xl border border-white/5 hover:bg-white/10 transition-all">
                             <div className="flex justify-between items-center mb-2">
                                 <div className="flex items-center gap-1.5 text-slate-400">

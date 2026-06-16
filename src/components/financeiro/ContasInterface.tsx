@@ -104,15 +104,14 @@ export default function ContasInterface({ bills, storeId }: { bills: Bill[], sto
 
     const filteredBills = baseFilteredBills.filter((bill) => filter === 'Todos' ? true : bill.status === filter)
 
-    const totalVencido = filteredBills
-        .filter((bill) => bill.status === 'Pendente' && startOfUtcDay(bill.due_date).getTime() < todayUtcTime)
+    const totalContasMes = visibleBills
         .reduce((acc, bill) => acc + bill.amount, 0)
 
-    const totalPendente = filteredBills
+    const totalPendente = visibleBills
         .filter((bill) => bill.status === 'Pendente')
         .reduce((acc, bill) => acc + bill.amount, 0)
 
-    const totalPago = filteredBills
+    const totalPago = visibleBills
         .filter((bill) => bill.status === 'Pago')
         .reduce((acc, bill) => acc + (bill.amount_paid || bill.amount), 0)
 
@@ -137,18 +136,18 @@ export default function ContasInterface({ bills, storeId }: { bills: Bill[], sto
     return (
         <div className="flex flex-col h-full space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
-                <div className="bg-rose-500/10 backdrop-blur-xl p-4 rounded-2xl border border-rose-500/20 shadow-sm flex items-center justify-between relative overflow-hidden group hover:bg-rose-500/20 transition-all">
-                    <div className="absolute right-0 top-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity"><AlertCircle className="h-16 w-16 text-rose-400" /></div>
+                <div className="bg-slate-500/10 backdrop-blur-xl p-4 rounded-2xl border border-slate-500/20 shadow-sm flex items-center justify-between relative overflow-hidden group hover:bg-slate-500/20 transition-all">
+                    <div className="absolute right-0 top-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity"><AlertCircle className="h-16 w-16 text-slate-400" /></div>
                     <div className="relative z-10">
-                        <p className="text-[10px] font-bold text-rose-400 uppercase tracking-wider">Vencidas / Atrasadas</p>
-                        <p className="text-2xl font-black text-rose-300 mt-1">{formatMoney(totalVencido)}</p>
+                        <p className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">Total Contas a Pagar Mês</p>
+                        <p className="text-2xl font-black text-white mt-1">{formatMoney(totalContasMes)}</p>
                     </div>
                 </div>
 
                 <div className="bg-blue-500/10 backdrop-blur-xl p-4 rounded-2xl border border-blue-500/20 shadow-sm flex items-center justify-between relative overflow-hidden group hover:bg-blue-500/20 transition-all">
                     <div className="absolute right-0 top-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity"><Clock className="h-16 w-16 text-blue-400" /></div>
                     <div className="relative z-10">
-                        <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">A Pagar (Total)</p>
+                        <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">A Pagar do Mês</p>
                         <p className="text-2xl font-black text-blue-300 mt-1">{formatMoney(totalPendente)}</p>
                     </div>
                 </div>
