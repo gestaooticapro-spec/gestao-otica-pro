@@ -765,12 +765,11 @@ export async function getRecentEvaluationsForEmployee(
   employeeId: number,
   storeId: number,
   limit: number = 20,
-  onlyOpen: boolean = false
+  onlyOpen: boolean = false,
+  maxAgeDays?: number
 ): Promise<OpticalEvaluationListItem[]> {
   try {
-    const tableApi = createClient().from('optical_evaluations') as unknown as OpticalEvaluationsTableApi
-
-    let query = createClient()
+    let query: any = createClient()
       .from('optical_evaluations')
       .select(`
         *,
@@ -779,11 +778,19 @@ export async function getRecentEvaluationsForEmployee(
       `)
       .eq('store_id', storeId)
       .eq('employee_id', employeeId)
-      .order('created_at', { ascending: false })
+      .order('updated_at', { ascending: false })
       .limit(limit)
 
     if (onlyOpen) {
-      query = query.is('exported_venda_id', null).not('status', 'eq', 'concluida')
+      query = query
+        .is('exported_venda_id', null)
+        .is('outcome_status', null)
+    }
+
+    if (typeof maxAgeDays === 'number' && Number.isFinite(maxAgeDays) && maxAgeDays > 0) {
+      const cutoff = new Date()
+      cutoff.setDate(cutoff.getDate() - maxAgeDays)
+      query = query.gte('updated_at', cutoff.toISOString())
     }
 
     const { data: records, error } = await query

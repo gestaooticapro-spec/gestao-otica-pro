@@ -51,7 +51,7 @@ import {
 } from '@/lib/actions/gemini-narratives.actions'
 import { Database } from '@/lib/database.types'
 import { EvaluationDashboard } from './EvaluationDashboard'
-import { getRecentEvaluationsForEmployee, getRecentEvaluationsForStore, updateEvaluationPanicReason, updateEvaluationExportedVendaId, updateEvaluationOutcomeStatus } from '@/lib/actions/evaluation.actions'
+import { getRecentEvaluationsForEmployee, updateEvaluationPanicReason, updateEvaluationExportedVendaId, updateEvaluationOutcomeStatus } from '@/lib/actions/evaluation.actions'
 import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/BackgroundToggle'
 import type {
   RecommendationCaseInput,
@@ -2883,13 +2883,20 @@ export default function EvaluationInterface({
 
   
   useEffect(() => { // Load Dashboard
-    if (authenticatedEmployee && !selectedCustomer && query.length === 0) {
-      setIsLoadingDashboard(true)
-      getRecentEvaluationsForStore(storeId, 30).then(all => {
-        setAllRecentEvaluations(all)
+    if (!authenticatedEmployee || selectedCustomer || query.length !== 0) {
+      setAllRecentEvaluations([])
+      setIsLoadingDashboard(false)
+      return
+    }
+
+    setIsLoadingDashboard(true)
+    getRecentEvaluationsForEmployee(authenticatedEmployee.id, storeId, 8, true, 7)
+      .then((recent) => {
+        setAllRecentEvaluations(recent)
+      })
+      .finally(() => {
         setIsLoadingDashboard(false)
       })
-    }
   }, [authenticatedEmployee, selectedCustomer, query.length, storeId])
 
   // Auto-derive usaMultifocalHoje from tipoLenteAtual; reset adaptation fields when not applicable
