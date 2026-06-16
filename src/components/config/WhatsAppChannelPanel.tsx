@@ -501,7 +501,8 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
 
               <div className="mt-4 flex items-center justify-between gap-4">
                 <p className="text-[11px] leading-relaxed text-slate-400">
-                  Marcadores disponiveis: <span className="font-mono text-slate-200">{'{nome}'}</span> e <span className="font-mono text-slate-200">{'{paciente}'}</span>.
+                  Marcadores disponiveis: <span className="font-mono text-slate-200">{'{nome}'}</span> usa o primeiro nome do cliente.
+                  {' '}<span className="font-mono text-slate-200">{'{paciente}'}</span> adiciona o nome do dependente quando a OS estiver em nome de outra pessoa.
                 </p>
                 <button
                   type="button"
