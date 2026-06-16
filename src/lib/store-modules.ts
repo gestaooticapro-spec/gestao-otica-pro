@@ -1,5 +1,22 @@
 import { Json } from '@/lib/database.types'
 
+export type WhatsAppOsReplyTemplates = {
+  lens_in_production: string
+  lens_arrived_needs_frame: string
+  lens_arrived_assembling: string
+  ready_for_pickup: string
+}
+
+export type WhatsAppAutomationOsOnDemandSettings = {
+  enabled?: boolean
+  templates?: Partial<WhatsAppOsReplyTemplates>
+}
+
+export type WhatsAppAutomationSettings = {
+  os_on_demand?: WhatsAppAutomationOsOnDemandSettings
+  [key: string]: Json | undefined
+}
+
 export type StoreModuleKey =
   | 'fiscal'
   | 'installments'
@@ -24,6 +41,7 @@ export type StoreSettings = {
   module_post_sales_enabled?: boolean
   module_quick_sale_enabled?: boolean
   module_labels_enabled?: boolean
+  whatsapp_automation?: WhatsAppAutomationSettings
   [key: string]: Json | undefined
 }
 

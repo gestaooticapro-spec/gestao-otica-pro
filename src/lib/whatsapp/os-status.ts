@@ -4,6 +4,18 @@ export type WhatsAppOsStatusCode =
   | 'lens_arrived_assembling'
   | 'lens_in_production'
 
+export type WhatsAppTemplateContext = {
+  firstName: string
+  patient: string
+}
+
+export const DEFAULT_WHATSAPP_OS_REPLY_TEMPLATES: Record<WhatsAppOsStatusCode, string> = {
+  lens_in_production: 'Oi, {nome}! Seu pedido{paciente} esta em producao no laboratorio no momento.',
+  lens_arrived_needs_frame: 'Oi, {nome}! Boa noticia: a lente{paciente} ja chegou. Quando puder, traga a armacao na loja para fazermos a montagem.',
+  lens_arrived_assembling: 'Oi, {nome}! A lente{paciente} ja chegou e seu oculos entrou na fila de montagem.',
+  ready_for_pickup: 'Oi, {nome}! Seu oculos{paciente} ficou pronto e ja pode ser retirado na loja.',
+}
+
 export type WhatsAppOpenOs = {
   id: number
   created_at: string
@@ -14,38 +26,60 @@ export type WhatsAppOpenOs = {
   armacao_com_cliente: boolean
 }
 
-export function describeOpenOs(
-  customerName: string,
-  serviceOrder: WhatsAppOpenOs
-): { statusCode: WhatsAppOsStatusCode; replyText: string } {
+function buildTemplateContext(customerName: string, serviceOrder: WhatsAppOpenOs): WhatsAppTemplateContext {
   const firstName = customerName.trim().split(/\s+/)[0] || 'cliente'
   const patient = serviceOrder.dependente_name
     ? ` de ${serviceOrder.dependente_name.trim().split(/\s+/)[0]}`
     : ''
 
+  return {
+    firstName,
+    patient,
+  }
+}
+
+export function renderWhatsAppTemplate(template: string, context: WhatsAppTemplateContext) {
+  return template
+    .replace(/\{nome\}/gi, context.firstName)
+    .replace(/\{paciente\}/gi, context.patient)
+}
+
+export function describeOpenOs(
+  customerName: string,
+  serviceOrder: WhatsAppOpenOs,
+  templates?: Partial<Record<WhatsAppOsStatusCode, string>>
+): { statusCode: WhatsAppOsStatusCode; replyText: string } {
+  const context = buildTemplateContext(customerName, serviceOrder)
+
+  const resolveText = (statusCode: WhatsAppOsStatusCode) =>
+    renderWhatsAppTemplate(
+      templates?.[statusCode]?.trim() || DEFAULT_WHATSAPP_OS_REPLY_TEMPLATES[statusCode],
+      context
+    )
+
   if (serviceOrder.dt_montado_em) {
     return {
       statusCode: 'ready_for_pickup',
-      replyText: `Oi, ${firstName}! Seu oculos${patient} ficou pronto e ja pode ser retirado na loja.`,
+      replyText: resolveText('ready_for_pickup'),
     }
   }
 
   if (serviceOrder.dt_lente_chegou && serviceOrder.armacao_com_cliente) {
     return {
       statusCode: 'lens_arrived_needs_frame',
-      replyText: `Oi, ${firstName}! Boa noticia: a lente${patient} ja chegou. Quando puder, traga a armacao na loja para fazermos a montagem.`,
+      replyText: resolveText('lens_arrived_needs_frame'),
     }
   }
 
   if (serviceOrder.dt_lente_chegou) {
     return {
       statusCode: 'lens_arrived_assembling',
-      replyText: `Oi, ${firstName}! A lente${patient} ja chegou e seu oculos entrou na fila de montagem.`,
+      replyText: resolveText('lens_arrived_assembling'),
     }
   }
 
   return {
     statusCode: 'lens_in_production',
-    replyText: `Oi, ${firstName}! Seu pedido${patient} esta em producao no laboratorio no momento.`,
+    replyText: resolveText('lens_in_production'),
   }
 }

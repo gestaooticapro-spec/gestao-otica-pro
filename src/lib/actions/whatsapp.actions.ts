@@ -7,6 +7,16 @@ import { z } from 'zod'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { toEvolutionNumber } from '@/lib/whatsapp/phone'
+import { updateStoreSettings } from '@/lib/actions/store.actions'
+import {
+  DEFAULT_WHATSAPP_OS_REPLY_TEMPLATES,
+  WhatsAppOsStatusCode,
+} from '@/lib/whatsapp/os-status'
+import type {
+  StoreSettings,
+  WhatsAppAutomationOsOnDemandSettings,
+  WhatsAppOsReplyTemplates,
+} from '@/lib/store-modules'
 
 export type WhatsAppChannel = {
   id: number
@@ -29,6 +39,17 @@ export type WhatsAppActivationResult = WhatsAppChannelResult & {
   qrCodeBase64?: string | null
 }
 
+export type WhatsAppOsResponderSettings = {
+  enabled: boolean
+  templates: WhatsAppOsReplyTemplates
+}
+
+export type WhatsAppOsResponderSettingsResult = {
+  success: boolean
+  message: string
+  settings?: WhatsAppOsResponderSettings
+}
+
 const ChannelSchema = z.object({
   storeId: z.coerce.number().int().positive(),
   instanceKey: z.string()
@@ -48,6 +69,17 @@ const ActivationSchema = z.object({
 
 const StatusSchema = z.object({
   storeId: z.coerce.number().int().positive(),
+})
+
+const OsResponderSettingsSchema = z.object({
+  storeId: z.coerce.number().int().positive(),
+  enabled: z.boolean(),
+  templates: z.object({
+    lens_in_production: z.string().trim().min(8, 'Informe um texto para lente em producao.').max(1000),
+    lens_arrived_needs_frame: z.string().trim().min(8, 'Informe um texto para lente aguardando armacao.').max(1000),
+    lens_arrived_assembling: z.string().trim().min(8, 'Informe um texto para fila de montagem.').max(1000),
+    ready_for_pickup: z.string().trim().min(8, 'Informe um texto para oculos pronto.').max(1000),
+  }),
 })
 
 async function getAuthorizedProfile(storeId: number) {
@@ -117,6 +149,31 @@ async function loadStoreForWhatsApp(storeId: number) {
   return store as { id: number; tenant_id: string; name: string }
 }
 
+async function loadStoreSettings(storeId: number): Promise<StoreSettings> {
+  const supabase = createAdminClient()
+  const { data, error } = await (supabase.from('stores') as any)
+    .select('settings')
+    .eq('id', storeId)
+    .single()
+
+  if (error) throw error
+  return ((data?.settings || {}) as StoreSettings) || {}
+}
+
+function buildOsResponderSettings(
+  saved: WhatsAppAutomationOsOnDemandSettings | undefined
+): WhatsAppOsResponderSettings {
+  const templates = {
+    ...DEFAULT_WHATSAPP_OS_REPLY_TEMPLATES,
+    ...(saved?.templates || {}),
+  }
+
+  return {
+    enabled: saved?.enabled !== false,
+    templates,
+  }
+}
+
 async function upsertWhatsAppChannel(input: {
   tenantId: string
   storeId: number
@@ -177,6 +234,68 @@ export async function getWhatsAppChannel(storeId: number): Promise<WhatsAppChann
       success: false,
       message: 'Não foi possível carregar o canal. Verifique se a migração do WhatsApp foi aplicada.',
     }
+  }
+}
+
+export async function getWhatsAppOsResponderSettings(storeId: number): Promise<WhatsAppOsResponderSettingsResult> {
+  if (!await getAuthorizedProfile(storeId)) {
+    return { success: false, message: 'Acesso negado.' }
+  }
+
+  try {
+    const settings = await loadStoreSettings(storeId)
+    return {
+      success: true,
+      message: '',
+      settings: buildOsResponderSettings(settings.whatsapp_automation?.os_on_demand),
+    }
+  } catch (error) {
+    console.error('[WhatsApp] Failed to load OS responder settings:', error)
+    return { success: false, message: 'Nao foi possivel carregar as respostas da OS.' }
+  }
+}
+
+export async function saveWhatsAppOsResponderSettings(input: {
+  storeId: number
+  enabled: boolean
+  templates: Record<WhatsAppOsStatusCode, string>
+}): Promise<WhatsAppOsResponderSettingsResult> {
+  const parsed = OsResponderSettingsSchema.safeParse(input)
+  if (!parsed.success) {
+    return { success: false, message: parsed.error.issues[0]?.message || 'Dados invalidos.' }
+  }
+
+  const profile = await getAuthorizedProfile(parsed.data.storeId)
+  if (!profile) return { success: false, message: 'Acesso negado.' }
+
+  try {
+    const currentSettings = await loadStoreSettings(parsed.data.storeId)
+    const nextSettings: Partial<StoreSettings> = {
+      whatsapp_automation: {
+        ...(currentSettings.whatsapp_automation || {}),
+        os_on_demand: {
+          enabled: parsed.data.enabled,
+          templates: parsed.data.templates,
+        },
+      },
+    }
+
+    const result = await updateStoreSettings(parsed.data.storeId, nextSettings)
+    if (!result.success) {
+      return { success: false, message: result.message }
+    }
+
+    return {
+      success: true,
+      message: 'Respostas da OS atualizadas.',
+      settings: {
+        enabled: parsed.data.enabled,
+        templates: parsed.data.templates,
+      },
+    }
+  } catch (error) {
+    console.error('[WhatsApp] Failed to save OS responder settings:', error)
+    return { success: false, message: 'Nao foi possivel salvar as respostas da OS.' }
   }
 }
 

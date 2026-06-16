@@ -4,22 +4,33 @@ import { useEffect, useState, useTransition } from 'react'
 import Image from 'next/image'
 import {
   AlertTriangle,
+  Bot,
+  Cake,
   CheckCircle2,
   ClipboardCheck,
+  CreditCard,
+  HandCoins,
   Loader2,
   MessageCircle,
+  MessageSquareText,
+  PackageSearch,
+  PartyPopper,
   QrCode,
   RefreshCw,
   ShieldAlert,
+  Sparkles,
   Wifi,
   WifiOff,
 } from 'lucide-react'
 import {
   getWhatsAppChannel,
+  getWhatsAppOsResponderSettings,
   refreshWhatsAppConnection,
   requestWhatsAppQrCode,
+  saveWhatsAppOsResponderSettings,
   startWhatsAppActivation,
   type WhatsAppChannel,
+  type WhatsAppOsResponderSettings,
 } from '@/lib/actions/whatsapp.actions'
 
 const statusLabels: Record<WhatsAppChannel['connection_status'], string> = {
@@ -36,12 +47,67 @@ function qrImageSource(qrCodeBase64: string | null) {
     : `data:image/png;base64,${qrCodeBase64}`
 }
 
+const automationPlaceholders = [
+  {
+    id: 'os_status_proactive',
+    title: 'Enviar status da OS',
+    description: 'Atualizacoes ativas quando a OS muda de etapa.',
+    placeholder: 'Ex.: Oi, {nome}! Seu oculos entrou em uma nova etapa e ja temos uma atualizacao para voce.',
+    icon: PackageSearch,
+  },
+  {
+    id: 'post_sale',
+    title: 'Fazer pos-vendas',
+    description: 'Acompanhamento depois da retirada ou entrega.',
+    placeholder: 'Ex.: Oi, {nome}! Passando para saber como esta sua adaptacao com os oculos.',
+    icon: Sparkles,
+  },
+  {
+    id: 'installment_due_reminder',
+    title: 'Enviar aviso de vencimento',
+    description: 'Lembretes amigaveis antes do vencimento.',
+    placeholder: 'Ex.: Oi, {nome}! Estamos lembrando que sua parcela vence em {data_vencimento}.',
+    icon: CreditCard,
+  },
+  {
+    id: 'collection',
+    title: 'Fazer cobranca',
+    description: 'Cobranca de parcelas em atraso com texto ajustavel.',
+    placeholder: 'Ex.: Oi, {nome}! Identificamos uma parcela em aberto e estamos entrando em contato para ajudar na regularizacao.',
+    icon: HandCoins,
+  },
+  {
+    id: 'birthday_greeting',
+    title: 'Enviar felicitacoes de aniversario',
+    description: 'Mensagem de aniversario da loja para o cliente.',
+    placeholder: 'Ex.: Oi, {nome}! Toda a equipe da loja deseja um aniversario cheio de saude e alegrias.',
+    icon: Cake,
+  },
+  {
+    id: 'ai_responder',
+    title: 'Responder com IA',
+    description: 'Canal conversacional mais amplo para perguntas gerais.',
+    placeholder: 'Ex.: Responda de forma educada, objetiva e com foco no atendimento da loja, sem inventar informacoes.',
+    icon: Bot,
+  },
+] as const
+
 export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
   const [channel, setChannel] = useState<WhatsAppChannel | null>(null)
   const [phoneNumber, setPhoneNumber] = useState('')
   const [acceptedRisk, setAcceptedRisk] = useState(false)
   const [qrCodeBase64, setQrCodeBase64] = useState<string | null>(null)
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
+  const [osResponderSettings, setOsResponderSettings] = useState<WhatsAppOsResponderSettings | null>(null)
+  const [automationDrafts, setAutomationDrafts] = useState(() =>
+    automationPlaceholders.reduce<Record<string, { enabled: boolean; text: string }>>((acc, item) => {
+      acc[item.id] = {
+        enabled: false,
+        text: item.placeholder,
+      }
+      return acc
+    }, {})
+  )
   const [isPending, startTransition] = useTransition()
   const [isLoading, setIsLoading] = useState(true)
 
@@ -53,12 +119,22 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
   const loadChannel = () => {
     setIsLoading(true)
     startTransition(async () => {
-      const result = await getWhatsAppChannel(storeId)
-      if (result.success) {
-        applyChannel(result.channel ?? null)
-        setMessage(null)
+      const [channelResult, osSettingsResult] = await Promise.all([
+        getWhatsAppChannel(storeId),
+        getWhatsAppOsResponderSettings(storeId),
+      ])
+
+      if (channelResult.success) {
+        applyChannel(channelResult.channel ?? null)
       } else {
-        setMessage({ kind: 'error', text: result.message })
+        setMessage({ kind: 'error', text: channelResult.message })
+      }
+
+      if (osSettingsResult.success) {
+        setOsResponderSettings(osSettingsResult.settings ?? null)
+        if (channelResult.success) setMessage(null)
+      } else if (!channelResult.success) {
+        setMessage({ kind: 'error', text: osSettingsResult.message })
       }
       setIsLoading(false)
     })
@@ -137,6 +213,26 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
   const status = channel?.connection_status ?? 'unknown'
   const isConnected = status === 'connected'
   const qrSource = qrImageSource(qrCodeBase64)
+
+  const handleSaveOsResponder = () => {
+    if (!osResponderSettings) return
+    setMessage(null)
+
+    startTransition(async () => {
+      const result = await saveWhatsAppOsResponderSettings({
+        storeId,
+        enabled: osResponderSettings.enabled,
+        templates: osResponderSettings.templates,
+      })
+
+      if (result.success) {
+        setOsResponderSettings(result.settings ?? null)
+        setMessage({ kind: 'success', text: result.message })
+      } else {
+        setMessage({ kind: 'error', text: result.message })
+      }
+    })
+  }
 
   return (
     <div className="mx-auto max-w-4xl animate-in fade-in space-y-5">
@@ -300,6 +396,199 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
             <RefreshCw className={`h-4 w-4 ${isPending ? 'animate-spin' : ''}`} />
             Gerar novo QR Code
           </button>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-6 shadow-xl">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-fuchsia-300/20 bg-fuchsia-400/10">
+                <PartyPopper className="h-5 w-5 text-fuchsia-200" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-200/70">Automacoes</p>
+                <h3 className="text-lg font-black text-white">Placeholders das futuras automacoes</h3>
+              </div>
+            </div>
+            <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-300">
+              Esta area serve como mapa visual do que ainda vamos implementar. Os toggles e textos abaixo ainda nao
+              disparam nada de verdade, mas ajudam a loja a visualizar o que podera configurar no futuro.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-fuchsia-300/20 bg-fuchsia-400/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-100">
+            Em breve
+          </div>
+        </div>
+
+        <section className="mt-6 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-300/20 bg-emerald-400/10">
+                <MessageSquareText className="h-5 w-5 text-emerald-200" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-black text-white">So responder sobre OS</h4>
+                  <span className="rounded-lg border border-emerald-300/20 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-100">
+                    Ativo
+                  </span>
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-slate-300">
+                  Este card controla a automacao que ja existe hoje. Aqui a loja define se quer responder consultas de OS e quais textos devem ser enviados em cada status.
+                </p>
+              </div>
+            </div>
+
+            <label className="inline-flex items-center">
+              <input
+                type="checkbox"
+                checked={Boolean(osResponderSettings?.enabled)}
+                onChange={(event) => {
+                  const checked = event.target.checked
+                  setOsResponderSettings((current) => current ? { ...current, enabled: checked } : current)
+                }}
+                disabled={!osResponderSettings || isPending || isLoading}
+                className="h-5 w-5 rounded border-white/20 bg-slate-900 text-emerald-400 focus:ring-emerald-400"
+              />
+            </label>
+          </div>
+
+          {osResponderSettings && (
+            <>
+              <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                {[
+                  {
+                    key: 'lens_in_production',
+                    label: 'Lente em producao',
+                  },
+                  {
+                    key: 'lens_arrived_needs_frame',
+                    label: 'Lente chegou, aguardando armacao',
+                  },
+                  {
+                    key: 'lens_arrived_assembling',
+                    label: 'Lente chegou, fila da montagem',
+                  },
+                  {
+                    key: 'ready_for_pickup',
+                    label: 'Oculos pronto',
+                  },
+                ].map((item) => (
+                  <div key={item.key} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                      {item.label}
+                    </label>
+                    <textarea
+                      value={osResponderSettings.templates[item.key as keyof typeof osResponderSettings.templates]}
+                      onChange={(event) => {
+                        const value = event.target.value
+                        setOsResponderSettings((current) => current ? {
+                          ...current,
+                          templates: {
+                            ...current.templates,
+                            [item.key]: value,
+                          },
+                        } : current)
+                      }}
+                      rows={4}
+                      className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm leading-relaxed text-slate-200 outline-none transition focus:border-emerald-300/40 focus:ring-2 focus:ring-emerald-300/10"
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 flex items-center justify-between gap-4">
+                <p className="text-[11px] leading-relaxed text-slate-400">
+                  Marcadores disponiveis: <span className="font-mono text-slate-200">{'{nome}'}</span> e <span className="font-mono text-slate-200">{'{paciente}'}</span>.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleSaveOsResponder}
+                  disabled={isPending || isLoading}
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-500 px-5 text-xs font-black uppercase tracking-wider text-emerald-950 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-400 disabled:opacity-50"
+                >
+                  {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
+                  Salvar respostas
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+
+        <div className="mt-6 grid gap-4 xl:grid-cols-2">
+          {automationPlaceholders.map((item) => {
+            const Icon = item.icon
+            const draft = automationDrafts[item.id]
+
+            return (
+              <section
+                key={item.id}
+                className="rounded-xl border border-white/10 bg-white/[0.03] p-5"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-black/20">
+                      <Icon className="h-5 w-5 text-slate-200" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-white">{item.title}</h4>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-400">{item.description}</p>
+                    </div>
+                  </div>
+
+                  <label className="inline-flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={draft.enabled}
+                      onChange={(event) => {
+                        const checked = event.target.checked
+                        setAutomationDrafts((current) => ({
+                          ...current,
+                          [item.id]: {
+                            ...current[item.id],
+                            enabled: checked,
+                          },
+                        }))
+                      }}
+                      className="h-5 w-5 rounded border-white/20 bg-slate-900 text-fuchsia-400 focus:ring-fuchsia-400"
+                    />
+                  </label>
+                </div>
+
+                <div className="mt-4">
+                  <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                    Texto base
+                  </label>
+                  <textarea
+                    value={draft.text}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      setAutomationDrafts((current) => ({
+                        ...current,
+                        [item.id]: {
+                          ...current[item.id],
+                          text: value,
+                        },
+                      }))
+                    }}
+                    rows={4}
+                    className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm leading-relaxed text-slate-200 outline-none transition focus:border-fuchsia-300/40 focus:ring-2 focus:ring-fuchsia-300/10"
+                  />
+                </div>
+
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  <span className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                    Placeholder
+                  </span>
+                  <span className="text-[10px] text-slate-500">
+                    Configuracao visual por enquanto
+                  </span>
+                </div>
+              </section>
+            )
+          })}
         </div>
       </div>
     </div>

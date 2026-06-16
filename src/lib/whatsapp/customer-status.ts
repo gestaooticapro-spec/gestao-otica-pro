@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { Json } from '@/lib/database.types'
 import { describeOpenOs, WhatsAppOsStatusCode } from './os-status'
 import { digitsOnly, phonesMatch, toEvolutionNumber } from './phone'
+import type { StoreSettings } from '@/lib/store-modules'
 
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
 
@@ -104,6 +105,19 @@ async function findLatestOpenOs(storeId: number, customerId: number) {
     dt_montado_em: data.dt_montado_em,
     armacao_com_cliente: data.armacao_com_cliente ?? false,
   }
+}
+
+async function loadStoreWhatsAppSettings(storeId: number) {
+  const supabase = createAdminClient()
+  const { data, error } = await (supabase.from('stores') as any)
+    .select('settings')
+    .eq('id', storeId)
+    .single()
+
+  if (error) throw error
+
+  const settings = ((data?.settings || {}) as StoreSettings) || {}
+  return settings.whatsapp_automation?.os_on_demand
 }
 
 async function findLastOutboundStatus(channelId: number, phone: string): Promise<LastOutboundStatusRow | null> {
@@ -219,7 +233,19 @@ export async function resolveCustomerStatus(
     return { shouldReply: false }
   }
 
-  const status = describeOpenOs(customer.full_name, serviceOrder)
+  const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
+  if (automationSettings?.enabled === false) {
+    await (supabase.from('whatsapp_inbound_messages') as any)
+      .update({ status: 'ignored' })
+      .eq('id', inbound.id)
+    return { shouldReply: false }
+  }
+
+  const status = describeOpenOs(
+    customer.full_name,
+    serviceOrder,
+    automationSettings?.templates
+  )
   const lastOutbound = await findLastOutboundStatus(channel.id, normalizedPhone)
 
   if (shouldSilenceRepeatedStatus(lastOutbound, status.statusCode)) {

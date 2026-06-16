@@ -122,6 +122,23 @@ Exemplos de gatilho futuro:
 Campo editavel:
 mensagem de aniversario da loja.
 
+### 7. Responder com IA
+
+Objetivo:
+permitir uma camada de resposta mais aberta e conversacional para a loja.
+
+Exemplos de uso futuro:
+
+- responder perguntas gerais da loja
+- apoiar o cliente quando o assunto nao for apenas OS
+- orientar sem depender de um roteiro totalmente fixo
+
+Campo editavel:
+mensagem-base de contexto, tom de voz e instrucoes para a IA.
+
+Observacao:
+essa opcao exige cuidado extra de tom, limites e supervisao.
+
 ## Comportamento Esperado na UI
 
 ### Estrutura sugerida
@@ -142,7 +159,7 @@ Cada item pode aparecer como um bloco com:
 
 Como proximo passo de produto, podemos primeiro criar somente placeholders na UI:
 
-- cards/blocos das 6 automacoes
+- cards/blocos das 7 automacoes
 - toggle visual
 - textarea editavel
 - botao salvar
@@ -190,6 +207,7 @@ Campos sugeridos:
 - `installment_due_reminder`
 - `collection`
 - `birthday_greeting`
+- `ai_responder`
 
 ## Cuidados Importantes
 
@@ -207,7 +225,7 @@ Campos sugeridos:
 
 O proximo passo pedido para implementacao futura sera:
 
-1. criar os placeholders dessas 6 automacoes na UI
+1. criar os placeholders dessas 7 automacoes na UI
 2. permitir toggle e texto editavel por loja
 3. salvar as configuracoes no banco
 4. manter tudo inicialmente como configuracao visual, sem disparos reais
