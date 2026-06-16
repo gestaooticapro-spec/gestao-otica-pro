@@ -7,7 +7,8 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
     ShoppingBag, DollarSign, FileText, User,
-    Briefcase, Wrench, ArrowLeft, Plus, X, Save, Loader2, UserPlus, Stethoscope
+    Briefcase, Wrench, ArrowLeft, Plus, X, Save, Loader2, UserPlus, Stethoscope,
+    ChevronLeft, ChevronRight, ChevronDown, ChevronUp
 } from 'lucide-react'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 
@@ -221,6 +222,8 @@ function SectionCard({
 }
 
 const osInputStyle = 'block w-full rounded-lg border border-white/10 bg-black/20 shadow-inner text-white h-9 text-xs px-3 focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:outline-none font-medium placeholder:text-slate-500 disabled:opacity-50 transition-all'
+const osSelectStyle = `${osInputStyle} bg-slate-950/90 text-slate-100 [color-scheme:dark]`
+const osOptionStyle = 'bg-slate-950 text-slate-100'
 const osLabelStyle = 'block text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider'
 const osGridInput = `${osInputStyle} text-center`
 
@@ -249,6 +252,12 @@ function SingleServiceOrderCard({
     employees,
     onDataReload,
     onCancelDraft,
+    orderIndex,
+    orderCount,
+    isCollapsed,
+    onToggleCollapsed,
+    onPreviousOrder,
+    onNextOrder,
     disabled,
 }: {
     venda: Venda
@@ -260,6 +269,12 @@ function SingleServiceOrderCard({
     employees: Employee[]
     onDataReload: () => Promise<void>
     onCancelDraft: () => void
+    orderIndex: number
+    orderCount: number
+    isCollapsed: boolean
+    onToggleCollapsed: () => void
+    onPreviousOrder: () => void
+    onNextOrder: () => void
     disabled: boolean
 }) {
     const initialState: SaveSOResult = { success: false, message: '' }
@@ -392,10 +407,75 @@ function SingleServiceOrderCard({
         { item_id: lenteOeItemId, uso: 'lente_oe' },
         { item_id: armacaoItemId, uso: 'armacao' },
     ].filter((link) => link.item_id)
+    const selectedPatientName = dependenteId
+        ? localDependentes.find((dep) => dep.id === Number(dependenteId))?.full_name || customer?.full_name || 'Paciente'
+        : customer?.full_name || 'Paciente'
+    const selectedDoctorName = oftalmologistaId
+        ? localOftalmos.find((doc) => doc.id === Number(oftalmologistaId))?.nome_completo || 'Médico não informado'
+        : 'Médico não informado'
+    const canNavigateOrders = orderCount > 1 && !!serviceOrder
+
+    const cardHeader = (
+        <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-black/20 p-3 md:flex-row md:items-center md:justify-between">
+            <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-black uppercase tracking-[0.16em] text-cyan-300">
+                        {serviceOrder ? `OS #${serviceOrder.id}` : 'Nova OS'}
+                    </span>
+                    {serviceOrder && (
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                            OS {orderIndex + 1} de {orderCount}
+                        </span>
+                    )}
+                </div>
+                <p className="mt-1 truncate text-xs font-semibold text-slate-300">
+                    {selectedPatientName}
+                    <span className="mx-2 text-slate-600">/</span>
+                    {selectedDoctorName}
+                </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+                {canNavigateOrders && (
+                    <div className="flex items-center overflow-hidden rounded-lg border border-white/10 bg-white/5">
+                        <button
+                            type="button"
+                            onClick={onPreviousOrder}
+                            className="h-9 w-9 text-slate-300 hover:bg-white/10 hover:text-white"
+                            title="OS anterior"
+                        >
+                            <ChevronLeft className="mx-auto h-4 w-4" />
+                        </button>
+                        <div className="h-5 w-px bg-white/10" />
+                        <button
+                            type="button"
+                            onClick={onNextOrder}
+                            className="h-9 w-9 text-slate-300 hover:bg-white/10 hover:text-white"
+                            title="Próxima OS"
+                        >
+                            <ChevronRight className="mx-auto h-4 w-4" />
+                        </button>
+                    </div>
+                )}
+
+                <button
+                    type="button"
+                    onClick={onToggleCollapsed}
+                    className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300 hover:bg-white/10 hover:text-white"
+                    title={isCollapsed ? 'Expandir OS' : 'Recolher OS'}
+                >
+                    {isCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                    {isCollapsed ? 'Expandir' : 'Recolher'}
+                </button>
+            </div>
+        </div>
+    )
 
     return (
         <div className="p-3">
-            <form action={dispatch} className="space-y-4">
+            {cardHeader}
+            {isCollapsed ? null : (
+            <form action={dispatch} className="mt-3 space-y-4">
                 {serviceOrder && <input type="hidden" name="id" value={serviceOrder.id} />}
                 <input type="hidden" name="store_id" value={venda.store_id} />
                 <input type="hidden" name="venda_id" value={venda.id} />
@@ -421,10 +501,10 @@ function SingleServiceOrderCard({
                                     <UserPlus className="h-4 w-4" />
                                 </button>
                             </div>
-                            <select name="dependente_id" value={dependenteId} onChange={(e) => setDependenteId(e.target.value)} disabled={disabled} className={osInputStyle}>
-                                <option value="">Titular: {customer?.full_name || 'Cliente'}</option>
+                            <select name="dependente_id" value={dependenteId} onChange={(e) => setDependenteId(e.target.value)} disabled={disabled} className={osSelectStyle}>
+                                <option value="" className={osOptionStyle}>Titular: {customer?.full_name || 'Cliente'}</option>
                                 {localDependentes.map((dep) => (
-                                    <option key={dep.id} value={dep.id}>{dep.full_name}</option>
+                                    <option key={dep.id} value={dep.id} className={osOptionStyle}>{dep.full_name}</option>
                                 ))}
                             </select>
                         </div>
@@ -445,10 +525,10 @@ function SingleServiceOrderCard({
                                     <Plus className="h-4 w-4" />
                                 </button>
                             </div>
-                            <select name="oftalmologista_id" value={oftalmologistaId} onChange={(e) => setOftalmologistaId(e.target.value)} disabled={disabled} className={osInputStyle}>
-                                <option value="">Selecione...</option>
+                            <select name="oftalmologista_id" value={oftalmologistaId} onChange={(e) => setOftalmologistaId(e.target.value)} disabled={disabled} className={osSelectStyle}>
+                                <option value="" className={osOptionStyle}>Selecione...</option>
                                 {localOftalmos.map((doc) => (
-                                    <option key={doc.id} value={doc.id}>{doc.nome_completo}</option>
+                                    <option key={doc.id} value={doc.id} className={osOptionStyle}>{doc.nome_completo}</option>
                                 ))}
                             </select>
                         </div>
@@ -460,28 +540,28 @@ function SingleServiceOrderCard({
                             </h3>
                             <div>
                                 <label className={osLabelStyle}>Lente OD</label>
-                                <select value={lenteOdItemId} onChange={(e) => setLenteOdItemId(e.target.value)} disabled={disabled} className={osInputStyle}>
-                                    <option value="">Selecione...</option>
+                                <select value={lenteOdItemId} onChange={(e) => setLenteOdItemId(e.target.value)} disabled={disabled} className={osSelectStyle}>
+                                    <option value="" className={osOptionStyle}>Selecione...</option>
                                     {itensLente.filter((item) => isLenteDisponivel(item, 'OD')).map((item) => (
-                                        <option key={item.id} value={item.id}>{item.descricao}</option>
+                                        <option key={item.id} value={item.id} className={osOptionStyle}>{item.descricao}</option>
                                     ))}
                                 </select>
                             </div>
                             <div>
                                 <label className={osLabelStyle}>Lente OE</label>
-                                <select value={lenteOeItemId} onChange={(e) => setLenteOeItemId(e.target.value)} disabled={disabled} className={osInputStyle}>
-                                    <option value="">Selecione...</option>
+                                <select value={lenteOeItemId} onChange={(e) => setLenteOeItemId(e.target.value)} disabled={disabled} className={osSelectStyle}>
+                                    <option value="" className={osOptionStyle}>Selecione...</option>
                                     {itensLente.filter((item) => isLenteDisponivel(item, 'OE')).map((item) => (
-                                        <option key={item.id} value={item.id}>{item.descricao}</option>
+                                        <option key={item.id} value={item.id} className={osOptionStyle}>{item.descricao}</option>
                                     ))}
                                 </select>
                             </div>
                             <div>
                                 <label className={osLabelStyle}>Armação</label>
-                                <select value={armacaoItemId} onChange={(e) => setArmacaoItemId(e.target.value)} disabled={disabled} className={osInputStyle}>
-                                    <option value="">Selecione...</option>
+                                <select value={armacaoItemId} onChange={(e) => setArmacaoItemId(e.target.value)} disabled={disabled} className={osSelectStyle}>
+                                    <option value="" className={osOptionStyle}>Selecione...</option>
                                     {itensArmacao.map((item) => (
-                                        <option key={item.id} value={item.id}>{item.descricao}</option>
+                                        <option key={item.id} value={item.id} className={osOptionStyle}>{item.descricao}</option>
                                     ))}
                                 </select>
                             </div>
@@ -586,6 +666,7 @@ function SingleServiceOrderCard({
                     <SingleOSSubmitButton hasOrder={!!serviceOrder} />
                 </div>
             </form>
+            )}
 
             {customer && (
                 <AddDependenteModal
@@ -630,6 +711,8 @@ export default function VendaInterfaceExperimental({
     const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
     const [isCustomerInfoModalOpen, setIsCustomerInfoModalOpen] = useState(false)
     const [isSingleOSDraftOpen, setIsSingleOSDraftOpen] = useState(false)
+    const [singleOSIndex, setSingleOSIndex] = useState(0)
+    const [isSingleOSCollapsed, setIsSingleOSCollapsed] = useState(false)
 
     // Novos campos experimentais
     const [obsGeral, setObsGeral] = useState(venda.obs_geral || '')
@@ -650,7 +733,7 @@ export default function VendaInterfaceExperimental({
     const hasPhone = !!(customer?.fone_movel || customer?.phone)?.toString().replace(/\D/g, '')
     const canOpenParcelamento = modules.installments && hasCpf && hasPhone
     const isSingleOSMode = storeSettings?.service_order_mode === 'single'
-    const singleServiceOrder = serviceOrders[0]
+    const singleServiceOrder = serviceOrders[singleOSIndex] || serviceOrders[0]
     const showSingleOSCard = isSingleOSMode && (!!singleServiceOrder || isSingleOSDraftOpen)
     const canLaunchSingleOS = isSingleOSMode && !singleServiceOrder && !isSingleOSDraftOpen && !isVendaFechadaOuCancelada
 
@@ -659,6 +742,40 @@ export default function VendaInterfaceExperimental({
             setActiveModal('none')
         }
     }, [activeModal, modules.installments])
+
+    useEffect(() => {
+        if (serviceOrders.length === 0) {
+            setSingleOSIndex(0)
+            return
+        }
+        if (singleOSIndex > serviceOrders.length - 1) {
+            setSingleOSIndex(serviceOrders.length - 1)
+        }
+    }, [serviceOrders.length, singleOSIndex])
+
+    useEffect(() => {
+        if (isSingleOSDraftOpen) {
+            setIsSingleOSCollapsed(false)
+        }
+    }, [isSingleOSDraftOpen])
+
+    const handleLaunchSingleOS = () => {
+        setSingleOSIndex(0)
+        setIsSingleOSCollapsed(false)
+        setIsSingleOSDraftOpen(true)
+    }
+
+    const handlePreviousSingleOS = () => {
+        if (serviceOrders.length <= 1) return
+        setSingleOSIndex((current) => current <= 0 ? serviceOrders.length - 1 : current - 1)
+        setIsSingleOSDraftOpen(false)
+    }
+
+    const handleNextSingleOS = () => {
+        if (serviceOrders.length <= 1) return
+        setSingleOSIndex((current) => current >= serviceOrders.length - 1 ? 0 : current + 1)
+        setIsSingleOSDraftOpen(false)
+    }
 
     const handleOpenParcelamento = () => {
         if (!canOpenParcelamento) {
@@ -794,7 +911,7 @@ export default function VendaInterfaceExperimental({
                         onAdd={
                             isSingleOSMode
                                 ? canLaunchSingleOS
-                                    ? () => setIsSingleOSDraftOpen(true)
+                                    ? handleLaunchSingleOS
                                     : undefined
                                 : isVendaFechadaOuCancelada
                                     ? undefined
@@ -815,9 +932,16 @@ export default function VendaInterfaceExperimental({
                                     employees={employees}
                                     onDataReload={async () => {
                                         setIsSingleOSDraftOpen(false)
+                                        setIsSingleOSCollapsed(false)
                                         await onDataReload()
                                     }}
                                     onCancelDraft={() => setIsSingleOSDraftOpen(false)}
+                                    orderIndex={singleOSIndex}
+                                    orderCount={serviceOrders.length}
+                                    isCollapsed={isSingleOSCollapsed}
+                                    onToggleCollapsed={() => setIsSingleOSCollapsed((current) => !current)}
+                                    onPreviousOrder={handlePreviousSingleOS}
+                                    onNextOrder={handleNextSingleOS}
                                     disabled={isVendaFechadaOuCancelada}
                                 />
                             ) : (
