@@ -138,6 +138,8 @@ type LensRecommendationActionPayload = {
 const LENS_ENGINE_DIAGNOSTIC_SUITE_NAME = 'Dossie Triplice do Motor'
 const LENS_ENGINE_DIAGNOSTIC_SUITE_RESTORE_KEY = 'dossie_triplice_motor'
 const LENS_DEMO_QUICK_FILL_RESTORE_KEY = 'demo_quick_fill_profiles'
+// Painel de debug usado apenas em testes/calibracao do motor de recomendacao.
+const SHOW_LENS_ENGINE_DIAGNOSTIC_SUITE = false
 // Preserve os perfis demo para calibracao futura, mas mantenha o card fora da UI.
 const SHOW_LENS_DEMO_QUICK_FILL = false
 
@@ -4868,6 +4870,29 @@ export default function EvaluationInterface({
                   <div className="grid grid-cols-12 gap-4">
                     {activeCatalog && (
                       <div className="col-span-12 rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/5 p-4">
+                        {recommendationConsistencyIssues.length > 0 && (
+                          <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
+                            recommendationBlockingIssues.length > 0
+                              ? 'border-red-500/30 bg-red-500/10 text-red-100'
+                              : 'border-amber-500/30 bg-amber-500/10 text-amber-100'
+                          }`}>
+                            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em]">
+                              <AlertTriangle className="h-4 w-4" />
+                              {recommendationBlockingIssues.length > 0
+                                ? 'Corrija antes de gerar sugestão'
+                                : 'Atenção antes de gerar sugestão'}
+                            </div>
+                            <div className="mt-3 space-y-3">
+                              {recommendationConsistencyIssues.map((issue, index) => (
+                                <div key={`${issue.severity}-${index}`} className="rounded-lg border border-white/10 bg-black/10 p-3">
+                                  <p className="font-bold">{issue.message}</p>
+                                  <p className="mt-1 text-xs opacity-80">{issue.suggestion}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                           <div>
                             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-300">
@@ -4888,29 +4913,6 @@ export default function EvaluationInterface({
                         {aiFeedback && (
                           <div className="mt-4 rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
                             {aiFeedback}
-                          </div>
-                        )}
-
-                        {recommendationConsistencyIssues.length > 0 && (
-                          <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${
-                            recommendationBlockingIssues.length > 0
-                              ? 'border-red-500/30 bg-red-500/10 text-red-100'
-                              : 'border-amber-500/30 bg-amber-500/10 text-amber-100'
-                          }`}>
-                            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em]">
-                              <AlertTriangle className="h-4 w-4" />
-                              {recommendationBlockingIssues.length > 0
-                                ? 'Corrija antes de gerar sugestao'
-                                : 'Atencao antes de gerar sugestao'}
-                            </div>
-                            <div className="mt-3 space-y-3">
-                              {recommendationConsistencyIssues.map((issue, index) => (
-                                <div key={`${issue.severity}-${index}`} className="rounded-lg border border-white/10 bg-black/10 p-3">
-                                  <p className="font-bold">{issue.message}</p>
-                                  <p className="mt-1 text-xs opacity-80">{issue.suggestion}</p>
-                                </div>
-                              ))}
-                            </div>
                           </div>
                         )}
 
@@ -4949,6 +4951,7 @@ export default function EvaluationInterface({
                           </div>
                         )}
 
+                        {SHOW_LENS_ENGINE_DIAGNOSTIC_SUITE && (
                         <details
                           open={Boolean(lensTechnicalTriage || lensAuditPayload || lensAudit || isGeneratingAudit)}
                           className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-3"
@@ -5059,6 +5062,7 @@ export default function EvaluationInterface({
                         )}
 
                         </details>
+                        )}
 
                         {showIvisionReference && (
                           <div className="mt-4 grid grid-cols-12 gap-4">
