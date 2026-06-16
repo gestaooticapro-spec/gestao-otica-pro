@@ -122,6 +122,7 @@ export interface DailyFlowRow {
   date: Date;
   diaSemana: string;
   diaMes: string;
+  reportMode?: 'installments' | 'cash';
 
   // Entradas reais (Recibos / Pagamentos realizados no dia)
   entradasTotais: number;
@@ -132,18 +133,146 @@ export interface DailyFlowRow {
   vendaParcelada: number; // Valor Financiado na loja
   vendaTotal: number; // Garantida + Parcelada
   vendaAcumulada: number;
+  valorInicialGaveta?: number;
+  valorFinalGaveta?: number;
+  totalDinheiro?: number;
+  totalMaquina?: number;
+  totalDiario?: number;
+  diarioAcumulado?: number;
 }
 
 export async function getDailyFlowReport(storeId: number, monthStr: string, yearStr: string): Promise<DailyFlowRow[]> {
   const supabase = createAdminClient()
   const month = parseInt(monthStr) - 1; // 0-indexed para date-fns
   const year = parseInt(yearStr);
+  const installmentsEnabled = await isStoreModuleEnabledForStore(storeId, 'installments')
 
   const startDate = startOfMonth(new Date(year, month));
   const endDate = endOfMonth(startDate);
 
   const startDateStr = startOfDay(startDate).toISOString();
   const endDateStr = endOfDay(endDate).toISOString();
+
+  if (!installmentsEnabled) {
+    const { data: caixasRaw, error: caixasError } = await (supabase.from('caixa_diario') as any)
+      .select('id, data_abertura, status, saldo_inicial, saldo_final')
+      .eq('store_id', storeId)
+      .gte('data_abertura', startDateStr)
+      .lte('data_abertura', endDateStr)
+      .order('data_abertura', { ascending: true });
+
+    if (caixasError) throw new Error(caixasError.message);
+
+    const caixas = (caixasRaw || []) as Array<{
+      id: number;
+      data_abertura: string;
+      status: string;
+      saldo_inicial: number | null;
+      saldo_final: number | null;
+    }>;
+
+    const caixaIds = caixas.map((caixa) => caixa.id);
+
+    const [{ data: pagamentosRaw, error: pagError }, { data: movimentosRaw, error: movError }] = await Promise.all([
+      (supabase.from('pagamentos') as any)
+        .select('created_at, valor_pago, forma_pagamento')
+        .eq('store_id', storeId)
+        .gte('created_at', startDateStr)
+        .lte('created_at', endDateStr),
+      caixaIds.length > 0
+        ? (supabase.from('caixa_movimentacoes') as any)
+          .select('caixa_id, tipo, valor')
+          .in('caixa_id', caixaIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    if (pagError) throw new Error(pagError.message);
+    if (movError) throw new Error(movError.message);
+
+    const pagamentos = (pagamentosRaw || []) as Array<{
+      created_at: string;
+      valor_pago: number;
+      forma_pagamento: string | null;
+    }>;
+
+    const movimentos = (movimentosRaw || []) as Array<{
+      caixa_id: number;
+      tipo: 'Entrada' | 'Saida';
+      valor: number;
+    }>;
+
+    const caixaPorDia = new Map<string, typeof caixas[number]>();
+    caixas.forEach((caixa) => {
+      caixaPorDia.set(format(parseISO(caixa.data_abertura), 'yyyy-MM-dd'), caixa);
+    });
+
+    const movimentosPorCaixa = new Map<number, { entradas: number; saidas: number }>();
+    movimentos.forEach((movimento) => {
+      const atual = movimentosPorCaixa.get(movimento.caixa_id) || { entradas: 0, saidas: 0 };
+      const valor = Number(movimento.valor || 0);
+      if (movimento.tipo === 'Entrada') atual.entradas += valor;
+      else atual.saidas += valor;
+      movimentosPorCaixa.set(movimento.caixa_id, atual);
+    });
+
+    const pagamentosPorDia = new Map<string, { dinheiro: number; maquina: number; outros: number }>();
+    pagamentos.forEach((pagamento) => {
+      const dia = format(parseISO(pagamento.created_at), 'yyyy-MM-dd');
+      const atual = pagamentosPorDia.get(dia) || { dinheiro: 0, maquina: 0, outros: 0 };
+      const valor = Number(pagamento.valor_pago || 0);
+      const forma = String(pagamento.forma_pagamento || '').toLowerCase();
+
+      if (forma.includes('dinheiro')) atual.dinheiro += valor;
+      else if (forma.includes('pix') || forma.includes('cart')) atual.maquina += valor;
+      else atual.outros += valor;
+
+      pagamentosPorDia.set(dia, atual);
+    });
+
+    const daysInMonth = getDaysInMonth(startDate);
+    const reportData: DailyFlowRow[] = [];
+    let diarioAcumulado = 0;
+
+    for (let i = 1; i <= daysInMonth; i++) {
+      const currentDate = new Date(year, month, i);
+      const dayString = format(currentDate, 'yyyy-MM-dd');
+      const caixa = caixaPorDia.get(dayString);
+      const pagamentosDoDia = pagamentosPorDia.get(dayString) || { dinheiro: 0, maquina: 0, outros: 0 };
+      const movimentosDoDia = caixa ? (movimentosPorCaixa.get(caixa.id) || { entradas: 0, saidas: 0 }) : { entradas: 0, saidas: 0 };
+
+      const valorInicialGaveta = Number(caixa?.saldo_inicial || 0);
+      const totalDinheiro = pagamentosDoDia.dinheiro;
+      const totalMaquina = pagamentosDoDia.maquina;
+      const totalDiario = totalDinheiro + totalMaquina + pagamentosDoDia.outros;
+      const valorFinalEsperado = valorInicialGaveta + totalDinheiro + movimentosDoDia.entradas - movimentosDoDia.saidas;
+      const valorFinalGaveta = caixa?.status === 'Fechado' && caixa.saldo_final !== null
+        ? Number(caixa.saldo_final)
+        : valorFinalEsperado;
+
+      diarioAcumulado += totalDiario;
+
+      reportData.push({
+        date: currentDate,
+        diaMes: format(currentDate, 'dd/MM'),
+        diaSemana: format(currentDate, 'EEEE', { locale: ptBR }),
+        reportMode: 'cash',
+        entradasTotais: 0,
+        entradasAcumuladas: 0,
+        vendaGarantida: 0,
+        vendaParcelada: 0,
+        vendaTotal: 0,
+        vendaAcumulada: 0,
+        valorInicialGaveta,
+        valorFinalGaveta,
+        totalDinheiro,
+        totalMaquina,
+        totalDiario,
+        diarioAcumulado,
+      });
+    }
+
+    return reportData;
+  }
 
   // 1. Buscar Pagamentos (Entradas reais) no período
   const { data: pagamentosRaw, error: pagError } = await (supabase.from('pagamentos') as any)
@@ -225,6 +354,7 @@ export async function getDailyFlowReport(storeId: number, monthStr: string, year
       date: currentDate,
       diaMes: format(currentDate, 'dd/MM'),
       diaSemana: format(currentDate, 'EEEE', { locale: ptBR }),
+      reportMode: 'installments',
       entradasTotais,
       entradasAcumuladas,
       vendaGarantida,
