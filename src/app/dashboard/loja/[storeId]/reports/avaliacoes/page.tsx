@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import type { ElementType } from 'react'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
+import ModuleDisabledState from '@/components/modules/ModuleDisabledState'
 import {
   ArrowLeft,
   Calendar,
@@ -73,6 +75,11 @@ export default async function AvaliacoesFuncionariosPage({
   searchParams: { inicio?: string; fim?: string; employeeId?: string }
 }) {
   const storeId = Number(params.storeId)
+  const evaluationEnabled = await isStoreModuleEnabledForStore(storeId, 'evaluation')
+  if (!evaluationEnabled) {
+    return <ModuleDisabledState storeId={storeId} moduleLabel="Avaliacao" backHref={`/dashboard/loja/${storeId}/reports`} />
+  }
+
   const period = defaultPeriod()
   const dataInicio = searchParams.inicio || period.start
   const dataFim = searchParams.fim || period.end

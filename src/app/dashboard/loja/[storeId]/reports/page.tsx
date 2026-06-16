@@ -30,8 +30,8 @@ export default function ReportsHubPage() {
 
     const reportCategories = [
         {
-            title: 'Avaliacao da Equipe',
-            description: 'Conversao por funcionario a partir das avaliacoes opticas e vendas vinculadas.',
+            title: 'Avaliação da Equipe',
+            description: 'Conversão por funcionário a partir das avaliações ópticas e vendas vinculadas.',
             icon: ClipboardCheck,
             route: `/dashboard/loja/${storeId}/reports/avaliacoes`,
             tone: 'from-emerald-600/20 via-emerald-900/30 to-slate-900/80 hover:border-emerald-500/50 hover:shadow-emerald-500/20',
@@ -55,7 +55,7 @@ export default function ReportsHubPage() {
         },
         {
             title: 'Caixa & Banco',
-            description: 'Entradas totais, PIX, Cartao, pagamentos e despesas lancadas no fluxo.',
+            description: 'Entradas totais, PIX, Cartão, pagamentos e despesas lançadas no fluxo.',
             icon: CreditCard,
             route: `/dashboard/loja/${storeId}/reports/financeiro`,
             tone: 'from-blue-600/20 via-blue-900/30 to-slate-900/80 hover:border-blue-500/50 hover:shadow-blue-500/20',
@@ -126,6 +126,7 @@ export default function ReportsHubPage() {
             iconTone: 'text-pink-400 bg-pink-500/20 ring-pink-400/30'
         }
     ].filter((category) => {
+        if (category.route.includes('/reports/avaliacoes')) return modules.evaluation;
         if (category.route.includes('/reports/parcelamento')) return modules.installments;
         if (category.route.includes('/reports/cobranca-acoes')) return modules.installments;
         if (category.route.includes('/reports/pos-venda')) return modules.postSales;
