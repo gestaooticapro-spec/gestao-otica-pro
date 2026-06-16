@@ -84,6 +84,7 @@ export type InstallmentReminderJobResult = {
   ok: true
   skipped?: string
   targetDate?: string
+  targetDates?: string[]
   scheduled: number
   alreadyScheduled: number
   dispatch: {
@@ -273,6 +274,7 @@ async function scheduleReminders(now: Date) {
   const supabase = createAdminClient()
   const channels = await loadActiveChannels()
   const today = zonedParts(now).date
+  const targetDates = new Set<string>()
   let scheduled = 0
   let alreadyScheduled = 0
 
@@ -280,15 +282,29 @@ async function scheduleReminders(now: Date) {
     const settings = reminderSettingsFromChannel(channel)
     if (!settings) continue
 
-    const targetDate = addDaysToDateString(today, settings.days_before_due)
-    const installments = await loadDueInstallments(channel.store_id, targetDate)
+    const reminderDays = [...new Set([settings.days_before_due, 1].filter((days) => days > 0))]
+    const installmentsWithTargetDate: Array<InstallmentRow & { reminderTargetDate: string }> = []
+
+    for (const daysBeforeDue of reminderDays) {
+      const targetDate = addDaysToDateString(today, daysBeforeDue)
+      targetDates.add(targetDate)
+
+      const installments = await loadDueInstallments(channel.store_id, targetDate)
+      installmentsWithTargetDate.push(
+        ...installments.map((installment) => ({
+          ...installment,
+          reminderTargetDate: targetDate,
+        }))
+      )
+    }
+
     const patientNames = await loadPatientNames(
       channel.store_id,
-      [...new Set(installments.map((installment) => installment.venda_id).filter(Boolean))]
+      [...new Set(installmentsWithTargetDate.map((installment) => installment.venda_id).filter(Boolean))]
     )
 
     let channelSequence = 0
-    for (const installment of installments) {
+    for (const installment of installmentsWithTargetDate) {
       const phone = toEvolutionNumber(installment.customers?.fone_movel || installment.customers?.phone)
       if (!phone) continue
 
@@ -311,7 +327,16 @@ async function scheduleReminders(now: Date) {
             vendaId: installment.venda_id,
             financiamentoId: installment.financiamento_id,
             numeroParcela: installment.numero_parcela,
-            targetDate,
+            targetDate: installment.reminderTargetDate,
+            daysBeforeDue: Math.max(
+              1,
+              Math.round(
+                (
+                  new Date(`${installment.data_vencimento.slice(0, 10)}T12:00:00Z`).getTime()
+                  - new Date(`${today}T12:00:00Z`).getTime()
+                ) / 86_400_000
+              )
+            ),
           },
         })
 
@@ -328,6 +353,7 @@ async function scheduleReminders(now: Date) {
 
   return {
     targetDate: addDaysToDateString(today, DEFAULT_DAYS_BEFORE_DUE),
+    targetDates: [...targetDates],
     scheduled,
     alreadyScheduled,
   }
