@@ -15,7 +15,8 @@ import {
     ArrowLeft,
     LineChart,
     Stethoscope,
-    PackageSearch
+    PackageSearch,
+    ClipboardCheck
 } from 'lucide-react';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
@@ -28,6 +29,14 @@ export default function ReportsHubPage() {
     const modules = useStoreModules();
 
     const reportCategories = [
+        {
+            title: 'Avaliacao da Equipe',
+            description: 'Conversao por funcionario a partir das avaliacoes opticas e vendas vinculadas.',
+            icon: ClipboardCheck,
+            route: `/dashboard/loja/${storeId}/reports/avaliacoes`,
+            tone: 'from-emerald-600/20 via-emerald-900/30 to-slate-900/80 hover:border-emerald-500/50 hover:shadow-emerald-500/20',
+            iconTone: 'text-emerald-400 bg-emerald-500/20 ring-emerald-400/30'
+        },
         {
             title: 'Fluxo Especial (Caixa Diário)',
             description: 'Visão consolidada de entradas, venda garantida vs parcelada e acumulados.',

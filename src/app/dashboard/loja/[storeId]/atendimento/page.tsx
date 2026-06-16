@@ -272,6 +272,13 @@ export default function AtendimentoPage() {
             const result = await createNewVenda(selectedCustomer.id, parseInt(selectedEmployeeId))
             if (result.success && result.data) {
                 push(withReturnTo(`/dashboard/loja/${storeId}/vendas/${result.data.id}/experimental`, currentUrl))
+            } else if (result.blockedEvaluationId) {
+                const shouldOpenEvaluation = window.confirm(
+                    `${result.message || 'Este cliente possui uma avaliacao aberta recente.'}\n\nDeseja abrir a tela de avaliacao agora?`
+                )
+                if (shouldOpenEvaluation) {
+                    push(withReturnTo(`/dashboard/loja/${storeId}/avaliacao`, currentUrl))
+                }
             } else {
                 alert(result.message || 'Erro ao criar venda.')
             }

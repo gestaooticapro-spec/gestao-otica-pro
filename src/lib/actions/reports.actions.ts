@@ -5,6 +5,203 @@ import { format, parseISO, startOfDay, endOfDay, addDays, getDaysInMonth, startO
 import { ptBR } from 'date-fns/locale'
 import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
 
+export type EmployeeEvaluationMetric = {
+  employeeId: number | null
+  employeeName: string
+  evaluations: number
+  linkedSales: number
+  closedSales: number
+  openRecent: number
+  research: number
+  lost: number
+  upgrade: number
+  downgrade: number
+  sameRange: number
+  comparedSales: number
+  soldValue: number
+  suggestedValue: number
+  comparedSoldValue: number
+  conversionRate: number
+  linkedRate: number
+  averageSoldTicket: number
+  averageDelta: number
+}
+
+export type EmployeeEvaluationReport = {
+  totals: EmployeeEvaluationMetric
+  employees: EmployeeEvaluationMetric[]
+}
+
+function emptyEmployeeEvaluationMetric(employeeId: number | null, employeeName: string): EmployeeEvaluationMetric {
+  return {
+    employeeId,
+    employeeName,
+    evaluations: 0,
+    linkedSales: 0,
+    closedSales: 0,
+    openRecent: 0,
+    research: 0,
+    lost: 0,
+    upgrade: 0,
+    downgrade: 0,
+    sameRange: 0,
+    comparedSales: 0,
+    soldValue: 0,
+    suggestedValue: 0,
+    comparedSoldValue: 0,
+    conversionRate: 0,
+    linkedRate: 0,
+    averageSoldTicket: 0,
+    averageDelta: 0,
+  }
+}
+
+function extractSuggestedPrice(recommendedItems: unknown): number | null {
+  const items = Array.isArray(recommendedItems) ? recommendedItems : []
+  const first = items[0] as Record<string, unknown> | undefined
+  const price = Number(first?.final_price ?? first?.finalPrice ?? first?.price_sell ?? 0)
+  return Number.isFinite(price) && price > 0 ? price : null
+}
+
+function finishEmployeeEvaluationMetric(metric: EmployeeEvaluationMetric): EmployeeEvaluationMetric {
+  return {
+    ...metric,
+    conversionRate: metric.evaluations > 0 ? (metric.closedSales / metric.evaluations) * 100 : 0,
+    linkedRate: metric.evaluations > 0 ? (metric.linkedSales / metric.evaluations) * 100 : 0,
+    averageSoldTicket: metric.closedSales > 0 ? metric.soldValue / metric.closedSales : 0,
+    averageDelta: metric.comparedSales > 0 ? (metric.comparedSoldValue - metric.suggestedValue) / metric.comparedSales : 0,
+  }
+}
+
+export async function getEmployeeEvaluationReport(
+  storeId: number,
+  dataInicio: string,
+  dataFim: string
+): Promise<EmployeeEvaluationReport> {
+  const supabase = createAdminClient()
+  const inicioIso = `${dataInicio}T03:00:00.000Z`
+  const fimDate = new Date(`${dataFim}T03:00:00.000Z`)
+  fimDate.setUTCDate(fimDate.getUTCDate() + 1)
+  fimDate.setUTCMilliseconds(fimDate.getUTCMilliseconds() - 1)
+  const fimIso = fimDate.toISOString()
+
+  const { data: evaluations, error } = await (supabase.from('optical_evaluations') as any)
+    .select('id, employee_id, updated_at, outcome_status, exported_venda_id, recommended_items, employees(full_name)')
+    .eq('store_id', storeId)
+    .gte('created_at', inicioIso)
+    .lte('created_at', fimIso)
+    .order('created_at', { ascending: false })
+
+  if (error) throw new Error(error.message)
+
+  const rows = (evaluations || []) as any[]
+  const vendaIds = rows
+    .map((row) => Number(row.exported_venda_id || 0))
+    .filter((id) => Number.isFinite(id) && id > 0)
+
+  const [vendasRes, itensRes] = vendaIds.length > 0
+    ? await Promise.all([
+        supabase.from('vendas').select('id, status, valor_final').in('id', vendaIds),
+        supabase.from('venda_itens').select('venda_id, item_tipo, valor_total_item').in('venda_id', vendaIds),
+      ])
+    : [{ data: [], error: null }, { data: [], error: null }]
+
+  if (vendasRes.error) throw new Error(vendasRes.error.message)
+  if (itensRes.error) throw new Error(itensRes.error.message)
+
+  const vendasById = new Map<number, any>()
+  ;(vendasRes.data || []).forEach((venda: any) => vendasById.set(Number(venda.id), venda))
+
+  const lensValueByVenda = new Map<number, number>()
+  ;(itensRes.data || []).forEach((item: any) => {
+    const vendaId = Number(item.venda_id)
+    const tipo = String(item.item_tipo || '').toLowerCase()
+    if (!tipo.includes('lente')) return
+    lensValueByVenda.set(vendaId, (lensValueByVenda.get(vendaId) || 0) + Number(item.valor_total_item || 0))
+  })
+
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - 7)
+
+  const byEmployee = new Map<string, EmployeeEvaluationMetric>()
+  const totals = emptyEmployeeEvaluationMetric(null, 'Total')
+
+  for (const row of rows) {
+    const employeeId = row.employee_id == null ? null : Number(row.employee_id)
+    const key = employeeId == null ? 'none' : String(employeeId)
+    const employeeName = row.employees?.full_name || 'Sem funcionario'
+    const metric = byEmployee.get(key) || emptyEmployeeEvaluationMetric(employeeId, employeeName)
+    const vendaId = Number(row.exported_venda_id || 0)
+    const venda = vendaId > 0 ? vendasById.get(vendaId) : null
+    const isClosed = row.outcome_status === 'venda_fechada' || venda?.status === 'Fechada'
+    const isLost = ['perdido_preco', 'perdido_produto', 'perdido_prazo'].includes(row.outcome_status)
+    const isOpenRecent = !row.exported_venda_id && !row.outcome_status && new Date(row.updated_at) >= cutoff
+
+    metric.evaluations += 1
+    totals.evaluations += 1
+
+    if (vendaId > 0) {
+      metric.linkedSales += 1
+      totals.linkedSales += 1
+    }
+
+    if (isClosed) {
+      const soldValue = Number(venda?.valor_final || 0)
+      metric.closedSales += 1
+      metric.soldValue += soldValue
+      totals.closedSales += 1
+      totals.soldValue += soldValue
+    }
+
+    if (isOpenRecent) {
+      metric.openRecent += 1
+      totals.openRecent += 1
+    }
+
+    if (row.outcome_status === 'cliente_pesquisa') {
+      metric.research += 1
+      totals.research += 1
+    }
+
+    if (isLost) {
+      metric.lost += 1
+      totals.lost += 1
+    }
+
+    const suggestedPrice = extractSuggestedPrice(row.recommended_items)
+    const soldLensValue = vendaId > 0 ? lensValueByVenda.get(vendaId) || 0 : 0
+    if (suggestedPrice && soldLensValue > 0) {
+      const deltaRatio = (soldLensValue - suggestedPrice) / suggestedPrice
+      metric.comparedSales += 1
+      metric.suggestedValue += suggestedPrice
+      metric.comparedSoldValue += soldLensValue
+      totals.comparedSales += 1
+      totals.suggestedValue += suggestedPrice
+      totals.comparedSoldValue += soldLensValue
+
+      if (deltaRatio > 0.05) {
+        metric.upgrade += 1
+        totals.upgrade += 1
+      } else if (deltaRatio < -0.05) {
+        metric.downgrade += 1
+        totals.downgrade += 1
+      } else {
+        metric.sameRange += 1
+        totals.sameRange += 1
+      }
+    }
+
+    byEmployee.set(key, metric)
+  }
+
+  return {
+    totals: finishEmployeeEvaluationMetric(totals),
+    employees: Array.from(byEmployee.values())
+      .map(finishEmployeeEvaluationMetric)
+      .sort((a, b) => b.evaluations - a.evaluations || b.closedSales - a.closedSales),
+  }
+}
+
 export interface VendaRelatorioItem {
   id: number
   data: string

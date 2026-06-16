@@ -10,7 +10,7 @@ import {
     Settings, BarChart3, Megaphone, Wallet, Zap, Search,
     LogOut, HeartHandshake, FileText, Bot,
     FileInput, ArrowLeftRight, FileSpreadsheet, CalendarRange, Percent, Home, LifeBuoy,
-    CheckCircle2, Tag, ChevronRight, ChevronLeft, PanelLeftClose, PanelLeftOpen, X, Globe, Printer
+    CheckCircle2, Tag, ChevronRight, ChevronLeft, PanelLeftClose, PanelLeftOpen, X, Globe, Printer, ClipboardCheck
 } from 'lucide-react';
 import { useModals } from '@/lib/contexts/ModalsContext';
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
@@ -147,6 +147,7 @@ const MENU_STRUCTURE: MenuGroup[] = [
             { label: 'Comissões', icon: Percent, route: '/dashboard/loja/[id]/financeiro/comissoes', allowedRoles: ['admin', 'manager'] },
 
             // Separador após Relatórios
+            { label: 'Avaliacao da Equipe', icon: ClipboardCheck, route: '/dashboard/loja/[id]/reports/avaliacoes', allowedRoles: ['admin', 'manager'] },
             { label: 'Central de Relatórios', icon: BarChart3, route: '/dashboard/loja/[id]/reports', allowedRoles: ['admin', 'manager'], withSeparator: true },
 
             { label: 'Configuração', icon: Settings, route: '/dashboard/loja/[id]/config', allowedRoles: ['admin', 'manager'] },

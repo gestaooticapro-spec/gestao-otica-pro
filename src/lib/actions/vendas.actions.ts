@@ -814,6 +814,31 @@ export async function createNewVenda(
   const supabaseAdmin = createAdminClient();
 
   try {
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - 7)
+
+    const { data: recentOpenEvaluation, error: recentEvaluationError } = await (supabaseAdmin.from('optical_evaluations') as any)
+      .select('id, updated_at')
+      .eq('store_id', profile.store_id)
+      .is('exported_venda_id', null)
+      .is('outcome_status', null)
+      .gte('updated_at', cutoff.toISOString())
+      .or(`evaluated_customer_id.eq.${customerId},responsible_customer_id.eq.${customerId}`)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (recentEvaluationError) throw recentEvaluationError
+
+    if (recentOpenEvaluation) {
+      return {
+        success: false,
+        message: 'Este cliente possui uma avaliacao aberta nos ultimos 7 dias. Continue pela tela de avaliacao para manter venda, OS e grau vinculados.',
+        blockedEvaluationId: recentOpenEvaluation.id,
+        blockedEvaluationUpdatedAt: recentOpenEvaluation.updated_at,
+      }
+    }
+
     const { data, error } = await (supabaseAdmin.from('vendas') as any)
       .insert(vendaData)
       .select()
@@ -1423,6 +1448,8 @@ export type CreateVendaResult = {
   success: boolean
   message?: string
   data?: Venda
+  blockedEvaluationId?: number
+  blockedEvaluationUpdatedAt?: string
   timestamp?: number
 }
 

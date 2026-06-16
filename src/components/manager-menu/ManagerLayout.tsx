@@ -15,7 +15,8 @@ import {
     Percent,
     Settings,
     BarChart3,
-    Store
+    Store,
+    ClipboardCheck
 } from 'lucide-react';
 
 import { logoutAndRedirect } from '@/lib/auth/logout';
@@ -78,6 +79,15 @@ const GERENCIA_LINKS = [
         icon: Settings,
         route: (storeId: number) => `/dashboard/loja/${storeId}/config`,
         tone: 'from-fuchsia-600/15 via-fuchsia-900/25 to-slate-900/60 hover:border-fuchsia-400/30',
+        colSpan: false
+    },
+    {
+        id: 'avaliacao-equipe',
+        title: 'Avaliacao da Equipe',
+        subtitle: 'Conversao optica',
+        icon: ClipboardCheck,
+        route: (storeId: number) => `/dashboard/loja/${storeId}/reports/avaliacoes`,
+        tone: 'from-emerald-600/15 via-emerald-900/25 to-slate-900/60 hover:border-emerald-400/30',
         colSpan: false
     },
     {

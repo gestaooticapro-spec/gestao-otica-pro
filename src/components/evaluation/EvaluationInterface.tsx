@@ -33,7 +33,7 @@ import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import QuickCustomerModal from '@/components/modals/QuickCustomerModal'
 import AddDependenteModal from '@/components/modals/AddDependenteModal'
 import { getDependentes } from '@/lib/actions/dependents.actions'
-import { searchCustomersByName, createNewVenda, type CustomerSearchResult } from '@/lib/actions/vendas.actions'
+import { searchCustomersByName, type CustomerSearchResult } from '@/lib/actions/vendas.actions'
 import {
   getOpticalEvaluationsForSubject,
   createSaleAndServiceOrderFromEvaluation,
@@ -52,7 +52,7 @@ import {
 } from '@/lib/actions/gemini-narratives.actions'
 import { Database } from '@/lib/database.types'
 import { EvaluationDashboard } from './EvaluationDashboard'
-import { getRecentEvaluationsForEmployee, updateEvaluationPanicReason, updateEvaluationExportedVendaId, updateEvaluationOutcomeStatus } from '@/lib/actions/evaluation.actions'
+import { getRecentEvaluationsForEmployee, updateEvaluationPanicReason, updateEvaluationOutcomeStatus } from '@/lib/actions/evaluation.actions'
 import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/BackgroundToggle'
 import type {
   RecommendationCaseInput,
@@ -3408,7 +3408,7 @@ export default function EvaluationInterface({
   }
 
   const handleCreateSaleFromRecommendation = (recommendation: {
-    source: 'ai' | 'ivision'
+    source: 'ai' | 'ivision' | 'deferred'
     displayName: string
     globalOfferId?: string | null
     finalPrice?: number | null
@@ -3419,8 +3419,11 @@ export default function EvaluationInterface({
 
     isCreatingSaleRef.current = true
 
+    const isDeferredLens = recommendation.source === 'deferred'
     const confirmed = window.confirm(
-      `Confirmar criacao da venda?\n\nPaciente: ${selectedSubjectLabel}\nLente: ${recommendation.displayName}\n\nA venda sera criada e a OS abrira pre-configurada com grau, medidas e lente escolhida.`
+      isDeferredLens
+        ? `Confirmar criacao da venda?\n\nPaciente: ${selectedSubjectLabel}\n\nA venda sera criada e a OS abrira pre-configurada com grau e medidas. A lente sera escolhida na tela de venda.`
+        : `Confirmar criacao da venda?\n\nPaciente: ${selectedSubjectLabel}\nLente: ${recommendation.displayName}\n\nA venda sera criada e a OS abrira pre-configurada com grau, medidas e lente escolhida.`
     )
     if (!confirmed) {
       isCreatingSaleRef.current = false
@@ -3428,14 +3431,18 @@ export default function EvaluationInterface({
     }
 
     setFormError(null)
-    setFeedback('Criando venda e OS com a opcao escolhida...')
+    setFeedback(
+      isDeferredLens
+        ? 'Criando venda e OS para escolher a lente depois...'
+        : 'Criando venda e OS com a opcao escolhida...'
+    )
 
     startCreateVendaTransition(async () => {
       try {
         const evaluationIdForSale = await persistEvaluationForSale({
-          displayName: recommendation.displayName,
+          displayName: isDeferredLens ? (form.recommendedLensName || recommendation.displayName) : recommendation.displayName,
           commercialSummary: recommendation.commercialSummary || null,
-          recommendedItems: recommendation.optionSnapshot ? [recommendation.optionSnapshot] : null,
+          recommendedItems: isDeferredLens ? null : recommendation.optionSnapshot ? [recommendation.optionSnapshot] : null,
         })
         if (!evaluationIdForSale) return
 
@@ -3484,6 +3491,23 @@ export default function EvaluationInterface({
       finalPrice: option.finalPrice,
       commercialSummary,
       optionSnapshot: option as unknown as Record<string, unknown>,
+    })
+  }
+
+  const handleContinueSaleWithoutLens = () => {
+    setFormError(null)
+    setFeedback('Avaliacao mantida como origem da venda.')
+
+    handleCreateSaleFromRecommendation({
+      source: 'deferred',
+      displayName: 'Lente a definir',
+      finalPrice: null,
+      commercialSummary: form.commercialRecommendationRaw || null,
+      optionSnapshot: {
+        source: 'deferred',
+        displayName: 'Lente a definir',
+        reason: 'Funcionario optou por escolher a lente na tela de venda.',
+      },
     })
   }
 
@@ -3609,33 +3633,6 @@ export default function EvaluationInterface({
         setFeedback(result.message)
       } catch (error) {
         setFormError(error instanceof Error ? error.message : 'Falha inesperada ao importar o PDF do iVision.')
-      }
-    })
-  }
-
-  const handleIrParaVenda = () => {
-    if (!selectedCustomer) {
-      setFormError('Selecione o titular antes de prosseguir para venda.')
-      return
-    }
-    if (!authenticatedEmployee) {
-      setFormError('Consultor não identificado. Impossível criar venda diretamente.')
-      return
-    }
-
-    setFormError(null)
-    setFeedback(null)
-
-    startCreateVendaTransition(async () => {
-      const result = await createNewVenda(selectedCustomer.id, authenticatedEmployee.id)
-      
-      if (result.success && result.data) {
-         if (evaluationId) {
-             await updateEvaluationExportedVendaId(evaluationId, storeId, result.data.id)
-         }
-         router.push(`/dashboard/loja/${storeId}/vendas/${result.data.id}/experimental?evaluation_id=${evaluationId || ''}`)
-      } else {
-         setFormError(result.message || 'Erro ao converter avaliação em Venda.')
       }
     })
   }
@@ -5580,6 +5577,16 @@ export default function EvaluationInterface({
                   <div className="flex justify-end gap-3">
                   <button
                     type="button"
+                    onClick={handleContinueSaleWithoutLens}
+                    disabled={isCreatingVenda || isSaving || !selectedCustomer || !isSubjectChosen}
+                    className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-600 px-6 py-3 text-xs font-black uppercase tracking-[0.2em] text-emerald-50 shadow-[0_0_20px_rgba(16,185,129,0.25)] transition-all hover:bg-emerald-500 disabled:opacity-50"
+                  >
+                    {isCreatingVenda ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}
+                    Continuar sem definir lente
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={handleSave}
                     disabled={isSaving}
                     className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-indigo-600 px-6 py-3 text-xs font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 disabled:opacity-50"
@@ -5588,15 +5595,6 @@ export default function EvaluationInterface({
                     Salvar Avaliação
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={handleIrParaVenda}
-                    disabled={isCreatingVenda || isSaving || !selectedCustomer}
-                    className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-600 px-6 py-3 text-xs font-black uppercase tracking-[0.2em] text-emerald-50 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:bg-emerald-500 hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] disabled:opacity-50 transition-all font-sans"
-                  >
-                    {isCreatingVenda ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}
-                    Ir para Venda (Checkout)
-                  </button>
                   </div>
                 </div>
               </div>

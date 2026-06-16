@@ -182,7 +182,7 @@ export type EvaluationActionResult<T = undefined> = {
 export type CreateSaleFromEvaluationResult = {
   vendaId: number
   serviceOrderId: number
-  vendaItemId: number
+  vendaItemId: number | null
   tenantCommercialOfferId: string | null
 }
 
@@ -256,7 +256,7 @@ const CreateSaleFromEvaluationSchema = z.object({
   storeId: z.coerce.number(),
   evaluationId: z.coerce.number(),
   employeeId: z.coerce.number().nullable().optional(),
-  source: z.enum(['ai', 'ivision']),
+  source: z.enum(['ai', 'ivision', 'deferred']),
   displayName: z.string().min(2),
   globalOfferId: z.string().nullable().optional(),
   finalPrice: z.coerce.number().nullable().optional(),
@@ -1013,34 +1013,45 @@ export async function createSaleAndServiceOrderFromEvaluation(
       optical_evaluation_id: evaluation.id,
     }
 
-    const { data: vendaItem, error: itemError } = await (supabaseAdmin.from('venda_itens') as any)
-      .insert({
-        tenant_id: auth.tenantId,
-        store_id: data.storeId,
-        venda_id: venda.id,
-        product_id: null,
-        variant_id: null,
-        item_tipo: 'Lente',
-        descricao: itemDescription,
-        quantidade: 1,
-        valor_unitario: resolvedPrice,
-        valor_total_item: resolvedPrice,
-        unidade: 'Par',
-        detalhes_avulsos: {
-          original_price: resolvedPrice,
-          selected_recommendation: snapshot,
-        },
-      })
-      .select('*')
-      .single()
+    let vendaItem: { id: number } | null = null
 
-    if (itemError || !vendaItem) throw itemError || new Error('Falha ao criar item da venda.')
-    createdVendaItemId = vendaItem.id
+    if (data.source !== 'deferred') {
+      const { data: insertedVendaItem, error: itemError } = await (supabaseAdmin.from('venda_itens') as any)
+        .insert({
+          tenant_id: auth.tenantId,
+          store_id: data.storeId,
+          venda_id: venda.id,
+          product_id: null,
+          variant_id: null,
+          item_tipo: 'Lente',
+          descricao: itemDescription,
+          quantidade: 1,
+          valor_unitario: resolvedPrice,
+          valor_total_item: resolvedPrice,
+          unidade: 'Par',
+          detalhes_avulsos: {
+            original_price: resolvedPrice,
+            selected_recommendation: snapshot,
+          },
+        })
+        .select('id')
+        .single()
+
+      if (itemError || !insertedVendaItem) throw itemError || new Error('Falha ao criar item da venda.')
+      vendaItem = insertedVendaItem
+      createdVendaItemId = insertedVendaItem.id
+    }
 
     const obsParts = [
-      `Lente escolhida na avaliacao: ${itemDescription}`,
+      data.source === 'deferred'
+        ? 'Venda iniciada pela avaliacao; lente ainda nao definida.'
+        : `Lente escolhida na avaliacao: ${itemDescription}`,
       data.commercialSummary || evaluation.commercial_recommendation_raw || null,
-      data.source === 'ivision' ? 'Origem: sugestao importada do iVision.' : 'Origem: sugestao assistida por IA.',
+      data.source === 'deferred'
+        ? 'Origem: avaliacao optica com decisao comercial pendente.'
+        : data.source === 'ivision'
+          ? 'Origem: sugestao importada do iVision.'
+          : 'Origem: sugestao assistida por IA.',
     ].filter(Boolean)
 
     const { data: serviceOrder, error: osError } = await (supabaseAdmin.from('service_orders') as any)
@@ -1082,25 +1093,27 @@ export async function createSaleAndServiceOrderFromEvaluation(
       .eq('id', serviceOrder.id)
       .is('protocolo_fisico', null)
 
-    const { error: linkError } = await (supabaseAdmin.from('venda_itens_os_links') as any)
-      .insert([
-        {
-          tenant_id: auth.tenantId,
-          store_id: data.storeId,
-          service_order_id: serviceOrder.id,
-          venda_item_id: vendaItem.id,
-          uso_na_os: 'lente_od',
-        },
-        {
-          tenant_id: auth.tenantId,
-          store_id: data.storeId,
-          service_order_id: serviceOrder.id,
-          venda_item_id: vendaItem.id,
-          uso_na_os: 'lente_oe',
-        },
-      ])
+    if (vendaItem) {
+      const { error: linkError } = await (supabaseAdmin.from('venda_itens_os_links') as any)
+        .insert([
+          {
+            tenant_id: auth.tenantId,
+            store_id: data.storeId,
+            service_order_id: serviceOrder.id,
+            venda_item_id: vendaItem.id,
+            uso_na_os: 'lente_od',
+          },
+          {
+            tenant_id: auth.tenantId,
+            store_id: data.storeId,
+            service_order_id: serviceOrder.id,
+            venda_item_id: vendaItem.id,
+            uso_na_os: 'lente_oe',
+          },
+        ])
 
-    if (linkError) throw linkError
+      if (linkError) throw linkError
+    }
 
     const { error: rpcError } = await (supabaseAdmin as any).rpc('update_venda_financeiro', {
       p_venda_id: venda.id,
@@ -1109,12 +1122,12 @@ export async function createSaleAndServiceOrderFromEvaluation(
 
     const { error: evaluationUpdateError } = await (supabaseAdmin.from('optical_evaluations') as any)
       .update({
-        recommended_lens_name: itemDescription,
+        recommended_lens_name: data.source === 'deferred' ? evaluation.recommended_lens_name : itemDescription,
         commercial_recommendation_raw: data.commercialSummary || evaluation.commercial_recommendation_raw,
-        recommended_items: [snapshot],
+        recommended_items: data.source === 'deferred' ? evaluation.recommended_items : [snapshot],
         exported_venda_id: venda.id,
         exported_service_order_id: serviceOrder.id,
-        outcome_status: 'venda_fechada',
+        outcome_status: data.source === 'deferred' ? evaluation.outcome_status : 'venda_fechada',
         status: 'exportada',
         updated_at: new Date().toISOString(),
       })
@@ -1128,11 +1141,13 @@ export async function createSaleAndServiceOrderFromEvaluation(
 
     return {
       success: true,
-      message: 'Venda e OS criadas com a opcao escolhida.',
+      message: data.source === 'deferred'
+        ? 'Venda e OS criadas para escolher a lente depois.'
+        : 'Venda e OS criadas com a opcao escolhida.',
       data: {
         vendaId: venda.id,
         serviceOrderId: serviceOrder.id,
-        vendaItemId: vendaItem.id,
+        vendaItemId: vendaItem?.id ?? null,
         tenantCommercialOfferId: tenantCommercialOffer?.id || null,
       },
     }
