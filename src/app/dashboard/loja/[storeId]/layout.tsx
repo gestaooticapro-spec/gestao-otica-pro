@@ -69,6 +69,7 @@ export default async function StoreLayout({
   const storeModules = getStoreModules(typedSettings);
   let logoFile: string | null = null;
   const preSaleAnalysisEnabled = typedSettings?.pre_sale_analysis_enabled === true;
+  const deliveryDateEnabled = typedSettings?.delivery_date_enabled !== false;
 
   if (settings && typeof settings === 'object' && 'logo' in settings) {
     const maybeLogo = (settings as { logo?: unknown }).logo;
@@ -85,7 +86,7 @@ export default async function StoreLayout({
         <ModalsProvider storeId={storeIdParam}>
           <TabletRedirect storeId={storeIdParam} />
           <TabletModeButton storeId={storeIdParam} />
-          <OperatorLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl} preSaleAnalysisEnabled={preSaleAnalysisEnabled}>
+          <OperatorLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl} preSaleAnalysisEnabled={preSaleAnalysisEnabled} deliveryDateEnabled={deliveryDateEnabled}>
             {children}
           </OperatorLayout>
         </ModalsProvider>

@@ -68,6 +68,7 @@ interface OperatorMenuLojaVaziaProps {
     storeName?: string;
     onBack: () => void;
     onNavigate: (route: string) => void;
+    deliveryDateEnabled?: boolean;
 }
 
 interface RadarData {
@@ -90,7 +91,8 @@ export default function OperatorMenuLojaVazia({
     storeId,
     storeName = 'Ótica',
     onBack,
-    onNavigate
+    onNavigate,
+    deliveryDateEnabled = true
 }: OperatorMenuLojaVaziaProps) {
     const { preference } = useBackgroundPreference();
     const modules = useStoreModules();
@@ -609,7 +611,7 @@ export default function OperatorMenuLojaVazia({
 
 
                                 {/* ENTREGAS */}
-                                <RadarWidget
+                                {deliveryDateEnabled && <RadarWidget
                                     title="Entregas Próximas"
                                     subtitle="Gaveta"
                                     icon={Package}
@@ -643,7 +645,7 @@ export default function OperatorMenuLojaVazia({
                                             );
                                         })
                                     )}
-                                </RadarWidget>
+                                </RadarWidget>}
 
                                 {/* LENTES PARADAS */}
                                 <RadarWidget

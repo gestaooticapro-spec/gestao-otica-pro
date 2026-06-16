@@ -29,11 +29,12 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
     // Busca nome da loja
     const supabaseAdmin = createAdminClient()
     const { data: store } = await (supabaseAdmin.from('stores') as any)
-        .select('name')
+        .select('name, settings')
         .eq('id', storeId)
         .single()
 
     const storeName = store?.name || `Loja ${storeId}`
+    const deliveryDateEnabled = store?.settings?.delivery_date_enabled !== false
 
     // 1. ADMIN (Dono da Rede)
     if (profile.role === 'admin') {
@@ -83,6 +84,7 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
             <ActionMenuDashboard
                 storeId={storeId}
                 storeName={storeName}
+                deliveryDateEnabled={deliveryDateEnabled}
                 alerts={alertas}
                 birthdays={aniversariantes}
                 vencimentos={vencimentos}

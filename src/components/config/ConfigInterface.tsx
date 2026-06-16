@@ -573,6 +573,7 @@ function ResourcesForm({ storeId }: { storeId: number }) {
     const [data, setData] = useState<StoreData | null>(null)
     const [loading, setLoading] = useState(true)
     const [isSaving, startTransition] = useTransition()
+    const deliveryDateEnabled = data?.settings?.delivery_date_enabled !== false
 
     useEffect(() => {
         getStoreProfile(storeId).then(res => {
@@ -729,6 +730,29 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                             </label>
                         )
                     })}
+                </div>
+
+                <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4 transition-colors">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                        <div className="flex-1">
+                            <p className="text-sm font-black text-white uppercase tracking-[0.15em]">
+                                Data de Entrega na OS
+                            </p>
+                            <p className="mt-2 text-xs text-slate-400 leading-relaxed">
+                                Escolha se a loja usa a data de entrega prevista na ordem de serviço. Quando desligado, o programa continua igual e o radar operacional deixa de mostrar o bloco de próximas entregas.
+                            </p>
+                        </div>
+
+                        <select
+                            value={deliveryDateEnabled ? 'enabled' : 'disabled'}
+                            onChange={(e) => handleSettingChange('delivery_date_enabled', e.target.value === 'enabled')}
+                            disabled={isSaving}
+                            className="min-w-[220px] rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-200 outline-none transition-colors focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/40 disabled:opacity-50"
+                        >
+                            <option value="enabled">Usa data de entrega</option>
+                            <option value="disabled">Não usa data de entrega</option>
+                        </select>
+                    </div>
                 </div>
 
                 {false && (<label className="flex items-start gap-4 rounded-xl border border-white/10 bg-black/20 p-4 cursor-pointer hover:bg-white/5 transition-colors group">

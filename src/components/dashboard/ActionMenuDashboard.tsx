@@ -20,6 +20,7 @@ import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 interface Props {
   storeId: number
   storeName: string
+  deliveryDateEnabled?: boolean
   alerts: {
     entregas: AlertaEntrega[]
     laboratorio: AlertaLaboratorio[]
@@ -30,7 +31,7 @@ interface Props {
   retornos: RetornoCobranca[]
 }
 
-export default function ActionMenuDashboard({ storeId, storeName, alerts, birthdays, vencimentos, retornos }: Props) {
+export default function ActionMenuDashboard({ storeId, storeName, deliveryDateEnabled = true, alerts, birthdays, vencimentos, retornos }: Props) {
   const [isParcelaModalOpen, setIsParcelaModalOpen] = useState(false)
   const modules = useStoreModules()
 
@@ -269,9 +270,11 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
                 </div>
 
                 {/* Widget Entregas */}
-                <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
-                  <WidgetEntregas data={alerts.entregas} storeId={storeId} />
-                </div>
+                {deliveryDateEnabled && (
+                  <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
+                    <WidgetEntregas data={alerts.entregas} storeId={storeId} />
+                  </div>
+                )}
 
                 {/* Widget Laboratório */}
                 <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">

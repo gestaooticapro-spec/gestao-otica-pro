@@ -18,6 +18,7 @@ interface OperatorLayoutProps {
     storeName: string;
     logoUrl: string | null;
     preSaleAnalysisEnabled?: boolean;
+    deliveryDateEnabled?: boolean;
     onBackToHub?: () => void;
     hubLabel?: string;
 }
@@ -28,6 +29,7 @@ export default function OperatorLayout({
     storeName,
     logoUrl,
     preSaleAnalysisEnabled = false,
+    deliveryDateEnabled = true,
     onBackToHub,
     hubLabel = 'Voltar'
 }: OperatorLayoutProps) {
@@ -37,6 +39,7 @@ export default function OperatorLayout({
 
     const [homeSelection, setHomeSelection] = useState<HomeSelection>(null);
     const [livePreSaleAnalysisEnabled, setLivePreSaleAnalysisEnabled] = useState(preSaleAnalysisEnabled);
+    const [liveDeliveryDateEnabled, setLiveDeliveryDateEnabled] = useState(deliveryDateEnabled);
 
     const storeHomePath = `/dashboard/loja/${storeId}`;
     const menuParam = searchParams.get('menu');
@@ -44,6 +47,10 @@ export default function OperatorLayout({
     useEffect(() => {
         setLivePreSaleAnalysisEnabled(preSaleAnalysisEnabled);
     }, [preSaleAnalysisEnabled]);
+
+    useEffect(() => {
+        setLiveDeliveryDateEnabled(deliveryDateEnabled);
+    }, [deliveryDateEnabled]);
 
     useEffect(() => {
         if (pathname !== storeHomePath) return;
@@ -60,8 +67,15 @@ export default function OperatorLayout({
                 'pre_sale_analysis_enabled' in settings &&
                 (settings as { pre_sale_analysis_enabled?: unknown }).pre_sale_analysis_enabled === true
             );
+            const deliveryEnabled = !(
+                settings &&
+                typeof settings === 'object' &&
+                'delivery_date_enabled' in settings &&
+                (settings as { delivery_date_enabled?: unknown }).delivery_date_enabled === false
+            );
 
             setLivePreSaleAnalysisEnabled(enabled);
+            setLiveDeliveryDateEnabled(deliveryEnabled);
         });
 
         return () => {
@@ -112,7 +126,7 @@ export default function OperatorLayout({
     }
 
     if (currentMenu === 'loja-vazia') {
-        return <OperatorMenuLojaVazia storeId={storeId} onBack={handleBack} onNavigate={handleRouteNavigate} />;
+        return <OperatorMenuLojaVazia storeId={storeId} onBack={handleBack} onNavigate={handleRouteNavigate} deliveryDateEnabled={liveDeliveryDateEnabled} />;
     }
 
     return (
