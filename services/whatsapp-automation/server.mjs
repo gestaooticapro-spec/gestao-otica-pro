@@ -75,6 +75,27 @@ function extractInbound(payload) {
   }
 }
 
+function extractStoreInitiatedMessage(payload) {
+  const data = payload.data || {}
+  const key = data.key || {}
+  const remoteJid = key.remoteJid || data.remoteJid || ''
+  const message = data.message || {}
+  const providerMessageId = key.id || data.id || payload.messageId || ''
+  const fromMe = Boolean(key.fromMe ?? data.fromMe)
+
+  if (!fromMe || !providerMessageId || !remoteJid) return null
+  if (remoteJid.endsWith('@g.us') || remoteJid === 'status@broadcast') return null
+
+  const phone = remoteJid.split('@')[0].replace(/\D/g, '')
+  if (!phone) return null
+
+  return {
+    phone,
+    providerMessageId,
+    messageText: extractText(message),
+  }
+}
+
 function mapConnectionStatus(payload) {
   const raw = String(
     payload.data?.state
@@ -213,6 +234,40 @@ async function configureEvolutionWebhook(instanceKey) {
   })
 }
 
+async function handleAdminMessageSend(payload) {
+  const instanceKey = String(payload.instanceKey || '').trim()
+  const phone = String(payload.phone || '').replace(/\D/g, '')
+  const text = String(payload.text || '').trim()
+  const outboundMessageId = Number(payload.outboundMessageId)
+
+  if (!/^[a-zA-Z0-9_-]{2,120}$/.test(instanceKey)) {
+    const error = new Error('Invalid instance key')
+    error.status = 400
+    throw error
+  }
+
+  if (!phone || phone.length < 10 || phone.length > 15 || !text || !Number.isInteger(outboundMessageId) || outboundMessageId <= 0) {
+    const error = new Error('Invalid message payload')
+    error.status = 400
+    throw error
+  }
+
+  try {
+    const result = await sendEvolutionText(instanceKey, phone, text)
+    const providerMessageId = result.key?.id || result.messageId || result.id
+    await updateDelivery(outboundMessageId, 'sent', {
+      providerMessageId,
+      payload: result,
+    })
+    return { sent: true, providerMessageId }
+  } catch (error) {
+    await updateDelivery(outboundMessageId, 'failed', {
+      errorMessage: error instanceof Error ? error.message : String(error),
+    })
+    throw error
+  }
+}
+
 async function setupEvolutionInstance(instanceKey) {
   const instances = await fetchEvolutionInstances()
   let qrCodeBase64 = null
@@ -259,6 +314,16 @@ async function updateDelivery(outboundMessageId, status, details = {}) {
 }
 
 async function handleMessage(instanceKey, payload) {
+  const storeInitiated = extractStoreInitiatedMessage(payload)
+  if (storeInitiated) {
+    await appRequest('/api/whatsapp/store-initiated', {
+      instanceKey,
+      ...storeInitiated,
+      payload,
+    })
+    return { ignored: true, fromMe: true }
+  }
+
   const inbound = extractInbound(payload)
   if (!inbound) return { ignored: true }
 
@@ -341,6 +406,21 @@ const server = createServer(async (request, response) => {
     } catch (error) {
       console.error('[admin] Request failed:', error)
       return jsonResponse(response, 500, { error: 'Admin request failed' })
+    }
+  }
+
+  if (request.method === 'POST' && url.pathname === '/admin/messages/send') {
+    if (!isAuthorizedAdmin(request)) {
+      return jsonResponse(response, 401, { error: 'Unauthorized' })
+    }
+
+    try {
+      const payload = await readJson(request)
+      const result = await handleAdminMessageSend(payload)
+      return jsonResponse(response, 200, result)
+    } catch (error) {
+      console.error('[admin] Message send failed:', error)
+      return jsonResponse(response, error.status || 500, { error: error.message || 'Message send failed' })
     }
   }
 

@@ -12,8 +12,13 @@ import {
   DEFAULT_WHATSAPP_OS_REPLY_TEMPLATES,
   WhatsAppOsStatusCode,
 } from '@/lib/whatsapp/os-status'
+import {
+  buildInstallmentDueReminderSettings,
+  DEFAULT_INSTALLMENT_DUE_REMINDER_TEMPLATE,
+} from '@/lib/whatsapp/installment-reminders'
 import type {
   StoreSettings,
+  WhatsAppInstallmentDueReminderSettings,
   WhatsAppAutomationOsOnDemandSettings,
   WhatsAppOsReplyTemplates,
 } from '@/lib/store-modules'
@@ -50,6 +55,14 @@ export type WhatsAppOsResponderSettingsResult = {
   settings?: WhatsAppOsResponderSettings
 }
 
+export type WhatsAppInstallmentReminderSettings = Required<WhatsAppInstallmentDueReminderSettings>
+
+export type WhatsAppInstallmentReminderSettingsResult = {
+  success: boolean
+  message: string
+  settings?: WhatsAppInstallmentReminderSettings
+}
+
 const ChannelSchema = z.object({
   storeId: z.coerce.number().int().positive(),
   instanceKey: z.string()
@@ -80,6 +93,12 @@ const OsResponderSettingsSchema = z.object({
     lens_arrived_assembling: z.string().trim().min(8, 'Informe um texto para fila de montagem.').max(1000),
     ready_for_pickup: z.string().trim().min(8, 'Informe um texto para oculos pronto.').max(1000),
   }),
+})
+
+const InstallmentReminderSettingsSchema = z.object({
+  storeId: z.coerce.number().int().positive(),
+  enabled: z.boolean(),
+  template: z.string().trim().min(20, 'Informe um texto para o lembrete.').max(1200),
 })
 
 async function getAuthorizedProfile(storeId: number) {
@@ -174,6 +193,12 @@ function buildOsResponderSettings(
   }
 }
 
+function buildReminderSettings(
+  saved: WhatsAppInstallmentDueReminderSettings | undefined
+): WhatsAppInstallmentReminderSettings {
+  return buildInstallmentDueReminderSettings(saved)
+}
+
 async function upsertWhatsAppChannel(input: {
   tenantId: string
   storeId: number
@@ -255,6 +280,24 @@ export async function getWhatsAppOsResponderSettings(storeId: number): Promise<W
   }
 }
 
+export async function getWhatsAppInstallmentReminderSettings(storeId: number): Promise<WhatsAppInstallmentReminderSettingsResult> {
+  if (!await getAuthorizedProfile(storeId)) {
+    return { success: false, message: 'Acesso negado.' }
+  }
+
+  try {
+    const settings = await loadStoreSettings(storeId)
+    return {
+      success: true,
+      message: '',
+      settings: buildReminderSettings(settings.whatsapp_automation?.installment_due_reminder),
+    }
+  } catch (error) {
+    console.error('[WhatsApp] Failed to load installment reminder settings:', error)
+    return { success: false, message: 'Nao foi possivel carregar os lembretes de vencimento.' }
+  }
+}
+
 export async function saveWhatsAppOsResponderSettings(input: {
   storeId: number
   enabled: boolean
@@ -296,6 +339,48 @@ export async function saveWhatsAppOsResponderSettings(input: {
   } catch (error) {
     console.error('[WhatsApp] Failed to save OS responder settings:', error)
     return { success: false, message: 'Nao foi possivel salvar as respostas da OS.' }
+  }
+}
+
+export async function saveWhatsAppInstallmentReminderSettings(input: {
+  storeId: number
+  enabled: boolean
+  template: string
+}): Promise<WhatsAppInstallmentReminderSettingsResult> {
+  const parsed = InstallmentReminderSettingsSchema.safeParse(input)
+  if (!parsed.success) {
+    return { success: false, message: parsed.error.issues[0]?.message || 'Dados invalidos.' }
+  }
+
+  const profile = await getAuthorizedProfile(parsed.data.storeId)
+  if (!profile) return { success: false, message: 'Acesso negado.' }
+
+  try {
+    const currentSettings = await loadStoreSettings(parsed.data.storeId)
+    const nextSettings: Partial<StoreSettings> = {
+      whatsapp_automation: {
+        ...(currentSettings.whatsapp_automation || {}),
+        installment_due_reminder: {
+          enabled: parsed.data.enabled,
+          template: parsed.data.template || DEFAULT_INSTALLMENT_DUE_REMINDER_TEMPLATE,
+          days_before_due: 2,
+        },
+      },
+    }
+
+    const result = await updateStoreSettings(parsed.data.storeId, nextSettings)
+    if (!result.success) {
+      return { success: false, message: result.message }
+    }
+
+    return {
+      success: true,
+      message: 'Lembretes de vencimento atualizados.',
+      settings: buildReminderSettings(nextSettings.whatsapp_automation?.installment_due_reminder),
+    }
+  } catch (error) {
+    console.error('[WhatsApp] Failed to save installment reminder settings:', error)
+    return { success: false, message: 'Nao foi possivel salvar os lembretes de vencimento.' }
   }
 }
 

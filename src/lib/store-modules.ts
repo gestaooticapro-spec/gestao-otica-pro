@@ -12,8 +12,15 @@ export type WhatsAppAutomationOsOnDemandSettings = {
   templates?: Partial<WhatsAppOsReplyTemplates>
 }
 
+export type WhatsAppInstallmentDueReminderSettings = {
+  enabled?: boolean
+  template?: string
+  days_before_due?: number
+}
+
 export type WhatsAppAutomationSettings = {
   os_on_demand?: WhatsAppAutomationOsOnDemandSettings
+  installment_due_reminder?: WhatsAppInstallmentDueReminderSettings
   [key: string]: Json | undefined
 }
 

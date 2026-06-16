@@ -24,12 +24,15 @@ import {
 } from 'lucide-react'
 import {
   getWhatsAppChannel,
+  getWhatsAppInstallmentReminderSettings,
   getWhatsAppOsResponderSettings,
   refreshWhatsAppConnection,
   requestWhatsAppQrCode,
+  saveWhatsAppInstallmentReminderSettings,
   saveWhatsAppOsResponderSettings,
   startWhatsAppActivation,
   type WhatsAppChannel,
+  type WhatsAppInstallmentReminderSettings,
   type WhatsAppOsResponderSettings,
 } from '@/lib/actions/whatsapp.actions'
 
@@ -63,13 +66,6 @@ const automationPlaceholders = [
     icon: Sparkles,
   },
   {
-    id: 'installment_due_reminder',
-    title: 'Enviar aviso de vencimento',
-    description: 'Lembretes amigaveis antes do vencimento.',
-    placeholder: 'Ex.: Oi, {nome}! Estamos lembrando que sua parcela vence em {data_vencimento}.',
-    icon: CreditCard,
-  },
-  {
     id: 'collection',
     title: 'Fazer cobranca',
     description: 'Cobranca de parcelas em atraso com texto ajustavel.',
@@ -99,6 +95,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
   const [qrCodeBase64, setQrCodeBase64] = useState<string | null>(null)
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
   const [osResponderSettings, setOsResponderSettings] = useState<WhatsAppOsResponderSettings | null>(null)
+  const [installmentReminderSettings, setInstallmentReminderSettings] = useState<WhatsAppInstallmentReminderSettings | null>(null)
   const [automationDrafts, setAutomationDrafts] = useState(() =>
     automationPlaceholders.reduce<Record<string, { enabled: boolean; text: string }>>((acc, item) => {
       acc[item.id] = {
@@ -119,9 +116,10 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
   const loadChannel = () => {
     setIsLoading(true)
     startTransition(async () => {
-      const [channelResult, osSettingsResult] = await Promise.all([
+      const [channelResult, osSettingsResult, installmentReminderResult] = await Promise.all([
         getWhatsAppChannel(storeId),
         getWhatsAppOsResponderSettings(storeId),
+        getWhatsAppInstallmentReminderSettings(storeId),
       ])
 
       if (channelResult.success) {
@@ -135,6 +133,13 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
         if (channelResult.success) setMessage(null)
       } else if (!channelResult.success) {
         setMessage({ kind: 'error', text: osSettingsResult.message })
+      }
+
+      if (installmentReminderResult.success) {
+        setInstallmentReminderSettings(installmentReminderResult.settings ?? null)
+        if (channelResult.success && osSettingsResult.success) setMessage(null)
+      } else if (!channelResult.success && !osSettingsResult.success) {
+        setMessage({ kind: 'error', text: installmentReminderResult.message })
       }
       setIsLoading(false)
     })
@@ -227,6 +232,26 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
 
       if (result.success) {
         setOsResponderSettings(result.settings ?? null)
+        setMessage({ kind: 'success', text: result.message })
+      } else {
+        setMessage({ kind: 'error', text: result.message })
+      }
+    })
+  }
+
+  const handleSaveInstallmentReminder = () => {
+    if (!installmentReminderSettings) return
+    setMessage(null)
+
+    startTransition(async () => {
+      const result = await saveWhatsAppInstallmentReminderSettings({
+        storeId,
+        enabled: installmentReminderSettings.enabled,
+        template: installmentReminderSettings.template,
+      })
+
+      if (result.success) {
+        setInstallmentReminderSettings(result.settings ?? null)
         setMessage({ kind: 'success', text: result.message })
       } else {
         setMessage({ kind: 'error', text: result.message })
@@ -512,6 +537,74 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                 >
                   {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
                   Salvar respostas
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+
+        <section className="mt-6 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-300/20 bg-amber-400/10">
+                <CreditCard className="h-5 w-5 text-amber-200" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-black text-white">Enviar aviso de vencimento</h4>
+                  <span className="rounded-lg border border-amber-300/20 bg-amber-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-amber-100">
+                    Novo
+                  </span>
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-slate-300">
+                  Envia um lembrete simpático 2 dias antes do vencimento da parcela, apenas em horário comercial e sem repetir a mesma parcela.
+                </p>
+              </div>
+            </div>
+
+            <label className="inline-flex items-center">
+              <input
+                type="checkbox"
+                checked={Boolean(installmentReminderSettings?.enabled)}
+                onChange={(event) => {
+                  const checked = event.target.checked
+                  setInstallmentReminderSettings((current) => current ? { ...current, enabled: checked } : current)
+                }}
+                disabled={!installmentReminderSettings || isPending || isLoading}
+                className="h-5 w-5 rounded border-white/20 bg-slate-900 text-amber-400 focus:ring-amber-400"
+              />
+            </label>
+          </div>
+
+          {installmentReminderSettings && (
+            <>
+              <div className="mt-5 rounded-xl border border-white/10 bg-black/20 p-4">
+                <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                  Texto do lembrete
+                </label>
+                <textarea
+                  value={installmentReminderSettings.template}
+                  onChange={(event) => {
+                    const value = event.target.value
+                    setInstallmentReminderSettings((current) => current ? { ...current, template: value } : current)
+                  }}
+                  rows={5}
+                  className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm leading-relaxed text-slate-200 outline-none transition focus:border-amber-300/40 focus:ring-2 focus:ring-amber-300/10"
+                />
+              </div>
+
+              <div className="mt-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] leading-relaxed text-slate-400">
+                  Marcadores: <span className="font-mono text-slate-200">{'{nome}'}</span>, <span className="font-mono text-slate-200">{'{titular}'}</span>, <span className="font-mono text-slate-200">{'{paciente}'}</span>, <span className="font-mono text-slate-200">{'{numero_parcela}'}</span>, <span className="font-mono text-slate-200">{'{data_vencimento}'}</span> e <span className="font-mono text-slate-200">{'{valor_parcela}'}</span>.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleSaveInstallmentReminder}
+                  disabled={isPending || isLoading}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-amber-400 px-5 text-xs font-black uppercase tracking-wider text-amber-950 shadow-lg shadow-amber-500/20 transition hover:bg-amber-300 disabled:opacity-50"
+                >
+                  {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
+                  Salvar lembrete
                 </button>
               </div>
             </>

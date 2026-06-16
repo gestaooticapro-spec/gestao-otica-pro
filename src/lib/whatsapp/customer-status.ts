@@ -73,6 +73,14 @@ export type CustomerStatusResponse = {
   outboundMessageId?: number
 }
 
+export type StoreInitiatedConversationRequest = {
+  instanceKey: string
+  phone: string
+  providerMessageId?: string
+  messageText?: string
+  payload?: Json
+}
+
 function expiresIn(ms: number) {
   return new Date(Date.now() + ms).toISOString()
 }
@@ -87,22 +95,22 @@ function normalizeMessage(value: string | undefined) {
 
 function menuText() {
   return [
-    'Ola! Sou o atendimento automatico da otica.',
+    'Olá! Sou o atendimento automático da ótica.',
     '',
     'Nossa equipe pode estar em atendimento no momento, mas consigo te ajudar com algumas coisas por aqui:',
     '',
-    '1 - Ver se meu oculos ta pronto',
+    '1 - Ver se meu óculos está pronto',
     '2 - Falar com atendente',
     '',
-    'Digite o numero da opcao desejada.',
+    'Digite o número da opção desejada.',
   ].join('\n')
 }
 
 function identifierPromptText() {
   return [
-    'Nao localizei uma OS aberta com este numero.',
+    'Não encontrei um pedido em aberto ligado a este WhatsApp.',
     '',
-    'Para eu tentar localizar, envie CPF do titular, numero da OS ou nome completo do titular.',
+    'Se quiser, posso tentar localizar de outra forma. Envie o CPF do titular, o número do pedido ou o nome completo.',
   ].join('\n')
 }
 
@@ -112,7 +120,7 @@ function humanHandoffText() {
 
 function notFoundHandoffText() {
   return [
-    'Nao consegui localizar uma OS aberta com essas informacoes.',
+    'Não consegui encontrar um pedido em aberto com essas informações.',
     'Vou deixar a conversa para nossa equipe continuar o atendimento por aqui.',
   ].join('\n')
 }
@@ -594,4 +602,37 @@ export async function resolveCustomerStatus(
 
   await setConversationState(channel, normalizedPhone, 'waiting_menu', MENU_WAIT_MS)
   return createOutbound(channel, inbound.id, normalizedPhone, menuText(), 'menu')
+}
+
+export async function markStoreInitiatedConversation(
+  input: StoreInitiatedConversationRequest
+) {
+  const channel = await findActiveChannel(input.instanceKey)
+  if (!channel) return { success: false, reason: 'channel_not_found' as const }
+
+  const normalizedPhone = toEvolutionNumber(input.phone)
+  if (!normalizedPhone) return { success: false, reason: 'invalid_phone' as const }
+
+  const providerMessageId = String(input.providerMessageId || '').trim()
+  if (providerMessageId) {
+    const supabase = createAdminClient()
+    const { data, error } = await (supabase.from('whatsapp_outbound_messages') as any)
+      .select('id')
+      .eq('channel_id', channel.id)
+      .eq('provider_message_id', providerMessageId)
+      .maybeSingle()
+
+    if (error) throw error
+    if (data?.id) {
+      return { success: true, skipped: 'system_outbound' as const }
+    }
+  }
+
+  await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_PAUSE_MS, {
+    reason: 'store_initiated',
+    providerMessageId: providerMessageId || null,
+    preview: input.messageText?.slice(0, 160) || null,
+  })
+
+  return { success: true, paused: true as const }
 }
