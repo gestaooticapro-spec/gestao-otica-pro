@@ -49,6 +49,16 @@ export type WhatsAppOsResponderSettings = {
   templates: WhatsAppOsReplyTemplates
 }
 
+export type WhatsAppAutomationControlSettings = {
+  enabled: boolean
+}
+
+export type WhatsAppAutomationControlSettingsResult = {
+  success: boolean
+  message: string
+  settings?: WhatsAppAutomationControlSettings
+}
+
 export type WhatsAppOsResponderSettingsResult = {
   success: boolean
   message: string
@@ -99,6 +109,11 @@ const InstallmentReminderSettingsSchema = z.object({
   storeId: z.coerce.number().int().positive(),
   enabled: z.boolean(),
   template: z.string().trim().min(20, 'Informe um texto para o lembrete.').max(1200),
+})
+
+const AutomationControlSettingsSchema = z.object({
+  storeId: z.coerce.number().int().positive(),
+  enabled: z.boolean(),
 })
 
 async function getAuthorizedProfile(storeId: number) {
@@ -199,6 +214,12 @@ function buildReminderSettings(
   return buildInstallmentDueReminderSettings(saved)
 }
 
+function buildAutomationControlSettings(saved: StoreSettings['whatsapp_automation'] | undefined): WhatsAppAutomationControlSettings {
+  return {
+    enabled: saved?.enabled !== false,
+  }
+}
+
 async function upsertWhatsAppChannel(input: {
   tenantId: string
   storeId: number
@@ -280,6 +301,24 @@ export async function getWhatsAppOsResponderSettings(storeId: number): Promise<W
   }
 }
 
+export async function getWhatsAppAutomationControlSettings(storeId: number): Promise<WhatsAppAutomationControlSettingsResult> {
+  if (!await getAuthorizedProfile(storeId)) {
+    return { success: false, message: 'Acesso negado.' }
+  }
+
+  try {
+    const settings = await loadStoreSettings(storeId)
+    return {
+      success: true,
+      message: '',
+      settings: buildAutomationControlSettings(settings.whatsapp_automation),
+    }
+  } catch (error) {
+    console.error('[WhatsApp] Failed to load automation control settings:', error)
+    return { success: false, message: 'Nao foi possivel carregar o controle geral do WhatsApp.' }
+  }
+}
+
 export async function getWhatsAppInstallmentReminderSettings(storeId: number): Promise<WhatsAppInstallmentReminderSettingsResult> {
   if (!await getAuthorizedProfile(storeId)) {
     return { success: false, message: 'Acesso negado.' }
@@ -295,6 +334,45 @@ export async function getWhatsAppInstallmentReminderSettings(storeId: number): P
   } catch (error) {
     console.error('[WhatsApp] Failed to load installment reminder settings:', error)
     return { success: false, message: 'Nao foi possivel carregar os lembretes de vencimento.' }
+  }
+}
+
+export async function saveWhatsAppAutomationControlSettings(input: {
+  storeId: number
+  enabled: boolean
+}): Promise<WhatsAppAutomationControlSettingsResult> {
+  const parsed = AutomationControlSettingsSchema.safeParse(input)
+  if (!parsed.success) {
+    return { success: false, message: parsed.error.issues[0]?.message || 'Dados invalidos.' }
+  }
+
+  const profile = await getAuthorizedProfile(parsed.data.storeId)
+  if (!profile) return { success: false, message: 'Acesso negado.' }
+
+  try {
+    const currentSettings = await loadStoreSettings(parsed.data.storeId)
+    const nextSettings: Partial<StoreSettings> = {
+      whatsapp_automation: {
+        ...(currentSettings.whatsapp_automation || {}),
+        enabled: parsed.data.enabled,
+      },
+    }
+
+    const result = await updateStoreSettings(parsed.data.storeId, nextSettings)
+    if (!result.success) {
+      return { success: false, message: result.message }
+    }
+
+    return {
+      success: true,
+      message: parsed.data.enabled
+        ? 'Fluxo do WhatsApp reativado.'
+        : 'Fluxo do WhatsApp pausado.',
+      settings: buildAutomationControlSettings(nextSettings.whatsapp_automation),
+    }
+  } catch (error) {
+    console.error('[WhatsApp] Failed to save automation control settings:', error)
+    return { success: false, message: 'Nao foi possivel atualizar o controle geral do WhatsApp.' }
   }
 }
 

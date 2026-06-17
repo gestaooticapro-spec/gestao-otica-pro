@@ -24,13 +24,16 @@ import {
 } from 'lucide-react'
 import {
   getWhatsAppChannel,
+  getWhatsAppAutomationControlSettings,
   getWhatsAppInstallmentReminderSettings,
   getWhatsAppOsResponderSettings,
   refreshWhatsAppConnection,
   requestWhatsAppQrCode,
+  saveWhatsAppAutomationControlSettings,
   saveWhatsAppInstallmentReminderSettings,
   saveWhatsAppOsResponderSettings,
   startWhatsAppActivation,
+  type WhatsAppAutomationControlSettings,
   type WhatsAppChannel,
   type WhatsAppInstallmentReminderSettings,
   type WhatsAppOsResponderSettings,
@@ -94,6 +97,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
   const [acceptedRisk, setAcceptedRisk] = useState(false)
   const [qrCodeBase64, setQrCodeBase64] = useState<string | null>(null)
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
+  const [automationControlSettings, setAutomationControlSettings] = useState<WhatsAppAutomationControlSettings>({ enabled: true })
   const [osResponderSettings, setOsResponderSettings] = useState<WhatsAppOsResponderSettings | null>(null)
   const [installmentReminderSettings, setInstallmentReminderSettings] = useState<WhatsAppInstallmentReminderSettings | null>(null)
   const [automationDrafts, setAutomationDrafts] = useState(() =>
@@ -116,8 +120,9 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
   const loadChannel = () => {
     setIsLoading(true)
     startTransition(async () => {
-      const [channelResult, osSettingsResult, installmentReminderResult] = await Promise.all([
+      const [channelResult, automationControlResult, osSettingsResult, installmentReminderResult] = await Promise.all([
         getWhatsAppChannel(storeId),
+        getWhatsAppAutomationControlSettings(storeId),
         getWhatsAppOsResponderSettings(storeId),
         getWhatsAppInstallmentReminderSettings(storeId),
       ])
@@ -128,17 +133,24 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
         setMessage({ kind: 'error', text: channelResult.message })
       }
 
+      if (automationControlResult.success) {
+        setAutomationControlSettings(automationControlResult.settings ?? { enabled: true })
+        if (channelResult.success) setMessage(null)
+      } else if (!channelResult.success) {
+        setMessage({ kind: 'error', text: automationControlResult.message })
+      }
+
       if (osSettingsResult.success) {
         setOsResponderSettings(osSettingsResult.settings ?? null)
         if (channelResult.success) setMessage(null)
-      } else if (!channelResult.success) {
+      } else if (!channelResult.success && !automationControlResult.success) {
         setMessage({ kind: 'error', text: osSettingsResult.message })
       }
 
       if (installmentReminderResult.success) {
         setInstallmentReminderSettings(installmentReminderResult.settings ?? null)
-        if (channelResult.success && osSettingsResult.success) setMessage(null)
-      } else if (!channelResult.success && !osSettingsResult.success) {
+        if (channelResult.success && automationControlResult.success && osSettingsResult.success) setMessage(null)
+      } else if (!channelResult.success && !automationControlResult.success && !osSettingsResult.success) {
         setMessage({ kind: 'error', text: installmentReminderResult.message })
       }
       setIsLoading(false)
@@ -218,6 +230,24 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
   const status = channel?.connection_status ?? 'unknown'
   const isConnected = status === 'connected'
   const qrSource = qrImageSource(qrCodeBase64)
+  const automationEnabled = automationControlSettings?.enabled !== false
+
+  const handleToggleAutomationFlow = (enabled: boolean) => {
+    const previousSettings = automationControlSettings
+    setAutomationControlSettings({ enabled })
+    setMessage(null)
+
+    startTransition(async () => {
+      const result = await saveWhatsAppAutomationControlSettings({ storeId, enabled })
+      if (result.success) {
+        setAutomationControlSettings(result.settings ?? { enabled })
+        setMessage({ kind: 'success', text: result.message })
+      } else {
+        setAutomationControlSettings(previousSettings)
+        setMessage({ kind: 'error', text: result.message })
+      }
+    })
+  }
 
   const handleSaveOsResponder = () => {
     if (!osResponderSettings) return
@@ -254,6 +284,56 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
         setInstallmentReminderSettings(result.settings ?? null)
         setMessage({ kind: 'success', text: result.message })
       } else {
+        setMessage({ kind: 'error', text: result.message })
+      }
+    })
+  }
+
+  const handleToggleOsResponder = (enabled: boolean) => {
+    if (!osResponderSettings) return
+
+    const previousSettings = osResponderSettings
+    const nextSettings = { ...osResponderSettings, enabled }
+    setOsResponderSettings(nextSettings)
+    setMessage(null)
+
+    startTransition(async () => {
+      const result = await saveWhatsAppOsResponderSettings({
+        storeId,
+        enabled,
+        templates: nextSettings.templates,
+      })
+
+      if (result.success) {
+        setOsResponderSettings(result.settings ?? nextSettings)
+        setMessage({ kind: 'success', text: result.message })
+      } else {
+        setOsResponderSettings(previousSettings)
+        setMessage({ kind: 'error', text: result.message })
+      }
+    })
+  }
+
+  const handleToggleInstallmentReminder = (enabled: boolean) => {
+    if (!installmentReminderSettings) return
+
+    const previousSettings = installmentReminderSettings
+    const nextSettings = { ...installmentReminderSettings, enabled }
+    setInstallmentReminderSettings(nextSettings)
+    setMessage(null)
+
+    startTransition(async () => {
+      const result = await saveWhatsAppInstallmentReminderSettings({
+        storeId,
+        enabled,
+        template: nextSettings.template,
+      })
+
+      if (result.success) {
+        setInstallmentReminderSettings(result.settings ?? nextSettings)
+        setMessage({ kind: 'success', text: result.message })
+      } else {
+        setInstallmentReminderSettings(previousSettings)
         setMessage({ kind: 'error', text: result.message })
       }
     })
@@ -424,6 +504,37 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
         </div>
       </div>
 
+      <div className={`rounded-2xl border p-5 shadow-xl ${
+        automationEnabled
+          ? 'border-emerald-400/20 bg-emerald-400/[0.06]'
+          : 'border-rose-400/20 bg-rose-400/[0.06]'
+      }`}>
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Fluxo geral</p>
+            <h3 className="mt-1 text-lg font-black text-white">
+              {automationEnabled ? 'WhatsApp operando normalmente' : 'WhatsApp temporariamente pausado'}
+            </h3>
+            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-300">
+              Este botao nao derruba a conexao nem exige novo QR Code. Ele apenas liga ou desliga o fluxo automatico da loja.
+            </p>
+          </div>
+
+          <label className="inline-flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <span className={`text-sm font-black ${automationEnabled ? 'text-emerald-200' : 'text-rose-200'}`}>
+              {automationEnabled ? 'Ligado' : 'Desligado'}
+            </span>
+            <input
+              type="checkbox"
+              checked={automationEnabled}
+              onChange={(event) => handleToggleAutomationFlow(event.target.checked)}
+              disabled={isPending || isLoading}
+              className="h-5 w-5 rounded border-white/20 bg-slate-900 text-emerald-400 focus:ring-emerald-400"
+            />
+          </label>
+        </div>
+      </div>
+
       <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-6 shadow-xl">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
@@ -470,11 +581,8 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
               <input
                 type="checkbox"
                 checked={Boolean(osResponderSettings?.enabled)}
-                onChange={(event) => {
-                  const checked = event.target.checked
-                  setOsResponderSettings((current) => current ? { ...current, enabled: checked } : current)
-                }}
-                disabled={!osResponderSettings || isPending || isLoading}
+                onChange={(event) => handleToggleOsResponder(event.target.checked)}
+                disabled={!osResponderSettings || isPending || isLoading || !automationEnabled}
                 className="h-5 w-5 rounded border-white/20 bg-slate-900 text-emerald-400 focus:ring-emerald-400"
               />
             </label>
@@ -566,11 +674,8 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
               <input
                 type="checkbox"
                 checked={Boolean(installmentReminderSettings?.enabled)}
-                onChange={(event) => {
-                  const checked = event.target.checked
-                  setInstallmentReminderSettings((current) => current ? { ...current, enabled: checked } : current)
-                }}
-                disabled={!installmentReminderSettings || isPending || isLoading}
+                onChange={(event) => handleToggleInstallmentReminder(event.target.checked)}
+                disabled={!installmentReminderSettings || isPending || isLoading || !automationEnabled}
                 className="h-5 w-5 rounded border-white/20 bg-slate-900 text-amber-400 focus:ring-amber-400"
               />
             </label>

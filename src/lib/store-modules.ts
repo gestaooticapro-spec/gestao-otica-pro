@@ -19,6 +19,7 @@ export type WhatsAppInstallmentDueReminderSettings = {
 }
 
 export type WhatsAppAutomationSettings = {
+  enabled?: boolean
   os_on_demand?: WhatsAppAutomationOsOnDemandSettings
   installment_due_reminder?: WhatsAppInstallmentDueReminderSettings
   [key: string]: Json | undefined

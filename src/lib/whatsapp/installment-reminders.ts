@@ -189,6 +189,8 @@ function buildMessage(
 
 function reminderSettingsFromChannel(channel: ChannelRow) {
   const settings = ((channel.stores?.settings || {}) as StoreSettings) || {}
+  if (settings.whatsapp_automation?.enabled === false) return null
+
   const modules = getStoreModules(settings)
   if (!modules.installments) return null
 
@@ -200,6 +202,8 @@ function reminderSettingsFromChannel(channel: ChannelRow) {
 
 function reminderEnabledFromStoreSettings(settingsJson: Json | null | undefined) {
   const settings = ((settingsJson || {}) as StoreSettings) || {}
+  if (settings.whatsapp_automation?.enabled === false) return false
+
   const modules = getStoreModules(settings)
   if (!modules.installments) return false
 

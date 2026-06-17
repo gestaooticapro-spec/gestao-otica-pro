@@ -330,7 +330,11 @@ async function loadStoreWhatsAppSettings(storeId: number) {
   if (error) throw error
 
   const settings = ((data?.settings || {}) as StoreSettings) || {}
-  return settings.whatsapp_automation?.os_on_demand
+  return settings.whatsapp_automation
+}
+
+function isWhatsAppAutomationEnabled(settings: StoreSettings['whatsapp_automation'] | undefined) {
+  return settings?.enabled !== false
 }
 
 async function findLastOutboundStatus(channelId: number, phone: string): Promise<LastOutboundStatusRow | null> {
@@ -486,12 +490,12 @@ async function createStatusReply(
   serviceOrder: OpenOsRow
 ): Promise<CustomerStatusResponse> {
   const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
-  if (automationSettings?.enabled === false) {
+  if (automationSettings?.os_on_demand?.enabled === false) {
     await setConversationState(channel, phone, 'silent', AFTER_STATUS_SILENCE_MS, { reason: 'os_responder_disabled' })
     return ignoreInbound(inboundMessageId)
   }
 
-  const status = describeOpenOs(customer.full_name, serviceOrder, automationSettings?.templates)
+  const status = describeOpenOs(customer.full_name, serviceOrder, automationSettings?.os_on_demand?.templates)
   const lastOutbound = await findLastOutboundStatus(channel.id, phone)
 
   if (shouldSilenceRepeatedStatus(lastOutbound, status.statusCode)) {
@@ -565,6 +569,11 @@ export async function resolveCustomerStatus(
     return { shouldReply: false, duplicate: true }
   }
   if (inboundError) throw inboundError
+
+  const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
+  if (!isWhatsAppAutomationEnabled(automationSettings)) {
+    return ignoreInbound(inbound.id)
+  }
 
   const option = optionFromMessage(input.messageText)
   const state = await findConversationState(channel.id, normalizedPhone)
