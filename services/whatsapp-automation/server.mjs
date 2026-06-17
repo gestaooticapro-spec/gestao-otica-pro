@@ -47,10 +47,24 @@ function eventName(payload) {
 }
 
 function extractText(message = {}) {
+  const unwrappedMessage = message.ephemeralMessage?.message
+    || message.viewOnceMessage?.message
+    || message.viewOnceMessageV2?.message
+    || message.viewOnceMessageV2Extension?.message
+    || message.documentWithCaptionMessage?.message
+    || message.editedMessage?.message
+    || {}
+
   return message.conversation
     || message.extendedTextMessage?.text
     || message.imageMessage?.caption
     || message.videoMessage?.caption
+    || message.documentMessage?.caption
+    || unwrappedMessage.conversation
+    || unwrappedMessage.extendedTextMessage?.text
+    || unwrappedMessage.imageMessage?.caption
+    || unwrappedMessage.videoMessage?.caption
+    || unwrappedMessage.documentMessage?.caption
     || ''
 }
 

@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { Json } from '@/lib/database.types'
 import { isValidWhatsAppInternalRequest } from '@/lib/whatsapp/internal-auth'
+import { extractWhatsAppCanonicalReply } from '@/lib/whatsapp/canonical'
 
 export const runtime = 'nodejs'
 
@@ -40,8 +41,17 @@ export async function POST(request: Request) {
         ? existing.payload
         : {}
 
+    const canonical = extractWhatsAppCanonicalReply(existingPayload as Json)
+
     const nextPayload = {
       ...existingPayload,
+      delivery_context: canonical
+        ? {
+            intent: canonical.intent,
+            action: canonical.action,
+            outboundType: canonical.outboundType,
+          }
+        : undefined,
       delivery: (parsed.data.payload ?? null) as Json,
     }
 

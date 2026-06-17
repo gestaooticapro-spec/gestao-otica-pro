@@ -1,18 +1,37 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { Json } from '@/lib/database.types'
+import { Database, Json } from '@/lib/database.types'
 import { describeOpenOs, WhatsAppOsStatusCode } from './os-status'
 import { digitsOnly, phonesMatch, toEvolutionNumber } from './phone'
 import type { StoreSettings } from '@/lib/store-modules'
+import {
+  classifyWhatsAppIntent,
+  humanizeWhatsAppReply,
+  type WhatsAppIntentClassification,
+} from './ai'
+import { extractWhatsAppInboundPayloadMeta } from './inbound-payload'
+import {
+  buildWhatsAppCanonicalPayload,
+  extractWhatsAppCanonicalReply,
+} from './canonical'
+import { decidePreAiRoute } from './routing-heuristics'
+import { decidePostClassificationRoute } from './flow-decisions'
+import {
+  applyWhatsAppHumanizationOutcome,
+  decideWhatsAppHumanization,
+} from './humanization'
 
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
 const HUMAN_PAUSE_MS = 60 * 60 * 1000
 const MENU_WAIT_MS = 30 * 60 * 1000
 const IDENTIFIER_WAIT_MS = 20 * 60 * 1000
 const AFTER_STATUS_SILENCE_MS = 60 * 60 * 1000
+const ATTACHMENT_HANDOFF_MS = 2 * 60 * 60 * 1000
+const AI_AUTOMATION_MIN_CONFIDENCE = 0.78
+const WHATSAPP_AI_HUMANIZE_ENABLED = process.env.WHATSAPP_AI_HUMANIZE_ENABLED === 'true'
 
-type ConversationState = 'waiting_menu' | 'waiting_identifier' | 'human_pause' | 'silent'
+type ConversationState = 'waiting_menu' | 'waiting_identifier' | 'human_pause' | 'silent' | 'waiting_human_after_attachment'
 
 type ChannelRow = {
   id: number
@@ -53,6 +72,13 @@ type OpenOsRow = {
   dt_montado_em: string | null
   armacao_com_cliente: boolean
 }
+
+type StoreProfileRow = Pick<
+  Database['public']['Tables']['stores']['Row'],
+  'id' | 'name' | 'whatsapp' | 'phone' | 'street' | 'number' | 'neighborhood' | 'city' | 'state' | 'settings'
+>
+
+type ConversationMetadataRecord = Record<string, Json | undefined>
 
 export type CustomerStatusRequest = {
   instanceKey: string
@@ -125,6 +151,257 @@ function notFoundHandoffText() {
   ].join('\n')
 }
 
+function attachmentReceivedText() {
+  return [
+    'Recebi seu arquivo direitinho.',
+    'Vou encaminhar para nossa equipe continuar o atendimento por aqui.',
+  ].join('\n')
+}
+
+function attachmentFollowupText() {
+  return 'Perfeito. Vou deixar esse atendimento com nossa equipe para analisar o arquivo e continuar por aqui.'
+}
+
+function normalizeDisplayText(value: string | null | undefined) {
+  const normalized = String(value || '').trim()
+  return normalized || null
+}
+
+function asJsonRecord(value: Json | StoreSettings | null | undefined): Record<string, Json | undefined> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, Json | undefined>
+}
+
+function readFirstString(
+  record: Record<string, Json | undefined> | null,
+  keys: string[]
+) {
+  if (!record) return null
+
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
+    }
+  }
+
+  return null
+}
+
+function formatStoreAddress(store: StoreProfileRow) {
+  const line1 = [store.street, store.number].map(normalizeDisplayText).filter(Boolean).join(', ')
+  const line2 = [store.neighborhood, store.city, store.state].map(normalizeDisplayText).filter(Boolean).join(' - ')
+  return [line1, line2].filter(Boolean).join(', ')
+}
+
+function buildStoreLocationText(store: StoreProfileRow) {
+  const address = formatStoreAddress(store)
+  if (!address) return null
+
+  const phone = normalizeDisplayText(store.whatsapp) || normalizeDisplayText(store.phone)
+  const extra = phone ? ` Se precisar, nosso contato é ${phone}.` : ''
+  return `Nossa loja fica em ${address}.${extra}`.trim()
+}
+
+function extractStoreHoursText(settings: StoreSettings | undefined) {
+  const root = asJsonRecord(settings)
+  const whatsappAutomation = asJsonRecord(root?.whatsapp_automation as Json | undefined)
+  const storeInfo = asJsonRecord(whatsappAutomation?.store_info as Json | undefined)
+
+  return readFirstString(storeInfo, [
+    'store_hours_text',
+    'business_hours_text',
+    'opening_hours_text',
+    'hours_text',
+    'horario_funcionamento',
+    'horario_atendimento',
+  ]) ?? readFirstString(whatsappAutomation, [
+    'store_hours_text',
+    'business_hours_text',
+    'opening_hours_text',
+    'hours_text',
+    'horario_funcionamento',
+    'horario_atendimento',
+  ]) ?? readFirstString(root, [
+    'store_hours_text',
+    'business_hours_text',
+    'opening_hours_text',
+    'hours_text',
+    'horario_funcionamento',
+    'horario_atendimento',
+  ])
+}
+
+function buildStoreHoursText(store: StoreProfileRow) {
+  const settings = ((store.settings || {}) as StoreSettings) || {}
+  const hours = extractStoreHoursText(settings)
+  if (!hours) return null
+
+  return `Nosso horário de atendimento é ${hours}.`
+}
+
+function canUseAiForFreeform(message: string | undefined) {
+  return normalizeDisplayText(message)?.length ? true : false
+}
+
+function buildAiPayload(classification: WhatsAppIntentClassification): ConversationMetadataRecord {
+  return {
+    aiIntent: classification.intent,
+    aiConfidence: classification.confidence,
+    aiAutomationCandidate: classification.automation_candidate,
+    aiReasoningTags: classification.reasoning_tags,
+  }
+}
+
+function buildAiStateMetadata(reason: string, classification: WhatsAppIntentClassification): ConversationMetadataRecord {
+  return {
+    reason,
+    aiIntent: classification.intent,
+    aiConfidence: classification.confidence,
+    aiAutomationCandidate: classification.automation_candidate,
+    aiReasoningTags: classification.reasoning_tags,
+  }
+}
+
+function buildDecisionMetadata(input: {
+  intent: string | null
+  confidence?: number | null
+  action: string
+  outboundType: string | null
+}) {
+  return {
+    lastIntent: input.intent,
+    lastIntentConfidence: input.confidence ?? null,
+    lastAction: input.action,
+    lastOutboundType: input.outboundType,
+    lastDecisionAt: new Date().toISOString(),
+  } satisfies ConversationMetadataRecord
+}
+
+function toMetadataRecord(value: Json | null | undefined): ConversationMetadataRecord {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return value as ConversationMetadataRecord
+}
+
+function mergeMetadata(
+  base: Json | null | undefined,
+  patch: ConversationMetadataRecord
+): Json {
+  return {
+    ...toMetadataRecord(base),
+    ...patch,
+  }
+}
+
+function buildInboundContextMetadata(input: {
+  providerMessageId: string
+  effectiveMessageText: string | null
+  hasAttachment: boolean
+  attachmentKind: string | null
+  mimeType: string | null
+  fileName: string | null
+  caption: string | null
+}) {
+  return {
+    lastInboundAt: new Date().toISOString(),
+    lastInboundProviderMessageId: input.providerMessageId,
+    lastInboundText: input.effectiveMessageText,
+    lastInboundHasAttachment: input.hasAttachment,
+    lastInboundAttachmentKind: input.attachmentKind,
+    lastInboundMimeType: input.mimeType,
+    lastInboundFileName: input.fileName,
+    lastInboundCaption: input.caption,
+  } satisfies ConversationMetadataRecord
+}
+
+async function maybeHumanizeOutboundFromCanonical(
+  payload: ConversationMetadataRecord,
+  fallbackText: string,
+  storeName?: string | null
+) {
+  const canonical = extractWhatsAppCanonicalReply(payload)
+  const plan = decideWhatsAppHumanization(WHATSAPP_AI_HUMANIZE_ENABLED, canonical)
+  if (plan.decision !== 'apply' || !canonical || !plan.intent) {
+    return { text: fallbackText, payload }
+  }
+
+  const humanized = await humanizeWhatsAppReply({
+    intent: plan.intent,
+    canonicalReply: canonical.canonicalReply,
+    storeName: storeName || null,
+    facts: canonical.facts,
+    tone: 'friendly',
+    policy: {
+      mustKeepShort: true,
+      mustNotAddInformation: true,
+    },
+  })
+
+  if (!humanized.success) {
+    return applyWhatsAppHumanizationOutcome(payload, fallbackText, {
+      success: false,
+      error: humanized.error,
+    })
+  }
+
+  return applyWhatsAppHumanizationOutcome(payload, fallbackText, {
+    success: true,
+    provider: humanized.provider,
+    model: humanized.model,
+    attempts: humanized.attempts,
+    replyText: humanized.data.reply_text,
+  })
+}
+
+function hasRecentAttachmentContext(state: ConversationStateRow | null) {
+  if (state?.state === 'waiting_human_after_attachment') return true
+
+  const metadata = toMetadataRecord(state?.metadata)
+  return metadata.lastInboundHasAttachment === true
+}
+
+function hasKnownOpenOrderContext(state: ConversationStateRow | null) {
+  const metadata = toMetadataRecord(state?.metadata)
+  return typeof metadata.lastKnownServiceOrderId === 'number' && metadata.lastKnownServiceOrderId > 0
+}
+
+function buildRecentContextFromMetadata(
+  metadata: Json | null | undefined,
+  currentMessageText: string | null
+) {
+  const record = toMetadataRecord(metadata)
+  const lines: string[] = []
+
+  const lastAction = normalizeDisplayText(typeof record.lastAction === 'string' ? record.lastAction : null)
+  if (lastAction) {
+    lines.push(`ultima_acao=${lastAction}`)
+  }
+
+  const lastIntent = normalizeDisplayText(typeof record.lastIntent === 'string' ? record.lastIntent : null)
+  if (lastIntent) {
+    const confidence = typeof record.lastIntentConfidence === 'number'
+      ? record.lastIntentConfidence.toFixed(2)
+      : null
+    lines.push(confidence ? `ultima_intencao=${lastIntent} (${confidence})` : `ultima_intencao=${lastIntent}`)
+  }
+
+  const lastOutboundType = normalizeDisplayText(typeof record.lastOutboundType === 'string' ? record.lastOutboundType : null)
+  if (lastOutboundType) {
+    lines.push(`ultimo_outbound=${lastOutboundType}`)
+  }
+
+  if (record.lastInboundHasAttachment === true) {
+    const attachmentKind = normalizeDisplayText(typeof record.lastInboundAttachmentKind === 'string' ? record.lastInboundAttachmentKind : null)
+    lines.push(attachmentKind ? `houve_anexo_recente=${attachmentKind}` : 'houve_anexo_recente=true')
+  }
+
+  const lastInboundText = normalizeDisplayText(typeof record.lastInboundText === 'string' ? record.lastInboundText : null)
+  if (lastInboundText && lastInboundText !== currentMessageText) {
+    lines.push(`ultima_msg_cliente=${lastInboundText.slice(0, 160)}`)
+  }
+
+  return lines.slice(0, 4)
+}
 function optionFromMessage(message: string | undefined): '1' | '2' | null {
   const normalized = normalizeMessage(message)
   if (/^\s*1\s*$/.test(normalized)) return '1'
@@ -333,6 +610,17 @@ async function loadStoreWhatsAppSettings(storeId: number) {
   return settings.whatsapp_automation
 }
 
+async function loadStoreProfile(storeId: number): Promise<StoreProfileRow> {
+  const supabase = createAdminClient()
+  const { data, error } = await (supabase.from('stores') as any)
+    .select('id, name, whatsapp, phone, street, number, neighborhood, city, state, settings')
+    .eq('id', storeId)
+    .single()
+
+  if (error) throw error
+  return data as StoreProfileRow
+}
+
 function isWhatsAppAutomationEnabled(settings: StoreSettings['whatsapp_automation'] | undefined) {
   return settings?.enabled !== false
 }
@@ -487,11 +775,19 @@ async function createStatusReply(
   inboundMessageId: number,
   phone: string,
   customer: CustomerRow,
-  serviceOrder: OpenOsRow
+  serviceOrder: OpenOsRow,
+  baseMetadata: Json = {}
 ): Promise<CustomerStatusResponse> {
   const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
   if (automationSettings?.os_on_demand?.enabled === false) {
-    await setConversationState(channel, phone, 'silent', AFTER_STATUS_SILENCE_MS, { reason: 'os_responder_disabled' })
+    await setConversationState(channel, phone, 'silent', AFTER_STATUS_SILENCE_MS, mergeMetadata(baseMetadata, {
+      reason: 'os_responder_disabled',
+      ...buildDecisionMetadata({
+        intent: 'order_status',
+        action: 'no_reply',
+        outboundType: null,
+      }),
+    }))
     return ignoreInbound(inboundMessageId)
   }
 
@@ -499,18 +795,43 @@ async function createStatusReply(
   const lastOutbound = await findLastOutboundStatus(channel.id, phone)
 
   if (shouldSilenceRepeatedStatus(lastOutbound, status.statusCode)) {
-    await setConversationState(channel, phone, 'silent', AFTER_STATUS_SILENCE_MS, { reason: 'repeated_status' })
+    await setConversationState(channel, phone, 'silent', AFTER_STATUS_SILENCE_MS, mergeMetadata(baseMetadata, {
+      reason: 'repeated_status',
+      ...buildDecisionMetadata({
+        intent: 'order_status',
+        action: 'no_reply',
+        outboundType: null,
+      }),
+    }))
     return ignoreInbound(inboundMessageId)
   }
 
-  await setConversationState(channel, phone, 'silent', AFTER_STATUS_SILENCE_MS, {
+  await setConversationState(channel, phone, 'silent', AFTER_STATUS_SILENCE_MS, mergeMetadata(baseMetadata, {
     reason: 'status_sent',
+    lastKnownCustomerId: customer.id,
+    lastKnownServiceOrderId: serviceOrder.id,
     serviceOrderId: serviceOrder.id,
     statusCode: status.statusCode,
-  })
+    ...buildDecisionMetadata({
+      intent: 'order_status',
+      action: 'auto_reply',
+      outboundType: 'os_status',
+    }),
+  }))
 
   const response = await createOutbound(channel, inboundMessageId, phone, status.replyText, 'os_status', {
     statusCode: status.statusCode,
+    ...buildWhatsAppCanonicalPayload({
+      intent: 'order_status',
+      action: 'auto_reply',
+      outboundType: 'os_status',
+      canonicalReply: status.replyText,
+      facts: {
+        statusCode: status.statusCode,
+        serviceOrderId: serviceOrder.id,
+        customerId: customer.id,
+      },
+    }),
   })
 
   return {
@@ -524,21 +845,50 @@ async function createStatusReply(
 async function handleStatusByPhone(
   channel: ChannelRow,
   inboundMessageId: number,
-  phone: string
+  phone: string,
+  baseMetadata: Json = {}
 ): Promise<CustomerStatusResponse> {
   const customer = await findCustomerByPhone(channel.store_id, phone)
   if (!customer) {
-    await setConversationState(channel, phone, 'waiting_identifier', IDENTIFIER_WAIT_MS)
-    return createOutbound(channel, inboundMessageId, phone, identifierPromptText(), 'identifier_prompt')
+    await setConversationState(channel, phone, 'waiting_identifier', IDENTIFIER_WAIT_MS, mergeMetadata(baseMetadata, {
+      ...buildDecisionMetadata({
+        intent: 'order_status',
+        action: 'request_identifier',
+        outboundType: 'identifier_prompt',
+      }),
+    }))
+    const text = identifierPromptText()
+    return createOutbound(channel, inboundMessageId, phone, text, 'identifier_prompt', {
+      ...buildWhatsAppCanonicalPayload({
+        intent: 'order_status',
+        action: 'request_identifier',
+        outboundType: 'identifier_prompt',
+        canonicalReply: text,
+      }),
+    })
   }
 
   const serviceOrder = await findLatestOpenOs(channel.store_id, customer.id)
   if (!serviceOrder) {
-    await setConversationState(channel, phone, 'waiting_identifier', IDENTIFIER_WAIT_MS)
-    return createOutbound(channel, inboundMessageId, phone, identifierPromptText(), 'identifier_prompt')
+    await setConversationState(channel, phone, 'waiting_identifier', IDENTIFIER_WAIT_MS, mergeMetadata(baseMetadata, {
+      ...buildDecisionMetadata({
+        intent: 'order_status',
+        action: 'request_identifier',
+        outboundType: 'identifier_prompt',
+      }),
+    }))
+    const text = identifierPromptText()
+    return createOutbound(channel, inboundMessageId, phone, text, 'identifier_prompt', {
+      ...buildWhatsAppCanonicalPayload({
+        intent: 'order_status',
+        action: 'request_identifier',
+        outboundType: 'identifier_prompt',
+        canonicalReply: text,
+      }),
+    })
   }
 
-  return createStatusReply(channel, inboundMessageId, phone, customer, serviceOrder)
+  return createStatusReply(channel, inboundMessageId, phone, customer, serviceOrder, baseMetadata)
 }
 
 export async function resolveCustomerStatus(
@@ -550,6 +900,17 @@ export async function resolveCustomerStatus(
   const supabase = createAdminClient()
   const normalizedPhone = toEvolutionNumber(input.phone)
   if (!normalizedPhone) return { shouldReply: false }
+  const inboundPayloadMeta = extractWhatsAppInboundPayloadMeta(input.payload)
+  const effectiveMessageText = normalizeDisplayText(input.messageText) || inboundPayloadMeta.caption || inboundPayloadMeta.text
+  const inboundContextMetadata = buildInboundContextMetadata({
+    providerMessageId: input.providerMessageId,
+    effectiveMessageText,
+    hasAttachment: inboundPayloadMeta.hasAttachment,
+    attachmentKind: inboundPayloadMeta.attachmentKind,
+    mimeType: inboundPayloadMeta.mimeType,
+    fileName: inboundPayloadMeta.fileName,
+    caption: inboundPayloadMeta.caption,
+  })
 
   const { data: inbound, error: inboundError } = await (supabase.from('whatsapp_inbound_messages') as any)
     .insert({
@@ -558,7 +919,7 @@ export async function resolveCustomerStatus(
       channel_id: channel.id,
       provider_message_id: input.providerMessageId,
       remote_phone: normalizedPhone,
-      message_text: input.messageText?.trim() || null,
+      message_text: effectiveMessageText,
       payload: input.payload ?? null,
       status: 'received',
     })
@@ -575,42 +936,315 @@ export async function resolveCustomerStatus(
     return ignoreInbound(inbound.id)
   }
 
-  const option = optionFromMessage(input.messageText)
+  const option = optionFromMessage(effectiveMessageText || undefined)
   const state = await findConversationState(channel.id, normalizedPhone)
+  const baseMetadata = mergeMetadata(state?.metadata, inboundContextMetadata)
+  const recentContext = buildRecentContextFromMetadata(state?.metadata, effectiveMessageText)
+  const preAiRoute = decidePreAiRoute({
+    option,
+    state: state?.state ?? null,
+    hasAttachment: inboundPayloadMeta.hasAttachment,
+    messageText: effectiveMessageText,
+    metadata: state?.metadata,
+    humanHandoffWindowMs: ATTACHMENT_HANDOFF_MS,
+    identifierWindowMs: IDENTIFIER_WAIT_MS,
+  })
 
-  if (option === '2') {
-    await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_PAUSE_MS, { selectedOption: '2' })
-    return createOutbound(channel, inbound.id, normalizedPhone, humanHandoffText(), 'human_handoff')
+  if (preAiRoute === 'explicit_human_option') {
+    await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_PAUSE_MS, mergeMetadata(baseMetadata, {
+      selectedOption: '2',
+      ...buildDecisionMetadata({
+        intent: 'human_agent_request',
+        action: 'human_handoff',
+        outboundType: 'human_handoff',
+      }),
+    }))
+    const text = humanHandoffText()
+    const outboundPayload = {
+      ...buildWhatsAppCanonicalPayload({
+        intent: 'human_agent_request',
+        action: 'human_handoff',
+        outboundType: 'human_handoff',
+        canonicalReply: text,
+      }),
+    } satisfies ConversationMetadataRecord
+    const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text)
+    return createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'human_handoff', maybeHumanized.payload)
   }
 
-  if (state?.state === 'human_pause') {
+  if (preAiRoute === 'ignore_human_pause') {
     return ignoreInbound(inbound.id)
   }
 
-  if (option === '1') {
-    return handleStatusByPhone(channel, inbound.id, normalizedPhone)
+  if (preAiRoute === 'attachment_handoff') {
+    await setConversationState(channel, normalizedPhone, 'waiting_human_after_attachment', ATTACHMENT_HANDOFF_MS, mergeMetadata(baseMetadata, {
+      reason: 'attachment_received',
+      attachmentKind: inboundPayloadMeta.attachmentKind,
+      mimeType: inboundPayloadMeta.mimeType,
+      fileName: inboundPayloadMeta.fileName,
+      caption: inboundPayloadMeta.caption,
+      ...buildDecisionMetadata({
+        intent: 'prescription_submission',
+        action: 'human_handoff',
+        outboundType: 'attachment_handoff',
+      }),
+    }))
+    const text = attachmentReceivedText()
+    return createOutbound(channel, inbound.id, normalizedPhone, text, 'attachment_handoff', {
+      attachmentKind: inboundPayloadMeta.attachmentKind,
+      mimeType: inboundPayloadMeta.mimeType,
+      fileName: inboundPayloadMeta.fileName,
+      caption: inboundPayloadMeta.caption,
+      ...buildWhatsAppCanonicalPayload({
+        intent: 'prescription_submission',
+        action: 'human_handoff',
+        outboundType: 'attachment_handoff',
+        canonicalReply: text,
+        facts: {
+          attachmentKind: inboundPayloadMeta.attachmentKind,
+          mimeType: inboundPayloadMeta.mimeType,
+        },
+      }),
+    })
   }
 
-  if (state?.state === 'waiting_identifier') {
-    const result = await findOpenOsByIdentifier(channel.store_id, input.messageText)
+  if (preAiRoute === 'attachment_followup_handoff') {
+    await setConversationState(channel, normalizedPhone, 'human_pause', ATTACHMENT_HANDOFF_MS, mergeMetadata(baseMetadata, {
+      reason: 'attachment_followup',
+      ...buildDecisionMetadata({
+        intent: null,
+        action: 'human_handoff',
+        outboundType: 'human_handoff',
+      }),
+    }))
+    const text = attachmentFollowupText()
+    return createOutbound(channel, inbound.id, normalizedPhone, text, 'human_handoff', {
+      ...buildWhatsAppCanonicalPayload({
+        intent: null,
+        action: 'human_handoff',
+        outboundType: 'human_handoff',
+        canonicalReply: text,
+      }),
+    })
+  }
+
+  if (preAiRoute === 'preserve_human_handoff') {
+    await setConversationState(channel, normalizedPhone, 'human_pause', ATTACHMENT_HANDOFF_MS, mergeMetadata(baseMetadata, {
+      reason: 'recent_human_routing_preserved',
+      ...buildDecisionMetadata({
+        intent: null,
+        action: 'human_handoff',
+        outboundType: 'human_handoff',
+      }),
+    }))
+    const text = attachmentFollowupText()
+    return createOutbound(channel, inbound.id, normalizedPhone, text, 'human_handoff', {
+      ...buildWhatsAppCanonicalPayload({
+        intent: null,
+        action: 'human_handoff',
+        outboundType: 'human_handoff',
+        canonicalReply: text,
+      }),
+    })
+  }
+
+  if (preAiRoute === 'retry_identifier_lookup') {
+    const result = await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
     if (result) {
-      return createStatusReply(channel, inbound.id, normalizedPhone, result.customer, result.serviceOrder)
+      return createStatusReply(channel, inbound.id, normalizedPhone, result.customer, result.serviceOrder, baseMetadata)
+    }
+  }
+
+  if (preAiRoute === 'waiting_identifier_lookup') {
+    const result = await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
+    if (result) {
+      return createStatusReply(channel, inbound.id, normalizedPhone, result.customer, result.serviceOrder, baseMetadata)
     }
 
-    await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_PAUSE_MS, { reason: 'identifier_not_found' })
-    return createOutbound(channel, inbound.id, normalizedPhone, notFoundHandoffText(), 'human_handoff')
+    await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_PAUSE_MS, mergeMetadata(baseMetadata, {
+      reason: 'identifier_not_found',
+      ...buildDecisionMetadata({
+        intent: 'order_status',
+        action: 'human_handoff',
+        outboundType: 'human_handoff',
+      }),
+    }))
+    const text = notFoundHandoffText()
+    const outboundPayload = {
+      ...buildWhatsAppCanonicalPayload({
+        intent: 'order_status',
+        action: 'human_handoff',
+        outboundType: 'human_handoff',
+        canonicalReply: text,
+      }),
+    } satisfies ConversationMetadataRecord
+    const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text)
+    return createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'human_handoff', maybeHumanized.payload)
+  }
+
+  if (preAiRoute === 'explicit_status_option') {
+    return handleStatusByPhone(channel, inbound.id, normalizedPhone, baseMetadata)
+  }
+
+  if (preAiRoute === 'ignore_silent') {
+    return ignoreInbound(inbound.id)
+  }
+
+  if (canUseAiForFreeform(effectiveMessageText || undefined)) {
+    const storeProfile = await loadStoreProfile(channel.store_id)
+    const classification = await classifyWhatsAppIntent({
+      messageText: effectiveMessageText!,
+      channelLabel: channel.instance_key,
+      storeName: storeProfile.name,
+      conversationState: state?.state ?? null,
+      recentContext,
+      hasRecentAttachment: hasRecentAttachmentContext(state),
+      hasOpenOrder: hasKnownOpenOrderContext(state),
+      handoffActive: false,
+    })
+
+    const storeHoursText = buildStoreHoursText(storeProfile)
+    const storeLocationText = buildStoreLocationText(storeProfile)
+    const postClassificationRoute = decidePostClassificationRoute({
+      classificationSuccess: classification.success,
+      confidence: classification.success ? classification.data.confidence : 0,
+      automationCandidate: classification.success ? classification.data.automation_candidate : false,
+      intent: classification.success ? classification.data.intent : null,
+      minConfidence: AI_AUTOMATION_MIN_CONFIDENCE,
+      hasStoreHoursText: Boolean(storeHoursText),
+      hasStoreLocationText: Boolean(storeLocationText),
+    })
+
+    if (classification.success && postClassificationRoute !== 'fallback') {
+      if (postClassificationRoute === 'human_handoff') {
+        await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_PAUSE_MS, mergeMetadata(baseMetadata, {
+          selectedOption: 'ai_human_handoff',
+          aiConfidence: classification.data.confidence,
+          ...buildDecisionMetadata({
+            intent: classification.data.intent,
+            confidence: classification.data.confidence,
+            action: 'human_handoff',
+            outboundType: 'human_handoff',
+          }),
+        }))
+        const text = humanHandoffText()
+        const outboundPayload = {
+          ...buildAiPayload(classification.data),
+          ...buildWhatsAppCanonicalPayload({
+            intent: classification.data.intent,
+            action: 'human_handoff',
+            outboundType: 'human_handoff',
+            canonicalReply: text,
+          }),
+        } satisfies ConversationMetadataRecord
+        const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
+        return createOutbound(
+          channel,
+          inbound.id,
+          normalizedPhone,
+          maybeHumanized.text,
+          'human_handoff',
+          maybeHumanized.payload
+        )
+      }
+
+      if (postClassificationRoute === 'order_status') {
+        return handleStatusByPhone(channel, inbound.id, normalizedPhone, baseMetadata)
+      }
+
+      if (postClassificationRoute === 'store_hours') {
+        const text = storeHoursText
+        if (text) {
+          await setConversationState(
+            channel,
+            normalizedPhone,
+            'silent',
+            AFTER_STATUS_SILENCE_MS,
+            mergeMetadata(
+              mergeMetadata(baseMetadata, toMetadataRecord(buildAiStateMetadata('store_hours_sent', classification.data))),
+              buildDecisionMetadata({
+                intent: classification.data.intent,
+                confidence: classification.data.confidence,
+                action: 'auto_reply',
+                outboundType: 'store_hours',
+              })
+            )
+          )
+          const outboundPayload = {
+            ...buildAiPayload(classification.data),
+            ...buildWhatsAppCanonicalPayload({
+              intent: classification.data.intent,
+              action: 'auto_reply',
+              outboundType: 'store_hours',
+              canonicalReply: text,
+              facts: {
+                storeName: storeProfile.name,
+              },
+            }),
+          } satisfies ConversationMetadataRecord
+          const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
+          return createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'store_hours', maybeHumanized.payload)
+        }
+      }
+
+      if (postClassificationRoute === 'store_location') {
+        const text = storeLocationText
+        if (text) {
+          await setConversationState(
+            channel,
+            normalizedPhone,
+            'silent',
+            AFTER_STATUS_SILENCE_MS,
+            mergeMetadata(
+              mergeMetadata(baseMetadata, toMetadataRecord(buildAiStateMetadata('store_location_sent', classification.data))),
+              buildDecisionMetadata({
+                intent: classification.data.intent,
+                confidence: classification.data.confidence,
+                action: 'auto_reply',
+                outboundType: 'store_location',
+              })
+            )
+          )
+          const outboundPayload = {
+            ...buildAiPayload(classification.data),
+            ...buildWhatsAppCanonicalPayload({
+              intent: classification.data.intent,
+              action: 'auto_reply',
+              outboundType: 'store_location',
+              canonicalReply: text,
+              facts: {
+                storeName: storeProfile.name,
+              },
+            }),
+          } satisfies ConversationMetadataRecord
+          const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
+          return createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'store_location', maybeHumanized.payload)
+        }
+      }
+    }
   }
 
   if (state?.state === 'waiting_menu') {
     return ignoreInbound(inbound.id)
   }
 
-  if (state?.state === 'silent') {
-    return ignoreInbound(inbound.id)
-  }
-
-  await setConversationState(channel, normalizedPhone, 'waiting_menu', MENU_WAIT_MS)
-  return createOutbound(channel, inbound.id, normalizedPhone, menuText(), 'menu')
+  await setConversationState(channel, normalizedPhone, 'waiting_menu', MENU_WAIT_MS, mergeMetadata(baseMetadata, {
+    reason: 'menu_sent',
+    ...buildDecisionMetadata({
+      intent: null,
+      action: 'show_menu',
+      outboundType: 'menu',
+    }),
+  }))
+  const text = menuText()
+  return createOutbound(channel, inbound.id, normalizedPhone, text, 'menu', {
+    ...buildWhatsAppCanonicalPayload({
+      intent: null,
+      action: 'show_menu',
+      outboundType: 'menu',
+      canonicalReply: text,
+    }),
+  })
 }
 
 export async function markStoreInitiatedConversation(
@@ -641,6 +1275,11 @@ export async function markStoreInitiatedConversation(
     reason: 'store_initiated',
     providerMessageId: providerMessageId || null,
     preview: input.messageText?.slice(0, 160) || null,
+    ...buildDecisionMetadata({
+      intent: null,
+      action: 'human_pause_store_initiated',
+      outboundType: null,
+    }),
   })
 
   return { success: true, paused: true as const }
