@@ -1,5 +1,5 @@
 import { StoreHoursConfig, StoreWeeklySchedule, StoreBreakWindow } from '@/lib/store-modules'
-import { toZonedTime, format } from 'date-fns-tz'
+import { format } from 'date-fns-tz'
 import { addDays } from 'date-fns'
 
 export type StoreHoursFacts = {
@@ -35,11 +35,13 @@ function parseTime(timeStr: string): number {
 
 export function evaluateStoreHours(config: StoreHoursConfig, referenceDateInput: Date = new Date()): StoreHoursFacts {
     const tz = config.timezone || 'America/Sao_Paulo'
-    const referenceDate = toZonedTime(referenceDateInput, tz)
+    const currentDateStr = format(referenceDateInput, 'yyyy-MM-dd', { timeZone: tz })
+    const dayOfWeekIso = parseInt(format(referenceDateInput, 'i', { timeZone: tz }), 10)
+    const currentDayOfWeek = dayOfWeekIso === 7 ? 0 : dayOfWeekIso // JS getDay() format (0=Sun, 6=Sat)
     
-    const currentDateStr = format(referenceDate, 'yyyy-MM-dd', { timeZone: tz })
-    const currentDayOfWeek = referenceDate.getDay()
-    const currentTimeMinutes = referenceDate.getHours() * 60 + referenceDate.getMinutes()
+    const h = parseInt(format(referenceDateInput, 'H', { timeZone: tz }), 10)
+    const m = parseInt(format(referenceDateInput, 'm', { timeZone: tz }), 10)
+    const currentTimeMinutes = h * 60 + m
 
     const fullWeeklySchedule = formatWeeklySchedule(config)
 
@@ -135,9 +137,10 @@ export function evaluateStoreHours(config: StoreHoursConfig, referenceDateInput:
         // If not opening later today, look forward up to 7 days
         if (!nextOpenScheduleStr) {
             for (let i = 1; i <= 7; i++) {
-                const futureDate = addDays(referenceDate, i)
+                const futureDate = addDays(referenceDateInput, i)
                 const futureDateStr = format(futureDate, 'yyyy-MM-dd', { timeZone: tz })
-                const futureDayOfWeek = futureDate.getDay()
+                const futureDayIso = parseInt(format(futureDate, 'i', { timeZone: tz }), 10)
+                const futureDayOfWeek = futureDayIso === 7 ? 0 : futureDayIso
 
                 const futureSpecialClosure = config.special_closures.find(c => c.date === futureDateStr)
                 if (futureSpecialClosure) continue

@@ -1,8 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { format } from 'date-fns'
-import { toZonedTime } from 'date-fns-tz'
-import { createClient } from '@supabase/supabase-js'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { Database, Json } from '@/lib/database.types'
@@ -910,10 +908,8 @@ async function logAiResult(
   result: WhatsAppAiResult<any>
 ) {
   try {
-    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
-      auth: { autoRefreshToken: false, persistSession: false }
-    })
-    await supabase.from('whatsapp_ai_logs').insert({
+    const supabase = createAdminClient()
+    const { error } = await (supabase.from('whatsapp_ai_logs') as any).insert({
       store_id: channel.store_id,
       tenant_id: channel.tenant_id,
       inbound_message_id: inboundId,
@@ -927,6 +923,10 @@ async function logAiResult(
       raw_request: { prompt: result.promptText },
       raw_response: result.success ? { rawText: result.rawText } : { errors: result.providerErrors },
     })
+
+    if (error) {
+      console.error('Supabase AI log insert error:', error)
+    }
   } catch (err) {
     console.error('Failed to log AI result', err)
   }
