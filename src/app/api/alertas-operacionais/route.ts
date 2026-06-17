@@ -2,7 +2,7 @@
 // Caminho: src/app/api/alertas-operacionais/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getAlertasOperacionais, getAniversariantes, getVencimentosProximos } from '@/lib/actions/consultas.actions';
+import { getAlertasOperacionais, getAniversariantes, getVencimentosProximos, getWhatsAppPendencias } from '@/lib/actions/consultas.actions';
 import { getRetornosDeHoje } from '@/lib/actions/collection.actions';
 import { getClientesMetrics } from '@/lib/actions/reports.actions';
 
@@ -16,12 +16,13 @@ export async function GET(request: NextRequest) {
 
     try {
         // Busca todos os dados em paralelo
-        const [alertas, aniversariantes, vencimentos, retornos, clientesMetrics] = await Promise.all([
+        const [alertas, aniversariantes, vencimentos, retornos, clientesMetrics, whatsAppPendencias] = await Promise.all([
             getAlertasOperacionais(storeId),
             getAniversariantes(storeId),
             getVencimentosProximos(storeId),
             getRetornosDeHoje(storeId),
-            getClientesMetrics(storeId)
+            getClientesMetrics(storeId),
+            getWhatsAppPendencias(storeId)
         ]);
 
         return NextResponse.json({
@@ -31,7 +32,8 @@ export async function GET(request: NextRequest) {
             aniversariantes: aniversariantes,
             vencimentos: vencimentos,
             retornos: retornos,
-            clientesInativos: clientesMetrics.clientesInativos
+            clientesInativos: clientesMetrics.clientesInativos,
+            whatsAppPendencias: whatsAppPendencias
         });
     } catch (error) {
         console.error('Erro ao buscar alertas operacionais:', error);

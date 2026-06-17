@@ -6,15 +6,17 @@ import {
   ShoppingCart, Zap, DollarSign,
   HeartHandshake, Megaphone, Search, Printer,
   ArrowRight, BellRing, AlertCircle, FileText, CheckCircle, Wallet, CheckCircle2,
+
   LogOut
 } from 'lucide-react'
 import AniversariantesWidget from '@/components/consultas/AniversariantesWidget'
 import { WidgetEntregas, WidgetLaboratorio } from '@/components/consultas/PaineisAlertas'
 import WidgetVencimentos from '@/components/consultas/WidgetVencimentos'
 import RetornosCobrancaWidget from '@/components/consultas/RetornosCobrancaWidget'
-import { AlertaEntrega, AlertaLaboratorio, Aniversariante, VencimentoProximo } from '@/lib/actions/consultas.actions'
+import { AlertaEntrega, AlertaLaboratorio, Aniversariante, VencimentoProximo, WhatsAppPendencia } from '@/lib/actions/consultas.actions'
 import { RetornoCobranca } from '@/lib/actions/collection.actions'
 import ParcelaSearchModal from '@/components/modals/ParcelaSearchModal'
+import WidgetWhatsAppPendencias from '@/components/consultas/WidgetWhatsAppPendencias'
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 
 interface Props {
@@ -29,9 +31,10 @@ interface Props {
   birthdays: Aniversariante[]
   vencimentos: VencimentoProximo[]
   retornos: RetornoCobranca[]
+  whatsAppPendencias: WhatsAppPendencia[]
 }
 
-export default function ActionMenuDashboard({ storeId, storeName, deliveryDateEnabled = true, alerts, birthdays, vencimentos, retornos }: Props) {
+export default function ActionMenuDashboard({ storeId, storeName, deliveryDateEnabled = true, alerts, birthdays, vencimentos, retornos, whatsAppPendencias }: Props) {
   const [isParcelaModalOpen, setIsParcelaModalOpen] = useState(false)
   const modules = useStoreModules()
 
@@ -249,6 +252,10 @@ export default function ActionMenuDashboard({ storeId, storeName, deliveryDateEn
               </div>
 
               <div className="space-y-6">
+                {/* Widget WhatsApp Pendências */}
+                <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
+                  <WidgetWhatsAppPendencias pendencias={whatsAppPendencias} />
+                </div>
                 {modules.installments && (
                   <>
                 {/* Widget Vencimentos */}

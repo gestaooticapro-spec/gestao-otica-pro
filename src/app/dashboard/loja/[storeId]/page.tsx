@@ -6,7 +6,7 @@ import { getProfileByAdmin, createAdminClient } from '@/lib/supabase/admin'
 
 // Importação das Actions de Dados
 import { getManagerKPIs, getAdminKPIs } from '@/lib/actions/dashboard.actions'
-import { getAlertasOperacionais, getAniversariantes, getVencimentosProximos } from '@/lib/actions/consultas.actions'
+import { getAlertasOperacionais, getAniversariantes, getVencimentosProximos, getWhatsAppPendencias } from '@/lib/actions/consultas.actions'
 import { getRetornosDeHoje } from '@/lib/actions/collection.actions'
 import { getStoreModulesForStore } from '@/lib/store-modules.server'
 
@@ -71,11 +71,12 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
 
     // 3. OPERADOR / VENDEDOR (Dashboard Operacional)
     const modules = await getStoreModulesForStore(storeId)
-    const [alertas, aniversariantes, vencimentos, retornos] = await Promise.all([
+    const [alertas, aniversariantes, vencimentos, retornos, whatsAppPendencias] = await Promise.all([
         getAlertasOperacionais(storeId),
         getAniversariantes(storeId),
         modules.installments ? getVencimentosProximos(storeId) : Promise.resolve([]),
-        modules.installments ? getRetornosDeHoje(storeId) : Promise.resolve([])
+        modules.installments ? getRetornosDeHoje(storeId) : Promise.resolve([]),
+        getWhatsAppPendencias(storeId)
     ])
 
     return (
@@ -89,6 +90,7 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
                 birthdays={aniversariantes}
                 vencimentos={vencimentos}
                 retornos={retornos}
+                whatsAppPendencias={whatsAppPendencias}
             />
         </>
     )

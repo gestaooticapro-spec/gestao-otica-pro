@@ -9,6 +9,7 @@ import { Database, Json } from '@/lib/database.types'
 import { describeOpenOs, WhatsAppOsStatusCode } from './os-status'
 import { digitsOnly, phonesMatch, toEvolutionNumber } from './phone'
 import type { StoreSettings } from '@/lib/store-modules'
+import { evaluateStoreHours } from './store-hours-logic'
 import {
   classifyWhatsAppIntent,
   humanizeWhatsAppReply,
@@ -239,6 +240,12 @@ function extractStoreHoursText(settings: StoreSettings | undefined) {
 
 function buildStoreHoursText(store: StoreProfileRow) {
   const settings = ((store.settings || {}) as StoreSettings) || {}
+  
+  if (settings.store_hours) {
+    const facts = evaluateStoreHours(settings.store_hours)
+    return `Nosso horário de atendimento é: ${facts.full_weekly_schedule}.`
+  }
+
   const hours = extractStoreHoursText(settings)
   if (!hours) return null
 
@@ -984,7 +991,6 @@ export async function resolveCustomerStatus(
   let nextOpen = ''
   
   if (settings.store_hours) {
-    const { evaluateStoreHours } = await import('./store-hours-logic')
     const hoursFacts = evaluateStoreHours(settings.store_hours)
     if (hoursFacts.is_exceptional_closure) {
       isExceptionalClosure = true

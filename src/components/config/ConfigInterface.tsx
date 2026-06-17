@@ -5,7 +5,7 @@ import {
     Users, Plus, Save, Power, Loader2, Lock, User, KeyRound, Eye, EyeOff, Mail,
     ShieldCheck, Briefcase, Wrench, BadgeCheck, Percent, CheckCircle2,
     Store, MapPin, Phone, QrCode, ArrowLeft, AlertCircle, Sparkles, FileText, Wallet, HeartHandshake, Zap, Printer, UploadCloud,
-    MessageCircle
+    MessageCircle, Clock
 } from 'lucide-react';
 import { getEmployees, saveEmployee, toggleEmployeeStatus } from '@/lib/actions/employee.actions';
 import { getStoreProfile, updateStoreProfile, updateStoreSettings } from '@/lib/actions/store.actions';
@@ -28,6 +28,11 @@ const AiSuggestionConfigPanel = dynamic(() => import('@/components/config/AiSugg
 
 const WhatsAppChannelPanel = dynamic(() => import('@/components/config/WhatsAppChannelPanel'), {
     loading: () => <div className="p-6 text-center"><Loader2 className="animate-spin h-6 w-6 text-emerald-400 mx-auto" /></div>,
+    ssr: false,
+});
+
+const StoreHoursPanel = dynamic(() => import('@/components/config/StoreHoursPanel'), {
+    loading: () => <div className="p-6 text-center"><Loader2 className="animate-spin h-6 w-6 text-amber-400 mx-auto" /></div>,
     ssr: false,
 });
 
@@ -1424,7 +1429,7 @@ function PasswordManagement({ storeId }: { storeId: number }) {
 
 // --- COMPONENTE PRINCIPAL (COM ABAS) ---
 export default function ConfigInterface({ storeId }: { storeId: number }) {
-    const [activeTab, setActiveTab] = useState<'loja' | 'whatsapp' | 'recursos' | 'equipe' | 'senhas'>('loja')
+    const [activeTab, setActiveTab] = useState<'loja' | 'whatsapp' | 'horarios' | 'recursos' | 'equipe' | 'senhas'>('loja')
     const router = useRouter()
     const { preference } = useBackgroundPreference()
 
@@ -1462,6 +1467,12 @@ export default function ConfigInterface({ storeId }: { storeId: number }) {
                     <MessageCircle className="h-4 w-4" /> WhatsApp
                 </button>
                 <button
+                    onClick={() => setActiveTab('horarios')}
+                    className={`py-4 text-[10px] font-black border-b-2 transition-colors flex items-center gap-2 uppercase tracking-[0.2em] ${activeTab === 'horarios' ? 'border-amber-500 text-amber-300' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
+                >
+                    <Clock className="h-4 w-4" /> Horários
+                </button>
+                <button
                     onClick={() => setActiveTab('recursos')}
                     className={`py-4 text-[10px] font-black border-b-2 transition-colors flex items-center gap-2 uppercase tracking-[0.2em] ${activeTab === 'recursos' ? 'border-cyan-500 text-cyan-300' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
                 >
@@ -1487,6 +1498,7 @@ export default function ConfigInterface({ storeId }: { storeId: number }) {
             <div className="relative z-10 flex-1 overflow-y-auto p-6 custom-scrollbar">
                 {activeTab === 'loja' && <StoreDataForm storeId={storeId} />}
                 {activeTab === 'whatsapp' && <WhatsAppChannelPanel storeId={storeId} />}
+                {activeTab === 'horarios' && <StoreHoursPanel storeId={storeId} />}
                 {activeTab === 'recursos' && <ResourcesForm storeId={storeId} />}
                 {activeTab === 'equipe' && <TeamManagement storeId={storeId} />}
                 {activeTab === 'senhas' && <PasswordManagement storeId={storeId} />}

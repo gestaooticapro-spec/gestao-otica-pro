@@ -420,3 +420,42 @@ export async function getVencimentosProximos(storeId: number): Promise<Venciment
         return []
     }
 }
+
+// ==============================================================================
+// 03. ACTION: BUSCA PENDÊNCIAS DE WHATSAPP (HANDOFF DA IA)
+// ==============================================================================
+
+export type WhatsAppPendencia = {
+    id: number
+    remote_phone: string
+    state: string
+    updated_at: string
+    internal_note?: string
+}
+
+export async function getWhatsAppPendencias(storeId: number): Promise<WhatsAppPendencia[]> {
+    const supabaseAdmin = createAdminClient()
+    const now = new Date().toISOString()
+
+    try {
+        const { data, error } = await (supabaseAdmin.from('whatsapp_conversation_states') as any)
+            .select('id, remote_phone, state, updated_at, metadata')
+            .eq('store_id', storeId)
+            .in('state', ['human_pause', 'waiting_human_after_attachment'])
+            .gt('expires_at', now)
+            .order('updated_at', { ascending: false })
+
+        if (error) throw error
+
+        return (data || []).map((item: any) => ({
+            id: item.id,
+            remote_phone: item.remote_phone,
+            state: item.state,
+            updated_at: item.updated_at,
+            internal_note: item.metadata?.handoff_internal_note || null
+        }))
+    } catch (e) {
+        console.error("Erro ao buscar pendências de WhatsApp:", e)
+        return []
+    }
+}

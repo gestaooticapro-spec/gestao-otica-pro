@@ -63,6 +63,14 @@ interface ClienteInativo {
     ultimaVenda: string;
 }
 
+interface WhatsAppPendencia {
+    id: number;
+    remote_phone: string;
+    state: string;
+    updated_at: string;
+    internal_note?: string;
+}
+
 interface OperatorMenuLojaVaziaProps {
     storeId: number;
     storeName?: string;
@@ -79,6 +87,7 @@ interface RadarData {
     vencimentos: VencimentoProximo[];
     retornos: RetornoCobranca[];
     clientesInativos: ClienteInativo[];
+    whatsAppPendencias: WhatsAppPendencia[];
 }
 
 const formatDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
@@ -86,6 +95,7 @@ const formatMoney = (v: number) => v.toLocaleString('pt-BR', { style: 'currency'
 
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import FullscreenToggleButton from '@/components/FullscreenToggleButton';
+import WidgetWhatsAppPendencias from '@/components/consultas/WidgetWhatsAppPendencias';
 
 export default function OperatorMenuLojaVazia({
     storeId,
@@ -128,7 +138,8 @@ export default function OperatorMenuLojaVazia({
         laboratorio: [],
         vencimentos: [],
         retornos: [],
-        clientesInativos: []
+        clientesInativos: [],
+        whatsAppPendencias: []
     });
     const [loading, setLoading] = useState(true);
 
@@ -145,7 +156,8 @@ export default function OperatorMenuLojaVazia({
                         laboratorio: data.laboratorio || [],
                         vencimentos: data.vencimentos || [],
                         retornos: data.retornos || [],
-                        clientesInativos: data.clientesInativos || []
+                        clientesInativos: data.clientesInativos || [],
+                        whatsAppPendencias: data.whatsAppPendencias || []
                     });
                 }
             } catch (error) {
@@ -513,6 +525,9 @@ export default function OperatorMenuLojaVazia({
                             </h2>
 
                             <div className="space-y-4">
+                                {/* WHATSAPP PENDÊNCIAS */}
+                                <WidgetWhatsAppPendencias pendencias={radar.whatsAppPendencias} />
+                                
                                 {/* VENCIMENTOS */}
                                 {modules.installments && <RadarWidget
                                     title="Vencimentos"
