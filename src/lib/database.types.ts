@@ -256,6 +256,58 @@ export interface Database {
         }
       }
 
+      whatsapp_ai_logs: {
+        Row: {
+          id: string
+          store_id: number
+          tenant_id: string
+          inbound_message_id: number | null
+          provider: string
+          model_name: string
+          latency_ms: number | null
+          intent: string | null
+          confidence: number | null
+          is_success: boolean
+          error_message: string | null
+          raw_request: Json | null
+          raw_response: Json | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          store_id: number
+          tenant_id: string
+          inbound_message_id?: number | null
+          provider: string
+          model_name: string
+          latency_ms?: number | null
+          intent?: string | null
+          confidence?: number | null
+          is_success?: boolean
+          error_message?: string | null
+          raw_request?: Json | null
+          raw_response?: Json | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          store_id?: number
+          tenant_id?: string
+          inbound_message_id?: number | null
+          provider?: string
+          model_name?: string
+          latency_ms?: number | null
+          intent?: string | null
+          confidence?: number | null
+          is_success?: boolean
+          error_message?: string | null
+          raw_request?: Json | null
+          raw_response?: Json | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+
       whatsapp_outbound_messages: {
         Row: {
           id: number

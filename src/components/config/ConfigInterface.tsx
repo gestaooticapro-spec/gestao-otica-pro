@@ -998,7 +998,7 @@ function TeamManagement({ storeId }: { storeId: number }) {
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
                     {loadingList ? (
                         <div className="flex justify-center p-8"><Loader2 className="animate-spin text-indigo-400 h-6 w-6" /></div>
-                    ) : employees.length === 0 ? (
+                    ) : !employees || employees.length === 0 ? (
                         <p className="text-center text-slate-500 text-xs p-6">Nenhum colaborador.</p>
                     ) : (
                         employees.map(emp => (

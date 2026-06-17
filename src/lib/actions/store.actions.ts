@@ -594,3 +594,10 @@ export async function getAiConfigCatalogData(storeId: number): Promise<{
 
     return { catalogs, brandsByCategory }
 }
+
+export async function saveStoreHoursConfig(
+    storeId: number,
+    config: any
+): Promise<StoreActionResult> {
+    return updateStoreSettings(storeId, { store_hours: config })
+}

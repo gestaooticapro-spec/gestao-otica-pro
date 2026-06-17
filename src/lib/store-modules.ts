@@ -1,5 +1,41 @@
 import { Json } from '@/lib/database.types'
 
+export type StoreWeeklySchedule = {
+  is_open: boolean
+  open_time: string // HH:mm
+  close_time: string // HH:mm
+}
+
+export type StoreBreakWindow = {
+  id: string
+  start_time: string // HH:mm
+  end_time: string // HH:mm
+  days: number[] // 0 (Sun) to 6 (Sat)
+  reason?: string
+}
+
+export type StoreSpecialClosure = {
+  id: string
+  date: string // YYYY-MM-DD
+  reason: string
+}
+
+export type StoreSpecialOpening = {
+  id: string
+  date: string // YYYY-MM-DD
+  open_time: string // HH:mm
+  close_time: string // HH:mm
+  reason: string
+}
+
+export type StoreHoursConfig = {
+  timezone: string // default: "America/Sao_Paulo"
+  weekly_schedule: Record<number, StoreWeeklySchedule> // 0 to 6
+  break_windows: StoreBreakWindow[]
+  special_closures: StoreSpecialClosure[]
+  special_openings: StoreSpecialOpening[]
+}
+
 export type WhatsAppOsReplyTemplates = {
   lens_in_production: string
   lens_arrived_needs_frame: string
@@ -50,6 +86,7 @@ export type StoreSettings = {
   module_quick_sale_enabled?: boolean
   module_labels_enabled?: boolean
   whatsapp_automation?: WhatsAppAutomationSettings
+  store_hours?: StoreHoursConfig
   [key: string]: Json | undefined
 }
 

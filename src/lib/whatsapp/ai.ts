@@ -99,6 +99,7 @@ export type WhatsAppIntentClassificationInput = {
 
 export type WhatsAppReplyHumanizationInput = {
   intent: WhatsAppIntent
+  userMessageText?: string
   tone?: WhatsAppReplyTone
   canonicalReply: string
   storeName?: string | null
@@ -117,6 +118,8 @@ export type WhatsAppAiSuccess<T> = {
   data: T
   attempts: number
   rawText: string
+  latencyMs: number
+  promptText: string
 }
 
 export type WhatsAppAiFailure = {
@@ -124,6 +127,8 @@ export type WhatsAppAiFailure = {
   error: string
   attempts: number
   providerErrors: string[]
+  latencyMs: number
+  promptText: string
 }
 
 export type WhatsAppAiResult<T> = WhatsAppAiSuccess<T> | WhatsAppAiFailure
@@ -235,6 +240,7 @@ function buildHumanizationPrompt(input: WhatsAppReplyHumanizationInput) {
     'Voce reescreve mensagens de WhatsApp para uma otica.',
     'Responda SOMENTE em JSON valido, sem markdown, sem explicacoes extras.',
     'Nao altere fatos, nao invente informacoes, nao mude a decisao do sistema.',
+    'Se a entrada fornecer a MENSAGEM DO CLIENTE original, formule a sua resposta baseada EXATAMENTE nos fatos e na resposta canonica fornecidos para matar a duvida do cliente.',
     'Se houver policy de mensagem curta, mantenha conciso.',
     '',
     'TONS PERMITIDOS:',
@@ -255,6 +261,11 @@ function buildHumanizationPrompt(input: WhatsAppReplyHumanizationInput) {
       },
       canonicalReply: input.canonicalReply,
     }, null, 2),
+    ...(input.userMessageText ? [
+      '',
+      'MENSAGEM DO CLIENTE (Responda a essa duvida especificamente):',
+      input.userMessageText
+    ] : []),
   ].join('\n')
 }
 
@@ -395,13 +406,18 @@ async function executeStructuredTask<T>(
   prompt: string,
   schema: z.ZodSchema<T>
 ): Promise<WhatsAppAiResult<T>> {
+  const t0 = Date.now()
   const outcome = await runWithFallback(task, prompt)
+  const latencyMs = Date.now() - t0
+
   if (!outcome.success) {
     return {
       success: false,
       error: `Todos os providers falharam em ${task}.`,
       attempts: outcome.providerErrors.length,
       providerErrors: outcome.providerErrors,
+      latencyMs,
+      promptText: prompt,
     }
   }
 
@@ -415,6 +431,8 @@ async function executeStructuredTask<T>(
       data,
       attempts: outcome.providerErrors.length + 1,
       rawText: outcome.result.rawText,
+      latencyMs,
+      promptText: prompt,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -426,6 +444,8 @@ async function executeStructuredTask<T>(
         ...outcome.providerErrors,
         `${outcome.result.provider}:json_invalido:${message}`,
       ],
+      latencyMs,
+      promptText: prompt,
     }
   }
 }

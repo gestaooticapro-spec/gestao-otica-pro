@@ -763,10 +763,17 @@ Adicionar humanização IA em cima da resposta canônica
 - Adicionado script `scripts/test_whatsapp_pre_ai_routing.ts` para validar a matriz de decisões pré-IA do roteador.
 - Adicionado script `scripts/test_whatsapp_customer_status_flow.ts` para validar cenários “quase completos” do fluxo `customer-status` com stubs locais, sem chamar IA real nem Evolution.
 - Adicionado script `scripts/test_whatsapp_humanization.ts` para validar a camada de humanização offline.
+- Criado motor nativo de cálculo de horas `src/lib/whatsapp/store-hours-logic.ts` usando `date-fns-tz` para avaliação precisa de "Aberto/Fechado" e "Motivos de Exceção".
+- Orquestrador atualizado: `store_hours` agora compila Fatos Reais (facts) do momento e passa ao humanizador.
+- Modificado Prompt de Humanização para ler a dúvida específica do cliente (`userMessageText`) e gerar uma resposta baseada apenas nos fatos calculados, sem engessar texto.
+- Implementada a Trava Global de Exceções de Horário (OOH Trap) diretamente no roteador, aplicando silenciosamente ou com aviso de exceção qualquer interação genérica (Menu, Handoff Humano, Anexo) fora do expediente.
+- Ativado suporte nativo a intenções de Handoff (Orçamentos, Reclamações e Agendamentos) com respostas empáticas específicas ao invés de roteamento genérico.
+- Adicionado sistema de Auditoria completo (AI Logs) salvando `latency`, `provider`, `confidence`, e `payloads` no Supabase (`whatsapp_ai_logs`).
 
 ### Próxima etapa planejada
 
 - Se possível, validar o parser contra payloads capturados da VPS/produção.
+- Automação híbrida de Pagamentos (`payment_info`): Buscar a parcela usando o número, permitir que a IA pergunte o CPF, e pausar para o humano fechar a cobrança com contexto pronto.
 - Separar melhor os estados `attachment_received` e `human_pause`.
 - Decidir se a humanização deve expandir para outros handoffs seguros ou continuar restrita.
 - Começar a desenhar a resposta canônica estruturada para futura humanização por IA.
@@ -774,7 +781,5 @@ Adicionar humanização IA em cima da resposta canônica
 
 ### Ainda fora do fluxo real nesta etapa
 
-- humanização final da resposta
-- memória expandida além do que já existe hoje
 - automação de `payment_info`
-- trilha completa de auditoria por provider no banco
+- painel visual para ver os logs do whatsapp_ai_logs

@@ -3,6 +3,9 @@ export type WhatsAppPostClassificationDecision =
   | 'order_status'
   | 'store_hours'
   | 'store_location'
+  | 'budget_request'
+  | 'complaint_or_adaptation'
+  | 'pickup_or_scheduling'
   | 'fallback'
 
 export type WhatsAppPostClassificationInput = {
@@ -24,6 +27,10 @@ export function decidePostClassificationRoute(
   if (input.intent === 'human_agent_request') {
     return 'human_handoff'
   }
+
+  if (input.intent === 'budget_request') return 'budget_request'
+  if (input.intent === 'complaint_or_adaptation') return 'complaint_or_adaptation'
+  if (input.intent === 'pickup_or_scheduling') return 'pickup_or_scheduling'
 
   if (!input.automationCandidate) {
     return 'fallback'
