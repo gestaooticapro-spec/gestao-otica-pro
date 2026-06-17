@@ -6,6 +6,7 @@ export type WhatsAppPostClassificationDecision =
   | 'budget_request'
   | 'complaint_or_adaptation'
   | 'pickup_or_scheduling'
+  | 'payment_info'
   | 'fallback'
 
 export type WhatsAppPostClassificationInput = {
@@ -31,6 +32,7 @@ export function decidePostClassificationRoute(
   if (input.intent === 'budget_request') return 'budget_request'
   if (input.intent === 'complaint_or_adaptation') return 'complaint_or_adaptation'
   if (input.intent === 'pickup_or_scheduling') return 'pickup_or_scheduling'
+  if (input.intent === 'payment_info') return 'payment_info'
 
   if (!input.automationCandidate) {
     return 'fallback'

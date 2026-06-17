@@ -25,6 +25,7 @@ import {
   applyWhatsAppHumanizationOutcome,
   decideWhatsAppHumanization,
 } from './humanization'
+import { findOpenInstallmentsByPhone } from '@/lib/actions/consultas.actions'
 
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
 const HUMAN_PAUSE_MS = 60 * 60 * 1000
@@ -1275,6 +1276,58 @@ export async function resolveCustomerStatus(
             canonicalReply: text,
           }),
         } satisfies ConversationMetadataRecord
+        const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
+        const aiResult = (maybeHumanized as any).aiResult
+        if (aiResult) {
+          await logAiResult(channel, inbound.id, 'reply_humanization', aiResult)
+        }
+        return createOutbound(
+          channel,
+          inbound.id,
+          normalizedPhone,
+          maybeHumanized.text,
+          'human_handoff',
+          maybeHumanized.payload
+        )
+      }
+
+      if (postClassificationRoute === 'payment_info') {
+        const installments = await findOpenInstallmentsByPhone(channel.store_id, normalizedPhone)
+        let text = ''
+        if (installments && installments.length > 0) {
+          const first = installments[0]
+          // Format date from YYYY-MM-DD
+          let dataFormatada = first.due_date
+          if (dataFormatada) {
+            const [y, m, d] = dataFormatada.split('T')[0].split('-')
+            dataFormatada = `${d}/${m}/${y}`
+          }
+          text = `Achei um cadastro em aberto referente a uma compra que vence/venceu no dia ${dataFormatada}. É sobre essa compra que você quer falar? Por questões de segurança, poderia me confirmar o nome completo do titular ou o CPF?`
+        } else {
+          text = `Não consegui localizar nenhuma fatura em aberto cadastrada direto no seu número. Você poderia me informar o nome de quem fez a compra ou o CPF?`
+        }
+
+        await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_PAUSE_MS, mergeMetadata(baseMetadata, {
+          selectedOption: 'ai_specific_handoff',
+          aiConfidence: classification.data.confidence,
+          ...buildDecisionMetadata({
+            intent: classification.data.intent,
+            confidence: classification.data.confidence,
+            action: 'human_handoff',
+            outboundType: 'human_handoff',
+          }),
+        }))
+
+        const outboundPayload = {
+          ...buildAiPayload(classification.data),
+          ...buildWhatsAppCanonicalPayload({
+            intent: classification.data.intent,
+            action: 'human_handoff',
+            outboundType: 'human_handoff',
+            canonicalReply: text,
+          }),
+        } satisfies ConversationMetadataRecord
+
         const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
         const aiResult = (maybeHumanized as any).aiResult
         if (aiResult) {
