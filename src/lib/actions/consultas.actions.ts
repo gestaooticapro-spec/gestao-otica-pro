@@ -432,6 +432,13 @@ export type WhatsAppPendencia = {
     state: string
     updated_at: string
     internal_note?: string
+    ai_extracted_receipt?: {
+        is_receipt: boolean
+        amount: string
+        payer_name: string
+        payment_date: string
+        receipt_type: string
+    }
 }
 
 export async function getWhatsAppPendencias(storeId: number): Promise<WhatsAppPendencia[]> {
@@ -453,7 +460,8 @@ export async function getWhatsAppPendencias(storeId: number): Promise<WhatsAppPe
             remote_phone: item.remote_phone,
             state: item.state,
             updated_at: item.updated_at,
-            internal_note: item.metadata?.handoff_internal_note || null
+            internal_note: item.metadata?.handoff_internal_note || null,
+            ai_extracted_receipt: item.metadata?.ai_extracted_receipt || undefined
         }))
     } catch (e) {
         console.error("Erro ao buscar pendências de WhatsApp:", e)

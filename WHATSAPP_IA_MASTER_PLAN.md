@@ -769,11 +769,13 @@ Adicionar humanização IA em cima da resposta canônica
 - Implementada a Trava Global de Exceções de Horário (OOH Trap) diretamente no roteador, aplicando silenciosamente ou com aviso de exceção qualquer interação genérica (Menu, Handoff Humano, Anexo) fora do expediente.
 - Ativado suporte nativo a intenções de Handoff (Orçamentos, Reclamações e Agendamentos) com respostas empáticas específicas ao invés de roteamento genérico.
 - Adicionado sistema de Auditoria completo (AI Logs) salvando `latency`, `provider`, `confidence`, e `payloads` no Supabase (`whatsapp_ai_logs`).
+- Automação Híbrida de Pagamentos (`payment_info`): O sistema agora busca a parcela pelo número de telefone, pergunta o nome/CPF e entra em "human_pause" para o atendente continuar no Radar Operacional já com os dados em mãos.
+- Leitura de Comprovantes Pix via Vision AI e atalho de recebimento rápido no Radar Operacional da Dashboard.
 
 ### Próxima etapa planejada
 
 - Se possível, validar o parser contra payloads capturados da VPS/produção.
-- Automação híbrida de Pagamentos (`payment_info`): Buscar a parcela usando o número, permitir que a IA pergunte o CPF, e pausar para o humano fechar a cobrança com contexto pronto.
+- Evolução do `order_status` (Integração Lab/Montagem): Lidar com os sub-status da lente (No laboratório vs fila de montagem) e o caso de a "Armação estar com o cliente", instruindo-o a levá-la para montagem e transferindo para agendamento manual.
 - Separar melhor os estados `attachment_received` e `human_pause`.
 - Decidir se a humanização deve expandir para outros handoffs seguros ou continuar restrita.
 - Começar a desenhar a resposta canônica estruturada para futura humanização por IA.
@@ -781,5 +783,4 @@ Adicionar humanização IA em cima da resposta canônica
 
 ### Ainda fora do fluxo real nesta etapa
 
-- automação de `payment_info`
 - painel visual para ver os logs do whatsapp_ai_logs

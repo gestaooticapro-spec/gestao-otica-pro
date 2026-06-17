@@ -11,6 +11,8 @@ import { evaluateStoreHours } from './store-hours-logic'
 import {
   classifyWhatsAppIntent,
   humanizeWhatsAppReply,
+  extractReceiptWithVision,
+  type WhatsAppReceiptExtraction,
   type WhatsAppIntentClassification,
   type WhatsAppAiResult,
 } from './ai'
@@ -1064,6 +1066,23 @@ export async function resolveCustomerStatus(
   }
 
   if (preAiRoute === 'attachment_handoff') {
+    let receiptExtraction: WhatsAppReceiptExtraction | null = null
+    let intentOutcome = 'prescription_submission'
+    let text = attachmentReceivedText()
+
+    if (inboundPayloadMeta.base64 && inboundPayloadMeta.mimeType) {
+      try {
+        const result = await extractReceiptWithVision(inboundPayloadMeta.base64, inboundPayloadMeta.mimeType)
+        if (result.success && result.data.is_receipt) {
+          receiptExtraction = result.data
+          intentOutcome = 'payment_submission'
+          text = 'Recebi seu comprovante. Vou repassar para nossa equipe dar baixa e continuar o atendimento por aqui.'
+        }
+      } catch (err) {
+        console.error('Vision extraction error:', err)
+      }
+    }
+
     return applyOohTrapIfNeeded(async () => {
       await setConversationState(channel, normalizedPhone, 'waiting_human_after_attachment', ATTACHMENT_HANDOFF_MS, mergeMetadata(baseMetadata, {
         reason: 'attachment_received',
@@ -1071,26 +1090,28 @@ export async function resolveCustomerStatus(
         mimeType: inboundPayloadMeta.mimeType,
         fileName: inboundPayloadMeta.fileName,
         caption: inboundPayloadMeta.caption,
+        ai_extracted_receipt: receiptExtraction,
         ...buildDecisionMetadata({
-          intent: 'prescription_submission',
+          intent: intentOutcome,
           action: 'human_handoff',
           outboundType: 'attachment_handoff',
         }),
       }))
-      const text = attachmentReceivedText()
       return createOutbound(channel, inbound.id, normalizedPhone, text, 'attachment_handoff', {
         attachmentKind: inboundPayloadMeta.attachmentKind,
         mimeType: inboundPayloadMeta.mimeType,
         fileName: inboundPayloadMeta.fileName,
         caption: inboundPayloadMeta.caption,
+        ai_extracted_receipt: receiptExtraction,
         ...buildWhatsAppCanonicalPayload({
-          intent: 'prescription_submission',
+          intent: intentOutcome,
           action: 'human_handoff',
           outboundType: 'attachment_handoff',
           canonicalReply: text,
           facts: {
             attachmentKind: inboundPayloadMeta.attachmentKind,
             mimeType: inboundPayloadMeta.mimeType,
+            ai_extracted_receipt: receiptExtraction,
           },
         }),
       })
@@ -1250,11 +1271,134 @@ export async function resolveCustomerStatus(
         )
       }
 
-      if (postClassificationRoute === 'budget_request' || postClassificationRoute === 'complaint_or_adaptation' || postClassificationRoute === 'pickup_or_scheduling') {
+      if (postClassificationRoute === 'pickup_or_scheduling') {
+        const customer = await findCustomerByPhone(channel.store_id, normalizedPhone)
+        if (customer) {
+          const serviceOrder = await findLatestOpenOs(channel.store_id, customer.id)
+          if (serviceOrder) {
+            const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
+            const status = describeOpenOs(customer.full_name, serviceOrder, automationSettings?.os_on_demand?.templates)
+            const lastOutbound = await findLastOutboundStatus(channel.id, normalizedPhone)
+
+            if (shouldSilenceRepeatedStatus(lastOutbound, status.statusCode)) {
+              // FOLLOW-UP question: It's a handoff!
+              const text = 'Vou acionar a equipe para verificar a sua retirada/agendamento no detalhe. Um momento.'
+              await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_PAUSE_MS, mergeMetadata(baseMetadata, {
+                selectedOption: 'ai_specific_handoff',
+                aiConfidence: classification.data.confidence,
+                ...buildDecisionMetadata({
+                  intent: classification.data.intent,
+                  confidence: classification.data.confidence,
+                  action: 'human_handoff',
+                  outboundType: 'human_handoff',
+                }),
+              }))
+              const outboundPayload = {
+                ...buildAiPayload(classification.data),
+                ...buildWhatsAppCanonicalPayload({
+                  intent: classification.data.intent,
+                  action: 'human_handoff',
+                  outboundType: 'human_handoff',
+                  canonicalReply: text,
+                }),
+              } satisfies ConversationMetadataRecord
+              const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
+              const aiResult = (maybeHumanized as any).aiResult
+              if (aiResult) {
+                await logAiResult(channel, inbound.id, 'reply_humanization', aiResult)
+              }
+              return createOutbound(
+                channel,
+                inbound.id,
+                normalizedPhone,
+                maybeHumanized.text,
+                'human_handoff',
+                maybeHumanized.payload
+              )
+            } else {
+              // New status update for pickup
+              const storeHoursAppend = storeHoursText ? ` Nosso horário de atendimento é ${storeHoursText}.` : ''
+              const finalCanonicalReply = `${status.replyText}${storeHoursAppend}`
+              
+              await setConversationState(channel, normalizedPhone, 'silent', AFTER_STATUS_SILENCE_MS, mergeMetadata(baseMetadata, {
+                reason: 'status_sent_pickup',
+                lastKnownCustomerId: customer.id,
+                lastKnownServiceOrderId: serviceOrder.id,
+                serviceOrderId: serviceOrder.id,
+                statusCode: status.statusCode,
+                ...buildDecisionMetadata({
+                  intent: 'pickup_or_scheduling',
+                  action: 'auto_reply',
+                  outboundType: 'os_status',
+                }),
+              }))
+
+              const outboundPayload = {
+                statusCode: status.statusCode,
+                ...buildAiPayload(classification.data),
+                ...buildWhatsAppCanonicalPayload({
+                  intent: 'pickup_or_scheduling',
+                  action: 'auto_reply',
+                  outboundType: 'os_status',
+                  canonicalReply: finalCanonicalReply,
+                  facts: {
+                    statusCode: status.statusCode,
+                    serviceOrderId: serviceOrder.id,
+                    customerId: customer.id,
+                  },
+                }),
+              } satisfies ConversationMetadataRecord
+
+              const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, finalCanonicalReply, storeProfile.name)
+              const aiResult = (maybeHumanized as any).aiResult
+              if (aiResult) {
+                await logAiResult(channel, inbound.id, 'reply_humanization', aiResult)
+              }
+              return createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'os_status', maybeHumanized.payload)
+            }
+          }
+        }
+
+        // Se não achou OS, handoff
+        const text = 'Vou acionar a equipe para verificar a sua retirada/agendamento. Um momento.'
+        await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_PAUSE_MS, mergeMetadata(baseMetadata, {
+          selectedOption: 'ai_specific_handoff',
+          aiConfidence: classification.data.confidence,
+          ...buildDecisionMetadata({
+            intent: classification.data.intent,
+            confidence: classification.data.confidence,
+            action: 'human_handoff',
+            outboundType: 'human_handoff',
+          }),
+        }))
+        const outboundPayload = {
+          ...buildAiPayload(classification.data),
+          ...buildWhatsAppCanonicalPayload({
+            intent: classification.data.intent,
+            action: 'human_handoff',
+            outboundType: 'human_handoff',
+            canonicalReply: text,
+          }),
+        } satisfies ConversationMetadataRecord
+        const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
+        const aiResult = (maybeHumanized as any).aiResult
+        if (aiResult) {
+          await logAiResult(channel, inbound.id, 'reply_humanization', aiResult)
+        }
+        return createOutbound(
+          channel,
+          inbound.id,
+          normalizedPhone,
+          maybeHumanized.text,
+          'human_handoff',
+          maybeHumanized.payload
+        )
+      }
+
+      if (postClassificationRoute === 'budget_request' || postClassificationRoute === 'complaint_or_adaptation') {
         const textMap: Record<string, string> = {
           budget_request: 'Vou chamar um consultor para te ajudar com esse orçamento agora mesmo!',
           complaint_or_adaptation: 'Entendi a situação. Vou chamar um especialista da nossa equipe para dar prioridade ao seu caso.',
-          pickup_or_scheduling: 'Vou acionar a equipe para verificar a sua retirada/agendamento. Um momento.'
         }
         const text = textMap[postClassificationRoute] || humanHandoffText()
         await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_PAUSE_MS, mergeMetadata(baseMetadata, {

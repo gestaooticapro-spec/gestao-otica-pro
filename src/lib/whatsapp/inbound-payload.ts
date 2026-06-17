@@ -15,6 +15,7 @@ export type WhatsAppInboundPayloadMeta = {
   mimeType: string | null
   fileName: string | null
   caption: string | null
+  base64: string | null
 }
 
 const NON_CONTENT_KEYS = new Set([
@@ -140,6 +141,13 @@ function extractAttachmentDetails(node: Record<string, Json | undefined>) {
       nestedVideo?.caption,
       node.caption
     ),
+    base64: firstString(
+      image?.base64,
+      document?.base64,
+      nestedImage?.base64,
+      nestedDocument?.base64,
+      node.base64
+    ),
   }
 }
 
@@ -152,6 +160,7 @@ function walk(value: Json | null | undefined, visited = new Set<unknown>()): Wha
       mimeType: null,
       fileName: null,
       caption: null,
+      base64: null,
     }
   }
 
@@ -164,6 +173,7 @@ function walk(value: Json | null | undefined, visited = new Set<unknown>()): Wha
       mimeType: null,
       fileName: null,
       caption: null,
+      base64: null,
     }
   }
 
@@ -175,6 +185,7 @@ function walk(value: Json | null | undefined, visited = new Set<unknown>()): Wha
       mimeType: null,
       fileName: null,
       caption: null,
+      base64: null,
     }
   }
 
@@ -186,6 +197,7 @@ function walk(value: Json | null | undefined, visited = new Set<unknown>()): Wha
       mimeType: null,
       fileName: null,
       caption: null,
+      base64: null,
     }
   }
   visited.add(value)
@@ -203,6 +215,7 @@ function walk(value: Json | null | undefined, visited = new Set<unknown>()): Wha
       mimeType: null,
       fileName: null,
       caption: null,
+      base64: null,
     }
   }
 
@@ -220,6 +233,7 @@ function walk(value: Json | null | undefined, visited = new Set<unknown>()): Wha
       mimeType: details.mimeType,
       fileName: details.fileName,
       caption: details.caption,
+      base64: details.base64,
     }
   }
 
@@ -231,6 +245,7 @@ function walk(value: Json | null | undefined, visited = new Set<unknown>()): Wha
       mimeType: details.mimeType,
       fileName: details.fileName,
       caption: details.caption,
+      base64: details.base64,
     }
   }
 
@@ -263,6 +278,7 @@ function walk(value: Json | null | undefined, visited = new Set<unknown>()): Wha
     mimeType: details.mimeType,
     fileName: details.fileName,
     caption: details.caption,
+    base64: details.base64,
   }
 }
 

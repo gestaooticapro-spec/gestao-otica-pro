@@ -50,7 +50,7 @@ function ParcelaCard({ p, onClick }: { p: any, onClick: () => void }) {
     )
 }
 
-export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpen: boolean, onClose: () => void, storeId: number }) {
+export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQuery }: { isOpen: boolean, onClose: () => void, storeId: number, initialQuery?: string }) {
     const [mounted, setMounted] = useState(false)
 
     const [step, setStep] = useState<'search' | 'details' | 'pay' | 'success'>('search')
@@ -81,14 +81,14 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
     useEffect(() => {
         if (isOpen) {
             setStep('search')
-            setQuery('')
+            setQuery(initialQuery || '')
             setResults([])
             setHasSearched(false)
             setPaidParcelaId(null)
             setTimeout(() => searchInputRef.current?.focus(), 100)
         }
 
-    }, [isOpen])
+    }, [isOpen, initialQuery])
 
     useEffect(() => {
         if (!isOpen) return

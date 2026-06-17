@@ -1,11 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { MessageSquareText, ChevronDown, ChevronUp } from 'lucide-react'
+import { MessageSquareText, ChevronDown, ChevronUp, Receipt, Navigation } from 'lucide-react'
 import { WhatsAppPendencia } from '@/lib/actions/consultas.actions'
+import { useModals } from '@/lib/contexts/ModalsContext'
 
 export default function WidgetWhatsAppPendencias({ pendencias }: { pendencias: WhatsAppPendencia[] }) {
     const [isOpen, setIsOpen] = useState(false)
+    const { openParcelaModal } = useModals()
 
     return (
         <div className="bg-black/20 rounded-3xl shadow-xl border border-white/5 overflow-hidden h-fit transition-all duration-300 backdrop-blur-sm ring-1 ring-white/10">
@@ -59,6 +61,30 @@ export default function WidgetWhatsAppPendencias({ pendencias }: { pendencias: W
                                         </div>
                                     </div>
                                     
+                                    {item.ai_extracted_receipt?.is_receipt && (
+                                        <div className="mt-2 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
+                                            <div className="flex items-center gap-2 text-emerald-400 mb-2">
+                                                <Receipt className="h-4 w-4" />
+                                                <span className="text-xs font-bold uppercase tracking-wider">Comprovante Identificado</span>
+                                            </div>
+                                            <div className="space-y-1 mb-3">
+                                                <p className="text-sm font-black text-white">{item.ai_extracted_receipt.amount}</p>
+                                                <p className="text-[10px] text-emerald-100/70 truncate">Por: {item.ai_extracted_receipt.payer_name}</p>
+                                                <p className="text-[10px] text-emerald-100/70">Data: {item.ai_extracted_receipt.payment_date}</p>
+                                            </div>
+                                            <button 
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    openParcelaModal(item.remote_phone);
+                                                }}
+                                                className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold py-2 rounded-lg transition-colors uppercase tracking-wide"
+                                            >
+                                                <Navigation className="h-3 w-3" />
+                                                Acessar Parcela
+                                            </button>
+                                        </div>
+                                    )}
+
                                     {item.internal_note ? (
                                         <div className="p-2 rounded-lg bg-green-500/10 border border-green-500/20 text-[10px] text-green-100/90 italic">
                                             <span className="font-bold text-green-400 not-italic mr-1">Resumo IA:</span>

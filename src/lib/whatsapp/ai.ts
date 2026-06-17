@@ -86,6 +86,15 @@ export const WhatsAppReplyHumanizationSchema = z.object({
 
 export type WhatsAppReplyHumanization = z.infer<typeof WhatsAppReplyHumanizationSchema>
 
+export const WhatsAppReceiptExtractionSchema = z.object({
+  is_receipt: z.boolean(),
+  amount: z.number().nullable(),
+  payer_name: z.string().trim().nullable(),
+  receiver_name: z.string().trim().nullable(),
+})
+
+export type WhatsAppReceiptExtraction = z.infer<typeof WhatsAppReceiptExtractionSchema>
+
 export type WhatsAppIntentClassificationInput = {
   messageText: string
   channelLabel?: string | null
@@ -282,8 +291,33 @@ async function callGemini(task: WhatsAppAiTask, prompt: string): Promise<Provide
     try {
       const genAI = new GoogleGenerativeAI(key)
       const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
+      
+      const payload: Array<string | { inlineData: { data: string; mimeType: string } }> = [prompt]
+      if (task === 'receipt_extraction' && prompt.includes('||IMAGE_BASE64_PAYLOAD||')) {
+        const [textPrompt, base64Raw] = prompt.split('||IMAGE_BASE64_PAYLOAD||')
+        payload[0] = textPrompt.trim()
+        
+        let mimeType = 'image/jpeg'
+        let base64Data = base64Raw.trim()
+        
+        if (base64Data.startsWith('data:')) {
+          const splitPoint = base64Data.indexOf(';base64,')
+          if (splitPoint !== -1) {
+            mimeType = base64Data.slice(5, splitPoint)
+            base64Data = base64Data.slice(splitPoint + 8)
+          }
+        }
+        
+        payload.push({
+          inlineData: {
+            mimeType,
+            data: base64Data,
+          }
+        })
+      }
+
       const result = await Promise.race([
-        model.generateContent(prompt),
+        model.generateContent(payload),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout Gemini.')), REQUEST_TIMEOUT_MS)),
       ])
 
@@ -457,6 +491,27 @@ export async function classifyWhatsAppIntent(
     'intent_classification',
     buildIntentPrompt(input),
     WhatsAppIntentClassificationSchema
+  )
+}
+
+export async function extractReceiptWithVision(
+  base64: string,
+  mimeType: string | null
+): Promise<WhatsAppAiResult<WhatsAppReceiptExtraction>> {
+  const prompt = [
+    'Voce eh um assistente financeiro de uma otica.',
+    'Sua tarefa eh extrair dados de comprovantes de pagamento PIX ou Transferencia.',
+    'Responda SOMENTE em JSON valido, sem markdown.',
+    'Se a imagem nao for um comprovante de pagamento, marque is_receipt como false.',
+    'Se for um comprovante, tente extrair amount (numero float), payer_name (quem pagou), receiver_name (quem recebeu).',
+    '||IMAGE_BASE64_PAYLOAD||',
+    mimeType && mimeType !== 'application/octet-stream' ? `data:${mimeType};base64,${base64}` : base64
+  ].join('\n')
+
+  return executeStructuredTask(
+    'receipt_extraction' as any,
+    prompt,
+    WhatsAppReceiptExtractionSchema
   )
 }
 
