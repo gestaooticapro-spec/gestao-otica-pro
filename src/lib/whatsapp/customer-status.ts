@@ -1,7 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { format } from 'date-fns'
-
 import { createAdminClient } from '@/lib/supabase/admin'
 import { Database, Json } from '@/lib/database.types'
 import { describeOpenOs, WhatsAppOsStatusCode } from './os-status'
@@ -128,6 +126,22 @@ function normalizeMessage(value: string | undefined) {
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase()
+}
+
+function looksLikeOrderStatusQuestion(message: string | null | undefined) {
+  const normalized = normalizeMessage(message || undefined)
+  if (!normalized) return false
+
+  return [
+    /\bos\b/,
+    /\boculos\b/,
+    /\bpedido\b/,
+    /\bpronto\b/,
+    /\baberta\b/,
+    /\bretirada\b/,
+    /\blente\b/,
+    /\bmontagem\b/,
+  ].some((pattern) => pattern.test(normalized))
 }
 
 function menuText() {
@@ -1629,6 +1643,10 @@ export async function resolveCustomerStatus(
 
   if (state?.state === 'waiting_menu') {
     return ignoreInbound(inbound.id)
+  }
+
+  if (looksLikeOrderStatusQuestion(effectiveMessageText || undefined)) {
+    return handleStatusByPhone(channel, inbound.id, normalizedPhone, baseMetadata)
   }
 
   return applyOohTrapIfNeeded(async () => {
