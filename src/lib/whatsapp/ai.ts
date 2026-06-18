@@ -62,6 +62,12 @@ export type WhatsAppReplyTone = (typeof WHATSAPP_TONES)[number]
 export type WhatsAppAiProvider = 'gemini' | 'openai'
 export type WhatsAppAiTask = 'intent_classification' | 'reply_humanization' | 'receipt_extraction'
 
+export type WhatsAppAiTokenUsage = {
+  inputTokens: number | null
+  outputTokens: number | null
+  totalTokens: number | null
+}
+
 export const WhatsAppIntentClassificationSchema = z.object({
   intent: z.enum(WHATSAPP_INTENTS),
   confidence: z.number().min(0).max(1),
@@ -129,6 +135,7 @@ export type WhatsAppAiSuccess<T> = {
   rawText: string
   latencyMs: number
   promptText: string
+  tokenUsage?: WhatsAppAiTokenUsage
 }
 
 export type WhatsAppAiFailure = {
@@ -147,12 +154,17 @@ type ProviderAttemptSuccess = {
   model: string
   keyIndex: number
   rawText: string
+  tokenUsage?: WhatsAppAiTokenUsage
 }
 
 type ProviderAttemptFailure = {
   provider: WhatsAppAiProvider
   keyIndex: number
   error: string
+}
+
+type GeminiResponseWithUsage = {
+  usageMetadata?: unknown
 }
 
 let geminiRoundRobinCursor = 0
@@ -190,6 +202,30 @@ function extractJsonObject(text: string) {
   }
 
   return trimmed
+}
+
+function numericOrNull(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function normalizeGeminiUsage(value: unknown): WhatsAppAiTokenUsage | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const usage = value as Record<string, unknown>
+  const inputTokens = numericOrNull(usage.promptTokenCount)
+  const outputTokens = numericOrNull(usage.candidatesTokenCount)
+  const totalTokens = numericOrNull(usage.totalTokenCount)
+  if (inputTokens === null && outputTokens === null && totalTokens === null) return undefined
+  return { inputTokens, outputTokens, totalTokens }
+}
+
+function normalizeOpenAiUsage(value: unknown): WhatsAppAiTokenUsage | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const usage = value as Record<string, unknown>
+  const inputTokens = numericOrNull(usage.input_tokens)
+  const outputTokens = numericOrNull(usage.output_tokens)
+  const totalTokens = numericOrNull(usage.total_tokens)
+  if (inputTokens === null && outputTokens === null && totalTokens === null) return undefined
+  return { inputTokens, outputTokens, totalTokens }
 }
 
 function buildIntentPrompt(input: WhatsAppIntentClassificationInput) {
@@ -331,6 +367,7 @@ async function callGemini(task: WhatsAppAiTask, prompt: string): Promise<Provide
         model: GEMINI_MODEL,
         keyIndex,
         rawText,
+        tokenUsage: normalizeGeminiUsage((result.response as GeminiResponseWithUsage).usageMetadata),
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -399,6 +436,7 @@ async function callOpenAI(task: WhatsAppAiTask, prompt: string): Promise<Provide
         model: OPENAI_MODEL,
         keyIndex,
         rawText,
+        tokenUsage: normalizeOpenAiUsage(payload?.usage),
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -467,6 +505,7 @@ async function executeStructuredTask<T>(
       rawText: outcome.result.rawText,
       latencyMs,
       promptText: prompt,
+      tokenUsage: outcome.result.tokenUsage,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -509,7 +548,7 @@ export async function extractReceiptWithVision(
   ].join('\n')
 
   return executeStructuredTask(
-    'receipt_extraction' as any,
+    'receipt_extraction',
     prompt,
     WhatsAppReceiptExtractionSchema
   )

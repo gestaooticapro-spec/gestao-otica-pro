@@ -110,6 +110,40 @@ function extractStoreInitiatedMessage(payload) {
   }
 }
 
+function previewText(text, maxLength = 90) {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim()
+  if (!normalized) return ''
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized
+}
+
+function formatTokenUsage(usage) {
+  if (!usage) return 'tokens=unknown'
+  const input = Number.isFinite(usage.inputTokens) ? usage.inputTokens : '?'
+  const output = Number.isFinite(usage.outputTokens) ? usage.outputTokens : '?'
+  const total = Number.isFinite(usage.totalTokens) ? usage.totalTokens : '?'
+  return `tokens(in=${input}, out=${output}, total=${total})`
+}
+
+function logAiDiagnostics(status) {
+  const diagnostics = Array.isArray(status?.aiDiagnostics) ? status.aiDiagnostics : []
+  for (const item of diagnostics) {
+    const base = [
+      `[ai] task=${item.task}`,
+      `success=${Boolean(item.success)}`,
+      `provider=${item.provider || 'unknown'}`,
+      `model=${item.model || 'unknown'}`,
+      `latency_ms=${Number.isFinite(item.latencyMs) ? item.latencyMs : 'unknown'}`,
+      formatTokenUsage(item.tokenUsage),
+    ]
+
+    if (item.intent) base.push(`intent=${item.intent}`)
+    if (Number.isFinite(item.confidence)) base.push(`confidence=${item.confidence}`)
+    if (item.error) base.push(`error=${previewText(item.error, 140)}`)
+
+    console.log(base.join(' '))
+  }
+}
+
 function mapConnectionStatus(payload) {
   const raw = String(
     payload.data?.state
@@ -347,13 +381,17 @@ async function handleMessage(instanceKey, payload) {
   const inbound = extractInbound(payload)
   if (!inbound) return { ignored: true }
 
+  console.log(`[webhook] inbound instance=${instanceKey} phone=${inbound.phone} text="${previewText(inbound.messageText)}"`)
+
   const status = await appRequest('/api/whatsapp/customer-status', {
     instanceKey,
     ...inbound,
     payload,
   })
+  logAiDiagnostics(status)
 
   if (!status.shouldReply) {
+    console.log(`[webhook] ignored instance=${instanceKey} phone=${inbound.phone} duplicate=${Boolean(status.duplicate)}`)
     return { ignored: true, duplicate: Boolean(status.duplicate) }
   }
 
@@ -364,6 +402,7 @@ async function handleMessage(instanceKey, payload) {
       providerMessageId,
       payload: result,
     })
+    console.log(`[webhook] sent instance=${instanceKey} phone=${status.phone} outbound=${status.outboundMessageId} text="${previewText(status.replyText)}"`)
     return { sent: true }
   } catch (error) {
     await updateDelivery(status.outboundMessageId, 'failed', {

@@ -13,6 +13,7 @@ import {
   type WhatsAppReceiptExtraction,
   type WhatsAppIntentClassification,
   type WhatsAppAiResult,
+  type WhatsAppAiTokenUsage,
 } from './ai'
 import {
   extractWhatsAppInboundPayloadMeta,
@@ -89,6 +90,18 @@ type StoreProfileRow = Pick<
 
 type ConversationMetadataRecord = Record<string, Json | undefined>
 
+type WhatsAppAiDiagnostic = {
+  task: 'intent_classification' | 'reply_humanization' | 'receipt_extraction'
+  success: boolean
+  provider: string
+  model: string
+  latencyMs: number
+  intent?: string | null
+  confidence?: number | null
+  tokenUsage?: WhatsAppAiTokenUsage
+  error?: string
+}
+
 export type CustomerStatusRequest = {
   instanceKey: string
   phone: string
@@ -106,6 +119,7 @@ export type CustomerStatusResponse = {
   statusCode?: string
   replyText?: string
   outboundMessageId?: number
+  aiDiagnostics?: WhatsAppAiDiagnostic[]
 }
 
 export type StoreInitiatedConversationRequest = {
@@ -968,9 +982,21 @@ async function handleStatusByPhone(
 async function logAiResult(
   channel: ChannelRow,
   inboundId: number,
-  task: 'intent_classification' | 'reply_humanization',
+  task: WhatsAppAiDiagnostic['task'],
   result: WhatsAppAiResult<any>
-) {
+): Promise<WhatsAppAiDiagnostic> {
+  const diagnostic: WhatsAppAiDiagnostic = {
+    task,
+    success: result.success,
+    provider: result.success ? result.provider : 'unknown',
+    model: result.success ? result.model : 'unknown',
+    latencyMs: result.latencyMs,
+    intent: result.success && task === 'intent_classification' ? result.data.intent : null,
+    confidence: result.success && task === 'intent_classification' ? result.data.confidence : null,
+    tokenUsage: result.success ? result.tokenUsage : undefined,
+    error: result.success ? undefined : result.error,
+  }
+
   try {
     const supabase = createAdminClient()
     const { error } = await (supabase.from('whatsapp_ai_logs') as any).insert({
@@ -985,7 +1011,9 @@ async function logAiResult(
       is_success: result.success,
       error_message: result.success ? null : result.error,
       raw_request: { prompt: result.promptText },
-      raw_response: result.success ? { rawText: result.rawText } : { errors: result.providerErrors },
+      raw_response: result.success
+        ? { rawText: result.rawText, tokenUsage: result.tokenUsage ?? null }
+        : { errors: result.providerErrors },
     })
 
     if (error) {
@@ -994,6 +1022,8 @@ async function logAiResult(
   } catch (err) {
     console.error('Failed to log AI result', err)
   }
+
+  return diagnostic
 }
 
 export async function resolveCustomerStatus(
@@ -1064,6 +1094,19 @@ export async function resolveCustomerStatus(
   const state = await findConversationState(channel.id, normalizedPhone)
   const baseMetadata = mergeMetadata(state?.metadata, inboundContextMetadata)
   const recentContext = buildRecentContextFromMetadata(state?.metadata, effectiveMessageText)
+  const aiDiagnostics: WhatsAppAiDiagnostic[] = []
+
+  async function recordAiResult(task: WhatsAppAiDiagnostic['task'], result: WhatsAppAiResult<any>) {
+    aiDiagnostics.push(await logAiResult(channel!, inbound.id, task, result))
+  }
+
+  function withAiDiagnostics<T extends CustomerStatusResponse>(response: T): T {
+    if (aiDiagnostics.length === 0) return response
+    return {
+      ...response,
+      aiDiagnostics,
+    }
+  }
 
   const storeProfile = await loadStoreProfile(channel.store_id)
   const settings = ((storeProfile.settings || {}) as StoreSettings) || {}
@@ -1319,7 +1362,7 @@ export async function resolveCustomerStatus(
     })
 
     // Log the AI classification
-    await logAiResult(channel, inbound.id, 'intent_classification', classification)
+    await recordAiResult('intent_classification', classification)
 
     const storeHoursText = buildStoreHoursText(storeProfile)
     const storeLocationText = buildStoreLocationText(storeProfile)
@@ -1345,7 +1388,7 @@ export async function resolveCustomerStatus(
         }),
       }))
 
-      return ignoreInbound(inbound.id)
+      return withAiDiagnostics(await ignoreInbound(inbound.id))
     }
 
     if (classification.success && postClassificationRoute !== 'fallback') {
@@ -1373,16 +1416,16 @@ export async function resolveCustomerStatus(
         const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
         const aiResult = (maybeHumanized as any).aiResult
         if (aiResult) {
-          await logAiResult(channel, inbound.id, 'reply_humanization', aiResult)
+          await recordAiResult('reply_humanization', aiResult)
         }
-        return createOutbound(
+        return withAiDiagnostics(await createOutbound(
           channel,
           inbound.id,
           normalizedPhone,
           maybeHumanized.text,
           'human_handoff',
           maybeHumanized.payload
-        )
+        ))
       }
 
       if (postClassificationRoute === 'pickup_or_scheduling') {
@@ -1419,16 +1462,16 @@ export async function resolveCustomerStatus(
               const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
               const aiResult = (maybeHumanized as any).aiResult
               if (aiResult) {
-                await logAiResult(channel, inbound.id, 'reply_humanization', aiResult)
+                await recordAiResult('reply_humanization', aiResult)
               }
-              return createOutbound(
+              return withAiDiagnostics(await createOutbound(
                 channel,
                 inbound.id,
                 normalizedPhone,
                 maybeHumanized.text,
                 'human_handoff',
                 maybeHumanized.payload
-              )
+              ))
             } else {
               // New status update for pickup
               const storeHoursAppend = storeHoursText ? ` Nosso horário de atendimento é ${storeHoursText}.` : ''
@@ -1466,9 +1509,9 @@ export async function resolveCustomerStatus(
               const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, finalCanonicalReply, storeProfile.name)
               const aiResult = (maybeHumanized as any).aiResult
               if (aiResult) {
-                await logAiResult(channel, inbound.id, 'reply_humanization', aiResult)
+                await recordAiResult('reply_humanization', aiResult)
               }
-              return createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'os_status', maybeHumanized.payload)
+              return withAiDiagnostics(await createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'os_status', maybeHumanized.payload))
             }
           }
         }
@@ -1497,16 +1540,16 @@ export async function resolveCustomerStatus(
         const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
         const aiResult = (maybeHumanized as any).aiResult
         if (aiResult) {
-          await logAiResult(channel, inbound.id, 'reply_humanization', aiResult)
+          await recordAiResult('reply_humanization', aiResult)
         }
-        return createOutbound(
+        return withAiDiagnostics(await createOutbound(
           channel,
           inbound.id,
           normalizedPhone,
           maybeHumanized.text,
           'human_handoff',
           maybeHumanized.payload
-        )
+        ))
       }
 
       if (postClassificationRoute === 'budget_request' || postClassificationRoute === 'complaint_or_adaptation') {
@@ -1537,16 +1580,16 @@ export async function resolveCustomerStatus(
         const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
         const aiResult = (maybeHumanized as any).aiResult
         if (aiResult) {
-          await logAiResult(channel, inbound.id, 'reply_humanization', aiResult)
+          await recordAiResult('reply_humanization', aiResult)
         }
-        return createOutbound(
+        return withAiDiagnostics(await createOutbound(
           channel,
           inbound.id,
           normalizedPhone,
           maybeHumanized.text,
           'human_handoff',
           maybeHumanized.payload
-        )
+        ))
       }
 
       if (postClassificationRoute === 'payment_info') {
@@ -1589,20 +1632,20 @@ export async function resolveCustomerStatus(
         const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
         const aiResult = (maybeHumanized as any).aiResult
         if (aiResult) {
-          await logAiResult(channel, inbound.id, 'reply_humanization', aiResult)
+          await recordAiResult('reply_humanization', aiResult)
         }
-        return createOutbound(
+        return withAiDiagnostics(await createOutbound(
           channel,
           inbound.id,
           normalizedPhone,
           maybeHumanized.text,
           'human_handoff',
           maybeHumanized.payload
-        )
+        ))
       }
 
       if (postClassificationRoute === 'order_status') {
-        return handleStatusByPhone(channel, inbound.id, normalizedPhone, baseMetadata)
+        return withAiDiagnostics(await handleStatusByPhone(channel, inbound.id, normalizedPhone, baseMetadata))
       }
 
       if (postClassificationRoute === 'store_hours') {
@@ -1638,9 +1681,9 @@ export async function resolveCustomerStatus(
           const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
           const aiResult = (maybeHumanized as any).aiResult
           if (aiResult) {
-            await logAiResult(channel, inbound.id, 'reply_humanization', aiResult)
+            await recordAiResult('reply_humanization', aiResult)
           }
-          return createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'store_hours', maybeHumanized.payload)
+          return withAiDiagnostics(await createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'store_hours', maybeHumanized.payload))
         }
       }
 
@@ -1677,9 +1720,9 @@ export async function resolveCustomerStatus(
           const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
           const aiResult = (maybeHumanized as any).aiResult
           if (aiResult) {
-            await logAiResult(channel, inbound.id, 'reply_humanization', aiResult)
+            await recordAiResult('reply_humanization', aiResult)
           }
-          return createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'store_location', maybeHumanized.payload)
+          return withAiDiagnostics(await createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'store_location', maybeHumanized.payload))
         }
       }
     }
@@ -1688,7 +1731,7 @@ export async function resolveCustomerStatus(
       const isGreeting = looksLikeGenericGreeting(effectiveMessageText)
       const text = isGreeting ? aiGreetingText() : aiClarificationText()
       return applyOohTrapIfNeeded(async () => {
-        return createOutbound(channel, inbound.id, normalizedPhone, text, isGreeting ? 'ai_greeting' : 'ai_clarification', {
+        return withAiDiagnostics(await createOutbound(channel, inbound.id, normalizedPhone, text, isGreeting ? 'ai_greeting' : 'ai_clarification', {
           ...(classification.success ? buildAiPayload(classification.data) : {}),
           ...buildWhatsAppCanonicalPayload({
             intent: classification.success ? classification.data.intent : null,
@@ -1696,7 +1739,7 @@ export async function resolveCustomerStatus(
             outboundType: isGreeting ? 'ai_greeting' : 'ai_clarification',
             canonicalReply: text,
           }),
-        })
+        }))
       })
     }
   }
