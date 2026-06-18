@@ -17,12 +17,14 @@ import { AlertaEntrega, AlertaLaboratorio, Aniversariante, VencimentoProximo, Wh
 import { RetornoCobranca } from '@/lib/actions/collection.actions'
 import ParcelaSearchModal from '@/components/modals/ParcelaSearchModal'
 import WidgetWhatsAppPendencias from '@/components/consultas/WidgetWhatsAppPendencias'
+import WhatsAppOperatorModal from '@/components/modals/WhatsAppOperatorModal'
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 
 interface Props {
   storeId: number
   storeName: string
   deliveryDateEnabled?: boolean
+  isWhatsAppConnected: boolean
   alerts: {
     entregas: AlertaEntrega[]
     laboratorio: AlertaLaboratorio[]
@@ -34,8 +36,9 @@ interface Props {
   whatsAppPendencias: WhatsAppPendencia[]
 }
 
-export default function ActionMenuDashboard({ storeId, storeName, deliveryDateEnabled = true, alerts, birthdays, vencimentos, retornos, whatsAppPendencias }: Props) {
+export default function ActionMenuDashboard({ storeId, storeName, deliveryDateEnabled = true, isWhatsAppConnected, alerts, birthdays, vencimentos, retornos, whatsAppPendencias }: Props) {
   const [isParcelaModalOpen, setIsParcelaModalOpen] = useState(false)
+  const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false)
   const modules = useStoreModules()
 
   // LINHA 1: ATENDIMENTO (Frente de Loja)
@@ -253,9 +256,14 @@ export default function ActionMenuDashboard({ storeId, storeName, deliveryDateEn
 
               <div className="space-y-6">
                 {/* Widget WhatsApp Pendências */}
-                <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
-                  <WidgetWhatsAppPendencias pendencias={whatsAppPendencias} />
-                </div>
+                {isWhatsAppConnected && (
+                  <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
+                    <WidgetWhatsAppPendencias
+                      pendencias={whatsAppPendencias}
+                      onOpen={() => setIsWhatsAppModalOpen(true)}
+                    />
+                  </div>
+                )}
                 {modules.installments && (
                   <>
                 {/* Widget Vencimentos */}
@@ -304,6 +312,14 @@ export default function ActionMenuDashboard({ storeId, storeName, deliveryDateEn
         onClose={() => setIsParcelaModalOpen(false)}
         storeId={storeId}
       />
+
+      {isWhatsAppConnected && (
+        <WhatsAppOperatorModal
+          isOpen={isWhatsAppModalOpen}
+          onClose={() => setIsWhatsAppModalOpen(false)}
+          storeId={storeId}
+        />
+      )}
     </div>
   )
 }

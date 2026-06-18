@@ -34,6 +34,22 @@ const parseLocaleFloat = (stringNumber: string | null | undefined): number => {
   return parseFloat(cleaned) || 0.0
 }
 
+const buildSelectedDescription = (item: ProductSearchResult): string => {
+  const descricaoBase = String(item.descricao || '').trim()
+  const marcaBase = String(item.marca || '').trim()
+
+  if (!marcaBase) return descricaoBase
+
+  const marcaNormalizada = marcaBase.toLowerCase()
+  const descricaoNormalizada = descricaoBase.toLowerCase()
+
+  if (marcaNormalizada === 'lente' || descricaoNormalizada.startsWith(`${marcaNormalizada} `)) {
+    return descricaoBase
+  }
+
+  return `${marcaBase} ${descricaoBase}`
+}
+
 function SubmitButton() {
   const { pending } = useFormStatus()
   return (
@@ -133,8 +149,7 @@ export default function AddItemForm({
 
   // ATUALIZAÇÃO: Inclui a marca antes do modelo na descrição
   const handleSuggestionClick = (item: ProductSearchResult) => {
-    const descricaoCompleta = item.marca ? `${item.marca} ${item.descricao}` : item.descricao
-    setDescricao(descricaoCompleta)
+    setDescricao(buildSelectedDescription(item))
     setValorUnitario(formatCurrency(item.preco_venda))
 
     setItemTipo(item.tipo)

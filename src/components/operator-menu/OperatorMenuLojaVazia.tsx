@@ -88,6 +88,7 @@ interface RadarData {
     retornos: RetornoCobranca[];
     clientesInativos: ClienteInativo[];
     whatsAppPendencias: WhatsAppPendencia[];
+    isWhatsAppConnected: boolean;
 }
 
 const formatDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
@@ -96,6 +97,7 @@ const formatMoney = (v: number) => v.toLocaleString('pt-BR', { style: 'currency'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import FullscreenToggleButton from '@/components/FullscreenToggleButton';
 import WidgetWhatsAppPendencias from '@/components/consultas/WidgetWhatsAppPendencias';
+import WhatsAppOperatorModal from '@/components/modals/WhatsAppOperatorModal';
 
 export default function OperatorMenuLojaVazia({
     storeId,
@@ -139,9 +141,11 @@ export default function OperatorMenuLojaVazia({
         vencimentos: [],
         retornos: [],
         clientesInativos: [],
-        whatsAppPendencias: []
+        whatsAppPendencias: [],
+        isWhatsAppConnected: false
     });
     const [loading, setLoading] = useState(true);
+    const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
 
     useEffect(() => {
         async function fetchData() {
@@ -157,7 +161,8 @@ export default function OperatorMenuLojaVazia({
                         vencimentos: data.vencimentos || [],
                         retornos: data.retornos || [],
                         clientesInativos: data.clientesInativos || [],
-                        whatsAppPendencias: data.whatsAppPendencias || []
+                        whatsAppPendencias: data.whatsAppPendencias || [],
+                        isWhatsAppConnected: data.isWhatsAppConnected === true
                     });
                 }
             } catch (error) {
@@ -526,7 +531,12 @@ export default function OperatorMenuLojaVazia({
 
                             <div className="space-y-4">
                                 {/* WHATSAPP PENDÊNCIAS */}
-                                <WidgetWhatsAppPendencias pendencias={radar.whatsAppPendencias} />
+                                {radar.isWhatsAppConnected && (
+                                    <WidgetWhatsAppPendencias
+                                        pendencias={radar.whatsAppPendencias}
+                                        onOpen={() => setIsWhatsAppModalOpen(true)}
+                                    />
+                                )}
                                 
                                 {/* VENCIMENTOS */}
                                 {modules.installments && <RadarWidget
@@ -719,6 +729,13 @@ export default function OperatorMenuLojaVazia({
                 >
                     {tooltip.text}
                 </div>
+            )}
+            {radar.isWhatsAppConnected && (
+                <WhatsAppOperatorModal
+                    isOpen={isWhatsAppModalOpen}
+                    onClose={() => setIsWhatsAppModalOpen(false)}
+                    storeId={storeId}
+                />
             )}
         </div >
     );

@@ -89,6 +89,7 @@ type StoreProfileRow = Pick<
 >
 
 type ConversationMetadataRecord = Record<string, Json | undefined>
+type CustomerControlMode = 'auto' | 'force_ai' | 'force_human'
 
 type WhatsAppAiDiagnostic = {
   task: 'intent_classification' | 'reply_humanization' | 'receipt_extraction'
@@ -120,6 +121,20 @@ export type CustomerStatusResponse = {
   replyText?: string
   outboundMessageId?: number
   aiDiagnostics?: WhatsAppAiDiagnostic[]
+}
+
+export type CustomerStatusSimulationResponse = CustomerStatusResponse & {
+  debug: {
+    overrideMode: CustomerControlMode
+    preAiRoute: string | null
+    postClassificationRoute: string | null
+    action: string
+    outboundType: string | null
+    state: string | null
+    intent: string | null
+    confidence: number | null
+    notes: string[]
+  }
 }
 
 export type StoreInitiatedConversationRequest = {
@@ -786,6 +801,45 @@ async function findConversationState(channelId: number, phone: string): Promise<
   return data
 }
 
+async function loadCustomerControlMode(channelId: number, phone: string): Promise<CustomerControlMode> {
+  const supabase = createAdminClient()
+  const { data, error } = await (supabase.from('whatsapp_customer_control') as any)
+    .select('mode')
+    .eq('channel_id', channelId)
+    .eq('remote_phone', phone)
+    .maybeSingle()
+
+  if (error) throw error
+
+  const mode = typeof data?.mode === 'string' ? data.mode : 'auto'
+  return mode === 'force_ai' || mode === 'force_human' ? mode : 'auto'
+}
+
+function effectiveStateForControl(state: ConversationStateRow | null, controlMode: CustomerControlMode): ConversationState | null {
+  if (!state) return null
+  if (controlMode !== 'force_ai') return state.state
+
+  if (state.state === 'human_pause' || state.state === 'silent' || state.state === 'waiting_menu') {
+    return null
+  }
+
+  return state.state
+}
+
+function buildAiDiagnostic(task: WhatsAppAiDiagnostic['task'], result: WhatsAppAiResult<any>): WhatsAppAiDiagnostic {
+  return {
+    task,
+    success: result.success,
+    provider: result.success ? result.provider : 'unknown',
+    model: result.success ? result.model : 'unknown',
+    latencyMs: result.latencyMs,
+    intent: result.success && task === 'intent_classification' ? result.data.intent : null,
+    confidence: result.success && task === 'intent_classification' ? result.data.confidence : null,
+    tokenUsage: result.success ? result.tokenUsage : undefined,
+    error: result.success ? undefined : result.error,
+  }
+}
+
 async function setConversationState(
   channel: ChannelRow,
   phone: string,
@@ -979,23 +1033,84 @@ async function handleStatusByPhone(
   return createStatusReply(channel, inboundMessageId, phone, customer, serviceOrder, baseMetadata)
 }
 
+async function simulateStatusReply(
+  channel: ChannelRow,
+  phone: string
+): Promise<CustomerStatusSimulationResponse> {
+  const customer = await findCustomerByPhone(channel.store_id, phone)
+  if (!customer) {
+    const text = identifierPromptText()
+    return {
+      shouldReply: true,
+      phone,
+      replyText: text,
+      debug: {
+        overrideMode: 'auto',
+        preAiRoute: 'explicit_status_option',
+        postClassificationRoute: null,
+        action: 'request_identifier',
+        outboundType: 'identifier_prompt',
+        state: null,
+        intent: 'order_status',
+        confidence: null,
+        notes: ['Cliente nao encontrado pelo telefone.'],
+      },
+    }
+  }
+
+  const serviceOrder = await findLatestOpenOs(channel.store_id, customer.id)
+  if (!serviceOrder) {
+    const text = identifierPromptText()
+    return {
+      shouldReply: true,
+      phone,
+      customerName: customer.full_name,
+      replyText: text,
+      debug: {
+        overrideMode: 'auto',
+        preAiRoute: 'explicit_status_option',
+        postClassificationRoute: null,
+        action: 'request_identifier',
+        outboundType: 'identifier_prompt',
+        state: null,
+        intent: 'order_status',
+        confidence: null,
+        notes: ['Cliente sem OS aberta vinculada ao telefone.'],
+      },
+    }
+  }
+
+  const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
+  const status = describeOpenOs(customer.full_name, serviceOrder, automationSettings?.os_on_demand?.templates)
+
+  return {
+    shouldReply: true,
+    phone,
+    customerName: customer.full_name,
+    serviceOrderId: serviceOrder.id,
+    statusCode: status.statusCode,
+    replyText: status.replyText,
+    debug: {
+      overrideMode: 'auto',
+      preAiRoute: 'explicit_status_option',
+      postClassificationRoute: null,
+      action: 'auto_reply',
+      outboundType: 'os_status',
+      state: null,
+      intent: 'order_status',
+      confidence: null,
+      notes: ['Status de OS simulado a partir do cadastro atual.'],
+    },
+  }
+}
+
 async function logAiResult(
   channel: ChannelRow,
   inboundId: number,
   task: WhatsAppAiDiagnostic['task'],
   result: WhatsAppAiResult<any>
 ): Promise<WhatsAppAiDiagnostic> {
-  const diagnostic: WhatsAppAiDiagnostic = {
-    task,
-    success: result.success,
-    provider: result.success ? result.provider : 'unknown',
-    model: result.success ? result.model : 'unknown',
-    latencyMs: result.latencyMs,
-    intent: result.success && task === 'intent_classification' ? result.data.intent : null,
-    confidence: result.success && task === 'intent_classification' ? result.data.confidence : null,
-    tokenUsage: result.success ? result.tokenUsage : undefined,
-    error: result.success ? undefined : result.error,
-  }
+  const diagnostic = buildAiDiagnostic(task, result)
 
   try {
     const supabase = createAdminClient()
@@ -1092,6 +1207,8 @@ export async function resolveCustomerStatus(
 
   const option = optionFromMessage(effectiveMessageText || undefined)
   const state = await findConversationState(channel.id, normalizedPhone)
+  const controlMode = await loadCustomerControlMode(channel.id, normalizedPhone)
+  const effectiveState = effectiveStateForControl(state, controlMode)
   const baseMetadata = mergeMetadata(state?.metadata, inboundContextMetadata)
   const recentContext = buildRecentContextFromMetadata(state?.metadata, effectiveMessageText)
   const aiDiagnostics: WhatsAppAiDiagnostic[] = []
@@ -1110,6 +1227,19 @@ export async function resolveCustomerStatus(
 
   const storeProfile = await loadStoreProfile(channel.store_id)
   const settings = ((storeProfile.settings || {}) as StoreSettings) || {}
+
+  if (controlMode === 'force_human') {
+    await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+      overrideMode: controlMode,
+      reason: 'force_human_override',
+      ...buildDecisionMetadata({
+        intent: null,
+        action: 'force_human_override',
+        outboundType: null,
+      }),
+    }))
+    return ignoreInbound(inbound.id)
+  }
   
   let isExceptionalClosure = false
   let isNormalClosed = false
@@ -1152,7 +1282,7 @@ export async function resolveCustomerStatus(
 
   const preAiRoute = decidePreAiRoute({
     option,
-    state: state?.state ?? null,
+    state: effectiveState ?? null,
     hasAttachment: inboundPayloadMeta.hasAttachment,
     messageText: effectiveMessageText,
     metadata: state?.metadata,
@@ -1774,6 +1904,464 @@ export async function resolveCustomerStatus(
         canonicalReply: text,
       }),
     })
+  })
+}
+
+export async function simulateCustomerStatus(
+  input: Omit<CustomerStatusRequest, 'providerMessageId'> & { providerMessageId?: string }
+): Promise<CustomerStatusSimulationResponse> {
+  const channel = await findActiveChannel(input.instanceKey)
+  if (!channel) {
+    return {
+      shouldReply: false,
+      debug: {
+        overrideMode: 'auto',
+        preAiRoute: null,
+        postClassificationRoute: null,
+        action: 'channel_not_found',
+        outboundType: null,
+        state: null,
+        intent: null,
+        confidence: null,
+        notes: ['Canal nao encontrado ou inativo.'],
+      },
+    }
+  }
+
+  const normalizedPhone = toEvolutionNumber(input.phone)
+  if (!normalizedPhone) {
+    return {
+      shouldReply: false,
+      debug: {
+        overrideMode: 'auto',
+        preAiRoute: null,
+        postClassificationRoute: null,
+        action: 'invalid_phone',
+        outboundType: null,
+        state: null,
+        intent: null,
+        confidence: null,
+        notes: ['Telefone invalido para simulacao.'],
+      },
+    }
+  }
+
+  const inboundPayloadMeta = extractWhatsAppInboundPayloadMeta(input.payload)
+  const effectiveMessageText = normalizeDisplayText(input.messageText) || inboundPayloadMeta.caption || inboundPayloadMeta.text
+  const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
+  const state = await findConversationState(channel.id, normalizedPhone)
+  const controlMode = await loadCustomerControlMode(channel.id, normalizedPhone)
+  const effectiveState = effectiveStateForControl(state, controlMode)
+  const recentContext = buildRecentContextFromMetadata(state?.metadata, effectiveMessageText)
+  const aiDiagnostics: WhatsAppAiDiagnostic[] = []
+  const storeProfile = await loadStoreProfile(channel.store_id)
+  const settings = ((storeProfile.settings || {}) as StoreSettings) || {}
+  const option = optionFromMessage(effectiveMessageText || undefined)
+
+  function buildResult(partial: Partial<CustomerStatusSimulationResponse>, debug: CustomerStatusSimulationResponse['debug']) {
+    return {
+      shouldReply: false,
+      ...partial,
+      ...(aiDiagnostics.length ? { aiDiagnostics } : {}),
+      debug,
+    } satisfies CustomerStatusSimulationResponse
+  }
+
+  if (!isWhatsAppAutomationEnabled(automationSettings)) {
+    return buildResult({}, {
+      overrideMode: controlMode,
+      preAiRoute: null,
+      postClassificationRoute: null,
+      action: 'automation_disabled',
+      outboundType: null,
+      state: state?.state ?? null,
+      intent: null,
+      confidence: null,
+      notes: ['Automacao geral do WhatsApp esta desligada.'],
+    })
+  }
+
+  if (controlMode === 'force_human') {
+    return buildResult({}, {
+      overrideMode: controlMode,
+      preAiRoute: null,
+      postClassificationRoute: null,
+      action: 'force_human_override',
+      outboundType: null,
+      state: state?.state ?? null,
+      intent: null,
+      confidence: null,
+      notes: ['Cliente fixado em atendimento humano.'],
+    })
+  }
+
+  let isExceptionalClosure = false
+  let isNormalClosed = false
+  let exceptionalReason = ''
+  let nextOpen = ''
+
+  if (settings.store_hours) {
+    const hoursFacts = evaluateStoreHours(settings.store_hours)
+    if (hoursFacts.is_exceptional_closure) {
+      isExceptionalClosure = true
+      exceptionalReason = hoursFacts.exceptional_closure_reason || ''
+      nextOpen = hoursFacts.next_open_schedule
+    } else if (!hoursFacts.is_open_now) {
+      isNormalClosed = true
+    }
+  }
+
+  const preAiRoute = decidePreAiRoute({
+    option,
+    state: effectiveState ?? null,
+    hasAttachment: inboundPayloadMeta.hasAttachment,
+    messageText: effectiveMessageText,
+    metadata: state?.metadata,
+    humanHandoffWindowMs: ATTACHMENT_HANDOFF_MS,
+    identifierWindowMs: IDENTIFIER_WAIT_MS,
+  })
+
+  if (isExceptionalClosure) {
+    const text = `Hoje, excepcionalmente, nao estamos atendendo devido a: ${exceptionalReason}. Retornamos ${nextOpen}. Assim que retornarmos, um atendente falara com voce.`
+    return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: text }, {
+      overrideMode: controlMode,
+      preAiRoute,
+      postClassificationRoute: null,
+      action: 'exceptional_closure_trap',
+      outboundType: 'exceptional_closure',
+      state: state?.state ?? null,
+      intent: null,
+      confidence: null,
+      notes: ['Loja em fechamento excepcional.'],
+    })
+  }
+
+  if (isNormalClosed) {
+    return buildResult({}, {
+      overrideMode: controlMode,
+      preAiRoute,
+      postClassificationRoute: null,
+      action: 'normal_closed_trap',
+      outboundType: null,
+      state: state?.state ?? null,
+      intent: null,
+      confidence: null,
+      notes: ['Loja fora do horario normal e o fluxo real ficaria em silencio.'],
+    })
+  }
+
+  if (preAiRoute === 'explicit_human_option') {
+    const text = humanHandoffText()
+    return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: text }, {
+      overrideMode: controlMode,
+      preAiRoute,
+      postClassificationRoute: null,
+      action: 'human_handoff',
+      outboundType: 'human_handoff',
+      state: state?.state ?? null,
+      intent: 'human_agent_request',
+      confidence: null,
+      notes: ['Cliente pediu atendimento humano explicitamente.'],
+    })
+  }
+
+  if (preAiRoute === 'ignore_human_pause') {
+    return buildResult({}, {
+      overrideMode: controlMode,
+      preAiRoute,
+      postClassificationRoute: null,
+      action: 'ignore_human_pause',
+      outboundType: null,
+      state: state?.state ?? null,
+      intent: null,
+      confidence: null,
+      notes: ['Conversa em pausa humana.'],
+    })
+  }
+
+  if (preAiRoute === 'attachment_handoff') {
+    const text = inboundPayloadMeta.attachmentKind === 'audio'
+      ? null
+      : attachmentReceivedText()
+    return buildResult({ shouldReply: Boolean(text), phone: normalizedPhone, replyText: text || undefined }, {
+      overrideMode: controlMode,
+      preAiRoute,
+      postClassificationRoute: null,
+      action: 'attachment_handoff',
+      outboundType: text ? 'attachment_handoff' : null,
+      state: state?.state ?? null,
+      intent: inboundPayloadMeta.attachmentKind === 'audio' ? null : 'prescription_submission',
+      confidence: null,
+      notes: ['Simulacao com anexo entra em handoff humano.'],
+    })
+  }
+
+  if (preAiRoute === 'attachment_followup_handoff' || preAiRoute === 'preserve_human_handoff') {
+    const text = attachmentFollowupText()
+    return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: text }, {
+      overrideMode: controlMode,
+      preAiRoute,
+      postClassificationRoute: null,
+      action: 'human_handoff',
+      outboundType: 'human_handoff',
+      state: state?.state ?? null,
+      intent: null,
+      confidence: null,
+      notes: ['Anexo recente preserva handoff humano.'],
+    })
+  }
+
+  if (preAiRoute === 'explicit_status_option') {
+    const statusResult = await simulateStatusReply(channel, normalizedPhone)
+    return {
+      ...statusResult,
+      debug: {
+        ...statusResult.debug,
+        overrideMode: controlMode,
+        state: state?.state ?? null,
+      },
+    }
+  }
+
+  if (preAiRoute === 'retry_identifier_lookup' || preAiRoute === 'waiting_identifier_lookup') {
+    const result = await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
+    if (result) {
+      const automationSettingsForStatus = await loadStoreWhatsAppSettings(channel.store_id)
+      const status = describeOpenOs(result.customer.full_name, result.serviceOrder, automationSettingsForStatus?.os_on_demand?.templates)
+      return buildResult({
+        shouldReply: true,
+        phone: normalizedPhone,
+        customerName: result.customer.full_name,
+        serviceOrderId: result.serviceOrder.id,
+        statusCode: status.statusCode,
+        replyText: status.replyText,
+      }, {
+        overrideMode: controlMode,
+        preAiRoute,
+        postClassificationRoute: null,
+        action: 'auto_reply',
+        outboundType: 'os_status',
+        state: state?.state ?? null,
+        intent: 'order_status',
+        confidence: null,
+        notes: ['Identificador permitiu localizar uma OS aberta.'],
+      })
+    }
+
+    if (preAiRoute === 'waiting_identifier_lookup') {
+      const text = notFoundHandoffText()
+      return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: text }, {
+        overrideMode: controlMode,
+        preAiRoute,
+        postClassificationRoute: null,
+        action: 'human_handoff',
+        outboundType: 'human_handoff',
+        state: state?.state ?? null,
+        intent: 'order_status',
+        confidence: null,
+        notes: ['Identificador nao encontrou OS; fluxo real faria handoff.'],
+      })
+    }
+  }
+
+  if (preAiRoute === 'ignore_silent') {
+    return buildResult({}, {
+      overrideMode: controlMode,
+      preAiRoute,
+      postClassificationRoute: null,
+      action: 'ignore_silent',
+      outboundType: null,
+      state: state?.state ?? null,
+      intent: null,
+      confidence: null,
+      notes: ['Janela de silencio ativa.'],
+    })
+  }
+
+  if (canUseAiForFreeform(effectiveMessageText || undefined)) {
+    const classification = await classifyWhatsAppIntent({
+      messageText: effectiveMessageText!,
+      channelLabel: channel.instance_key,
+      storeName: storeProfile.name,
+      conversationState: effectiveState ?? null,
+      recentContext,
+      hasRecentAttachment: hasRecentAttachmentContext(state),
+      hasOpenOrder: hasKnownOpenOrderContext(state),
+      handoffActive: false,
+    })
+
+    aiDiagnostics.push(buildAiDiagnostic('intent_classification', classification))
+
+    const storeHoursText = buildStoreHoursText(storeProfile)
+    const storeLocationText = buildStoreLocationText(storeProfile)
+    const postClassificationRoute = decidePostClassificationRoute({
+      classificationSuccess: classification.success,
+      confidence: classification.success ? classification.data.confidence : 0,
+      automationCandidate: classification.success ? classification.data.automation_candidate : false,
+      intent: classification.success ? classification.data.intent : null,
+      minConfidence: AI_AUTOMATION_MIN_CONFIDENCE,
+      hasStoreHoursText: Boolean(storeHoursText),
+      hasStoreLocationText: Boolean(storeLocationText),
+    })
+
+    if (classification.success && postClassificationRoute === 'silent_handoff') {
+      return buildResult({}, {
+        overrideMode: controlMode,
+        preAiRoute,
+        postClassificationRoute,
+        action: 'silent_handoff',
+        outboundType: null,
+        state: state?.state ?? null,
+        intent: classification.data.intent,
+        confidence: classification.data.confidence,
+        notes: ['Fluxo real classificaria e faria handoff sem resposta automatica.'],
+      })
+    }
+
+    if (classification.success && postClassificationRoute === 'human_handoff') {
+      const text = humanHandoffText()
+      return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: text }, {
+        overrideMode: controlMode,
+        preAiRoute,
+        postClassificationRoute,
+        action: 'human_handoff',
+        outboundType: 'human_handoff',
+        state: state?.state ?? null,
+        intent: classification.data.intent,
+        confidence: classification.data.confidence,
+        notes: ['Classificacao pediu transferir para humano.'],
+      })
+    }
+
+    if (classification.success && postClassificationRoute === 'order_status') {
+      const statusResult = await simulateStatusReply(channel, normalizedPhone)
+      return {
+        ...statusResult,
+        aiDiagnostics,
+        debug: {
+          ...statusResult.debug,
+          overrideMode: controlMode,
+          preAiRoute,
+          postClassificationRoute,
+          state: state?.state ?? null,
+          intent: classification.data.intent,
+          confidence: classification.data.confidence,
+        },
+      }
+    }
+
+    if (classification.success && postClassificationRoute === 'pickup_or_scheduling') {
+      const customer = await findCustomerByPhone(channel.store_id, normalizedPhone)
+      if (customer) {
+        const serviceOrder = await findLatestOpenOs(channel.store_id, customer.id)
+        if (serviceOrder) {
+          const automationSettingsForStatus = await loadStoreWhatsAppSettings(channel.store_id)
+          const status = describeOpenOs(customer.full_name, serviceOrder, automationSettingsForStatus?.os_on_demand?.templates)
+          const storeHoursAppend = buildStoreHoursText(storeProfile) ? ` Nosso horario de atendimento e ${buildStoreHoursText(storeProfile)}.` : ''
+          return buildResult({
+            shouldReply: true,
+            phone: normalizedPhone,
+            customerName: customer.full_name,
+            serviceOrderId: serviceOrder.id,
+            statusCode: status.statusCode,
+            replyText: `${status.replyText}${storeHoursAppend}`,
+          }, {
+            overrideMode: controlMode,
+            preAiRoute,
+            postClassificationRoute,
+            action: 'auto_reply',
+            outboundType: 'os_status',
+            state: state?.state ?? null,
+            intent: classification.data.intent,
+            confidence: classification.data.confidence,
+            notes: ['Pickup/scheduling resolveu via status da OS.'],
+          })
+        }
+      }
+
+      const text = 'Vou acionar a equipe para verificar a sua retirada/agendamento. Um momento.'
+      return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: text }, {
+        overrideMode: controlMode,
+        preAiRoute,
+        postClassificationRoute,
+        action: 'human_handoff',
+        outboundType: 'human_handoff',
+        state: state?.state ?? null,
+        intent: classification.data.intent,
+        confidence: classification.data.confidence,
+        notes: ['Pickup/scheduling sem OS encontrada cai em handoff.'],
+      })
+    }
+
+    if (classification.success && postClassificationRoute === 'store_hours' && storeHoursText) {
+      return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: storeHoursText }, {
+        overrideMode: controlMode,
+        preAiRoute,
+        postClassificationRoute,
+        action: 'auto_reply',
+        outboundType: 'store_hours',
+        state: state?.state ?? null,
+        intent: classification.data.intent,
+        confidence: classification.data.confidence,
+        notes: ['Resposta automatica com horario da loja.'],
+      })
+    }
+
+    if (classification.success && postClassificationRoute === 'store_location' && storeLocationText) {
+      return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: storeLocationText }, {
+        overrideMode: controlMode,
+        preAiRoute,
+        postClassificationRoute,
+        action: 'auto_reply',
+        outboundType: 'store_location',
+        state: state?.state ?? null,
+        intent: classification.data.intent,
+        confidence: classification.data.confidence,
+        notes: ['Resposta automatica com localizacao da loja.'],
+      })
+    }
+  }
+
+  if (!isWhatsAppAiResponderEnabled(automationSettings) && looksLikeOrderStatusQuestion(effectiveMessageText || undefined)) {
+    const statusResult = await simulateStatusReply(channel, normalizedPhone)
+    return {
+      ...statusResult,
+      debug: {
+        ...statusResult.debug,
+        overrideMode: controlMode,
+        preAiRoute,
+        state: state?.state ?? null,
+      },
+    }
+  }
+
+  if (isWhatsAppAiResponderEnabled(automationSettings)) {
+    const isGreeting = looksLikeGenericGreeting(effectiveMessageText)
+    const text = isGreeting ? aiGreetingText() : aiClarificationText()
+    return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: text }, {
+      overrideMode: controlMode,
+      preAiRoute,
+      postClassificationRoute: 'fallback',
+      action: isGreeting ? 'ai_greeting' : 'ai_clarification',
+      outboundType: isGreeting ? 'ai_greeting' : 'ai_clarification',
+      state: state?.state ?? null,
+      intent: null,
+      confidence: null,
+      notes: ['Fluxo de fallback da IA.'],
+    })
+  }
+
+  const menu = menuText()
+  return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: menu }, {
+    overrideMode: controlMode,
+    preAiRoute,
+    postClassificationRoute: null,
+    action: 'show_menu',
+    outboundType: 'menu',
+    state: state?.state ?? null,
+    intent: null,
+    confidence: null,
+    notes: ['Fluxo classico de menu.'],
   })
 }
 

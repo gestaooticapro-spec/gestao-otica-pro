@@ -33,8 +33,15 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
         .eq('id', storeId)
         .single()
 
+    const { data: whatsAppChannel } = await (supabaseAdmin.from('whatsapp_store_channels') as any)
+        .select('connection_status, is_active')
+        .eq('store_id', storeId)
+        .eq('provider', 'evolution')
+        .maybeSingle()
+
     const storeName = store?.name || `Loja ${storeId}`
     const deliveryDateEnabled = store?.settings?.delivery_date_enabled !== false
+    const isWhatsAppConnected = whatsAppChannel?.connection_status === 'connected' && whatsAppChannel?.is_active === true
 
     // 1. ADMIN (Dono da Rede)
     if (profile.role === 'admin') {
@@ -76,7 +83,7 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
         getAniversariantes(storeId),
         modules.installments ? getVencimentosProximos(storeId) : Promise.resolve([]),
         modules.installments ? getRetornosDeHoje(storeId) : Promise.resolve([]),
-        getWhatsAppPendencias(storeId)
+        isWhatsAppConnected ? getWhatsAppPendencias(storeId) : Promise.resolve([])
     ])
 
     return (
@@ -91,6 +98,7 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
                 vencimentos={vencimentos}
                 retornos={retornos}
                 whatsAppPendencias={whatsAppPendencias}
+                isWhatsAppConnected={isWhatsAppConnected}
             />
         </>
     )
