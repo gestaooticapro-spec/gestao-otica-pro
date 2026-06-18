@@ -60,7 +60,7 @@ export type WhatsAppIntent = (typeof WHATSAPP_INTENTS)[number]
 export type WhatsAppReasoningTag = (typeof WHATSAPP_REASONING_TAGS)[number]
 export type WhatsAppReplyTone = (typeof WHATSAPP_TONES)[number]
 export type WhatsAppAiProvider = 'gemini' | 'openai'
-export type WhatsAppAiTask = 'intent_classification' | 'reply_humanization'
+export type WhatsAppAiTask = 'intent_classification' | 'reply_humanization' | 'receipt_extraction'
 
 export const WhatsAppIntentClassificationSchema = z.object({
   intent: z.enum(WHATSAPP_INTENTS),

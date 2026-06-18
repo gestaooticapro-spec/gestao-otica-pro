@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 
-import { extractWhatsAppInboundPayloadMeta } from '@/lib/whatsapp/inbound-payload'
+import {
+  extractWhatsAppInboundPayloadMeta,
+  isWhatsAppInboundPayloadFromMe,
+} from '@/lib/whatsapp/inbound-payload'
 
 const cases = [
   {
@@ -103,5 +106,29 @@ for (const testCase of cases) {
     assert.equal(result.fileName, testCase.expected.fileName, `${testCase.name}: fileName`)
   }
 }
+
+assert.equal(isWhatsAppInboundPayloadFromMe({
+  event: 'messages.upsert',
+  data: {
+    key: {
+      fromMe: true,
+    },
+    message: {
+      conversation: 'Oi, vou verificar para voce.',
+    },
+  },
+} as never), true, 'detects store outbound payload')
+
+assert.equal(isWhatsAppInboundPayloadFromMe({
+  event: 'messages.upsert',
+  data: {
+    key: {
+      fromMe: false,
+    },
+    message: {
+      conversation: 'Meu oculos chegou?',
+    },
+  },
+} as never), false, 'does not mark customer inbound as fromMe')
 
 console.log('WhatsApp inbound payload parser checks passed.')

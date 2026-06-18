@@ -1,5 +1,6 @@
 export type WhatsAppPostClassificationDecision =
   | 'human_handoff'
+  | 'silent_handoff'
   | 'order_status'
   | 'store_hours'
   | 'store_location'
@@ -29,14 +30,23 @@ export function decidePostClassificationRoute(
     return 'human_handoff'
   }
 
-  if (input.intent === 'budget_request') return 'budget_request'
-  if (input.intent === 'complaint_or_adaptation') return 'complaint_or_adaptation'
-  if (input.intent === 'pickup_or_scheduling') return 'pickup_or_scheduling'
-  if (input.intent === 'payment_info') return 'payment_info'
+  if (
+    input.intent === 'budget_request'
+    || input.intent === 'complaint_or_adaptation'
+    || input.intent === 'payment_info'
+  ) {
+    return 'silent_handoff'
+  }
+
+  if (input.intent === 'pickup_or_scheduling' && !input.automationCandidate) {
+    return 'silent_handoff'
+  }
 
   if (!input.automationCandidate) {
     return 'fallback'
   }
+
+  if (input.intent === 'pickup_or_scheduling') return 'pickup_or_scheduling'
 
   if (input.intent === 'order_status') {
     return 'order_status'

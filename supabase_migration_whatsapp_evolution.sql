@@ -65,7 +65,7 @@ create table if not exists public.whatsapp_conversation_states (
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
     constraint whatsapp_conversation_states_state_check
-        check (state in ('waiting_menu', 'waiting_identifier', 'human_pause', 'silent')),
+        check (state in ('waiting_menu', 'waiting_identifier', 'human_pause', 'silent', 'waiting_human_after_attachment')),
     constraint whatsapp_conversation_states_channel_phone_unique
         unique (channel_id, remote_phone)
 );
@@ -123,3 +123,16 @@ comment on table public.whatsapp_conversation_states is
     'Estado temporario da conversa WhatsApp por telefone e canal.';
 comment on table public.whatsapp_installment_reminders is
     'Agenda e idempotencia dos lembretes de vencimento enviados por WhatsApp.';
+
+alter table public.whatsapp_conversation_states
+    drop constraint if exists whatsapp_conversation_states_state_check;
+
+alter table public.whatsapp_conversation_states
+    add constraint whatsapp_conversation_states_state_check
+    check (state in (
+        'waiting_menu',
+        'waiting_identifier',
+        'human_pause',
+        'silent',
+        'waiting_human_after_attachment'
+    ));

@@ -128,7 +128,33 @@ assert.equal(simulateFlow({
     automationCandidate: false,
     intent: 'budget_request',
   },
-}), 'fallback')
+}), 'silent_handoff')
+
+assert.equal(simulateFlow({
+  option: null,
+  state: null,
+  hasAttachment: false,
+  messageText: 'nao adaptei com meu oculos',
+  classification: {
+    success: true,
+    confidence: 0.91,
+    automationCandidate: false,
+    intent: 'complaint_or_adaptation',
+  },
+}), 'silent_handoff')
+
+assert.equal(simulateFlow({
+  option: null,
+  state: null,
+  hasAttachment: false,
+  messageText: 'quero marcar a retirada',
+  classification: {
+    success: true,
+    confidence: 0.89,
+    automationCandidate: false,
+    intent: 'pickup_or_scheduling',
+  },
+}), 'silent_handoff')
 
 assert.equal(simulateFlow({
   option: null,

@@ -285,3 +285,20 @@ function walk(value: Json | null | undefined, visited = new Set<unknown>()): Wha
 export function extractWhatsAppInboundPayloadMeta(payload: Json | null | undefined): WhatsAppInboundPayloadMeta {
   return walk(payload)
 }
+
+export function isWhatsAppInboundPayloadFromMe(payload: Json | null | undefined): boolean {
+  const root = asRecord(payload)
+  const data = asRecord(root?.data)
+  const key = asRecord(root?.key) || asRecord(data?.key)
+  const message = asRecord(root?.message) || asRecord(data?.message)
+  const messageKey = asRecord(message?.key)
+
+  const candidates = [
+    root?.fromMe,
+    data?.fromMe,
+    key?.fromMe,
+    messageKey?.fromMe,
+  ]
+
+  return candidates.some((value) => value === true || value === 'true')
+}

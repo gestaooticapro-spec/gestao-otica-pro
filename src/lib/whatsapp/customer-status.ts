@@ -16,7 +16,10 @@ import {
   type WhatsAppIntentClassification,
   type WhatsAppAiResult,
 } from './ai'
-import { extractWhatsAppInboundPayloadMeta } from './inbound-payload'
+import {
+  extractWhatsAppInboundPayloadMeta,
+  isWhatsAppInboundPayloadFromMe,
+} from './inbound-payload'
 import {
   buildWhatsAppCanonicalPayload,
   extractWhatsAppCanonicalReply,
@@ -31,6 +34,7 @@ import { findOpenInstallmentsByPhone } from '@/lib/actions/consultas.actions'
 
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
 const HUMAN_PAUSE_MS = 60 * 60 * 1000
+const HUMAN_HANDOFF_PAUSE_MS = 24 * 60 * 60 * 1000
 const MENU_WAIT_MS = 30 * 60 * 1000
 const IDENTIFIER_WAIT_MS = 20 * 60 * 1000
 const AFTER_STATUS_SILENCE_MS = 60 * 60 * 1000
@@ -654,6 +658,21 @@ async function findLastOutboundStatus(channelId: number, phone: string): Promise
   return data ?? null
 }
 
+async function isKnownSystemOutbound(channelId: number, providerMessageId: string | undefined): Promise<boolean> {
+  const normalizedProviderMessageId = String(providerMessageId || '').trim()
+  if (!normalizedProviderMessageId) return false
+
+  const supabase = createAdminClient()
+  const { data, error } = await (supabase.from('whatsapp_outbound_messages') as any)
+    .select('id')
+    .eq('channel_id', channelId)
+    .eq('provider_message_id', normalizedProviderMessageId)
+    .maybeSingle()
+
+  if (error) throw error
+  return Boolean(data?.id)
+}
+
 function extractStatusCode(payload: Json | null): WhatsAppOsStatusCode | null {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null
 
@@ -956,6 +975,25 @@ export async function resolveCustomerStatus(
     caption: inboundPayloadMeta.caption,
   })
 
+  if (isWhatsAppInboundPayloadFromMe(input.payload)) {
+    const isSystemOutbound = await isKnownSystemOutbound(channel.id, input.providerMessageId)
+
+    if (!isSystemOutbound) {
+      await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, {
+        reason: 'store_outbound_detected',
+        providerMessageId: input.providerMessageId,
+        preview: effectiveMessageText?.slice(0, 160) || null,
+        ...buildDecisionMetadata({
+          intent: null,
+          action: 'human_pause_store_outbound',
+          outboundType: null,
+        }),
+      })
+    }
+
+    return { shouldReply: false }
+  }
+
   const { data: inbound, error: inboundError } = await (supabase.from('whatsapp_inbound_messages') as any)
     .insert({
       tenant_id: channel.tenant_id,
@@ -1039,7 +1077,7 @@ export async function resolveCustomerStatus(
 
   if (preAiRoute === 'explicit_human_option') {
     return applyOohTrapIfNeeded(async () => {
-      await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_PAUSE_MS, mergeMetadata(baseMetadata, {
+      await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
         selectedOption: '2',
         ...buildDecisionMetadata({
           intent: 'human_agent_request',
@@ -1084,7 +1122,7 @@ export async function resolveCustomerStatus(
     }
 
     return applyOohTrapIfNeeded(async () => {
-      await setConversationState(channel, normalizedPhone, 'waiting_human_after_attachment', ATTACHMENT_HANDOFF_MS, mergeMetadata(baseMetadata, {
+      await setConversationState(channel, normalizedPhone, 'waiting_human_after_attachment', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
         reason: 'attachment_received',
         attachmentKind: inboundPayloadMeta.attachmentKind,
         mimeType: inboundPayloadMeta.mimeType,
@@ -1111,7 +1149,10 @@ export async function resolveCustomerStatus(
           facts: {
             attachmentKind: inboundPayloadMeta.attachmentKind,
             mimeType: inboundPayloadMeta.mimeType,
-            ai_extracted_receipt: receiptExtraction,
+            receiptIsReceipt: receiptExtraction?.is_receipt ?? null,
+            receiptAmount: receiptExtraction?.amount ?? null,
+            receiptPayerName: receiptExtraction?.payer_name ?? null,
+            receiptReceiverName: receiptExtraction?.receiver_name ?? null,
           },
         }),
       })
@@ -1120,7 +1161,7 @@ export async function resolveCustomerStatus(
 
   if (preAiRoute === 'attachment_followup_handoff') {
     return applyOohTrapIfNeeded(async () => {
-      await setConversationState(channel, normalizedPhone, 'human_pause', ATTACHMENT_HANDOFF_MS, mergeMetadata(baseMetadata, {
+      await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
         reason: 'attachment_followup',
         ...buildDecisionMetadata({
           intent: null,
@@ -1142,7 +1183,7 @@ export async function resolveCustomerStatus(
 
   if (preAiRoute === 'preserve_human_handoff') {
     return applyOohTrapIfNeeded(async () => {
-      await setConversationState(channel, normalizedPhone, 'human_pause', ATTACHMENT_HANDOFF_MS, mergeMetadata(baseMetadata, {
+      await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
         reason: 'recent_human_routing_preserved',
         ...buildDecisionMetadata({
           intent: null,
@@ -1176,7 +1217,7 @@ export async function resolveCustomerStatus(
     }
 
     return applyOohTrapIfNeeded(async () => {
-      await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_PAUSE_MS, mergeMetadata(baseMetadata, {
+      await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
         reason: 'identifier_not_found',
         ...buildDecisionMetadata({
           intent: 'order_status',
@@ -1234,9 +1275,24 @@ export async function resolveCustomerStatus(
       hasStoreLocationText: Boolean(storeLocationText),
     })
 
+    if (classification.success && postClassificationRoute === 'silent_handoff') {
+      await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+        selectedOption: 'ai_silent_handoff',
+        aiConfidence: classification.data.confidence,
+        ...buildDecisionMetadata({
+          intent: classification.data.intent,
+          confidence: classification.data.confidence,
+          action: 'silent_handoff',
+          outboundType: null,
+        }),
+      }))
+
+      return ignoreInbound(inbound.id)
+    }
+
     if (classification.success && postClassificationRoute !== 'fallback') {
       if (postClassificationRoute === 'human_handoff') {
-        await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_PAUSE_MS, mergeMetadata(baseMetadata, {
+        await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
           selectedOption: 'ai_human_handoff',
           aiConfidence: classification.data.confidence,
           ...buildDecisionMetadata({
@@ -1283,7 +1339,7 @@ export async function resolveCustomerStatus(
             if (shouldSilenceRepeatedStatus(lastOutbound, status.statusCode)) {
               // FOLLOW-UP question: It's a handoff!
               const text = 'Vou acionar a equipe para verificar a sua retirada/agendamento no detalhe. Um momento.'
-              await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_PAUSE_MS, mergeMetadata(baseMetadata, {
+              await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
                 selectedOption: 'ai_specific_handoff',
                 aiConfidence: classification.data.confidence,
                 ...buildDecisionMetadata({
@@ -1361,7 +1417,7 @@ export async function resolveCustomerStatus(
 
         // Se não achou OS, handoff
         const text = 'Vou acionar a equipe para verificar a sua retirada/agendamento. Um momento.'
-        await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_PAUSE_MS, mergeMetadata(baseMetadata, {
+        await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
           selectedOption: 'ai_specific_handoff',
           aiConfidence: classification.data.confidence,
           ...buildDecisionMetadata({
@@ -1401,7 +1457,7 @@ export async function resolveCustomerStatus(
           complaint_or_adaptation: 'Entendi a situação. Vou chamar um especialista da nossa equipe para dar prioridade ao seu caso.',
         }
         const text = textMap[postClassificationRoute] || humanHandoffText()
-        await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_PAUSE_MS, mergeMetadata(baseMetadata, {
+        await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
           selectedOption: 'ai_specific_handoff',
           aiConfidence: classification.data.confidence,
           ...buildDecisionMetadata({
@@ -1451,7 +1507,7 @@ export async function resolveCustomerStatus(
           text = `Não consegui localizar nenhuma fatura em aberto cadastrada direto no seu número. Você poderia me informar o nome de quem fez a compra ou o CPF?`
         }
 
-        await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_PAUSE_MS, mergeMetadata(baseMetadata, {
+        await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
           selectedOption: 'ai_specific_handoff',
           aiConfidence: classification.data.confidence,
           ...buildDecisionMetadata({
@@ -1620,7 +1676,7 @@ export async function markStoreInitiatedConversation(
     }
   }
 
-  await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_PAUSE_MS, {
+  await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, {
     reason: 'store_initiated',
     providerMessageId: providerMessageId || null,
     preview: input.messageText?.slice(0, 160) || null,
