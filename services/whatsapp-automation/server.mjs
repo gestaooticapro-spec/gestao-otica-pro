@@ -227,6 +227,12 @@ async function connectEvolutionInstance(instanceKey) {
   return evolutionRequest(`/instance/connect/${encodeURIComponent(instanceKey)}`)
 }
 
+async function logoutEvolutionInstance(instanceKey) {
+  return evolutionRequest(`/instance/logout/${encodeURIComponent(instanceKey)}`, {
+    method: 'DELETE',
+  })
+}
+
 async function getEvolutionConnectionState(instanceKey) {
   return evolutionRequest(`/instance/connectionState/${encodeURIComponent(instanceKey)}`)
 }
@@ -404,6 +410,23 @@ const server = createServer(async (request, response) => {
           instanceKey,
           connectionStatus: 'connecting',
           qrCodeBase64: extractQrCodeBase64(result),
+        })
+      }
+
+      if (request.method === 'POST' && url.pathname === '/admin/instances/disconnect') {
+        const statePayload = await getEvolutionConnectionState(instanceKey).catch(() => null)
+        const state = extractConnectionState(statePayload)
+        if (state !== 'open' && state !== 'connected' && state !== 'connecting') {
+          return jsonResponse(response, 200, {
+            instanceKey,
+            connectionStatus: 'disconnected',
+          })
+        }
+
+        await logoutEvolutionInstance(instanceKey)
+        return jsonResponse(response, 200, {
+          instanceKey,
+          connectionStatus: 'disconnected',
         })
       }
 

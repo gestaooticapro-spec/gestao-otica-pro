@@ -19,10 +19,12 @@ import {
   RefreshCw,
   ShieldAlert,
   Sparkles,
+  Unplug,
   Wifi,
   WifiOff,
 } from 'lucide-react'
 import {
+  disconnectWhatsAppChannel,
   getWhatsAppChannel,
   getWhatsAppAutomationControlSettings,
   getWhatsAppInstallmentReminderSettings,
@@ -220,6 +222,25 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
       if (result.success) {
         applyChannel(result.channel ?? null)
         setQrCodeBase64(result.qrCodeBase64 ?? null)
+        setMessage({ kind: 'success', text: result.message })
+      } else {
+        setMessage({ kind: 'error', text: result.message })
+      }
+    })
+  }
+
+  const handleDisconnect = () => {
+    if (!channel) return
+    const confirmed = window.confirm('Desconectar este WhatsApp? Sera necessario gerar e ler um novo QR Code para conectar novamente.')
+    if (!confirmed) return
+
+    setMessage(null)
+    setQrCodeBase64(null)
+
+    startTransition(async () => {
+      const result = await disconnectWhatsAppChannel(storeId)
+      if (result.success) {
+        applyChannel(result.channel ?? null)
         setMessage({ kind: 'success', text: result.message })
       } else {
         setMessage({ kind: 'error', text: result.message })
@@ -450,6 +471,15 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
             >
               <RefreshCw className={`h-4 w-4 ${isPending || isLoading ? 'animate-spin' : ''}`} />
               Verificar
+            </button>
+            <button
+              type="button"
+              onClick={handleDisconnect}
+              disabled={isPending || isLoading || !channel || !isConnected}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-rose-300/20 bg-rose-400/10 px-4 text-xs font-black uppercase tracking-wider text-rose-100 transition hover:bg-rose-400/15 disabled:opacity-50"
+            >
+              <Unplug className="h-4 w-4" />
+              Desconectar
             </button>
             <button
               type="button"

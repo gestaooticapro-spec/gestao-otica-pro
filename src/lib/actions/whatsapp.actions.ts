@@ -144,7 +144,7 @@ function buildInstanceKey(storeId: number, storeName: string) {
 }
 
 async function automationRequest<T>(
-  path: '/admin/instances/setup' | '/admin/instances/connect' | '/admin/instances/status',
+  path: '/admin/instances/setup' | '/admin/instances/connect' | '/admin/instances/disconnect' | '/admin/instances/status',
   payload: { instanceKey: string }
 ): Promise<T> {
   const baseUrl = process.env.WHATSAPP_AUTOMATION_ADMIN_URL?.replace(/\/$/, '')
@@ -592,6 +592,46 @@ export async function requestWhatsAppQrCode(storeId: number): Promise<WhatsAppAc
   } catch (error) {
     console.error('[WhatsApp] Failed to request QR code:', error)
     return { success: false, message: 'NÃ£o foi possÃ­vel gerar um novo QR Code.' }
+  }
+}
+
+export async function disconnectWhatsAppChannel(storeId: number): Promise<WhatsAppActivationResult> {
+  const parsed = StatusSchema.safeParse({ storeId })
+  if (!parsed.success) return { success: false, message: 'Loja invalida.' }
+
+  const profile = await getAuthorizedProfile(parsed.data.storeId)
+  if (!profile) return { success: false, message: 'Acesso negado.' }
+
+  try {
+    const current = await getWhatsAppChannel(parsed.data.storeId)
+    if (!current.success || !current.channel) {
+      return { success: false, message: 'Nenhum canal configurado para esta loja.' }
+    }
+
+    await automationRequest<{ connectionStatus: WhatsAppChannel['connection_status'] }>(
+      '/admin/instances/disconnect',
+      { instanceKey: current.channel.instance_key }
+    )
+
+    const store = await loadStoreForWhatsApp(parsed.data.storeId)
+    const channel = await upsertWhatsAppChannel({
+      tenantId: store.tenant_id,
+      storeId: store.id,
+      instanceKey: current.channel.instance_key,
+      phoneNumber: current.channel.phone_number,
+      isActive: false,
+      connectionStatus: 'disconnected',
+    })
+
+    revalidatePath(`/dashboard/loja/${store.id}/config`)
+    return {
+      success: true,
+      message: 'WhatsApp desconectado. Gere um novo QR Code para conectar novamente.',
+      channel,
+    }
+  } catch (error) {
+    console.error('[WhatsApp] Failed to disconnect channel:', error)
+    return { success: false, message: 'Nao foi possivel desconectar o WhatsApp.' }
   }
 }
 
