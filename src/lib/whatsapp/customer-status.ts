@@ -144,6 +144,23 @@ function looksLikeOrderStatusQuestion(message: string | null | undefined) {
   ].some((pattern) => pattern.test(normalized))
 }
 
+function looksLikeGenericGreeting(message: string | null | undefined) {
+  const normalized = normalizeMessage(message || undefined)
+  if (!normalized) return false
+
+  return [
+    'oi',
+    'ola',
+    'hola',
+    'bom dia',
+    'boa tarde',
+    'boa noite',
+    'opa',
+    'e ai',
+    'eae',
+  ].includes(normalized)
+}
+
 function menuText() {
   return [
     'Olá! Sou o atendimento automático da ótica.',
@@ -185,6 +202,14 @@ function attachmentReceivedText() {
 
 function attachmentFollowupText() {
   return 'Perfeito. Vou deixar esse atendimento com nossa equipe para analisar o arquivo e continuar por aqui.'
+}
+
+function aiGreetingText() {
+  return 'Oi! Sou a IAra, assistente virtual da otica. Como posso te ajudar hoje?'
+}
+
+function aiClarificationText() {
+  return 'Entendi. Para eu te ajudar melhor, me diga por favor se voce quer falar sobre pedido, horario da loja, pagamento, orcamento ou atendimento com a equipe.'
 }
 
 function normalizeDisplayText(value: string | null | undefined) {
@@ -437,7 +462,6 @@ function optionFromMessage(message: string | undefined): '1' | '2' | null {
   const normalized = normalizeMessage(message)
   if (/^\s*1\s*$/.test(normalized)) return '1'
   if (/^\s*2\s*$/.test(normalized)) return '2'
-  if (normalized.includes('status') || normalized.includes('os') || normalized.includes('ordem') || normalized.includes('oculos')) return '1'
   if (normalized.includes('atendente') || normalized.includes('humano')) return '2'
   return null
 }
@@ -1122,6 +1146,22 @@ export async function resolveCustomerStatus(
   }
 
   if (preAiRoute === 'attachment_handoff') {
+    if (inboundPayloadMeta.attachmentKind === 'audio') {
+      await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+        reason: 'audio_received_silent_handoff',
+        attachmentKind: inboundPayloadMeta.attachmentKind,
+        mimeType: inboundPayloadMeta.mimeType,
+        fileName: inboundPayloadMeta.fileName,
+        caption: inboundPayloadMeta.caption,
+        ...buildDecisionMetadata({
+          intent: null,
+          action: 'human_handoff',
+          outboundType: null,
+        }),
+      }))
+      return ignoreInbound(inbound.id)
+    }
+
     let receiptExtraction: WhatsAppReceiptExtraction | null = null
     let intentOutcome = 'prescription_submission'
     let text = attachmentReceivedText()
@@ -1643,13 +1683,29 @@ export async function resolveCustomerStatus(
         }
       }
     }
+
+    if (isWhatsAppAiResponderEnabled(automationSettings)) {
+      const isGreeting = looksLikeGenericGreeting(effectiveMessageText)
+      const text = isGreeting ? aiGreetingText() : aiClarificationText()
+      return applyOohTrapIfNeeded(async () => {
+        return createOutbound(channel, inbound.id, normalizedPhone, text, isGreeting ? 'ai_greeting' : 'ai_clarification', {
+          ...(classification.success ? buildAiPayload(classification.data) : {}),
+          ...buildWhatsAppCanonicalPayload({
+            intent: classification.success ? classification.data.intent : null,
+            action: isGreeting ? 'ai_greeting' : 'ai_clarification',
+            outboundType: isGreeting ? 'ai_greeting' : 'ai_clarification',
+            canonicalReply: text,
+          }),
+        })
+      })
+    }
   }
 
   if (state?.state === 'waiting_menu') {
     return ignoreInbound(inbound.id)
   }
 
-  if (looksLikeOrderStatusQuestion(effectiveMessageText || undefined)) {
+  if (!isWhatsAppAiResponderEnabled(automationSettings) && looksLikeOrderStatusQuestion(effectiveMessageText || undefined)) {
     return handleStatusByPhone(channel, inbound.id, normalizedPhone, baseMetadata)
   }
 
