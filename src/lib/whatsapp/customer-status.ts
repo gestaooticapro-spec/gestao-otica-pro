@@ -656,6 +656,10 @@ function isWhatsAppAutomationEnabled(settings: StoreSettings['whatsapp_automatio
   return settings?.enabled !== false
 }
 
+function isWhatsAppAiResponderEnabled(settings: StoreSettings['whatsapp_automation'] | undefined) {
+  return settings?.ai_responder?.enabled === true
+}
+
 async function findLastOutboundStatus(channelId: number, phone: string): Promise<LastOutboundStatusRow | null> {
   const supabase = createAdminClient()
   const { data, error } = await (supabase.from('whatsapp_outbound_messages') as any)
@@ -1647,6 +1651,10 @@ export async function resolveCustomerStatus(
 
   if (looksLikeOrderStatusQuestion(effectiveMessageText || undefined)) {
     return handleStatusByPhone(channel, inbound.id, normalizedPhone, baseMetadata)
+  }
+
+  if (isWhatsAppAiResponderEnabled(automationSettings)) {
+    return ignoreInbound(inbound.id)
   }
 
   return applyOohTrapIfNeeded(async () => {

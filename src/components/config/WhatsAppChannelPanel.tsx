@@ -25,16 +25,19 @@ import {
 } from 'lucide-react'
 import {
   disconnectWhatsAppChannel,
+  getWhatsAppAiResponderSettings,
   getWhatsAppChannel,
   getWhatsAppAutomationControlSettings,
   getWhatsAppInstallmentReminderSettings,
   getWhatsAppOsResponderSettings,
   refreshWhatsAppConnection,
   requestWhatsAppQrCode,
+  saveWhatsAppAiResponderSettings,
   saveWhatsAppAutomationControlSettings,
   saveWhatsAppInstallmentReminderSettings,
   saveWhatsAppOsResponderSettings,
   startWhatsAppActivation,
+  type WhatsAppAiResponderControlSettings,
   type WhatsAppAutomationControlSettings,
   type WhatsAppChannel,
   type WhatsAppInstallmentReminderSettings,
@@ -84,13 +87,6 @@ const automationPlaceholders = [
     placeholder: 'Ex.: Oi, {nome}! Toda a equipe da loja deseja um aniversario cheio de saude e alegrias.',
     icon: Cake,
   },
-  {
-    id: 'ai_responder',
-    title: 'Responder com IA',
-    description: 'Canal conversacional mais amplo para perguntas gerais.',
-    placeholder: 'Ex.: Responda de forma educada, objetiva e com foco no atendimento da loja, sem inventar informacoes.',
-    icon: Bot,
-  },
 ] as const
 
 export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
@@ -102,6 +98,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
   const [automationControlSettings, setAutomationControlSettings] = useState<WhatsAppAutomationControlSettings>({ enabled: true })
   const [osResponderSettings, setOsResponderSettings] = useState<WhatsAppOsResponderSettings | null>(null)
   const [installmentReminderSettings, setInstallmentReminderSettings] = useState<WhatsAppInstallmentReminderSettings | null>(null)
+  const [aiResponderSettings, setAiResponderSettings] = useState<WhatsAppAiResponderControlSettings | null>(null)
   const [automationDrafts, setAutomationDrafts] = useState(() =>
     automationPlaceholders.reduce<Record<string, { enabled: boolean; text: string }>>((acc, item) => {
       acc[item.id] = {
@@ -122,11 +119,12 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
   const loadChannel = () => {
     setIsLoading(true)
     startTransition(async () => {
-      const [channelResult, automationControlResult, osSettingsResult, installmentReminderResult] = await Promise.all([
+      const [channelResult, automationControlResult, osSettingsResult, installmentReminderResult, aiResponderResult] = await Promise.all([
         getWhatsAppChannel(storeId),
         getWhatsAppAutomationControlSettings(storeId),
         getWhatsAppOsResponderSettings(storeId),
         getWhatsAppInstallmentReminderSettings(storeId),
+        getWhatsAppAiResponderSettings(storeId),
       ])
 
       if (channelResult.success) {
@@ -154,6 +152,13 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
         if (channelResult.success && automationControlResult.success && osSettingsResult.success) setMessage(null)
       } else if (!channelResult.success && !automationControlResult.success && !osSettingsResult.success) {
         setMessage({ kind: 'error', text: installmentReminderResult.message })
+      }
+
+      if (aiResponderResult.success) {
+        setAiResponderSettings(aiResponderResult.settings ?? null)
+        if (channelResult.success && automationControlResult.success && osSettingsResult.success && installmentReminderResult.success) setMessage(null)
+      } else if (!channelResult.success && !automationControlResult.success && !osSettingsResult.success && !installmentReminderResult.success) {
+        setMessage({ kind: 'error', text: aiResponderResult.message })
       }
       setIsLoading(false)
     })
@@ -355,6 +360,51 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
         setMessage({ kind: 'success', text: result.message })
       } else {
         setInstallmentReminderSettings(previousSettings)
+        setMessage({ kind: 'error', text: result.message })
+      }
+    })
+  }
+
+  const handleSaveAiResponder = () => {
+    if (!aiResponderSettings) return
+    setMessage(null)
+
+    startTransition(async () => {
+      const result = await saveWhatsAppAiResponderSettings({
+        storeId,
+        enabled: aiResponderSettings.enabled,
+        prompt: aiResponderSettings.prompt,
+      })
+
+      if (result.success) {
+        setAiResponderSettings(result.settings ?? null)
+        setMessage({ kind: 'success', text: result.message })
+      } else {
+        setMessage({ kind: 'error', text: result.message })
+      }
+    })
+  }
+
+  const handleToggleAiResponder = (enabled: boolean) => {
+    if (!aiResponderSettings) return
+
+    const previousSettings = aiResponderSettings
+    const nextSettings = { ...aiResponderSettings, enabled }
+    setAiResponderSettings(nextSettings)
+    setMessage(null)
+
+    startTransition(async () => {
+      const result = await saveWhatsAppAiResponderSettings({
+        storeId,
+        enabled,
+        prompt: nextSettings.prompt,
+      })
+
+      if (result.success) {
+        setAiResponderSettings(result.settings ?? nextSettings)
+        setMessage({ kind: 'success', text: result.message })
+      } else {
+        setAiResponderSettings(previousSettings)
         setMessage({ kind: 'error', text: result.message })
       }
     })
@@ -740,6 +790,71 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                 >
                   {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
                   Salvar lembrete
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+
+        <section className="mt-6 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-400/10">
+                <Bot className="h-5 w-5 text-cyan-200" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-black text-white">Responder com IA</h4>
+                  <span className="rounded-lg border border-cyan-300/20 bg-cyan-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100">
+                    IA
+                  </span>
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-slate-300">
+                  Quando ativada, perguntas fora dos modulos objetivos deixam de cair no menu antigo e ficam reservadas para o fluxo inteligente.
+                </p>
+              </div>
+            </div>
+
+            <label className="inline-flex items-center">
+              <input
+                type="checkbox"
+                checked={Boolean(aiResponderSettings?.enabled)}
+                onChange={(event) => handleToggleAiResponder(event.target.checked)}
+                disabled={!aiResponderSettings || isPending || isLoading || !automationEnabled}
+                className="h-5 w-5 rounded border-white/20 bg-slate-900 text-cyan-400 focus:ring-cyan-400"
+              />
+            </label>
+          </div>
+
+          {aiResponderSettings && (
+            <>
+              <div className="mt-5 rounded-xl border border-white/10 bg-black/20 p-4">
+                <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                  Texto base
+                </label>
+                <textarea
+                  value={aiResponderSettings.prompt}
+                  onChange={(event) => {
+                    const value = event.target.value
+                    setAiResponderSettings((current) => current ? { ...current, prompt: value } : current)
+                  }}
+                  rows={5}
+                  className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm leading-relaxed text-slate-200 outline-none transition focus:border-cyan-300/40 focus:ring-2 focus:ring-cyan-300/10"
+                />
+              </div>
+
+              <div className="mt-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] leading-relaxed text-slate-400">
+                  O texto base sera usado como diretriz do atendimento inteligente nas proximas etapas do fluxo.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleSaveAiResponder}
+                  disabled={isPending || isLoading}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-xs font-black uppercase tracking-wider text-cyan-950 shadow-lg shadow-cyan-500/20 transition hover:bg-cyan-300 disabled:opacity-50"
+                >
+                  {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
+                  Salvar IA
                 </button>
               </div>
             </>

@@ -18,6 +18,7 @@ import {
 } from '@/lib/whatsapp/installment-reminders'
 import type {
   StoreSettings,
+  WhatsAppAiResponderSettings,
   WhatsAppInstallmentDueReminderSettings,
   WhatsAppAutomationOsOnDemandSettings,
   WhatsAppOsReplyTemplates,
@@ -73,6 +74,16 @@ export type WhatsAppInstallmentReminderSettingsResult = {
   settings?: WhatsAppInstallmentReminderSettings
 }
 
+export type WhatsAppAiResponderControlSettings = Required<WhatsAppAiResponderSettings>
+
+export type WhatsAppAiResponderSettingsResult = {
+  success: boolean
+  message: string
+  settings?: WhatsAppAiResponderControlSettings
+}
+
+const DEFAULT_AI_RESPONDER_PROMPT = 'Responda de forma educada, objetiva e com foco no atendimento da loja, sem inventar informacoes.'
+
 const ChannelSchema = z.object({
   storeId: z.coerce.number().int().positive(),
   instanceKey: z.string()
@@ -114,6 +125,12 @@ const InstallmentReminderSettingsSchema = z.object({
 const AutomationControlSettingsSchema = z.object({
   storeId: z.coerce.number().int().positive(),
   enabled: z.boolean(),
+})
+
+const AiResponderSettingsSchema = z.object({
+  storeId: z.coerce.number().int().positive(),
+  enabled: z.boolean(),
+  prompt: z.string().trim().min(20, 'Informe um texto base para a IA.').max(1200),
 })
 
 async function getAuthorizedProfile(storeId: number) {
@@ -217,6 +234,13 @@ function buildReminderSettings(
 function buildAutomationControlSettings(saved: StoreSettings['whatsapp_automation'] | undefined): WhatsAppAutomationControlSettings {
   return {
     enabled: saved?.enabled !== false,
+  }
+}
+
+function buildAiResponderSettings(saved: WhatsAppAiResponderSettings | undefined): WhatsAppAiResponderControlSettings {
+  return {
+    enabled: saved?.enabled === true,
+    prompt: saved?.prompt?.trim() || DEFAULT_AI_RESPONDER_PROMPT,
   }
 }
 
@@ -334,6 +358,24 @@ export async function getWhatsAppInstallmentReminderSettings(storeId: number): P
   } catch (error) {
     console.error('[WhatsApp] Failed to load installment reminder settings:', error)
     return { success: false, message: 'Nao foi possivel carregar os lembretes de vencimento.' }
+  }
+}
+
+export async function getWhatsAppAiResponderSettings(storeId: number): Promise<WhatsAppAiResponderSettingsResult> {
+  if (!await getAuthorizedProfile(storeId)) {
+    return { success: false, message: 'Acesso negado.' }
+  }
+
+  try {
+    const settings = await loadStoreSettings(storeId)
+    return {
+      success: true,
+      message: '',
+      settings: buildAiResponderSettings(settings.whatsapp_automation?.ai_responder),
+    }
+  } catch (error) {
+    console.error('[WhatsApp] Failed to load AI responder settings:', error)
+    return { success: false, message: 'Nao foi possivel carregar a configuracao de IA.' }
   }
 }
 
@@ -459,6 +501,49 @@ export async function saveWhatsAppInstallmentReminderSettings(input: {
   } catch (error) {
     console.error('[WhatsApp] Failed to save installment reminder settings:', error)
     return { success: false, message: 'Nao foi possivel salvar os lembretes de vencimento.' }
+  }
+}
+
+export async function saveWhatsAppAiResponderSettings(input: {
+  storeId: number
+  enabled: boolean
+  prompt: string
+}): Promise<WhatsAppAiResponderSettingsResult> {
+  const parsed = AiResponderSettingsSchema.safeParse(input)
+  if (!parsed.success) {
+    return { success: false, message: parsed.error.issues[0]?.message || 'Dados invalidos.' }
+  }
+
+  const profile = await getAuthorizedProfile(parsed.data.storeId)
+  if (!profile) return { success: false, message: 'Acesso negado.' }
+
+  try {
+    const currentSettings = await loadStoreSettings(parsed.data.storeId)
+    const nextSettings: Partial<StoreSettings> = {
+      whatsapp_automation: {
+        ...(currentSettings.whatsapp_automation || {}),
+        ai_responder: {
+          enabled: parsed.data.enabled,
+          prompt: parsed.data.prompt || DEFAULT_AI_RESPONDER_PROMPT,
+        },
+      },
+    }
+
+    const result = await updateStoreSettings(parsed.data.storeId, nextSettings)
+    if (!result.success) {
+      return { success: false, message: result.message }
+    }
+
+    return {
+      success: true,
+      message: parsed.data.enabled
+        ? 'Atendimento com IA ativado.'
+        : 'Atendimento com IA desativado.',
+      settings: buildAiResponderSettings(nextSettings.whatsapp_automation?.ai_responder),
+    }
+  } catch (error) {
+    console.error('[WhatsApp] Failed to save AI responder settings:', error)
+    return { success: false, message: 'Nao foi possivel salvar a configuracao de IA.' }
   }
 }
 
