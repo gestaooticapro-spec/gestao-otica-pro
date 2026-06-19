@@ -34,7 +34,7 @@ import { findOpenInstallmentsByPhone } from '@/lib/actions/consultas.actions'
 
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
 const HUMAN_PAUSE_MS = 60 * 60 * 1000
-const HUMAN_HANDOFF_PAUSE_MS = 24 * 60 * 60 * 1000
+const HUMAN_HANDOFF_PAUSE_MS = 12 * 60 * 60 * 1000
 const AI_SESSION_MS = 2 * 60 * 60 * 1000
 const MENU_WAIT_MS = 30 * 60 * 1000
 const IDENTIFIER_WAIT_MS = 20 * 60 * 1000

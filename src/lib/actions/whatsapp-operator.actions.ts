@@ -522,6 +522,30 @@ function normalizeRemotePhone(value: string) {
   return evolution || digits
 }
 
+function phonesBelongToSameThread(left: string | null | undefined, right: string | null | undefined) {
+  return phonesMatch(left, right) || normalizeRemotePhone(String(left || '')) === normalizeRemotePhone(String(right || ''))
+}
+
+function pickPreferredRemotePhone(current: string, candidate: string) {
+  const currentNormalized = normalizeRemotePhone(current)
+  const candidateNormalized = normalizeRemotePhone(candidate)
+  if (!currentNormalized) return candidateNormalized || candidate
+  if (!candidateNormalized) return currentNormalized || current
+
+  const currentDigits = digitsOnly(currentNormalized)
+  const candidateDigits = digitsOnly(candidateNormalized)
+
+  if (candidateDigits.length > currentDigits.length) return candidateNormalized
+  return currentNormalized
+}
+
+function findMapValueByPhoneMatch<T>(map: Map<string, T>, phone: string) {
+  for (const [key, value] of map.entries()) {
+    if (phonesBelongToSameThread(key, phone)) return value
+  }
+  return undefined
+}
+
 async function sendAutomationMessage(payload: {
   instanceKey: string
   phone: string
@@ -764,13 +788,9 @@ function buildThreadListItem(
 
 async function loadCustomerControlMap(storeId: number, phones?: string[]) {
   const supabaseAdmin = createAdminClient()
-  let query = (supabaseAdmin.from('whatsapp_customer_control') as any)
+  const query = (supabaseAdmin.from('whatsapp_customer_control') as any)
     .select('remote_phone, mode')
     .eq('store_id', storeId)
-
-  if (phones && phones.length > 0) {
-    query = query.in('remote_phone', phones.slice(0, 200))
-  }
 
   const { data, error } = await query
   if (error) throw error
@@ -786,13 +806,9 @@ async function loadCustomerControlMap(storeId: number, phones?: string[]) {
 
 async function loadCustomerLinkMap(storeId: number, phones?: string[]) {
   const supabaseAdmin = createAdminClient()
-  let query = (supabaseAdmin.from('whatsapp_customer_links') as any)
+  const query = (supabaseAdmin.from('whatsapp_customer_links') as any)
     .select('remote_phone, customer_id')
     .eq('store_id', storeId)
-
-  if (phones && phones.length > 0) {
-    query = query.in('remote_phone', phones.slice(0, 200))
-  }
 
   const { data, error } = await query
   if (error) throw error
@@ -889,6 +905,18 @@ export async function getWhatsAppOperatorThreads(input: {
 
     const threadMap = new Map<string, ReturnType<typeof createThreadAccumulator>>()
     const ensureThread = (remotePhone: string) => {
+      for (const [existingKey, existingThread] of threadMap.entries()) {
+        if (!phonesBelongToSameThread(existingKey, remotePhone)) continue
+
+        const preferredPhone = pickPreferredRemotePhone(existingThread.remotePhone, remotePhone)
+        existingThread.remotePhone = preferredPhone
+        if (preferredPhone !== existingKey) {
+          threadMap.delete(existingKey)
+          threadMap.set(preferredPhone, existingThread)
+        }
+        return existingThread
+      }
+
       const normalized = normalizeRemotePhone(remotePhone)
       if (!threadMap.has(normalized)) {
         threadMap.set(normalized, createThreadAccumulator(normalized))
@@ -943,7 +971,7 @@ export async function getWhatsAppOperatorThreads(input: {
       }
     }
 
-    const phones = [...threadMap.keys()]
+    const phones = [...threadMap.values()].map((thread) => thread.remotePhone)
     const [controlMap, customerLinkMap] = await Promise.all([
       loadCustomerControlMap(storeId, phones),
       loadCustomerLinkMap(storeId, phones),
@@ -958,13 +986,14 @@ export async function getWhatsAppOperatorThreads(input: {
       await loadCustomersByPhoneHints(storeId, phones)
     )
 
-    let threads = [...threadMap.entries()].map(([remotePhone, accumulator]) => {
-      const linkedCustomerId = customerLinkMap.get(remotePhone)
+    let threads = [...threadMap.values()].map((accumulator) => {
+      const remotePhone = accumulator.remotePhone
+      const linkedCustomerId = findMapValueByPhoneMatch(customerLinkMap, remotePhone)
       const customer = findCustomerById(linkedCustomerId ?? null, resolvedCustomers)
         || matchedCustomers.find((item) => findCustomerByPhone(remotePhone, [item]))
         || findCustomerByPhone(remotePhone, resolvedCustomers)
         || findCustomerById(accumulator.lastKnownCustomerId, resolvedCustomers)
-      return buildThreadListItem(remotePhone, accumulator, customer, controlMap.get(remotePhone) || 'auto')
+      return buildThreadListItem(remotePhone, accumulator, customer, findMapValueByPhoneMatch(controlMap, remotePhone) || 'auto')
     })
 
     if (query && candidatePhones.size === 0 && numericQuery.length === 0) {
@@ -1027,31 +1056,47 @@ export async function getWhatsAppOperatorThreadDetail(input: {
       loadCustomerLinkMap(storeId, [remotePhone]),
     ])
 
+    const phoneLast8 = digitsOnly(remotePhone).slice(-8)
+    const inboundBaseQuery = (supabaseAdmin.from('whatsapp_inbound_messages') as any)
+      .select('id, provider_message_id, remote_phone, message_text, payload, status, created_at')
+      .eq('store_id', storeId)
+      .order('created_at', { ascending: false })
+      .limit(Math.max(limit * 3, limit))
+    const outboundBaseQuery = (supabaseAdmin.from('whatsapp_outbound_messages') as any)
+      .select('id, inbound_message_id, provider_message_id, remote_phone, message_text, message_type, status, payload, error_message, sent_at, created_at')
+      .eq('store_id', storeId)
+      .order('created_at', { ascending: false })
+      .limit(Math.max(limit * 3, limit))
+    const stateBaseQuery = (supabaseAdmin.from('whatsapp_conversation_states') as any)
+      .select('id, channel_id, remote_phone, state, metadata, expires_at, updated_at')
+      .eq('store_id', storeId)
+
+    if (phoneLast8) {
+      inboundBaseQuery.ilike('remote_phone', `%${phoneLast8}%`)
+      outboundBaseQuery.ilike('remote_phone', `%${phoneLast8}%`)
+      stateBaseQuery.ilike('remote_phone', `%${phoneLast8}%`)
+    }
+
     const [{ data: inboundRows, error: inboundError }, { data: outboundRows, error: outboundError }, { data: stateRow, error: stateError }] = await Promise.all([
-      (supabaseAdmin.from('whatsapp_inbound_messages') as any)
-        .select('id, provider_message_id, remote_phone, message_text, payload, status, created_at')
-        .eq('store_id', storeId)
-        .eq('remote_phone', remotePhone)
-        .order('created_at', { ascending: false })
-        .limit(limit),
-      (supabaseAdmin.from('whatsapp_outbound_messages') as any)
-        .select('id, inbound_message_id, provider_message_id, remote_phone, message_text, message_type, status, payload, error_message, sent_at, created_at')
-        .eq('store_id', storeId)
-        .eq('remote_phone', remotePhone)
-        .order('created_at', { ascending: false })
-        .limit(limit),
-      (supabaseAdmin.from('whatsapp_conversation_states') as any)
-        .select('id, channel_id, remote_phone, state, metadata, expires_at, updated_at')
-        .eq('store_id', storeId)
-        .eq('remote_phone', remotePhone)
-        .maybeSingle(),
+      inboundBaseQuery,
+      outboundBaseQuery,
+      stateBaseQuery.order('updated_at', { ascending: false }).limit(20),
     ])
 
     if (inboundError) throw inboundError
     if (outboundError) throw outboundError
     if (stateError) throw stateError
 
-    const inboundIds = ((inboundRows || []) as InboundRow[]).map((row) => row.id)
+    const filteredInboundRows = ((inboundRows || []) as InboundRow[])
+      .filter((row) => phonesBelongToSameThread(row.remote_phone, remotePhone))
+      .slice(0, limit)
+    const filteredOutboundRows = ((outboundRows || []) as OutboundRow[])
+      .filter((row) => phonesBelongToSameThread(row.remote_phone, remotePhone))
+      .slice(0, limit)
+    const matchedStateRow = ((stateRow || []) as ConversationStateRow[])
+      .find((row) => phonesBelongToSameThread(row.remote_phone, remotePhone)) || null
+
+    const inboundIds = filteredInboundRows.map((row) => row.id)
     let aiLogs: AiLogRow[] = []
 
     if (inboundIds.length > 0) {
@@ -1071,7 +1116,7 @@ export async function getWhatsAppOperatorThreadDetail(input: {
     }
 
     const messages: WhatsAppOperatorThreadMessage[] = [
-      ...((inboundRows || []) as InboundRow[]).map((row) => {
+      ...filteredInboundRows.map((row) => {
         const technicalLog = latestAiLogByInboundId.get(row.id)
         const tokenUsage = extractTokenUsage(technicalLog?.raw_response)
 
@@ -1103,7 +1148,7 @@ export async function getWhatsAppOperatorThreadDetail(input: {
           } : null,
         }
       }),
-      ...((outboundRows || []) as OutboundRow[]).map((row) => ({
+      ...filteredOutboundRows.map((row) => ({
         id: `outbound-${row.id}`,
         sourceId: row.id,
         direction: 'outbound' as const,
@@ -1121,10 +1166,10 @@ export async function getWhatsAppOperatorThreadDetail(input: {
       })),
     ].sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
 
-    const stateMetadata = asRecord((stateRow as ConversationStateRow | null)?.metadata)
+    const stateMetadata = asRecord(matchedStateRow?.metadata)
     const latestAiLog = aiLogs[0] || null
     const latestAiTokens = extractTokenUsage(latestAiLog?.raw_response)
-    const linkedCustomerId = customerLinkMap.get(remotePhone)
+    const linkedCustomerId = findMapValueByPhoneMatch(customerLinkMap, remotePhone)
     const resolvedCustomers = mergeCustomers(
       customers,
       await loadCustomersByIds(storeId, [
@@ -1142,9 +1187,9 @@ export async function getWhatsAppOperatorThreadDetail(input: {
       remotePhone,
       {
         ...createThreadAccumulator(remotePhone),
-        currentState: (stateRow as ConversationStateRow | null)?.state ?? null,
-        stateExpiresAt: (stateRow as ConversationStateRow | null)?.expires_at ?? null,
-        stateUpdatedAt: (stateRow as ConversationStateRow | null)?.updated_at ?? null,
+        currentState: matchedStateRow?.state ?? null,
+        stateExpiresAt: matchedStateRow?.expires_at ?? null,
+        stateUpdatedAt: matchedStateRow?.updated_at ?? null,
         internalNote: asString(stateMetadata.handoff_internal_note),
         extractedReceipt: (stateMetadata.ai_extracted_receipt as Json | undefined) ?? null,
         latestIntent: asString(stateMetadata.lastIntent) || asString(stateMetadata.aiIntent),
@@ -1160,7 +1205,7 @@ export async function getWhatsAppOperatorThreadDetail(input: {
         messageCount: messages.length,
       },
       customer,
-      controlMap.get(remotePhone) || 'auto'
+      findMapValueByPhoneMatch(controlMap, remotePhone) || 'auto'
     )
 
     return {
@@ -1170,10 +1215,10 @@ export async function getWhatsAppOperatorThreadDetail(input: {
         thread,
         messages,
         technicalSummary: {
-          overrideMode: controlMap.get(remotePhone) || 'auto',
-          conversationState: (stateRow as ConversationStateRow | null)?.state ?? null,
-          stateExpiresAt: (stateRow as ConversationStateRow | null)?.expires_at ?? null,
-          stateUpdatedAt: (stateRow as ConversationStateRow | null)?.updated_at ?? null,
+          overrideMode: findMapValueByPhoneMatch(controlMap, remotePhone) || 'auto',
+          conversationState: matchedStateRow?.state ?? null,
+          stateExpiresAt: matchedStateRow?.expires_at ?? null,
+          stateUpdatedAt: matchedStateRow?.updated_at ?? null,
           handoffInternalNote: asString(stateMetadata.handoff_internal_note),
           latestIntent: asString(stateMetadata.lastIntent) || asString(stateMetadata.aiIntent),
           latestConfidence: asNumber(stateMetadata.lastIntentConfidence) ?? asNumber(stateMetadata.aiConfidence),
@@ -1203,7 +1248,7 @@ export async function getWhatsAppOperatorThreadDetail(input: {
           } : null,
           extractedReceipt: (stateMetadata.ai_extracted_receipt as Json | undefined) ?? null,
           paymentInstallmentHint: parsePaymentInstallmentHint(stateMetadata.paymentInstallmentHint),
-          metadata: (stateRow as ConversationStateRow | null)?.metadata ?? null,
+          metadata: matchedStateRow?.metadata ?? null,
         },
       },
     }
