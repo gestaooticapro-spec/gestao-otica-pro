@@ -187,6 +187,36 @@ function TechnicalPanel({ summary }: { summary: WhatsAppOperatorTechnicalSummary
         </div>
       </div>
 
+      <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300/80">Memoria da sessao IA</p>
+        <div className="mt-3 grid gap-2 text-sm text-cyan-50">
+          <div>itens: <span className="font-bold">{summary.aiSessionHistory.length}</span></div>
+          <div>ultima atualizacao: <span className="font-bold">{formatDateTime(summary.aiSessionUpdatedAt)}</span></div>
+          <div>encerrada em: <span className="font-bold">{formatDateTime(summary.aiSessionEndedAt)}</span></div>
+        </div>
+
+        {summary.aiSessionHistory.length > 0 ? (
+          <div className="mt-3 space-y-2 rounded-xl border border-cyan-500/20 bg-slate-950/60 p-3">
+            {summary.aiSessionHistory.map((entry, index) => (
+              <div
+                key={`${entry.at}-${index}`}
+                className="rounded-xl border border-white/5 bg-white/[0.03] p-3 text-[11px] leading-relaxed text-slate-200"
+              >
+                <div className="mb-1 flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider">
+                  <span className={entry.role === 'customer' ? 'text-white/80' : 'text-cyan-200'}>{entry.role === 'customer' ? 'Cliente' : 'IA'}</span>
+                  <span className="text-slate-500">{formatDateTime(entry.at)}</span>
+                </div>
+                <p className="whitespace-pre-wrap text-slate-300">{entry.text}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-sm leading-relaxed text-cyan-100/80">
+            Sem memoria automatica ativa no momento. Quando a conversa entra em handoff humano, esse contexto e encerrado.
+          </p>
+        )}
+      </div>
+
       <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">IA</p>
         <div className="mt-3 grid gap-2 text-sm text-slate-300">

@@ -88,6 +88,7 @@ interface RadarData {
     retornos: RetornoCobranca[];
     clientesInativos: ClienteInativo[];
     whatsAppPendencias: WhatsAppPendencia[];
+    whatsAppHumanOverrides: number;
     isWhatsAppConnected: boolean;
 }
 
@@ -142,6 +143,7 @@ export default function OperatorMenuLojaVazia({
         retornos: [],
         clientesInativos: [],
         whatsAppPendencias: [],
+        whatsAppHumanOverrides: 0,
         isWhatsAppConnected: false
     });
     const [loading, setLoading] = useState(true);
@@ -162,6 +164,7 @@ export default function OperatorMenuLojaVazia({
                         retornos: data.retornos || [],
                         clientesInativos: data.clientesInativos || [],
                         whatsAppPendencias: data.whatsAppPendencias || [],
+                        whatsAppHumanOverrides: data.whatsAppHumanOverrides || 0,
                         isWhatsAppConnected: data.isWhatsAppConnected === true
                     });
                 }
@@ -534,6 +537,7 @@ export default function OperatorMenuLojaVazia({
                                 {radar.isWhatsAppConnected && (
                                     <WidgetWhatsAppPendencias
                                         pendencias={radar.whatsAppPendencias}
+                                        humanOverrides={radar.whatsAppHumanOverrides}
                                         onOpen={() => setIsWhatsAppModalOpen(true)}
                                     />
                                 )}

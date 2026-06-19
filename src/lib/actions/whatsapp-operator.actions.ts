@@ -148,6 +148,13 @@ export type WhatsAppOperatorTechnicalSummary = {
   latestInboundText: string | null
   latestInboundHasAttachment: boolean
   latestInboundAttachmentKind: string | null
+  aiSessionHistory: Array<{
+    role: 'customer' | 'assistant'
+    text: string
+    at: string
+  }>
+  aiSessionUpdatedAt: string | null
+  aiSessionEndedAt: string | null
   latestAiLog: {
     intent: string | null
     confidence: number | null
@@ -223,6 +230,31 @@ function asNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
+function parseAiSessionHistory(value: unknown) {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null
+      const record = entry as Record<string, unknown>
+      const role = record.role === 'customer' || record.role === 'assistant' ? record.role : null
+      const text = asString(record.text)
+      const at = asString(record.at)
+      if (!role || !text || !at) return null
+
+      return {
+        role,
+        text,
+        at,
+      } as const
+    })
+    .filter(Boolean) as Array<{
+      role: 'customer' | 'assistant'
+      text: string
+      at: string
+    }>
+}
+
 function extractTokenUsage(rawResponse: Json | null | undefined) {
   const response = asRecord(rawResponse)
   const tokenUsage = asRecord(response.tokenUsage as Json | undefined)
@@ -292,6 +324,11 @@ function findCustomerByPhone(phone: string, customers: StoreCustomerRow[]) {
     phonesMatch(phone, customer.fone_movel) ||
     phonesMatch(phone, customer.phone)
   ) || null
+}
+
+function findCustomerById(customerId: number | null, customers: StoreCustomerRow[]) {
+  if (!customerId || !Number.isFinite(customerId)) return null
+  return customers.find((customer) => customer.id === customerId) || null
 }
 
 function isPendingState(state: string | null | undefined, expiresAt: string | null | undefined) {
@@ -368,6 +405,7 @@ function createThreadAccumulator(remotePhone: string) {
     latestConfidence: null as number | null,
     latestAction: null as string | null,
     latestOutboundType: null as string | null,
+    lastKnownCustomerId: null as number | null,
     hasRecentAttachment: false,
     lastMessageAt: null as string | null,
     lastMessagePreview: null as string | null,
@@ -531,6 +569,7 @@ export async function getWhatsAppOperatorThreads(input: {
       thread.latestConfidence = asNumber(metadata.lastIntentConfidence) ?? asNumber(metadata.aiConfidence)
       thread.latestAction = asString(metadata.lastAction)
       thread.latestOutboundType = asString(metadata.lastOutboundType)
+      thread.lastKnownCustomerId = asNumber(metadata.lastKnownCustomerId)
       thread.hasRecentAttachment = metadata.lastInboundHasAttachment === true
     }
 
@@ -567,7 +606,9 @@ export async function getWhatsAppOperatorThreads(input: {
     const controlMap = await loadCustomerControlMap(storeId, [...threadMap.keys()])
 
     let threads = [...threadMap.entries()].map(([remotePhone, accumulator]) => {
-      const customer = matchedCustomers.find((item) => findCustomerByPhone(remotePhone, [item])) || findCustomerByPhone(remotePhone, customers)
+      const customer = matchedCustomers.find((item) => findCustomerByPhone(remotePhone, [item]))
+        || findCustomerByPhone(remotePhone, customers)
+        || findCustomerById(accumulator.lastKnownCustomerId, customers)
       return buildThreadListItem(remotePhone, accumulator, customer, controlMap.get(remotePhone) || 'auto')
     })
 
@@ -725,7 +766,7 @@ export async function getWhatsAppOperatorThreadDetail(input: {
     const stateMetadata = asRecord((stateRow as ConversationStateRow | null)?.metadata)
     const latestAiLog = aiLogs[0] || null
     const latestAiTokens = extractTokenUsage(latestAiLog?.raw_response)
-    const customer = findCustomerByPhone(remotePhone, customers)
+    const customer = findCustomerByPhone(remotePhone, customers) || findCustomerById(asNumber(stateMetadata.lastKnownCustomerId), customers)
     const lastMessage = messages[messages.length - 1] || null
 
     const thread = buildThreadListItem(
@@ -741,6 +782,7 @@ export async function getWhatsAppOperatorThreadDetail(input: {
         latestConfidence: asNumber(stateMetadata.lastIntentConfidence) ?? asNumber(stateMetadata.aiConfidence),
         latestAction: asString(stateMetadata.lastAction),
         latestOutboundType: asString(stateMetadata.lastOutboundType),
+        lastKnownCustomerId: asNumber(stateMetadata.lastKnownCustomerId),
         hasRecentAttachment: stateMetadata.lastInboundHasAttachment === true,
         lastMessageAt: lastMessage?.createdAt ?? null,
         lastMessagePreview: lastMessage?.text ?? null,
@@ -766,14 +808,17 @@ export async function getWhatsAppOperatorThreadDetail(input: {
           handoffInternalNote: asString(stateMetadata.handoff_internal_note),
           latestIntent: asString(stateMetadata.lastIntent) || asString(stateMetadata.aiIntent),
           latestConfidence: asNumber(stateMetadata.lastIntentConfidence) ?? asNumber(stateMetadata.aiConfidence),
-          latestAction: asString(stateMetadata.lastAction),
-          latestOutboundType: asString(stateMetadata.lastOutboundType),
-          latestInboundText: asString(stateMetadata.lastInboundText),
-          latestInboundHasAttachment: stateMetadata.lastInboundHasAttachment === true,
-          latestInboundAttachmentKind: asString(stateMetadata.lastInboundAttachmentKind),
-          latestAiLog: latestAiLog ? {
-            intent: latestAiLog.intent,
-            confidence: latestAiLog.confidence,
+        latestAction: asString(stateMetadata.lastAction),
+        latestOutboundType: asString(stateMetadata.lastOutboundType),
+        latestInboundText: asString(stateMetadata.lastInboundText),
+        latestInboundHasAttachment: stateMetadata.lastInboundHasAttachment === true,
+        latestInboundAttachmentKind: asString(stateMetadata.lastInboundAttachmentKind),
+        aiSessionHistory: parseAiSessionHistory(stateMetadata.aiSessionMessages),
+        aiSessionUpdatedAt: asString(stateMetadata.aiSessionUpdatedAt),
+        aiSessionEndedAt: asString(stateMetadata.aiSessionEndedAt),
+        latestAiLog: latestAiLog ? {
+          intent: latestAiLog.intent,
+          confidence: latestAiLog.confidence,
             provider: latestAiLog.provider,
             model: latestAiLog.model_name,
             latencyMs: latestAiLog.latency_ms,
@@ -974,7 +1019,7 @@ export async function setWhatsAppCustomerControl(input: {
       success: true,
       message: mode === 'force_human'
         ? 'Cliente fixado em atendimento humano.'
-        : 'Cliente fixado para priorizar automacao com IA.',
+        : 'Cliente marcado para a proxima chamada entrar pela IA.',
       mode,
     }
   } catch (error) {

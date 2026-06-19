@@ -6,6 +6,7 @@ export type WhatsAppHistoryRouteDecision =
   | 'none'
 
 export type WhatsAppConversationStateName =
+  | 'ai_session'
   | 'waiting_menu'
   | 'waiting_identifier'
   | 'human_pause'

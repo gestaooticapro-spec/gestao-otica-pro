@@ -123,4 +123,15 @@ assert.equal(decidePreAiRoute({
   nowMs,
 }), 'continue_to_ai_or_menu')
 
+assert.equal(decidePreAiRoute({
+  option: null,
+  state: 'ai_session',
+  hasAttachment: false,
+  messageText: 'e sabado?',
+  metadata: null,
+  humanHandoffWindowMs,
+  identifierWindowMs,
+  nowMs,
+}), 'continue_to_ai_or_menu')
+
 console.log('WhatsApp pre-AI routing checks passed.')

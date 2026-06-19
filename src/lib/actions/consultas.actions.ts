@@ -469,6 +469,23 @@ export async function getWhatsAppPendencias(storeId: number): Promise<WhatsAppPe
     }
 }
 
+export async function getWhatsAppHumanOverrideCount(storeId: number): Promise<number> {
+    const supabaseAdmin = createAdminClient()
+
+    try {
+        const { count, error } = await (supabaseAdmin.from('whatsapp_customer_control') as any)
+            .select('id', { count: 'exact', head: true })
+            .eq('store_id', storeId)
+            .eq('mode', 'force_human')
+
+        if (error) throw error
+        return Number(count || 0)
+    } catch (e) {
+        console.error("Erro ao contar overrides humanos de WhatsApp:", e)
+        return 0
+    }
+}
+
 export async function findOpenInstallmentsByPhone(storeId: number, phone: string) {
     if (!phone || phone.length < 8) return []
 

@@ -1,5 +1,45 @@
 # WHATSAPP_FAKE_MODAL_SPEC
 
+## Status Atual em 2026-06-18
+
+Este documento nasceu como spec de implementacao. A partir daqui ele passa a acumular tambem o estado real do que ja foi entregue e o que ainda precisa ser ajustado.
+
+### Ja implementado
+
+- card de WhatsApp no `Radar Operacional` abrindo modal dedicado
+- modal operacional em `src/components/modals/WhatsAppOperatorModal.tsx`
+- leitura de threads reais por `store_id`
+- unificacao de inbound, outbound e estado atual da conversa
+- busca por telefone e por cliente
+- envio real pelo operador usando o servico de automacao
+- simulacao sem trafego real para o cliente
+- painel tecnico com:
+  - intent
+  - confidence
+  - provider/model
+  - tokens
+  - metadata de estado
+- persistencia de override por cliente via `whatsapp_customer_control`
+- gate para o card/modal aparecer apenas quando o WhatsApp da loja estiver conectado/configurado
+- rolagem interna nas colunas principais do modal
+- abertura da thread com foco no fim da conversa
+
+### Ajustes recentes ja aplicados
+
+- corrigido bug em que o modal nao abria a partir do card
+- removida dependencia de coluna inexistente `customers.whatsapp`
+- corrigido resumo tecnico para carregar `confidence` no fluxo de `order_status`
+- corrigido fallback de cliente no modal usando `lastKnownCustomerId` quando o match por telefone falha
+- removida tentativa de auto-refresh/realtime por polling que causava piscada da tela
+
+### Pendente relevante
+
+- revisar a semantica operacional dos overrides `IA` e `Humano`
+- explicitar no radar quantos numeros estao presos em modo humano persistente
+- melhorar a memoria de contexto da IA apenas durante a sessao automatica ativa
+- definir estrategia de faxina/retencao para evitar crescimento excessivo das conversas e logs de WhatsApp
+- manter este documento sincronizado com o comportamento real do modulo
+
 ## Resumo
 
 Este documento define a implementacao de um novo recurso interno do `gestao-otica-pro`: um modal de atendimento de WhatsApp aberto a partir do `Radar Operacional`.
@@ -110,6 +150,130 @@ Esse controle deve:
 - valer ate mudanca manual
 - ser visivel no topo da conversa
 - influenciar o motor do WhatsApp nas proximas mensagens reais
+
+Observacao:
+essa era a regra original da spec. Ela foi util para viabilizar o V1, mas a regra de produto foi refinada e mudou. Ver a secao `Decisoes Operacionais Recentes`.
+
+## Decisoes Operacionais Recentes
+
+### 1. Memoria de contexto da IA
+
+Decisao atual:
+
+- a IA nao deve carregar contexto longo de conversas antigas apos handoff humano
+- uma nova retomada dias depois deve comecar do zero
+- se o cliente mandar algo vago como `quero sim`, `sobre aquele oculos`, `pode fazer`, a IA nao deve adivinhar o assunto antigo
+- nesses casos a IA deve responder de forma segura e acionar humano, sem fingir que entendeu o contexto completo
+
+Direcao de implementacao desejada:
+
+- manter memoria curta apenas durante a sessao automatica ativa
+- essa memoria deve existir do inicio da interacao automatica ate o momento em que a IA entrega para humano
+- ao entrar em `human_pause`, o contexto util para IA deve ser considerado encerrado
+- retomadas futuras devem ser interpretadas somente pela mensagem nova
+
+Importante:
+
+- o campo `preview` existente hoje nao cumpre esse papel de memoria conversacional
+- no desenho atual ele funciona mais como rastro tecnico de algumas transicoes
+- se houver evolucao de memoria, ela deve ser feita de forma explicita e separada do `preview`
+
+### 2. Semantica nova do override `IA`
+
+Decisao atual:
+
+- quando o lojista marcar `IA`, isso nao deve significar automacao persistente eterna
+- o significado correto e: `quero que a IA atenda a proxima chamada desse cliente`
+- se, durante essa proxima chamada, a IA concluir que precisa passar para humano, essa decisao do motor e mais importante do que o override momentaneo
+- nesse momento o sistema deve:
+  - entregar para humano
+  - respeitar `human_pause`
+  - retirar o override especial de IA
+  - voltar o cliente para `auto`
+
+Em outras palavras:
+
+- `IA` passa a ser override temporario de arranque da proxima conversa
+- o handoff automatico da IA tem prioridade sobre esse override
+
+### 3. Semantica nova do override `Humano`
+
+Decisao atual:
+
+- quando o lojista marcar `Humano`, esse modo deve continuar persistente
+- a ideia e permitir que a loja reserve aquele numero para acompanhamento humano por dias, se quiser
+- porem isso cria risco operacional de o cliente ficar esquecido para sempre em humano
+
+Por isso, alem do modo persistente, o radar operacional precisa ganhar visibilidade explicita dessa fila.
+
+Direcao desejada:
+
+- o radar deve mostrar quantos numeros estao atualmente em `force_human`
+- esse numero deve aparecer de forma operacionalmente obvia no card de WhatsApp
+- a intencao e lembrar a loja de revisar esses casos e devolver para `auto` quando o assunto acabar
+
+### 4. O que isso significa para o V1 atual
+
+Hoje o modulo ja permite escolher `auto`, `force_ai` e `force_human`, com persistencia em banco.
+
+Porem, o comportamento desejado a partir desta conversa passa a ser:
+
+- `auto`
+  - comportamento normal do motor
+- `IA`
+  - override temporario para a proxima chamada
+  - depois do handoff automatico da IA, voltar sozinho para `auto`
+- `Humano`
+  - override persistente ate mudanca manual
+  - contar no radar como cliente em acompanhamento humano especial
+
+Isso implica revisao do fluxo atual, porque hoje `force_ai` e persistente como os outros modos.
+
+### 5. Faxina operacional e retencao de historico
+
+Decisao em aberto, mas necessidade ja confirmada:
+
+- o banco nao deve acumular conversas de WhatsApp indefinidamente sem estrategia de retencao
+- sem isso, a loja e o sistema acabam herdando listas longas demais e custo operacional desnecessario
+
+Objetivo:
+
+- manter o modulo util para atendimento e debug
+- sem transformar `whatsapp_inbound_messages`, `whatsapp_outbound_messages`, `whatsapp_ai_logs` e estados antigos em um historico infinito
+
+Direcoes aceitas para implementacao:
+
+- faxina automatica a cada `x` dias
+- e/ou botao/manual trigger na UI administrativa ou operacional
+- e/ou combinacao dos dois modos
+
+Requisitos desejados:
+
+- nao apagar conversa viva ou pendencia humana ativa por engano
+- preservar apenas o que ainda tem valor operacional recente
+- permitir politica diferente para:
+  - mensagens inbound/outbound
+  - logs de IA
+  - estados expirados
+  - controles persistentes por cliente
+
+Regra de seguranca sugerida:
+
+- limpar primeiro:
+  - `whatsapp_ai_logs` antigos
+  - `whatsapp_conversation_states` expirados
+  - mensagens antigas que nao tenham pendencia humana ativa nem override humano persistente
+- evitar apagar:
+  - clientes em `force_human`
+  - threads com handoff humano ainda em aberto
+  - conversas muito recentes
+
+Direcao de produto:
+
+- essa faxina deve ser encarada como parte do modulo operacional, nao como tarefa solta de manutencao tecnica
+- idealmente o sistema deve combinar:
+  - retencao automatica segura
+  - mais um recurso visivel para revisao/limpeza manual quando a loja quiser
 
 ## UX Desejada
 
@@ -240,11 +404,17 @@ Regra:
 - `auto`
   usa o comportamento padrao do sistema
 - `force_ai`
-  prioriza o fluxo automatico com IA para aquele numero
+  no desenho original da spec, priorizava o fluxo automatico com IA de forma persistente
 - `force_human`
   impede resposta automatica e mantem o atendimento em humano ate nova mudanca
 
 Esse controle deve ser persistente e sobreviver ao fechamento do modal.
+
+Atualizacao de regra:
+
+- `force_ai` nao deve mais ser interpretado como persistente no produto final
+- a persistencia em banco pode continuar existindo como detalhe tecnico do V1 atual, mas o comportamento desejado e de override temporario para a proxima chamada
+- `force_human` continua persistente
 
 ## Mudancas tecnicas necessarias
 
@@ -348,6 +518,13 @@ Campos minimos:
 
 Essa tabela deve ser consultada pelo motor real antes de decidir se responde ou silencia.
 
+Atualizacao:
+
+- a tabela continua valida para o V1 entregue
+- porem o uso de `force_ai` precisa ser revisto para suportar override temporario
+- uma possibilidade e manter `force_human` persistido nessa tabela e tratar o pedido de `IA` como override consumivel na proxima entrada relevante
+- essa decisao ainda precisa ser implementada no codigo
+
 ## 6. Painel tecnico interno
 
 Criar uma forma estruturada de compor o painel tecnico do modal.
@@ -411,6 +588,10 @@ Nao implementar agora:
 - simulacao persistida em tabelas reais
 - calculo de custo em reais
 - dashboard analitico completo de performance do WhatsApp
+- rotina completa de retencao/faxina com UI administrativa dedicada
+
+Observacao:
+mesmo ficando fora do V1 inicial, a necessidade ja foi confirmada e deve orientar as proximas etapas do modulo
 
 ## Cenarios de teste
 
@@ -449,6 +630,19 @@ Nao implementar agora:
 - cliente enviar mensagem real
 - sistema tentar automacao conforme regras
 
+### Override temporario de IA
+- operador marcar `IA`
+- cliente mandar a proxima mensagem real
+- sistema tentar atender automaticamente
+- se a IA fizer handoff para humano, o controle deve voltar sozinho para `auto`
+- uma mensagem futura nao deve continuar presa em `IA` por causa desse override antigo
+
+### Radar de humanos persistentes
+- marcar alguns clientes em `force_human`
+- card do radar refletir quantos numeros estao nesse modo
+- devolver um cliente para `auto`
+- contador do radar diminuir sem depender de interpretacao manual
+
 ### Anexos reais
 - cliente mandar imagem/PDF/comprovante
 - dados internos aparecem no painel tecnico
@@ -473,5 +667,7 @@ Sem limitar a implementacao a estes nomes, os pontos mais provaveis sao:
 - O modal sera acessado a partir da home operacional da loja.
 - O historico real ja persistido no banco e suficiente para o v1.
 - O modo simulacao deve ficar claramente separado do historico real, mesmo aparecendo na mesma interface.
-- O controle humano vs IA por cliente precisa ser persistente e manual, nao temporario.
+- O controle `Humano` por cliente continua persistente e manual.
+- O controle `IA` nao deve permanecer para sempre; ele deve ser tratado como override temporario da proxima chamada.
 - O painel tecnico abaixo da conversa e parte essencial do produto, nao so ferramenta provisoria de debug.
+- A memoria da IA deve existir apenas dentro da sessao automatica ativa e deve ser encerrada no handoff para humano.

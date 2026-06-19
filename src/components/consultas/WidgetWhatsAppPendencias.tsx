@@ -1,23 +1,28 @@
 'use client'
 
+import { useState } from 'react'
 import { AlertTriangle, ChevronRight, MessageSquareText } from 'lucide-react'
 import { WhatsAppPendencia } from '@/lib/actions/consultas.actions'
 
 export default function WidgetWhatsAppPendencias({
   pendencias,
+  humanOverrides = 0,
   onOpen,
 }: {
   pendencias: WhatsAppPendencia[]
+  humanOverrides?: number
   onOpen: () => void
 }) {
   const hasPendencia = pendencias.length > 0
+  const hasHumanOverrides = humanOverrides > 0
+  const [renderNow] = useState(() => Date.now())
   const oldestUpdate = pendencias
     .map((item) => new Date(item.updated_at).getTime())
     .filter((value) => Number.isFinite(value))
     .sort((a, b) => a - b)[0]
 
   const waitMinutes = oldestUpdate
-    ? Math.max(0, Math.floor((Date.now() - oldestUpdate) / 60000))
+    ? Math.max(0, Math.floor((renderNow - oldestUpdate) / 60000))
     : 0
 
   return (
@@ -63,13 +68,20 @@ export default function WidgetWhatsAppPendencias({
                   ? `Conversa mais antiga aguardando ha ${waitMinutes} min`
                   : 'Abra o modal para buscar clientes, ver historico e inspecionar o fluxo.'}
               </p>
+              <p className="mt-2 text-[11px] text-slate-400">
+                {hasHumanOverrides
+                  ? `${humanOverrides} numero${humanOverrides === 1 ? '' : 's'} em humano persistente`
+                  : 'Nenhum numero travado em humano persistente'}
+              </p>
             </div>
 
-            {hasPendencia ? (
-              <div className="shrink-0 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-200">
+            {hasPendencia || hasHumanOverrides ? (
+              <div className={`shrink-0 rounded-xl px-3 py-2 ${hasPendencia ? 'border border-amber-500/30 bg-amber-500/10 text-amber-200' : 'border border-cyan-500/30 bg-cyan-500/10 text-cyan-200'}`}>
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4" />
-                  <span className="text-[10px] font-black uppercase tracking-wider">Atencao</span>
+                  <span className="text-[10px] font-black uppercase tracking-wider">
+                    {hasPendencia ? 'Atencao' : 'Revisar'}
+                  </span>
                 </div>
               </div>
             ) : null}

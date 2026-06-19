@@ -10,7 +10,7 @@ const minConfidence = 0.78
 
 function simulateFlow(input: {
   option: '1' | '2' | null
-  state: 'waiting_menu' | 'waiting_identifier' | 'human_pause' | 'silent' | 'waiting_human_after_attachment' | null
+  state: 'ai_session' | 'waiting_menu' | 'waiting_identifier' | 'human_pause' | 'silent' | 'waiting_human_after_attachment' | null
   hasAttachment: boolean
   messageText: string | null
   metadata?: Record<string, unknown> | null
@@ -62,6 +62,20 @@ assert.equal(simulateFlow({
   hasAttachment: true,
   messageText: 'segue arquivo',
 }), 'attachment_handoff')
+
+assert.equal(simulateFlow({
+  option: null,
+  state: 'ai_session',
+  hasAttachment: false,
+  messageText: 'e sabado?',
+  classification: {
+    success: true,
+    confidence: 0.91,
+    automationCandidate: true,
+    intent: 'store_hours',
+  },
+  hasStoreHoursText: true,
+}), 'store_hours')
 
 assert.equal(simulateFlow({
   option: null,

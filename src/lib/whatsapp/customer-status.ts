@@ -34,6 +34,7 @@ import { findOpenInstallmentsByPhone } from '@/lib/actions/consultas.actions'
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
 const HUMAN_PAUSE_MS = 60 * 60 * 1000
 const HUMAN_HANDOFF_PAUSE_MS = 24 * 60 * 60 * 1000
+const AI_SESSION_MS = 2 * 60 * 60 * 1000
 const MENU_WAIT_MS = 30 * 60 * 1000
 const IDENTIFIER_WAIT_MS = 20 * 60 * 1000
 const AFTER_STATUS_SILENCE_MS = 60 * 60 * 1000
@@ -41,7 +42,16 @@ const ATTACHMENT_HANDOFF_MS = 2 * 60 * 60 * 1000
 const AI_AUTOMATION_MIN_CONFIDENCE = 0.78
 const WHATSAPP_AI_HUMANIZE_ENABLED = process.env.WHATSAPP_AI_HUMANIZE_ENABLED === 'true'
 
-type ConversationState = 'waiting_menu' | 'waiting_identifier' | 'human_pause' | 'silent' | 'waiting_human_after_attachment'
+const AI_SESSION_HISTORY_MAX = 8
+const AI_SESSION_TEXT_MAX = 280
+
+type ConversationState = 'ai_session' | 'waiting_menu' | 'waiting_identifier' | 'human_pause' | 'silent' | 'waiting_human_after_attachment'
+type AiSessionMessageRole = 'customer' | 'assistant'
+type AiSessionMessage = {
+  role: AiSessionMessageRole
+  text: string
+  at: string
+}
 
 type ChannelRow = {
   id: number
@@ -363,9 +373,77 @@ function buildDecisionMetadata(input: {
   } satisfies ConversationMetadataRecord
 }
 
+function normalizeAiSessionText(value: string | null | undefined) {
+  const normalized = normalizeDisplayText(value)
+  if (!normalized) return null
+
+  return normalized
+    .replace(/\s+/g, ' ')
+    .slice(0, AI_SESSION_TEXT_MAX)
+}
+
 function toMetadataRecord(value: Json | null | undefined): ConversationMetadataRecord {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   return value as ConversationMetadataRecord
+}
+
+function readAiSessionMessages(metadata: Json | null | undefined): AiSessionMessage[] {
+  const record = toMetadataRecord(metadata)
+  const raw = record.aiSessionMessages
+  if (!Array.isArray(raw)) return []
+
+  return raw
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null
+      const row = entry as Record<string, unknown>
+      const role = row.role === 'customer' || row.role === 'assistant' ? row.role : null
+      const text = typeof row.text === 'string' ? normalizeAiSessionText(row.text) : null
+      const at = typeof row.at === 'string' && row.at.trim() ? row.at.trim() : null
+      if (!role || !text || !at) return null
+
+      return {
+        role,
+        text,
+        at,
+      } satisfies AiSessionMessage
+    })
+    .filter(Boolean) as AiSessionMessage[]
+}
+
+function appendAiSessionMessage(
+  metadata: Json | null | undefined,
+  role: AiSessionMessageRole,
+  text: string | null | undefined
+): Json {
+  const normalizedText = normalizeAiSessionText(text)
+  if (!normalizedText) return mergeMetadata(metadata, {})
+
+  const nextMessages = [
+    ...readAiSessionMessages(metadata),
+    {
+      role,
+      text: normalizedText,
+      at: new Date().toISOString(),
+    } satisfies AiSessionMessage,
+  ].slice(-AI_SESSION_HISTORY_MAX)
+
+  return mergeMetadata(metadata, {
+    aiSessionMessages: nextMessages as unknown as Json,
+    aiSessionUpdatedAt: new Date().toISOString(),
+  })
+}
+
+function clearAiSessionMessages(metadata: Json | null | undefined): Json {
+  return mergeMetadata(metadata, {
+    aiSessionMessages: [] as unknown as Json,
+    aiSessionEndedAt: new Date().toISOString(),
+  })
+}
+
+function buildAiConversationHistoryFromMetadata(metadata: Json | null | undefined) {
+  return readAiSessionMessages(metadata)
+    .slice(-AI_SESSION_HISTORY_MAX)
+    .map((entry) => `${entry.role === 'customer' ? 'cliente' : 'ia'}: ${entry.text}`)
 }
 
 function mergeMetadata(
@@ -402,7 +480,11 @@ function buildInboundContextMetadata(input: {
 async function maybeHumanizeOutboundFromCanonical(
   payload: ConversationMetadataRecord,
   fallbackText: string,
-  storeName?: string | null
+  storeName?: string | null,
+  context?: {
+    userMessageText?: string | null
+    conversationHistory?: string[]
+  }
 ) {
   const canonical = extractWhatsAppCanonicalReply(payload)
   const plan = decideWhatsAppHumanization(WHATSAPP_AI_HUMANIZE_ENABLED, canonical)
@@ -413,6 +495,8 @@ async function maybeHumanizeOutboundFromCanonical(
   const humanized = await humanizeWhatsAppReply({
     intent: plan.intent,
     canonicalReply: canonical.canonicalReply,
+    userMessageText: context?.userMessageText || undefined,
+    conversationHistory: context?.conversationHistory || [],
     storeName: storeName || null,
     facts: canonical.facts,
     tone: 'friendly',
@@ -815,11 +899,21 @@ async function loadCustomerControlMode(channelId: number, phone: string): Promis
   return mode === 'force_ai' || mode === 'force_human' ? mode : 'auto'
 }
 
+async function clearCustomerControlMode(channelId: number, phone: string) {
+  const supabase = createAdminClient()
+  const { error } = await (supabase.from('whatsapp_customer_control') as any)
+    .delete()
+    .eq('channel_id', channelId)
+    .eq('remote_phone', phone)
+
+  if (error) throw error
+}
+
 function effectiveStateForControl(state: ConversationStateRow | null, controlMode: CustomerControlMode): ConversationState | null {
   if (!state) return null
   if (controlMode !== 'force_ai') return state.state
 
-  if (state.state === 'human_pause' || state.state === 'silent' || state.state === 'waiting_menu') {
+  if (state.state === 'silent' || state.state === 'waiting_menu') {
     return null
   }
 
@@ -848,13 +942,16 @@ async function setConversationState(
   metadata: Json = {}
 ) {
   const supabase = createAdminClient()
+  const preparedMetadata = state === 'human_pause' || state === 'waiting_human_after_attachment'
+    ? clearAiSessionMessages(metadata)
+    : metadata
   const values = {
     tenant_id: channel.tenant_id,
     store_id: channel.store_id,
     channel_id: channel.id,
     remote_phone: phone,
     state,
-    metadata,
+    metadata: preparedMetadata,
     expires_at: expiresIn(ms),
     updated_at: new Date().toISOString(),
   }
@@ -918,7 +1015,8 @@ async function createStatusReply(
   phone: string,
   customer: CustomerRow,
   serviceOrder: OpenOsRow,
-  baseMetadata: Json = {}
+  baseMetadata: Json = {},
+  intentConfidence: number | null = null
 ): Promise<CustomerStatusResponse> {
   const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
   if (automationSettings?.os_on_demand?.enabled === false) {
@@ -926,6 +1024,7 @@ async function createStatusReply(
       reason: 'os_responder_disabled',
       ...buildDecisionMetadata({
         intent: 'order_status',
+        confidence: intentConfidence,
         action: 'no_reply',
         outboundType: null,
       }),
@@ -941,6 +1040,7 @@ async function createStatusReply(
       reason: 'repeated_status',
       ...buildDecisionMetadata({
         intent: 'order_status',
+        confidence: intentConfidence,
         action: 'no_reply',
         outboundType: null,
       }),
@@ -948,7 +1048,7 @@ async function createStatusReply(
     return ignoreInbound(inboundMessageId)
   }
 
-  await setConversationState(channel, phone, 'silent', AFTER_STATUS_SILENCE_MS, mergeMetadata(baseMetadata, {
+  await setConversationState(channel, phone, 'silent', AFTER_STATUS_SILENCE_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
     reason: 'status_sent',
     lastKnownCustomerId: customer.id,
     lastKnownServiceOrderId: serviceOrder.id,
@@ -956,10 +1056,11 @@ async function createStatusReply(
     statusCode: status.statusCode,
     ...buildDecisionMetadata({
       intent: 'order_status',
+      confidence: intentConfidence,
       action: 'auto_reply',
       outboundType: 'os_status',
     }),
-  }))
+  }), 'assistant', status.replyText))
 
   const response = await createOutbound(channel, inboundMessageId, phone, status.replyText, 'os_status', {
     statusCode: status.statusCode,
@@ -988,18 +1089,20 @@ async function handleStatusByPhone(
   channel: ChannelRow,
   inboundMessageId: number,
   phone: string,
-  baseMetadata: Json = {}
+  baseMetadata: Json = {},
+  intentConfidence: number | null = null
 ): Promise<CustomerStatusResponse> {
   const customer = await findCustomerByPhone(channel.store_id, phone)
   if (!customer) {
-    await setConversationState(channel, phone, 'waiting_identifier', IDENTIFIER_WAIT_MS, mergeMetadata(baseMetadata, {
+    const text = identifierPromptText()
+    await setConversationState(channel, phone, 'waiting_identifier', IDENTIFIER_WAIT_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
       ...buildDecisionMetadata({
         intent: 'order_status',
+        confidence: intentConfidence,
         action: 'request_identifier',
         outboundType: 'identifier_prompt',
       }),
-    }))
-    const text = identifierPromptText()
+    }), 'assistant', text))
     return createOutbound(channel, inboundMessageId, phone, text, 'identifier_prompt', {
       ...buildWhatsAppCanonicalPayload({
         intent: 'order_status',
@@ -1012,14 +1115,15 @@ async function handleStatusByPhone(
 
   const serviceOrder = await findLatestOpenOs(channel.store_id, customer.id)
   if (!serviceOrder) {
-    await setConversationState(channel, phone, 'waiting_identifier', IDENTIFIER_WAIT_MS, mergeMetadata(baseMetadata, {
+    const text = identifierPromptText()
+    await setConversationState(channel, phone, 'waiting_identifier', IDENTIFIER_WAIT_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
       ...buildDecisionMetadata({
         intent: 'order_status',
+        confidence: intentConfidence,
         action: 'request_identifier',
         outboundType: 'identifier_prompt',
       }),
-    }))
-    const text = identifierPromptText()
+    }), 'assistant', text))
     return createOutbound(channel, inboundMessageId, phone, text, 'identifier_prompt', {
       ...buildWhatsAppCanonicalPayload({
         intent: 'order_status',
@@ -1030,7 +1134,7 @@ async function handleStatusByPhone(
     })
   }
 
-  return createStatusReply(channel, inboundMessageId, phone, customer, serviceOrder, baseMetadata)
+  return createStatusReply(channel, inboundMessageId, phone, customer, serviceOrder, baseMetadata, intentConfidence)
 }
 
 async function simulateStatusReply(
@@ -1208,9 +1312,21 @@ export async function resolveCustomerStatus(
   const option = optionFromMessage(effectiveMessageText || undefined)
   const state = await findConversationState(channel.id, normalizedPhone)
   const controlMode = await loadCustomerControlMode(channel.id, normalizedPhone)
+  if (controlMode === 'force_ai') {
+    await clearCustomerControlMode(channel.id, normalizedPhone)
+  }
   const effectiveState = effectiveStateForControl(state, controlMode)
-  const baseMetadata = mergeMetadata(state?.metadata, inboundContextMetadata)
+  const baseMetadata = appendAiSessionMessage(
+    mergeMetadata(state?.metadata, inboundContextMetadata),
+    'customer',
+    effectiveMessageText
+  )
   const recentContext = buildRecentContextFromMetadata(state?.metadata, effectiveMessageText)
+  const conversationHistory = buildAiConversationHistoryFromMetadata(state?.metadata)
+  const aiReplyContext = {
+    userMessageText: effectiveMessageText,
+    conversationHistory: buildAiConversationHistoryFromMetadata(baseMetadata),
+  }
   const aiDiagnostics: WhatsAppAiDiagnostic[] = []
 
   async function recordAiResult(task: WhatsAppAiDiagnostic['task'], result: WhatsAppAiResult<any>) {
@@ -1267,7 +1383,7 @@ export async function resolveCustomerStatus(
       const outboundPayload = {
          ...buildWhatsAppCanonicalPayload({ intent: null, action: 'exceptional_closure_trap', outboundType: 'exceptional_closure', canonicalReply: text })
       } satisfies ConversationMetadataRecord
-      const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
+      const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name, aiReplyContext)
       return createOutbound(channel!, inbound.id, normalizedPhone, maybeHumanized.text, 'exceptional_closure', maybeHumanized.payload)
     }
     if (isNormalClosed) {
@@ -1309,7 +1425,7 @@ export async function resolveCustomerStatus(
           canonicalReply: text,
         }),
       } satisfies ConversationMetadataRecord
-      const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
+      const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name, aiReplyContext)
       return createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'human_handoff', maybeHumanized.payload)
     })
   }
@@ -1465,7 +1581,7 @@ export async function resolveCustomerStatus(
           canonicalReply: text,
         }),
       } satisfies ConversationMetadataRecord
-      const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
+      const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name, aiReplyContext)
       return createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'human_handoff', maybeHumanized.payload)
     })
   }
@@ -1486,6 +1602,7 @@ export async function resolveCustomerStatus(
       storeName: storeProfile.name,
       conversationState: state?.state ?? null,
       recentContext,
+      conversationHistory,
       hasRecentAttachment: hasRecentAttachmentContext(state),
       hasOpenOrder: hasKnownOpenOrderContext(state),
       handoffActive: false,
@@ -1543,7 +1660,7 @@ export async function resolveCustomerStatus(
             canonicalReply: text,
           }),
         } satisfies ConversationMetadataRecord
-        const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
+        const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name, aiReplyContext)
         const aiResult = (maybeHumanized as any).aiResult
         if (aiResult) {
           await recordAiResult('reply_humanization', aiResult)
@@ -1589,7 +1706,7 @@ export async function resolveCustomerStatus(
                   canonicalReply: text,
                 }),
               } satisfies ConversationMetadataRecord
-              const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
+              const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name, aiReplyContext)
               const aiResult = (maybeHumanized as any).aiResult
               if (aiResult) {
                 await recordAiResult('reply_humanization', aiResult)
@@ -1607,19 +1724,6 @@ export async function resolveCustomerStatus(
               const storeHoursAppend = storeHoursText ? ` Nosso horário de atendimento é ${storeHoursText}.` : ''
               const finalCanonicalReply = `${status.replyText}${storeHoursAppend}`
               
-              await setConversationState(channel, normalizedPhone, 'silent', AFTER_STATUS_SILENCE_MS, mergeMetadata(baseMetadata, {
-                reason: 'status_sent_pickup',
-                lastKnownCustomerId: customer.id,
-                lastKnownServiceOrderId: serviceOrder.id,
-                serviceOrderId: serviceOrder.id,
-                statusCode: status.statusCode,
-                ...buildDecisionMetadata({
-                  intent: 'pickup_or_scheduling',
-                  action: 'auto_reply',
-                  outboundType: 'os_status',
-                }),
-              }))
-
               const outboundPayload = {
                 statusCode: status.statusCode,
                 ...buildAiPayload(classification.data),
@@ -1636,11 +1740,24 @@ export async function resolveCustomerStatus(
                 }),
               } satisfies ConversationMetadataRecord
 
-              const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, finalCanonicalReply, storeProfile.name)
+              const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, finalCanonicalReply, storeProfile.name, aiReplyContext)
               const aiResult = (maybeHumanized as any).aiResult
               if (aiResult) {
                 await recordAiResult('reply_humanization', aiResult)
               }
+              await setConversationState(channel, normalizedPhone, 'silent', AFTER_STATUS_SILENCE_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
+                reason: 'status_sent_pickup',
+                lastKnownCustomerId: customer.id,
+                lastKnownServiceOrderId: serviceOrder.id,
+                serviceOrderId: serviceOrder.id,
+                statusCode: status.statusCode,
+                ...buildDecisionMetadata({
+                  intent: 'pickup_or_scheduling',
+                  confidence: classification.data.confidence,
+                  action: 'auto_reply',
+                  outboundType: 'os_status',
+                }),
+              }), 'assistant', maybeHumanized.text))
               return withAiDiagnostics(await createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'os_status', maybeHumanized.payload))
             }
           }
@@ -1667,7 +1784,7 @@ export async function resolveCustomerStatus(
             canonicalReply: text,
           }),
         } satisfies ConversationMetadataRecord
-        const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
+        const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name, aiReplyContext)
         const aiResult = (maybeHumanized as any).aiResult
         if (aiResult) {
           await recordAiResult('reply_humanization', aiResult)
@@ -1707,7 +1824,7 @@ export async function resolveCustomerStatus(
             canonicalReply: text,
           }),
         } satisfies ConversationMetadataRecord
-        const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
+        const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name, aiReplyContext)
         const aiResult = (maybeHumanized as any).aiResult
         if (aiResult) {
           await recordAiResult('reply_humanization', aiResult)
@@ -1759,7 +1876,7 @@ export async function resolveCustomerStatus(
           }),
         } satisfies ConversationMetadataRecord
 
-        const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
+        const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name, aiReplyContext)
         const aiResult = (maybeHumanized as any).aiResult
         if (aiResult) {
           await recordAiResult('reply_humanization', aiResult)
@@ -1775,27 +1892,18 @@ export async function resolveCustomerStatus(
       }
 
       if (postClassificationRoute === 'order_status') {
-        return withAiDiagnostics(await handleStatusByPhone(channel, inbound.id, normalizedPhone, baseMetadata))
+        return withAiDiagnostics(await handleStatusByPhone(
+          channel,
+          inbound.id,
+          normalizedPhone,
+          baseMetadata,
+          classification.data.confidence
+        ))
       }
 
       if (postClassificationRoute === 'store_hours') {
         const text = storeHoursText
         if (text) {
-          await setConversationState(
-            channel,
-            normalizedPhone,
-            'silent',
-            AFTER_STATUS_SILENCE_MS,
-            mergeMetadata(
-              mergeMetadata(baseMetadata, toMetadataRecord(buildAiStateMetadata('store_hours_sent', classification.data))),
-              buildDecisionMetadata({
-                intent: classification.data.intent,
-                confidence: classification.data.confidence,
-                action: 'auto_reply',
-                outboundType: 'store_hours',
-              })
-            )
-          )
           const outboundPayload = {
             ...buildAiPayload(classification.data),
             ...buildWhatsAppCanonicalPayload({
@@ -1808,11 +1916,30 @@ export async function resolveCustomerStatus(
               },
             }),
           } satisfies ConversationMetadataRecord
-          const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
+          const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name, aiReplyContext)
           const aiResult = (maybeHumanized as any).aiResult
           if (aiResult) {
             await recordAiResult('reply_humanization', aiResult)
           }
+          await setConversationState(
+            channel,
+            normalizedPhone,
+            'silent',
+            AFTER_STATUS_SILENCE_MS,
+            appendAiSessionMessage(
+              mergeMetadata(
+                mergeMetadata(baseMetadata, toMetadataRecord(buildAiStateMetadata('store_hours_sent', classification.data))),
+                buildDecisionMetadata({
+                  intent: classification.data.intent,
+                  confidence: classification.data.confidence,
+                  action: 'auto_reply',
+                  outboundType: 'store_hours',
+                })
+              ),
+              'assistant',
+              maybeHumanized.text
+            )
+          )
           return withAiDiagnostics(await createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'store_hours', maybeHumanized.payload))
         }
       }
@@ -1820,21 +1947,6 @@ export async function resolveCustomerStatus(
       if (postClassificationRoute === 'store_location') {
         const text = storeLocationText
         if (text) {
-          await setConversationState(
-            channel,
-            normalizedPhone,
-            'silent',
-            AFTER_STATUS_SILENCE_MS,
-            mergeMetadata(
-              mergeMetadata(baseMetadata, toMetadataRecord(buildAiStateMetadata('store_location_sent', classification.data))),
-              buildDecisionMetadata({
-                intent: classification.data.intent,
-                confidence: classification.data.confidence,
-                action: 'auto_reply',
-                outboundType: 'store_location',
-              })
-            )
-          )
           const outboundPayload = {
             ...buildAiPayload(classification.data),
             ...buildWhatsAppCanonicalPayload({
@@ -1847,11 +1959,30 @@ export async function resolveCustomerStatus(
               },
             }),
           } satisfies ConversationMetadataRecord
-          const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name)
+          const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name, aiReplyContext)
           const aiResult = (maybeHumanized as any).aiResult
           if (aiResult) {
             await recordAiResult('reply_humanization', aiResult)
           }
+          await setConversationState(
+            channel,
+            normalizedPhone,
+            'silent',
+            AFTER_STATUS_SILENCE_MS,
+            appendAiSessionMessage(
+              mergeMetadata(
+                mergeMetadata(baseMetadata, toMetadataRecord(buildAiStateMetadata('store_location_sent', classification.data))),
+                buildDecisionMetadata({
+                  intent: classification.data.intent,
+                  confidence: classification.data.confidence,
+                  action: 'auto_reply',
+                  outboundType: 'store_location',
+                })
+              ),
+              'assistant',
+              maybeHumanized.text
+            )
+          )
           return withAiDiagnostics(await createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'store_location', maybeHumanized.payload))
         }
       }
@@ -1861,6 +1992,15 @@ export async function resolveCustomerStatus(
       const isGreeting = looksLikeGenericGreeting(effectiveMessageText)
       const text = isGreeting ? aiGreetingText() : aiClarificationText()
       return applyOohTrapIfNeeded(async () => {
+        await setConversationState(channel, normalizedPhone, 'ai_session', AI_SESSION_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
+          ...(classification.success ? buildAiPayload(classification.data) : {}),
+          ...buildDecisionMetadata({
+            intent: classification.success ? classification.data.intent : null,
+            confidence: classification.success ? classification.data.confidence : null,
+            action: isGreeting ? 'ai_greeting' : 'ai_clarification',
+            outboundType: isGreeting ? 'ai_greeting' : 'ai_clarification',
+          }),
+        }), 'assistant', text))
         return withAiDiagnostics(await createOutbound(channel, inbound.id, normalizedPhone, text, isGreeting ? 'ai_greeting' : 'ai_clarification', {
           ...(classification.success ? buildAiPayload(classification.data) : {}),
           ...buildWhatsAppCanonicalPayload({
@@ -1887,15 +2027,15 @@ export async function resolveCustomerStatus(
   }
 
   return applyOohTrapIfNeeded(async () => {
-    await setConversationState(channel, normalizedPhone, 'waiting_menu', MENU_WAIT_MS, mergeMetadata(baseMetadata, {
+    const text = menuText()
+    await setConversationState(channel, normalizedPhone, 'waiting_menu', MENU_WAIT_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
       reason: 'menu_sent',
       ...buildDecisionMetadata({
         intent: null,
         action: 'show_menu',
         outboundType: 'menu',
       }),
-    }))
-    const text = menuText()
+    }), 'assistant', text))
     return createOutbound(channel, inbound.id, normalizedPhone, text, 'menu', {
       ...buildWhatsAppCanonicalPayload({
         intent: null,
@@ -1953,6 +2093,7 @@ export async function simulateCustomerStatus(
   const controlMode = await loadCustomerControlMode(channel.id, normalizedPhone)
   const effectiveState = effectiveStateForControl(state, controlMode)
   const recentContext = buildRecentContextFromMetadata(state?.metadata, effectiveMessageText)
+  const conversationHistory = buildAiConversationHistoryFromMetadata(state?.metadata)
   const aiDiagnostics: WhatsAppAiDiagnostic[] = []
   const storeProfile = await loadStoreProfile(channel.store_id)
   const settings = ((storeProfile.settings || {}) as StoreSettings) || {}
@@ -2185,6 +2326,7 @@ export async function simulateCustomerStatus(
       storeName: storeProfile.name,
       conversationState: effectiveState ?? null,
       recentContext,
+      conversationHistory,
       hasRecentAttachment: hasRecentAttachmentContext(state),
       hasOpenOrder: hasKnownOpenOrderContext(state),
       handoffActive: false,

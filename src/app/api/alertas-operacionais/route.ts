@@ -2,10 +2,15 @@
 // Caminho: src/app/api/alertas-operacionais/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getAlertasOperacionais, getAniversariantes, getVencimentosProximos, getWhatsAppPendencias } from '@/lib/actions/consultas.actions';
+import { getAlertasOperacionais, getAniversariantes, getVencimentosProximos, getWhatsAppHumanOverrideCount, getWhatsAppPendencias } from '@/lib/actions/consultas.actions';
 import { getRetornosDeHoje } from '@/lib/actions/collection.actions';
 import { getClientesMetrics } from '@/lib/actions/reports.actions';
 import { createAdminClient } from '@/lib/supabase/admin';
+
+type WhatsAppChannelStatusRow = {
+    connection_status: 'unknown' | 'connecting' | 'connected' | 'disconnected'
+    is_active: boolean
+} | null
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
@@ -17,24 +22,26 @@ export async function GET(request: NextRequest) {
 
     try {
         const supabaseAdmin = createAdminClient();
-        const { data: whatsAppChannel } = await (supabaseAdmin.from('whatsapp_store_channels') as any)
+        const { data: whatsAppChannel } = await supabaseAdmin.from('whatsapp_store_channels')
             .select('connection_status, is_active')
             .eq('store_id', storeId)
             .eq('provider', 'evolution')
             .maybeSingle();
+        const channel = (whatsAppChannel ?? null) as WhatsAppChannelStatusRow;
 
         const isWhatsAppConnected =
-            whatsAppChannel?.connection_status === 'connected' &&
-            whatsAppChannel?.is_active === true;
+            channel?.connection_status === 'connected' &&
+            channel?.is_active === true;
 
         // Busca todos os dados em paralelo
-        const [alertas, aniversariantes, vencimentos, retornos, clientesMetrics, whatsAppPendencias] = await Promise.all([
+        const [alertas, aniversariantes, vencimentos, retornos, clientesMetrics, whatsAppPendencias, whatsAppHumanOverrides] = await Promise.all([
             getAlertasOperacionais(storeId),
             getAniversariantes(storeId),
             getVencimentosProximos(storeId),
             getRetornosDeHoje(storeId),
             getClientesMetrics(storeId),
-            isWhatsAppConnected ? getWhatsAppPendencias(storeId) : Promise.resolve([])
+            isWhatsAppConnected ? getWhatsAppPendencias(storeId) : Promise.resolve([]),
+            isWhatsAppConnected ? getWhatsAppHumanOverrideCount(storeId) : Promise.resolve(0)
         ]);
 
         return NextResponse.json({
@@ -46,6 +53,7 @@ export async function GET(request: NextRequest) {
             retornos: retornos,
             clientesInativos: clientesMetrics.clientesInativos,
             whatsAppPendencias: whatsAppPendencias,
+            whatsAppHumanOverrides,
             isWhatsAppConnected
         });
     } catch (error) {

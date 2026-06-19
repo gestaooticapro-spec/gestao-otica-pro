@@ -107,6 +107,7 @@ export type WhatsAppIntentClassificationInput = {
   storeName?: string | null
   conversationState?: string | null
   recentContext?: string[]
+  conversationHistory?: string[]
   hasRecentAttachment?: boolean
   hasOpenOrder?: boolean
   handoffActive?: boolean
@@ -115,6 +116,7 @@ export type WhatsAppIntentClassificationInput = {
 export type WhatsAppReplyHumanizationInput = {
   intent: WhatsAppIntent
   userMessageText?: string
+  conversationHistory?: string[]
   tone?: WhatsAppReplyTone
   canonicalReply: string
   storeName?: string | null
@@ -233,6 +235,10 @@ function buildIntentPrompt(input: WhatsAppIntentClassificationInput) {
     .map((line) => normalizeWhitespace(line))
     .filter(Boolean)
     .slice(0, 3)
+  const conversationHistory = (input.conversationHistory || [])
+    .map((line) => normalizeWhitespace(line))
+    .filter(Boolean)
+    .slice(-8)
 
   return [
     'Voce classifica mensagens de WhatsApp de uma otica.',
@@ -273,6 +279,7 @@ function buildIntentPrompt(input: WhatsAppIntentClassificationInput) {
       hasOpenOrder: Boolean(input.hasOpenOrder),
       handoffActive: Boolean(input.handoffActive),
       recentContext,
+      conversationHistory,
     }, null, 2),
     '',
     'MENSAGEM DO CLIENTE:',
@@ -281,6 +288,11 @@ function buildIntentPrompt(input: WhatsAppIntentClassificationInput) {
 }
 
 function buildHumanizationPrompt(input: WhatsAppReplyHumanizationInput) {
+  const conversationHistory = (input.conversationHistory || [])
+    .map((line) => normalizeWhitespace(line))
+    .filter(Boolean)
+    .slice(-8)
+
   return [
     'Voce reescreve mensagens de WhatsApp para uma otica.',
     'Responda SOMENTE em JSON valido, sem markdown, sem explicacoes extras.',
@@ -306,6 +318,11 @@ function buildHumanizationPrompt(input: WhatsAppReplyHumanizationInput) {
       },
       canonicalReply: input.canonicalReply,
     }, null, 2),
+    ...(conversationHistory.length > 0 ? [
+      '',
+      'HISTORICO RECENTE DA SESSAO AUTOMATICA:',
+      ...conversationHistory,
+    ] : []),
     ...(input.userMessageText ? [
       '',
       'MENSAGEM DO CLIENTE (Responda a essa duvida especificamente):',
