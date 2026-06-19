@@ -9,6 +9,7 @@ import { evaluateStoreHours } from './store-hours-logic'
 import {
   classifyWhatsAppIntent,
   humanizeWhatsAppReply,
+  generateWhatsAppFallbackReply,
   extractReceiptWithVision,
   type WhatsAppReceiptExtraction,
   type WhatsAppIntentClassification,
@@ -102,7 +103,7 @@ type ConversationMetadataRecord = Record<string, Json | undefined>
 type CustomerControlMode = 'auto' | 'force_ai' | 'force_human'
 
 type WhatsAppAiDiagnostic = {
-  task: 'intent_classification' | 'reply_humanization' | 'receipt_extraction'
+  task: 'intent_classification' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction'
   success: boolean
   provider: string
   model: string
@@ -2027,8 +2028,18 @@ export async function resolveCustomerStatus(
 
     if (isWhatsAppAiResponderEnabled(automationSettings)) {
       const isGreeting = looksLikeGenericGreeting(effectiveMessageText)
-      const text = isGreeting ? aiGreetingText() : aiClarificationText()
       return applyOohTrapIfNeeded(async () => {
+        let text = isGreeting ? aiGreetingText() : aiClarificationText()
+        const fallbackReply = await generateWhatsAppFallbackReply({
+          userMessageText: effectiveMessageText || '',
+          conversationHistory: aiReplyContext.conversationHistory,
+          storeName: storeProfile.name,
+        })
+        await recordAiResult('fallback_reply', fallbackReply)
+        if (fallbackReply.success) {
+          text = fallbackReply.data.reply_text
+        }
+
         await consumeForceAiOverrideIfNeeded()
         await setConversationState(channel, normalizedPhone, 'ai_session', AI_SESSION_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
           ...(classification.success ? buildAiPayload(classification.data) : {}),
@@ -2527,7 +2538,17 @@ export async function simulateCustomerStatus(
 
   if (isWhatsAppAiResponderEnabled(automationSettings)) {
     const isGreeting = looksLikeGenericGreeting(effectiveMessageText)
-    const text = isGreeting ? aiGreetingText() : aiClarificationText()
+    let text = isGreeting ? aiGreetingText() : aiClarificationText()
+    const fallbackReply = await generateWhatsAppFallbackReply({
+      userMessageText: effectiveMessageText || '',
+      conversationHistory,
+      storeName: storeProfile.name,
+    })
+    aiDiagnostics.push(buildAiDiagnostic('fallback_reply', fallbackReply))
+    if (fallbackReply.success) {
+      text = fallbackReply.data.reply_text
+    }
+
     return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: text }, {
       overrideMode: controlMode,
       preAiRoute,

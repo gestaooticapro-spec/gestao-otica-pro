@@ -60,7 +60,7 @@ export type WhatsAppIntent = (typeof WHATSAPP_INTENTS)[number]
 export type WhatsAppReasoningTag = (typeof WHATSAPP_REASONING_TAGS)[number]
 export type WhatsAppReplyTone = (typeof WHATSAPP_TONES)[number]
 export type WhatsAppAiProvider = 'gemini' | 'openai'
-export type WhatsAppAiTask = 'intent_classification' | 'reply_humanization' | 'receipt_extraction'
+export type WhatsAppAiTask = 'intent_classification' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction'
 
 export type WhatsAppAiTokenUsage = {
   inputTokens: number | null
@@ -138,6 +138,12 @@ export type WhatsAppAiSuccess<T> = {
   latencyMs: number
   promptText: string
   tokenUsage?: WhatsAppAiTokenUsage
+}
+
+export type WhatsAppFallbackReplyInput = {
+  userMessageText: string
+  conversationHistory?: string[]
+  storeName?: string | null
 }
 
 export type WhatsAppAiFailure = {
@@ -328,6 +334,40 @@ function buildHumanizationPrompt(input: WhatsAppReplyHumanizationInput) {
       'MENSAGEM DO CLIENTE (Responda a essa duvida especificamente):',
       input.userMessageText
     ] : []),
+  ].join('\n')
+}
+
+function buildFallbackReplyPrompt(input: WhatsAppFallbackReplyInput) {
+  const conversationHistory = (input.conversationHistory || [])
+    .map((line) => normalizeWhitespace(line))
+    .filter(Boolean)
+    .slice(-8)
+
+  return [
+    'Voce responde mensagens de WhatsApp para uma otica.',
+    'Responda SOMENTE em JSON valido, sem markdown, sem explicacoes extras.',
+    'A mensagem caiu no fallback porque o sistema nao identificou uma intencao operacional segura.',
+    'Seu trabalho eh responder de forma natural, curta e util, sem inventar informacoes da loja, pedido, estoque, preco, prazo, pagamento ou dados do cliente.',
+    'Se for apenas cumprimento ou conversa social, cumprimente de volta e pergunte como pode ajudar.',
+    'Se o cliente pedir algo especifico mas faltarem dados ou a intencao estiver ambigua, faca uma pergunta simples de esclarecimento.',
+    'Se parecer que precisa de atendente humano, diga que vai chamar a equipe.',
+    'Nao liste menu de categorias.',
+    '',
+    'SCHEMA:',
+    JSON.stringify({ reply_text: 'Oi! Tudo bem por aqui. Como posso te ajudar hoje?' }, null, 2),
+    '',
+    'CONTEXTO DO SISTEMA:',
+    JSON.stringify({
+      storeName: input.storeName || null,
+    }, null, 2),
+    ...(conversationHistory.length > 0 ? [
+      '',
+      'HISTORICO RECENTE DA SESSAO AUTOMATICA:',
+      ...conversationHistory,
+    ] : []),
+    '',
+    'MENSAGEM DO CLIENTE:',
+    input.userMessageText,
   ].join('\n')
 }
 
@@ -577,6 +617,16 @@ export async function humanizeWhatsAppReply(
   return executeStructuredTask(
     'reply_humanization',
     buildHumanizationPrompt(input),
+    WhatsAppReplyHumanizationSchema
+  )
+}
+
+export async function generateWhatsAppFallbackReply(
+  input: WhatsAppFallbackReplyInput
+): Promise<WhatsAppAiResult<WhatsAppReplyHumanization>> {
+  return executeStructuredTask(
+    'fallback_reply',
+    buildFallbackReplyPrompt(input),
     WhatsAppReplyHumanizationSchema
   )
 }
