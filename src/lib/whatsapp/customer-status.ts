@@ -1312,9 +1312,6 @@ export async function resolveCustomerStatus(
   const option = optionFromMessage(effectiveMessageText || undefined)
   const state = await findConversationState(channel.id, normalizedPhone)
   const controlMode = await loadCustomerControlMode(channel.id, normalizedPhone)
-  if (controlMode === 'force_ai') {
-    await clearCustomerControlMode(channel.id, normalizedPhone)
-  }
   const effectiveState = effectiveStateForControl(state, controlMode)
   const baseMetadata = appendAiSessionMessage(
     mergeMetadata(state?.metadata, inboundContextMetadata),
@@ -1339,6 +1336,11 @@ export async function resolveCustomerStatus(
       ...response,
       aiDiagnostics,
     }
+  }
+
+  async function consumeForceAiOverrideIfNeeded() {
+    if (controlMode !== 'force_ai') return
+    await clearCustomerControlMode(channel!.id, normalizedPhone)
   }
 
   const storeProfile = await loadStoreProfile(channel.store_id)
@@ -1408,6 +1410,7 @@ export async function resolveCustomerStatus(
 
   if (preAiRoute === 'explicit_human_option') {
     return applyOohTrapIfNeeded(async () => {
+      await consumeForceAiOverrideIfNeeded()
       await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
         selectedOption: '2',
         ...buildDecisionMetadata({
@@ -1469,6 +1472,7 @@ export async function resolveCustomerStatus(
     }
 
     return applyOohTrapIfNeeded(async () => {
+      await consumeForceAiOverrideIfNeeded()
       await setConversationState(channel, normalizedPhone, 'waiting_human_after_attachment', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
         reason: 'attachment_received',
         attachmentKind: inboundPayloadMeta.attachmentKind,
@@ -1508,6 +1512,7 @@ export async function resolveCustomerStatus(
 
   if (preAiRoute === 'attachment_followup_handoff') {
     return applyOohTrapIfNeeded(async () => {
+      await consumeForceAiOverrideIfNeeded()
       await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
         reason: 'attachment_followup',
         ...buildDecisionMetadata({
@@ -1530,6 +1535,7 @@ export async function resolveCustomerStatus(
 
   if (preAiRoute === 'preserve_human_handoff') {
     return applyOohTrapIfNeeded(async () => {
+      await consumeForceAiOverrideIfNeeded()
       await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
         reason: 'recent_human_routing_preserved',
         ...buildDecisionMetadata({
@@ -1553,6 +1559,7 @@ export async function resolveCustomerStatus(
   if (preAiRoute === 'retry_identifier_lookup') {
     const result = await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
     if (result) {
+      await consumeForceAiOverrideIfNeeded()
       return createStatusReply(channel, inbound.id, normalizedPhone, result.customer, result.serviceOrder, baseMetadata)
     }
   }
@@ -1560,10 +1567,12 @@ export async function resolveCustomerStatus(
   if (preAiRoute === 'waiting_identifier_lookup') {
     const result = await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
     if (result) {
+      await consumeForceAiOverrideIfNeeded()
       return createStatusReply(channel, inbound.id, normalizedPhone, result.customer, result.serviceOrder, baseMetadata)
     }
 
     return applyOohTrapIfNeeded(async () => {
+      await consumeForceAiOverrideIfNeeded()
       await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
         reason: 'identifier_not_found',
         ...buildDecisionMetadata({
@@ -1587,6 +1596,7 @@ export async function resolveCustomerStatus(
   }
 
   if (preAiRoute === 'explicit_status_option') {
+    await consumeForceAiOverrideIfNeeded()
     return handleStatusByPhone(channel, inbound.id, normalizedPhone, baseMetadata)
   }
 
@@ -1624,6 +1634,7 @@ export async function resolveCustomerStatus(
     })
 
     if (classification.success && postClassificationRoute === 'silent_handoff') {
+      await consumeForceAiOverrideIfNeeded()
       await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
         selectedOption: 'ai_silent_handoff',
         aiConfidence: classification.data.confidence,
@@ -1640,6 +1651,7 @@ export async function resolveCustomerStatus(
 
     if (classification.success && postClassificationRoute !== 'fallback') {
       if (postClassificationRoute === 'human_handoff') {
+        await consumeForceAiOverrideIfNeeded()
         await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
           selectedOption: 'ai_human_handoff',
           aiConfidence: classification.data.confidence,
@@ -1676,6 +1688,7 @@ export async function resolveCustomerStatus(
       }
 
       if (postClassificationRoute === 'pickup_or_scheduling') {
+        await consumeForceAiOverrideIfNeeded()
         const customer = await findCustomerByPhone(channel.store_id, normalizedPhone)
         if (customer) {
           const serviceOrder = await findLatestOpenOs(channel.store_id, customer.id)
@@ -1800,6 +1813,7 @@ export async function resolveCustomerStatus(
       }
 
       if (postClassificationRoute === 'budget_request' || postClassificationRoute === 'complaint_or_adaptation') {
+        await consumeForceAiOverrideIfNeeded()
         const textMap: Record<string, string> = {
           budget_request: 'Vou chamar um consultor para te ajudar com esse orçamento agora mesmo!',
           complaint_or_adaptation: 'Entendi a situação. Vou chamar um especialista da nossa equipe para dar prioridade ao seu caso.',
@@ -1840,6 +1854,7 @@ export async function resolveCustomerStatus(
       }
 
       if (postClassificationRoute === 'payment_info') {
+        await consumeForceAiOverrideIfNeeded()
         const installments = await findOpenInstallmentsByPhone(channel.store_id, normalizedPhone)
         let text = ''
         if (installments && installments.length > 0) {
@@ -1892,6 +1907,7 @@ export async function resolveCustomerStatus(
       }
 
       if (postClassificationRoute === 'order_status') {
+        await consumeForceAiOverrideIfNeeded()
         return withAiDiagnostics(await handleStatusByPhone(
           channel,
           inbound.id,
@@ -1904,6 +1920,7 @@ export async function resolveCustomerStatus(
       if (postClassificationRoute === 'store_hours') {
         const text = storeHoursText
         if (text) {
+          await consumeForceAiOverrideIfNeeded()
           const outboundPayload = {
             ...buildAiPayload(classification.data),
             ...buildWhatsAppCanonicalPayload({
@@ -1947,6 +1964,7 @@ export async function resolveCustomerStatus(
       if (postClassificationRoute === 'store_location') {
         const text = storeLocationText
         if (text) {
+          await consumeForceAiOverrideIfNeeded()
           const outboundPayload = {
             ...buildAiPayload(classification.data),
             ...buildWhatsAppCanonicalPayload({
@@ -1992,6 +2010,7 @@ export async function resolveCustomerStatus(
       const isGreeting = looksLikeGenericGreeting(effectiveMessageText)
       const text = isGreeting ? aiGreetingText() : aiClarificationText()
       return applyOohTrapIfNeeded(async () => {
+        await consumeForceAiOverrideIfNeeded()
         await setConversationState(channel, normalizedPhone, 'ai_session', AI_SESSION_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
           ...(classification.success ? buildAiPayload(classification.data) : {}),
           ...buildDecisionMetadata({
@@ -2019,6 +2038,7 @@ export async function resolveCustomerStatus(
   }
 
   if (!isWhatsAppAiResponderEnabled(automationSettings) && looksLikeOrderStatusQuestion(effectiveMessageText || undefined)) {
+    await consumeForceAiOverrideIfNeeded()
     return handleStatusByPhone(channel, inbound.id, normalizedPhone, baseMetadata)
   }
 
@@ -2028,6 +2048,7 @@ export async function resolveCustomerStatus(
 
   return applyOohTrapIfNeeded(async () => {
     const text = menuText()
+    await consumeForceAiOverrideIfNeeded()
     await setConversationState(channel, normalizedPhone, 'waiting_menu', MENU_WAIT_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
       reason: 'menu_sent',
       ...buildDecisionMetadata({
