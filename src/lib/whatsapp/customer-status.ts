@@ -1031,9 +1031,13 @@ async function setConversationState(
   phone: string,
   state: ConversationState,
   ms: number,
-  metadata: Json = {}
+  metadata: Json = {},
+  sourceInboundMessageId?: number | null
 ) {
   const supabase = createAdminClient()
+  if (sourceInboundMessageId && !(await isInboundStillLatest(channel.id, phone, sourceInboundMessageId))) {
+    return false
+  }
   const preparedMetadata = state === 'human_pause' || state === 'waiting_human_after_attachment'
     ? clearAiSessionMessages(metadata)
     : metadata
@@ -1052,6 +1056,7 @@ async function setConversationState(
     .upsert(values, { onConflict: 'channel_id,remote_phone' })
 
   if (error) throw error
+  return true
 }
 
 async function createOutbound(
@@ -1060,9 +1065,13 @@ async function createOutbound(
   phone: string,
   text: string,
   messageType: string,
-  payload: Json = {}
+  payload: Json = {},
+  sourceInboundMessageId?: number | null
 ): Promise<CustomerStatusResponse> {
   const supabase = createAdminClient()
+  if (sourceInboundMessageId && !(await isInboundStillLatest(channel.id, phone, sourceInboundMessageId))) {
+    return ignoreInbound(inboundMessageId)
+  }
   const { data: outbound, error } = await (supabase.from('whatsapp_outbound_messages') as any)
     .insert({
       tenant_id: channel.tenant_id,
@@ -1101,6 +1110,25 @@ async function ignoreInbound(inboundMessageId: number): Promise<CustomerStatusRe
   return { shouldReply: false }
 }
 
+async function isInboundStillLatest(
+  channelId: number,
+  phone: string,
+  inboundMessageId: number
+) {
+  const supabase = createAdminClient()
+  const { data, error } = await (supabase.from('whatsapp_inbound_messages') as any)
+    .select('id')
+    .eq('channel_id', channelId)
+    .eq('remote_phone', phone)
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw error
+  return Number(data?.id || 0) === inboundMessageId
+}
+
 async function createStatusReply(
   channel: ChannelRow,
   inboundMessageId: number,
@@ -1122,7 +1150,7 @@ async function createStatusReply(
         action: 'no_reply',
         outboundType: null,
       }),
-    }))
+    }), inboundMessageId)
     return ignoreInbound(inboundMessageId)
   }
 
@@ -1138,7 +1166,7 @@ async function createStatusReply(
         action: 'no_reply',
         outboundType: null,
       }),
-    }))
+    }), inboundMessageId)
     return ignoreInbound(inboundMessageId)
   }
 
@@ -1154,7 +1182,7 @@ async function createStatusReply(
       action: 'auto_reply',
       outboundType: 'os_status',
     }),
-  }), 'assistant', status.replyText))
+  }), 'assistant', status.replyText), inboundMessageId)
 
   const response = await createOutbound(channel, inboundMessageId, phone, status.replyText, 'os_status', {
     statusCode: status.statusCode,
@@ -1450,8 +1478,24 @@ export async function resolveCustomerStatus(
     await clearCustomerControlMode(channel!.id, normalizedPhone)
   }
 
+  async function setCurrentConversationState(
+    nextState: ConversationState,
+    ms: number,
+    metadata: Json = {}
+  ) {
+    return setConversationState(channel!, normalizedPhone, nextState, ms, metadata, inbound.id)
+  }
+
+  async function createCurrentOutbound(
+    text: string,
+    messageType: string,
+    payload: Json = {}
+  ) {
+    return createOutbound(channel!, inbound.id, normalizedPhone, text, messageType, payload, inbound.id)
+  }
+
   if (controlMode === 'force_human') {
-    await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+    await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
       overrideMode: controlMode,
       reason: 'force_human_override',
       ...buildDecisionMetadata({
@@ -1481,7 +1525,7 @@ export async function resolveCustomerStatus(
   async function applyOohTrapIfNeeded(fallbackAction: () => Promise<CustomerStatusResponse>): Promise<CustomerStatusResponse> {
     if (isExceptionalClosure) {
       const text = `Hoje, excepcionalmente, não estamos atendendo devido a: ${exceptionalReason}. Retornamos ${nextOpen}. Assim que retornarmos, um atendente falará com você.`
-      await setConversationState(channel!, normalizedPhone, 'human_pause', HUMAN_PAUSE_MS, mergeMetadata(baseMetadata, {
+      await setCurrentConversationState('human_pause', HUMAN_PAUSE_MS, mergeMetadata(baseMetadata, {
         reason: 'exceptional_closure_trap',
         ...buildDecisionMetadata({ intent: null, action: 'exceptional_closure_trap', outboundType: 'exceptional_closure' })
       }))
@@ -1489,10 +1533,10 @@ export async function resolveCustomerStatus(
          ...buildWhatsAppCanonicalPayload({ intent: null, action: 'exceptional_closure_trap', outboundType: 'exceptional_closure', canonicalReply: text })
       } satisfies ConversationMetadataRecord
       const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name, aiReplyContext)
-      return createOutbound(channel!, inbound.id, normalizedPhone, maybeHumanized.text, 'exceptional_closure', maybeHumanized.payload)
+      return createCurrentOutbound(maybeHumanized.text, 'exceptional_closure', maybeHumanized.payload)
     }
     if (isNormalClosed) {
-      await setConversationState(channel!, normalizedPhone, 'human_pause', HUMAN_PAUSE_MS, mergeMetadata(baseMetadata, {
+      await setCurrentConversationState('human_pause', HUMAN_PAUSE_MS, mergeMetadata(baseMetadata, {
         reason: 'normal_closed_trap',
         ...buildDecisionMetadata({ intent: null, action: 'normal_closed_trap', outboundType: null })
       }))
@@ -1514,7 +1558,7 @@ export async function resolveCustomerStatus(
   if (preAiRoute === 'explicit_human_option') {
     return applyOohTrapIfNeeded(async () => {
       await consumeForceAiOverrideIfNeeded()
-      await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+      await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
         selectedOption: '2',
         ...buildDecisionMetadata({
           intent: 'human_agent_request',
@@ -1532,7 +1576,7 @@ export async function resolveCustomerStatus(
         }),
       } satisfies ConversationMetadataRecord
       const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name, aiReplyContext)
-      return createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'human_handoff', maybeHumanized.payload)
+      return createCurrentOutbound(maybeHumanized.text, 'human_handoff', maybeHumanized.payload)
     })
   }
 
@@ -1542,7 +1586,7 @@ export async function resolveCustomerStatus(
 
   if (preAiRoute === 'attachment_handoff') {
     if (inboundPayloadMeta.attachmentKind === 'audio') {
-      await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+      await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
         reason: 'audio_received_silent_handoff',
         attachmentKind: inboundPayloadMeta.attachmentKind,
         mimeType: inboundPayloadMeta.mimeType,
@@ -1576,7 +1620,7 @@ export async function resolveCustomerStatus(
 
     return applyOohTrapIfNeeded(async () => {
       await consumeForceAiOverrideIfNeeded()
-      await setConversationState(channel, normalizedPhone, 'waiting_human_after_attachment', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+      await setCurrentConversationState('waiting_human_after_attachment', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
         reason: 'attachment_received',
         attachmentKind: inboundPayloadMeta.attachmentKind,
         mimeType: inboundPayloadMeta.mimeType,
@@ -1589,7 +1633,7 @@ export async function resolveCustomerStatus(
           outboundType: 'attachment_handoff',
         }),
       }))
-      return createOutbound(channel, inbound.id, normalizedPhone, text, 'attachment_handoff', {
+      return createCurrentOutbound(text, 'attachment_handoff', {
         attachmentKind: inboundPayloadMeta.attachmentKind,
         mimeType: inboundPayloadMeta.mimeType,
         fileName: inboundPayloadMeta.fileName,
@@ -1616,7 +1660,7 @@ export async function resolveCustomerStatus(
   if (preAiRoute === 'attachment_followup_handoff') {
     return applyOohTrapIfNeeded(async () => {
       await consumeForceAiOverrideIfNeeded()
-      await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+      await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
         reason: 'attachment_followup',
         ...buildDecisionMetadata({
           intent: null,
@@ -1625,7 +1669,7 @@ export async function resolveCustomerStatus(
         }),
       }))
       const text = attachmentFollowupText()
-      return createOutbound(channel, inbound.id, normalizedPhone, text, 'human_handoff', {
+      return createCurrentOutbound(text, 'human_handoff', {
         ...buildWhatsAppCanonicalPayload({
           intent: null,
           action: 'human_handoff',
@@ -1639,7 +1683,7 @@ export async function resolveCustomerStatus(
   if (preAiRoute === 'preserve_human_handoff') {
     return applyOohTrapIfNeeded(async () => {
       await consumeForceAiOverrideIfNeeded()
-      await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+      await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
         reason: 'recent_human_routing_preserved',
         ...buildDecisionMetadata({
           intent: null,
@@ -1648,7 +1692,7 @@ export async function resolveCustomerStatus(
         }),
       }))
       const text = attachmentFollowupText()
-      return createOutbound(channel, inbound.id, normalizedPhone, text, 'human_handoff', {
+      return createCurrentOutbound(text, 'human_handoff', {
         ...buildWhatsAppCanonicalPayload({
           intent: null,
           action: 'human_handoff',
@@ -1676,7 +1720,7 @@ export async function resolveCustomerStatus(
 
     return applyOohTrapIfNeeded(async () => {
       await consumeForceAiOverrideIfNeeded()
-      await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+      await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
         reason: 'identifier_not_found',
         ...buildDecisionMetadata({
           intent: 'order_status',
@@ -1694,7 +1738,7 @@ export async function resolveCustomerStatus(
         }),
       } satisfies ConversationMetadataRecord
       const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name, aiReplyContext)
-      return createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'human_handoff', maybeHumanized.payload)
+      return createCurrentOutbound(maybeHumanized.text, 'human_handoff', maybeHumanized.payload)
     })
   }
 
@@ -1748,7 +1792,7 @@ export async function resolveCustomerStatus(
           normalizedPhone
         )
         : {}
-      await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+      await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
         selectedOption: 'ai_silent_handoff',
         aiConfidence: classification.data.confidence,
         ...paymentInstallmentMetadata,
@@ -1766,7 +1810,7 @@ export async function resolveCustomerStatus(
     if (classification.success && postClassificationRoute !== 'fallback') {
       if (postClassificationRoute === 'human_handoff') {
         await consumeForceAiOverrideIfNeeded()
-        await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+        await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
           selectedOption: 'ai_human_handoff',
           aiConfidence: classification.data.confidence,
           ...buildDecisionMetadata({
@@ -1791,10 +1835,7 @@ export async function resolveCustomerStatus(
         if (aiResult) {
           await recordAiResult('reply_humanization', aiResult)
         }
-        return withAiDiagnostics(await createOutbound(
-          channel,
-          inbound.id,
-          normalizedPhone,
+        return withAiDiagnostics(await createCurrentOutbound(
           maybeHumanized.text,
           'human_handoff',
           maybeHumanized.payload
@@ -1815,7 +1856,7 @@ export async function resolveCustomerStatus(
             if (shouldSilenceRepeatedStatus(lastOutbound, status.statusCode)) {
               // FOLLOW-UP question: It's a handoff!
               const text = 'Vou acionar a equipe para verificar a sua retirada/agendamento no detalhe. Um momento.'
-              await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+              await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
                 selectedOption: 'ai_specific_handoff',
                 aiConfidence: classification.data.confidence,
                 ...buildDecisionMetadata({
@@ -1839,10 +1880,7 @@ export async function resolveCustomerStatus(
               if (aiResult) {
                 await recordAiResult('reply_humanization', aiResult)
               }
-              return withAiDiagnostics(await createOutbound(
-                channel,
-                inbound.id,
-                normalizedPhone,
+              return withAiDiagnostics(await createCurrentOutbound(
                 maybeHumanized.text,
                 'human_handoff',
                 maybeHumanized.payload
@@ -1873,7 +1911,7 @@ export async function resolveCustomerStatus(
               if (aiResult) {
                 await recordAiResult('reply_humanization', aiResult)
               }
-              await setConversationState(channel, normalizedPhone, 'silent', AFTER_STATUS_SILENCE_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
+              await setCurrentConversationState('silent', AFTER_STATUS_SILENCE_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
                 reason: 'status_sent_pickup',
                 lastKnownCustomerId: customer.id,
                 lastKnownServiceOrderId: serviceOrder.id,
@@ -1886,14 +1924,14 @@ export async function resolveCustomerStatus(
                   outboundType: 'os_status',
                 }),
               }), 'assistant', maybeHumanized.text))
-              return withAiDiagnostics(await createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'os_status', maybeHumanized.payload))
+              return withAiDiagnostics(await createCurrentOutbound(maybeHumanized.text, 'os_status', maybeHumanized.payload))
             }
           }
         }
 
         // Se não achou OS, handoff
         const text = 'Vou acionar a equipe para verificar a sua retirada/agendamento. Um momento.'
-        await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+        await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
           selectedOption: 'ai_specific_handoff',
           aiConfidence: classification.data.confidence,
           ...buildDecisionMetadata({
@@ -1917,10 +1955,7 @@ export async function resolveCustomerStatus(
         if (aiResult) {
           await recordAiResult('reply_humanization', aiResult)
         }
-        return withAiDiagnostics(await createOutbound(
-          channel,
-          inbound.id,
-          normalizedPhone,
+        return withAiDiagnostics(await createCurrentOutbound(
           maybeHumanized.text,
           'human_handoff',
           maybeHumanized.payload
@@ -1986,7 +2021,7 @@ export async function resolveCustomerStatus(
           text = `Não consegui localizar nenhuma fatura em aberto cadastrada direto no seu número. Você poderia me informar o nome de quem fez a compra ou o CPF?`
         }
 
-        await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+        await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
           selectedOption: 'ai_specific_handoff',
           aiConfidence: classification.data.confidence,
           ...paymentInstallmentMetadata,
@@ -2013,10 +2048,7 @@ export async function resolveCustomerStatus(
         if (aiResult) {
           await recordAiResult('reply_humanization', aiResult)
         }
-        return withAiDiagnostics(await createOutbound(
-          channel,
-          inbound.id,
-          normalizedPhone,
+        return withAiDiagnostics(await createCurrentOutbound(
           maybeHumanized.text,
           'human_handoff',
           maybeHumanized.payload
@@ -2055,9 +2087,7 @@ export async function resolveCustomerStatus(
           if (aiResult) {
             await recordAiResult('reply_humanization', aiResult)
           }
-          await setConversationState(
-            channel,
-            normalizedPhone,
+          await setCurrentConversationState(
             'silent',
             AFTER_STATUS_SILENCE_MS,
             appendAiSessionMessage(
@@ -2074,7 +2104,7 @@ export async function resolveCustomerStatus(
               maybeHumanized.text
             )
           )
-          return withAiDiagnostics(await createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'store_hours', maybeHumanized.payload))
+          return withAiDiagnostics(await createCurrentOutbound(maybeHumanized.text, 'store_hours', maybeHumanized.payload))
         }
       }
 
@@ -2099,9 +2129,7 @@ export async function resolveCustomerStatus(
           if (aiResult) {
             await recordAiResult('reply_humanization', aiResult)
           }
-          await setConversationState(
-            channel,
-            normalizedPhone,
+          await setCurrentConversationState(
             'silent',
             AFTER_STATUS_SILENCE_MS,
             appendAiSessionMessage(
@@ -2118,7 +2146,7 @@ export async function resolveCustomerStatus(
               maybeHumanized.text
             )
           )
-          return withAiDiagnostics(await createOutbound(channel, inbound.id, normalizedPhone, maybeHumanized.text, 'store_location', maybeHumanized.payload))
+          return withAiDiagnostics(await createCurrentOutbound(maybeHumanized.text, 'store_location', maybeHumanized.payload))
         }
       }
     }
@@ -2138,7 +2166,7 @@ export async function resolveCustomerStatus(
         }
 
         await consumeForceAiOverrideIfNeeded()
-        await setConversationState(channel, normalizedPhone, 'ai_session', AI_SESSION_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
+        await setCurrentConversationState('ai_session', AI_SESSION_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
           ...(classification.success ? buildAiPayload(classification.data) : {}),
           ...buildDecisionMetadata({
             intent: classification.success ? classification.data.intent : null,
@@ -2147,7 +2175,7 @@ export async function resolveCustomerStatus(
             outboundType: isGreeting ? 'ai_greeting' : 'ai_clarification',
           }),
         }), 'assistant', text))
-        return withAiDiagnostics(await createOutbound(channel, inbound.id, normalizedPhone, text, isGreeting ? 'ai_greeting' : 'ai_clarification', {
+        return withAiDiagnostics(await createCurrentOutbound(text, isGreeting ? 'ai_greeting' : 'ai_clarification', {
           ...(classification.success ? buildAiPayload(classification.data) : {}),
           ...buildWhatsAppCanonicalPayload({
             intent: classification.success ? classification.data.intent : null,
@@ -2176,7 +2204,7 @@ export async function resolveCustomerStatus(
   return applyOohTrapIfNeeded(async () => {
     const text = menuText()
     await consumeForceAiOverrideIfNeeded()
-    await setConversationState(channel, normalizedPhone, 'waiting_menu', MENU_WAIT_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
+    await setCurrentConversationState('waiting_menu', MENU_WAIT_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
       reason: 'menu_sent',
       ...buildDecisionMetadata({
         intent: null,
@@ -2184,7 +2212,7 @@ export async function resolveCustomerStatus(
         outboundType: 'menu',
       }),
     }), 'assistant', text))
-    return createOutbound(channel, inbound.id, normalizedPhone, text, 'menu', {
+    return createCurrentOutbound(text, 'menu', {
       ...buildWhatsAppCanonicalPayload({
         intent: null,
         action: 'show_menu',
