@@ -33,9 +33,12 @@ export function decidePostClassificationRoute(
   if (
     input.intent === 'budget_request'
     || input.intent === 'complaint_or_adaptation'
-    || input.intent === 'payment_info'
   ) {
     return 'silent_handoff'
+  }
+
+  if (input.intent === 'payment_info') {
+    return 'payment_info'
   }
 
   if (input.intent === 'pickup_or_scheduling' && !input.automationCandidate) {

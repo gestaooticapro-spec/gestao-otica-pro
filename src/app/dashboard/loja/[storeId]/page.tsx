@@ -6,7 +6,7 @@ import { getProfileByAdmin, createAdminClient } from '@/lib/supabase/admin'
 
 // Importação das Actions de Dados
 import { getManagerKPIs, getAdminKPIs } from '@/lib/actions/dashboard.actions'
-import { getAlertasOperacionais, getAniversariantes, getVencimentosProximos, getWhatsAppPendencias } from '@/lib/actions/consultas.actions'
+import { getAlertasOperacionais, getAniversariantes, getVencimentosProximos, getWhatsAppHumanOverrideCount, getWhatsAppPendencias } from '@/lib/actions/consultas.actions'
 import { getRetornosDeHoje } from '@/lib/actions/collection.actions'
 import { getStoreModulesForStore } from '@/lib/store-modules.server'
 
@@ -78,12 +78,13 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
 
     // 3. OPERADOR / VENDEDOR (Dashboard Operacional)
     const modules = await getStoreModulesForStore(storeId)
-    const [alertas, aniversariantes, vencimentos, retornos, whatsAppPendencias] = await Promise.all([
+    const [alertas, aniversariantes, vencimentos, retornos, whatsAppPendencias, whatsAppHumanOverrides] = await Promise.all([
         getAlertasOperacionais(storeId),
         getAniversariantes(storeId),
         modules.installments ? getVencimentosProximos(storeId) : Promise.resolve([]),
         modules.installments ? getRetornosDeHoje(storeId) : Promise.resolve([]),
-        isWhatsAppConnected ? getWhatsAppPendencias(storeId) : Promise.resolve([])
+        isWhatsAppConnected ? getWhatsAppPendencias(storeId) : Promise.resolve([]),
+        isWhatsAppConnected ? getWhatsAppHumanOverrideCount(storeId) : Promise.resolve(0)
     ])
 
     return (
@@ -98,6 +99,7 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
                 vencimentos={vencimentos}
                 retornos={retornos}
                 whatsAppPendencias={whatsAppPendencias}
+                whatsAppHumanOverrides={whatsAppHumanOverrides}
                 isWhatsAppConnected={isWhatsAppConnected}
             />
         </>

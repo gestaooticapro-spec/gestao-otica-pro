@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { AlertTriangle, ChevronRight, MessageSquareText } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronUp, MessageSquareText } from 'lucide-react'
 import { WhatsAppPendencia } from '@/lib/actions/consultas.actions'
 
 export default function WidgetWhatsAppPendencias({
@@ -13,8 +13,11 @@ export default function WidgetWhatsAppPendencias({
   humanOverrides?: number
   onOpen: () => void
 }) {
-  const hasPendencia = pendencias.length > 0
-  const hasHumanOverrides = humanOverrides > 0
+  const [isOpen, setIsOpen] = useState(false)
+  const waitingHumanCount = pendencias.filter((item) => item.state === 'human_pause').length
+  const attachmentPendingCount = pendencias.filter((item) => item.state === 'waiting_human_after_attachment').length
+  const handoffCount = pendencias.length
+  const totalActions = waitingHumanCount + attachmentPendingCount + humanOverrides
   const [renderNow] = useState(() => Date.now())
   const oldestUpdate = pendencias
     .map((item) => new Date(item.updated_at).getTime())
@@ -26,73 +29,90 @@ export default function WidgetWhatsAppPendencias({
     : 0
 
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="w-full rounded-3xl border border-white/5 bg-black/20 text-left shadow-xl backdrop-blur-sm ring-1 ring-white/10 transition-all duration-300 hover:border-green-500/30 hover:bg-green-500/5"
-    >
-      <div className="flex items-center justify-between bg-green-500/10 px-6 py-5 transition-colors hover:bg-green-500/20">
-        <div className="flex items-center gap-3">
-          <div className="rounded-2xl border border-green-500/10 bg-green-500/20 p-2.5 text-green-400 shadow-inner">
-            <MessageSquareText className="h-5 w-5" />
+    <div className="group bg-white/5 hover:bg-white/10 rounded-xl border border-white/5 hover:border-green-500/30 transition-all duration-300 overflow-hidden">
+      <div
+        className="p-4 flex items-center justify-between cursor-pointer"
+        onClick={() => setIsOpen((current) => !current)}
+      >
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 rounded-lg bg-green-500/20 text-green-300 flex items-center justify-center transition-colors shadow-lg">
+            <MessageSquareText className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-green-100">WHATSAPP</h3>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-green-200/60">
-              Central Operacional
-            </p>
+            <span className="text-slate-200 font-bold text-sm block group-hover:text-white transition-colors">WhatsApp</span>
+            <span className="text-slate-500 text-[10px] uppercase font-bold">Central Operacional</span>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          {hasPendencia ? (
-            <span className="rounded-full bg-green-500 px-2.5 py-1 text-xs font-black text-green-950 shadow-lg shadow-green-900/20">
-              {pendencias.length}
+          {totalActions > 0 ? (
+            <span className="px-2 py-1 rounded-md text-xs font-bold bg-green-500/20 text-green-300 shadow-lg">
+              {totalActions}
             </span>
           ) : null}
-          <ChevronRight className="h-4 w-4 text-white/50" />
+          {isOpen ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
         </div>
       </div>
 
-      <div className="bg-black/40 p-4">
-        <div className="rounded-2xl border border-white/5 bg-white/5 p-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-black text-white">
-                {hasPendencia
-                  ? `${pendencias.length} conversa${pendencias.length === 1 ? '' : 's'} com handoff`
-                  : 'Nenhuma pendencia humana agora'}
+      {isOpen ? (
+        <div className="bg-black/20 p-4 border-t border-white/5 space-y-3 animate-in slide-in-from-top-2">
+          <div className="flex items-start justify-between gap-3 rounded-lg bg-white/5 border border-white/5 p-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold text-slate-200">
+                {totalActions > 0 ? `${totalActions} acao${totalActions === 1 ? '' : 'oes'} no radar` : 'Sem acoes de WhatsApp agora'}
               </p>
-              <p className="mt-1 text-[11px] text-slate-400">
-                {hasPendencia
+              <p className="mt-1 text-[10px] text-slate-400">
+                {handoffCount > 0
                   ? `Conversa mais antiga aguardando ha ${waitMinutes} min`
-                  : 'Abra o modal para buscar clientes, ver historico e inspecionar o fluxo.'}
-              </p>
-              <p className="mt-2 text-[11px] text-slate-400">
-                {hasHumanOverrides
-                  ? `${humanOverrides} numero${humanOverrides === 1 ? '' : 's'} em humano persistente`
-                  : 'Nenhum numero travado em humano persistente'}
+                  : 'Central pronta para busca, historico e debug.'}
               </p>
             </div>
 
-            {hasPendencia || hasHumanOverrides ? (
-              <div className={`shrink-0 rounded-xl px-3 py-2 ${hasPendencia ? 'border border-amber-500/30 bg-amber-500/10 text-amber-200' : 'border border-cyan-500/30 bg-cyan-500/10 text-cyan-200'}`}>
+            {totalActions > 0 ? (
+              <div className={`shrink-0 rounded-lg px-3 py-2 ${handoffCount > 0 ? 'border border-amber-500/30 bg-amber-500/10 text-amber-200' : 'border border-cyan-500/30 bg-cyan-500/10 text-cyan-200'}`}>
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4" />
                   <span className="text-[10px] font-black uppercase tracking-wider">
-                    {hasPendencia ? 'Atencao' : 'Revisar'}
+                    {handoffCount > 0 ? 'Atencao' : 'Revisar'}
                   </span>
                 </div>
               </div>
             ) : null}
           </div>
 
-          <div className="mt-4 flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-green-300/80">
-            <span>Abrir central</span>
-            <span>Historico real + debug</span>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between rounded-lg bg-white/5 border border-white/5 px-3 py-3 text-[11px]">
+              <span className="text-slate-300">PDF/imagens</span>
+              <span className="font-bold text-white">{attachmentPendingCount}</span>
+            </div>
+            <div className="flex items-center justify-between rounded-lg bg-white/5 border border-white/5 px-3 py-3 text-[11px]">
+              <span className="text-slate-300">Aguardando resposta humana</span>
+              <span className="font-bold text-white">{waitingHumanCount}</span>
+            </div>
+            <div className="flex items-center justify-between rounded-lg bg-white/5 border border-white/5 px-3 py-3 text-[11px]">
+              <span className="text-slate-300">Em humano</span>
+              <span className="font-bold text-white">{humanOverrides}</span>
+            </div>
           </div>
+
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              onOpen()
+            }}
+            className="w-full rounded-lg bg-green-500/20 text-green-300 hover:bg-green-500 hover:text-white transition-all shadow-sm border border-green-500/20 px-4 py-3 text-[11px] font-black uppercase tracking-wider"
+          >
+            Entrar
+          </button>
+
+          {totalActions === 0 ? (
+            <p className="text-center text-xs text-slate-400 py-3 font-medium">
+              Nenhuma pendencia de WhatsApp agora.
+            </p>
+          ) : null}
         </div>
-      </div>
-    </button>
+      ) : null}
+    </div>
   )
 }

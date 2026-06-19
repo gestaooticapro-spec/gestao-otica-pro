@@ -1366,15 +1366,12 @@ export async function resolveCustomerStatus(
     const isSystemOutbound = await isKnownSystemOutbound(channel.id, input.providerMessageId)
 
     if (!isSystemOutbound) {
-      await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, {
-        reason: 'store_outbound_detected',
+      await markStoreInitiatedConversation({
+        instanceKey: input.instanceKey,
+        phone: normalizedPhone,
         providerMessageId: input.providerMessageId,
-        preview: effectiveMessageText?.slice(0, 160) || null,
-        ...buildDecisionMetadata({
-          intent: null,
-          action: 'human_pause_store_outbound',
-          outboundType: null,
-        }),
+        messageText: effectiveMessageText || undefined,
+        payload: input.payload,
       })
     }
 
@@ -2690,8 +2687,9 @@ export async function markStoreInitiatedConversation(
   if (!normalizedPhone) return { success: false, reason: 'invalid_phone' as const }
 
   const providerMessageId = String(input.providerMessageId || '').trim()
+  const messageText = String(input.messageText || '').trim()
+  const supabase = createAdminClient()
   if (providerMessageId) {
-    const supabase = createAdminClient()
     const { data, error } = await (supabase.from('whatsapp_outbound_messages') as any)
       .select('id')
       .eq('channel_id', channel.id)
@@ -2704,10 +2702,32 @@ export async function markStoreInitiatedConversation(
     }
   }
 
+  const { error: outboundInsertError } = await (supabase.from('whatsapp_outbound_messages') as any)
+    .insert({
+      tenant_id: channel.tenant_id,
+      store_id: channel.store_id,
+      channel_id: channel.id,
+      inbound_message_id: null,
+      provider_message_id: providerMessageId || null,
+      remote_phone: normalizedPhone,
+      message_text: messageText || '[mensagem enviada pela loja sem texto legivel]',
+      message_type: 'operator_store_initiated',
+      status: 'sent',
+      sent_at: new Date().toISOString(),
+      payload: {
+        source: 'store_device',
+        sentBy: 'operator',
+        fromMe: true,
+        mirroredFromWebhook: true,
+        rawPayload: input.payload ?? null,
+      },
+    })
+  if (outboundInsertError) throw outboundInsertError
+
   await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, {
     reason: 'store_initiated',
     providerMessageId: providerMessageId || null,
-    preview: input.messageText?.slice(0, 160) || null,
+    preview: messageText.slice(0, 160) || null,
     ...buildDecisionMetadata({
       intent: null,
       action: 'human_pause_store_initiated',

@@ -39,6 +39,8 @@ Este documento nasceu como spec de implementacao. A partir daqui ele passa a acu
 - adicionada previa de retencao/faxina no painel do WhatsApp operacional, ainda sem exclusao real
 - adicionada execucao manual de faxina com confirmacao explicita e limite por rodada
 - refinado painel tecnico para mostrar rota, motivo, silencio e handoff fora do JSON bruto
+- card do WhatsApp no radar voltou a expandir/recolher como os demais, com botao interno `Entrar` e contadores explicitos por tipo de acao
+- mensagens `fromMe` disparadas fora do modal passam a ser espelhadas em `whatsapp_outbound_messages`, preservando historico humano no thread operacional
 
 ### Pendente relevante
 

@@ -34,9 +34,10 @@ interface Props {
   vencimentos: VencimentoProximo[]
   retornos: RetornoCobranca[]
   whatsAppPendencias: WhatsAppPendencia[]
+  whatsAppHumanOverrides: number
 }
 
-export default function ActionMenuDashboard({ storeId, storeName, deliveryDateEnabled = true, isWhatsAppConnected, alerts, birthdays, vencimentos, retornos, whatsAppPendencias }: Props) {
+export default function ActionMenuDashboard({ storeId, storeName, deliveryDateEnabled = true, isWhatsAppConnected, alerts, birthdays, vencimentos, retornos, whatsAppPendencias, whatsAppHumanOverrides }: Props) {
   const [isParcelaModalOpen, setIsParcelaModalOpen] = useState(false)
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false)
   const modules = useStoreModules()
@@ -260,6 +261,7 @@ export default function ActionMenuDashboard({ storeId, storeName, deliveryDateEn
                   <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
                     <WidgetWhatsAppPendencias
                       pendencias={whatsAppPendencias}
+                      humanOverrides={whatsAppHumanOverrides}
                       onOpen={() => setIsWhatsAppModalOpen(true)}
                     />
                   </div>
