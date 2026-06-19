@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-import { decidePreAiRoute } from '@/lib/whatsapp/routing-heuristics'
+import { decidePreAiRoute, shouldReleaseClosedTrapPause } from '@/lib/whatsapp/routing-heuristics'
 
 const nowMs = new Date('2026-06-17T15:00:00.000Z').getTime()
 const humanHandoffWindowMs = 2 * 60 * 60 * 1000
@@ -27,6 +27,30 @@ assert.equal(decidePreAiRoute({
   identifierWindowMs,
   nowMs,
 }), 'ignore_human_pause')
+
+assert.equal(shouldReleaseClosedTrapPause({
+  state: 'human_pause',
+  metadata: {
+    reason: 'normal_closed_trap',
+    lastAction: 'normal_closed_trap',
+  },
+  isStoreOpenNow: true,
+}), true)
+
+assert.equal(decidePreAiRoute({
+  option: null,
+  state: 'human_pause',
+  hasAttachment: false,
+  messageText: 'oi',
+  metadata: {
+    reason: 'normal_closed_trap',
+    lastAction: 'normal_closed_trap',
+  },
+  isStoreOpenNow: true,
+  humanHandoffWindowMs,
+  identifierWindowMs,
+  nowMs,
+}), 'release_human_pause')
 
 assert.equal(decidePreAiRoute({
   option: null,

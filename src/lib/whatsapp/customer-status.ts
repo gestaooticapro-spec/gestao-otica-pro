@@ -23,7 +23,7 @@ import {
   buildWhatsAppCanonicalPayload,
   extractWhatsAppCanonicalReply,
 } from './canonical'
-import { decidePreAiRoute } from './routing-heuristics'
+import { decidePreAiRoute, shouldReleaseClosedTrapPause } from './routing-heuristics'
 import { decidePostClassificationRoute } from './flow-decisions'
 import {
   applyWhatsAppHumanizationOutcome,
@@ -885,6 +885,15 @@ async function findConversationState(channelId: number, phone: string): Promise<
   return data
 }
 
+async function clearConversationStateById(id: number) {
+  const supabase = createAdminClient()
+  const { error } = await (supabase.from('whatsapp_conversation_states') as any)
+    .delete()
+    .eq('id', id)
+
+  if (error) throw error
+}
+
 async function loadCustomerControlMode(channelId: number, phone: string): Promise<CustomerControlMode> {
   const supabase = createAdminClient()
   const { data, error } = await (supabase.from('whatsapp_customer_control') as any)
@@ -1310,8 +1319,21 @@ export async function resolveCustomerStatus(
   }
 
   const option = optionFromMessage(effectiveMessageText || undefined)
-  const state = await findConversationState(channel.id, normalizedPhone)
+  let state = await findConversationState(channel.id, normalizedPhone)
   const controlMode = await loadCustomerControlMode(channel.id, normalizedPhone)
+  const storeProfile = await loadStoreProfile(channel.store_id)
+  const settings = ((storeProfile.settings || {}) as StoreSettings) || {}
+  const hoursFacts = settings.store_hours ? evaluateStoreHours(settings.store_hours) : null
+
+  if (shouldReleaseClosedTrapPause({
+    state: state?.state ?? null,
+    metadata: state?.metadata,
+    isStoreOpenNow: hoursFacts?.is_open_now === true,
+  }) && state?.id) {
+    await clearConversationStateById(state.id)
+    state = null
+  }
+
   const effectiveState = effectiveStateForControl(state, controlMode)
   const baseMetadata = appendAiSessionMessage(
     mergeMetadata(state?.metadata, inboundContextMetadata),
@@ -1343,9 +1365,6 @@ export async function resolveCustomerStatus(
     await clearCustomerControlMode(channel!.id, normalizedPhone)
   }
 
-  const storeProfile = await loadStoreProfile(channel.store_id)
-  const settings = ((storeProfile.settings || {}) as StoreSettings) || {}
-
   if (controlMode === 'force_human') {
     await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
       overrideMode: controlMode,
@@ -1364,8 +1383,7 @@ export async function resolveCustomerStatus(
   let exceptionalReason = ''
   let nextOpen = ''
   
-  if (settings.store_hours) {
-    const hoursFacts = evaluateStoreHours(settings.store_hours)
+  if (hoursFacts) {
     if (hoursFacts.is_exceptional_closure) {
       isExceptionalClosure = true
       exceptionalReason = hoursFacts.exceptional_closure_reason || ''
@@ -2112,13 +2130,21 @@ export async function simulateCustomerStatus(
   const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
   const state = await findConversationState(channel.id, normalizedPhone)
   const controlMode = await loadCustomerControlMode(channel.id, normalizedPhone)
-  const effectiveState = effectiveStateForControl(state, controlMode)
-  const recentContext = buildRecentContextFromMetadata(state?.metadata, effectiveMessageText)
-  const conversationHistory = buildAiConversationHistoryFromMetadata(state?.metadata)
   const aiDiagnostics: WhatsAppAiDiagnostic[] = []
   const storeProfile = await loadStoreProfile(channel.store_id)
   const settings = ((storeProfile.settings || {}) as StoreSettings) || {}
   const option = optionFromMessage(effectiveMessageText || undefined)
+  const hoursFacts = settings.store_hours ? evaluateStoreHours(settings.store_hours) : null
+  const releasedClosedTrapPause = shouldReleaseClosedTrapPause({
+    state: state?.state ?? null,
+    metadata: state?.metadata,
+    isStoreOpenNow: hoursFacts?.is_open_now === true,
+  })
+  const routingState = releasedClosedTrapPause ? null : state
+  const debugState = routingState?.state ?? null
+  const effectiveState = effectiveStateForControl(routingState, controlMode)
+  const recentContext = buildRecentContextFromMetadata(routingState?.metadata, effectiveMessageText)
+  const conversationHistory = buildAiConversationHistoryFromMetadata(routingState?.metadata)
 
   function buildResult(partial: Partial<CustomerStatusSimulationResponse>, debug: CustomerStatusSimulationResponse['debug']) {
     return {
@@ -2162,8 +2188,7 @@ export async function simulateCustomerStatus(
   let exceptionalReason = ''
   let nextOpen = ''
 
-  if (settings.store_hours) {
-    const hoursFacts = evaluateStoreHours(settings.store_hours)
+  if (hoursFacts) {
     if (hoursFacts.is_exceptional_closure) {
       isExceptionalClosure = true
       exceptionalReason = hoursFacts.exceptional_closure_reason || ''
@@ -2178,7 +2203,8 @@ export async function simulateCustomerStatus(
     state: effectiveState ?? null,
     hasAttachment: inboundPayloadMeta.hasAttachment,
     messageText: effectiveMessageText,
-    metadata: state?.metadata,
+    metadata: routingState?.metadata,
+    isStoreOpenNow: hoursFacts?.is_open_now === true,
     humanHandoffWindowMs: ATTACHMENT_HANDOFF_MS,
     identifierWindowMs: IDENTIFIER_WAIT_MS,
   })

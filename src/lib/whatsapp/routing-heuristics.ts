@@ -16,6 +16,7 @@ export type WhatsAppConversationStateName =
 
 export type WhatsAppPreAiRouteDecision =
   | 'explicit_human_option'
+  | 'release_human_pause'
   | 'ignore_human_pause'
   | 'attachment_handoff'
   | 'attachment_followup_handoff'
@@ -29,6 +30,29 @@ export type WhatsAppPreAiRouteDecision =
 function asRecord(value: Json | null | undefined): Record<string, Json | undefined> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   return value as Record<string, Json | undefined>
+}
+
+function readMetadataString(metadata: Json | null | undefined, key: string) {
+  const record = asRecord(metadata)
+  const value = record[key]
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function isClosedTrapReason(value: string | null) {
+  return value === 'normal_closed_trap' || value === 'exceptional_closure_trap'
+}
+
+export function shouldReleaseClosedTrapPause(input: {
+  state: WhatsAppConversationStateName
+  metadata: Json | null | undefined
+  isStoreOpenNow: boolean
+}) {
+  if (input.state !== 'human_pause' || !input.isStoreOpenNow) return false
+
+  const reason = readMetadataString(input.metadata, 'reason')
+  const lastAction = readMetadataString(input.metadata, 'lastAction')
+
+  return isClosedTrapReason(reason) || isClosedTrapReason(lastAction)
 }
 
 export function isRecentIsoTimestamp(value: Json | undefined, maxAgeMs: number, nowMs = Date.now()) {
@@ -98,11 +122,19 @@ export function decidePreAiRoute(input: {
   hasAttachment: boolean
   messageText: string | null
   metadata: Json | null | undefined
+  isStoreOpenNow?: boolean
   humanHandoffWindowMs: number
   identifierWindowMs: number
   nowMs?: number
 }): WhatsAppPreAiRouteDecision {
   if (input.option === '2') return 'explicit_human_option'
+  if (shouldReleaseClosedTrapPause({
+    state: input.state,
+    metadata: input.metadata,
+    isStoreOpenNow: input.isStoreOpenNow === true,
+  })) {
+    return 'release_human_pause'
+  }
   if (input.state === 'human_pause') return 'ignore_human_pause'
   if (input.hasAttachment) return 'attachment_handoff'
   if (input.state === 'waiting_human_after_attachment') return 'attachment_followup_handoff'
