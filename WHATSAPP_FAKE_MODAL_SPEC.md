@@ -32,14 +32,87 @@ Este documento nasceu como spec de implementacao. A partir daqui ele passa a acu
 - corrigido fallback de cliente no modal usando `lastKnownCustomerId` quando o match por telefone falha
 - adicionado vinculo persistente `telefone WhatsApp -> customer_id` para estabilizar o nome do cliente na central operacional
 - removida tentativa de auto-refresh/realtime por polling que causava piscada da tela
+- adicionada memoria curta de sessao da IA em `aiSessionMessages`, exibida no painel tecnico
+- ajustado `force_ai` no motor para agir como override temporario consumido na proxima chamada relevante
+- ajustada a UI do modal para mostrar `IA proxima`, deixando claro que nao e modo permanente
+- adicionado atalho interno de parcelas quando `payment_info` encontra parcela aberta por telefone
+- adicionada previa de retencao/faxina no painel do WhatsApp operacional, ainda sem exclusao real
+- adicionada execucao manual de faxina com confirmacao explicita e limite por rodada
+- refinado painel tecnico para mostrar rota, motivo, silencio e handoff fora do JSON bruto
 
 ### Pendente relevante
 
-- revisar a semantica operacional dos overrides `IA` e `Humano`
-- explicitar no radar quantos numeros estao presos em modo humano persistente
-- melhorar a memoria de contexto da IA apenas durante a sessao automatica ativa
-- definir estrategia de faxina/retencao para evitar crescimento excessivo das conversas e logs de WhatsApp
+- decidir se a faxina tambem tera rotina automatica agendada alem do gatilho manual
 - manter este documento sincronizado com o comportamento real do modulo
+
+## Etapas de implementacao em andamento
+
+### Etapa 1 - Override `IA` temporario visivel
+
+Status: implementada em 2026-06-19.
+
+O motor ja consumia `force_ai` ao processar a proxima mensagem relevante e limpava o controle em seguida. A UI agora acompanha essa regra: o botao aparece como `IA proxima`, com texto de apoio explicando que a IA atende a proxima mensagem real e depois o cliente volta para `automatico`.
+
+O modo `Humano` continua persistente e segue contabilizado no radar operacional como fila que a loja precisa revisar.
+
+Proxima etapa prevista: implementar a estrategia inicial de faxina/retencao segura para historico e logs de WhatsApp.
+
+### Etapa 2 - Previa segura de retencao/faxina
+
+Status: implementada em 2026-06-19.
+
+Foi adicionada uma action de previa no WA operacional para calcular, sem apagar nada, quantos registros seriam candidatos a limpeza. A politica inicial usada na previa e:
+
+- logs de IA com mais de 30 dias
+- mensagens inbound/outbound com mais de 90 dias
+- estados expirados ha mais de 7 dias
+
+A previa protege automaticamente:
+
+- numeros em `force_human`
+- threads com `human_pause` ou `waiting_human_after_attachment` ainda ativos
+
+O modal passa a mostrar um bloco de `Retencao` com os totais candidatos e a quantidade de threads protegidas. Essa etapa e propositalmente nao destrutiva para permitir validar a politica antes de criar o botao de executar faxina.
+
+Proxima etapa prevista: criar a execucao manual da faxina com confirmacao explicita, limite por rodada e nova atualizacao da previa apos rodar.
+
+### Etapa 3 - Execucao manual da faxina
+
+Status: implementada em 2026-06-19.
+
+O bloco `Retencao` do WhatsApp operacional agora possui o botao `Executar faxina`. Antes de executar, a UI pede confirmacao do operador. No backend, a action exige a confirmacao interna `CONFIRMAR_FAXINA_WHATSAPP`, reduzindo risco de chamada acidental.
+
+A execucao usa a mesma politica da previa:
+
+- logs de IA com mais de 30 dias
+- mensagens inbound/outbound com mais de 90 dias
+- estados expirados ha mais de 7 dias
+
+A execucao tambem preserva:
+
+- numeros em `force_human`
+- threads com `human_pause` ou `waiting_human_after_attachment` ainda ativos
+
+Para evitar uma limpeza pesada demais, cada rodada remove no maximo 250 registros por tipo. Depois de executar, o modal recalcula a previa e recarrega a lista/thread atual.
+
+Proxima etapa prevista: decidir se vale adicionar rotina automatica agendada ou manter somente a faxina manual por enquanto.
+
+### Etapa 4 - Painel tecnico operacional
+
+Status: implementada em 2026-06-19.
+
+O resumo tecnico do WhatsApp operacional agora promove dados que antes ficavam escondidos no JSON:
+
+- rota operacional inferida ou persistida
+- acao final
+- motivo (`reason`)
+- motivo de silencio, quando aplicavel
+- motivo de handoff, quando aplicavel
+- intent/confidence como contexto separado
+
+O JSON bruto continua disponivel para debug profundo, mas o operador/desenvolvedor nao precisa mais procurar manualmente os campos principais em `metadata`.
+
+Proxima etapa prevista: decidir se a faxina deve ganhar uma rotina automatica agendada ou continuar manual por enquanto.
 
 ## Resumo
 

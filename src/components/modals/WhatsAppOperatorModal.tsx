@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import {
   AlertTriangle,
   Bot,
+  Database,
   Loader2,
   MessageCircle,
   Phone,
@@ -18,11 +19,14 @@ import { useModals } from '@/lib/contexts/ModalsContext'
 import {
   getWhatsAppOperatorThreadDetail,
   getWhatsAppOperatorThreads,
+  getWhatsAppRetentionPreview,
+  runWhatsAppRetentionCleanup,
   sendWhatsAppOperatorMessage,
   setWhatsAppCustomerControl,
   simulateWhatsAppOperatorMessage,
   type CustomerStatusSimulationResponse,
   type WhatsAppCustomerControlMode,
+  type WhatsAppRetentionPreview,
   type WhatsAppOperatorTechnicalSummary,
   type WhatsAppOperatorThreadDetail,
   type WhatsAppOperatorThreadListItem,
@@ -50,6 +54,23 @@ function formatDateOnly(value: string | null) {
 function formatCurrency(value: number | null) {
   if (typeof value !== 'number') return '-'
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
+}
+
+function controlModeLabel(mode: WhatsAppCustomerControlMode) {
+  if (mode === 'force_ai') return 'IA proxima'
+  if (mode === 'force_human') return 'Humano'
+  return 'Automatico'
+}
+
+function controlModeTitle(mode: WhatsAppCustomerControlMode) {
+  if (mode === 'force_ai') return 'IA atende a proxima mensagem real e depois volta para automatico.'
+  if (mode === 'force_human') return 'Atendimento humano persistente ate alguem voltar para automatico.'
+  return 'Motor automatico segue as regras normais.'
+}
+
+function readableDecisionValue(value: string | null) {
+  if (!value) return '-'
+  return value.replace(/_/g, ' ')
 }
 
 function formatRelativeMinutes(value: string | null) {
@@ -192,18 +213,41 @@ function TechnicalPanel({
   }
 
   const installmentHint = summary.latestIntent === 'payment_info' ? summary.paymentInstallmentHint : null
+  const operationalDecision = summary.operationalDecision
 
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Ultima decisao</p>
         <div className="mt-3 grid gap-2 text-sm text-slate-300">
-          <div>state: <span className="font-bold text-white">{summary.conversationState || '-'}</span></div>
-          <div>intent: <span className="font-bold text-white">{summary.latestIntent || '-'}</span></div>
-          <div>confidence: <span className="font-bold text-white">{summary.latestConfidence?.toFixed(2) || '-'}</span></div>
-          <div>action: <span className="font-bold text-white">{summary.latestAction || '-'}</span></div>
-          <div>outbound: <span className="font-bold text-white">{summary.latestOutboundType || '-'}</span></div>
-          <div>attachment: <span className="font-bold text-white">{summary.latestInboundHasAttachment ? summary.latestInboundAttachmentKind || 'sim' : 'nao'}</span></div>
+          <div>rota: <span className="font-bold text-white">{readableDecisionValue(operationalDecision.route)}</span></div>
+          <div>acao: <span className="font-bold text-white">{readableDecisionValue(summary.latestAction)}</span></div>
+          <div>motivo: <span className="font-bold text-white">{readableDecisionValue(operationalDecision.reason)}</span></div>
+          <div>state: <span className="font-bold text-white">{readableDecisionValue(summary.conversationState)}</span></div>
+          <div>outbound: <span className="font-bold text-white">{readableDecisionValue(summary.latestOutboundType)}</span></div>
+        </div>
+
+        {(operationalDecision.silenceReason || operationalDecision.handoffReason) ? (
+          <div className="mt-3 grid gap-2">
+            {operationalDecision.silenceReason ? (
+              <div className="rounded-xl border border-slate-500/20 bg-slate-500/10 p-3 text-xs text-slate-200">
+                <span className="font-black uppercase tracking-wider text-slate-400">Silencio</span>
+                <p className="mt-1">{readableDecisionValue(operationalDecision.silenceReason)}</p>
+              </div>
+            ) : null}
+            {operationalDecision.handoffReason ? (
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-100">
+                <span className="font-black uppercase tracking-wider text-amber-300">Handoff</span>
+                <p className="mt-1">{readableDecisionValue(operationalDecision.handoffReason)}</p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="mt-3 rounded-xl border border-white/5 bg-white/[0.03] p-3 text-xs text-slate-300">
+          <div>intent: <span className="font-bold text-white">{readableDecisionValue(summary.latestIntent)}</span></div>
+          <div className="mt-1">confidence: <span className="font-bold text-white">{summary.latestConfidence?.toFixed(2) || '-'}</span></div>
+          <div className="mt-1">attachment: <span className="font-bold text-white">{summary.latestInboundHasAttachment ? summary.latestInboundAttachmentKind || 'sim' : 'nao'}</span></div>
         </div>
       </div>
 
@@ -316,11 +360,16 @@ export default function WhatsAppOperatorModal({
   const [composerMode, setComposerMode] = useState<'real' | 'simulation'>('real')
   const [composerText, setComposerText] = useState('')
   const [controlMessage, setControlMessage] = useState<string | null>(null)
+  const [retentionPreview, setRetentionPreview] = useState<WhatsAppRetentionPreview | null>(null)
+  const [retentionError, setRetentionError] = useState<string | null>(null)
+  const [retentionMessage, setRetentionMessage] = useState<string | null>(null)
   const [simulationByPhone, setSimulationByPhone] = useState<Record<string, SimulationEntry[]>>({})
   const [isPending, startTransition] = useTransition()
   const [isDetailPending, startDetailTransition] = useTransition()
   const [isSending, startSendTransition] = useTransition()
   const [isChangingControl, startControlTransition] = useTransition()
+  const [isLoadingRetention, startRetentionTransition] = useTransition()
+  const [isRunningRetention, startRetentionCleanupTransition] = useTransition()
   const conversationViewportRef = useRef<HTMLDivElement | null>(null)
   const conversationBottomRef = useRef<HTMLDivElement | null>(null)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
@@ -378,9 +427,54 @@ export default function WhatsAppOperatorModal({
     })
   }
 
+  const loadRetentionPreview = () => {
+    setRetentionError(null)
+
+    startRetentionTransition(async () => {
+      const result = await getWhatsAppRetentionPreview({ storeId })
+      if (!result.success || !result.data) {
+        setRetentionPreview(null)
+        setRetentionError(result.message)
+        return
+      }
+
+      setRetentionPreview(result.data)
+    })
+  }
+
+  const handleRunRetentionCleanup = () => {
+    if (!retentionPreview || retentionPreview.candidates.total <= 0) return
+
+    const confirmed = window.confirm(
+      `Executar faxina de WhatsApp agora?\n\nEsta rodada remove no maximo 250 registros por tipo e protege humano persistente e handoff ativo.\n\nCandidatos atuais: ${retentionPreview.candidates.total}.`
+    )
+    if (!confirmed) return
+
+    setRetentionError(null)
+    setRetentionMessage(null)
+
+    startRetentionCleanupTransition(async () => {
+      const result = await runWhatsAppRetentionCleanup({
+        storeId,
+        confirmation: 'CONFIRMAR_FAXINA_WHATSAPP',
+      })
+
+      if (!result.success) {
+        setRetentionError(result.message)
+        return
+      }
+
+      setRetentionMessage(result.message)
+      if (result.preview) setRetentionPreview(result.preview)
+      loadThreads(query)
+      if (selectedPhone) loadThreadDetail(selectedPhone)
+    })
+  }
+
   useEffect(() => {
     if (!isOpen) return
     loadThreads('', false)
+    loadRetentionPreview()
     setQuery('')
     setSelectedDetail(null)
     setSelectedPhone(null)
@@ -389,6 +483,8 @@ export default function WhatsAppOperatorModal({
     setSendError(null)
     setSendSuccess(null)
     setControlMessage(null)
+    setRetentionError(null)
+    setRetentionMessage(null)
   }, [isOpen])
 
   useEffect(() => {
@@ -704,6 +800,7 @@ export default function WhatsAppOperatorModal({
                           type="button"
                           onClick={() => handleChangeControlMode(mode)}
                           disabled={isChangingControl}
+                          title={controlModeTitle(mode)}
                           className={`rounded-xl px-3 py-2 text-[11px] font-black uppercase tracking-wider transition ${
                             selectedThread.overrideMode === mode
                               ? mode === 'force_human'
@@ -714,10 +811,19 @@ export default function WhatsAppOperatorModal({
                               : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
                           }`}
                         >
-                          {mode === 'auto' ? 'Automatico' : mode === 'force_ai' ? 'IA' : 'Humano'}
+                          {controlModeLabel(mode)}
                         </button>
                       ))}
                     </div>
+                    {selectedThread.overrideMode === 'force_ai' ? (
+                      <p className="mt-2 text-[11px] font-semibold text-cyan-200/80">
+                        IA armada para a proxima mensagem real. Depois disso, volta para automatico.
+                      </p>
+                    ) : selectedThread.overrideMode === 'force_human' ? (
+                      <p className="mt-2 text-[11px] font-semibold text-amber-200/80">
+                        Atendimento humano persistente ate alguem devolver para automatico.
+                      </p>
+                    ) : null}
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
@@ -899,6 +1005,78 @@ export default function WhatsAppOperatorModal({
               summary={selectedDetail?.technicalSummary || null}
               onOpenInstallments={(installmentQuery) => openParcelaModal(installmentQuery || undefined)}
             />
+
+            <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Database className="h-4 w-4 text-slate-300" />
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Retencao</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={loadRetentionPreview}
+                  disabled={isLoadingRetention}
+                  title="Atualizar previa de retencao"
+                  className="rounded-xl border border-white/10 bg-white/5 p-2 text-slate-300 transition hover:bg-white/10 disabled:opacity-50"
+                >
+                  {isLoadingRetention ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+
+              {retentionError ? (
+                <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                  {retentionError}
+                </div>
+              ) : null}
+
+              {retentionMessage ? (
+                <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+                  {retentionMessage}
+                </div>
+              ) : null}
+
+              {!retentionError && retentionPreview ? (
+                <div className="mt-3 space-y-3">
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-xl border border-white/5 bg-white/[0.03] p-3">
+                      <p className="text-slate-500">logs IA</p>
+                      <p className="mt-1 text-lg font-black text-white">{retentionPreview.candidates.aiLogs}</p>
+                    </div>
+                    <div className="rounded-xl border border-white/5 bg-white/[0.03] p-3">
+                      <p className="text-slate-500">estados</p>
+                      <p className="mt-1 text-lg font-black text-white">{retentionPreview.candidates.expiredStates}</p>
+                    </div>
+                    <div className="rounded-xl border border-white/5 bg-white/[0.03] p-3">
+                      <p className="text-slate-500">inbound</p>
+                      <p className="mt-1 text-lg font-black text-white">{retentionPreview.candidates.inboundMessages}</p>
+                    </div>
+                    <div className="rounded-xl border border-white/5 bg-white/[0.03] p-3">
+                      <p className="text-slate-500">outbound</p>
+                      <p className="mt-1 text-lg font-black text-white">{retentionPreview.candidates.outboundMessages}</p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3 text-xs text-cyan-50">
+                    <div className="font-bold">Previa: {retentionPreview.candidates.total} registro(s) candidato(s)</div>
+                    <div className="mt-1 text-cyan-100/75">
+                      Protegidos: {retentionPreview.protectedThreads.totalUnique} thread(s), incluindo humano persistente e handoff ativo.
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleRunRetentionCleanup}
+                    disabled={isRunningRetention || retentionPreview.candidates.total <= 0}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs font-black uppercase tracking-wider text-red-100 transition hover:bg-red-500/20 disabled:opacity-50"
+                  >
+                    {isRunningRetention ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Database className="h-3.5 w-3.5" />}
+                    Executar faxina
+                  </button>
+                </div>
+              ) : !retentionError ? (
+                <p className="mt-3 text-sm text-slate-400">Carregando previa de retencao...</p>
+              ) : null}
+            </div>
 
             {simulationEntries.length > 0 ? (
               <div className="mt-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">

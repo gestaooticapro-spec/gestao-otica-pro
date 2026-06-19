@@ -13,6 +13,10 @@ const ALLOWED_ROLES = ['admin', 'manager', 'store_operator', 'vendedor', 'tecnic
 const DEFAULT_THREAD_LIST_LIMIT = 40
 const DEFAULT_THREAD_DETAIL_LIMIT = 200
 const DEFAULT_RECENT_SCAN_LIMIT = 400
+const WHATSAPP_RETENTION_AI_LOG_DAYS = 30
+const WHATSAPP_RETENTION_MESSAGE_DAYS = 90
+const WHATSAPP_RETENTION_EXPIRED_STATE_DAYS = 7
+const WHATSAPP_RETENTION_DELETE_BATCH_LIMIT = 250
 export type WhatsAppCustomerControlMode = 'auto' | 'force_ai' | 'force_human'
 export type { CustomerStatusSimulationResponse }
 
@@ -148,6 +152,15 @@ export type WhatsAppOperatorTechnicalSummary = {
   latestInboundText: string | null
   latestInboundHasAttachment: boolean
   latestInboundAttachmentKind: string | null
+  operationalDecision: {
+    route: string | null
+    preAiRoute: string | null
+    postClassificationRoute: string | null
+    reason: string | null
+    selectedOption: string | null
+    silenceReason: string | null
+    handoffReason: string | null
+  }
   aiSessionHistory: Array<{
     role: 'customer' | 'assistant'
     text: string
@@ -210,6 +223,50 @@ export type WhatsAppOperatorSimulationResult = {
   data: CustomerStatusSimulationResponse | null
 }
 
+export type WhatsAppRetentionPreview = {
+  policy: {
+    aiLogsDays: number
+    messagesDays: number
+    expiredStatesDays: number
+  }
+  cutoffs: {
+    aiLogsBefore: string
+    messagesBefore: string
+    expiredStatesBefore: string
+  }
+  protectedThreads: {
+    forceHuman: number
+    activeHandoff: number
+    totalUnique: number
+  }
+  candidates: {
+    aiLogs: number
+    expiredStates: number
+    inboundMessages: number
+    outboundMessages: number
+    total: number
+  }
+}
+
+export type WhatsAppRetentionPreviewResult = {
+  success: boolean
+  message: string
+  data: WhatsAppRetentionPreview | null
+}
+
+export type WhatsAppRetentionCleanupResult = {
+  success: boolean
+  message: string
+  deleted: {
+    aiLogs: number
+    expiredStates: number
+    inboundMessages: number
+    outboundMessages: number
+    total: number
+  } | null
+  preview: WhatsAppRetentionPreview | null
+}
+
 function formatActionError(error: unknown, fallback: string) {
   if (!error) return fallback
   if (error instanceof Error && error.message) return error.message
@@ -237,6 +294,120 @@ function asString(value: unknown) {
 
 function asNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function daysAgoIso(days: number) {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
+}
+
+function postgrestTextInList(values: string[]) {
+  return `(${values.map((value) => `"${value.replace(/"/g, '\\"')}"`).join(',')})`
+}
+
+async function countQuery(query: any) {
+  const { count, error } = await query
+  if (error) throw error
+  return Number(count || 0)
+}
+
+async function selectIds(query: any): Promise<Array<number | string>> {
+  const { data, error } = await query
+  if (error) throw error
+  return (data || []).map((row: any) => row.id).filter((id: unknown) => typeof id === 'number' || typeof id === 'string')
+}
+
+async function deleteByIds(supabaseAdmin: ReturnType<typeof createAdminClient>, tableName: string, ids: Array<number | string>) {
+  if (ids.length === 0) return 0
+  const { error } = await (supabaseAdmin.from(tableName) as any)
+    .delete()
+    .in('id', ids)
+
+  if (error) throw error
+  return ids.length
+}
+
+async function buildWhatsAppRetentionScope(supabaseAdmin: ReturnType<typeof createAdminClient>, storeId: number) {
+  const nowIso = new Date().toISOString()
+  const aiLogsBefore = daysAgoIso(WHATSAPP_RETENTION_AI_LOG_DAYS)
+  const messagesBefore = daysAgoIso(WHATSAPP_RETENTION_MESSAGE_DAYS)
+  const expiredStatesBefore = daysAgoIso(WHATSAPP_RETENTION_EXPIRED_STATE_DAYS)
+
+  const [{ data: forceHumanRows, error: forceHumanError }, { data: activeHandoffRows, error: activeHandoffError }] = await Promise.all([
+    (supabaseAdmin.from('whatsapp_customer_control') as any)
+      .select('remote_phone')
+      .eq('store_id', storeId)
+      .eq('mode', 'force_human'),
+    (supabaseAdmin.from('whatsapp_conversation_states') as any)
+      .select('remote_phone')
+      .eq('store_id', storeId)
+      .in('state', ['human_pause', 'waiting_human_after_attachment'])
+      .gt('expires_at', nowIso),
+  ])
+
+  if (forceHumanError) throw forceHumanError
+  if (activeHandoffError) throw activeHandoffError
+
+  const forceHumanPhones = new Set<string>((forceHumanRows || []).map((row: any) => normalizeRemotePhone(String(row.remote_phone || ''))).filter(Boolean))
+  const activeHandoffPhones = new Set<string>((activeHandoffRows || []).map((row: any) => normalizeRemotePhone(String(row.remote_phone || ''))).filter(Boolean))
+  const protectedPhones = [...new Set([...forceHumanPhones, ...activeHandoffPhones])]
+
+  return {
+    nowIso,
+    aiLogsBefore,
+    messagesBefore,
+    expiredStatesBefore,
+    forceHumanPhones,
+    activeHandoffPhones,
+    protectedPhones,
+  }
+}
+
+type WhatsAppRetentionQueryMode = 'count' | 'ids'
+
+function createRetentionQuery(supabaseAdmin: ReturnType<typeof createAdminClient>, tableName: string, mode: WhatsAppRetentionQueryMode) {
+  if (mode === 'count') {
+    return (supabaseAdmin.from(tableName) as any).select('id', { count: 'exact', head: true })
+  }
+
+  return (supabaseAdmin.from(tableName) as any).select('id')
+}
+
+function buildWhatsAppRetentionQueries(
+  supabaseAdmin: ReturnType<typeof createAdminClient>,
+  storeId: number,
+  scope: Awaited<ReturnType<typeof buildWhatsAppRetentionScope>>,
+  mode: WhatsAppRetentionQueryMode
+) {
+  const aiLogs = createRetentionQuery(supabaseAdmin, 'whatsapp_ai_logs', mode)
+    .eq('store_id', storeId)
+    .lt('created_at', scope.aiLogsBefore)
+
+  const expiredStates = createRetentionQuery(supabaseAdmin, 'whatsapp_conversation_states', mode)
+    .eq('store_id', storeId)
+    .lt('expires_at', scope.nowIso)
+    .lt('updated_at', scope.expiredStatesBefore)
+    .not('state', 'in', '("human_pause","waiting_human_after_attachment")')
+
+  let inboundMessages = createRetentionQuery(supabaseAdmin, 'whatsapp_inbound_messages', mode)
+    .eq('store_id', storeId)
+    .lt('created_at', scope.messagesBefore)
+
+  let outboundMessages = createRetentionQuery(supabaseAdmin, 'whatsapp_outbound_messages', mode)
+    .eq('store_id', storeId)
+    .lt('created_at', scope.messagesBefore)
+
+  if (scope.protectedPhones.length > 0) {
+    const protectedList = postgrestTextInList(scope.protectedPhones)
+    inboundMessages = inboundMessages.not('remote_phone', 'in', protectedList)
+    outboundMessages = outboundMessages.not('remote_phone', 'in', protectedList)
+  }
+
+  return {
+    aiLogs,
+    expiredStates,
+    inboundMessages,
+    outboundMessages,
+  }
 }
 
 function parseAiSessionHistory(value: unknown) {
@@ -278,6 +449,55 @@ function parsePaymentInstallmentHint(value: unknown): WhatsAppOperatorTechnicalS
     dueDate: asString(record.dueDate),
     amount: asNumber(record.amount),
     searchQuery: asString(record.searchQuery),
+  }
+}
+
+function inferOperationalRoute(metadata: Record<string, Json | undefined>) {
+  const preAiRoute = asString(metadata.preAiRoute)
+  const postClassificationRoute = asString(metadata.postClassificationRoute)
+  const action = asString(metadata.lastAction)
+  const outboundType = asString(metadata.lastOutboundType)
+  const reason = asString(metadata.reason)
+  const selectedOption = asString(metadata.selectedOption)
+
+  return postClassificationRoute
+    || preAiRoute
+    || outboundType
+    || selectedOption
+    || action
+    || reason
+}
+
+function buildOperationalDecisionSummary(
+  state: string | null | undefined,
+  metadata: Record<string, Json | undefined>
+): WhatsAppOperatorTechnicalSummary['operationalDecision'] {
+  const reason = asString(metadata.reason)
+  const selectedOption = asString(metadata.selectedOption)
+  const action = asString(metadata.lastAction)
+  const preAiRoute = asString(metadata.preAiRoute)
+  const postClassificationRoute = asString(metadata.postClassificationRoute)
+  const route = inferOperationalRoute(metadata)
+
+  const isSilent = action === 'silent_handoff'
+    || action === 'ignore'
+    || state === 'silent'
+    || route === 'ignore_silent'
+    || route === 'ignore_human_pause'
+
+  const isHandoff = action === 'human_handoff'
+    || action === 'force_human_override'
+    || state === 'human_pause'
+    || state === 'waiting_human_after_attachment'
+
+  return {
+    route,
+    preAiRoute,
+    postClassificationRoute,
+    reason,
+    selectedOption,
+    silenceReason: isSilent ? reason || route || action : null,
+    handoffReason: isHandoff ? reason || selectedOption || route || action : null,
   }
 }
 
@@ -962,6 +1182,10 @@ export async function getWhatsAppOperatorThreadDetail(input: {
         latestInboundText: asString(stateMetadata.lastInboundText),
         latestInboundHasAttachment: stateMetadata.lastInboundHasAttachment === true,
         latestInboundAttachmentKind: asString(stateMetadata.lastInboundAttachmentKind),
+        operationalDecision: buildOperationalDecisionSummary(
+          (stateRow as ConversationStateRow | null)?.state ?? null,
+          stateMetadata
+        ),
         aiSessionHistory: parseAiSessionHistory(stateMetadata.aiSessionMessages),
         aiSessionUpdatedAt: asString(stateMetadata.aiSessionUpdatedAt),
         aiSessionEndedAt: asString(stateMetadata.aiSessionEndedAt),
@@ -1177,6 +1401,124 @@ export async function setWhatsAppCustomerControl(input: {
     return {
       success: false,
       message: formatActionError(error, 'Nao foi possivel alterar o modo do cliente.'),
+    }
+  }
+}
+
+export async function getWhatsAppRetentionPreview(input: {
+  storeId: number
+}): Promise<WhatsAppRetentionPreviewResult> {
+  try {
+    const storeId = Number(input.storeId)
+    if (!Number.isFinite(storeId) || storeId <= 0) {
+      return { success: false, message: 'Loja invalida.', data: null }
+    }
+
+    const { supabaseAdmin } = await getViewContext(storeId)
+    const scope = await buildWhatsAppRetentionScope(supabaseAdmin, storeId)
+    const queries = buildWhatsAppRetentionQueries(supabaseAdmin, storeId, scope, 'count')
+
+    const [aiLogs, expiredStates, inboundMessages, outboundMessages] = await Promise.all([
+      countQuery(queries.aiLogs),
+      countQuery(queries.expiredStates),
+      countQuery(queries.inboundMessages),
+      countQuery(queries.outboundMessages),
+    ])
+
+    const data: WhatsAppRetentionPreview = {
+      policy: {
+        aiLogsDays: WHATSAPP_RETENTION_AI_LOG_DAYS,
+        messagesDays: WHATSAPP_RETENTION_MESSAGE_DAYS,
+        expiredStatesDays: WHATSAPP_RETENTION_EXPIRED_STATE_DAYS,
+      },
+      cutoffs: {
+        aiLogsBefore: scope.aiLogsBefore,
+        messagesBefore: scope.messagesBefore,
+        expiredStatesBefore: scope.expiredStatesBefore,
+      },
+      protectedThreads: {
+        forceHuman: scope.forceHumanPhones.size,
+        activeHandoff: scope.activeHandoffPhones.size,
+        totalUnique: scope.protectedPhones.length,
+      },
+      candidates: {
+        aiLogs,
+        expiredStates,
+        inboundMessages,
+        outboundMessages,
+        total: aiLogs + expiredStates + inboundMessages + outboundMessages,
+      },
+    }
+
+    return {
+      success: true,
+      message: 'Previa de retencao calculada.',
+      data,
+    }
+  } catch (error) {
+    console.error('[WhatsApp Operator] Failed to preview retention:', error)
+    return {
+      success: false,
+      message: formatActionError(error, 'Nao foi possivel calcular a previa de retencao.'),
+      data: null,
+    }
+  }
+}
+
+export async function runWhatsAppRetentionCleanup(input: {
+  storeId: number
+  confirmation: string
+}): Promise<WhatsAppRetentionCleanupResult> {
+  try {
+    const storeId = Number(input.storeId)
+    if (!Number.isFinite(storeId) || storeId <= 0) {
+      return { success: false, message: 'Loja invalida.', deleted: null, preview: null }
+    }
+
+    if (input.confirmation !== 'CONFIRMAR_FAXINA_WHATSAPP') {
+      return { success: false, message: 'Confirmacao invalida para executar a faxina.', deleted: null, preview: null }
+    }
+
+    const { supabaseAdmin } = await getViewContext(storeId)
+    const scope = await buildWhatsAppRetentionScope(supabaseAdmin, storeId)
+    const queries = buildWhatsAppRetentionQueries(supabaseAdmin, storeId, scope, 'ids')
+
+    const [aiLogIds, expiredStateIds, outboundIds, inboundIds] = await Promise.all([
+      selectIds(queries.aiLogs.order('created_at', { ascending: true }).limit(WHATSAPP_RETENTION_DELETE_BATCH_LIMIT)),
+      selectIds(queries.expiredStates.order('updated_at', { ascending: true }).limit(WHATSAPP_RETENTION_DELETE_BATCH_LIMIT)),
+      selectIds(queries.outboundMessages.order('created_at', { ascending: true }).limit(WHATSAPP_RETENTION_DELETE_BATCH_LIMIT)),
+      selectIds(queries.inboundMessages.order('created_at', { ascending: true }).limit(WHATSAPP_RETENTION_DELETE_BATCH_LIMIT)),
+    ])
+
+    const aiLogs = await deleteByIds(supabaseAdmin, 'whatsapp_ai_logs', aiLogIds)
+    const expiredStates = await deleteByIds(supabaseAdmin, 'whatsapp_conversation_states', expiredStateIds)
+    const outboundMessages = await deleteByIds(supabaseAdmin, 'whatsapp_outbound_messages', outboundIds)
+    const inboundMessages = await deleteByIds(supabaseAdmin, 'whatsapp_inbound_messages', inboundIds)
+    const total = aiLogs + expiredStates + inboundMessages + outboundMessages
+
+    const nextPreview = await getWhatsAppRetentionPreview({ storeId })
+
+    return {
+      success: true,
+      message: total > 0
+        ? `Faxina executada: ${total} registro(s) removido(s).`
+        : 'Nenhum registro elegivel para remover nesta rodada.',
+      deleted: {
+        aiLogs,
+        expiredStates,
+        inboundMessages,
+        outboundMessages,
+        total,
+      },
+      preview: nextPreview.data,
+    }
+  } catch (error) {
+    console.error('[WhatsApp Operator] Failed to run retention cleanup:', error)
+    return {
+      success: false,
+      message: formatActionError(error, 'Nao foi possivel executar a faxina de WhatsApp.'),
+      deleted: null,
+      preview: null,
     }
   }
 }
