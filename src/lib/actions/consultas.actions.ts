@@ -535,7 +535,9 @@ export async function findOpenInstallmentsByPhone(storeId: number, phone: string
             const customer = customers.find((c: any) => c.id === p.customer_id)
             return {
                 installment_id: p.id,
+                customer_id: p.customer_id,
                 due_date: p.data_vencimento,
+                amount: p.valor_parcela,
                 customer_name: customer?.full_name || 'Desconhecido'
             }
         })

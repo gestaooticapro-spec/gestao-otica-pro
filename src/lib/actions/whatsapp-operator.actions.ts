@@ -168,6 +168,15 @@ export type WhatsAppOperatorTechnicalSummary = {
     createdAt: string | null
   } | null
   extractedReceipt: Json | null
+  paymentInstallmentHint: {
+    count: number
+    firstInstallmentId: number | null
+    customerId: number | null
+    customerName: string | null
+    dueDate: string | null
+    amount: number | null
+    searchQuery: string | null
+  } | null
   metadata: Json | null
 }
 
@@ -253,6 +262,23 @@ function parseAiSessionHistory(value: unknown) {
       text: string
       at: string
     }>
+}
+
+function parsePaymentInstallmentHint(value: unknown): WhatsAppOperatorTechnicalSummary['paymentInstallmentHint'] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const record = value as Record<string, unknown>
+  const count = asNumber(record.count)
+  if (!count || count <= 0) return null
+
+  return {
+    count,
+    firstInstallmentId: asNumber(record.firstInstallmentId),
+    customerId: asNumber(record.customerId),
+    customerName: asString(record.customerName),
+    dueDate: asString(record.dueDate),
+    amount: asNumber(record.amount),
+    searchQuery: asString(record.searchQuery),
+  }
 }
 
 function extractTokenUsage(rawResponse: Json | null | undefined) {
@@ -952,6 +978,7 @@ export async function getWhatsAppOperatorThreadDetail(input: {
             createdAt: latestAiLog.created_at,
           } : null,
           extractedReceipt: (stateMetadata.ai_extracted_receipt as Json | undefined) ?? null,
+          paymentInstallmentHint: parsePaymentInstallmentHint(stateMetadata.paymentInstallmentHint),
           metadata: (stateRow as ConversationStateRow | null)?.metadata ?? null,
         },
       },

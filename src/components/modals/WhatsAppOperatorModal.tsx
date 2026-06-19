@@ -10,9 +10,11 @@ import {
   RefreshCw,
   Search,
   User,
+  Wallet,
   Wifi,
   X,
 } from 'lucide-react'
+import { useModals } from '@/lib/contexts/ModalsContext'
 import {
   getWhatsAppOperatorThreadDetail,
   getWhatsAppOperatorThreads,
@@ -38,6 +40,16 @@ function formatPhone(phone: string) {
 function formatDateTime(value: string | null) {
   if (!value) return '-'
   return new Date(value).toLocaleString('pt-BR')
+}
+
+function formatDateOnly(value: string | null) {
+  if (!value) return '-'
+  return new Date(value).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
+}
+
+function formatCurrency(value: number | null) {
+  if (typeof value !== 'number') return '-'
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
 }
 
 function formatRelativeMinutes(value: string | null) {
@@ -164,7 +176,13 @@ function SimulationBubble({ entry }: { entry: SimulationEntry }) {
   )
 }
 
-function TechnicalPanel({ summary }: { summary: WhatsAppOperatorTechnicalSummary | null }) {
+function TechnicalPanel({
+  summary,
+  onOpenInstallments,
+}: {
+  summary: WhatsAppOperatorTechnicalSummary | null
+  onOpenInstallments: (query: string) => void
+}) {
   if (!summary) {
     return (
       <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
@@ -172,6 +190,8 @@ function TechnicalPanel({ summary }: { summary: WhatsAppOperatorTechnicalSummary
       </div>
     )
   }
+
+  const installmentHint = summary.latestIntent === 'payment_info' ? summary.paymentInstallmentHint : null
 
   return (
     <div className="space-y-4">
@@ -186,6 +206,35 @@ function TechnicalPanel({ summary }: { summary: WhatsAppOperatorTechnicalSummary
           <div>attachment: <span className="font-bold text-white">{summary.latestInboundHasAttachment ? summary.latestInboundAttachmentKind || 'sim' : 'nao'}</span></div>
         </div>
       </div>
+
+      {installmentHint ? (
+        <div className="rounded-2xl border border-orange-500/25 bg-orange-500/10 p-4">
+          <div className="flex items-start gap-3">
+            <div className="rounded-2xl border border-orange-400/30 bg-orange-400/15 p-2 text-orange-200">
+              <Wallet className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-300/80">Parcelas</p>
+              <p className="mt-2 text-sm font-bold text-orange-50">
+                {installmentHint.customerName || 'Cliente com parcela encontrada'}
+              </p>
+              <div className="mt-2 grid gap-1 text-xs text-orange-100/80">
+                <span>{installmentHint.count} parcela(s) em aberto</span>
+                <span>vencimento: {formatDateOnly(installmentHint.dueDate)}</span>
+                <span>valor: {formatCurrency(installmentHint.amount)}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => onOpenInstallments(installmentHint.searchQuery || installmentHint.customerName || '')}
+                className="mt-3 inline-flex items-center justify-center gap-2 rounded-xl bg-orange-400 px-3 py-2 text-xs font-black uppercase tracking-wider text-orange-950 transition hover:bg-orange-300"
+              >
+                <Wallet className="h-3.5 w-3.5" />
+                Abrir parcelas
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300/80">Memoria da sessao IA</p>
@@ -255,6 +304,7 @@ export default function WhatsAppOperatorModal({
   onClose: () => void
   storeId: number
 }) {
+  const { openParcelaModal } = useModals()
   const [query, setQuery] = useState('')
   const [threads, setThreads] = useState<WhatsAppOperatorThreadListItem[]>([])
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null)
@@ -845,7 +895,10 @@ export default function WhatsAppOperatorModal({
               </div>
             ) : null}
 
-            <TechnicalPanel summary={selectedDetail?.technicalSummary || null} />
+            <TechnicalPanel
+              summary={selectedDetail?.technicalSummary || null}
+              onOpenInstallments={(installmentQuery) => openParcelaModal(installmentQuery || undefined)}
+            />
 
             {simulationEntries.length > 0 ? (
               <div className="mt-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">

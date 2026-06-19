@@ -25,7 +25,7 @@ import {
   extractWhatsAppCanonicalReply,
 } from './canonical'
 import { decidePreAiRoute, shouldReleaseClosedTrapPause } from './routing-heuristics'
-import { decidePostClassificationRoute } from './flow-decisions'
+import { decidePostClassificationRoute, type WhatsAppPostClassificationDecision } from './flow-decisions'
 import {
   applyWhatsAppHumanizationOutcome,
   decideWhatsAppHumanization,
@@ -102,6 +102,14 @@ type StoreProfileRow = Pick<
 type ConversationMetadataRecord = Record<string, Json | undefined>
 type CustomerControlMode = 'auto' | 'force_ai' | 'force_human'
 type CustomerLinkSource = 'phone_match' | 'status_lookup' | 'identifier_lookup' | 'manual'
+
+type PaymentInstallmentMatch = {
+  installment_id?: number | null
+  customer_id?: number | null
+  due_date?: string | null
+  amount?: number | string | null
+  customer_name?: string | null
+}
 
 type WhatsAppAiDiagnostic = {
   task: 'intent_classification' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction'
@@ -373,6 +381,54 @@ function buildDecisionMetadata(input: {
     lastOutboundType: input.outboundType,
     lastDecisionAt: new Date().toISOString(),
   } satisfies ConversationMetadataRecord
+}
+
+function buildPaymentInstallmentMetadata(
+  installments: PaymentInstallmentMatch[] | null | undefined,
+  fallbackPhone: string
+): ConversationMetadataRecord {
+  if (!installments || installments.length === 0) {
+    return {
+      paymentInstallmentHint: null,
+    }
+  }
+
+  const first = installments[0]
+  const customerName = typeof first.customer_name === 'string' && first.customer_name.trim().length > 0
+    ? first.customer_name.trim()
+    : null
+
+  return {
+    paymentInstallmentHint: {
+      count: installments.length,
+      firstInstallmentId: typeof first.installment_id === 'number' ? first.installment_id : null,
+      customerId: typeof first.customer_id === 'number' ? first.customer_id : null,
+      customerName,
+      dueDate: typeof first.due_date === 'string' ? first.due_date : null,
+      amount: typeof first.amount === 'number' ? first.amount : Number(first.amount || 0) || null,
+      searchQuery: customerName || fallbackPhone,
+    } as unknown as Json,
+  }
+}
+
+function applyForceAiPostClassificationRoute(
+  route: WhatsAppPostClassificationDecision,
+  classification: WhatsAppIntentClassification | null,
+  controlMode: CustomerControlMode
+): WhatsAppPostClassificationDecision {
+  if (controlMode !== 'force_ai' || route !== 'silent_handoff') return route
+  if (!classification) return route
+
+  if (
+    classification.intent === 'budget_request'
+    || classification.intent === 'complaint_or_adaptation'
+    || classification.intent === 'payment_info'
+    || classification.intent === 'pickup_or_scheduling'
+  ) {
+    return classification.intent
+  }
+
+  return route
 }
 
 function normalizeAiSessionText(value: string | null | undefined) {
@@ -952,12 +1008,7 @@ async function upsertCustomerLink(
 
 function effectiveStateForControl(state: ConversationStateRow | null, controlMode: CustomerControlMode): ConversationState | null {
   if (!state) return null
-  if (controlMode !== 'force_ai') return state.state
-
-  if (state.state === 'silent' || state.state === 'waiting_menu') {
-    return null
-  }
-
+  if (controlMode === 'force_ai') return null
   return state.state
 }
 
@@ -1678,21 +1729,32 @@ export async function resolveCustomerStatus(
 
     const storeHoursText = buildStoreHoursText(storeProfile)
     const storeLocationText = buildStoreLocationText(storeProfile)
-    const postClassificationRoute = decidePostClassificationRoute({
-      classificationSuccess: classification.success,
-      confidence: classification.success ? classification.data.confidence : 0,
-      automationCandidate: classification.success ? classification.data.automation_candidate : false,
-      intent: classification.success ? classification.data.intent : null,
-      minConfidence: AI_AUTOMATION_MIN_CONFIDENCE,
-      hasStoreHoursText: Boolean(storeHoursText),
-      hasStoreLocationText: Boolean(storeLocationText),
-    })
+    const postClassificationRoute = applyForceAiPostClassificationRoute(
+      decidePostClassificationRoute({
+        classificationSuccess: classification.success,
+        confidence: classification.success ? classification.data.confidence : 0,
+        automationCandidate: classification.success ? classification.data.automation_candidate : false,
+        intent: classification.success ? classification.data.intent : null,
+        minConfidence: AI_AUTOMATION_MIN_CONFIDENCE,
+        hasStoreHoursText: Boolean(storeHoursText),
+        hasStoreLocationText: Boolean(storeLocationText),
+      }),
+      classification.success ? classification.data : null,
+      controlMode
+    )
 
     if (classification.success && postClassificationRoute === 'silent_handoff') {
       await consumeForceAiOverrideIfNeeded()
+      const paymentInstallmentMetadata = classification.data.intent === 'payment_info'
+        ? buildPaymentInstallmentMetadata(
+          await findOpenInstallmentsByPhone(channel.store_id, normalizedPhone),
+          normalizedPhone
+        )
+        : {}
       await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
         selectedOption: 'ai_silent_handoff',
         aiConfidence: classification.data.confidence,
+        ...paymentInstallmentMetadata,
         ...buildDecisionMetadata({
           intent: classification.data.intent,
           confidence: classification.data.confidence,
@@ -1912,6 +1974,7 @@ export async function resolveCustomerStatus(
       if (postClassificationRoute === 'payment_info') {
         await consumeForceAiOverrideIfNeeded()
         const installments = await findOpenInstallmentsByPhone(channel.store_id, normalizedPhone)
+        const paymentInstallmentMetadata = buildPaymentInstallmentMetadata(installments, normalizedPhone)
         let text = ''
         if (installments && installments.length > 0) {
           const first = installments[0]
@@ -1929,6 +1992,7 @@ export async function resolveCustomerStatus(
         await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
           selectedOption: 'ai_specific_handoff',
           aiConfidence: classification.data.confidence,
+          ...paymentInstallmentMetadata,
           ...buildDecisionMetadata({
             intent: classification.data.intent,
             confidence: classification.data.confidence,
@@ -2431,15 +2495,19 @@ export async function simulateCustomerStatus(
 
     const storeHoursText = buildStoreHoursText(storeProfile)
     const storeLocationText = buildStoreLocationText(storeProfile)
-    const postClassificationRoute = decidePostClassificationRoute({
-      classificationSuccess: classification.success,
-      confidence: classification.success ? classification.data.confidence : 0,
-      automationCandidate: classification.success ? classification.data.automation_candidate : false,
-      intent: classification.success ? classification.data.intent : null,
-      minConfidence: AI_AUTOMATION_MIN_CONFIDENCE,
-      hasStoreHoursText: Boolean(storeHoursText),
-      hasStoreLocationText: Boolean(storeLocationText),
-    })
+    const postClassificationRoute = applyForceAiPostClassificationRoute(
+      decidePostClassificationRoute({
+        classificationSuccess: classification.success,
+        confidence: classification.success ? classification.data.confidence : 0,
+        automationCandidate: classification.success ? classification.data.automation_candidate : false,
+        intent: classification.success ? classification.data.intent : null,
+        minConfidence: AI_AUTOMATION_MIN_CONFIDENCE,
+        hasStoreHoursText: Boolean(storeHoursText),
+        hasStoreLocationText: Boolean(storeLocationText),
+      }),
+      classification.success ? classification.data : null,
+      controlMode
+    )
 
     if (classification.success && postClassificationRoute === 'silent_handoff') {
       return buildResult({}, {

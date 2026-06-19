@@ -42,8 +42,13 @@ const buildSelectedDescription = (item: ProductSearchResult): string => {
 
     const marcaNormalizada = marcaBase.toLowerCase()
     const descricaoNormalizada = descricaoBase.toLowerCase()
+    const marcasGenericas = new Set(['lente', 'armacao', 'armação', 'solar'])
 
-    if (marcaNormalizada === 'lente' || descricaoNormalizada.startsWith(`${marcaNormalizada} `)) {
+    if (
+        marcasGenericas.has(marcaNormalizada) ||
+        marcaNormalizada === descricaoNormalizada ||
+        descricaoNormalizada.startsWith(`${marcaNormalizada} `)
+    ) {
         return descricaoBase
     }
 
@@ -275,7 +280,6 @@ export default function AddItemFormExperimental({
                                             <div className="flex flex-col">
                                                 <div className="flex items-center gap-1.5">
                                                     <span className="font-bold text-slate-200 group-hover:text-blue-400 text-sm">{item.descricao}</span>
-                                                    {item.marca && <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded border border-blue-500/30 font-bold uppercase">{item.marca}</span>}
                                                     <span className="text-[9px] bg-white/10 text-slate-400 px-1.5 py-0.5 rounded border border-white/10 uppercase font-bold">{item.tipo}</span>
                                                 </div>
                                                 <div className="flex items-center gap-2 mt-0.5">
