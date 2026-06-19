@@ -38,7 +38,6 @@ type InstallmentRow = {
   data_vencimento: string
   valor_parcela: number
   status: string
-  venda_id: number
   customer_id: number
   store_id: number
   customers?: {
@@ -48,6 +47,7 @@ type InstallmentRow = {
     fone_movel: string | null
   } | null
   financiamento_loja?: {
+    venda_id: number | null
     quantidade_parcelas: number | null
   } | null
 }
@@ -235,11 +235,10 @@ async function loadDueInstallments(storeId: number, targetDate: string) {
       data_vencimento,
       valor_parcela,
       status,
-      venda_id,
       customer_id,
       store_id,
       customers ( id, full_name, phone, fone_movel ),
-      financiamento_loja ( quantidade_parcelas )
+      financiamento_loja ( venda_id, quantidade_parcelas )
     `)
     .eq('store_id', storeId)
     .in('status', ['Pendente', 'pendente'])
@@ -304,7 +303,11 @@ async function scheduleReminders(now: Date) {
 
     const patientNames = await loadPatientNames(
       channel.store_id,
-      [...new Set(installmentsWithTargetDate.map((installment) => installment.venda_id).filter(Boolean))]
+      [...new Set(
+        installmentsWithTargetDate
+          .map((installment) => installment.financiamento_loja?.venda_id)
+          .filter((value): value is number => Number.isFinite(value))
+      )]
     )
 
     let channelSequence = 0
@@ -313,7 +316,8 @@ async function scheduleReminders(now: Date) {
       if (!phone) continue
 
       const scheduledFor = new Date(now.getTime() + channelSequence * SCHEDULE_SPACING_MINUTES * 60 * 1000)
-      const messageText = buildMessage(settings.template, installment, patientNames.get(installment.venda_id) ?? null)
+      const vendaId = installment.financiamento_loja?.venda_id ?? null
+      const messageText = buildMessage(settings.template, installment, vendaId ? patientNames.get(vendaId) ?? null : null)
 
       const { error } = await (supabase.from('whatsapp_installment_reminders') as any)
         .insert({
@@ -328,7 +332,7 @@ async function scheduleReminders(now: Date) {
           status: 'scheduled',
           message_text: messageText,
           payload: {
-            vendaId: installment.venda_id,
+            vendaId,
             financiamentoId: installment.financiamento_id,
             numeroParcela: installment.numero_parcela,
             targetDate: installment.reminderTargetDate,
