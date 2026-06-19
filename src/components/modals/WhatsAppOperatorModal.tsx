@@ -272,6 +272,8 @@ export default function WhatsAppOperatorModal({
   const [isSending, startSendTransition] = useTransition()
   const [isChangingControl, startControlTransition] = useTransition()
   const conversationViewportRef = useRef<HTMLDivElement | null>(null)
+  const conversationBottomRef = useRef<HTMLDivElement | null>(null)
+  const composerRef = useRef<HTMLTextAreaElement | null>(null)
 
   const loadThreads = (search = query, preserveSelection = true) => {
     setLoadError(null)
@@ -315,6 +317,14 @@ export default function WhatsAppOperatorModal({
       }
 
       setSelectedDetail(result.data)
+      setThreads((current) => current.map((thread) =>
+        thread.remotePhone === remotePhone
+          ? {
+              ...thread,
+              ...result.data!.thread,
+            }
+          : thread
+      ))
     })
   }
 
@@ -353,19 +363,47 @@ export default function WhatsAppOperatorModal({
     [threads, selectedPhone, selectedDetail]
   )
   const simulationEntries = selectedThread ? (simulationByPhone[selectedThread.remotePhone] || []) : []
+  const messageRenderKey = useMemo(() => {
+    const parts = [
+      selectedPhone || '',
+      selectedDetail?.messages.length || 0,
+      selectedDetail?.messages[selectedDetail.messages.length - 1]?.id || '',
+      simulationEntries.length,
+      simulationEntries[simulationEntries.length - 1]?.id || '',
+    ]
+
+    return parts.join(':')
+  }, [selectedPhone, selectedDetail, simulationEntries])
 
   useEffect(() => {
     if (!isOpen) return
+    if (isDetailPending) return
 
+    const bottom = conversationBottomRef.current
     const viewport = conversationViewportRef.current
-    if (!viewport) return
+    if (!bottom || !viewport) return
 
-    const frameId = window.requestAnimationFrame(() => {
+    let cancelled = false
+    let timeoutId: number | null = null
+    let frameId = 0
+
+    const scrollToBottom = () => {
+      if (cancelled) return
+      bottom.scrollIntoView({ block: 'end' })
       viewport.scrollTop = viewport.scrollHeight
+    }
+
+    frameId = window.requestAnimationFrame(() => {
+      scrollToBottom()
+      timeoutId = window.setTimeout(scrollToBottom, 40)
     })
 
-    return () => window.cancelAnimationFrame(frameId)
-  }, [isOpen, selectedPhone, selectedDetail, simulationEntries.length])
+    return () => {
+      cancelled = true
+      window.cancelAnimationFrame(frameId)
+      if (timeoutId !== null) window.clearTimeout(timeoutId)
+    }
+  }, [isOpen, isDetailPending, messageRenderKey])
 
   const handleChangeControlMode = (mode: WhatsAppCustomerControlMode) => {
     if (!selectedThread) return
@@ -445,6 +483,41 @@ export default function WhatsAppOperatorModal({
       loadThreads(query)
       loadThreadDetail(selectedThread.remotePhone)
     })
+  }
+
+  const insertComposerLineBreak = () => {
+    const textarea = composerRef.current
+    if (!textarea) {
+      setComposerText((current) => `${current}\n`)
+      return
+    }
+
+    const start = textarea.selectionStart ?? composerText.length
+    const end = textarea.selectionEnd ?? composerText.length
+    const nextValue = `${composerText.slice(0, start)}\n${composerText.slice(end)}`
+    setComposerText(nextValue)
+
+    window.requestAnimationFrame(() => {
+      const nextCursor = start + 1
+      textarea.selectionStart = nextCursor
+      textarea.selectionEnd = nextCursor
+      textarea.focus()
+    })
+  }
+
+  const handleComposerKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
+
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault()
+      insertComposerLineBreak()
+      return
+    }
+
+    if (!event.shiftKey) {
+      event.preventDefault()
+      handleSendRealMessage()
+    }
   }
 
   if (!isOpen) return null
@@ -662,6 +735,7 @@ export default function WhatsAppOperatorModal({
                       ))}
                     </>
                   )}
+                  <div ref={conversationBottomRef} />
                 </div>
               ) : null}
             </div>
@@ -711,8 +785,10 @@ export default function WhatsAppOperatorModal({
 
               <div className="flex flex-col gap-3 lg:flex-row">
                 <textarea
+                  ref={composerRef}
                   value={composerText}
                   onChange={(event) => setComposerText(event.target.value)}
+                  onKeyDown={handleComposerKeyDown}
                   placeholder={
                     selectedThread
                       ? composerMode === 'real'

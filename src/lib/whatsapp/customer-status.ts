@@ -3,7 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { Database, Json } from '@/lib/database.types'
 import { describeOpenOs, WhatsAppOsStatusCode } from './os-status'
-import { digitsOnly, phonesMatch, toEvolutionNumber } from './phone'
+import { digitsOnly, phonesMatch, phonesMatchLast8, toEvolutionNumber } from './phone'
 import type { StoreSettings } from '@/lib/store-modules'
 import { evaluateStoreHours } from './store-hours-logic'
 import {
@@ -101,6 +101,7 @@ type StoreProfileRow = Pick<
 
 type ConversationMetadataRecord = Record<string, Json | undefined>
 type CustomerControlMode = 'auto' | 'force_ai' | 'force_human'
+type CustomerLinkSource = 'phone_match' | 'status_lookup' | 'identifier_lookup' | 'manual'
 
 type WhatsAppAiDiagnostic = {
   task: 'intent_classification' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction'
@@ -616,13 +617,20 @@ async function findCustomerByPhone(storeId: number, phone: string): Promise<Cust
     .select('id, full_name, cpf, fone_movel, phone')
     .eq('store_id', storeId)
     .or(`fone_movel.ilike.%${suffix}%,phone.ilike.%${suffix}%`)
-    .limit(25)
+    .limit(100)
 
   if (error) throw error
 
-  return (data ?? []).find((customer: CustomerRow) =>
+  const strictMatch = (data ?? []).find((customer: CustomerRow) =>
     phonesMatch(phone, customer.fone_movel) || phonesMatch(phone, customer.phone)
   ) ?? null
+  if (strictMatch) return strictMatch
+
+  const looseMatches = (data ?? []).filter((customer: CustomerRow) =>
+    phonesMatchLast8(phone, customer.fone_movel) || phonesMatchLast8(phone, customer.phone)
+  )
+
+  return looseMatches.length === 1 ? looseMatches[0] : null
 }
 
 async function findCustomerByCpf(storeId: number, cpf: string): Promise<CustomerRow | null> {
@@ -919,6 +927,29 @@ async function clearCustomerControlMode(channelId: number, phone: string) {
   if (error) throw error
 }
 
+async function upsertCustomerLink(
+  channel: ChannelRow,
+  phone: string,
+  customerId: number,
+  source: CustomerLinkSource
+) {
+  const supabase = createAdminClient()
+  const values = {
+    tenant_id: channel.tenant_id,
+    store_id: channel.store_id,
+    channel_id: channel.id,
+    remote_phone: phone,
+    customer_id: customerId,
+    source,
+    last_confirmed_at: new Date().toISOString(),
+  }
+
+  const { error } = await (supabase.from('whatsapp_customer_links') as any)
+    .upsert(values, { onConflict: 'store_id,remote_phone' })
+
+  if (error) throw error
+}
+
 function effectiveStateForControl(state: ConversationStateRow | null, controlMode: CustomerControlMode): ConversationState | null {
   if (!state) return null
   if (controlMode !== 'force_ai') return state.state
@@ -1028,6 +1059,8 @@ async function createStatusReply(
   baseMetadata: Json = {},
   intentConfidence: number | null = null
 ): Promise<CustomerStatusResponse> {
+  await upsertCustomerLink(channel, phone, customer.id, 'status_lookup')
+
   const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
   if (automationSettings?.os_on_demand?.enabled === false) {
     await setConversationState(channel, phone, 'silent', AFTER_STATUS_SILENCE_MS, mergeMetadata(baseMetadata, {
@@ -1122,6 +1155,8 @@ async function handleStatusByPhone(
       }),
     })
   }
+
+  await upsertCustomerLink(channel, phone, customer.id, 'phone_match')
 
   const serviceOrder = await findLatestOpenOs(channel.store_id, customer.id)
   if (!serviceOrder) {
@@ -1711,6 +1746,7 @@ export async function resolveCustomerStatus(
         await consumeForceAiOverrideIfNeeded()
         const customer = await findCustomerByPhone(channel.store_id, normalizedPhone)
         if (customer) {
+          await upsertCustomerLink(channel, normalizedPhone, customer.id, 'phone_match')
           const serviceOrder = await findLatestOpenOs(channel.store_id, customer.id)
           if (serviceOrder) {
             const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)

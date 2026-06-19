@@ -63,6 +63,7 @@ next-env.d.ts
 # SQL & Backups (Keep migrations, ignore others)
 *.sql
 !supabase_migration_*.sql
+!supabase/migrations/*.sql
 !src/lib/database/*.sql
 
 # System & Local Logs

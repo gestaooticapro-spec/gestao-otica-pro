@@ -5,7 +5,7 @@
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import type { Json } from '@/lib/database.types'
-import { digitsOnly, phonesMatch, toEvolutionNumber } from '@/lib/whatsapp/phone'
+import { digitsOnly, phonesMatch, phonesMatchLast8, toEvolutionNumber } from '@/lib/whatsapp/phone'
 import { markStoreInitiatedConversation } from '@/lib/whatsapp/customer-status'
 import { simulateCustomerStatus, type CustomerStatusSimulationResponse } from '@/lib/whatsapp/customer-status'
 
@@ -320,10 +320,18 @@ function buildCustomerRef(customer: StoreCustomerRow | null): WhatsAppOperatorCu
 }
 
 function findCustomerByPhone(phone: string, customers: StoreCustomerRow[]) {
-  return customers.find((customer) =>
+  const strictMatch = customers.find((customer) =>
     phonesMatch(phone, customer.fone_movel) ||
     phonesMatch(phone, customer.phone)
-  ) || null
+  )
+  if (strictMatch) return strictMatch
+
+  const looseMatches = customers.filter((customer) =>
+    phonesMatchLast8(phone, customer.fone_movel) ||
+    phonesMatchLast8(phone, customer.phone)
+  )
+
+  return looseMatches.length === 1 ? looseMatches[0] : null
 }
 
 function findCustomerById(customerId: number | null, customers: StoreCustomerRow[]) {
@@ -391,6 +399,70 @@ async function loadStoreCustomers(storeId: number) {
 
   if (error) throw error
   return (data || []) as StoreCustomerRow[]
+}
+
+function mergeCustomers(...groups: StoreCustomerRow[][]) {
+  const map = new Map<number, StoreCustomerRow>()
+  for (const group of groups) {
+    for (const customer of group) {
+      map.set(customer.id, customer)
+    }
+  }
+
+  return [...map.values()]
+}
+
+async function loadCustomersByIds(storeId: number, customerIds: number[]) {
+  const ids = [...new Set(customerIds.filter((id) => Number.isFinite(id) && id > 0))]
+  if (ids.length === 0) return []
+
+  const supabaseAdmin = createAdminClient()
+  const customers: StoreCustomerRow[] = []
+
+  for (let index = 0; index < ids.length; index += 100) {
+    const batch = ids.slice(index, index + 100)
+    const { data, error } = await (supabaseAdmin.from('customers') as any)
+      .select('id, full_name, cpf, fone_movel, phone')
+      .eq('store_id', storeId)
+      .in('id', batch)
+
+    if (error) throw error
+    customers.push(...((data || []) as StoreCustomerRow[]))
+  }
+
+  return customers
+}
+
+async function loadCustomersByPhoneHints(storeId: number, phones: string[]) {
+  const suffixes = [...new Set(phones
+    .map((phone) => digitsOnly(phone).slice(-4))
+    .filter((suffix) => suffix.length === 4))]
+
+  if (suffixes.length === 0) return []
+
+  const supabaseAdmin = createAdminClient()
+  const customers: StoreCustomerRow[] = []
+
+  for (let index = 0; index < suffixes.length; index += 20) {
+    const batch = suffixes.slice(index, index + 20)
+    const filter = batch
+      .flatMap((suffix) => [
+        `fone_movel.ilike.%${suffix}%`,
+        `phone.ilike.%${suffix}%`,
+      ])
+      .join(',')
+
+    const { data, error } = await (supabaseAdmin.from('customers') as any)
+      .select('id, full_name, cpf, fone_movel, phone')
+      .eq('store_id', storeId)
+      .or(filter)
+      .limit(1000)
+
+    if (error) throw error
+    customers.push(...((data || []) as StoreCustomerRow[]))
+  }
+
+  return mergeCustomers(customers)
 }
 
 function createThreadAccumulator(remotePhone: string) {
@@ -461,6 +533,28 @@ async function loadCustomerControlMap(storeId: number, phones?: string[]) {
   for (const row of (data || []) as Array<{ remote_phone: string; mode: string }>) {
     const mode = row.mode === 'force_ai' || row.mode === 'force_human' ? row.mode : 'auto'
     map.set(normalizeRemotePhone(row.remote_phone), mode)
+  }
+
+  return map
+}
+
+async function loadCustomerLinkMap(storeId: number, phones?: string[]) {
+  const supabaseAdmin = createAdminClient()
+  let query = (supabaseAdmin.from('whatsapp_customer_links') as any)
+    .select('remote_phone, customer_id')
+    .eq('store_id', storeId)
+
+  if (phones && phones.length > 0) {
+    query = query.in('remote_phone', phones.slice(0, 200))
+  }
+
+  const { data, error } = await query
+  if (error) throw error
+
+  const map = new Map<string, number>()
+  for (const row of (data || []) as Array<{ remote_phone: string; customer_id: number | null }>) {
+    if (!Number.isFinite(row.customer_id)) continue
+    map.set(normalizeRemotePhone(row.remote_phone), Number(row.customer_id))
   }
 
   return map
@@ -603,12 +697,27 @@ export async function getWhatsAppOperatorThreads(input: {
       }
     }
 
-    const controlMap = await loadCustomerControlMap(storeId, [...threadMap.keys()])
+    const phones = [...threadMap.keys()]
+    const [controlMap, customerLinkMap] = await Promise.all([
+      loadCustomerControlMap(storeId, phones),
+      loadCustomerLinkMap(storeId, phones),
+    ])
+    const linkedCustomerIds = [...customerLinkMap.values()]
+    const knownCustomerIds = [...threadMap.values()]
+      .map((thread) => thread.lastKnownCustomerId)
+      .filter((id): id is number => Number.isFinite(id))
+    const resolvedCustomers = mergeCustomers(
+      customers,
+      await loadCustomersByIds(storeId, [...linkedCustomerIds, ...knownCustomerIds]),
+      await loadCustomersByPhoneHints(storeId, phones)
+    )
 
     let threads = [...threadMap.entries()].map(([remotePhone, accumulator]) => {
-      const customer = matchedCustomers.find((item) => findCustomerByPhone(remotePhone, [item]))
-        || findCustomerByPhone(remotePhone, customers)
-        || findCustomerById(accumulator.lastKnownCustomerId, customers)
+      const linkedCustomerId = customerLinkMap.get(remotePhone)
+      const customer = findCustomerById(linkedCustomerId ?? null, resolvedCustomers)
+        || matchedCustomers.find((item) => findCustomerByPhone(remotePhone, [item]))
+        || findCustomerByPhone(remotePhone, resolvedCustomers)
+        || findCustomerById(accumulator.lastKnownCustomerId, resolvedCustomers)
       return buildThreadListItem(remotePhone, accumulator, customer, controlMap.get(remotePhone) || 'auto')
     })
 
@@ -667,7 +776,10 @@ export async function getWhatsAppOperatorThreadDetail(input: {
 
     const { supabaseAdmin } = await getViewContext(storeId)
     const customers = await loadStoreCustomers(storeId)
-    const controlMap = await loadCustomerControlMap(storeId, [remotePhone])
+    const [controlMap, customerLinkMap] = await Promise.all([
+      loadCustomerControlMap(storeId, [remotePhone]),
+      loadCustomerLinkMap(storeId, [remotePhone]),
+    ])
 
     const [{ data: inboundRows, error: inboundError }, { data: outboundRows, error: outboundError }, { data: stateRow, error: stateError }] = await Promise.all([
       (supabaseAdmin.from('whatsapp_inbound_messages') as any)
@@ -766,7 +878,18 @@ export async function getWhatsAppOperatorThreadDetail(input: {
     const stateMetadata = asRecord((stateRow as ConversationStateRow | null)?.metadata)
     const latestAiLog = aiLogs[0] || null
     const latestAiTokens = extractTokenUsage(latestAiLog?.raw_response)
-    const customer = findCustomerByPhone(remotePhone, customers) || findCustomerById(asNumber(stateMetadata.lastKnownCustomerId), customers)
+    const linkedCustomerId = customerLinkMap.get(remotePhone)
+    const resolvedCustomers = mergeCustomers(
+      customers,
+      await loadCustomersByIds(storeId, [
+        linkedCustomerId ?? 0,
+        asNumber(stateMetadata.lastKnownCustomerId) ?? 0,
+      ]),
+      await loadCustomersByPhoneHints(storeId, [remotePhone])
+    )
+    const customer = findCustomerById(linkedCustomerId ?? null, resolvedCustomers)
+      || findCustomerByPhone(remotePhone, resolvedCustomers)
+      || findCustomerById(asNumber(stateMetadata.lastKnownCustomerId), resolvedCustomers)
     const lastMessage = messages[messages.length - 1] || null
 
     const thread = buildThreadListItem(

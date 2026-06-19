@@ -30,6 +30,7 @@ Este documento nasceu como spec de implementacao. A partir daqui ele passa a acu
 - removida dependencia de coluna inexistente `customers.whatsapp`
 - corrigido resumo tecnico para carregar `confidence` no fluxo de `order_status`
 - corrigido fallback de cliente no modal usando `lastKnownCustomerId` quando o match por telefone falha
+- adicionado vinculo persistente `telefone WhatsApp -> customer_id` para estabilizar o nome do cliente na central operacional
 - removida tentativa de auto-refresh/realtime por polling que causava piscada da tela
 
 ### Pendente relevante

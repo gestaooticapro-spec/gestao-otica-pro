@@ -2,6 +2,11 @@ export function digitsOnly(value: string | null | undefined) {
   return String(value ?? '').replace(/\D/g, '')
 }
 
+export function getPhoneLast8(value: string | null | undefined) {
+  const digits = digitsOnly(value)
+  return digits.length >= 8 ? digits.slice(-8) : ''
+}
+
 export function normalizeBrazilianPhone(value: string | null | undefined) {
   let digits = digitsOnly(value)
   if (!digits) return ''
@@ -37,6 +42,12 @@ export function phonesMatch(left: string | null | undefined, right: string | nul
   }
 
   return false
+}
+
+export function phonesMatchLast8(left: string | null | undefined, right: string | null | undefined) {
+  const leftLast8 = getPhoneLast8(left)
+  const rightLast8 = getPhoneLast8(right)
+  return Boolean(leftLast8) && leftLast8 === rightLast8
 }
 
 export function toEvolutionNumber(value: string | null | undefined) {
