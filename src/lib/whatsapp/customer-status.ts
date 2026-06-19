@@ -261,6 +261,39 @@ function aiClarificationText() {
   return 'Entendi. Para eu te ajudar melhor, me diga por favor se voce quer falar sobre pedido, horario da loja, pagamento, orcamento ou atendimento com a equipe.'
 }
 
+function buildClosedStoreText(hoursFacts: ReturnType<typeof evaluateStoreHours>) {
+  const nextOpen = hoursFacts.next_open_schedule?.trim()
+  const todaySchedule = hoursFacts.today_schedule?.trim()
+  const weeklySchedule = hoursFacts.full_weekly_schedule?.trim()
+  const exceptionalReason = hoursFacts.exceptional_closure_reason?.trim()
+  const lowerReason = (exceptionalReason || '').toLowerCase()
+  const isLunchBreak = lowerReason.includes('almo') || lowerReason.includes('intervalo')
+  const nextSentence = nextOpen ? ` Voltamos ${nextOpen}.` : ''
+  const weeklySentence = weeklySchedule ? ` Nosso horario normal de atendimento e: ${weeklySchedule}.` : ''
+
+  if (hoursFacts.is_exceptional_closure && exceptionalReason) {
+    return `Oi! No momento nossa loja esta fechada por um motivo especial: ${exceptionalReason}.${nextSentence} Queremos te atender assim que retornarmos, entao pode deixar sua mensagem por aqui.${weeklySentence}`.trim()
+  }
+
+  if (isLunchBreak) {
+    return `Oi! No momento estamos em ${exceptionalReason || 'intervalo'} e por isso a loja esta temporariamente fechada.${nextSentence} Queremos te atender assim que voltarmos.${weeklySentence}`.trim()
+  }
+
+  if (nextOpen.startsWith('Segunda-feira')) {
+    return `Oi! No momento nossa loja esta fechada.${nextSentence} Se preferir, ja pode deixar sua mensagem que atenderemos voce assim que abrirmos.${weeklySentence}`.trim()
+  }
+
+  if (nextOpen.startsWith('Hoje')) {
+    return `Oi! No momento nossa loja esta fechada, mas abrimos novamente ${nextOpen.toLowerCase()}. Queremos te atender, entao se preferir ja pode deixar sua mensagem por aqui.${weeklySentence}`.trim()
+  }
+
+  if (todaySchedule && todaySchedule !== 'Fechado') {
+    return `Oi! No momento estamos fora do horario de atendimento de hoje (${todaySchedule}).${nextSentence} Queremos te atender assim que retornarmos.${weeklySentence}`.trim()
+  }
+
+  return `Oi! No momento nossa loja esta fechada.${nextSentence} Queremos te atender assim que abrirmos, entao pode deixar sua mensagem por aqui.${weeklySentence}`.trim()
+}
+
 function normalizeDisplayText(value: string | null | undefined) {
   const normalized = String(value || '').trim()
   return normalized || null
@@ -409,6 +442,37 @@ function buildPaymentInstallmentMetadata(
       searchQuery: customerName || fallbackPhone,
     } as unknown as Json,
   }
+}
+
+function formatPaymentFollowupText(customerName: string, installments: PaymentInstallmentMatch[]) {
+  if (!installments.length) {
+    return 'Consegui localizar o cadastro, mas vou chamar nossa equipe para confirmar os detalhes financeiros com você.'
+  }
+
+  const first = installments[0]
+  const amount = Number(first.amount || 0)
+  const amountText = amount > 0
+    ? amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    : null
+
+  let dueDateText: string | null = null
+  if (typeof first.due_date === 'string' && first.due_date.trim()) {
+    const [y, m, d] = first.due_date.split('T')[0].split('-')
+    if (y && m && d) {
+      dueDateText = `${d}/${m}/${y}`
+    }
+  }
+
+  const countText = installments.length === 1
+    ? 'Encontrei 1 parcela em aberto'
+    : `Encontrei ${installments.length} parcelas em aberto`
+
+  const details = [amountText, dueDateText ? `com vencimento em ${dueDateText}` : null]
+    .filter(Boolean)
+    .join(' ')
+
+  const suffix = details ? `, sendo a primeira ${details}` : ''
+  return `${countText} para ${customerName}${suffix}. Vou chamar um atendente para te ajudar com os valores certinhos por aqui.`
 }
 
 function applyForceAiPostClassificationRoute(
@@ -714,6 +778,86 @@ async function findCustomersByName(storeId: number, name: string): Promise<Custo
 
   if (error) throw error
   return data ?? []
+}
+
+async function findOpenInstallmentsByCustomerIds(storeId: number, customerIds: number[]) {
+  if (!customerIds.length) return []
+
+  const supabase = createAdminClient()
+  const uniqueIds = [...new Set(customerIds.filter((id) => Number.isFinite(id) && id > 0))]
+  if (!uniqueIds.length) return []
+
+  const { data: parcelas, error } = await (supabase.from('financiamento_parcelas') as any)
+    .select(`
+      id,
+      data_vencimento,
+      valor_parcela,
+      status,
+      customer_id
+    `)
+    .eq('store_id', storeId)
+    .in('customer_id', uniqueIds)
+    .is('data_pagamento', null)
+    .neq('status', 'pago')
+
+  if (error) throw error
+  return (parcelas || []) as Array<{
+    id: number
+    data_vencimento: string | null
+    valor_parcela: number | null
+    status: string | null
+    customer_id: number
+  }>
+}
+
+async function findOpenInstallmentsByIdentifier(
+  storeId: number,
+  message: string | undefined
+): Promise<{ customer: CustomerRow; installments: PaymentInstallmentMatch[] } | null> {
+  const allDigits = digitsOnly(message)
+
+  if (allDigits.length === 11) {
+    const customer = await findCustomerByCpf(storeId, allDigits)
+    if (customer) {
+      const installments = await findOpenInstallmentsByCustomerIds(storeId, [customer.id])
+      if (installments.length > 0) {
+        return {
+          customer,
+          installments: installments.map((item) => ({
+            installment_id: item.id,
+            customer_id: item.customer_id,
+            due_date: item.data_vencimento,
+            amount: item.valor_parcela,
+            customer_name: customer.full_name,
+          })),
+        }
+      }
+    }
+  }
+
+  const name = meaningfulName(message)
+  if (!name) return null
+
+  const customers = await findCustomersByName(storeId, name)
+  if (!customers.length) return null
+
+  for (const customer of customers) {
+    const installments = await findOpenInstallmentsByCustomerIds(storeId, [customer.id])
+    if (installments.length > 0) {
+      return {
+        customer,
+        installments: installments.map((item) => ({
+          installment_id: item.id,
+          customer_id: item.customer_id,
+          due_date: item.data_vencimento,
+          amount: item.valor_parcela,
+          customer_name: customer.full_name,
+        })),
+      }
+    }
+  }
+
+  return null
 }
 
 async function findLatestOpenOs(storeId: number, customerId: number): Promise<OpenOsRow | null> {
@@ -1509,14 +1653,9 @@ export async function resolveCustomerStatus(
   
   let isExceptionalClosure = false
   let isNormalClosed = false
-  let exceptionalReason = ''
-  let nextOpen = ''
-  
   if (hoursFacts) {
     if (hoursFacts.is_exceptional_closure) {
       isExceptionalClosure = true
-      exceptionalReason = hoursFacts.exceptional_closure_reason || ''
-      nextOpen = hoursFacts.next_open_schedule
     } else if (!hoursFacts.is_open_now) {
       isNormalClosed = true
     }
@@ -1524,7 +1663,7 @@ export async function resolveCustomerStatus(
 
   async function applyOohTrapIfNeeded(fallbackAction: () => Promise<CustomerStatusResponse>): Promise<CustomerStatusResponse> {
     if (isExceptionalClosure) {
-      const text = `Hoje, excepcionalmente, não estamos atendendo devido a: ${exceptionalReason}. Retornamos ${nextOpen}. Assim que retornarmos, um atendente falará com você.`
+      const text = buildClosedStoreText(hoursFacts!)
       await setCurrentConversationState('human_pause', HUMAN_PAUSE_MS, mergeMetadata(baseMetadata, {
         reason: 'exceptional_closure_trap',
         ...buildDecisionMetadata({ intent: null, action: 'exceptional_closure_trap', outboundType: 'exceptional_closure' })
@@ -1536,11 +1675,16 @@ export async function resolveCustomerStatus(
       return createCurrentOutbound(maybeHumanized.text, 'exceptional_closure', maybeHumanized.payload)
     }
     if (isNormalClosed) {
+      const text = buildClosedStoreText(hoursFacts!)
       await setCurrentConversationState('human_pause', HUMAN_PAUSE_MS, mergeMetadata(baseMetadata, {
         reason: 'normal_closed_trap',
-        ...buildDecisionMetadata({ intent: null, action: 'normal_closed_trap', outboundType: null })
+        ...buildDecisionMetadata({ intent: null, action: 'normal_closed_trap', outboundType: 'store_hours' })
       }))
-      return ignoreInbound(inbound.id)
+      const outboundPayload = {
+        ...buildWhatsAppCanonicalPayload({ intent: 'store_hours', action: 'normal_closed_trap', outboundType: 'store_hours', canonicalReply: text })
+      } satisfies ConversationMetadataRecord
+      const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name, aiReplyContext)
+      return createCurrentOutbound(maybeHumanized.text, 'store_hours', maybeHumanized.payload)
     }
     return fallbackAction()
   }
@@ -1704,6 +1848,32 @@ export async function resolveCustomerStatus(
   }
 
   if (preAiRoute === 'retry_identifier_lookup') {
+    const paymentLookup = await findOpenInstallmentsByIdentifier(channel.store_id, effectiveMessageText || undefined)
+    if (paymentLookup) {
+      await consumeForceAiOverrideIfNeeded()
+      const text = formatPaymentFollowupText(paymentLookup.customer.full_name, paymentLookup.installments)
+      await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+        selectedOption: 'ai_payment_identifier_resolved',
+        aiConfidence: null,
+        lastKnownCustomerId: paymentLookup.customer.id,
+        ...buildPaymentInstallmentMetadata(paymentLookup.installments, normalizedPhone),
+        ...buildDecisionMetadata({
+          intent: 'payment_info',
+          confidence: null,
+          action: 'human_handoff',
+          outboundType: 'human_handoff',
+        }),
+      }))
+      return createCurrentOutbound(text, 'human_handoff', {
+        ...buildWhatsAppCanonicalPayload({
+          intent: 'payment_info',
+          action: 'human_handoff',
+          outboundType: 'human_handoff',
+          canonicalReply: text,
+        }),
+      })
+    }
+
     const result = await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
     if (result) {
       await consumeForceAiOverrideIfNeeded()
@@ -1712,6 +1882,32 @@ export async function resolveCustomerStatus(
   }
 
   if (preAiRoute === 'waiting_identifier_lookup') {
+    const paymentLookup = await findOpenInstallmentsByIdentifier(channel.store_id, effectiveMessageText || undefined)
+    if (paymentLookup) {
+      await consumeForceAiOverrideIfNeeded()
+      const text = formatPaymentFollowupText(paymentLookup.customer.full_name, paymentLookup.installments)
+      await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+        selectedOption: 'ai_payment_identifier_resolved',
+        aiConfidence: null,
+        lastKnownCustomerId: paymentLookup.customer.id,
+        ...buildPaymentInstallmentMetadata(paymentLookup.installments, normalizedPhone),
+        ...buildDecisionMetadata({
+          intent: 'payment_info',
+          confidence: null,
+          action: 'human_handoff',
+          outboundType: 'human_handoff',
+        }),
+      }))
+      return createCurrentOutbound(text, 'human_handoff', {
+        ...buildWhatsAppCanonicalPayload({
+          intent: 'payment_info',
+          action: 'human_handoff',
+          outboundType: 'human_handoff',
+          canonicalReply: text,
+        }),
+      })
+    }
+
     const result = await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
     if (result) {
       await consumeForceAiOverrideIfNeeded()
@@ -2021,15 +2217,16 @@ export async function resolveCustomerStatus(
           text = `Não consegui localizar nenhuma fatura em aberto cadastrada direto no seu número. Você poderia me informar o nome de quem fez a compra ou o CPF?`
         }
 
-        await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+        await setCurrentConversationState('waiting_identifier', IDENTIFIER_WAIT_MS, mergeMetadata(baseMetadata, {
+          reason: 'payment_identifier_requested',
           selectedOption: 'ai_specific_handoff',
           aiConfidence: classification.data.confidence,
           ...paymentInstallmentMetadata,
           ...buildDecisionMetadata({
             intent: classification.data.intent,
             confidence: classification.data.confidence,
-            action: 'human_handoff',
-            outboundType: 'human_handoff',
+            action: 'request_identifier',
+            outboundType: 'payment_identifier_prompt',
           }),
         }))
 
@@ -2037,8 +2234,8 @@ export async function resolveCustomerStatus(
           ...buildAiPayload(classification.data),
           ...buildWhatsAppCanonicalPayload({
             intent: classification.data.intent,
-            action: 'human_handoff',
-            outboundType: 'human_handoff',
+            action: 'request_identifier',
+            outboundType: 'payment_identifier_prompt',
             canonicalReply: text,
           }),
         } satisfies ConversationMetadataRecord
@@ -2050,7 +2247,7 @@ export async function resolveCustomerStatus(
         }
         return withAiDiagnostics(await createCurrentOutbound(
           maybeHumanized.text,
-          'human_handoff',
+          'payment_identifier_prompt',
           maybeHumanized.payload
         ))
       }
@@ -2322,14 +2519,9 @@ export async function simulateCustomerStatus(
 
   let isExceptionalClosure = false
   let isNormalClosed = false
-  let exceptionalReason = ''
-  let nextOpen = ''
-
   if (hoursFacts) {
     if (hoursFacts.is_exceptional_closure) {
       isExceptionalClosure = true
-      exceptionalReason = hoursFacts.exceptional_closure_reason || ''
-      nextOpen = hoursFacts.next_open_schedule
     } else if (!hoursFacts.is_open_now) {
       isNormalClosed = true
     }
@@ -2347,7 +2539,7 @@ export async function simulateCustomerStatus(
   })
 
   if (isExceptionalClosure) {
-    const text = `Hoje, excepcionalmente, nao estamos atendendo devido a: ${exceptionalReason}. Retornamos ${nextOpen}. Assim que retornarmos, um atendente falara com voce.`
+    const text = buildClosedStoreText(hoursFacts!)
     return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: text }, {
       overrideMode: controlMode,
       preAiRoute,
@@ -2362,16 +2554,17 @@ export async function simulateCustomerStatus(
   }
 
   if (isNormalClosed) {
-    return buildResult({}, {
+    const text = buildClosedStoreText(hoursFacts!)
+    return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: text }, {
       overrideMode: controlMode,
       preAiRoute,
       postClassificationRoute: null,
       action: 'normal_closed_trap',
-      outboundType: null,
+      outboundType: 'store_hours',
       state: state?.state ?? null,
       intent: null,
       confidence: null,
-      notes: ['Loja fora do horario normal e o fluxo real ficaria em silencio.'],
+      notes: ['Loja fechada fora do horario normal responde com aviso dinamico de atendimento.'],
     })
   }
 
@@ -2449,6 +2642,27 @@ export async function simulateCustomerStatus(
   }
 
   if (preAiRoute === 'retry_identifier_lookup' || preAiRoute === 'waiting_identifier_lookup') {
+    const paymentLookup = await findOpenInstallmentsByIdentifier(channel.store_id, effectiveMessageText || undefined)
+    if (paymentLookup) {
+      const text = formatPaymentFollowupText(paymentLookup.customer.full_name, paymentLookup.installments)
+      return buildResult({
+        shouldReply: true,
+        phone: normalizedPhone,
+        customerName: paymentLookup.customer.full_name,
+        replyText: text,
+      }, {
+        overrideMode: controlMode,
+        preAiRoute,
+        postClassificationRoute: null,
+        action: 'human_handoff',
+        outboundType: 'human_handoff',
+        state: state?.state ?? null,
+        intent: 'payment_info',
+        confidence: null,
+        notes: ['Identificador permitiu localizar parcelas pendentes do cliente.'],
+      })
+    }
+
     const result = await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
     if (result) {
       const automationSettingsForStatus = await loadStoreWhatsAppSettings(channel.store_id)
@@ -2620,6 +2834,34 @@ export async function simulateCustomerStatus(
         intent: classification.data.intent,
         confidence: classification.data.confidence,
         notes: ['Pickup/scheduling sem OS encontrada cai em handoff.'],
+      })
+    }
+
+    if (classification.success && postClassificationRoute === 'payment_info') {
+      const installments = await findOpenInstallmentsByPhone(channel.store_id, normalizedPhone)
+      let text = ''
+      if (installments && installments.length > 0) {
+        const first = installments[0]
+        let dueDateText = first.due_date || ''
+        if (dueDateText) {
+          const [y, m, d] = dueDateText.split('T')[0].split('-')
+          dueDateText = `${d}/${m}/${y}`
+        }
+        text = `Achei um cadastro em aberto referente a uma compra que vence/venceu no dia ${dueDateText}. É sobre essa compra que você quer falar? Por questões de segurança, poderia me confirmar o nome completo do titular ou o CPF?`
+      } else {
+        text = 'Não consegui localizar nenhuma fatura em aberto cadastrada direto no seu número. Você poderia me informar o nome de quem fez a compra ou o CPF?'
+      }
+
+      return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: text }, {
+        overrideMode: controlMode,
+        preAiRoute,
+        postClassificationRoute,
+        action: 'request_identifier',
+        outboundType: 'payment_identifier_prompt',
+        state: state?.state ?? null,
+        intent: classification.data.intent,
+        confidence: classification.data.confidence,
+        notes: ['Fluxo financeiro pede identificador e aguarda a resposta antes do handoff humano.'],
       })
     }
 
