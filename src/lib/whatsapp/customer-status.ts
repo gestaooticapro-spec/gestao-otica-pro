@@ -1324,12 +1324,13 @@ export async function resolveCustomerStatus(
   const storeProfile = await loadStoreProfile(channel.store_id)
   const settings = ((storeProfile.settings || {}) as StoreSettings) || {}
   const hoursFacts = settings.store_hours ? evaluateStoreHours(settings.store_hours) : null
-
-  if (shouldReleaseClosedTrapPause({
+  const shouldReleaseClosedTrap = shouldReleaseClosedTrapPause({
     state: state?.state ?? null,
     metadata: state?.metadata,
     isStoreOpenNow: hoursFacts?.is_open_now === true,
-  }) && state?.id) {
+  })
+
+  if (shouldReleaseClosedTrap && state?.id) {
     await clearConversationStateById(state.id)
     state = null
   }

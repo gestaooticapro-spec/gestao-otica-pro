@@ -1,5 +1,5 @@
-import { StoreHoursConfig, StoreWeeklySchedule, StoreBreakWindow } from '@/lib/store-modules'
-import { format } from 'date-fns-tz'
+import { StoreHoursConfig } from '@/lib/store-modules'
+import { formatInTimeZone } from 'date-fns-tz'
 import { addDays } from 'date-fns'
 
 export type StoreHoursFacts = {
@@ -35,12 +35,12 @@ function parseTime(timeStr: string): number {
 
 export function evaluateStoreHours(config: StoreHoursConfig, referenceDateInput: Date = new Date()): StoreHoursFacts {
     const tz = config.timezone || 'America/Sao_Paulo'
-    const currentDateStr = format(referenceDateInput, 'yyyy-MM-dd', { timeZone: tz })
-    const dayOfWeekIso = parseInt(format(referenceDateInput, 'i', { timeZone: tz }), 10)
+    const currentDateStr = formatInTimeZone(referenceDateInput, tz, 'yyyy-MM-dd')
+    const dayOfWeekIso = parseInt(formatInTimeZone(referenceDateInput, tz, 'i'), 10)
     const currentDayOfWeek = dayOfWeekIso === 7 ? 0 : dayOfWeekIso // JS getDay() format (0=Sun, 6=Sat)
     
-    const h = parseInt(format(referenceDateInput, 'H', { timeZone: tz }), 10)
-    const m = parseInt(format(referenceDateInput, 'm', { timeZone: tz }), 10)
+    const h = parseInt(formatInTimeZone(referenceDateInput, tz, 'H'), 10)
+    const m = parseInt(formatInTimeZone(referenceDateInput, tz, 'm'), 10)
     const currentTimeMinutes = h * 60 + m
 
     const fullWeeklySchedule = formatWeeklySchedule(config)
@@ -138,8 +138,8 @@ export function evaluateStoreHours(config: StoreHoursConfig, referenceDateInput:
         if (!nextOpenScheduleStr) {
             for (let i = 1; i <= 7; i++) {
                 const futureDate = addDays(referenceDateInput, i)
-                const futureDateStr = format(futureDate, 'yyyy-MM-dd', { timeZone: tz })
-                const futureDayIso = parseInt(format(futureDate, 'i', { timeZone: tz }), 10)
+                const futureDateStr = formatInTimeZone(futureDate, tz, 'yyyy-MM-dd')
+                const futureDayIso = parseInt(formatInTimeZone(futureDate, tz, 'i'), 10)
                 const futureDayOfWeek = futureDayIso === 7 ? 0 : futureDayIso
 
                 const futureSpecialClosure = config.special_closures.find(c => c.date === futureDateStr)
