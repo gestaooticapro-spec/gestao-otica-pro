@@ -97,7 +97,11 @@ type OpenOsRow = {
 type StoreProfileRow = Pick<
   Database['public']['Tables']['stores']['Row'],
   'id' | 'name' | 'whatsapp' | 'phone' | 'street' | 'number' | 'neighborhood' | 'city' | 'state' | 'settings'
->
+> & {
+  razao_social?: string | null
+  pix_key?: string | null
+  pix_city?: string | null
+}
 
 type ConversationMetadataRecord = Record<string, Json | undefined>
 type CustomerControlMode = 'auto' | 'force_ai' | 'force_human'
@@ -109,6 +113,17 @@ type PaymentInstallmentMatch = {
   due_date?: string | null
   amount?: number | string | null
   customer_name?: string | null
+}
+
+type PaymentReminderContext = {
+  reminderId?: number | null
+  installmentId?: number | null
+  customerId?: number | null
+  outboundMessageId?: number | null
+  dueDate?: string | null
+  amount?: number | null
+  installmentNumber?: number | null
+  totalInstallments?: number | null
 }
 
 type WhatsAppAiDiagnostic = {
@@ -444,6 +459,29 @@ function buildPaymentInstallmentMetadata(
   }
 }
 
+function buildPaymentInstallmentMetadataFromReminderContext(
+  context: PaymentReminderContext | null | undefined,
+  fallbackPhone: string
+): ConversationMetadataRecord {
+  if (!context || !context.installmentId) {
+    return {
+      paymentInstallmentHint: null,
+    }
+  }
+
+  return {
+    paymentInstallmentHint: {
+      count: 1,
+      firstInstallmentId: context.installmentId,
+      customerId: context.customerId ?? null,
+      customerName: null,
+      dueDate: context.dueDate ?? null,
+      amount: context.amount ?? null,
+      searchQuery: fallbackPhone,
+    } as unknown as Json,
+  }
+}
+
 function formatPaymentFollowupText(customerName: string, installments: PaymentInstallmentMatch[]) {
   if (!installments.length) {
     return 'Consegui localizar o cadastro, mas vou chamar nossa equipe para confirmar os detalhes financeiros com você.'
@@ -473,6 +511,136 @@ function formatPaymentFollowupText(customerName: string, installments: PaymentIn
 
   const suffix = details ? `, sendo a primeira ${details}` : ''
   return `${countText} para ${customerName}${suffix}. Vou chamar um atendente para te ajudar com os valores certinhos por aqui.`
+}
+
+function readPaymentReminderContext(metadata: Json | null | undefined): PaymentReminderContext | null {
+  const record = toMetadataRecord(metadata)
+  const raw = record.paymentReminderContext
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+
+  const value = raw as Record<string, unknown>
+  const toNumber = (input: unknown) => (typeof input === 'number' && Number.isFinite(input) ? input : null)
+  const toString = (input: unknown) => (typeof input === 'string' && input.trim() ? input.trim() : null)
+
+  return {
+    reminderId: toNumber(value.reminderId),
+    installmentId: toNumber(value.installmentId),
+    customerId: toNumber(value.customerId),
+    outboundMessageId: toNumber(value.outboundMessageId),
+    dueDate: toString(value.dueDate),
+    amount: toNumber(value.amount),
+    installmentNumber: toNumber(value.installmentNumber),
+    totalInstallments: toNumber(value.totalInstallments),
+  }
+}
+
+function formatPaymentDueDate(value: string | null | undefined) {
+  if (!value) return null
+  const [year, month, day] = value.split('T')[0].split('-')
+  if (!year || !month || !day) return null
+  return `${day}/${month}/${year}`
+}
+
+function formatCurrencyBr(value: number | null | undefined) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+function buildInstallmentLabel(context: PaymentReminderContext) {
+  if (context.installmentNumber && context.totalInstallments) {
+    return `${context.installmentNumber}/${context.totalInstallments}`
+  }
+  if (context.installmentNumber) {
+    return `${context.installmentNumber}`
+  }
+  return null
+}
+
+function looksLikePixRequest(message: string | null | undefined) {
+  const normalized = normalizeMessage(message || undefined)
+  if (!normalized) return false
+
+  return [
+    'pix',
+    'chave pix',
+    'manda a chave',
+    'manda o pix',
+    'me passa o pix',
+    'passa o pix',
+    'copia e cola',
+    'qr code',
+    'qrcode',
+  ].some((term) => normalized.includes(term))
+}
+
+function looksLikeAmountRequest(message: string | null | undefined) {
+  const normalized = normalizeMessage(message || undefined)
+  if (!normalized) return false
+
+  return [
+    'qual o valor',
+    'valor da parcela',
+    'quanto ficou',
+    'quanto e',
+    'quanto é',
+    'quanto devo',
+    'valor',
+  ].some((term) => normalized.includes(term))
+}
+
+function buildPixKeyBaseText(store: StoreProfileRow) {
+  const pixKey = normalizeDisplayText(store.pix_key)
+  if (!pixKey) return null
+
+  const holder = normalizeDisplayText(store.razao_social) || normalizeDisplayText(store.name)
+  return holder
+    ? `Nossa chave Pix e ${pixKey}. Favorecido: ${holder}.`
+    : `Nossa chave Pix e ${pixKey}.`
+}
+
+function buildReminderPixReply(store: StoreProfileRow, context: PaymentReminderContext) {
+  const pixBase = buildPixKeyBaseText(store)
+  if (!pixBase) return null
+
+  const amountText = formatCurrencyBr(context.amount)
+  const dueDateText = formatPaymentDueDate(context.dueDate)
+  const installmentLabel = buildInstallmentLabel(context)
+  const details = [
+    installmentLabel ? `da parcela ${installmentLabel}` : 'da sua parcela',
+    amountText ? `no valor de ${amountText}` : null,
+    dueDateText ? `com vencimento em ${dueDateText}` : null,
+  ].filter(Boolean).join(' ')
+
+  return `Claro! ${pixBase}${details ? ` ${details}.` : ''} Se fizer o pagamento, pode me enviar o comprovante por aqui.`
+}
+
+function buildReminderAmountReply(context: PaymentReminderContext) {
+  const amountText = formatCurrencyBr(context.amount)
+  const dueDateText = formatPaymentDueDate(context.dueDate)
+  const installmentLabel = buildInstallmentLabel(context)
+
+  if (!amountText && !dueDateText) {
+    return 'Consigo te ajudar com essa parcela. Se quiser, tambem posso te passar a chave Pix por aqui.'
+  }
+
+  const subject = installmentLabel ? `A parcela ${installmentLabel}` : 'Essa parcela'
+  const details = [
+    amountText ? `tem o valor de ${amountText}` : null,
+    dueDateText ? `e vence em ${dueDateText}` : null,
+  ].filter(Boolean).join(' ')
+
+  return `${subject} ${details}. Se quiser, tambem posso te passar a chave Pix por aqui.`
+}
+
+function buildGenericPixReply(store: StoreProfileRow) {
+  const pixBase = buildPixKeyBaseText(store)
+  if (!pixBase) return null
+
+  return `${pixBase} Se for sobre uma parcela especifica, me envie o nome completo ou CPF do titular que eu tento localizar o valor certinho.`
+}
+
+function paymentMatchedHandoffText() {
+  return 'Encontrei o financeiro relacionado a esse numero e vou chamar nossa equipe para continuar o atendimento por aqui.'
 }
 
 function applyForceAiPostClassificationRoute(
@@ -990,7 +1158,7 @@ async function loadStoreWhatsAppSettings(storeId: number) {
 async function loadStoreProfile(storeId: number): Promise<StoreProfileRow> {
   const supabase = createAdminClient()
   const { data, error } = await (supabase.from('stores') as any)
-    .select('id, name, whatsapp, phone, street, number, neighborhood, city, state, settings')
+    .select('id, name, razao_social, whatsapp, phone, street, number, neighborhood, city, state, settings, pix_key, pix_city')
     .eq('id', storeId)
     .single()
 
@@ -1943,6 +2111,57 @@ export async function resolveCustomerStatus(
     return handleStatusByPhone(channel, inbound.id, normalizedPhone, baseMetadata)
   }
 
+  const paymentReminderContext = readPaymentReminderContext(state?.metadata)
+  const reminderFinancialHandoff = paymentReminderContext && (looksLikePixRequest(effectiveMessageText) || looksLikeAmountRequest(effectiveMessageText))
+    ? paymentMatchedHandoffText()
+    : null
+
+  if (reminderFinancialHandoff && paymentReminderContext) {
+    await consumeForceAiOverrideIfNeeded()
+    await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
+      reason: 'payment_context_handoff',
+      lastKnownCustomerId: paymentReminderContext.customerId ?? null,
+      ...buildPaymentInstallmentMetadataFromReminderContext(paymentReminderContext, normalizedPhone),
+      ...buildDecisionMetadata({
+        intent: 'payment_info',
+        action: 'human_handoff',
+        outboundType: 'human_handoff',
+      }),
+    }), 'assistant', reminderFinancialHandoff))
+    return createCurrentOutbound(reminderFinancialHandoff, 'human_handoff', {
+      ...buildWhatsAppCanonicalPayload({
+        intent: 'payment_info',
+        action: 'human_handoff',
+        outboundType: 'human_handoff',
+        canonicalReply: reminderFinancialHandoff,
+      }),
+      paymentReminderContext,
+    })
+  }
+
+  const genericPixReply = !paymentReminderContext && looksLikePixRequest(effectiveMessageText)
+    ? buildGenericPixReply(storeProfile)
+    : null
+
+  if (genericPixReply) {
+    await consumeForceAiOverrideIfNeeded()
+    await setCurrentConversationState('ai_session', AI_SESSION_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
+      ...buildDecisionMetadata({
+        intent: 'payment_info',
+        action: 'payment_pix_info',
+        outboundType: 'payment_pix_info',
+      }),
+    }), 'assistant', genericPixReply))
+    return createCurrentOutbound(genericPixReply, 'payment_pix_info', {
+      ...buildWhatsAppCanonicalPayload({
+        intent: 'payment_info',
+        action: 'payment_pix_info',
+        outboundType: 'payment_pix_info',
+        canonicalReply: genericPixReply,
+      }),
+    })
+  }
+
   if (preAiRoute === 'ignore_silent') {
     return ignoreInbound(inbound.id)
   }
@@ -2197,6 +2416,50 @@ export async function resolveCustomerStatus(
           'human_handoff',
           maybeHumanized.payload
         ))
+      }
+
+      if (postClassificationRoute === 'payment_info') {
+        const installments = await findOpenInstallmentsByPhone(channel.store_id, normalizedPhone)
+        if (installments && installments.length > 0) {
+          await consumeForceAiOverrideIfNeeded()
+          const paymentInstallmentMetadata = buildPaymentInstallmentMetadata(installments, normalizedPhone)
+          const text = paymentMatchedHandoffText()
+          await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+            reason: 'payment_match_handoff',
+            selectedOption: 'ai_specific_handoff',
+            aiConfidence: classification.data.confidence,
+            ...paymentInstallmentMetadata,
+            ...buildDecisionMetadata({
+              intent: classification.data.intent,
+              confidence: classification.data.confidence,
+              action: 'human_handoff',
+              outboundType: 'human_handoff',
+            }),
+          }))
+          const outboundPayload = {
+            ...buildAiPayload(classification.data),
+            ...buildWhatsAppCanonicalPayload({
+              intent: classification.data.intent,
+              action: 'human_handoff',
+              outboundType: 'human_handoff',
+              canonicalReply: text,
+            }),
+          } satisfies ConversationMetadataRecord
+
+          const maybeHumanized = await maybeHumanizeOutboundFromCanonical(outboundPayload, text, storeProfile.name, aiReplyContext)
+          const aiResult = (maybeHumanized as any).aiResult
+          if (aiResult) {
+            await recordAiResult('reply_humanization', aiResult)
+          }
+          return withAiDiagnostics(await createOutbound(
+            channel,
+            inbound.id,
+            normalizedPhone,
+            maybeHumanized.text,
+            'human_handoff',
+            maybeHumanized.payload
+          ))
+        }
       }
 
       if (postClassificationRoute === 'payment_info') {
@@ -2835,6 +3098,24 @@ export async function simulateCustomerStatus(
         confidence: classification.data.confidence,
         notes: ['Pickup/scheduling sem OS encontrada cai em handoff.'],
       })
+    }
+
+    if (classification.success && postClassificationRoute === 'payment_info') {
+      const installments = await findOpenInstallmentsByPhone(channel.store_id, normalizedPhone)
+      if (installments && installments.length > 0) {
+        const text = paymentMatchedHandoffText()
+        return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: text }, {
+          overrideMode: controlMode,
+          preAiRoute,
+          postClassificationRoute,
+          action: 'human_handoff',
+          outboundType: 'human_handoff',
+          state: state?.state ?? null,
+          intent: classification.data.intent,
+          confidence: classification.data.confidence,
+          notes: ['Pagamento com parcela encontrada entra em handoff seguro sem expor dados financeiros.'],
+        })
+      }
     }
 
     if (classification.success && postClassificationRoute === 'payment_info') {

@@ -11,9 +11,18 @@ const BUSINESS_START_HOUR = 9
 const BUSINESS_END_HOUR = 18
 const SCHEDULE_SPACING_MINUTES = 5
 const DEFAULT_DISPATCH_LIMIT = 1
+const PAYMENT_REMINDER_CONTEXT_MS = 48 * 60 * 60 * 1000
+
+const LEGACY_INSTALLMENT_DUE_REMINDER_TEMPLATE = [
+  'Olá, {nome}! Passando para lembrar que a parcela {numero_parcela} do {paciente} vence em {data_vencimento}.',
+  '',
+  'Se já estiver tudo certo, pode desconsiderar esta mensagem. Qualquer dúvida, nossa equipe está por aqui para ajudar.',
+].join('\n')
 
 export const DEFAULT_INSTALLMENT_DUE_REMINDER_TEMPLATE = [
-  'Olá, {nome}! Passando para lembrar que a parcela {numero_parcela} do {paciente} vence em {data_vencimento}.',
+  'Olá, {nome}! Esta é uma mensagem automática da ótica.',
+  '',
+  'Passando para lembrar que a parcela {numero_parcela} do {paciente} vence em {data_vencimento}.',
   '',
   'Se já estiver tudo certo, pode desconsiderar esta mensagem. Qualquer dúvida, nossa equipe está por aqui para ajudar.',
 ].join('\n')
@@ -68,16 +77,88 @@ type ReminderRow = {
   installment_id: number
   customer_id: number
   remote_phone: string
+  due_date: string
   message_text: string
   status: 'scheduled' | 'sending' | 'sent' | 'failed' | 'cancelled'
   scheduled_for: string
   outbound_message_id: number | null
+  payload: Json | null
   whatsapp_store_channels?: {
     instance_key: string
   } | null
   stores?: {
     settings: Json | null
   } | null
+}
+
+function reminderExpiresAt(ms: number) {
+  return new Date(Date.now() + ms).toISOString()
+}
+
+async function markReminderConversationContext(
+  reminder: ReminderRow,
+  outboundMessageId: number,
+  sentAtIso: string,
+  metadata: {
+    messageText: string
+    dueDate: string
+    amount: number | null
+    installmentNumber: number | null
+    totalInstallments: number | null
+  }
+) {
+  const supabase = createAdminClient()
+  const payload = {
+    tenant_id: reminder.tenant_id,
+    store_id: reminder.store_id,
+    channel_id: reminder.channel_id,
+    remote_phone: reminder.remote_phone,
+    state: 'ai_session',
+    expires_at: reminderExpiresAt(PAYMENT_REMINDER_CONTEXT_MS),
+    updated_at: sentAtIso,
+    metadata: {
+      reason: 'installment_due_reminder_sent',
+      reminderId: reminder.id,
+      lastAction: 'installment_due_reminder',
+      lastOutboundType: 'installment_due_reminder',
+      lastDecisionAt: sentAtIso,
+      lastKnownCustomerId: reminder.customer_id,
+      paymentReminderContext: {
+        reminderId: reminder.id,
+        installmentId: reminder.installment_id,
+        customerId: reminder.customer_id,
+        outboundMessageId,
+        dueDate: metadata.dueDate,
+        amount: metadata.amount,
+        installmentNumber: metadata.installmentNumber,
+        totalInstallments: metadata.totalInstallments,
+      },
+      paymentInstallmentHint: {
+        count: 1,
+        firstInstallmentId: reminder.installment_id,
+        customerId: reminder.customer_id,
+        customerName: null,
+        dueDate: metadata.dueDate,
+        amount: metadata.amount,
+        searchQuery: reminder.remote_phone,
+      },
+      aiSessionMessages: [
+        {
+          role: 'assistant',
+          text: metadata.messageText,
+          at: sentAtIso,
+        },
+      ],
+      aiSessionUpdatedAt: sentAtIso,
+    },
+  }
+
+  const { error } = await (supabase.from('whatsapp_conversation_states') as any)
+    .upsert(payload, { onConflict: 'channel_id,remote_phone' })
+
+  if (error) {
+    console.error('[WhatsApp] Failed to persist reminder conversation context:', error)
+  }
 }
 
 export type InstallmentReminderJobResult = {
@@ -97,9 +178,14 @@ export type InstallmentReminderJobResult = {
 export function buildInstallmentDueReminderSettings(
   saved: WhatsAppInstallmentDueReminderSettings | undefined
 ): Required<WhatsAppInstallmentDueReminderSettings> {
+  const rawTemplate = saved?.template?.trim()
+  const template = !rawTemplate || rawTemplate === LEGACY_INSTALLMENT_DUE_REMINDER_TEMPLATE
+    ? DEFAULT_INSTALLMENT_DUE_REMINDER_TEMPLATE
+    : rawTemplate
+
   return {
     enabled: saved?.enabled === true,
-    template: saved?.template?.trim() || DEFAULT_INSTALLMENT_DUE_REMINDER_TEMPLATE,
+    template,
     days_before_due: saved?.days_before_due || DEFAULT_DAYS_BEFORE_DUE,
   }
 }
@@ -335,6 +421,8 @@ async function scheduleReminders(now: Date) {
             vendaId,
             financiamentoId: installment.financiamento_id,
             numeroParcela: installment.numero_parcela,
+            totalParcelas: installment.financiamento_loja?.quantidade_parcelas ?? null,
+            valorParcela: installment.valor_parcela ?? null,
             targetDate: installment.reminderTargetDate,
             daysBeforeDue: Math.max(
               1,
@@ -397,7 +485,7 @@ async function automationSendRequest(payload: {
 async function dispatchDueReminders(now: Date, limit = DEFAULT_DISPATCH_LIMIT) {
   const supabase = createAdminClient()
   const { data, error } = await (supabase.from('whatsapp_installment_reminders') as any)
-    .select('id, tenant_id, store_id, channel_id, installment_id, customer_id, remote_phone, message_text, status, scheduled_for, outbound_message_id, whatsapp_store_channels(instance_key), stores(settings)')
+    .select('id, tenant_id, store_id, channel_id, installment_id, customer_id, remote_phone, due_date, message_text, status, scheduled_for, outbound_message_id, payload, whatsapp_store_channels(instance_key), stores(settings)')
     .eq('status', 'scheduled')
     .lte('scheduled_for', now.toISOString())
     .order('scheduled_for', { ascending: true })
@@ -410,6 +498,22 @@ async function dispatchDueReminders(now: Date, limit = DEFAULT_DISPATCH_LIMIT) {
   let failed = 0
 
   for (const reminder of (data ?? []) as ReminderRow[]) {
+    const { data: claimedReminder, error: claimError } = await (supabase.from('whatsapp_installment_reminders') as any)
+      .update({
+        status: 'sending',
+        updated_at: new Date().toISOString(),
+        error_message: null,
+      })
+      .eq('id', reminder.id)
+      .eq('status', 'scheduled')
+      .select('id')
+      .maybeSingle()
+
+    if (claimError) throw claimError
+    if (!claimedReminder?.id) {
+      continue
+    }
+
     attempted += 1
     if (!reminderEnabledFromStoreSettings(reminder.stores?.settings)) {
       await (supabase.from('whatsapp_installment_reminders') as any)
@@ -450,8 +554,8 @@ async function dispatchDueReminders(now: Date, limit = DEFAULT_DISPATCH_LIMIT) {
 
     await (supabase.from('whatsapp_installment_reminders') as any)
       .update({
-        status: 'sending',
         outbound_message_id: outbound.id,
+        updated_at: new Date().toISOString(),
       })
       .eq('id', reminder.id)
 
@@ -463,12 +567,28 @@ async function dispatchDueReminders(now: Date, limit = DEFAULT_DISPATCH_LIMIT) {
         outboundMessageId: outbound.id,
       })
 
+      const sentAtIso = new Date().toISOString()
       await (supabase.from('whatsapp_installment_reminders') as any)
         .update({
           status: 'sent',
-          sent_at: new Date().toISOString(),
+          sent_at: sentAtIso,
+          updated_at: sentAtIso,
         })
         .eq('id', reminder.id)
+
+      await markReminderConversationContext(reminder, outbound.id, sentAtIso, {
+        messageText: reminder.message_text,
+        dueDate: String((reminder as any).due_date || (reminder as any).payload?.targetDate || ''),
+        amount: typeof (reminder as any).payload?.valorParcela === 'number'
+          ? (reminder as any).payload.valorParcela
+          : null,
+        installmentNumber: typeof (reminder as any).payload?.numeroParcela === 'number'
+          ? (reminder as any).payload.numeroParcela
+          : null,
+        totalInstallments: typeof (reminder as any).payload?.totalParcelas === 'number'
+          ? (reminder as any).payload.totalParcelas
+          : null,
+      })
 
       sent += 1
     } catch (sendError) {
@@ -476,6 +596,7 @@ async function dispatchDueReminders(now: Date, limit = DEFAULT_DISPATCH_LIMIT) {
         .update({
           status: 'failed',
           error_message: sendError instanceof Error ? sendError.message : String(sendError),
+          updated_at: new Date().toISOString(),
         })
         .eq('id', reminder.id)
 

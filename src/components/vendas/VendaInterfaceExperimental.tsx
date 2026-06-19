@@ -287,6 +287,7 @@ function SingleServiceOrderCard({
 
     const [dependenteId, setDependenteId] = useState('')
     const [oftalmologistaId, setOftalmologistaId] = useState('')
+    const [protocolo, setProtocolo] = useState('')
     const [lenteOdItemId, setLenteOdItemId] = useState('')
     const [lenteOeItemId, setLenteOeItemId] = useState('')
     const [armacaoItemId, setArmacaoItemId] = useState('')
@@ -325,6 +326,7 @@ function SingleServiceOrderCard({
         if (!os) {
             setDependenteId('')
             setOftalmologistaId('')
+            setProtocolo('')
             setLenteOdItemId('')
             setLenteOeItemId('')
             setArmacaoItemId('')
@@ -352,6 +354,7 @@ function SingleServiceOrderCard({
 
         setDependenteId(os.dependente_id?.toString() ?? '')
         setOftalmologistaId(os.oftalmologista_id?.toString() ?? '')
+        setProtocolo(os.protocolo_fisico ?? '')
         setLenteOdItemId(os.links?.find((l: any) => l.uso_na_os === 'lente_od')?.venda_item_id?.toString() ?? '')
         setLenteOeItemId(os.links?.find((l: any) => l.uso_na_os === 'lente_oe')?.venda_item_id?.toString() ?? '')
         setArmacaoItemId(os.links?.find((l: any) => l.uso_na_os === 'armacao')?.venda_item_id?.toString() ?? '')
@@ -485,6 +488,22 @@ function SingleServiceOrderCard({
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
                     <div className="lg:col-span-4 space-y-3">
+                        <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                            <label htmlFor={`single-os-protocolo-${serviceOrder?.id ?? 'new'}`} className={osLabelStyle}>
+                                Protocolo
+                            </label>
+                            <input
+                                id={`single-os-protocolo-${serviceOrder?.id ?? 'new'}`}
+                                name="protocolo_fisico"
+                                type="text"
+                                value={protocolo}
+                                onChange={(e) => setProtocolo(e.target.value)}
+                                disabled={disabled}
+                                className={`${osInputStyle} font-bold uppercase text-center`}
+                                placeholder="Numero local da OS"
+                            />
+                        </div>
+
                         <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                             <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-xs font-black uppercase tracking-[0.16em] text-slate-200 flex items-center gap-2">
