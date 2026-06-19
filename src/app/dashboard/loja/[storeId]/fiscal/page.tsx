@@ -33,6 +33,29 @@ type Invoice = {
     valor_total: number | null;
 };
 
+function formatFiscalStatusMessage(message?: string | null) {
+    const normalized = String(message || "").trim();
+    const lower = normalized.toLowerCase();
+
+    if (
+        lower.includes("could not connect to server") ||
+        lower.includes("winhttp operation") ||
+        lower.includes("nfeautorizacao4") ||
+        lower.includes("error: (12029)")
+    ) {
+        return `Instabilidade externa na SEFAZ/PR.\nA autorizacao nao foi concluida e voce pode tentar novamente mais tarde.\n\nDetalhe tecnico:\n${normalized}`;
+    }
+
+    if (
+        lower.includes("ora-04025") ||
+        (lower.includes("erro nao catalogado") && lower.includes("sql"))
+    ) {
+        return `A SEFAZ/PR respondeu com instabilidade interna.\nNao parece ser erro de preenchimento da nota.\n\nDetalhe tecnico:\n${normalized}`;
+    }
+
+    return normalized || "Erro desconhecido";
+}
+
 export default function FiscalDashboard({ params }: { params: { storeId: string } }) {
     const storeId = parseInt(params.storeId);
     const router = useRouter();
@@ -118,7 +141,7 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
                         const detalhes = res.data.mensagens.map((m: any) => `${m.codigo}: ${m.descricao}`).join("\n");
                         if (detalhes) msg = detalhes;
                     }
-                    alert(`Erro SEFAZ:\n${msg || "Erro desconhecido"}`);
+                    alert(`Status fiscal com falha:\n\n${formatFiscalStatusMessage(msg)}`);
                 } else {
                     alert(`Status atualizado: ${res.status}`);
                 }

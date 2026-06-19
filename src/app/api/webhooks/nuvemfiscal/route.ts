@@ -20,7 +20,11 @@ export async function POST(request: Request) {
 
         const nuvemFiscalId = body.id || body.data?.id;
         const statusNuvem = body.status || body.data?.status;
-        const motivo = body.motivo_status || body.data?.motivo_status;
+        const motivo =
+            body.autorizacao?.motivo_status ||
+            body.data?.autorizacao?.motivo_status ||
+            body.motivo_status ||
+            body.data?.motivo_status;
 
         if (!nuvemFiscalId) {
             return NextResponse.json({ message: "ID não encontrado no payload" }, { status: 400 });
@@ -33,7 +37,11 @@ export async function POST(request: Request) {
         let errorMessage = null;
 
         if (statusNuvem === 'autorizado') novoStatus = 'authorized';
-        else if (['erro', 'rejeitado', 'negado'].includes(statusNuvem)) {
+        else if (statusNuvem === 'rejeitado') {
+            novoStatus = 'rejected';
+            errorMessage = motivo || "Rejeicao reportada via Webhook";
+        }
+        else if (['erro', 'negado'].includes(statusNuvem)) {
             novoStatus = 'error';
             errorMessage = motivo || "Erro reportado via Webhook";
         }

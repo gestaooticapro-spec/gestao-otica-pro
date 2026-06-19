@@ -313,6 +313,48 @@ async function tryFetchXmlContent(xmlUrl?: string | null) {
     }
 }
 
+function extractFiscalAuthorizationMessage(result: any, fallback: string) {
+    return (
+        result?.autorizacao?.motivo_status ||
+        result?.motivo_status ||
+        result?.error?.message ||
+        fallback
+    );
+}
+
+function formatFiscalProviderMessage(message: string) {
+    const normalized = String(message || "").trim();
+    const lower = normalized.toLowerCase();
+
+    if (
+        lower.includes("could not connect to server") ||
+        lower.includes("winhttp operation") ||
+        lower.includes("nfeautorizacao4") ||
+        lower.includes("error: (12029)")
+    ) {
+        return [
+            "Falha de comunicacao com a SEFAZ/PR no momento.",
+            "A nota nao foi autorizada e voce pode tentar novamente mais tarde.",
+            "",
+            `Detalhe tecnico: ${normalized}`,
+        ].join("\n");
+    }
+
+    if (
+        lower.includes("ora-04025") ||
+        (lower.includes("erro nao catalogado") && lower.includes("sql"))
+    ) {
+        return [
+            "A SEFAZ/PR respondeu com instabilidade interna durante a autorizacao.",
+            "Nao parece ser um erro de preenchimento da nota.",
+            "",
+            `Detalhe tecnico: ${normalized}`,
+        ].join("\n");
+    }
+
+    return normalized;
+}
+
 async function tryFetchXmlByUuid(
     token: string,
     baseUrl: string,
@@ -691,7 +733,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
                 })
                 .eq("id", invoice.id);
 
-            return { success: false, error: errorMsg };
+            return { success: false, error: formatFiscalProviderMessage(errorMsg) };
         }
 
         // 9. Verificar status REAL retornado pela Nuvem Fiscal
@@ -716,7 +758,30 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
             return {
                 success: false,
-                error: `NFC-e Rejeitada: Erro ${codigoErro} - ${motivoErro}`,
+                error: formatFiscalProviderMessage(`Erro ${codigoErro}: ${motivoErro}`),
+                invoiceId: invoice.id
+            };
+        }
+
+        if (realStatus === 'erro' || realStatus === 'negado') {
+            const motivoErro = extractFiscalAuthorizationMessage(result, 'Erro na autorizacao');
+            const friendlyError = formatFiscalProviderMessage(motivoErro);
+
+            await adminSupabase
+                .from("fiscal_invoices")
+                .update({
+                    status: "error",
+                    nuvemfiscal_uuid: result.id,
+                    chave_acesso: result.chave,
+                    numero: result.numero,
+                    serie: result.serie,
+                    error_message: motivoErro
+                })
+                .eq("id", invoice.id);
+
+            return {
+                success: false,
+                error: friendlyError,
                 invoiceId: invoice.id
             };
         }
@@ -990,13 +1055,17 @@ export async function consultarNFCe(invoiceId: string) {
         if (result.status === 'autorizado') novoStatus = 'authorized';
         else if (result.status === 'rejeitado') {
             novoStatus = 'rejected';
-            errorMessage = result.autorizacao?.motivo_status || result.motivo_status || "Rejeitada pela SEFAZ";
+            errorMessage = extractFiscalAuthorizationMessage(result, "Rejeitada pela SEFAZ");
         }
         else if (result.status === 'erro' || result.status === 'negado') {
             novoStatus = 'error';
             errorMessage = result.motivo_status || "Erro na autorização";
         }
         else if (result.status === 'cancelado') novoStatus = 'cancelled';
+
+        if (novoStatus === 'error') {
+            errorMessage = extractFiscalAuthorizationMessage(result, errorMessage || "Erro na autorizacao");
+        }
 
         const updatePayload: Record<string, any> = {
             status: novoStatus,
