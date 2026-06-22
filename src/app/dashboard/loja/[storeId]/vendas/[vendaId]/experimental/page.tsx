@@ -1,7 +1,7 @@
 // ARQUIVO: src/app/dashboard/loja/[storeId]/vendas/[vendaId]/experimental/page.tsx
 
 import { notFound } from 'next/navigation'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, unstable_noStore as noStore } from 'next/cache'
 import { getVendaPageData } from '@/lib/actions/vendas.actions'
 import VendaInterfaceExperimental from '@/components/vendas/VendaInterfaceExperimental'
 
@@ -11,6 +11,8 @@ type Props = {
 }
 
 export default async function VendaPageExperimental({ params }: Props) {
+    noStore()
+
     const storeId = parseInt(params.storeId)
     const vendaId = parseInt(params.vendaId)
 

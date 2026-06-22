@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 // Tipagem básica para facilitar o retorno (pode ajustar conforme seu projeto)
 interface DadosProtocolo {
+  os_id: number
   os_numero: string | number
   data_emissao: string
   data_entrega: string
@@ -224,6 +225,7 @@ export async function getDadosProtocolo(osId: number) {
     // RETORNO FINAL (Mapeado para o objeto esperado)
     // ------------------------------------------------------------------
     const dadosFinais: DadosProtocolo = {
+      os_id: os.id,
       os_numero: os.protocolo_fisico,
       data_emissao: os.created_at,
       data_entrega: os.dt_prometido_para,

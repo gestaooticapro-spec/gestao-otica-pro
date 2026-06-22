@@ -19,7 +19,6 @@ import ListaItens from '@/components/vendas/ListaItens'
 import ListaPagamentos from '@/components/vendas/ListaPagamentos'
 import ResumoFinanceiro from '@/components/vendas/ResumoFinanceiro'
 import VendaActions from '@/components/vendas/VendaActions'
-import ListaOS from '@/components/vendas/ListaOS'
 import { saveServiceOrder, updateVendaExperimentalFields, type SaveSOResult } from '@/lib/actions/vendas.actions'
 import { toast } from 'sonner'
 import ReceiptSelectionModal from '@/components/modals/ReceiptSelectionModal'
@@ -742,10 +741,21 @@ export default function VendaInterfaceExperimental({
     const employeeIdFinanceiro = employee?.id || 0
     const returnTo = searchParams.get('returnTo')
     const currentSaleUrl = currentPathWithSearch(pathname, searchParams)
-    const saleOsUrl = withReturnTo(
-        `/dashboard/loja/${venda.store_id}/vendas/${venda.id}/os?employee_id=${employee?.id}&employee_name=${employee?.full_name}`,
+    const latestServiceOrder = serviceOrders[serviceOrders.length - 1]
+    const serviceOrderParams = new URLSearchParams({
+        employee_id: employee?.id?.toString() || '',
+        employee_name: employee?.full_name || '',
+    })
+    const newServiceOrderUrl = withReturnTo(
+        `/dashboard/loja/${venda.store_id}/vendas/${venda.id}/os?${serviceOrderParams.toString()}`,
         currentSaleUrl
     )
+    const existingServiceOrderUrl = latestServiceOrder
+        ? withReturnTo(
+            `/dashboard/loja/${venda.store_id}/vendas/${venda.id}/os?os_id=${latestServiceOrder.id}&${serviceOrderParams.toString()}`,
+            currentSaleUrl
+        )
+        : null
 
     const closeModal = () => setActiveModal('none')
     const hasCpf = !!customer?.cpf?.toString().replace(/\D/g, '')
@@ -934,7 +944,7 @@ export default function VendaInterfaceExperimental({
                                     : undefined
                                 : isVendaFechadaOuCancelada
                                     ? undefined
-                                    : () => router.push(saleOsUrl)
+                                    : () => router.push(newServiceOrderUrl)
                         }
                         actionLabel={isSingleOSMode ? 'Lançar OS' : 'Nova OS'}
                         theme="slate"
@@ -972,16 +982,31 @@ export default function VendaInterfaceExperimental({
                             )
                         ) : (
                             <div className="p-2">
-                                <ListaOS
-                                    vendaId={venda.id}
-                                    storeId={venda.store_id}
-                                    serviceOrders={serviceOrders}
-                                    employeeId={employee?.id.toString() || '0'}
-                                    employeeName={vendedorNome}
-                                    disabled={isVendaFechadaOuCancelada}
-                                    hideHeader={true}
-                                    returnTo={currentSaleUrl}
-                                />
+                                {existingServiceOrderUrl ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => router.push(existingServiceOrderUrl)}
+                                        className="w-full rounded-2xl border border-dashed border-white/10 bg-white/5 px-4 py-5 text-left transition-all hover:border-blue-500/30 hover:bg-blue-500/5"
+                                    >
+                                        <div className="flex items-center justify-between gap-4">
+                                            <div>
+                                                <div className="text-sm font-black uppercase tracking-[0.2em] text-slate-200">
+                                                    Ordens de Servico
+                                                </div>
+                                                <div className="mt-1 text-xs text-slate-400">
+                                                    No modo de varias OSs por venda, a ficha tecnica fica na tela dedicada.
+                                                </div>
+                                            </div>
+                                            <div className="shrink-0 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-300">
+                                                Abrir OS
+                                            </div>
+                                        </div>
+                                    </button>
+                                ) : (
+                                    <div className="text-center py-6 text-slate-500 text-xs font-medium italic border-2 border-dashed border-white/10 rounded-xl bg-white/5">
+                                        Nenhuma OS registrada nesta venda.
+                                    </div>
+                                )}
                             </div>
                         )}
                     </SectionCard>

@@ -270,6 +270,7 @@ export async function updateStoreSettings(storeId: number, newSettings: Partial<
 
         revalidatePath(`/dashboard/loja/${storeId}/config`)
         revalidatePath(`/dashboard/loja/${storeId}`)
+        revalidatePath(`/dashboard/loja/${storeId}/vendas`, 'layout')
         return { success: true, message: 'Recursos atualizados!' }
     } catch (error: unknown) {
         return { success: false, message: toErrorMessage(error, 'Erro ao atualizar recursos.') }
