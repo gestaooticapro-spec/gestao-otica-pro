@@ -31,7 +31,7 @@ export type Interaction = {
   created_at: string
   tipo_contato: string
   resumo: string
-  registrado_por_id: string
+  registrado_por_id: string | null
 }
 
 // 1. BUSCAR FILA DE PÓS-VENDA

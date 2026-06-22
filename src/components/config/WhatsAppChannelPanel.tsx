@@ -30,18 +30,21 @@ import {
   getWhatsAppAutomationControlSettings,
   getWhatsAppInstallmentReminderSettings,
   getWhatsAppOsResponderSettings,
+  getWhatsAppPostSaleFollowupSettings,
   refreshWhatsAppConnection,
   requestWhatsAppQrCode,
   saveWhatsAppAiResponderSettings,
   saveWhatsAppAutomationControlSettings,
   saveWhatsAppInstallmentReminderSettings,
   saveWhatsAppOsResponderSettings,
+  saveWhatsAppPostSaleFollowupSettings,
   startWhatsAppActivation,
   type WhatsAppAiResponderControlSettings,
   type WhatsAppAutomationControlSettings,
   type WhatsAppChannel,
   type WhatsAppInstallmentReminderSettings,
   type WhatsAppOsResponderSettings,
+  type WhatsAppPostSaleFollowupControlSettings,
 } from '@/lib/actions/whatsapp.actions'
 
 const statusLabels: Record<WhatsAppChannel['connection_status'], string> = {
@@ -97,6 +100,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
   const [automationControlSettings, setAutomationControlSettings] = useState<WhatsAppAutomationControlSettings>({ enabled: true })
   const [osResponderSettings, setOsResponderSettings] = useState<WhatsAppOsResponderSettings | null>(null)
   const [installmentReminderSettings, setInstallmentReminderSettings] = useState<WhatsAppInstallmentReminderSettings | null>(null)
+  const [postSaleFollowupSettings, setPostSaleFollowupSettings] = useState<WhatsAppPostSaleFollowupControlSettings | null>(null)
   const [aiResponderSettings, setAiResponderSettings] = useState<WhatsAppAiResponderControlSettings | null>(null)
   const [isRiskModalOpen, setIsRiskModalOpen] = useState(false)
   const [isQrModalOpen, setIsQrModalOpen] = useState(false)
@@ -120,11 +124,12 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
   const loadChannel = () => {
     setIsLoading(true)
     startTransition(async () => {
-      const [channelResult, automationControlResult, osSettingsResult, installmentReminderResult, aiResponderResult] = await Promise.all([
+      const [channelResult, automationControlResult, osSettingsResult, installmentReminderResult, postSaleFollowupResult, aiResponderResult] = await Promise.all([
         getWhatsAppChannel(storeId),
         getWhatsAppAutomationControlSettings(storeId),
         getWhatsAppOsResponderSettings(storeId),
         getWhatsAppInstallmentReminderSettings(storeId),
+        getWhatsAppPostSaleFollowupSettings(storeId),
         getWhatsAppAiResponderSettings(storeId),
       ])
 
@@ -155,10 +160,17 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
         setMessage({ kind: 'error', text: installmentReminderResult.message })
       }
 
-      if (aiResponderResult.success) {
-        setAiResponderSettings(aiResponderResult.settings ?? null)
+      if (postSaleFollowupResult.success) {
+        setPostSaleFollowupSettings(postSaleFollowupResult.settings ?? null)
         if (channelResult.success && automationControlResult.success && osSettingsResult.success && installmentReminderResult.success) setMessage(null)
       } else if (!channelResult.success && !automationControlResult.success && !osSettingsResult.success && !installmentReminderResult.success) {
+        setMessage({ kind: 'error', text: postSaleFollowupResult.message })
+      }
+
+      if (aiResponderResult.success) {
+        setAiResponderSettings(aiResponderResult.settings ?? null)
+        if (channelResult.success && automationControlResult.success && osSettingsResult.success && installmentReminderResult.success && postSaleFollowupResult.success) setMessage(null)
+      } else if (!channelResult.success && !automationControlResult.success && !osSettingsResult.success && !installmentReminderResult.success && !postSaleFollowupResult.success) {
         setMessage({ kind: 'error', text: aiResponderResult.message })
       }
       setIsLoading(false)
@@ -376,6 +388,55 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
         setMessage({ kind: 'success', text: result.message })
       } else {
         setInstallmentReminderSettings(previousSettings)
+        setMessage({ kind: 'error', text: result.message })
+      }
+    })
+  }
+
+  const handleSavePostSaleFollowup = () => {
+    if (!postSaleFollowupSettings) return
+    setMessage(null)
+
+    startTransition(async () => {
+      const result = await saveWhatsAppPostSaleFollowupSettings({
+        storeId,
+        enabled: postSaleFollowupSettings.enabled,
+        template: postSaleFollowupSettings.template,
+        daysAfterDelivery: postSaleFollowupSettings.days_after_delivery,
+        businessHoursOnly: postSaleFollowupSettings.business_hours_only,
+      })
+
+      if (result.success) {
+        setPostSaleFollowupSettings(result.settings ?? null)
+        setMessage({ kind: 'success', text: result.message })
+      } else {
+        setMessage({ kind: 'error', text: result.message })
+      }
+    })
+  }
+
+  const handleTogglePostSaleFollowup = (enabled: boolean) => {
+    if (!postSaleFollowupSettings) return
+
+    const previousSettings = postSaleFollowupSettings
+    const nextSettings = { ...postSaleFollowupSettings, enabled }
+    setPostSaleFollowupSettings(nextSettings)
+    setMessage(null)
+
+    startTransition(async () => {
+      const result = await saveWhatsAppPostSaleFollowupSettings({
+        storeId,
+        enabled,
+        template: nextSettings.template,
+        daysAfterDelivery: nextSettings.days_after_delivery,
+        businessHoursOnly: nextSettings.business_hours_only,
+      })
+
+      if (result.success) {
+        setPostSaleFollowupSettings(result.settings ?? nextSettings)
+        setMessage({ kind: 'success', text: result.message })
+      } else {
+        setPostSaleFollowupSettings(previousSettings)
         setMessage({ kind: 'error', text: result.message })
       }
     })
@@ -835,6 +896,106 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                 >
                   {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
                   Salvar lembrete
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+
+        <section className="mt-6 rounded-xl border border-rose-400/20 bg-rose-400/[0.06] p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-rose-300/20 bg-rose-400/10">
+                <Sparkles className="h-5 w-5 text-rose-200" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-black text-white">Pos-venda automatico</h4>
+                  <span className="rounded-lg border border-rose-300/20 bg-rose-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-rose-100">
+                    Novo
+                  </span>
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-slate-300">
+                  Dispara um primeiro acompanhamento por WhatsApp depois da entrega e tenta coletar a nota de adaptacao sem atravessar o atendimento humano.
+                </p>
+              </div>
+            </div>
+
+            <label className="inline-flex items-center">
+              <input
+                type="checkbox"
+                checked={Boolean(postSaleFollowupSettings?.enabled)}
+                onChange={(event) => handleTogglePostSaleFollowup(event.target.checked)}
+                disabled={!postSaleFollowupSettings || isPending || isLoading || !automationEnabled}
+                className="h-5 w-5 rounded border-white/20 bg-slate-900 text-rose-400 focus:ring-rose-400"
+              />
+            </label>
+          </div>
+
+          {postSaleFollowupSettings && (
+            <>
+              <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                    Texto do primeiro contato
+                  </label>
+                  <textarea
+                    value={postSaleFollowupSettings.template}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      setPostSaleFollowupSettings((current) => current ? { ...current, template: value } : current)
+                    }}
+                    rows={5}
+                    className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm leading-relaxed text-slate-200 outline-none transition focus:border-rose-300/40 focus:ring-2 focus:ring-rose-300/10"
+                  />
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                    Dias apos entrega
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={postSaleFollowupSettings.days_after_delivery}
+                    onChange={(event) => {
+                      const value = Number(event.target.value || 0)
+                      setPostSaleFollowupSettings((current) => current ? {
+                        ...current,
+                        days_after_delivery: Number.isFinite(value) && value > 0 ? value : 7,
+                      } : current)
+                    }}
+                    className="h-11 w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 text-sm text-slate-200 outline-none transition focus:border-rose-300/40 focus:ring-2 focus:ring-rose-300/10"
+                  />
+
+                  <label className="mt-4 flex items-start gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-3 text-xs text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={postSaleFollowupSettings.business_hours_only}
+                      onChange={(event) => {
+                        const checked = event.target.checked
+                        setPostSaleFollowupSettings((current) => current ? { ...current, business_hours_only: checked } : current)
+                      }}
+                      className="mt-0.5 h-4 w-4 rounded border-white/20 bg-slate-900 text-rose-400 focus:ring-rose-400"
+                    />
+                    <span>Enviar apenas em horario comercial.</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] leading-relaxed text-slate-400">
+                  Marcadores: <span className="font-mono text-slate-200">{'{nome}'}</span>, <span className="font-mono text-slate-200">{'{titular}'}</span>, <span className="font-mono text-slate-200">{'{paciente}'}</span> e <span className="font-mono text-slate-200">{'{dias}'}</span>.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleSavePostSaleFollowup}
+                  disabled={isPending || isLoading}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-rose-400 px-5 text-xs font-black uppercase tracking-wider text-rose-950 shadow-lg shadow-rose-500/20 transition hover:bg-rose-300 disabled:opacity-50"
+                >
+                  {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
+                  Salvar pos-venda
                 </button>
               </div>
             </>

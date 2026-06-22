@@ -54,6 +54,13 @@ export type WhatsAppInstallmentDueReminderSettings = {
   days_before_due?: number
 }
 
+export type WhatsAppPostSaleFollowupSettings = {
+  enabled?: boolean
+  template?: string
+  days_after_delivery?: number
+  business_hours_only?: boolean
+}
+
 export type WhatsAppAiResponderSettings = {
   enabled?: boolean
   prompt?: string
@@ -63,6 +70,7 @@ export type WhatsAppAutomationSettings = {
   enabled?: boolean
   os_on_demand?: WhatsAppAutomationOsOnDemandSettings
   installment_due_reminder?: WhatsAppInstallmentDueReminderSettings
+  post_sale_followup?: WhatsAppPostSaleFollowupSettings
   ai_responder?: WhatsAppAiResponderSettings
   [key: string]: Json | undefined
 }

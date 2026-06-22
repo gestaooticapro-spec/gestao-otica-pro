@@ -31,6 +31,12 @@ import {
   decideWhatsAppHumanization,
 } from './humanization'
 import { findOpenInstallmentsByPhone } from '@/lib/actions/consultas.actions'
+import {
+  extractPostSaleRating,
+  readPostSaleContext,
+  type PostSaleContext,
+} from './post-sale-followup'
+import { concludePostSaleFromWhatsApp } from './post-sales'
 
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
 const HUMAN_PAUSE_MS = 60 * 60 * 1000
@@ -132,6 +138,11 @@ type PaymentReminderContext = {
   amount?: number | null
   installmentNumber?: number | null
   totalInstallments?: number | null
+}
+
+type PostSaleRatingOutcome = {
+  rating: number
+  stage: 'awaiting_feedback' | 'awaiting_rating'
 }
 
 type WhatsAppAiDiagnostic = {
@@ -673,6 +684,32 @@ function paymentMatchedHandoffText() {
   return 'Encontrei o financeiro relacionado a esse numero e vou chamar nossa equipe para continuar o atendimento por aqui.'
 }
 
+function postSaleRatingPromptText() {
+  return 'Que bom saber disso. Se puder, me responda com uma nota de 1 a 5 para registrar como foi sua adaptacao.'
+}
+
+function postSaleThanksText(rating: number) {
+  return `Perfeito! Obrigado pela nota ${rating}. Vou registrar seu retorno aqui e qualquer coisa nossa equipe segue a disposicao.`
+}
+
+function postSaleComplaintHandoffText() {
+  return 'Poxa, sinto muito por isso. Vou encaminhar agora mesmo para nossa equipe continuar seu atendimento por aqui com prioridade.'
+}
+
+function postSaleLowConfidenceHandoffNote() {
+  return 'Resposta de pos-venda sem classificacao segura. Revisar manualmente.'
+}
+
+function readPostSaleRatingOutcome(
+  message: string | null | undefined,
+  context: PostSaleContext | null
+): PostSaleRatingOutcome | null {
+  const rating = extractPostSaleRating(message)
+  if (!rating || !context?.stage) return null
+  if (context.stage !== 'awaiting_feedback' && context.stage !== 'awaiting_rating') return null
+  return { rating, stage: context.stage }
+}
+
 function applyForceAiPostClassificationRoute(
   route: WhatsAppPostClassificationDecision,
   classification: WhatsAppIntentClassification | null,
@@ -877,6 +914,11 @@ function buildRecentContextFromMetadata(
   const lastOutboundType = normalizeDisplayText(typeof record.lastOutboundType === 'string' ? record.lastOutboundType : null)
   if (lastOutboundType) {
     lines.push(`ultimo_outbound=${lastOutboundType}`)
+  }
+
+  const postSaleContext = readPostSaleContext(metadata)
+  if (postSaleContext?.stage) {
+    lines.push(`pos_venda_etapa=${postSaleContext.stage}`)
   }
 
   if (record.lastInboundHasAttachment === true) {
@@ -2200,6 +2242,206 @@ export async function resolveCustomerStatus(
     })
   }
 
+  const postSaleContext = readPostSaleContext(state?.metadata)
+  const postSaleRatingOutcome = readPostSaleRatingOutcome(effectiveMessageText, postSaleContext)
+
+  if (postSaleContext) {
+    if (postSaleRatingOutcome?.rating && postSaleContext.postSalesId) {
+      await consumeForceAiOverrideIfNeeded()
+      await concludePostSaleFromWhatsApp({
+        tenantId: channel.tenant_id,
+        storeId: channel.store_id,
+        postSalesId: postSaleContext.postSalesId,
+        rating: postSaleRatingOutcome.rating,
+      })
+
+      const text = postSaleThanksText(postSaleRatingOutcome.rating)
+      await setCurrentConversationState('silent', AFTER_STATUS_SILENCE_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
+        reason: 'post_sale_rating_received',
+        postSaleContext: {
+          ...postSaleContext,
+          stage: 'completed',
+        } as unknown as Json,
+        ...buildDecisionMetadata({
+          intent: 'post_sale_positive',
+          confidence: null,
+          action: 'post_sale_rating_received',
+          outboundType: 'post_sale_rating_received',
+        }),
+      }), 'assistant', text))
+
+      return createCurrentOutbound(text, 'post_sale_rating_received', {
+        ...buildWhatsAppCanonicalPayload({
+          intent: 'post_sale_positive',
+          action: 'post_sale_rating_received',
+          outboundType: 'post_sale_rating_received',
+          canonicalReply: text,
+          facts: {
+            postSalesId: postSaleContext.postSalesId,
+            serviceOrderId: postSaleContext.serviceOrderId ?? null,
+            customerId: postSaleContext.customerId ?? null,
+            rating: postSaleRatingOutcome.rating,
+          },
+        }),
+      })
+    }
+
+    const postSaleClassification = await classifyWhatsAppIntent({
+      messageText: effectiveMessageText || '',
+      channelLabel: channel.instance_key,
+      storeName: storeProfile.name,
+      conversationState: state?.state ?? null,
+      recentContext,
+      conversationHistory,
+      hasRecentAttachment: hasRecentAttachmentContext(state),
+      hasOpenOrder: hasKnownOpenOrderContext(state),
+      handoffActive: false,
+    })
+
+    await recordAiResult('intent_classification', postSaleClassification)
+
+    if (
+      postSaleClassification.success
+      && postSaleClassification.data.intent === 'complaint_or_adaptation'
+    ) {
+      await consumeForceAiOverrideIfNeeded()
+      const text = postSaleComplaintHandoffText()
+      await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
+        reason: 'post_sale_complaint_handoff',
+        handoff_internal_note: 'Cliente sinalizou reclamacao/adaptacao ruim no pos-venda automatico.',
+        postSaleContext: {
+          ...postSaleContext,
+          stage: 'handoff',
+        } as unknown as Json,
+        ...buildDecisionMetadata({
+          intent: postSaleClassification.data.intent,
+          confidence: postSaleClassification.data.confidence,
+          action: 'human_handoff',
+          outboundType: 'human_handoff',
+        }),
+      }), 'assistant', text))
+
+      return withAiDiagnostics(await createCurrentOutbound(text, 'human_handoff', {
+        ...buildWhatsAppCanonicalPayload({
+          intent: postSaleClassification.data.intent,
+          action: 'human_handoff',
+          outboundType: 'human_handoff',
+          canonicalReply: text,
+          facts: {
+            postSalesId: postSaleContext.postSalesId ?? null,
+            serviceOrderId: postSaleContext.serviceOrderId ?? null,
+            customerId: postSaleContext.customerId ?? null,
+          },
+        }),
+      }))
+    }
+
+    if (
+      postSaleClassification.success
+      && postSaleClassification.data.intent === 'human_agent_request'
+    ) {
+      await consumeForceAiOverrideIfNeeded()
+      const text = humanHandoffText()
+      await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
+        reason: 'post_sale_requested_human',
+        handoff_internal_note: 'Cliente pediu atendente humano durante o pos-venda automatico.',
+        postSaleContext: {
+          ...postSaleContext,
+          stage: 'handoff',
+        } as unknown as Json,
+        ...buildDecisionMetadata({
+          intent: postSaleClassification.data.intent,
+          confidence: postSaleClassification.data.confidence,
+          action: 'human_handoff',
+          outboundType: 'human_handoff',
+        }),
+      }), 'assistant', text))
+
+      return withAiDiagnostics(await createCurrentOutbound(text, 'human_handoff', {
+        ...buildWhatsAppCanonicalPayload({
+          intent: postSaleClassification.data.intent,
+          action: 'human_handoff',
+          outboundType: 'human_handoff',
+          canonicalReply: text,
+        }),
+      }))
+    }
+
+    if (
+      postSaleClassification.success
+      && postSaleClassification.data.intent === 'post_sale_positive'
+    ) {
+      if (postSaleContext.stage === 'awaiting_feedback') {
+        await consumeForceAiOverrideIfNeeded()
+        const text = postSaleRatingPromptText()
+        await setCurrentConversationState('ai_session', AI_SESSION_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
+          reason: 'post_sale_rating_requested',
+          postSaleContext: {
+            ...postSaleContext,
+            stage: 'awaiting_rating',
+            ratingPromptCount: 1,
+          } as unknown as Json,
+          ...buildDecisionMetadata({
+            intent: postSaleClassification.data.intent,
+            confidence: postSaleClassification.data.confidence,
+            action: 'post_sale_request_rating',
+            outboundType: 'post_sale_rating_prompt',
+          }),
+        }), 'assistant', text))
+
+        return withAiDiagnostics(await createCurrentOutbound(text, 'post_sale_rating_prompt', {
+          ...buildWhatsAppCanonicalPayload({
+            intent: postSaleClassification.data.intent,
+            action: 'post_sale_request_rating',
+            outboundType: 'post_sale_rating_prompt',
+            canonicalReply: text,
+            facts: {
+              postSalesId: postSaleContext.postSalesId ?? null,
+              serviceOrderId: postSaleContext.serviceOrderId ?? null,
+              customerId: postSaleContext.customerId ?? null,
+            },
+          }),
+        }))
+      }
+
+      if (postSaleContext.stage === 'awaiting_rating') {
+        await consumeForceAiOverrideIfNeeded()
+        await setCurrentConversationState('ai_session', AI_SESSION_MS, mergeMetadata(baseMetadata, {
+          reason: 'post_sale_waiting_numeric_rating',
+          postSaleContext: {
+            ...postSaleContext,
+            stage: 'awaiting_rating',
+            ratingPromptCount: Math.max(1, Number(postSaleContext.ratingPromptCount || 0)),
+          } as unknown as Json,
+          ...buildDecisionMetadata({
+            intent: postSaleClassification.data.intent,
+            confidence: postSaleClassification.data.confidence,
+            action: 'no_reply',
+            outboundType: null,
+          }),
+        }))
+        return withAiDiagnostics(await ignoreInbound(inbound.id))
+      }
+    }
+
+    await consumeForceAiOverrideIfNeeded()
+    await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+      reason: 'post_sale_low_confidence_handoff',
+      handoff_internal_note: postSaleLowConfidenceHandoffNote(),
+      postSaleContext: {
+        ...postSaleContext,
+        stage: 'handoff',
+      } as unknown as Json,
+      ...buildDecisionMetadata({
+        intent: postSaleClassification.success ? postSaleClassification.data.intent : null,
+        confidence: postSaleClassification.success ? postSaleClassification.data.confidence : null,
+        action: 'silent_handoff',
+        outboundType: null,
+      }),
+    }))
+    return withAiDiagnostics(await ignoreInbound(inbound.id))
+  }
+
   const genericPixReply = !paymentReminderContext && looksLikePixRequest(effectiveMessageText)
     ? buildGenericPixReply(storeProfile)
     : null
@@ -2284,6 +2526,10 @@ export async function resolveCustomerStatus(
     }
 
     if (classification.success && postClassificationRoute !== 'fallback') {
+      if (postClassificationRoute === 'post_sale_positive') {
+        return withAiDiagnostics(await ignoreInbound(inbound.id))
+      }
+
       if (postClassificationRoute === 'human_handoff') {
         await consumeForceAiOverrideIfNeeded()
         await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {

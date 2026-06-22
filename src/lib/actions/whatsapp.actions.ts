@@ -16,12 +16,17 @@ import {
   buildInstallmentDueReminderSettings,
   DEFAULT_INSTALLMENT_DUE_REMINDER_TEMPLATE,
 } from '@/lib/whatsapp/installment-reminders'
+import {
+  buildPostSaleFollowupSettings,
+  DEFAULT_POST_SALE_FOLLOWUP_TEMPLATE,
+} from '@/lib/whatsapp/post-sale-followup'
 import type {
   StoreSettings,
   WhatsAppAiResponderSettings,
   WhatsAppInstallmentDueReminderSettings,
   WhatsAppAutomationOsOnDemandSettings,
   WhatsAppOsReplyTemplates,
+  WhatsAppPostSaleFollowupSettings,
 } from '@/lib/store-modules'
 
 export type WhatsAppChannel = {
@@ -67,11 +72,18 @@ export type WhatsAppOsResponderSettingsResult = {
 }
 
 export type WhatsAppInstallmentReminderSettings = Required<WhatsAppInstallmentDueReminderSettings>
+export type WhatsAppPostSaleFollowupControlSettings = Required<WhatsAppPostSaleFollowupSettings>
 
 export type WhatsAppInstallmentReminderSettingsResult = {
   success: boolean
   message: string
   settings?: WhatsAppInstallmentReminderSettings
+}
+
+export type WhatsAppPostSaleFollowupSettingsResult = {
+  success: boolean
+  message: string
+  settings?: WhatsAppPostSaleFollowupControlSettings
 }
 
 export type WhatsAppAiResponderControlSettings = Required<WhatsAppAiResponderSettings>
@@ -120,6 +132,14 @@ const InstallmentReminderSettingsSchema = z.object({
   storeId: z.coerce.number().int().positive(),
   enabled: z.boolean(),
   template: z.string().trim().min(20, 'Informe um texto para o lembrete.').max(1200),
+})
+
+const PostSaleFollowupSettingsSchema = z.object({
+  storeId: z.coerce.number().int().positive(),
+  enabled: z.boolean(),
+  template: z.string().trim().min(20, 'Informe um texto para o pos-venda.').max(1200),
+  daysAfterDelivery: z.coerce.number().int().min(1).max(60),
+  businessHoursOnly: z.boolean(),
 })
 
 const AutomationControlSettingsSchema = z.object({
@@ -229,6 +249,12 @@ function buildReminderSettings(
   saved: WhatsAppInstallmentDueReminderSettings | undefined
 ): WhatsAppInstallmentReminderSettings {
   return buildInstallmentDueReminderSettings(saved)
+}
+
+function buildPostSaleSettings(
+  saved: WhatsAppPostSaleFollowupSettings | undefined
+): WhatsAppPostSaleFollowupControlSettings {
+  return buildPostSaleFollowupSettings(saved)
 }
 
 function buildAutomationControlSettings(saved: StoreSettings['whatsapp_automation'] | undefined): WhatsAppAutomationControlSettings {
@@ -358,6 +384,24 @@ export async function getWhatsAppInstallmentReminderSettings(storeId: number): P
   } catch (error) {
     console.error('[WhatsApp] Failed to load installment reminder settings:', error)
     return { success: false, message: 'Nao foi possivel carregar os lembretes de vencimento.' }
+  }
+}
+
+export async function getWhatsAppPostSaleFollowupSettings(storeId: number): Promise<WhatsAppPostSaleFollowupSettingsResult> {
+  if (!await getAuthorizedProfile(storeId)) {
+    return { success: false, message: 'Acesso negado.' }
+  }
+
+  try {
+    const settings = await loadStoreSettings(storeId)
+    return {
+      success: true,
+      message: '',
+      settings: buildPostSaleSettings(settings.whatsapp_automation?.post_sale_followup),
+    }
+  } catch (error) {
+    console.error('[WhatsApp] Failed to load post-sale follow-up settings:', error)
+    return { success: false, message: 'Nao foi possivel carregar o pos-venda automatico.' }
   }
 }
 
@@ -501,6 +545,51 @@ export async function saveWhatsAppInstallmentReminderSettings(input: {
   } catch (error) {
     console.error('[WhatsApp] Failed to save installment reminder settings:', error)
     return { success: false, message: 'Nao foi possivel salvar os lembretes de vencimento.' }
+  }
+}
+
+export async function saveWhatsAppPostSaleFollowupSettings(input: {
+  storeId: number
+  enabled: boolean
+  template: string
+  daysAfterDelivery: number
+  businessHoursOnly: boolean
+}): Promise<WhatsAppPostSaleFollowupSettingsResult> {
+  const parsed = PostSaleFollowupSettingsSchema.safeParse(input)
+  if (!parsed.success) {
+    return { success: false, message: parsed.error.issues[0]?.message || 'Dados invalidos.' }
+  }
+
+  const profile = await getAuthorizedProfile(parsed.data.storeId)
+  if (!profile) return { success: false, message: 'Acesso negado.' }
+
+  try {
+    const currentSettings = await loadStoreSettings(parsed.data.storeId)
+    const nextSettings: Partial<StoreSettings> = {
+      whatsapp_automation: {
+        ...(currentSettings.whatsapp_automation || {}),
+        post_sale_followup: {
+          enabled: parsed.data.enabled,
+          template: parsed.data.template || DEFAULT_POST_SALE_FOLLOWUP_TEMPLATE,
+          days_after_delivery: parsed.data.daysAfterDelivery,
+          business_hours_only: parsed.data.businessHoursOnly,
+        },
+      },
+    }
+
+    const result = await updateStoreSettings(parsed.data.storeId, nextSettings)
+    if (!result.success) {
+      return { success: false, message: result.message }
+    }
+
+    return {
+      success: true,
+      message: 'Pos-venda automatico atualizado.',
+      settings: buildPostSaleSettings(nextSettings.whatsapp_automation?.post_sale_followup),
+    }
+  } catch (error) {
+    console.error('[WhatsApp] Failed to save post-sale follow-up settings:', error)
+    return { success: false, message: 'Nao foi possivel salvar o pos-venda automatico.' }
   }
 }
 

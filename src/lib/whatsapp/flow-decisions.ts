@@ -4,6 +4,7 @@ export type WhatsAppPostClassificationDecision =
   | 'order_status'
   | 'store_hours'
   | 'store_location'
+  | 'post_sale_positive'
   | 'budget_request'
   | 'complaint_or_adaptation'
   | 'pickup_or_scheduling'
@@ -39,6 +40,10 @@ export function decidePostClassificationRoute(
 
   if (input.intent === 'payment_info') {
     return 'payment_info'
+  }
+
+  if (input.intent === 'post_sale_positive') {
+    return 'post_sale_positive'
   }
 
   if (input.intent === 'pickup_or_scheduling' && !input.automationCandidate) {
