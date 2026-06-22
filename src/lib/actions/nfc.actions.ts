@@ -147,6 +147,13 @@ type ActionResult = {
   message?: string
 }
 
+type AuthorizedUserResult =
+  | {
+      success: true
+      userId: string
+    }
+  | ActionResult
+
 function createNfcAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -183,9 +190,53 @@ function publicDatabaseMessage(
     return error.message || fallback
   }
   if (error.code === '23505') {
-    return 'Esta bandeja ou OS já está vinculada.'
+    return 'Este envelope ou OS já está vinculado.'
   }
   return fallback
+}
+
+async function requireAuthorizedStoreUser(
+  storeId: number
+): Promise<AuthorizedUserResult> {
+  const supabase = createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { success: false, message: 'Usuário não autenticado.' }
+  }
+
+  const supabaseAdmin = createNfcAdminClient()
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select('role,store_id')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  if (profileError) {
+    console.error('[NFC] Falha ao buscar perfil:', profileError)
+    return {
+      success: false,
+      message: 'Não foi possível validar sua permissão.',
+    }
+  }
+
+  if (!profile || !['admin', 'manager'].includes(profile.role ?? '')) {
+    return {
+      success: false,
+      message: 'Apenas administradores ou gerentes podem operar este envelope.',
+    }
+  }
+
+  if (profile.role !== 'admin' && Number(profile.store_id) !== storeId) {
+    return {
+      success: false,
+      message: 'Você não tem permissão para operar envelopes nesta loja.',
+    }
+  }
+
+  return { success: true, userId: user.id }
 }
 
 export async function getTrayContext(
@@ -193,7 +244,7 @@ export async function getTrayContext(
   storeId: number
 ): Promise<TrayContextResult> {
   if (!isValidStoreId(storeId) || !isValidTrayId(trayId)) {
-    return { success: false, message: 'URL de bandeja inválida.' }
+    return { success: false, message: 'URL de envelope inválida.' }
   }
 
   const supabaseAdmin = createNfcAdminClient()
@@ -206,7 +257,7 @@ export async function getTrayContext(
 
   if (error) {
     console.error('[NFC] Falha ao buscar bandeja:', error)
-    return { success: false, message: 'Erro ao buscar bandeja.' }
+    return { success: false, message: 'Erro ao buscar envelope.' }
   }
 
   if (!tray) {
@@ -218,7 +269,7 @@ export async function getTrayContext(
     if (!user) {
       return {
         success: false,
-        message: 'Bandeja não cadastrada. Entre no sistema para cadastrá-la.',
+        message: 'Envelope não cadastrado. Entre no sistema para cadastrá-lo.',
         requireAuth: true,
       }
     }
@@ -227,12 +278,25 @@ export async function getTrayContext(
   }
 
   if (tray.status !== 'active') {
-    return { success: false, message: 'Esta bandeja está inativa ou perdida.' }
+    return { success: false, message: 'Este envelope está inativo ou perdido.' }
   }
 
   const typedTray = tray as TrayData
   if (!typedTray.current_service_order_id) {
-    return { success: true, tray: typedTray, nextAction: 'VINCULAR_OS' }
+    const supabase = createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    return {
+      success: !!user,
+      message: user
+        ? undefined
+        : 'Entre no sistema para vincular uma Ordem de Serviço a este envelope.',
+      tray: typedTray,
+      nextAction: 'VINCULAR_OS',
+      requireAuth: !user,
+    }
   }
 
   const { data: osData, error: osError } = await supabaseAdmin
@@ -250,7 +314,8 @@ export async function getTrayContext(
   if (!osData) {
     return {
       success: false,
-      message: 'A bandeja possui um vínculo inválido. Solicite a correção ao administrador.',
+      message:
+        'Este envelope possui um vínculo inválido. Solicite a correção ao administrador.',
     }
   }
 
@@ -281,59 +346,31 @@ export async function createNfcTray(
   storeId: number
 ): Promise<ActionResult> {
   if (!isValidStoreId(storeId) || !isValidTrayId(trayId)) {
-    return { success: false, message: 'Identificador de bandeja inválido.' }
+    return { success: false, message: 'Identificador de envelope inválido.' }
   }
 
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return { success: false, message: 'Usuário não autenticado.' }
+  const authResult = await requireAuthorizedStoreUser(storeId)
+  if (!('userId' in authResult)) {
+    return authResult
   }
 
   const supabaseAdmin = createNfcAdminClient()
-  const { data: profile, error: profileError } = await supabaseAdmin
-    .from('profiles')
-    .select('role,store_id')
-    .eq('id', user.id)
-    .maybeSingle()
-
-  if (profileError) {
-    console.error('[NFC] Falha ao buscar perfil:', profileError)
-    return { success: false, message: 'Não foi possível validar sua permissão.' }
-  }
-
-  if (!profile || !['admin', 'manager'].includes(profile.role ?? '')) {
-    return {
-      success: false,
-      message: 'Apenas administradores ou gerentes podem cadastrar bandejas.',
-    }
-  }
-  if (profile.role !== 'admin' && Number(profile.store_id) !== storeId) {
-    return {
-      success: false,
-      message: 'Você não tem permissão para cadastrar bandejas nesta loja.',
-    }
-  }
-
   const { error } = await supabaseAdmin.rpc('create_nfc_tray', {
     p_tray_id: trayId,
     p_store_id: storeId,
-    p_created_by_user_id: user.id,
+    p_created_by_user_id: authResult.userId,
   })
 
   if (error) {
     console.error('[NFC] Falha ao cadastrar bandeja:', error)
     return {
       success: false,
-      message: publicDatabaseMessage(error, 'Erro ao cadastrar bandeja.'),
+      message: publicDatabaseMessage(error, 'Erro ao cadastrar envelope.'),
     }
   }
 
   revalidatePath(`/nfc/${storeId}/bandeja/${trayId}`)
-  return { success: true, message: 'Bandeja cadastrada com sucesso.' }
+  return { success: true, message: 'Envelope cadastrado com sucesso.' }
 }
 
 export async function linkOsToTray(
@@ -348,6 +385,11 @@ export async function linkOsToTray(
     osId <= 0
   ) {
     return { success: false, message: 'Dados de vinculação inválidos.' }
+  }
+
+  const authResult = await requireAuthorizedStoreUser(storeId)
+  if (!('userId' in authResult)) {
+    return authResult
   }
 
   const supabaseAdmin = createNfcAdminClient()
@@ -366,7 +408,7 @@ export async function linkOsToTray(
   }
 
   revalidatePath(`/nfc/${storeId}/bandeja/${trayId}`)
-  return { success: true, message: `Bandeja vinculada à OS ${osId}.` }
+  return { success: true, message: `Envelope vinculado à OS ${osId}.` }
 }
 
 export async function advanceOsStatus(
@@ -375,7 +417,7 @@ export async function advanceOsStatus(
   actionType: NfcAction
 ): Promise<ActionResult> {
   if (!isValidStoreId(storeId) || !isValidTrayId(trayId)) {
-    return { success: false, message: 'Dados da bandeja inválidos.' }
+    return { success: false, message: 'Dados do envelope inválidos.' }
   }
 
   const allowedActions: NfcAction[] = [
