@@ -991,10 +991,7 @@ export default function VendaInterfaceExperimental({
                                         <div className="flex items-center justify-between gap-4">
                                             <div>
                                                 <div className="text-sm font-black uppercase tracking-[0.2em] text-slate-200">
-                                                    Ordens de Servico
-                                                </div>
-                                                <div className="mt-1 text-xs text-slate-400">
-                                                    No modo de varias OSs por venda, a ficha tecnica fica na tela dedicada.
+                                                    Ordens de Serviço
                                                 </div>
                                             </div>
                                             <div className="shrink-0 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-300">
