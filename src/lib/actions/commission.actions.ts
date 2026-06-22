@@ -208,6 +208,17 @@ export type ResumoComissao = {
     detalhes: any[]
 }
 
+type GlobalOriginBaseItem = {
+    venda_id: number | null
+    venda_label: string
+    data_venda: string | null
+    valor_venda: number
+    valor_recebido: number
+    valor_lucro: number
+    os_labels: string[]
+    protocolo_labels: string[]
+}
+
 function formatDateOnly(date: Date) {
     return date.toISOString().split('T')[0]
 }
@@ -417,7 +428,7 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
             totalRecebidoPorVenda.set(pagamento.venda_id, atual + Number(pagamento.valor_pago || 0))
         })
 
-        const globalOriginBaseItems = (globalVendas || []).map((v: any) => {
+        const globalOriginBaseItems: GlobalOriginBaseItem[] = (globalVendas || []).map((v: any) => {
             const serviceOrders = Array.isArray(v?.service_orders) ? v.service_orders : []
             const osLabels = Array.from(
                 new Set(
@@ -527,18 +538,18 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
             const serviceOrders = Array.isArray(c.vendas?.service_orders) ? c.vendas.service_orders : []
             const osIds = serviceOrders
                 .map((os: any) => os?.id)
-                .filter((value: any) => typeof value === 'number')
+                .filter((value: unknown): value is number => typeof value === 'number')
             const protocolos = serviceOrders
                 .map((os: any) => (os?.protocolo_fisico || '').trim())
                 .filter((value: string) => value.length > 0)
             const osLabel = osIds.length > 0
-                ? Array.from(new Set(osIds)).map((id: number) => `#${id}`).join(', ')
+                ? Array.from(new Set<number>(osIds)).map((id) => `#${id}`).join(', ')
                 : null
             const protocoloLabel = protocolos.length > 0
                 ? Array.from(new Set(protocolos)).join(', ')
                 : null
             const globalOriginItems = isGlobalStore
-                ? globalOriginBaseItems.map((item) => {
+                ? globalOriginBaseItems.map((item: GlobalOriginBaseItem) => {
                     const rateStoreTotal = Number(c.employees?.comm_rate_store_total || 0)
                     const rateReceived = Number(c.employees?.comm_rate_received || 0)
                     const rateProfit = Number(c.employees?.comm_rate_profit || 0)
@@ -551,7 +562,7 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
                         ...item,
                         valor_comissao: Number(valorComissao.toFixed(2)),
                     }
-                }).filter((item) => item.valor_comissao > 0)
+                }).filter((item: GlobalOriginBaseItem & { valor_comissao: number }) => item.valor_comissao > 0)
                 : []
 
             if (isPago) resumo.comissao_paga += valor
