@@ -154,6 +154,12 @@ type AuthorizedUserResult =
     }
   | ActionResult
 
+type AuthenticatedStoreUserResult =
+  | {
+      success: true
+    }
+  | ActionResult
+
 function createNfcAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -237,6 +243,50 @@ async function requireAuthorizedStoreUser(
   }
 
   return { success: true, userId: user.id }
+}
+
+async function requireAuthenticatedStoreUser(
+  storeId: number
+): Promise<AuthenticatedStoreUserResult> {
+  const supabase = createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { success: false, message: 'Usuário não autenticado.' }
+  }
+
+  const supabaseAdmin = createNfcAdminClient()
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select('store_id')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  if (profileError) {
+    console.error('[NFC] Falha ao buscar perfil:', profileError)
+    return {
+      success: false,
+      message: 'Não foi possível validar sua permissão.',
+    }
+  }
+
+  if (!profile) {
+    return {
+      success: false,
+      message: 'Seu usuário não possui perfil vinculado.',
+    }
+  }
+
+  if (profile.store_id !== null && Number(profile.store_id) !== storeId) {
+    return {
+      success: false,
+      message: 'Você não tem permissão para operar envelopes nesta loja.',
+    }
+  }
+
+  return { success: true }
 }
 
 export async function getTrayContext(
@@ -387,8 +437,8 @@ export async function linkOsToTray(
     return { success: false, message: 'Dados de vinculação inválidos.' }
   }
 
-  const authResult = await requireAuthorizedStoreUser(storeId)
-  if (!('userId' in authResult)) {
+  const authResult = await requireAuthenticatedStoreUser(storeId)
+  if (!authResult.success) {
     return authResult
   }
 
