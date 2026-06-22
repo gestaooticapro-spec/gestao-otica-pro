@@ -13,6 +13,68 @@ export interface Database {
     Tables: {
       // --- TABELAS DE CONFIGURAÇÃO & GESTÃO ---
 
+      nfc_trays: {
+        Row: {
+          id: string
+          store_id: number
+          current_service_order_id: number | null
+          status: 'active' | 'inactive' | 'lost'
+          created_by_user_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          store_id: number
+          current_service_order_id?: number | null
+          status?: 'active' | 'inactive' | 'lost'
+          created_by_user_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          store_id?: number
+          current_service_order_id?: number | null
+          status?: 'active' | 'inactive' | 'lost'
+          created_by_user_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+
+      nfc_tray_events: {
+        Row: {
+          id: number
+          tray_id: string
+          store_id: number
+          service_order_id: number | null
+          action: 'TRAY_CREATED' | 'OS_LINKED' | 'LENS_RECEIVED' | 'ASSEMBLY_COMPLETED' | 'TRAY_UNLINKED'
+          metadata: Json
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          tray_id: string
+          store_id: number
+          service_order_id?: number | null
+          action: 'TRAY_CREATED' | 'OS_LINKED' | 'LENS_RECEIVED' | 'ASSEMBLY_COMPLETED' | 'TRAY_UNLINKED'
+          metadata?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          tray_id?: string
+          store_id?: number
+          service_order_id?: number | null
+          action?: 'TRAY_CREATED' | 'OS_LINKED' | 'LENS_RECEIVED' | 'ASSEMBLY_COMPLETED' | 'TRAY_UNLINKED'
+          metadata?: Json
+          created_at?: string
+        }
+        Relationships: []
+      }
+
       profiles: {
         Row: {
           id: string
@@ -1537,6 +1599,30 @@ export interface Database {
       [_ in never]: never
     }
     Functions: {
+      create_nfc_tray: {
+        Args: {
+          p_tray_id: string
+          p_store_id: number
+          p_created_by_user_id: string
+        }
+        Returns: Json
+      }
+      link_nfc_tray_os: {
+        Args: {
+          p_tray_id: string
+          p_store_id: number
+          p_os_id: number
+        }
+        Returns: Json
+      }
+      advance_nfc_tray: {
+        Args: {
+          p_tray_id: string
+          p_store_id: number
+          p_action: string
+        }
+        Returns: Json
+      }
       update_venda_financeiro: {
         Args: { p_venda_id: number }
         Returns: void

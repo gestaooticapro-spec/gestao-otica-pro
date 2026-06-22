@@ -376,7 +376,87 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
         await calcularComissoesGlobais(storeId, inicio, fim)
     }
 
+    const commissionMode = await getCommissionGenerationMode(storeId)
+
     try {
+        let globalVendasQuery = (supabase.from('vendas') as any)
+            .select(`
+                id, valor_final, created_at, data_fechamento, status,
+                venda_itens ( quantidade, product_id, produtos:products(preco_custo) ),
+                service_orders ( id, protocolo_fisico )
+            `)
+            .eq('store_id', storeId)
+
+        if (commissionMode === 'open_or_closed') {
+            globalVendasQuery = globalVendasQuery
+                .in('status', ['Em Aberto', 'Fechada'])
+                .gte('created_at', dataInicio)
+                .lte('created_at', dataFim)
+        } else {
+            globalVendasQuery = globalVendasQuery
+                .eq('status', 'Fechada')
+                .gte('data_fechamento', dataInicio)
+                .lte('data_fechamento', dataFim)
+        }
+
+        const { data: globalVendas, error: globalVendasError } = await globalVendasQuery
+        if (globalVendasError) throw globalVendasError
+
+        const { data: pagamentosDoPeriodo, error: pagamentosPeriodoError } = await (supabase.from('pagamentos') as any)
+            .select('venda_id, valor_pago')
+            .eq('store_id', storeId)
+            .gte('created_at', dataInicio)
+            .lte('created_at', dataFim)
+
+        if (pagamentosPeriodoError) throw pagamentosPeriodoError
+
+        const totalRecebidoPorVenda = new Map<number, number>()
+        ;(pagamentosDoPeriodo || []).forEach((pagamento: any) => {
+            if (typeof pagamento?.venda_id !== 'number') return
+            const atual = totalRecebidoPorVenda.get(pagamento.venda_id) || 0
+            totalRecebidoPorVenda.set(pagamento.venda_id, atual + Number(pagamento.valor_pago || 0))
+        })
+
+        const globalOriginBaseItems = (globalVendas || []).map((v: any) => {
+            const serviceOrders = Array.isArray(v?.service_orders) ? v.service_orders : []
+            const osLabels = Array.from(
+                new Set(
+                    serviceOrders
+                        .map((os: any) => (typeof os?.id === 'number' ? `#${os.id}` : null))
+                        .filter(Boolean)
+                )
+            ) as string[]
+            const protocolLabels = Array.from(
+                new Set(
+                    serviceOrders
+                        .map((os: any) => ((os?.protocolo_fisico || '').trim() || null))
+                        .filter(Boolean)
+                )
+            ) as string[]
+            let custoVenda = 0
+            ;(Array.isArray(v?.venda_itens) ? v.venda_itens : []).forEach((item: any) => {
+                const custoUnit = Number(item?.produtos?.preco_custo || 0)
+                const quantidade = Number(item?.quantidade || 1)
+                custoVenda += custoUnit * quantidade
+            })
+            const valorVenda = Number(v?.valor_final || 0)
+            const lucroVenda = Math.max(0, valorVenda - custoVenda)
+            const valorRecebido = totalRecebidoPorVenda.get(Number(v?.id || 0)) || 0
+
+            return {
+                venda_id: typeof v?.id === 'number' ? v.id : null,
+                venda_label: typeof v?.id === 'number' ? `#${v.id}` : '-',
+                data_venda: commissionMode === 'open_or_closed'
+                    ? (v?.created_at || null)
+                    : (v?.data_fechamento || v?.created_at || null),
+                valor_venda: valorVenda,
+                valor_recebido: valorRecebido,
+                valor_lucro: lucroVenda,
+                os_labels: osLabels,
+                protocolo_labels: protocolLabels,
+            }
+        })
+
         // CORREÇÃO: Busca comissões e filtra pela data_fechamento da VENDA,
         // não pelo created_at da comissão. Assim o relatório reflete o mês 
         // correto de fechamento.
@@ -384,8 +464,19 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
             .from('commissions') as any)
             .select(`
                 id, amount, status, created_at, venda_id, type, period_ref, commission_stage,
-                employees ( id, full_name ),
-                vendas ( valor_final, created_at, data_fechamento )
+                employees (
+                    id,
+                    full_name,
+                    comm_rate_store_total,
+                    comm_rate_received,
+                    comm_rate_profit
+                ),
+                vendas (
+                    valor_final,
+                    created_at,
+                    data_fechamento,
+                    service_orders ( id, protocolo_fisico )
+                )
             `)
             .eq('store_id', storeId)
             .not('employee_id', 'is', null)
@@ -432,6 +523,36 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
             }
 
             const resumo = mapa.get(empId)!
+            const isGlobalStore = (c.type || 'individual') === 'global_store'
+            const serviceOrders = Array.isArray(c.vendas?.service_orders) ? c.vendas.service_orders : []
+            const osIds = serviceOrders
+                .map((os: any) => os?.id)
+                .filter((value: any) => typeof value === 'number')
+            const protocolos = serviceOrders
+                .map((os: any) => (os?.protocolo_fisico || '').trim())
+                .filter((value: string) => value.length > 0)
+            const osLabel = osIds.length > 0
+                ? Array.from(new Set(osIds)).map((id: number) => `#${id}`).join(', ')
+                : null
+            const protocoloLabel = protocolos.length > 0
+                ? Array.from(new Set(protocolos)).join(', ')
+                : null
+            const globalOriginItems = isGlobalStore
+                ? globalOriginBaseItems.map((item) => {
+                    const rateStoreTotal = Number(c.employees?.comm_rate_store_total || 0)
+                    const rateReceived = Number(c.employees?.comm_rate_received || 0)
+                    const rateProfit = Number(c.employees?.comm_rate_profit || 0)
+                    const valorComissao =
+                        (item.valor_venda * (rateStoreTotal / 100)) +
+                        (item.valor_recebido * (rateReceived / 100)) +
+                        (item.valor_lucro * (rateProfit / 100))
+
+                    return {
+                        ...item,
+                        valor_comissao: Number(valorComissao.toFixed(2)),
+                    }
+                }).filter((item) => item.valor_comissao > 0)
+                : []
 
             if (isPago) resumo.comissao_paga += valor
             else resumo.comissao_pendente += valor
@@ -449,7 +570,10 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
                 valor_comissao: valor,
                 status: c.status,
                 type: c.type || 'individual',
-                commission_stage: c.commission_stage || 'final'
+                commission_stage: c.commission_stage || 'final',
+                os_id_label: isGlobalStore ? null : osLabel,
+                protocolo_fisico: isGlobalStore ? null : protocoloLabel,
+                global_origin_items: globalOriginItems
             })
         })
 
