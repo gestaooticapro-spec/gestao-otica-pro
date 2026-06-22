@@ -198,6 +198,12 @@ async function sendEvolutionText(instanceKey, phone, text) {
   return result
 }
 
+function isTimeoutError(error) {
+  return error?.name === 'TimeoutError'
+    || error?.name === 'AbortError'
+    || String(error?.message || '').toLowerCase().includes('timeout')
+}
+
 async function evolutionRequest(path, options = {}) {
   const response = await fetch(`${config.evolutionBaseUrl}${path}`, {
     ...options,
@@ -306,20 +312,29 @@ async function handleAdminMessageSend(payload) {
     throw error
   }
 
+  let result
   try {
-    const result = await sendEvolutionText(instanceKey, phone, text)
-    const providerMessageId = result.key?.id || result.messageId || result.id
-    await updateDelivery(outboundMessageId, 'sent', {
-      providerMessageId,
-      payload: result,
-    })
-    return { sent: true, providerMessageId }
+    result = await sendEvolutionText(instanceKey, phone, text)
   } catch (error) {
-    await updateDelivery(outboundMessageId, 'failed', {
-      errorMessage: error instanceof Error ? error.message : String(error),
-    })
+    if (!isTimeoutError(error)) {
+      const failedSynced = await updateDelivery(outboundMessageId, 'failed', {
+        errorMessage: error instanceof Error ? error.message : String(error),
+      })
+      if (!failedSynced) console.error('[whatsapp-automation] Failed to persist rejected delivery.')
+    } else {
+      console.error('[whatsapp-automation] Evolution send timed out; leaving outbound pending for reconciliation.')
+    }
     throw error
   }
+
+  const providerMessageId = result.key?.id || result.messageId || result.id
+  const deliverySynced = await updateDelivery(outboundMessageId, 'sent', {
+    providerMessageId,
+    payload: result,
+  })
+  if (!deliverySynced) console.error('[whatsapp-automation] Message sent, but delivery sync failed.')
+
+  return { sent: true, providerMessageId, deliverySynced }
 }
 
 async function setupEvolutionInstance(instanceKey) {
@@ -362,8 +377,10 @@ async function updateDelivery(outboundMessageId, status, details = {}) {
       errorMessage: details.errorMessage,
       payload: details.payload,
     })
+    return true
   } catch (error) {
     console.error('[delivery] Failed to report result:', error)
+    return false
   }
 }
 
@@ -395,21 +412,30 @@ async function handleMessage(instanceKey, payload) {
     return { ignored: true, duplicate: Boolean(status.duplicate) }
   }
 
+  let result
   try {
-    const result = await sendEvolutionText(instanceKey, status.phone, status.replyText)
-    const providerMessageId = result.key?.id || result.messageId || result.id
-    await updateDelivery(status.outboundMessageId, 'sent', {
-      providerMessageId,
-      payload: result,
-    })
-    console.log(`[webhook] sent instance=${instanceKey} phone=${status.phone} outbound=${status.outboundMessageId} text="${previewText(status.replyText)}"`)
-    return { sent: true }
+    result = await sendEvolutionText(instanceKey, status.phone, status.replyText)
   } catch (error) {
-    await updateDelivery(status.outboundMessageId, 'failed', {
-      errorMessage: error instanceof Error ? error.message : String(error),
-    })
+    if (!isTimeoutError(error)) {
+      const failedSynced = await updateDelivery(status.outboundMessageId, 'failed', {
+        errorMessage: error instanceof Error ? error.message : String(error),
+      })
+      if (!failedSynced) console.error('[whatsapp-automation] Failed to persist rejected reply delivery.')
+    } else {
+      console.error('[whatsapp-automation] Evolution reply timed out; leaving outbound pending for reconciliation.')
+    }
     throw error
   }
+
+  const providerMessageId = result.key?.id || result.messageId || result.id
+  const deliverySynced = await updateDelivery(status.outboundMessageId, 'sent', {
+    providerMessageId,
+    payload: result,
+  })
+  if (!deliverySynced) console.error('[whatsapp-automation] Reply sent, but delivery sync failed.')
+
+  console.log(`[webhook] sent instance=${instanceKey} phone=${status.phone} outbound=${status.outboundMessageId} text="${previewText(status.replyText)}" deliverySynced=${deliverySynced}`)
+  return { sent: true, providerMessageId, deliverySynced }
 }
 
 async function handleConnection(instanceKey, payload) {

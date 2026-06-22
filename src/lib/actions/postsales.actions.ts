@@ -5,6 +5,10 @@ import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
+import {
+  buildPostSaleFollowupSettings,
+  DEFAULT_POST_SALE_FOLLOWUP_DAYS,
+} from '@/lib/whatsapp/post-sale-followup'
 
 // TIPO ATUALIZADO COM DADOS FINANCEIROS E LENTES
 export type PostSaleQueueItem = {
@@ -34,14 +38,38 @@ export type Interaction = {
   registrado_por_id: string | null
 }
 
+function canAccessStore(profile: any, storeId: number) {
+  return profile?.role === 'admin' || Number(profile?.store_id) === storeId
+}
+
 // 1. BUSCAR FILA DE PÓS-VENDA
 export async function getFilaPosVenda(storeId: number) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user || !Number.isFinite(storeId)) return []
+
+  const profile = await getProfileByAdmin(user.id) as any
+  if (!profile?.tenant_id || !canAccessStore(profile, storeId)) return []
   if (!(await isStoreModuleEnabledForStore(storeId, 'postSales'))) return []
 
   const supabaseAdmin = createAdminClient()
 
+  // Respeita o mesmo days_after_delivery configurado para a automação de
+  // follow-up, para alinhar a fila manual com o disparo automatico. Fallback
+  // para o default (7 dias) caso nao haja settings configuradas.
+  const { data: storeRow } = await (supabaseAdmin.from('stores') as any)
+    .select('settings')
+    .eq('id', storeId)
+    .eq('tenant_id', profile.tenant_id)
+    .maybeSingle()
+  const storeSettings: any = storeRow?.settings || {}
+  const followupSettings = buildPostSaleFollowupSettings(
+    storeSettings.whatsapp_automation?.post_sale_followup
+  )
+  const daysAfterDelivery = followupSettings.days_after_delivery || DEFAULT_POST_SALE_FOLLOWUP_DAYS
+
   const hoje = new Date()
-  const dataCorte = new Date(hoje.setDate(hoje.getDate() - 7)).toISOString()
+  const dataCorte = new Date(hoje.setDate(hoje.getDate() - daysAfterDelivery)).toISOString()
 
   try {
     const { data: oss, error } = await (supabaseAdmin
@@ -58,6 +86,7 @@ export async function getFilaPosVenda(storeId: number) {
         vendas ( id, valor_final, valor_restante, status, financiamento_id )
       `)
       .eq('store_id', storeId)
+      .eq('tenant_id', profile.tenant_id)
       .not('dt_entregue_em', 'is', null)
       .lte('dt_entregue_em', dataCorte)
       .order('dt_entregue_em', { ascending: true })
@@ -115,13 +144,21 @@ export async function saveInteraction(formData: FormData) {
 
   const profile = await getProfileByAdmin(user.id) as any
   if (!profile?.tenant_id) return { success: false, message: 'Perfil erro' }
-  if (!(await isStoreModuleEnabledForStore(profile.store_id, 'postSales'))) {
+
+  const storeId = parseInt(formData.get('store_id') as string)
+  if (!Number.isFinite(storeId) || !canAccessStore(profile, storeId)) {
+    return { success: false, message: 'Loja invalida para esta sessao.' }
+  }
+  if (!(await isStoreModuleEnabledForStore(storeId, 'postSales'))) {
     return { success: false, message: 'Modulo de pos-venda desativado para esta loja.' }
   }
 
   const osId = parseInt(formData.get('os_id') as string)
-  const tipo = formData.get('tipo') as string
-  const resumo = formData.get('resumo') as string
+  const tipo = String(formData.get('tipo') || '').trim()
+  const resumo = String(formData.get('resumo') || '').trim()
+  if (!Number.isFinite(osId) || !tipo || !resumo) {
+    return { success: false, message: 'Informe a OS, o tipo de contato e o resumo.' }
+  }
 
   let postSalesId = formData.get('post_sales_id') && formData.get('post_sales_id') !== 'null'
     ? parseInt(formData.get('post_sales_id') as string)
@@ -130,54 +167,132 @@ export async function saveInteraction(formData: FormData) {
   const supabaseAdmin = createAdminClient()
 
   try {
+    const { data: serviceOrder, error: serviceOrderError } = await (supabaseAdmin.from('service_orders') as any)
+      .select('id, store_id, tenant_id')
+      .eq('id', osId)
+      .maybeSingle()
+    if (serviceOrderError) throw serviceOrderError
+    if (
+      !serviceOrder
+      || serviceOrder.store_id !== storeId
+      || serviceOrder.tenant_id !== profile.tenant_id
+    ) {
+      return { success: false, message: 'OS nao encontrada para esta loja.' }
+    }
+
+    if (postSalesId) {
+      const { data: existingPostSale, error: existingPostSaleError } = await (supabaseAdmin.from('post_sales') as any)
+        .select('id, service_order_id, store_id, tenant_id')
+        .eq('id', postSalesId)
+        .maybeSingle()
+      if (existingPostSaleError) throw existingPostSaleError
+      if (
+        !existingPostSale
+        || existingPostSale.service_order_id !== osId
+        || existingPostSale.store_id !== storeId
+        || existingPostSale.tenant_id !== profile.tenant_id
+      ) {
+        return { success: false, message: 'Pos-venda nao encontrado para esta OS.' }
+      }
+    }
+
+    if (!postSalesId) {
+      const { data: existingByOrder, error: existingByOrderError } = await (supabaseAdmin.from('post_sales') as any)
+        .select('id')
+        .eq('service_order_id', osId)
+        .eq('store_id', storeId)
+        .eq('tenant_id', profile.tenant_id)
+        .limit(1)
+        .maybeSingle()
+      if (existingByOrderError) throw existingByOrderError
+      postSalesId = existingByOrder?.id ?? null
+    }
+
     if (!postSalesId) {
       const { data: novoPai, error } = await (supabaseAdmin
         .from('post_sales') as any)
         .insert({
           tenant_id: profile.tenant_id,
-          store_id: profile.store_id!,
+          store_id: storeId,
           service_order_id: osId,
           status: 'Em Acompanhamento'
         })
         .select('id')
         .single()
-      if (error || !novoPai) throw new Error("Erro ao iniciar")
+      if (error) throw error
+      if (!novoPai) throw new Error("Erro ao iniciar")
       postSalesId = novoPai.id
     } else {
-      await (supabaseAdmin.from('post_sales') as any)
+      const { error: updateError } = await (supabaseAdmin.from('post_sales') as any)
         .update({ status: 'Em Acompanhamento', updated_at: new Date().toISOString() })
         .eq('id', postSalesId)
+        .eq('store_id', storeId)
+        .eq('tenant_id', profile.tenant_id)
+      if (updateError) throw updateError
     }
 
-    await (supabaseAdmin.from('post_sales_interactions') as any).insert({
+    const { error: interactionError } = await (supabaseAdmin.from('post_sales_interactions') as any).insert({
       tenant_id: profile.tenant_id,
-      store_id: profile.store_id!,
+      store_id: storeId,
       post_sales_id: postSalesId,
       registrado_por_id: user.id,
       tipo_contato: tipo,
       resumo: resumo
     })
+    if (interactionError) throw interactionError
 
-    revalidatePath(`/dashboard/loja/${profile.store_id}/pos-venda`)
-    return { success: true, message: 'Interação registrada.' }
+    revalidatePath(`/dashboard/loja/${storeId}/pos-venda`)
+    return { success: true, message: 'Interação registrada.', post_sales_id: postSalesId }
   } catch (e: any) { return { success: false, message: e.message } }
 }
 
 export async function concludePostSale(formData: FormData) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, message: 'Login necessário' }
+
+  const profile = await getProfileByAdmin(user.id) as any
+  if (!profile?.tenant_id) {
+    return { success: false, message: 'Perfil inválido.' }
+  }
+
   const supabaseAdmin = createAdminClient()
   const psId = parseInt(formData.get('post_sales_id') as string)
   const storeId = parseInt(formData.get('store_id') as string)
+  const rating = parseInt(formData.get('nota') as string)
+
+  // storeId do form deve bater com o da sessão (anti-troca de loja).
+  if (!Number.isFinite(psId) || !Number.isFinite(storeId) || !canAccessStore(profile, storeId)) {
+    return { success: false, message: 'Loja inválida para esta sessão.' }
+  }
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return { success: false, message: 'Avaliacao deve ser uma nota de 1 a 5.' }
+  }
   if (!(await isStoreModuleEnabledForStore(storeId, 'postSales'))) {
     return { success: false, message: 'Modulo de pos-venda desativado para esta loja.' }
   }
 
   try {
-    await (supabaseAdmin.from('post_sales') as any).update({
+    // Validar posse: o post_sales pertence à mesma loja/tenant do usuário.
+    const { data: target, error: targetError } = await (supabaseAdmin.from('post_sales') as any)
+      .select('store_id, tenant_id')
+      .eq('id', psId)
+      .maybeSingle()
+    if (targetError) throw targetError
+    if (!target || target.store_id !== storeId || target.tenant_id !== profile.tenant_id) {
+      return { success: false, message: 'Pós-venda não encontrado para esta loja.' }
+    }
+
+    const { error: updateError } = await (supabaseAdmin.from('post_sales') as any).update({
       status: 'Concluido',
-      avaliacao_cliente: parseInt(formData.get('nota') as string),
+      avaliacao_cliente: rating,
       observacoes_finais: formData.get('obs') as string,
       updated_at: new Date().toISOString()
-    }).eq('id', psId)
+    })
+      .eq('id', psId)
+      .eq('store_id', storeId)
+      .eq('tenant_id', profile.tenant_id)
+    if (updateError) throw updateError
 
     revalidatePath(`/dashboard/loja/${storeId}/pos-venda`)
     return { success: true, message: 'Concluído!' }
@@ -186,32 +301,60 @@ export async function concludePostSale(formData: FormData) {
 
 export async function getInteractions(postSalesId: number | null) {
   if (!postSalesId) return []
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const profile = await getProfileByAdmin(user.id) as any
+  if (!profile?.tenant_id) return []
+
   const supabaseAdmin = createAdminClient()
 
-  const { data: postSale } = await (supabaseAdmin.from('post_sales') as any)
-    .select('store_id')
+  const { data: postSale, error: postSaleError } = await (supabaseAdmin.from('post_sales') as any)
+    .select('store_id, tenant_id')
     .eq('id', postSalesId)
     .maybeSingle()
+  if (postSaleError) return []
 
-  if (!postSale?.store_id || !(await isStoreModuleEnabledForStore(postSale.store_id, 'postSales'))) return []
+  if (
+    !postSale?.store_id
+    || !canAccessStore(profile, postSale.store_id)
+    || postSale.tenant_id !== profile.tenant_id
+    || !(await isStoreModuleEnabledForStore(postSale.store_id, 'postSales'))
+  ) return []
 
-  const { data } = await (supabaseAdmin.from('post_sales_interactions') as any)
+  const { data, error: interactionsError } = await (supabaseAdmin.from('post_sales_interactions') as any)
     .select('*')
     .eq('post_sales_id', postSalesId)
     .order('created_at', { ascending: false })
+  if (interactionsError) return []
 
   return data as Interaction[]
 }
 
 export async function getPostSaleDetails(osId: number) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, message: 'Login necessário' }
+
+  const profile = await getProfileByAdmin(user.id) as any
+  if (!profile?.tenant_id) {
+    return { success: false, message: 'Perfil inválido.' }
+  }
+
   const supabaseAdmin = createAdminClient()
   try {
     const { data: osStore } = await (supabaseAdmin.from('service_orders') as any)
-      .select('store_id')
+      .select('store_id, tenant_id')
       .eq('id', osId)
       .maybeSingle()
 
-    if (!osStore?.store_id || !(await isStoreModuleEnabledForStore(osStore.store_id, 'postSales'))) {
+    if (
+      !osStore?.store_id
+      || !canAccessStore(profile, osStore.store_id)
+      || osStore.tenant_id !== profile.tenant_id
+      || !(await isStoreModuleEnabledForStore(osStore.store_id, 'postSales'))
+    ) {
       return { success: false, message: 'Modulo de pos-venda desativado para esta loja.' }
     }
 
@@ -227,6 +370,8 @@ export async function getPostSaleDetails(osId: number) {
         )
       `)
       .eq('id', osId)
+      .eq('store_id', osStore.store_id)
+      .eq('tenant_id', profile.tenant_id)
       .single()
 
     if (error) throw error
@@ -242,6 +387,19 @@ export async function getPostSaleDetails(osId: number) {
 // ATUALIZAR TELEFONE DO CLIENTE (via OS ID)
 // ==============================================================================
 export async function updateCustomerPhoneByOs(osId: number, newPhone: string, storeId: number) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, message: 'Login necessário' }
+
+  const profile = await getProfileByAdmin(user.id) as any
+  if (!profile?.tenant_id) {
+    return { success: false, message: 'Perfil inválido.' }
+  }
+
+  // storeId do caller deve bater com o da sessão.
+  if (!Number.isFinite(osId) || !canAccessStore(profile, storeId)) {
+    return { success: false, message: 'Loja inválida para esta sessão.' }
+  }
   if (!(await isStoreModuleEnabledForStore(storeId, 'postSales'))) {
     return { success: false, message: 'Modulo de pos-venda desativado para esta loja.' }
   }
@@ -251,18 +409,23 @@ export async function updateCustomerPhoneByOs(osId: number, newPhone: string, st
   try {
     const { data: os, error: osError } = await (supabaseAdmin
       .from('service_orders') as any)
-      .select('customer_id')
+      .select('customer_id, store_id, tenant_id')
       .eq('id', osId)
-      .single()
+      .maybeSingle()
 
     if (osError || !os?.customer_id) {
       throw new Error('OS não encontrada')
+    }
+    // Validar posse da OS.
+    if (os.store_id !== storeId || os.tenant_id !== profile.tenant_id) {
+      return { success: false, message: 'OS não pertence a esta loja.' }
     }
 
     const { error: updateError } = await (supabaseAdmin
       .from('customers') as any)
       .update({ fone_movel: newPhone })
       .eq('id', os.customer_id)
+      .eq('tenant_id', profile.tenant_id)
 
     if (updateError) throw updateError
 

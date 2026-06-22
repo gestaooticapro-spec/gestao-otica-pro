@@ -61,6 +61,11 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
     const [rating, setRating] = useState(0)
     const [obsFinal, setObsFinal] = useState('')
 
+    // post_sales_id ativo para o item selecionado. Pode nascer de um
+    // saveInteraction (quando o item ainda nao tinha post_sales). Evita o bug
+    // stale em que "Concluir" exige um post_sales_id que so existe apos refresh.
+    const [activePostSalesId, setActivePostSalesId] = useState<number | null>(null)
+
     const [detailsModalOpen, setDetailsModalOpen] = useState(false)
     const [detailsData, setDetailsData] = useState<any>(null)
     const [loadingDetails, setLoadingDetails] = useState(false)
@@ -72,6 +77,10 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
 
     const [isPending, startTransition] = useTransition()
     const selectedItem = initialQueue.find(item => item.os_id === selectedId)
+    // post_sales_id efetivo: preferencia do estado ativo (recem-criado),
+    // fallback para o do item da fila. Resolve a janela stale entre salvar a
+    // primeira interacao e o App Router reidratar o initialQueue.
+    const effectivePostSalesId = activePostSalesId ?? selectedItem?.post_sales_id ?? null
     const normalizedQuery = normalizeSearchText(searchName.trim())
     const filteredQueue = initialQueue.filter((item) => {
         if (!normalizedQuery) return true
@@ -88,6 +97,7 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
         setObsFinal('')
         setIsEditingPhone(false)
         setNewPhoneValue('')
+        setActivePostSalesId(null)
     }
 
     useEffect(() => {
@@ -126,20 +136,28 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
             const res = await saveInteraction(formData)
             if (res.success) {
                 setResumoMsg('')
-                if (selectedItem.post_sales_id) {
-                    const hist = await getInteractions(selectedItem.post_sales_id)
+                // Se a action devolveu o post_sales_id (caso de criacao), guarda
+                // no estado ativo para liberar o "Concluir" imediatamente, sem
+                // depender do revalidate do App Router.
+                const psId = res.post_sales_id
+                if (psId) setActivePostSalesId(psId)
+                const histId = psId ?? selectedItem.post_sales_id
+                if (histId) {
+                    const hist = await getInteractions(histId)
                     setInteractions(hist)
                 }
+                // Refresh para reidratar o initialQueue com o post_sales_id.
+                router.refresh()
             } else alert(res.message)
         })
     }
 
     const handleConclude = () => {
-        if (!selectedItem?.post_sales_id) return alert("Salve uma interação primeiro.")
+        if (!effectivePostSalesId) return alert("Salve uma interação primeiro.")
         if (rating === 0) return alert("Avaliação obrigatória.")
 
         const formData = new FormData()
-        formData.append('post_sales_id', selectedItem.post_sales_id.toString())
+        formData.append('post_sales_id', effectivePostSalesId.toString())
         formData.append('store_id', storeId.toString())
         formData.append('nota', rating.toString())
         formData.append('obs', obsFinal)
@@ -364,7 +382,7 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
                                     <form action={handleSaveInteraction} className="flex items-center gap-3">
                                         <input type="hidden" name="os_id" value={selectedItem.os_id} />
                                         <input type="hidden" name="store_id" value={storeId} />
-                                        <input type="hidden" name="post_sales_id" value={selectedItem.post_sales_id || ''} />
+                                        <input type="hidden" name="post_sales_id" value={effectivePostSalesId || ''} />
 
                                         <select name="tipo" value={tipoContato} onChange={e => setTipoContato(e.target.value)} className="w-28 rounded-xl bg-slate-800/80 border border-cyan-400/20 text-sm h-10 text-cyan-200 font-bold focus:ring-1 focus:ring-cyan-500/50 focus:border-cyan-500/50 cursor-pointer appearance-none px-3">
                                             <option className="bg-slate-800 text-cyan-200">WhatsApp</option>

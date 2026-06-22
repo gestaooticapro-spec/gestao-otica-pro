@@ -32,6 +32,12 @@ export type PostSaleContext = {
   ratingPromptCount?: number | null
 }
 
+export type StalePostSaleFollowupRecovery =
+  | 'reschedule'
+  | 'finalize_sent'
+  | 'mark_failed'
+  | 'manual_review'
+
 export function buildPostSaleFollowupSettings(
   saved: WhatsAppPostSaleFollowupSettings | undefined
 ): PostSaleFollowupSettings {
@@ -39,7 +45,8 @@ export function buildPostSaleFollowupSettings(
     enabled: saved?.enabled === true,
     template: saved?.template?.trim() || DEFAULT_POST_SALE_FOLLOWUP_TEMPLATE,
     days_after_delivery: Math.max(1, Number(saved?.days_after_delivery || DEFAULT_POST_SALE_FOLLOWUP_DAYS)),
-    business_hours_only: saved?.business_hours_only !== false,
+    // Pos-venda sempre respeita o horario comercial e os slots exclusivos.
+    business_hours_only: true,
   }
 }
 
@@ -78,12 +85,42 @@ export function extractPostSaleRating(message: string | null | undefined) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .trim()
 
-  const match = normalized.match(/\b(?:nota\s*)?([1-5])\b/)
-  if (!match) return null
+  if (!normalized) return null
 
-  const rating = Number(match[1])
-  return rating >= 1 && rating <= 5 ? rating : null
+  // 1) Prioriza "nota N" explícita em qualquer ponto da mensagem.
+  //    Ex.: "nota 5", "dei nota 4 pra voces", "nota:3".
+  const explicit = normalized.match(/\bnota\s*:?\s*([1-5])\b/)
+  if (explicit) {
+    const rating = Number(explicit[1])
+    if (rating >= 1 && rating <= 5) return rating
+  }
+
+  // 2) Mensagem composta APENAS pelo número (eventual pontuação/espacos).
+  //    Evita capturar digitos soltos em frases longas como "faz 2 dias, nota 5".
+  //    Aceita "5", "5!", "5 estrelas", "5/5".
+  const isolated = normalized.match(/^([1-5])\s*(?:(?:\/\s*5)|estrelas?)?\s*[!.?]*$/)
+  if (isolated) return Number(isolated[1])
+
+  return null
+}
+
+export function extractPostSaleRatingForStage(
+  message: string | null | undefined,
+  stage: PostSaleFollowupStage | null | undefined
+) {
+  return stage === 'awaiting_rating' ? extractPostSaleRating(message) : null
+}
+
+export function decideStalePostSaleFollowupRecovery(input: {
+  outboundMessageId: number | null
+  outboundStatus: string | null
+}): StalePostSaleFollowupRecovery {
+  if (!input.outboundMessageId) return 'reschedule'
+  if (input.outboundStatus === 'sent') return 'finalize_sent'
+  if (input.outboundStatus === 'failed') return 'mark_failed'
+  return 'manual_review'
 }
 
 export function readPostSaleContext(metadata: Json | null | undefined): PostSaleContext | null {

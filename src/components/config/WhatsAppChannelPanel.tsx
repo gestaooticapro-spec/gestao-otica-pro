@@ -969,18 +969,9 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                     className="h-11 w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 text-sm text-slate-200 outline-none transition focus:border-rose-300/40 focus:ring-2 focus:ring-rose-300/10"
                   />
 
-                  <label className="mt-4 flex items-start gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-3 text-xs text-slate-300">
-                    <input
-                      type="checkbox"
-                      checked={postSaleFollowupSettings.business_hours_only}
-                      onChange={(event) => {
-                        const checked = event.target.checked
-                        setPostSaleFollowupSettings((current) => current ? { ...current, business_hours_only: checked } : current)
-                      }}
-                      className="mt-0.5 h-4 w-4 rounded border-white/20 bg-slate-900 text-rose-400 focus:ring-rose-400"
-                    />
-                    <span>Enviar apenas em horario comercial.</span>
-                  </label>
+                  <p className="mt-4 rounded-xl border border-white/10 bg-slate-950/40 p-3 text-xs leading-relaxed text-slate-300">
+                    Os envios ocorrem sempre em horario comercial, nos intervalos de 9h15, 9h45 e assim por diante.
+                  </p>
                 </div>
               </div>
 

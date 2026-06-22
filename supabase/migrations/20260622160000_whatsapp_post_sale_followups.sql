@@ -31,6 +31,9 @@ CREATE TABLE IF NOT EXISTS public.whatsapp_post_sale_followups (
 CREATE INDEX IF NOT EXISTS idx_whatsapp_post_sale_followups_status_schedule
   ON public.whatsapp_post_sale_followups(status, scheduled_for);
 
+CREATE INDEX IF NOT EXISTS idx_whatsapp_post_sale_followups_status_updated
+  ON public.whatsapp_post_sale_followups(status, updated_at);
+
 CREATE INDEX IF NOT EXISTS idx_whatsapp_post_sale_followups_store_delivered
   ON public.whatsapp_post_sale_followups(store_id, delivered_at);
 

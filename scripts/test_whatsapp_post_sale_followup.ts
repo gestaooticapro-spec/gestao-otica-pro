@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import {
   buildPostSaleFollowupMessage,
   buildPostSaleFollowupSettings,
+  decideStalePostSaleFollowupRecovery,
   extractPostSaleRating,
+  extractPostSaleRatingForStage,
   readPostSaleContext,
 } from '@/lib/whatsapp/post-sale-followup'
 
@@ -23,7 +25,22 @@ assert.equal(message, 'Ola Maria! Como esta a adaptacao com os oculos de Joao Si
 assert.equal(extractPostSaleRating('5'), 5)
 assert.equal(extractPostSaleRating('nota 4'), 4)
 assert.equal(extractPostSaleRating('dou nota 2 pra adaptacao'), 2)
+assert.equal(extractPostSaleRating('faz 2 dias, nota 5'), 5)
+assert.equal(extractPostSaleRating('5!'), 5)
+assert.equal(extractPostSaleRating('5/5'), 5)
+assert.equal(extractPostSaleRating('5 estrelas!'), 5)
+assert.equal(extractPostSaleRating('10'), null)
+assert.equal(extractPostSaleRating('15'), null)
+assert.equal(extractPostSaleRating('50'), null)
+assert.equal(extractPostSaleRating('faz 3 dias, tudo ok'), null)
 assert.equal(extractPostSaleRating('zero'), null)
+assert.equal(extractPostSaleRatingForStage('nota 5', 'awaiting_feedback'), null)
+assert.equal(extractPostSaleRatingForStage('nota 5', 'awaiting_rating'), 5)
+
+assert.equal(decideStalePostSaleFollowupRecovery({ outboundMessageId: null, outboundStatus: null }), 'reschedule')
+assert.equal(decideStalePostSaleFollowupRecovery({ outboundMessageId: 10, outboundStatus: 'sent' }), 'finalize_sent')
+assert.equal(decideStalePostSaleFollowupRecovery({ outboundMessageId: 10, outboundStatus: 'failed' }), 'mark_failed')
+assert.equal(decideStalePostSaleFollowupRecovery({ outboundMessageId: 10, outboundStatus: 'pending' }), 'manual_review')
 
 const context = readPostSaleContext({
   postSaleContext: {

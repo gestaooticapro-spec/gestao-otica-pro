@@ -32,7 +32,7 @@ import {
 } from './humanization'
 import { findOpenInstallmentsByPhone } from '@/lib/actions/consultas.actions'
 import {
-  extractPostSaleRating,
+  extractPostSaleRatingForStage,
   readPostSaleContext,
   type PostSaleContext,
 } from './post-sale-followup'
@@ -142,7 +142,7 @@ type PaymentReminderContext = {
 
 type PostSaleRatingOutcome = {
   rating: number
-  stage: 'awaiting_feedback' | 'awaiting_rating'
+  stage: 'awaiting_rating'
 }
 
 type WhatsAppAiDiagnostic = {
@@ -704,10 +704,9 @@ function readPostSaleRatingOutcome(
   message: string | null | undefined,
   context: PostSaleContext | null
 ): PostSaleRatingOutcome | null {
-  const rating = extractPostSaleRating(message)
+  const rating = extractPostSaleRatingForStage(message, context?.stage)
   if (!rating || !context?.stage) return null
-  if (context.stage !== 'awaiting_feedback' && context.stage !== 'awaiting_rating') return null
-  return { rating, stage: context.stage }
+  return { rating, stage: 'awaiting_rating' }
 }
 
 function applyForceAiPostClassificationRoute(

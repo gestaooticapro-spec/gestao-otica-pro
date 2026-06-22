@@ -572,7 +572,7 @@ export async function saveWhatsAppPostSaleFollowupSettings(input: {
           enabled: parsed.data.enabled,
           template: parsed.data.template || DEFAULT_POST_SALE_FOLLOWUP_TEMPLATE,
           days_after_delivery: parsed.data.daysAfterDelivery,
-          business_hours_only: parsed.data.businessHoursOnly,
+          business_hours_only: true,
         },
       },
     }
