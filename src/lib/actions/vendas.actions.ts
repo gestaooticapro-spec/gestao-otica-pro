@@ -10,6 +10,7 @@ import { useCredit } from './wallet.actions'
 import { calcularERegistrarComissao, cancelarComissao, calcularComissaoMedico } from './commission.actions'
 import { checkLensStock, confirmReservations, cancelReservations, getLensReservationForOsSlot, releaseReservationsForServiceOrder, reserveLensByAdmin, type LensReservationSlot } from './stock.actions'
 import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
+import { clearNfcTrayLinkForDeliveredOrder } from '@/lib/nfc-tray-cleanup'
 
 // ================================================================
 // --- TIPOS GLOBAIS ---
@@ -354,6 +355,10 @@ export async function saveServiceOrder(
       if (error) throw error
       savedId = data.id
       if (!payload.protocolo_fisico) await (supabaseAdmin.from('service_orders') as any).update({ protocolo_fisico: savedId.toString() }).eq('id', savedId)
+    }
+
+    if (payload.dt_entregue_em) {
+      await clearNfcTrayLinkForDeliveredOrder(savedId, payload.dt_entregue_em)
     }
 
     // Limpa vínculos antigos

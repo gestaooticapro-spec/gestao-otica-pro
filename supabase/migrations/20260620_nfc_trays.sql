@@ -201,6 +201,7 @@ DECLARE
     v_tray public.nfc_trays%ROWTYPE;
     v_os public.service_orders%ROWTYPE;
     v_event_action TEXT;
+    v_now TIMESTAMPTZ := now();
 BEGIN
     IF p_action NOT IN ('LENTE_CHEGOU', 'MONTAGEM_CONCLUIDA', 'DESVINCULAR_BANDEJA') THEN
         RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'Ação NFC inválida.';
@@ -241,7 +242,8 @@ BEGIN
         END IF;
 
         UPDATE public.service_orders
-           SET dt_lente_chegou = now()
+           SET dt_pedido_em = COALESCE(dt_pedido_em, v_now),
+               dt_lente_chegou = v_now
          WHERE id = v_os.id;
         v_event_action := 'LENS_RECEIVED';
     ELSIF p_action = 'MONTAGEM_CONCLUIDA' THEN
@@ -253,7 +255,9 @@ BEGIN
         END IF;
 
         UPDATE public.service_orders
-           SET dt_montado_em = now()
+           SET dt_pedido_em = COALESCE(dt_pedido_em, COALESCE(dt_lente_chegou, v_now)),
+               dt_lente_chegou = COALESCE(dt_lente_chegou, v_now),
+               dt_montado_em = v_now
          WHERE id = v_os.id;
         v_event_action := 'ASSEMBLY_COMPLETED';
     ELSE
