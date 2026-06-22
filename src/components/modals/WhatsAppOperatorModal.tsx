@@ -212,7 +212,7 @@ function TechnicalPanel({
     )
   }
 
-  const installmentHint = summary.latestIntent === 'payment_info' ? summary.paymentInstallmentHint : null
+  const installmentHint = summary.paymentInstallmentHint
   const operationalDecision = summary.operationalDecision
 
   return (
@@ -262,6 +262,11 @@ function TechnicalPanel({
               <p className="mt-2 text-sm font-bold text-orange-50">
                 {installmentHint.customerName || 'Cliente com parcela encontrada'}
               </p>
+              {installmentHint.exactMatch ? (
+                <p className="mt-2 inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-400/15 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-200">
+                  Parcela exata encontrada
+                </p>
+              ) : null}
               <div className="mt-2 grid gap-1 text-xs text-orange-100/80">
                 <span>{installmentHint.count} parcela(s) em aberto</span>
                 <span>vencimento: {formatDateOnly(installmentHint.dueDate)}</span>
@@ -273,7 +278,7 @@ function TechnicalPanel({
                 className="mt-3 inline-flex items-center justify-center gap-2 rounded-xl bg-orange-400 px-3 py-2 text-xs font-black uppercase tracking-wider text-orange-950 transition hover:bg-orange-300"
               >
                 <Wallet className="h-3.5 w-3.5" />
-                Abrir parcelas
+                {installmentHint.exactMatch ? 'Abrir baixa manual' : 'Abrir parcelas'}
               </button>
             </div>
           </div>

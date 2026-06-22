@@ -189,6 +189,8 @@ export type WhatsAppOperatorTechnicalSummary = {
     dueDate: string | null
     amount: number | null
     searchQuery: string | null
+    exactMatch: boolean
+    source: string | null
   } | null
   metadata: Json | null
 }
@@ -449,6 +451,8 @@ function parsePaymentInstallmentHint(value: unknown): WhatsAppOperatorTechnicalS
     dueDate: asString(record.dueDate),
     amount: asNumber(record.amount),
     searchQuery: asString(record.searchQuery),
+    exactMatch: record.exactMatch === true,
+    source: asString(record.source),
   }
 }
 
@@ -1228,7 +1232,7 @@ export async function getWhatsAppOperatorThreadDetail(input: {
         latestInboundHasAttachment: stateMetadata.lastInboundHasAttachment === true,
         latestInboundAttachmentKind: asString(stateMetadata.lastInboundAttachmentKind),
         operationalDecision: buildOperationalDecisionSummary(
-          (stateRow as ConversationStateRow | null)?.state ?? null,
+          matchedStateRow?.state ?? null,
           stateMetadata
         ),
         aiSessionHistory: parseAiSessionHistory(stateMetadata.aiSessionMessages),

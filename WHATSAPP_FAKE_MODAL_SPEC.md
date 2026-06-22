@@ -41,6 +41,9 @@ Este documento nasceu como spec de implementacao. A partir daqui ele passa a acu
 - refinado painel tecnico para mostrar rota, motivo, silencio e handoff fora do JSON bruto
 - card do WhatsApp no radar voltou a expandir/recolher como os demais, com botao interno `Entrar` e contadores explicitos por tipo de acao
 - mensagens `fromMe` disparadas fora do modal passam a ser espelhadas em `whatsapp_outbound_messages`, preservando historico humano no thread operacional
+- follow-up de anexo nao responde mais de novo apos o primeiro handoff; depois do anexo a conversa fica em silencio aguardando humano
+- threads do WhatsApp operacional agora agrupam variacoes equivalentes do mesmo telefone, evitando duplicidade por formato diferente
+- comprovante com match exato por telefone + valor passa a preencher o card interno de parcelas no WhatsApp operacional
 
 ### Pendente relevante
 
@@ -168,6 +171,7 @@ Hoje o sistema ja possui a base tecnica necessaria para sustentar esse recurso:
 - existe envio real via servico de automacao:
   `/admin/messages/send`
 - o fluxo atual ja consegue extrair dados internos de comprovantes e anexos
+- o fluxo atual ja tenta cruzar comprovante recebido com parcela exata apenas quando existir match unico por `telefone + valor`
 - o servico da VPS ja imprime logs tecnicos de IA e tokens no SSH
 
 Ou seja: nao se trata de inventar um sistema paralelo. A implementacao deve aproveitar a infraestrutura atual.
@@ -723,6 +727,36 @@ mesmo ficando fora do V1 inicial, a necessidade ja foi confirmada e deve orienta
 - cliente mandar imagem/PDF/comprovante
 - dados internos aparecem no painel tecnico
 - nada interno e exposto como mensagem ao cliente
+
+### Comprovante com parcela exata
+- cliente mandar comprovante
+- sistema identificar `is_receipt = true`
+- sistema cruzar `telefone + valor`
+- somente se existir uma unica parcela aberta compativel, preencher atalho interno de parcelas no WhatsApp operacional
+- o atalho deve servir para facilitar a baixa manual pelo funcionario
+- se houver qualquer ambiguidade, nao chutar parcela provavel
+
+## Diretriz operacional consolidada para comprovantes
+
+Regra atual desejada:
+
+1. chegou um anexo
+2. se nao for comprovante, responder uma vez e entregar para humano
+3. se for comprovante:
+   - extrair os dados internos do comprovante
+   - tentar cruzar `valor + numero de telefone`
+   - somente quando existir match exato e unico, preencher o card interno de `Parcelas`
+   - esse card deve ajudar a equipe a abrir a baixa manual
+4. se o match nao for exato e unico:
+   - nao escolher parcela provavel
+   - nao exibir atalho enganoso
+   - manter apenas o handoff humano com dados tecnicos no painel
+
+Importante:
+
+- o sistema nao deve fazer baixa automatica sozinho nesse fluxo
+- o sistema nao deve responder novamente apos o primeiro handoff do anexo
+- `parcela mais provavel` nao e aceitavel para este caso de uso
 
 ## Arquivos provaveis a tocar
 

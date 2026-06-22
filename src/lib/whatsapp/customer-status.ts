@@ -115,6 +115,14 @@ type PaymentInstallmentMatch = {
   customer_name?: string | null
 }
 
+type ExactReceiptInstallmentMatch = {
+  installment_id: number
+  customer_id: number | null
+  due_date: string | null
+  amount: number | null
+  customer_name: string | null
+}
+
 type PaymentReminderContext = {
   reminderId?: number | null
   installmentId?: number | null
@@ -455,6 +463,8 @@ function buildPaymentInstallmentMetadata(
       dueDate: typeof first.due_date === 'string' ? first.due_date : null,
       amount: typeof first.amount === 'number' ? first.amount : Number(first.amount || 0) || null,
       searchQuery: customerName || fallbackPhone,
+      exactMatch: installments.length === 1,
+      source: 'phone_match',
     } as unknown as Json,
   }
 }
@@ -478,6 +488,26 @@ function buildPaymentInstallmentMetadataFromReminderContext(
       dueDate: context.dueDate ?? null,
       amount: context.amount ?? null,
       searchQuery: fallbackPhone,
+      exactMatch: true,
+      source: 'reminder_context',
+    } as unknown as Json,
+  }
+}
+
+function buildPaymentInstallmentMetadataFromExactReceiptMatch(
+  match: ExactReceiptInstallmentMatch
+): ConversationMetadataRecord {
+  return {
+    paymentInstallmentHint: {
+      count: 1,
+      firstInstallmentId: match.installment_id,
+      customerId: match.customer_id,
+      customerName: match.customer_name,
+      dueDate: match.due_date,
+      amount: match.amount,
+      searchQuery: match.customer_name || null,
+      exactMatch: true,
+      source: 'receipt_exact_match',
     } as unknown as Json,
   }
 }
@@ -1026,6 +1056,35 @@ async function findOpenInstallmentsByIdentifier(
   }
 
   return null
+}
+
+async function findExactInstallmentMatchByReceipt(
+  storeId: number,
+  phone: string,
+  receiptAmount: number | null | undefined
+): Promise<ExactReceiptInstallmentMatch | null> {
+  if (typeof receiptAmount !== 'number' || !Number.isFinite(receiptAmount) || receiptAmount <= 0) {
+    return null
+  }
+
+  const installments = await findOpenInstallmentsByPhone(storeId, phone)
+  if (!installments.length) return null
+
+  const matches = installments.filter((item: PaymentInstallmentMatch) => {
+    const amount = typeof item.amount === 'number' ? item.amount : Number(item.amount || 0)
+    return Number.isFinite(amount) && Math.abs(amount - receiptAmount) < 0.01
+  })
+
+  if (matches.length !== 1) return null
+
+  const match = matches[0]
+  return {
+    installment_id: Number(match.installment_id),
+    customer_id: typeof match.customer_id === 'number' ? match.customer_id : null,
+    due_date: typeof match.due_date === 'string' ? match.due_date : null,
+    amount: typeof match.amount === 'number' ? match.amount : Number(match.amount || 0) || null,
+    customer_name: typeof match.customer_name === 'string' ? match.customer_name : null,
+  }
 }
 
 async function findLatestOpenOs(storeId: number, customerId: number): Promise<OpenOsRow | null> {
@@ -1916,6 +1975,7 @@ export async function resolveCustomerStatus(
     let receiptExtraction: WhatsAppReceiptExtraction | null = null
     let intentOutcome = 'prescription_submission'
     let text = attachmentReceivedText()
+    let exactReceiptInstallmentMatch: ExactReceiptInstallmentMatch | null = null
 
     if (inboundPayloadMeta.base64 && inboundPayloadMeta.mimeType) {
       try {
@@ -1924,6 +1984,11 @@ export async function resolveCustomerStatus(
           receiptExtraction = result.data
           intentOutcome = 'payment_submission'
           text = 'Recebi seu comprovante. Vou repassar para nossa equipe dar baixa e continuar o atendimento por aqui.'
+          exactReceiptInstallmentMatch = await findExactInstallmentMatchByReceipt(
+            channel.store_id,
+            normalizedPhone,
+            result.data.amount
+          )
         }
       } catch (err) {
         console.error('Vision extraction error:', err)
@@ -1939,6 +2004,9 @@ export async function resolveCustomerStatus(
         fileName: inboundPayloadMeta.fileName,
         caption: inboundPayloadMeta.caption,
         ai_extracted_receipt: receiptExtraction,
+        ...(exactReceiptInstallmentMatch
+          ? buildPaymentInstallmentMetadataFromExactReceiptMatch(exactReceiptInstallmentMatch)
+          : {}),
         ...buildDecisionMetadata({
           intent: intentOutcome,
           action: 'human_handoff',
@@ -1951,6 +2019,9 @@ export async function resolveCustomerStatus(
         fileName: inboundPayloadMeta.fileName,
         caption: inboundPayloadMeta.caption,
         ai_extracted_receipt: receiptExtraction,
+        ...(exactReceiptInstallmentMatch
+          ? buildPaymentInstallmentMetadataFromExactReceiptMatch(exactReceiptInstallmentMatch)
+          : {}),
         ...buildWhatsAppCanonicalPayload({
           intent: intentOutcome,
           action: 'human_handoff',
@@ -1970,26 +2041,16 @@ export async function resolveCustomerStatus(
   }
 
   if (preAiRoute === 'attachment_followup_handoff') {
-    return applyOohTrapIfNeeded(async () => {
-      await consumeForceAiOverrideIfNeeded()
-      await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
-        reason: 'attachment_followup',
-        ...buildDecisionMetadata({
-          intent: null,
-          action: 'human_handoff',
-          outboundType: 'human_handoff',
-        }),
-      }))
-      const text = attachmentFollowupText()
-      return createCurrentOutbound(text, 'human_handoff', {
-        ...buildWhatsAppCanonicalPayload({
-          intent: null,
-          action: 'human_handoff',
-          outboundType: 'human_handoff',
-          canonicalReply: text,
-        }),
-      })
-    })
+    await consumeForceAiOverrideIfNeeded()
+    await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+      reason: 'attachment_followup_silent',
+      ...buildDecisionMetadata({
+        intent: null,
+        action: 'ignore_human_pause',
+        outboundType: null,
+      }),
+    }))
+    return ignoreInbound(inbound.id)
   }
 
   if (preAiRoute === 'preserve_human_handoff') {
@@ -2878,17 +2939,16 @@ export async function simulateCustomerStatus(
   }
 
   if (preAiRoute === 'attachment_followup_handoff' || preAiRoute === 'preserve_human_handoff') {
-    const text = attachmentFollowupText()
-    return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: text }, {
+    return buildResult({}, {
       overrideMode: controlMode,
       preAiRoute,
       postClassificationRoute: null,
-      action: 'human_handoff',
-      outboundType: 'human_handoff',
+      action: 'ignore_human_pause',
+      outboundType: null,
       state: state?.state ?? null,
       intent: null,
       confidence: null,
-      notes: ['Anexo recente preserva handoff humano.'],
+      notes: ['Anexo recente preserva handoff humano sem nova resposta automatica.'],
     })
   }
 
