@@ -8,7 +8,7 @@ import {
   Plus, ArrowRight, Clock, CheckCircle,
   Package, MessageCircle, RefreshCw, MessageSquare
 } from 'lucide-react'
-import { getWhatsAppLink } from '@/lib/utils'
+import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
 
 const COLUMNS = {
   'Triagem': { label: 'Triagem / Análise', color: 'bg-slate-500/5 border-white/10', accent: 'text-slate-400' },
@@ -26,6 +26,7 @@ export default function AssistanceKanban({ initialData, storeId }: { initialData
   // Controle do Modal de Timeline
   const [selectedTicket, setSelectedTicket] = useState<any>(null)
   const [isTimelineOpen, setIsTimelineOpen] = useState(false)
+  const [sendingWhatsAppId, setSendingWhatsAppId] = useState<number | null>(null)
 
   const [isPending, startTransition] = useTransition()
 
@@ -42,11 +43,28 @@ export default function AssistanceKanban({ initialData, storeId }: { initialData
     })
   }
 
-  const sendTrackingLink = (ticket: any) => {
+  const sendTrackingLink = async (ticket: any) => {
+    if (sendingWhatsAppId) return
     if (!ticket.customers?.fone_movel) return alert('Cliente sem telefone.')
     const link = `${window.location.origin}/rastreio/${ticket.tracking_token}`
     const msg = `Olá ${ticket.customers.full_name.split(' ')[0]}, acompanhe sua garantia aqui: ${link}`
-    window.open(getWhatsAppLink(ticket.customers.fone_movel, msg), '_blank')
+    setSendingWhatsAppId(ticket.id)
+    try {
+      await sendManualWhatsAppFromClient({
+        storeId,
+        remotePhone: ticket.customers.fone_movel,
+        messageText: msg,
+        messageType: 'assistance_update',
+        source: 'assistance.tracking_button',
+        metadata: {
+          ticketId: ticket.id,
+          trackingToken: ticket.tracking_token,
+          status: ticket.status,
+        },
+      })
+    } finally {
+      setSendingWhatsAppId(null)
+    }
   }
 
   const openTimeline = (ticket: any) => {
@@ -107,7 +125,7 @@ export default function AssistanceKanban({ initialData, storeId }: { initialData
 
                       <div className="border-t border-white/5 pt-3 mt-2 flex justify-between items-center">
                         <div className="flex gap-1">
-                          <button onClick={() => sendTrackingLink(ticket)} className="p-1.5 hover:bg-emerald-500/20 rounded-lg text-slate-500 hover:text-emerald-400 transition-colors" title="Rastreio WhatsApp">
+                          <button onClick={() => sendTrackingLink(ticket)} disabled={sendingWhatsAppId === ticket.id} className="p-1.5 hover:bg-emerald-500/20 rounded-lg text-slate-500 hover:text-emerald-400 transition-colors disabled:opacity-50" title="Rastreio WhatsApp">
                             <MessageCircle className="h-4 w-4" />
                           </button>
                           <button onClick={() => openTimeline(ticket)} className="p-1.5 hover:bg-blue-500/20 rounded-lg text-slate-500 hover:text-blue-400 transition-colors" title="Histórico / Chat">

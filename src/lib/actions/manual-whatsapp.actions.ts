@@ -256,6 +256,7 @@ export async function sendManualWhatsApp(input: SendManualWhatsAppInput): Promis
       instanceKey: channel.instance_key,
       phone: remotePhone,
       messageText,
+      mirrorOutbound: false,
       payload: {
         source,
         manual: true,

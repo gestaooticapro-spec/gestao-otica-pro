@@ -7,8 +7,8 @@ import {
     AlertCircle, Gift, Calendar, Package, ChevronRight, ChevronDown, ChevronUp,
     MessageCircle, CalendarClock, CalendarCheck, ArrowRight, Send, Users2, UserMinus, Layers3, Receipt
 } from 'lucide-react';
-import { openWhatsApp } from '@/lib/utils/whatsapp';
 import { getWhatsAppLink } from '@/lib/utils';
+import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client';
 import Link from 'next/link';
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
 
@@ -111,6 +111,7 @@ export default function OperatorMenuLojaVazia({
     const modules = useStoreModules();
 
     const [tooltip, setTooltip] = useState<{ visible: boolean, x: number, y: number, text: string }>({ visible: false, x: 0, y: 0, text: '' });
+    const [sendingWhatsAppKey, setSendingWhatsAppKey] = useState<string | null>(null);
     const hoverTimeout = useRef<NodeJS.Timeout | null>(null);
 
     const handleHover = (e: React.MouseEvent, text: string) => {
@@ -177,13 +178,28 @@ export default function OperatorMenuLojaVazia({
         fetchData();
     }, [storeId]);
 
-    const handleZapAniversario = (fone: string | null, nome: string) => {
+    const handleZapAniversario = async (fone: string | null, nome: string) => {
+        if (sendingWhatsAppKey) return;
         if (!fone) return alert(`${nome.split(' ')[0]} não tem celular cadastrado.`);
         const msg = `Oi ${nome.split(' ')[0]}! Sabemos que esse é um dia especial pra você. Te desejamos toda a felicidade do mundo!`;
-        openWhatsApp(fone, msg);
+        const key = `birthday:${fone}`;
+        setSendingWhatsAppKey(key);
+        try {
+            await sendManualWhatsAppFromClient({
+                storeId,
+                remotePhone: fone,
+                messageText: msg,
+                messageType: 'relationship',
+                source: 'operator_empty_store.birthday_button',
+                metadata: { customerName: nome },
+            });
+        } finally {
+            setSendingWhatsAppKey(null);
+        }
     };
 
-    const handleZapVencimento = (item: VencimentoProximo) => {
+    const handleZapVencimento = async (item: VencimentoProximo) => {
+        if (sendingWhatsAppKey) return;
         if (!item.fone_movel) return alert("Cliente sem celular cadastrado.");
         const primeiroNome = item.customer_name.split(' ')[0];
         const hoje = new Date().toISOString().split('T')[0];
@@ -192,14 +208,51 @@ export default function OperatorMenuLojaVazia({
         const dataFormatada = new Date(item.data_vencimento).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
         const textoDia = venceHoje ? "hoje" : `dia ${dataFormatada}`;
         const msg = `Olá ${primeiroNome}, tudo bem? Aqui é da ${storeName}. Passando apenas para lembrar que sua parcela (${item.numero_parcela}ª) vence ${textoDia}. Se precisar da chave Pix, é só pedir!`;
-        window.open(getWhatsAppLink(item.fone_movel, msg), '_blank');
+        const key = `installment:${item.id}`;
+        setSendingWhatsAppKey(key);
+        try {
+            await sendManualWhatsAppFromClient({
+                storeId,
+                remotePhone: item.fone_movel,
+                messageText: msg,
+                messageType: 'billing_reminder',
+                source: 'operator_empty_store.due_installment_button',
+                metadata: {
+                    installmentId: item.id,
+                    customerName: item.customer_name,
+                    dueDate: item.data_vencimento,
+                    installmentNumber: item.numero_parcela,
+                    amount: item.valor_parcela,
+                },
+            });
+        } finally {
+            setSendingWhatsAppKey(null);
+        }
     };
 
-    const handleZapClienteInativo = (cliente: ClienteInativo) => {
+    const handleZapClienteInativo = async (cliente: ClienteInativo) => {
+        if (sendingWhatsAppKey) return;
         if (!cliente.telefone) return alert(`${cliente.nome.split(' ')[0]} não tem celular cadastrado.`);
         const primeiroNome = cliente.nome.split(' ')[0];
         const msg = `Olá ${primeiroNome}, tudo bem? Aqui é da ${storeName}! Faz um tempinho que não te vemos por aqui. Que tal dar uma passadinha na loja? Temos novidades esperando por você! 😊`;
-        openWhatsApp(cliente.telefone, msg);
+        const key = `inactive:${cliente.telefone}`;
+        setSendingWhatsAppKey(key);
+        try {
+            await sendManualWhatsAppFromClient({
+                storeId,
+                remotePhone: cliente.telefone,
+                messageText: msg,
+                messageType: 'relationship',
+                source: 'operator_empty_store.inactive_customer_button',
+                metadata: {
+                    customerName: cliente.nome,
+                    totalGasto: cliente.totalGasto,
+                    ultimaVenda: cliente.ultimaVenda,
+                },
+            });
+        } finally {
+            setSendingWhatsAppKey(null);
+        }
     };
 
     // --- IDÊNTICO AO COMPONENTE INTERNO REUTILIZÁVEL ---
@@ -565,7 +618,8 @@ export default function OperatorMenuLojaVazia({
                                                 </div>
                                                 <button
                                                     onClick={() => handleZapVencimento(item)}
-                                                    className="w-8 h-8 rounded-full bg-green-500/20 text-green-400 hover:bg-green-500 hover:text-white flex items-center justify-center transition-all"
+                                                    disabled={sendingWhatsAppKey === `installment:${item.id}`}
+                                                    className="w-8 h-8 rounded-full bg-green-500/20 text-green-400 hover:bg-green-500 hover:text-white flex items-center justify-center transition-all disabled:opacity-50"
                                                 >
                                                     <MessageCircle className="w-4 h-4" />
                                                 </button>
@@ -595,7 +649,8 @@ export default function OperatorMenuLojaVazia({
                                                 </div>
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleZapAniversario(c.fone, c.nome); }}
-                                                    className="w-8 h-8 rounded-full bg-green-500/20 text-green-400 hover:bg-green-500 hover:text-white flex items-center justify-center transition-all"
+                                                    disabled={sendingWhatsAppKey === `birthday:${c.fone}`}
+                                                    className="w-8 h-8 rounded-full bg-green-500/20 text-green-400 hover:bg-green-500 hover:text-white flex items-center justify-center transition-all disabled:opacity-50"
                                                 >
                                                     <MessageCircle className="w-4 h-4" />
                                                 </button>

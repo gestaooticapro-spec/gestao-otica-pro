@@ -270,7 +270,7 @@ export default function ActionMenuDashboard({ storeId, storeName, deliveryDateEn
                   <>
                 {/* Widget Vencimentos */}
                 <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
-                  <WidgetVencimentos dados={vencimentos} storeName={storeName} />
+                  <WidgetVencimentos dados={vencimentos} storeName={storeName} storeId={storeId} />
                 </div>
 
                 {/* Widget Retornos Cobrança */}
@@ -283,7 +283,7 @@ export default function ActionMenuDashboard({ storeId, storeName, deliveryDateEn
 
                 {/* Widget Aniversariantes */}
                 <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
-                  <AniversariantesWidget clientes={birthdays} />
+                  <AniversariantesWidget clientes={birthdays} storeId={storeId} />
                 </div>
 
                 {/* Widget Entregas */}

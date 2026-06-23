@@ -1310,6 +1310,7 @@ export async function sendWhatsAppOperatorMessage(input: {
       instanceKey: channel.instance_key,
       phone: remotePhone,
       messageText,
+      mirrorOutbound: false,
       payload: {
         source: 'operator_modal',
         manual: true,

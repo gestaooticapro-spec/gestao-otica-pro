@@ -54,7 +54,7 @@ export default async function ConsultasPage({ params }: { params: { storeId: str
 
           {/* WIDGET DE VENCIMENTOS */}
           {modules.installments && <div className="shrink-0 rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
-            <WidgetVencimentos dados={vencimentos} storeName={storeName} />
+            <WidgetVencimentos dados={vencimentos} storeName={storeName} storeId={storeId} />
           </div>}
 
           {/* RETORNOS DE COBRANÇA */}
@@ -64,7 +64,7 @@ export default async function ConsultasPage({ params }: { params: { storeId: str
 
           {/* WIDGET DE ANIVERSARIANTES */}
           <div className="shrink-0 rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
-            <AniversariantesWidget clientes={aniversariantes} />
+            <AniversariantesWidget clientes={aniversariantes} storeId={storeId} />
           </div>
 
           {/* RADAR OPERACIONAL */}

@@ -60,6 +60,14 @@ Cada envio tambem deve informar `source`, identificando a tela/botao de origem.
 - Pos-venda: botao de acompanhamento em `PostSalesInterface`.
 - Historico do cliente: envio de financeiro/receita em `CustomerHistoryModal`.
 
+## Segundo Lote Migrado
+
+- Clientes inativos: reativacao em `clientes-inativos/page`.
+- Assistencia: envio de link de rastreio em `AssistanceKanban`.
+- Aniversariantes: widget em `AniversariantesWidget`.
+- Vencimentos: widget em `WidgetVencimentos`.
+- Loja Vazia: atalhos de aniversariante e vencimento em `OperatorMenuLojaVazia`.
+
 ## Inventario Inicial
 
 Grupos encontrados para migracao gradual:
@@ -76,6 +84,7 @@ Grupos encontrados para migracao gradual:
 ## Pendencias Para Proximas Etapas
 
 - Migrar os demais pontos encontrados que ainda usam `wa.me`, `api.whatsapp.com`, `getWhatsAppLink`, `openWhatsApp` ou `window.open`.
+- Definir mensagem padrao para casos que hoje apenas abrem a conversa sem texto, como retorno de cobranca.
 - Preparar links padronizados onde algum documento ainda nao tenha URL pronta.
 - Avaliar anexo real somente depois do fluxo por link estar validado.
 - Decidir se paginas publicas, como rastreio/garantia, devem entrar na trilha central ou continuar apenas com link externo.

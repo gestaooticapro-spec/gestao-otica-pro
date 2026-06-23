@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, UserMinus, MessageCircle, Loader2, Search, Phone } from 'lucide-react';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
-import { openWhatsApp } from '@/lib/utils/whatsapp';
+import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client';
 import { formatCurrency } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -26,6 +26,7 @@ export default function ClientesInativosPage() {
     const [clientes, setClientes] = useState<ClienteInativo[]>([]);
     const [loading, setLoading] = useState(true);
     const [busca, setBusca] = useState('');
+    const [sendingWhatsApp, setSendingWhatsApp] = useState<string | null>(null);
     const storeName = 'Ótica';
 
     useEffect(() => {
@@ -60,11 +61,28 @@ export default function ClientesInativosPage() {
         return phone;
     };
 
-    const handleWhatsApp = (cliente: ClienteInativo) => {
+    const handleWhatsApp = async (cliente: ClienteInativo) => {
+        if (sendingWhatsApp) return;
         if (!cliente.telefone) return alert(`${cliente.nome.split(' ')[0]} não tem celular cadastrado.`);
         const primeiroNome = cliente.nome.split(' ')[0];
         const msg = `Olá ${primeiroNome}, tudo bem? Aqui é da ${storeName}! Faz um tempinho que não te vemos por aqui. Que tal dar uma passadinha na loja? Temos novidades esperando por você! 😊`;
-        openWhatsApp(cliente.telefone, msg);
+        setSendingWhatsApp(cliente.telefone);
+        try {
+            await sendManualWhatsAppFromClient({
+                storeId,
+                remotePhone: cliente.telefone,
+                messageText: msg,
+                messageType: 'relationship',
+                source: 'clientes_inativos.reactivation_button',
+                metadata: {
+                    customerName: cliente.nome,
+                    totalGasto: cliente.totalGasto,
+                    ultimaVenda: cliente.ultimaVenda,
+                },
+            });
+        } finally {
+            setSendingWhatsApp(null);
+        }
     };
 
     return (
@@ -155,7 +173,7 @@ export default function ClientesInativosPage() {
                                 <div className="flex items-center gap-4 sm:flex-row-reverse">
                                     <button
                                         onClick={() => handleWhatsApp(cliente)}
-                                        disabled={!cliente.telefone}
+                                        disabled={!cliente.telefone || sendingWhatsApp === cliente.telefone}
                                         className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-green-500/20 text-green-400 hover:bg-green-500 hover:text-white transition-all text-xs font-bold uppercase tracking-wider disabled:opacity-30 disabled:cursor-not-allowed"
                                     >
                                         <MessageCircle className="w-4 h-4" />

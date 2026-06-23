@@ -204,6 +204,7 @@ export type StoreInitiatedConversationRequest = {
   providerMessageId?: string
   messageText?: string
   payload?: Json
+  mirrorOutbound?: boolean
 }
 
 function expiresIn(ms: number) {
@@ -3918,10 +3919,11 @@ export async function markStoreInitiatedConversation(
   const normalizedPhone = toEvolutionNumber(input.phone)
   if (!normalizedPhone) return { success: false, reason: 'invalid_phone' as const }
 
+  const mirrorOutbound = input.mirrorOutbound !== false
   const providerMessageId = String(input.providerMessageId || '').trim()
   const messageText = String(input.messageText || '').trim()
   const supabase = createAdminClient()
-  if (providerMessageId) {
+  if (mirrorOutbound && providerMessageId) {
     const { data, error } = await (supabase.from('whatsapp_outbound_messages') as any)
       .select('id')
       .eq('channel_id', channel.id)
@@ -3934,35 +3936,37 @@ export async function markStoreInitiatedConversation(
     }
   }
 
-  const { error: outboundInsertError } = await (supabase.from('whatsapp_outbound_messages') as any)
-    .insert({
-      tenant_id: channel.tenant_id,
-      store_id: channel.store_id,
-      channel_id: channel.id,
-      inbound_message_id: null,
-      provider_message_id: providerMessageId || null,
-      remote_phone: normalizedPhone,
-      message_text: messageText || '[mensagem enviada pela loja sem texto legivel]',
-      message_type: 'operator_store_initiated',
-      status: 'sent',
-      sent_at: new Date().toISOString(),
-      payload: {
-        source: 'store_device',
-        sentBy: 'operator',
-        fromMe: true,
-        mirroredFromWebhook: true,
-        rawPayload: input.payload ?? null,
-      },
-    })
-  if (outboundInsertError) throw outboundInsertError
+  if (mirrorOutbound) {
+    const { error: outboundInsertError } = await (supabase.from('whatsapp_outbound_messages') as any)
+      .insert({
+        tenant_id: channel.tenant_id,
+        store_id: channel.store_id,
+        channel_id: channel.id,
+        inbound_message_id: null,
+        provider_message_id: providerMessageId || null,
+        remote_phone: normalizedPhone,
+        message_text: messageText || '[mensagem enviada pela loja sem texto legivel]',
+        message_type: 'operator_store_initiated',
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+        payload: {
+          source: 'store_device',
+          sentBy: 'operator',
+          fromMe: true,
+          mirroredFromWebhook: true,
+          rawPayload: input.payload ?? null,
+        },
+      })
+    if (outboundInsertError) throw outboundInsertError
+  }
 
   await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, {
-    reason: 'store_initiated',
+    reason: mirrorOutbound ? 'store_initiated' : 'app_manual_send',
     providerMessageId: providerMessageId || null,
     preview: messageText.slice(0, 160) || null,
     ...buildDecisionMetadata({
       intent: null,
-      action: 'human_pause_store_initiated',
+      action: mirrorOutbound ? 'human_pause_store_initiated' : 'human_pause_app_manual_send',
       outboundType: null,
     }),
   })
