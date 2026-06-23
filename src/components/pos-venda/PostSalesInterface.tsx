@@ -112,6 +112,16 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
         }
     }, [selectedItem])
 
+    useEffect(() => {
+        const intervalId = window.setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                router.refresh()
+            }
+        }, 30000)
+
+        return () => window.clearInterval(intervalId)
+    }, [router])
+
     const handleSelectItem = (osId: number) => {
         resetClientFormState()
         setSelectedId(osId)

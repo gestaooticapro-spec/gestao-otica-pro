@@ -9,6 +9,9 @@ const config = {
   webhookSecret: requiredEnv('EVOLUTION_WEBHOOK_SECRET'),
 }
 
+const INBOUND_AGGREGATION_WINDOW_MS = Number(process.env.WHATSAPP_INBOUND_AGGREGATION_WINDOW_MS || 10000)
+const inboundBuffers = new Map()
+
 function requiredEnv(name) {
   const value = process.env[name]?.trim()
   if (!value) throw new Error(`${name} is required`)
@@ -47,13 +50,7 @@ function eventName(payload) {
 }
 
 function extractText(message = {}) {
-  const unwrappedMessage = message.ephemeralMessage?.message
-    || message.viewOnceMessage?.message
-    || message.viewOnceMessageV2?.message
-    || message.viewOnceMessageV2Extension?.message
-    || message.documentWithCaptionMessage?.message
-    || message.editedMessage?.message
-    || {}
+  const unwrappedMessage = unwrapMessage(message)
 
   return message.conversation
     || message.extendedTextMessage?.text
@@ -66,6 +63,26 @@ function extractText(message = {}) {
     || unwrappedMessage.videoMessage?.caption
     || unwrappedMessage.documentMessage?.caption
     || ''
+}
+
+function unwrapMessage(message = {}) {
+  return message.ephemeralMessage?.message
+    || message.viewOnceMessage?.message
+    || message.viewOnceMessageV2?.message
+    || message.viewOnceMessageV2Extension?.message
+    || message.documentWithCaptionMessage?.message
+    || message.editedMessage?.message
+    || {}
+}
+
+function detectAttachmentKind(message = {}) {
+  const unwrappedMessage = unwrapMessage(message)
+  if (message.imageMessage || unwrappedMessage.imageMessage) return 'image'
+  if (message.documentMessage || unwrappedMessage.documentMessage) return 'document'
+  if (message.audioMessage || unwrappedMessage.audioMessage) return 'audio'
+  if (message.videoMessage || unwrappedMessage.videoMessage) return 'video'
+  if (message.stickerMessage || unwrappedMessage.stickerMessage) return 'sticker'
+  return null
 }
 
 function extractInbound(payload) {
@@ -86,6 +103,7 @@ function extractInbound(payload) {
     phone,
     providerMessageId,
     messageText: extractText(message),
+    attachmentKind: detectAttachmentKind(message),
   }
 }
 
@@ -114,6 +132,39 @@ function previewText(text, maxLength = 90) {
   const normalized = String(text || '').replace(/\s+/g, ' ').trim()
   if (!normalized) return ''
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized
+}
+
+function normalizeAggregationText(text) {
+  return String(text || '')
+    .replace(/\r/g, '')
+    .replace(/\u0000/g, '')
+    .trim()
+}
+
+function inboundBufferKey(instanceKey, phone) {
+  return `${instanceKey}::${phone}`
+}
+
+function clearBufferedInboundTimer(entry) {
+  if (entry?.timer) {
+    clearTimeout(entry.timer)
+    entry.timer = null
+  }
+}
+
+function buildAggregatedInboundPayload(messages) {
+  return {
+    source: 'whatsapp-automation-buffer',
+    aggregated: true,
+    aggregationWindowMs: INBOUND_AGGREGATION_WINDOW_MS,
+    messageCount: messages.length,
+    messages: messages.map((message) => ({
+      providerMessageId: message.providerMessageId,
+      messageText: message.messageText,
+      attachmentKind: message.attachmentKind || null,
+      receivedAt: message.receivedAt,
+    })),
+  }
 }
 
 function formatTokenUsage(usage) {
@@ -384,22 +435,7 @@ async function updateDelivery(outboundMessageId, status, details = {}) {
   }
 }
 
-async function handleMessage(instanceKey, payload) {
-  const storeInitiated = extractStoreInitiatedMessage(payload)
-  if (storeInitiated) {
-    await appRequest('/api/whatsapp/store-initiated', {
-      instanceKey,
-      ...storeInitiated,
-      payload,
-    })
-    return { ignored: true, fromMe: true }
-  }
-
-  const inbound = extractInbound(payload)
-  if (!inbound) return { ignored: true }
-
-  console.log(`[webhook] inbound instance=${instanceKey} phone=${inbound.phone} text="${previewText(inbound.messageText)}"`)
-
+async function processInbound(instanceKey, inbound, payload) {
   const status = await appRequest('/api/whatsapp/customer-status', {
     instanceKey,
     ...inbound,
@@ -436,6 +472,109 @@ async function handleMessage(instanceKey, payload) {
 
   console.log(`[webhook] sent instance=${instanceKey} phone=${status.phone} outbound=${status.outboundMessageId} text="${previewText(status.replyText)}" deliverySynced=${deliverySynced}`)
   return { sent: true, providerMessageId, deliverySynced }
+}
+
+async function flushBufferedInbound(key, reason = 'timeout') {
+  const entry = inboundBuffers.get(key)
+  if (!entry) return { ignored: true, empty: true }
+
+  inboundBuffers.delete(key)
+  clearBufferedInboundTimer(entry)
+
+  const messages = entry.messages
+    .map((message) => ({
+      ...message,
+      messageText: normalizeAggregationText(message.messageText),
+    }))
+    .filter((message) => message.messageText)
+
+  if (messages.length === 0) {
+    return { ignored: true, empty: true }
+  }
+
+  const lastMessage = messages[messages.length - 1]
+  const aggregatedText = messages.map((message) => message.messageText).join('\n')
+  console.log(`[webhook] aggregated instance=${entry.instanceKey} phone=${entry.phone} messages=${messages.length} reason=${reason} text="${previewText(aggregatedText)}"`)
+
+  return processInbound(entry.instanceKey, {
+    phone: entry.phone,
+    providerMessageId: lastMessage.providerMessageId,
+    messageText: aggregatedText,
+  }, buildAggregatedInboundPayload(messages))
+}
+
+function scheduleBufferedInbound(key, entry) {
+  clearBufferedInboundTimer(entry)
+  entry.timer = setTimeout(() => {
+    flushBufferedInbound(key, 'timer').catch((error) => {
+      console.error(`[webhook] failed to flush buffered inbound ${key}:`, error)
+    })
+  }, INBOUND_AGGREGATION_WINDOW_MS)
+}
+
+function enqueueBufferedInbound(instanceKey, inbound) {
+  const key = inboundBufferKey(instanceKey, inbound.phone)
+  const existing = inboundBuffers.get(key)
+
+  if (existing?.providerMessageIds.has(inbound.providerMessageId)) {
+    return { ignored: true, duplicate: true, buffered: true }
+  }
+
+  const entry = existing || {
+    instanceKey,
+    phone: inbound.phone,
+    messages: [],
+    providerMessageIds: new Set(),
+    timer: null,
+  }
+
+  entry.messages.push({
+    providerMessageId: inbound.providerMessageId,
+    messageText: inbound.messageText,
+    attachmentKind: inbound.attachmentKind,
+    receivedAt: new Date().toISOString(),
+  })
+  entry.providerMessageIds.add(inbound.providerMessageId)
+  inboundBuffers.set(key, entry)
+  scheduleBufferedInbound(key, entry)
+
+  console.log(`[webhook] buffered instance=${instanceKey} phone=${inbound.phone} messages=${entry.messages.length} wait_ms=${INBOUND_AGGREGATION_WINDOW_MS} text="${previewText(inbound.messageText)}"`)
+  return { ignored: true, buffered: true, pendingMessages: entry.messages.length }
+}
+
+async function handleMessage(instanceKey, payload) {
+  const storeInitiated = extractStoreInitiatedMessage(payload)
+  if (storeInitiated) {
+    await appRequest('/api/whatsapp/store-initiated', {
+      instanceKey,
+      ...storeInitiated,
+      payload,
+    })
+    return { ignored: true, fromMe: true }
+  }
+
+  const inbound = extractInbound(payload)
+  if (!inbound) return { ignored: true }
+
+  console.log(`[webhook] inbound instance=${instanceKey} phone=${inbound.phone} text="${previewText(inbound.messageText)}"`)
+
+  const key = inboundBufferKey(instanceKey, inbound.phone)
+  if (inbound.attachmentKind) {
+    if (inboundBuffers.has(key)) {
+      await flushBufferedInbound(key, 'attachment_bypass')
+    }
+    return processInbound(instanceKey, inbound, payload)
+  }
+
+  const normalizedText = normalizeAggregationText(inbound.messageText)
+  if (!normalizedText) {
+    return processInbound(instanceKey, inbound, payload)
+  }
+
+  return enqueueBufferedInbound(instanceKey, {
+    ...inbound,
+    messageText: normalizedText,
+  })
 }
 
 async function handleConnection(instanceKey, payload) {

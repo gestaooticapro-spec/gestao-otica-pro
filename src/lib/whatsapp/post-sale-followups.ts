@@ -399,7 +399,7 @@ async function scheduleFollowups(now: Date) {
       const postSale = serviceOrder.post_sales?.[0]
       const saleStatus = serviceOrder.vendas?.status || null
       if (saleStatus === 'Devolvida' || saleStatus === 'Cancelada') continue
-      if (postSale?.status === 'Concluido') continue
+      if (postSale?.status === 'Concluido' || postSale?.status === 'Em Acompanhamento') continue
 
       const customerName = serviceOrder.customers?.full_name || 'Cliente'
       const phone = toEvolutionNumber(serviceOrder.customers?.fone_movel || serviceOrder.customers?.phone)
@@ -802,6 +802,18 @@ async function dispatchScheduledFollowups(now: Date, limit = DEFAULT_DISPATCH_LI
 
       if (await hasActiveHumanBlock(followup.channel_id, followup.remote_phone)) {
         await markCancelled(followup.id, 'Fluxo cancelado por handoff humano ou override manual ativo.')
+        continue
+      }
+
+      const { data: currentPostSale, error: currentPostSaleError } = await (supabase.from('post_sales') as any)
+        .select('id, status')
+        .eq('service_order_id', followup.service_order_id)
+        .eq('store_id', followup.store_id)
+        .eq('tenant_id', followup.tenant_id)
+        .maybeSingle()
+      if (currentPostSaleError) throw currentPostSaleError
+      if (currentPostSale?.status === 'Em Acompanhamento' || currentPostSale?.status === 'Concluido') {
+        await markCancelled(followup.id, `Fluxo cancelado porque o pos-venda ja esta ${currentPostSale.status}.`)
         continue
       }
 

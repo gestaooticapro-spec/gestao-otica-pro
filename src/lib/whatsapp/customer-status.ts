@@ -36,7 +36,7 @@ import {
   readPostSaleContext,
   type PostSaleContext,
 } from './post-sale-followup'
-import { concludePostSaleFromWhatsApp } from './post-sales'
+import { concludePostSaleFromWhatsApp, recordPostSaleInteraction } from './post-sales'
 
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
 const HUMAN_PAUSE_MS = 60 * 60 * 1000
@@ -262,6 +262,14 @@ function identifierPromptText() {
     'Não encontrei um pedido em aberto ligado a este WhatsApp.',
     '',
     'Se quiser, posso tentar localizar de outra forma. Envie o CPF do titular, o número do pedido ou o nome completo.',
+  ].join('\n')
+}
+
+function thirdPartyIdentifierPromptText() {
+  return [
+    'Para consultar o pedido de outra pessoa, preciso confirmar um identificador do titular.',
+    '',
+    'Envie o nome completo, CPF ou número do pedido para eu tentar localizar com segurança.',
   ].join('\n')
 }
 
@@ -709,6 +717,24 @@ function readPostSaleRatingOutcome(
   return { rating, stage: 'awaiting_rating' }
 }
 
+async function recordPostSaleInteractionIfPossible(input: {
+  channel: ChannelRow
+  postSaleContext: PostSaleContext | null
+  summary: string
+  dedupe?: boolean
+}) {
+  if (!input.postSaleContext?.postSalesId) return
+
+  await recordPostSaleInteraction({
+    tenantId: input.channel.tenant_id,
+    storeId: input.channel.store_id,
+    postSalesId: input.postSaleContext.postSalesId,
+    summary: input.summary,
+    interactionType: 'WhatsApp Automatico',
+    dedupe: input.dedupe,
+  })
+}
+
 function applyForceAiPostClassificationRoute(
   route: WhatsAppPostClassificationDecision,
   classification: WhatsAppIntentClassification | null,
@@ -951,6 +977,55 @@ function meaningfulName(message: string | undefined) {
     .trim()
     .replace(/\s+/g, ' ')
   return normalized.length >= 5 ? normalized : null
+}
+
+function normalizePersonName(value: string | null | undefined) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function namesLikelyReferToSamePerson(left: string | null | undefined, right: string | null | undefined) {
+  const normalizedLeft = normalizePersonName(left)
+  const normalizedRight = normalizePersonName(right)
+  if (!normalizedLeft || !normalizedRight) return false
+  if (normalizedLeft === normalizedRight) return true
+  if (normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)) return true
+
+  const leftTokens = normalizedLeft.split(' ').filter((token) => token.length >= 3)
+  const rightTokens = normalizedRight.split(' ').filter((token) => token.length >= 3)
+  if (!leftTokens.length || !rightTokens.length) return false
+
+  return leftTokens.some((token) => rightTokens.includes(token))
+}
+
+function getReferencedOrderStatusName(classification: WhatsAppIntentClassification) {
+  return classification.entities.patient_name
+    || classification.entities.customer_name
+    || null
+}
+
+function shouldRequestThirdPartyIdentifier(
+  classification: WhatsAppIntentClassification,
+  customerByPhone: CustomerRow | null,
+  serviceOrderByPhone: OpenOsRow | null
+) {
+  const referencedName = getReferencedOrderStatusName(classification)
+  if (!referencedName || !customerByPhone) return false
+
+  if (namesLikelyReferToSamePerson(referencedName, customerByPhone.full_name)) {
+    return false
+  }
+
+  if (serviceOrderByPhone?.dependente_name && namesLikelyReferToSamePerson(referencedName, serviceOrderByPhone.dependente_name)) {
+    return false
+  }
+
+  return true
 }
 
 async function findActiveChannel(instanceKey: string): Promise<ChannelRow | null> {
@@ -2305,6 +2380,12 @@ export async function resolveCustomerStatus(
     ) {
       await consumeForceAiOverrideIfNeeded()
       const text = postSaleComplaintHandoffText()
+      await recordPostSaleInteractionIfPossible({
+        channel,
+        postSaleContext,
+        summary: 'Cliente sinalizou reclamacao ou adaptacao ruim no pos-venda automatico.',
+        dedupe: true,
+      })
       await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
         reason: 'post_sale_complaint_handoff',
         handoff_internal_note: 'Cliente sinalizou reclamacao/adaptacao ruim no pos-venda automatico.',
@@ -2341,6 +2422,12 @@ export async function resolveCustomerStatus(
     ) {
       await consumeForceAiOverrideIfNeeded()
       const text = humanHandoffText()
+      await recordPostSaleInteractionIfPossible({
+        channel,
+        postSaleContext,
+        summary: 'Cliente pediu atendimento humano durante o pos-venda automatico.',
+        dedupe: true,
+      })
       await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
         reason: 'post_sale_requested_human',
         handoff_internal_note: 'Cliente pediu atendente humano durante o pos-venda automatico.',
@@ -2373,6 +2460,12 @@ export async function resolveCustomerStatus(
       if (postSaleContext.stage === 'awaiting_feedback') {
         await consumeForceAiOverrideIfNeeded()
         const text = postSaleRatingPromptText()
+        await recordPostSaleInteractionIfPossible({
+          channel,
+          postSaleContext,
+          summary: 'Cliente respondeu positivamente ao acompanhamento automatico e recebeu pedido de nota.',
+          dedupe: true,
+        })
         await setCurrentConversationState('ai_session', AI_SESSION_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
           reason: 'post_sale_rating_requested',
           postSaleContext: {
@@ -2405,6 +2498,12 @@ export async function resolveCustomerStatus(
 
       if (postSaleContext.stage === 'awaiting_rating') {
         await consumeForceAiOverrideIfNeeded()
+        await recordPostSaleInteractionIfPossible({
+          channel,
+          postSaleContext,
+          summary: 'Cliente respondeu ao pedido de nota sem informar uma nota numerica valida.',
+          dedupe: true,
+        })
         await setCurrentConversationState('ai_session', AI_SESSION_MS, mergeMetadata(baseMetadata, {
           reason: 'post_sale_waiting_numeric_rating',
           postSaleContext: {
@@ -2424,6 +2523,12 @@ export async function resolveCustomerStatus(
     }
 
     await consumeForceAiOverrideIfNeeded()
+    await recordPostSaleInteractionIfPossible({
+      channel,
+      postSaleContext,
+      summary: 'Pos-venda automatico entrou em handoff silencioso por baixa confianca na classificacao.',
+      dedupe: true,
+    })
     await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
       reason: 'post_sale_low_confidence_handoff',
       handoff_internal_note: postSaleLowConfidenceHandoffNote(),
@@ -2823,6 +2928,39 @@ export async function resolveCustomerStatus(
 
       if (postClassificationRoute === 'order_status') {
         await consumeForceAiOverrideIfNeeded()
+        const customerByPhone = await findCustomerByPhone(channel.store_id, normalizedPhone)
+        const serviceOrderByPhone = customerByPhone
+          ? await findLatestOpenOs(channel.store_id, customerByPhone.id)
+          : null
+
+        if (shouldRequestThirdPartyIdentifier(classification.data, customerByPhone, serviceOrderByPhone)) {
+          const text = thirdPartyIdentifierPromptText()
+          await setCurrentConversationState('waiting_identifier', IDENTIFIER_WAIT_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
+            reason: 'third_party_identifier_requested',
+            aiConfidence: classification.data.confidence,
+            ...buildAiPayload(classification.data),
+            ...buildDecisionMetadata({
+              intent: classification.data.intent,
+              confidence: classification.data.confidence,
+              action: 'request_identifier',
+              outboundType: 'identifier_prompt',
+            }),
+          }), 'assistant', text))
+
+          return withAiDiagnostics(await createCurrentOutbound(text, 'identifier_prompt', {
+            ...buildAiPayload(classification.data),
+            ...buildWhatsAppCanonicalPayload({
+              intent: classification.data.intent,
+              action: 'request_identifier',
+              outboundType: 'identifier_prompt',
+              canonicalReply: text,
+              facts: {
+                referencedName: getReferencedOrderStatusName(classification.data),
+              },
+            }),
+          }))
+        }
+
         return withAiDiagnostics(await handleStatusByPhone(
           channel,
           inbound.id,
@@ -3346,6 +3484,26 @@ export async function simulateCustomerStatus(
     }
 
     if (classification.success && postClassificationRoute === 'order_status') {
+      const customerByPhone = await findCustomerByPhone(channel.store_id, normalizedPhone)
+      const serviceOrderByPhone = customerByPhone
+        ? await findLatestOpenOs(channel.store_id, customerByPhone.id)
+        : null
+
+      if (shouldRequestThirdPartyIdentifier(classification.data, customerByPhone, serviceOrderByPhone)) {
+        const text = thirdPartyIdentifierPromptText()
+        return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: text }, {
+          overrideMode: controlMode,
+          preAiRoute,
+          postClassificationRoute,
+          action: 'request_identifier',
+          outboundType: 'identifier_prompt',
+          state: state?.state ?? null,
+          intent: classification.data.intent,
+          confidence: classification.data.confidence,
+          notes: ['Mensagem parece consultar o pedido de outra pessoa; pediu identificador antes de responder status automatico.'],
+        })
+      }
+
       const statusResult = await simulateStatusReply(channel, normalizedPhone)
       return {
         ...statusResult,
