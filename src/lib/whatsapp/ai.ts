@@ -242,7 +242,7 @@ function buildIntentPrompt(input: WhatsAppIntentClassificationInput) {
   const recentContext = (input.recentContext || [])
     .map((line) => normalizeWhitespace(line))
     .filter(Boolean)
-    .slice(0, 3)
+    .slice(0, 8)
   const conversationHistory = (input.conversationHistory || [])
     .map((line) => normalizeWhitespace(line))
     .filter(Boolean)
@@ -255,6 +255,7 @@ function buildIntentPrompt(input: WhatsAppIntentClassificationInput) {
     'Nao invente dados ausentes.',
     'Se houver duvida comercial, clinica, reclamacao, anexo ou baixa confianca, seja conservador.',
     'Se a resposta indicar claramente satisfacao, elogio ou adaptacao boa em um contexto de acompanhamento apos a entrega, use post_sale_positive.',
+    'Se o contexto citar pos-venda recente, avalie a mensagem atual: use post_sale_positive ou complaint_or_adaptation somente quando ela claramente continuar esse acompanhamento; se for outro assunto, classifique pelo assunto novo.',
     '',
     'INTENTS PERMITIDAS:',
     WHATSAPP_INTENTS.join(', '),

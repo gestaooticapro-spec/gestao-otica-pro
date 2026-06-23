@@ -1,10 +1,9 @@
-// ARQUIVO: src/components/modals/CustomerHistoryModal.tsx
 'use client'
-
-import { getWhatsAppLink } from '@/lib/utils'
 
 import { useState, useEffect, useCallback } from 'react'
 import { X, Loader2, Search, User, Wallet, Glasses, MessageCircle, Calendar, CreditCard, AlertCircle, ChevronRight } from 'lucide-react'
+import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
+import { toast } from 'sonner'
 import {
     searchCustomersQuick,
     getCustomerFinancialSummary,
@@ -73,6 +72,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
     const [prescriptionGroups, setPrescriptionGroups] = useState<PrescriptionSummaryGroup[]>([])
     const [selectedPrescriptionGroupId, setSelectedPrescriptionGroupId] = useState('titular')
     const [isLoadingData, setIsLoadingData] = useState(false)
+    const [sendingWhatsApp, setSendingWhatsApp] = useState(false)
 
     // Reset ao fechar
     useEffect(() => {
@@ -218,14 +218,32 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
         return msg.trim()
     }
 
-    const openWhatsApp = (message: string) => {
+    const openWhatsApp = async (message: string) => {
+        if (sendingWhatsApp) return
         if (!selectedCustomer?.fone) {
-            alert('Cliente não possui telefone cadastrado.')
+            toast.error('Cliente não possui telefone cadastrado.')
             return
         }
 
-        const url = getWhatsAppLink(selectedCustomer.fone, message)
-        window.open(url, '_blank')
+        setSendingWhatsApp(true)
+        try {
+            await sendManualWhatsAppFromClient({
+                storeId,
+                remotePhone: selectedCustomer.fone,
+                messageText: message,
+                messageType: 'customer_history',
+                source: activeTab === 'financeiro'
+                    ? 'customer_history.financial_button'
+                    : 'customer_history.prescription_button',
+                metadata: {
+                    customerId: selectedCustomer.id,
+                    tab: activeTab,
+                    prescriptionGroup: activeTab === 'receitas' ? selectedPrescriptionGroupId : null,
+                },
+            })
+        } finally {
+            setSendingWhatsApp(false)
+        }
     }
 
     // =============================================
@@ -581,13 +599,14 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                             {selectedCustomer && (
                                 <div className="bg-slate-800/60 border-t border-white/10 p-4 backdrop-blur-md">
                                     <button
-                                        onClick={() => {
+                                        onClick={async () => {
                                             const message = activeTab === 'financeiro'
                                                 ? getFinancialWhatsAppMessage()
                                                 : getPrescriptionWhatsAppMessage()
-                                            openWhatsApp(message)
+                                            await openWhatsApp(message)
                                         }}
                                         disabled={
+                                            sendingWhatsApp ||
                                             (activeTab === 'financeiro' && (!financialData || financialData.totais.totalParcelas === 0)) ||
                                             (activeTab === 'receitas' && prescriptionData.length === 0)
                                         }

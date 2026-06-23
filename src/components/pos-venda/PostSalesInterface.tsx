@@ -19,7 +19,8 @@ import {
 } from 'lucide-react'
 import SaleDetailsModal from '@/components/modals/SaleDetailsModal'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
-import { getWhatsAppLink } from '@/lib/utils'
+import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
+import { toast } from 'sonner'
 
 // Helpers
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -74,6 +75,7 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
     const [isEditingPhone, setIsEditingPhone] = useState(false)
     const [newPhoneValue, setNewPhoneValue] = useState('')
     const [savingPhone, setSavingPhone] = useState(false)
+    const [sendingWhatsApp, setSendingWhatsApp] = useState(false)
 
     const [isPending, startTransition] = useTransition()
     const selectedItem = initialQueue.find(item => item.os_id === selectedId)
@@ -127,8 +129,12 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
         setSelectedId(osId)
     }
 
-    const handleWhatsApp = () => {
-        if (!selectedItem || !selectedItem.titular_tel) return alert("Telefone não cadastrado. Clique em 'Sem fone' ao lado do nome do titular para cadastrar.")
+    const handleWhatsApp = async () => {
+        if (sendingWhatsApp) return
+        if (!selectedItem || !selectedItem.titular_tel) {
+            toast.error("Telefone não cadastrado. Clique em 'Sem fone' ao lado do nome do titular para cadastrar.")
+            return
+        }
         const nomeTitular = selectedItem.titular_nome.split(' ')[0]
         const dias = selectedItem.dias_desde_entrega
         const ehProprio = selectedItem.dependente_nome === selectedItem.titular_nome || !selectedItem.dependente_nome || selectedItem.dependente_nome === 'Mesmo'
@@ -137,7 +143,23 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
             ? `Olá ${nomeTitular}, aqui é da Ótica. Já faz ${dias} dias que vc buscou seu óculos. Como está a adaptação?`
             : `Olá ${nomeTitular}, aqui é da Ótica. Já faz ${dias} dias que ${selectedItem.dependente_nome?.split(' ')[0]} retirou os óculos. Como está a adaptação, você sabe?`
 
-        window.open(getWhatsAppLink(selectedItem.titular_tel, msg), '_blank')
+        setSendingWhatsApp(true)
+        try {
+            await sendManualWhatsAppFromClient({
+                storeId,
+                remotePhone: selectedItem.titular_tel,
+                messageText: msg,
+                messageType: 'post_sale_followup',
+                source: 'post_sales.followup_button',
+                metadata: {
+                    osId: selectedItem.os_id,
+                    postSalesId: selectedItem.post_sales_id,
+                    diasDesdeEntrega: dias,
+                },
+            })
+        } finally {
+            setSendingWhatsApp(false)
+        }
     }
 
     const handleSaveInteraction = (formData: FormData) => {
@@ -380,6 +402,7 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
                                     </div>
                                     <button
                                         onClick={handleWhatsApp}
+                                        disabled={sendingWhatsApp}
                                         className="bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 px-5 py-3 rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.15)] font-bold flex items-center gap-2 transition-all hover:-translate-y-0.5"
                                     >
                                         <MessageCircle className="h-5 w-5" />

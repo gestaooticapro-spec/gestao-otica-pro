@@ -9,48 +9,73 @@ Registrar a trilha combinada para reduzir o uso de `wa.me`/Chrome nas telas do s
 - Criar uma trilha unica de envio manual de WhatsApp dentro do app.
 - Os botoes deixam de decidir localmente entre `window.open` e outras variacoes.
 - A decisao passa a acontecer em uma camada central, sempre considerando o `storeId`.
+- O rollout sera gradual, por tipo de mensagem e por tela.
 
 ## Regra Por Loja
 
 - Se a loja tiver WhatsApp via VPS habilitado e conectado, o botao envia pela trilha interna.
-- Se a loja nao tiver esse canal habilitado, o botao continua funcionando no modo atual, abrindo o WhatsApp externo.
+- Se a loja nao tiver esse canal habilitado, desconectado ou se o envio real falhar, o sistema cai automaticamente para WhatsApp externo.
 - Isso permite rollout gradual sem quebrar lojas que ainda nao usam o canal da VPS.
 
-## Ideia De Implementacao
+## Politica Fechada
 
-- Centralizar o disparo manual em uma action/helper unica.
-- Essa camada deve:
-  - validar `storeId`
-  - checar configuracao/canal da loja
-  - decidir entre envio interno ou fallback externo
-  - padronizar retorno de sucesso/erro para a interface
-- Reaproveitar a base ja existente de envio manual real pelo canal Evolution/VPS.
+- Fallback padrao: `automatico`.
+- Documentos no v1: enviar `link`, nao PDF/anexo real.
+- As mensagens enviadas via VPS devem aparecer no WhatsApp operacional.
+- Mensagens manuais via VPS devem pausar a conversa para atendimento humano.
+- Quando houver fallback externo, registrar a tentativa/fallback no historico operacional sempre que existir canal da loja para registrar o evento.
 
-## Fallback A Decidir
+## Implementacao
 
-Ainda precisamos escolher a politica padrao:
+- Camada central criada em `src/lib/actions/manual-whatsapp.actions.ts`.
+- Helper client criado em `src/lib/whatsapp/manual-client.ts`.
+- A camada central recebe:
+  - `storeId`
+  - `remotePhone`
+  - `messageText`
+  - `messageType`
+  - `source`
+  - `metadata`
+- A camada central valida a entrada, checa o canal da loja, tenta envio via VPS/Evolution, registra historico e retorna um resultado padronizado para a interface.
+- A interface exibe toast informando se a mensagem foi enviada via VPS ou se o WhatsApp externo foi aberto por fallback.
 
-- `automatico`: tenta VPS; se nao der, abre WhatsApp externo
-- `estrito`: so envia pela VPS; se nao der, mostra erro
-- `manual`: sempre abre WhatsApp externo
+## Tipos De Mensagem
 
-## PDF E Documentos
+Taxonomia inicial:
 
-Existe uma segunda frente ligada a essa trilha:
+- `operator_manual`
+- `billing_reminder`
+- `post_sale_followup`
+- `relationship`
+- `assistance_update`
+- `service_order`
+- `customer_history`
+- `document_link`
 
-- avaliar envio de recibo, DANFE e outros documentos por WhatsApp
-- decidir se o primeiro passo sera:
-  - envio de link
-  - envio de PDF real como anexo
+Cada envio tambem deve informar `source`, identificando a tela/botao de origem.
 
-## Situacao Atual
+## Primeiro Lote Migrado
 
-- Hoje a trilha da VPS encontrada no projeto envia texto.
-- O projeto ja possui infraestrutura para canal por loja e envio manual real.
-- O envio de PDF/anexo ainda nao esta fechado nesta trilha.
+- Cobranca: acao rapida de WhatsApp em `CobrancaInterface`.
+- Pos-venda: botao de acompanhamento em `PostSalesInterface`.
+- Historico do cliente: envio de financeiro/receita em `CustomerHistoryModal`.
 
-## Proximo Passo Sugerido
+## Inventario Inicial
 
-- definir a camada unica de envio manual por `storeId`
-- decidir a politica de fallback
-- decidir se PDF entra como link primeiro ou como anexo real
+Grupos encontrados para migracao gradual:
+
+- Operacional humano: ja possui base real via VPS/Evolution.
+- Cobranca e vencimentos: lembretes financeiros e contatos de pendencia.
+- Pos-venda: acompanhamento de adaptacao apos retirada.
+- Relacionamento: aniversariantes e clientes inativos.
+- Assistencia, rastreio e garantia: atualizacoes de atendimento e garantia.
+- OS, pedido de lentes e laboratorio: envio de pedido, medidas e links de laboratorio.
+- Historico do cliente: resumo financeiro, receitas e dados de atendimento.
+- Documentos: recibo, DANFE e outros documentos por link.
+
+## Pendencias Para Proximas Etapas
+
+- Migrar os demais pontos encontrados que ainda usam `wa.me`, `api.whatsapp.com`, `getWhatsAppLink`, `openWhatsApp` ou `window.open`.
+- Preparar links padronizados onde algum documento ainda nao tenha URL pronta.
+- Avaliar anexo real somente depois do fluxo por link estar validado.
+- Decidir se paginas publicas, como rastreio/garantia, devem entrar na trilha central ou continuar apenas com link externo.

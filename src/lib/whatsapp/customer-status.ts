@@ -48,6 +48,7 @@ const AFTER_STATUS_SILENCE_MS = 60 * 60 * 1000
 const ATTACHMENT_HANDOFF_MS = 2 * 60 * 60 * 1000
 const AI_AUTOMATION_MIN_CONFIDENCE = 0.78
 const WHATSAPP_AI_HUMANIZE_ENABLED = process.env.WHATSAPP_AI_HUMANIZE_ENABLED === 'true'
+const POST_SALE_PERSISTENT_MEMORY_MS = 7 * 24 * 60 * 60 * 1000
 
 const AI_SESSION_HISTORY_MAX = 8
 const AI_SESSION_TEXT_MAX = 280
@@ -143,6 +144,12 @@ type PaymentReminderContext = {
 type PostSaleRatingOutcome = {
   rating: number
   stage: 'awaiting_rating'
+}
+
+type PersistentPostSaleMemory = {
+  context: PostSaleContext | null
+  recentContextLines: string[]
+  isRecoverableAutomationContext: boolean
 }
 
 type WhatsAppAiDiagnostic = {
@@ -1026,6 +1033,118 @@ function shouldRequestThirdPartyIdentifier(
   }
 
   return true
+}
+
+function inferPersistentPostSaleStage(status: string | null, interactions: Array<{ resumo: string | null }>) {
+  if (status === 'Concluido') return 'completed'
+
+  const latestSummaries = interactions
+    .map((interaction) => normalizeMessage(interaction.resumo || ''))
+    .filter(Boolean)
+
+  if (latestSummaries.some((summary) => summary.includes('handoff') || summary.includes('reclamacao') || summary.includes('adaptacao ruim'))) {
+    return 'handoff'
+  }
+
+  if (latestSummaries.some((summary) => summary.includes('pedido de nota') || summary.includes('sem informar uma nota'))) {
+    return 'awaiting_rating'
+  }
+
+  return 'awaiting_feedback'
+}
+
+async function loadPersistentPostSaleMemory(channel: ChannelRow, phone: string): Promise<PersistentPostSaleMemory | null> {
+  const customer = await findCustomerByPhone(channel.store_id, phone)
+  if (!customer?.id) return null
+
+  const supabase = createAdminClient()
+  const { data: orders, error: ordersError } = await (supabase.from('service_orders') as any)
+    .select(`
+      id,
+      customer_id,
+      dt_entregue_em,
+      dependentes ( full_name ),
+      post_sales ( id, status, avaliacao_cliente, updated_at, created_at )
+    `)
+    .eq('store_id', channel.store_id)
+    .eq('tenant_id', channel.tenant_id)
+    .eq('customer_id', customer.id)
+    .not('dt_entregue_em', 'is', null)
+    .order('dt_entregue_em', { ascending: false })
+    .limit(10)
+
+  if (ordersError) throw ordersError
+
+  const candidates = ((orders || []) as any[])
+    .map((order) => ({
+      order,
+      postSale: Array.isArray(order.post_sales) ? order.post_sales[0] : order.post_sales,
+    }))
+    .filter((item) => item.postSale?.id)
+    .sort((left, right) => {
+      const leftOpen = left.postSale.status === 'Em Acompanhamento' ? 1 : 0
+      const rightOpen = right.postSale.status === 'Em Acompanhamento' ? 1 : 0
+      if (leftOpen !== rightOpen) return rightOpen - leftOpen
+      return new Date(right.postSale.updated_at || right.postSale.created_at || 0).getTime()
+        - new Date(left.postSale.updated_at || left.postSale.created_at || 0).getTime()
+    })
+
+  const selected = candidates[0]
+  if (!selected) return null
+
+  const postSaleId = Number(selected.postSale.id)
+  const { data: interactions, error: interactionsError } = await (supabase.from('post_sales_interactions') as any)
+    .select('tipo_contato, resumo, created_at')
+    .eq('post_sales_id', postSaleId)
+    .order('created_at', { ascending: false })
+    .limit(6)
+
+  if (interactionsError) throw interactionsError
+
+  const postSaleStatus = typeof selected.postSale.status === 'string' ? selected.postSale.status : null
+  const stage = inferPersistentPostSaleStage(postSaleStatus, interactions || [])
+  const postSaleUpdatedAt = new Date(selected.postSale.updated_at || selected.postSale.created_at || 0).getTime()
+  const lastInteractionAt = interactions?.[0]?.created_at
+    ? new Date(interactions[0].created_at).getTime()
+    : 0
+  const lastMovementAt = Math.max(postSaleUpdatedAt, lastInteractionAt)
+  if (!Number.isFinite(lastMovementAt) || Date.now() - lastMovementAt > POST_SALE_PERSISTENT_MEMORY_MS) {
+    return null
+  }
+
+  const deliveryDate = typeof selected.order.dt_entregue_em === 'string'
+    ? selected.order.dt_entregue_em.slice(0, 10)
+    : null
+  const lastInteraction = (interactions || [])[0]?.resumo || null
+  const lastInteractionText = normalizeDisplayText(lastInteraction)
+  const dependentName = selected.order.dependentes?.full_name || null
+  const recentContextLines = [
+    `pos_venda_persistente_status=${postSaleStatus || 'desconhecido'}`,
+    `pos_venda_persistente_etapa=${stage}`,
+    `pos_venda_persistente_os=${selected.order.id}`,
+    deliveryDate ? `pos_venda_persistente_entrega=${deliveryDate}` : null,
+    dependentName ? `pos_venda_persistente_paciente=${dependentName}` : null,
+    lastInteractionText ? `pos_venda_ultima_interacao=${lastInteractionText.slice(0, 140)}` : null,
+    stage === 'handoff' ? 'instrucao_pos_venda_handoff=se parecer continuacao deste caso, encaminhe para humano; nao reassuma o atendimento automatico' : null,
+    'instrucao_pos_venda=se a mensagem atual nao for claramente resposta ao acompanhamento, trate como assunto novo',
+  ].filter((line): line is string => Boolean(line))
+
+  const context = stage === 'completed'
+    ? null
+    : {
+        postSalesId: postSaleId,
+        serviceOrderId: Number(selected.order.id),
+        customerId: customer.id,
+        deliveryDate,
+        stage,
+        ratingPromptCount: stage === 'awaiting_rating' ? 1 : 0,
+      } satisfies PostSaleContext
+
+  return {
+    context,
+    recentContextLines,
+    isRecoverableAutomationContext: postSaleStatus === 'Em Acompanhamento' && Boolean(context),
+  }
 }
 
 async function findActiveChannel(instanceKey: string): Promise<ChannelRow | null> {
@@ -1940,7 +2059,18 @@ export async function resolveCustomerStatus(
     'customer',
     effectiveMessageText
   )
-  const recentContext = buildRecentContextFromMetadata(state?.metadata, effectiveMessageText)
+  const livePostSaleContext = readPostSaleContext(state?.metadata)
+  const persistentPostSaleMemory = livePostSaleContext
+    ? null
+    : await loadPersistentPostSaleMemory(channel, normalizedPhone)
+  let recoveredPostSaleContext = persistentPostSaleMemory?.isRecoverableAutomationContext
+    ? persistentPostSaleMemory.context
+    : null
+  const postSaleContextWasRecovered = !livePostSaleContext && Boolean(recoveredPostSaleContext)
+  const recentContext = [
+    ...buildRecentContextFromMetadata(state?.metadata, effectiveMessageText),
+    ...(persistentPostSaleMemory?.recentContextLines || []),
+  ].slice(0, 8)
   const conversationHistory = buildAiConversationHistoryFromMetadata(state?.metadata)
   const aiReplyContext = {
     userMessageText: effectiveMessageText,
@@ -2316,7 +2446,44 @@ export async function resolveCustomerStatus(
     })
   }
 
-  const postSaleContext = readPostSaleContext(state?.metadata)
+  let recoveredPostSaleClassification: WhatsAppAiResult<WhatsAppIntentClassification> | null = null
+  if (postSaleContextWasRecovered && recoveredPostSaleContext) {
+    const recoveredRating = extractPostSaleRatingForStage(effectiveMessageText, recoveredPostSaleContext.stage)
+    let shouldResumePostSale = Boolean(recoveredRating)
+
+    if (!shouldResumePostSale) {
+      recoveredPostSaleClassification = await classifyWhatsAppIntent({
+        messageText: effectiveMessageText || '',
+        channelLabel: channel.instance_key,
+        storeName: storeProfile.name,
+        conversationState: 'post_sale_memory',
+        recentContext,
+        conversationHistory,
+        hasRecentAttachment: hasRecentAttachmentContext(state),
+        hasOpenOrder: hasKnownOpenOrderContext(state),
+        handoffActive: false,
+      })
+      await recordAiResult('intent_classification', recoveredPostSaleClassification)
+
+      const recoveredIntent = recoveredPostSaleClassification.success
+        ? recoveredPostSaleClassification.data.intent
+        : null
+      shouldResumePostSale = recoveredPostSaleClassification.success
+        && recoveredPostSaleClassification.data.confidence >= AI_AUTOMATION_MIN_CONFIDENCE
+        && (
+          recoveredIntent === 'post_sale_positive'
+          || recoveredIntent === 'complaint_or_adaptation'
+          || recoveredIntent === 'human_agent_request'
+        )
+    }
+
+    if (!shouldResumePostSale) {
+      recoveredPostSaleContext = null
+      recoveredPostSaleClassification = null
+    }
+  }
+
+  const postSaleContext = livePostSaleContext ?? recoveredPostSaleContext
   const postSaleRatingOutcome = readPostSaleRatingOutcome(effectiveMessageText, postSaleContext)
 
   if (postSaleContext) {
@@ -2360,7 +2527,7 @@ export async function resolveCustomerStatus(
       })
     }
 
-    const postSaleClassification = await classifyWhatsAppIntent({
+    const postSaleClassification = recoveredPostSaleClassification ?? await classifyWhatsAppIntent({
       messageText: effectiveMessageText || '',
       channelLabel: channel.instance_key,
       storeName: storeProfile.name,
@@ -2372,7 +2539,58 @@ export async function resolveCustomerStatus(
       handoffActive: false,
     })
 
-    await recordAiResult('intent_classification', postSaleClassification)
+    if (!recoveredPostSaleClassification) {
+      await recordAiResult('intent_classification', postSaleClassification)
+    }
+
+    if (
+      postSaleContext.stage === 'handoff'
+      && postSaleClassification.success
+      && (
+        postSaleClassification.data.intent === 'complaint_or_adaptation'
+        || postSaleClassification.data.intent === 'human_agent_request'
+        || postSaleClassification.data.intent === 'post_sale_positive'
+      )
+    ) {
+      await consumeForceAiOverrideIfNeeded()
+      const text = postSaleClassification.data.intent === 'complaint_or_adaptation'
+        ? postSaleComplaintHandoffText()
+        : humanHandoffText()
+      await recordPostSaleInteractionIfPossible({
+        channel,
+        postSaleContext,
+        summary: 'Cliente retomou um pos-venda que ja estava em atendimento humano.',
+        dedupe: true,
+      })
+      await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
+        reason: 'post_sale_reopened_after_handoff',
+        handoff_internal_note: 'Cliente voltou a falar sobre pos-venda que ja estava em atendimento humano.',
+        postSaleContext: {
+          ...postSaleContext,
+          stage: 'handoff',
+        } as unknown as Json,
+        ...buildDecisionMetadata({
+          intent: postSaleClassification.data.intent,
+          confidence: postSaleClassification.data.confidence,
+          action: 'human_handoff',
+          outboundType: 'human_handoff',
+        }),
+      }), 'assistant', text))
+
+      return withAiDiagnostics(await createCurrentOutbound(text, 'human_handoff', {
+        ...buildWhatsAppCanonicalPayload({
+          intent: postSaleClassification.data.intent,
+          action: 'human_handoff',
+          outboundType: 'human_handoff',
+          canonicalReply: text,
+          facts: {
+            postSalesId: postSaleContext.postSalesId ?? null,
+            serviceOrderId: postSaleContext.serviceOrderId ?? null,
+            customerId: postSaleContext.customerId ?? null,
+          },
+        }),
+      }))
+    }
 
     if (
       postSaleClassification.success

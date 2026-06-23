@@ -17,7 +17,7 @@ import {
 import { getEmployees } from '@/lib/actions/employee.actions'
 import { updateCustomerPhone } from '@/lib/actions/lab.actions'
 import { toast } from 'sonner'
-import { getWhatsAppLink } from '@/lib/utils'
+import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
 
 // --- COMPONENTES UI SIMPLES ---
@@ -45,6 +45,7 @@ export default function CobrancaInterface({
     const [spcFilter, setSpcFilter] = useState<'com_spc' | 'sem_spc'>('sem_spc')
     const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '')
     const [selectedCustomer, setSelectedCustomer] = useState<DevedorResumo | null>(null)
+    const [sendingWhatsApp, setSendingWhatsApp] = useState(false)
 
     // Sincroniza a aba ativa com a prop (URL) para navegação via browser
     useEffect(() => {
@@ -474,14 +475,31 @@ export default function CobrancaInterface({
                                     {/* AÇÕES RÁPIDAS */}
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6 relative z-10">
                                         <button
-                                            onClick={() => {
+                                            onClick={async () => {
+                                                if (sendingWhatsApp) return
                                                 if (selectedCustomer.fone_movel) {
                                                     const msg = `Olá ${selectedCustomer.full_name.split(' ')[0]}, estamos entrando em contato referente à sua pendência na Ótica.`
-                                                    window.open(getWhatsAppLink(selectedCustomer.fone_movel, msg), '_blank')
+                                                    setSendingWhatsApp(true)
+                                                    try {
+                                                        await sendManualWhatsAppFromClient({
+                                                            storeId,
+                                                            remotePhone: selectedCustomer.fone_movel,
+                                                            messageText: msg,
+                                                            messageType: 'billing_reminder',
+                                                            source: 'cobranca.quick_action',
+                                                            metadata: {
+                                                                customerId: selectedCustomer.customer_id,
+                                                                totalAtrasado: selectedCustomer.total_atrasado,
+                                                            },
+                                                        })
+                                                    } finally {
+                                                        setSendingWhatsApp(false)
+                                                    }
                                                 } else {
                                                     toast.error("Sem telefone cadastrado")
                                                 }
                                             }}
+                                            disabled={sendingWhatsApp}
                                             className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-xs font-bold transition-all hover:scale-[1.02] active:scale-95"
                                         >
                                             <MessageSquare className="w-4 h-4" /> Whatsapp

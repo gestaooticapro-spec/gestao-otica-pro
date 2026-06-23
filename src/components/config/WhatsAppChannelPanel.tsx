@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   Bot,
   Cake,
+  ChevronDown,
   CheckCircle2,
   ClipboardCheck,
   CreditCard,
@@ -70,13 +71,6 @@ const automationPlaceholders = [
     icon: PackageSearch,
   },
   {
-    id: 'post_sale',
-    title: 'Fazer pos-vendas',
-    description: 'Acompanhamento depois da retirada ou entrega.',
-    placeholder: 'Ex.: Oi, {nome}! Passando para saber como esta sua adaptacao com os oculos.',
-    icon: Sparkles,
-  },
-  {
     id: 'collection',
     title: 'Fazer cobranca',
     description: 'Cobranca de parcelas em atraso com texto ajustavel.',
@@ -113,6 +107,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
       return acc
     }, {})
   )
+  const [expandedAutomationCards, setExpandedAutomationCards] = useState<Record<string, boolean>>({})
   const [isPending, startTransition] = useTransition()
   const [isLoading, setIsLoading] = useState(true)
 
@@ -206,6 +201,12 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
   const qrSource = qrImageSource(qrCodeBase64)
   const automationEnabled = automationControlSettings?.enabled !== false
   const canActivate = !isPending && !isLoading && phoneNumber.trim().length > 0
+  const toggleAutomationCard = (cardId: string) => {
+    setExpandedAutomationCards((current) => ({
+      ...current,
+      [cardId]: !current[cardId],
+    }))
+  }
 
   useEffect(() => {
     if (!isConnected) return
@@ -729,23 +730,22 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                 <PartyPopper className="h-5 w-5 text-fuchsia-200" />
               </div>
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-200/70">Automacoes</p>
-                <h3 className="text-lg font-black text-white">Placeholders das futuras automacoes</h3>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-200/70">Automacoes reais</p>
+                <h3 className="text-lg font-black text-white">Configuracoes que ja funcionam</h3>
               </div>
             </div>
             <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-300">
-              Esta area serve como mapa visual do que ainda vamos implementar. Os toggles e textos abaixo ainda nao
-              disparam nada de verdade, mas ajudam a loja a visualizar o que podera configurar no futuro.
+              Estes cards ja carregam e salvam configuracoes da loja. Use Expandir para ajustar textos e detalhes sem deixar tudo aberto na tela.
             </p>
           </div>
 
           <div className="rounded-xl border border-fuchsia-300/20 bg-fuchsia-400/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-100">
-            Em breve
+            Salvam no sistema
           </div>
         </div>
 
         <section className="mt-6 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] p-5">
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div className="flex items-start gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-300/20 bg-emerald-400/10">
                 <MessageSquareText className="h-5 w-5 text-emerald-200" />
@@ -754,7 +754,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                 <div className="flex items-center gap-2">
                   <h4 className="text-sm font-black text-white">So responder sobre OS</h4>
                   <span className="rounded-lg border border-emerald-300/20 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-100">
-                    Ativo
+                    Configuravel
                   </span>
                 </div>
                 <p className="mt-1 text-xs leading-relaxed text-slate-300">
@@ -763,18 +763,29 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
               </div>
             </div>
 
-            <label className="inline-flex items-center">
-              <input
-                type="checkbox"
-                checked={Boolean(osResponderSettings?.enabled)}
-                onChange={(event) => handleToggleOsResponder(event.target.checked)}
-                disabled={!osResponderSettings || isPending || isLoading || !automationEnabled}
-                className="h-5 w-5 rounded border-white/20 bg-slate-900 text-emerald-400 focus:ring-emerald-400"
-              />
-            </label>
+            <div className="flex shrink-0 items-center gap-3">
+              <label className="inline-flex items-center">
+                <input
+                  type="checkbox"
+                  checked={Boolean(osResponderSettings?.enabled)}
+                  onChange={(event) => handleToggleOsResponder(event.target.checked)}
+                  disabled={!osResponderSettings || isPending || isLoading || !automationEnabled}
+                  className="h-5 w-5 rounded border-white/20 bg-slate-900 text-emerald-400 focus:ring-emerald-400"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => toggleAutomationCard('os_responder')}
+                aria-expanded={Boolean(expandedAutomationCards.os_responder)}
+                className="inline-flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-300 transition hover:bg-white/10"
+              >
+                {expandedAutomationCards.os_responder ? 'Recolher' : 'Expandir'}
+                <ChevronDown className={`h-4 w-4 transition-transform ${expandedAutomationCards.os_responder ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
           </div>
 
-          {osResponderSettings && (
+          {osResponderSettings && expandedAutomationCards.os_responder && (
             <>
               <div className="mt-5 grid gap-4 xl:grid-cols-2">
                 {[
@@ -838,7 +849,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
         </section>
 
         <section className="mt-6 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] p-5">
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div className="flex items-start gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-300/20 bg-amber-400/10">
                 <CreditCard className="h-5 w-5 text-amber-200" />
@@ -847,7 +858,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                 <div className="flex items-center gap-2">
                   <h4 className="text-sm font-black text-white">Enviar aviso de vencimento</h4>
                   <span className="rounded-lg border border-amber-300/20 bg-amber-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-amber-100">
-                    Novo
+                    Configuravel
                   </span>
                 </div>
                 <p className="mt-1 text-xs leading-relaxed text-slate-300">
@@ -856,18 +867,29 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
               </div>
             </div>
 
-            <label className="inline-flex items-center">
-              <input
-                type="checkbox"
-                checked={Boolean(installmentReminderSettings?.enabled)}
-                onChange={(event) => handleToggleInstallmentReminder(event.target.checked)}
-                disabled={!installmentReminderSettings || isPending || isLoading || !automationEnabled}
-                className="h-5 w-5 rounded border-white/20 bg-slate-900 text-amber-400 focus:ring-amber-400"
-              />
-            </label>
+            <div className="flex shrink-0 items-center gap-3">
+              <label className="inline-flex items-center">
+                <input
+                  type="checkbox"
+                  checked={Boolean(installmentReminderSettings?.enabled)}
+                  onChange={(event) => handleToggleInstallmentReminder(event.target.checked)}
+                  disabled={!installmentReminderSettings || isPending || isLoading || !automationEnabled}
+                  className="h-5 w-5 rounded border-white/20 bg-slate-900 text-amber-400 focus:ring-amber-400"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => toggleAutomationCard('installment_reminder')}
+                aria-expanded={Boolean(expandedAutomationCards.installment_reminder)}
+                className="inline-flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-300 transition hover:bg-white/10"
+              >
+                {expandedAutomationCards.installment_reminder ? 'Recolher' : 'Expandir'}
+                <ChevronDown className={`h-4 w-4 transition-transform ${expandedAutomationCards.installment_reminder ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
           </div>
 
-          {installmentReminderSettings && (
+          {installmentReminderSettings && expandedAutomationCards.installment_reminder && (
             <>
               <div className="mt-5 rounded-xl border border-white/10 bg-black/20 p-4">
                 <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
@@ -903,7 +925,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
         </section>
 
         <section className="mt-6 rounded-xl border border-rose-400/20 bg-rose-400/[0.06] p-5">
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div className="flex items-start gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-rose-300/20 bg-rose-400/10">
                 <Sparkles className="h-5 w-5 text-rose-200" />
@@ -912,7 +934,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                 <div className="flex items-center gap-2">
                   <h4 className="text-sm font-black text-white">Pos-venda automatico</h4>
                   <span className="rounded-lg border border-rose-300/20 bg-rose-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-rose-100">
-                    Novo
+                    Configuravel
                   </span>
                 </div>
                 <p className="mt-1 text-xs leading-relaxed text-slate-300">
@@ -921,18 +943,29 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
               </div>
             </div>
 
-            <label className="inline-flex items-center">
-              <input
-                type="checkbox"
-                checked={Boolean(postSaleFollowupSettings?.enabled)}
-                onChange={(event) => handleTogglePostSaleFollowup(event.target.checked)}
-                disabled={!postSaleFollowupSettings || isPending || isLoading || !automationEnabled}
-                className="h-5 w-5 rounded border-white/20 bg-slate-900 text-rose-400 focus:ring-rose-400"
-              />
-            </label>
+            <div className="flex shrink-0 items-center gap-3">
+              <label className="inline-flex items-center">
+                <input
+                  type="checkbox"
+                  checked={Boolean(postSaleFollowupSettings?.enabled)}
+                  onChange={(event) => handleTogglePostSaleFollowup(event.target.checked)}
+                  disabled={!postSaleFollowupSettings || isPending || isLoading || !automationEnabled}
+                  className="h-5 w-5 rounded border-white/20 bg-slate-900 text-rose-400 focus:ring-rose-400"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => toggleAutomationCard('post_sale_followup')}
+                aria-expanded={Boolean(expandedAutomationCards.post_sale_followup)}
+                className="inline-flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-300 transition hover:bg-white/10"
+              >
+                {expandedAutomationCards.post_sale_followup ? 'Recolher' : 'Expandir'}
+                <ChevronDown className={`h-4 w-4 transition-transform ${expandedAutomationCards.post_sale_followup ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
           </div>
 
-          {postSaleFollowupSettings && (
+          {postSaleFollowupSettings && expandedAutomationCards.post_sale_followup && (
             <>
               <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
                 <div className="rounded-xl border border-white/10 bg-black/20 p-4">
@@ -994,7 +1027,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
         </section>
 
         <section className="mt-6 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] p-5">
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div className="flex items-start gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-400/10">
                 <Bot className="h-5 w-5 text-cyan-200" />
@@ -1003,7 +1036,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                 <div className="flex items-center gap-2">
                   <h4 className="text-sm font-black text-white">Responder com IA</h4>
                   <span className="rounded-lg border border-cyan-300/20 bg-cyan-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100">
-                    IA
+                    Configuravel
                   </span>
                 </div>
                 <p className="mt-1 text-xs leading-relaxed text-slate-300">
@@ -1012,18 +1045,29 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
               </div>
             </div>
 
-            <label className="inline-flex items-center">
-              <input
-                type="checkbox"
-                checked={Boolean(aiResponderSettings?.enabled)}
-                onChange={(event) => handleToggleAiResponder(event.target.checked)}
-                disabled={!aiResponderSettings || isPending || isLoading || !automationEnabled}
-                className="h-5 w-5 rounded border-white/20 bg-slate-900 text-cyan-400 focus:ring-cyan-400"
-              />
-            </label>
+            <div className="flex shrink-0 items-center gap-3">
+              <label className="inline-flex items-center">
+                <input
+                  type="checkbox"
+                  checked={Boolean(aiResponderSettings?.enabled)}
+                  onChange={(event) => handleToggleAiResponder(event.target.checked)}
+                  disabled={!aiResponderSettings || isPending || isLoading || !automationEnabled}
+                  className="h-5 w-5 rounded border-white/20 bg-slate-900 text-cyan-400 focus:ring-cyan-400"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => toggleAutomationCard('ai_responder')}
+                aria-expanded={Boolean(expandedAutomationCards.ai_responder)}
+                className="inline-flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-300 transition hover:bg-white/10"
+              >
+                {expandedAutomationCards.ai_responder ? 'Recolher' : 'Expandir'}
+                <ChevronDown className={`h-4 w-4 transition-transform ${expandedAutomationCards.ai_responder ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
           </div>
 
-          {aiResponderSettings && (
+          {aiResponderSettings && expandedAutomationCards.ai_responder && (
             <>
               <div className="mt-5 rounded-xl border border-white/10 bg-black/20 p-4">
                 <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
@@ -1057,6 +1101,29 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
             </>
           )}
         </section>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-6 shadow-xl">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-fuchsia-300/20 bg-fuchsia-400/10">
+                <PartyPopper className="h-5 w-5 text-fuchsia-200" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-200/70">Futuras automacoes</p>
+                <h3 className="text-lg font-black text-white">Placeholders das proximas ideias</h3>
+              </div>
+            </div>
+            <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-300">
+              Esta area serve como mapa visual do que ainda vamos implementar. Os toggles e textos abaixo ainda nao disparam nada de verdade.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-fuchsia-300/20 bg-fuchsia-400/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-100">
+            Em breve
+          </div>
+        </div>
 
         <div className="mt-6 grid gap-4 xl:grid-cols-2">
           {automationPlaceholders.map((item) => {
@@ -1068,7 +1135,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                 key={item.id}
                 className="rounded-xl border border-white/10 bg-white/[0.03] p-5"
               >
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                   <div className="flex items-start gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-black/20">
                       <Icon className="h-5 w-5 text-slate-200" />
