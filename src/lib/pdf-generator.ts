@@ -322,18 +322,29 @@ async function loadStoreLogoDataUrl(logoFile?: string | null) {
   }
 }
 
-async function drawCompactDocumentFrame(
-  doc: jsPDF,
-  store: InstallmentReceiptData['store'],
-  title: string,
-  subtitle: string,
-  options?: { pageLabel?: string; generatedAt?: string }
-) {
+function compactStatusLabel(status: string) {
+  return String(status || '').toLowerCase() === 'pago' ? 'Pago' : 'Pendente'
+}
+
+export async function generateCustomerFinancialSummaryPDF(data: CustomerFinancialSummaryPdfData): Promise<Buffer> {
+  const generatedAt = new Date().toLocaleDateString('pt-BR')
+  const rowHeight = 4.6
+  const blockHeaderHeight = 18
+  const tableHeaderHeight = 6
+  const totalsHeight = 8
+  const blockGap = 3
+  const headerAreaHeight = 34
+  const topPadding = 10
+  const bottomPadding = 8
+  const contentHeight = data.financiamentos.reduce((total, financiamento) => {
+    const blockHeight = blockHeaderHeight + tableHeaderHeight + (financiamento.parcelas.length * rowHeight) + totalsHeight + 4
+    return total + blockHeight + blockGap
+  }, 0)
+  const pageHeight = Math.max(85, topPadding + headerAreaHeight + contentHeight + bottomPadding)
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [pageHeight, 150] })
   const pageWidth = doc.internal.pageSize.getWidth()
-  const pageHeight = doc.internal.pageSize.getHeight()
-  const logoDataUrl = await loadStoreLogoDataUrl(store.logoFile)
+  const logoDataUrl = await loadStoreLogoDataUrl(data.store.logoFile)
   const contentLeft = logoDataUrl ? 28 : 10
-  const generatedAt = options?.generatedAt || new Date().toLocaleDateString('pt-BR')
 
   doc.setFillColor(15, 23, 42)
   doc.rect(0, 0, pageWidth, 21, 'F')
@@ -359,131 +370,45 @@ async function drawCompactDocumentFrame(
   doc.setTextColor(255, 255, 255)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(10.2)
-  doc.text(store.name || 'Documento da Loja', contentLeft, 8)
+  doc.text(data.store.name || 'Financeiro da Loja', contentLeft, 8)
 
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(5.8)
-  const storeIdentity = store.legalName && store.legalName !== store.name
-    ? store.legalName
+  doc.setFontSize(5.2)
+  const storeIdentity = data.store.legalName && data.store.legalName !== data.store.name
+    ? data.store.legalName
     : null
   if (storeIdentity) {
-    doc.text(storeIdentity, contentLeft, 11.8)
+    doc.text(storeIdentity, contentLeft, 11.4)
   }
 
-  const addressBlock = buildStoreAddress(store).join(' | ')
+  const addressBlock = buildStoreAddress(data.store).join(' | ')
   if (addressBlock) {
     const addressLines = doc.splitTextToSize(addressBlock, 58)
+    doc.setFontSize(4.7)
     doc.text(addressLines.slice(0, 2), contentLeft, 15)
   }
 
-  let contactLine = [formatPhoneBR(store.whatsapp), formatPhoneBR(store.phone)].filter(Boolean).join(' | ')
-  if (store.email) {
-    contactLine = contactLine ? `${contactLine} | ${store.email}` : store.email
+  const contactParts = [formatPhoneBR(data.store.whatsapp), formatPhoneBR(data.store.phone)].filter(Boolean)
+  let contactLine = contactParts.join(' | ')
+  if (data.store.email) {
+    contactLine = contactLine ? `${contactLine}\n${data.store.email}` : data.store.email
   }
   if (contactLine) {
-    const contactLines = doc.splitTextToSize(contactLine, 42)
-    doc.setFontSize(5.6)
-    doc.text(contactLines.slice(0, 2), pageWidth - 8, 8, { align: 'right' })
+    const contactLines = doc.splitTextToSize(contactLine, 46)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(4.7)
+    doc.text(contactLines.slice(0, 3), pageWidth - 8, 8, { align: 'right' })
   }
 
   doc.setTextColor(17, 24, 39)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(10.4)
-  doc.text(title, 10, 27)
+  doc.setFontSize(8.2)
+  doc.text(`${data.customerName} - emitido em ${generatedAt}`, 10, 29)
 
-  doc.setFontSize(6.2)
-  doc.setTextColor(100, 116, 139)
-  doc.text(`Emitido em ${generatedAt}`, pageWidth - 10, 27, { align: 'right' })
-
-  doc.setFillColor(248, 250, 252)
-  doc.setDrawColor(226, 232, 240)
-  doc.roundedRect(10, 31, pageWidth - 20, 10, 3, 3, 'FD')
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(6.2)
-  doc.setTextColor(51, 65, 85)
-  const subtitleLines = doc.splitTextToSize(subtitle, pageWidth - 28)
-  doc.text(subtitleLines.slice(0, 2), 14, 35.2)
-
-  if (options?.pageLabel) {
-    doc.setDrawColor(203, 213, 225)
-    doc.setTextColor(100, 116, 139)
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(5.6)
-    doc.text(options.pageLabel, pageWidth - 10, pageHeight - 4, { align: 'right' })
-  }
-
-  return { pageWidth, pageHeight, contentTop: 45 }
-}
-
-function drawCompactFooter(doc: jsPDF, leftText: string, rightText: string) {
-  const pageWidth = doc.internal.pageSize.getWidth()
-  const pageHeight = doc.internal.pageSize.getHeight()
-
-  doc.setDrawColor(203, 213, 225)
-  doc.line(10, pageHeight - 12, pageWidth - 10, pageHeight - 12)
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(5.8)
-  doc.setTextColor(100, 116, 139)
-  doc.text('Observacoes', 10, pageHeight - 8)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(5.6)
-  doc.setTextColor(51, 65, 85)
-  doc.text(leftText, 10, pageHeight - 4)
-  doc.setFontSize(5.4)
-  doc.setTextColor(148, 163, 184)
-  doc.text(rightText, pageWidth - 10, pageHeight - 4, { align: 'right' })
-}
-
-function drawWrappedLineBlock(
-  doc: jsPDF,
-  text: string,
-  x: number,
-  y: number,
-  maxWidth: number,
-  lineHeight: number
-) {
-  const lines = doc.splitTextToSize(text, maxWidth)
-  doc.text(lines, x, y, { lineHeightFactor: 1 })
-  return y + (lines.length * lineHeight)
-}
-
-function compactStatusLabel(status: string) {
-  return String(status || '').toLowerCase() === 'pago' ? 'Pago' : 'Pendente'
-}
-
-export async function generateCustomerFinancialSummaryPDF(data: CustomerFinancialSummaryPdfData): Promise<Buffer> {
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [85, 150] })
-  const generatedAt = new Date().toLocaleDateString('pt-BR')
-  let pageNumber = 1
-
-  const startPage = async (continuation?: string) => {
-    if (pageNumber > 1) doc.addPage()
-    const subtitleBase = `Cliente: ${data.customerName}. Parcelas discriminadas por venda para consulta e envio digital.`
-    const subtitle = continuation ? `${subtitleBase} ${continuation}` : subtitleBase
-    return drawCompactDocumentFrame(doc, data.store, 'DETALHE FINANCEIRO', subtitle, {
-      pageLabel: `Pagina ${pageNumber}`,
-      generatedAt,
-    })
-  }
-
-  let { pageWidth, pageHeight, contentTop } = await startPage()
-  let y = contentTop
-  const bottomLimit = pageHeight - 16
-  const rowHeight = 4.6
-
-  const ensureSpace = async (requiredHeight: number, continuation?: string) => {
-    if (y + requiredHeight <= bottomLimit) return
-    pageNumber += 1
-    ;({ pageWidth, pageHeight, contentTop } = await startPage(continuation || '(continua)'))
-    y = contentTop
-  }
+  let y = 34
 
   for (const financiamento of data.financiamentos) {
-    const blockHeaderHeight = 18
-    const tableHeaderHeight = 6
-    const totalsHeight = 8
     const estimatedHeight = blockHeaderHeight + tableHeaderHeight + (financiamento.parcelas.length * rowHeight) + totalsHeight + 4
-    await ensureSpace(estimatedHeight, '(continua)')
 
     const dependenteText = financiamento.dependenteNames.length > 0
       ? `Dependente(s): ${financiamento.dependenteNames.join(', ')}`
@@ -528,28 +453,6 @@ export async function generateCustomerFinancialSummaryPDF(data: CustomerFinancia
     let totalPendenteVenda = 0
 
     for (const parcela of financiamento.parcelas) {
-      if (rowY + rowHeight + totalsHeight > bottomLimit) {
-        pageNumber += 1
-        ;({ pageWidth, pageHeight, contentTop } = await startPage(`(continua venda #${financiamento.vendaId})`))
-        y = contentTop
-        rowY = y + 8
-
-        doc.setFont('helvetica', 'bold')
-        doc.setFontSize(6.2)
-        doc.setTextColor(15, 23, 42)
-        doc.text(`Venda #${financiamento.vendaId} (continua)`, 13, y + 3.8)
-        doc.setFontSize(5.5)
-        doc.setTextColor(100, 116, 139)
-        doc.text('N', 13, y + 8)
-        doc.text('VENC.', 21, y + 8)
-        doc.text('VALOR', 42, y + 8)
-        doc.text('DT PGTO', 63, y + 8)
-        doc.text('VLR PAGO', 87, y + 8)
-        doc.text('STATUS', 114, y + 8)
-        doc.line(12, y + 9.3, pageWidth - 12, y + 9.3)
-        rowY = y + 13
-      }
-
       const isPago = String(parcela.status || '').toLowerCase() === 'pago'
       const valorPago = isPago ? (parcela.valorPago || parcela.valor) : 0
       totalPagoVenda += valorPago
@@ -580,14 +483,8 @@ export async function generateCustomerFinancialSummaryPDF(data: CustomerFinancia
     doc.text(`Pago: ${formatMoneyBR(totalPagoVenda)}`, 65, rowY + 4.4)
     doc.text(`Pendente: ${formatMoneyBR(totalPendenteVenda)}`, pageWidth - 13, rowY + 4.4, { align: 'right' })
 
-    y = rowY + 9
+    y = rowY + 7
   }
-
-  drawCompactFooter(
-    doc,
-    'Documento nao fiscal para compartilhamento do detalhamento financeiro do cliente.',
-    'PDF digital gerado para envio via WhatsApp.'
-  )
 
   return Buffer.from(doc.output('arraybuffer'))
 }
@@ -595,123 +492,135 @@ export async function generateCustomerFinancialSummaryPDF(data: CustomerFinancia
 export async function generateCustomerPrescriptionSummaryPDF(data: CustomerPrescriptionSummaryPdfData): Promise<Buffer> {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [85, 150] })
   const generatedAt = new Date().toLocaleDateString('pt-BR')
-  let pageNumber = 1
-  const isTitularSelection = data.subjectLabel.trim() === data.customerName.trim()
-  const selectionLabel = isTitularSelection
-    ? 'Selecao: Titular'
-    : `Dependente: ${data.subjectLabel}`
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const pageHeight = doc.internal.pageSize.getHeight()
+  const logoDataUrl = await loadStoreLogoDataUrl(data.store.logoFile)
+  const contentLeft = logoDataUrl ? 28 : 10
 
-  const startPage = async (continuation?: string) => {
-    if (pageNumber > 1) doc.addPage()
-    const subtitleBase = `Titular: ${data.customerName}. ${selectionLabel}. Historico de receitas opticas para consulta e envio digital.`
-    const subtitle = continuation ? `${subtitleBase} ${continuation}` : subtitleBase
-    return drawCompactDocumentFrame(doc, data.store, 'DETALHE DE RECEITAS', subtitle, {
-      pageLabel: `Pagina ${pageNumber}`,
-      generatedAt,
-    })
+  doc.setFillColor(15, 23, 42)
+  doc.rect(0, 0, pageWidth, 21, 'F')
+
+  if (logoDataUrl) {
+    doc.setFillColor(255, 255, 255)
+    doc.roundedRect(8, 4.5, 16, 12, 2, 2, 'F')
+    try {
+      const properties = doc.getImageProperties(logoDataUrl)
+      const maxWidth = 12
+      const maxHeight = 8
+      const scale = Math.min(maxWidth / properties.width, maxHeight / properties.height)
+      const drawWidth = properties.width * scale
+      const drawHeight = properties.height * scale
+      const drawX = 8 + ((16 - drawWidth) / 2)
+      const drawY = 4.5 + ((12 - drawHeight) / 2)
+      doc.addImage(logoDataUrl, drawX, drawY, drawWidth, drawHeight, undefined, 'FAST')
+    } catch {
+      doc.addImage(logoDataUrl, 10, 6.5, 11, 7, undefined, 'FAST')
+    }
   }
 
-  let { pageWidth, pageHeight, contentTop } = await startPage()
-  let y = contentTop
-  const bottomLimit = pageHeight - 16
-  const lineHeight = 3.3
+  doc.setTextColor(255, 255, 255)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10.2)
+  doc.text(data.store.name || 'Receitas da Loja', contentLeft, 8)
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(5.2)
+  const storeIdentity = data.store.legalName && data.store.legalName !== data.store.name
+    ? data.store.legalName
+    : null
+  if (storeIdentity) {
+    doc.text(storeIdentity, contentLeft, 11.4)
+  }
+
+  const addressBlock = buildStoreAddress(data.store).join(' | ')
+  if (addressBlock) {
+    const addressLines = doc.splitTextToSize(addressBlock, 58)
+    doc.setFontSize(4.7)
+    doc.text(addressLines.slice(0, 2), contentLeft, 15)
+  }
+
+  const contactParts = [formatPhoneBR(data.store.whatsapp), formatPhoneBR(data.store.phone)].filter(Boolean)
+  let contactLine = contactParts.join(' | ')
+  if (data.store.email) {
+    contactLine = contactLine ? `${contactLine}\n${data.store.email}` : data.store.email
+  }
+  if (contactLine) {
+    const contactLines = doc.splitTextToSize(contactLine, 46)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(4.7)
+    doc.text(contactLines.slice(0, 3), pageWidth - 8, 8, { align: 'right' })
+  }
+
+  doc.setTextColor(17, 24, 39)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8.2)
+  doc.text(`${data.customerName} - emitida em ${generatedAt}`, 10, 29)
+
+  let y = 34
+  const bottomLimit = pageHeight - 8
 
   for (const rx of data.prescriptions) {
-    const rowCount =
-      5
-      + (rx.medico ? 1 : 0)
-      + ((rx.pertoOdEsf || rx.pertoOdCil || rx.pertoOdEixo || rx.pertoOeEsf || rx.pertoOeCil || rx.pertoOeEixo) ? 2 : 0)
-      + (rx.adicao ? 1 : 0)
-    const estimatedHeight = 10 + (rowCount * lineHeight)
+    const hasPerto = Boolean(
+      rx.pertoOdEsf || rx.pertoOdCil || rx.pertoOdEixo || rx.pertoOeEsf || rx.pertoOeCil || rx.pertoOeEixo
+    )
+    const hasAdicao = Boolean(rx.adicao)
+    const cardHeight = hasPerto ? (hasAdicao ? 25 : 22) : (hasAdicao ? 19 : 16)
 
-    if (y + estimatedHeight > bottomLimit) {
-      pageNumber += 1
-      ;({ pageWidth, pageHeight, contentTop } = await startPage('(continua)'))
-      y = contentTop
+    if (y + cardHeight > bottomLimit) {
+      doc.addPage()
+      y = 10
     }
 
     doc.setFillColor(248, 250, 252)
     doc.setDrawColor(226, 232, 240)
-    doc.roundedRect(10, y, pageWidth - 20, estimatedHeight, 3, 3, 'FD')
+    doc.roundedRect(10, y, pageWidth - 20, cardHeight, 3, 3, 'FD')
 
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(6.6)
+    doc.setFontSize(6.2)
     doc.setTextColor(15, 23, 42)
-    doc.text(`Receita de ${formatDateBR(rx.dataCompra)}`, 13, y + 4.8)
+    const cardTitle = data.subjectLabel.trim() !== data.customerName.trim()
+      ? `${data.subjectLabel} - ${formatDateBR(rx.dataCompra)}`
+      : formatDateBR(rx.dataCompra)
+    doc.text(cardTitle, 13, y + 4.5)
 
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(5.8)
-    doc.setTextColor(71, 85, 105)
-    let innerY = y + 8.5
-    if (rx.medico) {
-      innerY = drawWrappedLineBlock(doc, `Medico: ${rx.medico}`, 13, innerY, pageWidth - 26, lineHeight)
-      innerY += 0.4
-    }
-
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(37, 99, 235)
-    doc.text('Longe', 13, innerY)
-    innerY += 3
-
-    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(5.4)
     doc.setTextColor(51, 65, 85)
-    innerY = drawWrappedLineBlock(
-      doc,
+    doc.text(
       `OD: ESF ${rx.longeOdEsf || '-'} | CIL ${rx.longeOdCil || '-'} | EIXO ${rx.longeOdEixo || '-'}`,
       13,
-      innerY,
-      pageWidth - 26,
-      lineHeight
+      y + 9
     )
-    innerY = drawWrappedLineBlock(
-      doc,
+    doc.text(
       `OE: ESF ${rx.longeOeEsf || '-'} | CIL ${rx.longeOeCil || '-'} | EIXO ${rx.longeOeEixo || '-'}`,
       13,
-      innerY,
-      pageWidth - 26,
-      lineHeight
+      y + 13
     )
 
-    if (rx.pertoOdEsf || rx.pertoOdCil || rx.pertoOdEixo || rx.pertoOeEsf || rx.pertoOeCil || rx.pertoOeEixo) {
-      doc.setFont('helvetica', 'bold')
-      doc.setTextColor(14, 116, 144)
-      doc.text('Perto', 13, innerY)
-      innerY += 3
-
-      doc.setFont('helvetica', 'normal')
-      doc.setTextColor(51, 65, 85)
-      innerY = drawWrappedLineBlock(
-        doc,
+    if (hasPerto) {
+      doc.text(
         `OD: ESF ${rx.pertoOdEsf || '-'} | CIL ${rx.pertoOdCil || '-'} | EIXO ${rx.pertoOdEixo || '-'}`,
         13,
-        innerY,
-        pageWidth - 26,
-        lineHeight
+        y + 17
       )
-      innerY = drawWrappedLineBlock(
-        doc,
+      doc.text(
         `OE: ESF ${rx.pertoOeEsf || '-'} | CIL ${rx.pertoOeCil || '-'} | EIXO ${rx.pertoOeEixo || '-'}`,
         13,
-        innerY,
-        pageWidth - 26,
-        lineHeight
+        y + 21
       )
-    }
-
-    if (rx.adicao) {
+      if (hasAdicao) {
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(30, 41, 59)
+        doc.text(`Adicao: ${rx.adicao}`, 13, y + 25)
+      }
+    } else if (hasAdicao) {
       doc.setFont('helvetica', 'bold')
       doc.setTextColor(30, 41, 59)
-      doc.text(`Adicao: ${rx.adicao}`, 13, innerY)
+      doc.text(`Adicao: ${rx.adicao}`, 13, y + 17)
     }
 
-    y += estimatedHeight + 3
+    y += cardHeight + 3
   }
-
-  drawCompactFooter(
-    doc,
-    'Documento nao fiscal para compartilhamento do historico de receitas opticas.',
-    'PDF digital gerado para envio via WhatsApp.'
-  )
 
   return Buffer.from(doc.output('arraybuffer'))
 }
