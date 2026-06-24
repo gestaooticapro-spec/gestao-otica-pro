@@ -10,6 +10,8 @@ const config = {
 }
 
 const INBOUND_AGGREGATION_WINDOW_MS = Number(process.env.WHATSAPP_INBOUND_AGGREGATION_WINDOW_MS || 10000)
+const MAX_ADMIN_BODY_BYTES = 15 * 1024 * 1024
+const MAX_MEDIA_BYTES = 10 * 1024 * 1024
 const inboundBuffers = new Map()
 
 function requiredEnv(name) {
@@ -25,7 +27,16 @@ function jsonResponse(response, status, payload) {
 
 async function readJson(request) {
   const chunks = []
-  for await (const chunk of request) chunks.push(chunk)
+  let totalBytes = 0
+  for await (const chunk of request) {
+    totalBytes += chunk.length
+    if (totalBytes > MAX_ADMIN_BODY_BYTES) {
+      const error = new Error('Request body too large')
+      error.status = 413
+      throw error
+    }
+    chunks.push(chunk)
+  }
   const raw = Buffer.concat(chunks).toString('utf8')
   return raw ? JSON.parse(raw) : {}
 }
@@ -249,6 +260,60 @@ async function sendEvolutionText(instanceKey, phone, text) {
   return result
 }
 
+async function sendEvolutionMedia(instanceKey, phone, media) {
+  const response = await fetch(
+    `${config.evolutionBaseUrl}/message/sendMedia/${encodeURIComponent(instanceKey)}`,
+    {
+      method: 'POST',
+      headers: {
+        apikey: config.evolutionApiKey,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        number: phone,
+        mediatype: media.type,
+        mimetype: media.mimeType,
+        fileName: media.fileName,
+        caption: media.caption,
+        media: media.base64,
+      }),
+      signal: AbortSignal.timeout(25000),
+    }
+  )
+
+  const result = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(`Evolution media send failed (${response.status}): ${JSON.stringify(result)}`)
+  }
+  return result
+}
+
+function normalizeAdminMedia(value) {
+  if (!value || typeof value !== 'object') return null
+
+  const type = String(value.type || '').trim().toLowerCase()
+  const mimeType = String(value.mimeType || '').trim().toLowerCase()
+  const fileName = String(value.fileName || '').trim()
+  const caption = String(value.caption || '').trim()
+  const base64 = String(value.base64 || '').replace(/^data:[^;]+;base64,/, '').trim()
+
+  const validType = type === 'document' || type === 'image'
+  const validMime = type === 'document'
+    ? mimeType === 'application/pdf'
+    : /^image\/(jpeg|png|webp)$/.test(mimeType)
+  const validFileName = /^[a-zA-Z0-9._-]{1,160}$/.test(fileName)
+  const validBase64 = base64.length > 0 && base64.length % 4 === 0 && /^[a-zA-Z0-9+/]+={0,2}$/.test(base64)
+  const decodedBytes = validBase64 ? Math.floor((base64.length * 3) / 4) - (base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0) : 0
+
+  if (!validType || !validMime || !validFileName || !validBase64 || decodedBytes <= 0 || decodedBytes > MAX_MEDIA_BYTES || caption.length > 1024) {
+    const error = new Error('Invalid media payload')
+    error.status = 400
+    throw error
+  }
+
+  return { type, mimeType, fileName, caption, base64 }
+}
+
 function isTimeoutError(error) {
   return error?.name === 'TimeoutError'
     || error?.name === 'AbortError'
@@ -349,6 +414,7 @@ async function handleAdminMessageSend(payload) {
   const instanceKey = String(payload.instanceKey || '').trim()
   const phone = String(payload.phone || '').replace(/\D/g, '')
   const text = String(payload.text || '').trim()
+  const media = normalizeAdminMedia(payload.media)
   const outboundMessageId = Number(payload.outboundMessageId)
 
   if (!/^[a-zA-Z0-9_-]{2,120}$/.test(instanceKey)) {
@@ -357,7 +423,7 @@ async function handleAdminMessageSend(payload) {
     throw error
   }
 
-  if (!phone || phone.length < 10 || phone.length > 15 || !text || !Number.isInteger(outboundMessageId) || outboundMessageId <= 0) {
+  if (!phone || phone.length < 10 || phone.length > 15 || (!text && !media) || (text && media) || !Number.isInteger(outboundMessageId) || outboundMessageId <= 0) {
     const error = new Error('Invalid message payload')
     error.status = 400
     throw error
@@ -365,7 +431,9 @@ async function handleAdminMessageSend(payload) {
 
   let result
   try {
-    result = await sendEvolutionText(instanceKey, phone, text)
+    result = media
+      ? await sendEvolutionMedia(instanceKey, phone, media)
+      : await sendEvolutionText(instanceKey, phone, text)
   } catch (error) {
     if (!isTimeoutError(error)) {
       const failedSynced = await updateDelivery(outboundMessageId, 'failed', {

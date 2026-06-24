@@ -149,6 +149,7 @@ export default function OperatorMenuLojaVazia({
     });
     const [loading, setLoading] = useState(true);
     const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
+    const [whatsAppInitialPhone, setWhatsAppInitialPhone] = useState<string | null>(null);
 
     useEffect(() => {
         async function fetchData() {
@@ -256,6 +257,18 @@ export default function OperatorMenuLojaVazia({
     };
 
     // --- IDÊNTICO AO COMPONENTE INTERNO REUTILIZÁVEL ---
+    const handleOpenRetornoWhatsApp = (phone: string | null) => {
+        if (!phone) return;
+
+        if (radar.isWhatsAppConnected) {
+            setWhatsAppInitialPhone(phone);
+            setIsWhatsAppModalOpen(true);
+            return;
+        }
+
+        window.open(getWhatsAppLink(phone), '_blank');
+    };
+
     const RadarWidget = ({
         title,
         subtitle,
@@ -591,7 +604,10 @@ export default function OperatorMenuLojaVazia({
                                     <WidgetWhatsAppPendencias
                                         pendencias={radar.whatsAppPendencias}
                                         humanOverrides={radar.whatsAppHumanOverrides}
-                                        onOpen={() => setIsWhatsAppModalOpen(true)}
+                                        onOpen={() => {
+                                            setWhatsAppInitialPhone(null);
+                                            setIsWhatsAppModalOpen(true);
+                                        }}
                                     />
                                 )}
                                 
@@ -682,7 +698,7 @@ export default function OperatorMenuLojaVazia({
                                                     </p>
                                                 </div>
                                                 <button
-                                                    onClick={() => item.fone_movel && window.open(getWhatsAppLink(item.fone_movel), '_blank')}
+                                                    onClick={() => handleOpenRetornoWhatsApp(item.fone_movel)}
                                                     className="w-8 h-8 shrink-0 rounded-full bg-orange-500/20 text-orange-400 hover:bg-orange-500 hover:text-white flex items-center justify-center transition-all"
                                                 >
                                                     <Send className="w-4 h-4" />
@@ -792,8 +808,12 @@ export default function OperatorMenuLojaVazia({
             {radar.isWhatsAppConnected && (
                 <WhatsAppOperatorModal
                     isOpen={isWhatsAppModalOpen}
-                    onClose={() => setIsWhatsAppModalOpen(false)}
+                    onClose={() => {
+                        setIsWhatsAppModalOpen(false);
+                        setWhatsAppInitialPhone(null);
+                    }}
                     storeId={storeId}
+                    initialPhone={whatsAppInitialPhone}
                 />
             )}
         </div >

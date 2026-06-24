@@ -348,10 +348,12 @@ export default function WhatsAppOperatorModal({
   isOpen,
   onClose,
   storeId,
+  initialPhone = null,
 }: {
   isOpen: boolean
   onClose: () => void
   storeId: number
+  initialPhone?: string | null
 }) {
   const { openParcelaModal } = useModals()
   const [query, setQuery] = useState('')
@@ -379,7 +381,7 @@ export default function WhatsAppOperatorModal({
   const conversationBottomRef = useRef<HTMLDivElement | null>(null)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
 
-  const loadThreads = (search = query, preserveSelection = true) => {
+  const loadThreads = (search = query, preserveSelection = true, preferredPhone: string | null = null) => {
     setLoadError(null)
 
     startTransition(async () => {
@@ -397,9 +399,10 @@ export default function WhatsAppOperatorModal({
 
       setThreads(result.threads)
 
-      const nextSelectedPhone = preserveSelection && selectedPhone && result.threads.some((thread) => thread.remotePhone === selectedPhone)
-        ? selectedPhone
-        : result.threads[0]?.remotePhone || null
+      const nextSelectedPhone = preferredPhone
+        || (preserveSelection && selectedPhone && result.threads.some((thread) => thread.remotePhone === selectedPhone)
+          ? selectedPhone
+          : result.threads[0]?.remotePhone || null)
 
       setSelectedPhone(nextSelectedPhone)
     })
@@ -478,11 +481,12 @@ export default function WhatsAppOperatorModal({
 
   useEffect(() => {
     if (!isOpen) return
-    loadThreads('', false)
+    const initialSearch = initialPhone || ''
+    loadThreads(initialSearch, false, initialPhone)
     loadRetentionPreview()
-    setQuery('')
+    setQuery(initialSearch)
     setSelectedDetail(null)
-    setSelectedPhone(null)
+    setSelectedPhone(initialPhone)
     setComposerText('')
     setComposerMode('real')
     setSendError(null)
@@ -490,16 +494,16 @@ export default function WhatsAppOperatorModal({
     setControlMessage(null)
     setRetentionError(null)
     setRetentionMessage(null)
-  }, [isOpen])
+  }, [isOpen, initialPhone])
 
   useEffect(() => {
     if (!isOpen) return
     const timer = window.setTimeout(() => {
-      loadThreads(query, false)
+      loadThreads(query, false, query === initialPhone ? initialPhone : null)
     }, 250)
 
     return () => window.clearTimeout(timer)
-  }, [query])
+  }, [query, initialPhone])
 
   useEffect(() => {
     if (!isOpen || !selectedPhone) return

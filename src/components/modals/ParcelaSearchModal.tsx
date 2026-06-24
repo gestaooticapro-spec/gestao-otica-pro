@@ -2,8 +2,10 @@
 
 import { useState, useTransition, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Search, Calendar, Loader2, Wallet, ArrowLeft, ShoppingBag, CheckCircle2, AlertTriangle, ArrowDownCircle, Printer } from 'lucide-react'
+import { X, Search, Calendar, Loader2, Wallet, ArrowLeft, ShoppingBag, CheckCircle2, AlertTriangle, ArrowDownCircle, Printer, MessageCircle } from 'lucide-react'
+import { toast } from 'sonner'
 import { searchPendenciasCliente, receberParcela } from '@/lib/actions/vendas.actions'
+import { sendInstallmentReceiptWhatsApp } from '@/lib/actions/manual-whatsapp.actions'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import { printParcela } from '@/components/financeiro/PrintParcelaButton'
 
@@ -72,6 +74,8 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQu
     const [isAuthOpen, setIsAuthOpen] = useState(false)
     const [isProcessing, startProcess] = useTransition()
     const [isPrinting, setIsPrinting] = useState(false)
+    const [isSendingReceipt, setIsSendingReceipt] = useState(false)
+    const [receiptSent, setReceiptSent] = useState(false)
     const searchInputRef = useRef<HTMLInputElement>(null)
 
     useEffect(() => {
@@ -85,6 +89,8 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQu
             setResults([])
             setHasSearched(false)
             setPaidParcelaId(null)
+            setIsSendingReceipt(false)
+            setReceiptSent(false)
             setTimeout(() => searchInputRef.current?.focus(), 100)
         }
 
@@ -218,6 +224,31 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQu
                 alert("Erro crítico ao processar pagamento. Verifique o console.")
             }
         })
+    }
+
+    const handleSendReceipt = async () => {
+        if (!paidParcelaId || isSendingReceipt) return
+
+        setIsSendingReceipt(true)
+        try {
+            const result = await sendInstallmentReceiptWhatsApp({
+                storeId,
+                installmentId: paidParcelaId,
+            })
+
+            if (!result.success) {
+                toast.error(result.message)
+                return
+            }
+
+            setReceiptSent(true)
+            toast.success('Recibo enviado em PDF pelo WhatsApp da loja.')
+        } catch (error) {
+            console.error('[ParcelaSearchModal] Erro ao enviar recibo:', error)
+            toast.error('Nao foi possivel enviar o recibo por WhatsApp.')
+        } finally {
+            setIsSendingReceipt(false)
+        }
     }
 
     if (!mounted || !isOpen) return null
@@ -450,13 +481,27 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQu
                                         Fechar
                                     </button>
                                     {paidParcelaId && (
-                                        <button
-                                            onClick={() => { setIsPrinting(true); printParcela(paidParcelaId).catch(console.error).finally(() => setIsPrinting(false)) }}
-                                            disabled={isPrinting}
-                                            className="w-full py-3 text-slate-500 font-bold hover:bg-white/5 hover:text-slate-300 rounded-xl transition-colors flex items-center justify-center gap-2 text-sm"
-                                        >
-                                            <Printer className="h-4 w-4" /> Reimprimir Recibo
-                                        </button>
+                                        <>
+                                            <button
+                                                onClick={handleSendReceipt}
+                                                disabled={isPrinting || isSendingReceipt || receiptSent}
+                                                className="w-full py-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 font-bold hover:bg-emerald-500/20 rounded-xl transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {isSendingReceipt
+                                                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                                                    : receiptSent
+                                                        ? <CheckCircle2 className="h-4 w-4" />
+                                                        : <MessageCircle className="h-4 w-4" />}
+                                                {isSendingReceipt ? 'Enviando PDF...' : receiptSent ? 'Recibo enviado' : 'Enviar recibo por WhatsApp'}
+                                            </button>
+                                            <button
+                                                onClick={() => { setIsPrinting(true); printParcela(paidParcelaId).catch(console.error).finally(() => setIsPrinting(false)) }}
+                                                disabled={isPrinting || isSendingReceipt}
+                                                className="w-full py-3 text-slate-500 font-bold hover:bg-white/5 hover:text-slate-300 rounded-xl transition-colors flex items-center justify-center gap-2 text-sm"
+                                            >
+                                                <Printer className="h-4 w-4" /> Reimprimir Recibo
+                                            </button>
+                                        </>
                                     )}
                                 </div>
                             </div>

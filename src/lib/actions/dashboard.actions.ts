@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getAniversariantes } from '@/lib/actions/consultas.actions'
 
 export type StoreKPIs = {
+    storeId: number
     faturamentoDia: number
     faturamentoMes: number
     ticketMedio: number
@@ -74,6 +75,7 @@ export async function getManagerKPIs(storeId: number): Promise<StoreKPIs> {
     const aniversariantes = await getAniversariantes(storeId)
 
     return {
+        storeId,
         faturamentoDia,
         faturamentoMes,
         ticketMedio,

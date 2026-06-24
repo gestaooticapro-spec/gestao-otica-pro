@@ -22,8 +22,8 @@ import {
     Wrench
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { getWhatsAppLink } from '@/lib/utils'
 import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/BackgroundToggle'
+import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
 import {
     EmployeeSimple,
     LabOSResult,
@@ -62,6 +62,7 @@ export default function EntregaPage() {
     const [selectedOS, setSelectedOS] = useState<LabOSResult | null>(null)
     const [search, setSearch] = useState('')
     const [loading, setLoading] = useState(true)
+    const [sendingWhatsAppId, setSendingWhatsAppId] = useState<number | null>(null)
     const [isPending, startTransition] = useTransition()
 
     async function loadData() {
@@ -130,6 +131,29 @@ export default function EntregaPage() {
             setItems((current) => current.filter((item) => item.id !== selectedOS.id))
             setSelectedOS(null)
         })
+    }
+
+    const handleSendWhatsApp = async (item: LabOSResult, phone: string, message: string, diasEspera: number) => {
+        if (sendingWhatsAppId) return
+        setSendingWhatsAppId(item.id)
+
+        try {
+            await sendManualWhatsAppFromClient({
+                storeId,
+                remotePhone: phone,
+                messageText: message,
+                messageType: 'service_order',
+                source: 'entrega.ready_pickup_button',
+                metadata: {
+                    osId: item.id,
+                    vendaId: item.venda_id,
+                    status: item.status,
+                    diasEspera,
+                },
+            })
+        } finally {
+            setSendingWhatsAppId(null)
+        }
     }
 
     return (
@@ -217,7 +241,6 @@ export default function EntregaPage() {
                                     const customerName = item.customer_name || 'Cliente'
                                     const phone = item.customer_phone || ''
                                     const whatsappMessage = `Olá ${customerName.split(' ')[0]}! Tudo bem? Aqui é da Ótica. Os óculos de *${patientName}* ficaram prontos e estão aguardando retirada.`
-                                    const whatsappLink = getWhatsAppLink(phone, whatsappMessage)
 
                                     return (
                                         <div
@@ -268,16 +291,18 @@ export default function EntregaPage() {
                                                     </span>
 
                                                     {phone ? (
-                                                        <a
-                                                            href={whatsappLink}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            onClick={(event) => event.stopPropagation()}
-                                                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-600/80 text-white hover:bg-emerald-500 shadow-lg shadow-emerald-900/20 border border-emerald-500/40 transition-all"
+                                                        <button
+                                                            type="button"
+                                                            disabled={sendingWhatsAppId === item.id}
+                                                            onClick={(event) => {
+                                                                event.stopPropagation()
+                                                                void handleSendWhatsApp(item, phone, whatsappMessage, diasEspera)
+                                                            }}
+                                                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-600/80 text-white hover:bg-emerald-500 shadow-lg shadow-emerald-900/20 border border-emerald-500/40 transition-all disabled:cursor-wait disabled:opacity-50"
                                                         >
                                                             <MessageCircle className="h-4 w-4" />
                                                             Avisar
-                                                        </a>
+                                                        </button>
                                                     ) : (
                                                         <span className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold bg-white/5 text-slate-600 border border-white/5 opacity-60">
                                                             <AlertTriangle className="h-4 w-4" />

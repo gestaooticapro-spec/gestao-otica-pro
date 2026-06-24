@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Archive, User, DollarSign, MessageCircle, Clock, AlertTriangle, ArrowLeft } from 'lucide-react'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
 import { useEffect, useState } from 'react'
-import { getWhatsAppLink } from '@/lib/utils'
+import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
 
 export default function GavetaPage({
   params
@@ -15,6 +15,7 @@ export default function GavetaPage({
   const storeId = parseInt(params.storeId)
   const [itens, setItens] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [sendingWhatsAppId, setSendingWhatsAppId] = useState<number | null>(null)
   const { preference } = useBackgroundPreference()
 
   useEffect(() => {
@@ -31,6 +32,28 @@ export default function GavetaPage({
     const today = new Date()
     const diffTime = Math.abs(today.getTime() - readyDate.getTime())
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  }
+
+  const handleSendWhatsApp = async (item: any, phone: string, message: string, diasEspera: number) => {
+    if (sendingWhatsAppId) return
+    setSendingWhatsAppId(item.id)
+
+    try {
+      await sendManualWhatsAppFromClient({
+        storeId,
+        remotePhone: phone,
+        messageText: message,
+        messageType: 'service_order',
+        source: 'gaveta.ready_pickup_button',
+        metadata: {
+          osId: item.id,
+          vendaId: item.venda_id,
+          diasEspera,
+        },
+      })
+    } finally {
+      setSendingWhatsAppId(null)
+    }
   }
 
   return (
@@ -100,7 +123,6 @@ export default function GavetaPage({
 
               // Mensagem Personalizada
               const whatsappMessage = `Olá ${nomeCliente.split(' ')[0]}! Tudo bem? Aqui é da Ótica. Os óculos de *${nomePaciente}* ficaram prontos! Quando puder, passe aqui para retirar e ajustar. 😎`
-              const whatsappLink = getWhatsAppLink(telefoneRaw, whatsappMessage)
 
               return (
                 <div key={item.id} className={`bg-white/5 backdrop-blur-md rounded-2xl shadow-lg border overflow-hidden hover:shadow-xl hover:bg-white/10 transition-all group ${isAtrasado ? 'border-red-500/30' : 'border-white/10'}`}>
@@ -143,15 +165,15 @@ export default function GavetaPage({
                       </Link>
 
                       {telefoneRaw ? (
-                        <a
-                          href={whatsappLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold bg-emerald-600/80 text-white hover:bg-emerald-500 shadow-lg shadow-emerald-900/20 transition-transform active:scale-95 border border-emerald-500/50"
+                        <button
+                          type="button"
+                          disabled={sendingWhatsAppId === item.id}
+                          onClick={() => void handleSendWhatsApp(item, telefoneRaw, whatsappMessage, diasEspera)}
+                          className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold bg-emerald-600/80 text-white hover:bg-emerald-500 shadow-lg shadow-emerald-900/20 transition-transform active:scale-95 border border-emerald-500/50 disabled:cursor-wait disabled:opacity-50"
                         >
                           <MessageCircle className="h-4 w-4" />
                           Avisar
-                        </a>
+                        </button>
                       ) : (
                         <button disabled className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold bg-white/5 text-slate-600 border border-white/5 cursor-not-allowed opacity-50">
                           <AlertTriangle className="h-4 w-4" />

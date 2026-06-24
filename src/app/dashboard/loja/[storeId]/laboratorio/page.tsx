@@ -22,7 +22,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/BackgroundToggle'
-import { getWhatsAppLink } from '@/lib/utils'
+import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
 import {
     EmployeeSimple,
     LabOSResult,
@@ -139,6 +139,7 @@ export default function LaboratorioPage() {
     const [loading, setLoading] = useState(true)
     const [draggedId, setDraggedId] = useState<number | null>(null)
     const [dropStage, setDropStage] = useState<LabStage | null>(null)
+    const [sendingWhatsAppKey, setSendingWhatsAppKey] = useState<string | null>(null)
     const [isPending, startTransition] = useTransition()
     const [gradeModalOpen, setGradeModalOpen] = useState(false)
 
@@ -251,6 +252,33 @@ export default function LaboratorioPage() {
         }
 
         toast.error('Arraste apenas para a coluna anterior ou a próxima.')
+    }
+
+    const sendLabWhatsApp = async (input: {
+        key: string
+        phone: string
+        message: string
+        source: string
+        osId: number
+        stage: LabStage
+    }) => {
+        if (sendingWhatsAppKey) return
+        setSendingWhatsAppKey(input.key)
+        try {
+            await sendManualWhatsAppFromClient({
+                storeId,
+                remotePhone: input.phone,
+                messageText: input.message,
+                messageType: 'service_order',
+                source: input.source,
+                metadata: {
+                    osId: input.osId,
+                    stage: input.stage,
+                },
+            })
+        } finally {
+            setSendingWhatsAppKey(null)
+        }
     }
 
     return (
@@ -395,9 +423,7 @@ export default function LaboratorioPage() {
                                                                     : item.dt_montado_em
                                                     const waitingLabel = formatStageElapsed(waitDate)
                                                     const whatsappMessage = `Olá ${customerName.split(' ')[0]}! Tudo bem? Aqui é da Ótica. Os óculos de *${patientName}* ficaram prontos! Quando puder, passe aqui para retirar e ajustar.`
-                                                    const whatsappLink = customerPhone ? getWhatsAppLink(customerPhone, whatsappMessage) : ''
                                                     const whatsappMsgArmacao = `Olá ${customerName.split(' ')[0]}! Tudo bem? Aqui é da Ótica. As lentes de *${patientName}* chegaram. Quando puder, traga a armação para realizarmos a montagem.`
-                                                    const whatsappLinkArmacao = customerPhone ? getWhatsAppLink(customerPhone, whatsappMsgArmacao) : ''
 
                                                     return (
                                                         <div
@@ -462,28 +488,46 @@ export default function LaboratorioPage() {
                                                                 </div>
 
                                                                 {currentStage === 'lentes_chegaram' && item.armacao_com_cliente && customerPhone && (
-                                                                    <a
-                                                                        href={whatsappLinkArmacao}
-                                                                        target="_blank"
-                                                                        rel="noopener noreferrer"
-                                                                        onClick={(event) => event.stopPropagation()}
-                                                                        className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] font-bold text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={sendingWhatsAppKey === `lab-frame:${item.id}`}
+                                                                        onClick={(event) => {
+                                                                            event.stopPropagation()
+                                                                            void sendLabWhatsApp({
+                                                                                key: `lab-frame:${item.id}`,
+                                                                                phone: customerPhone,
+                                                                                message: whatsappMsgArmacao,
+                                                                                source: 'laboratorio.frame_request_button',
+                                                                                osId: item.id,
+                                                                                stage: currentStage,
+                                                                            })
+                                                                        }}
+                                                                        className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] font-bold text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:cursor-wait disabled:opacity-50"
                                                                     >
                                                                         <MessageCircle className="h-3.5 w-3.5" />
                                                                         Avisar para trazer armação
-                                                                    </a>
+                                                                    </button>
                                                                 )}
                                                                 {currentStage === 'oculos_montado' && customerPhone && (
-                                                                    <a
-                                                                        href={whatsappLink}
-                                                                        target="_blank"
-                                                                        rel="noopener noreferrer"
-                                                                        onClick={(event) => event.stopPropagation()}
-                                                                        className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] font-bold text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={sendingWhatsAppKey === `lab-ready:${item.id}`}
+                                                                        onClick={(event) => {
+                                                                            event.stopPropagation()
+                                                                            void sendLabWhatsApp({
+                                                                                key: `lab-ready:${item.id}`,
+                                                                                phone: customerPhone,
+                                                                                message: whatsappMessage,
+                                                                                source: 'laboratorio.ready_pickup_button',
+                                                                                osId: item.id,
+                                                                                stage: currentStage,
+                                                                            })
+                                                                        }}
+                                                                        className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] font-bold text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:cursor-wait disabled:opacity-50"
                                                                     >
                                                                         <MessageCircle className="h-3.5 w-3.5" />
                                                                         Avisar no WhatsApp
-                                                                    </a>
+                                                                    </button>
                                                                 )}
                                                             </div>
                                                         </div>

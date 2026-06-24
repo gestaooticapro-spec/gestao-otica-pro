@@ -37,6 +37,13 @@ docker compose -f compose.example.yml up -d --build
 O serviço não acessa diretamente o Supabase. Todo acesso de negócio passa pelos
 endpoints internos autenticados do app.
 
+## Envio administrativo
+
+`POST /admin/messages/send` aceita mensagem de texto ou uma mídia real. A mídia
+pode ser `document` (PDF) ou `image` (JPEG, PNG ou WebP), enviada em base64 com
+limite de 10 MB. O conteúdo do arquivo não deve ser persistido nem registrado em
+logs; o app guarda somente os metadados e o estado de entrega.
+
 ## Produção na VPS
 
 Os arquivos em `deploy/` seguem o mesmo padrão operacional do serviço fiscal:
