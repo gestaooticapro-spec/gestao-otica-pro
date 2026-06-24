@@ -5,6 +5,10 @@ import { X, Loader2, Search, User, Wallet, Glasses, MessageCircle, Calendar, Cre
 import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
 import { toast } from 'sonner'
 import {
+    sendCustomerFinancialSummaryWhatsApp,
+    sendCustomerPrescriptionSummaryWhatsApp,
+} from '@/lib/actions/manual-whatsapp.actions'
+import {
     searchCustomersQuick,
     getCustomerFinancialSummary,
     getCustomerPrescriptionSummary,
@@ -145,6 +149,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
         selectedPrescriptionGroup?.dependenteId === null
             ? selectedCustomer?.nome || 'Titular'
             : selectedPrescriptionGroup?.label || 'Dependente'
+    const textFallbackReasons = new Set(['channel_not_configured', 'channel_disconnected', 'send_failed'])
 
     // =============================================
     // WHATSAPP - FORMATAÇÃO DAS MENSAGENS
@@ -218,6 +223,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
         return msg.trim()
     }
 
+    // Mantido como referencia do fluxo antigo de texto desta tela.
     const openWhatsApp = async (message: string) => {
         if (sendingWhatsApp) return
         if (!selectedCustomer?.fone) {
@@ -245,6 +251,91 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
             setSendingWhatsApp(false)
         }
     }
+
+    const handleWhatsAppSend = async () => {
+        if (!selectedCustomer || sendingWhatsApp) return
+
+        const textMessage = activeTab === 'financeiro'
+            ? getFinancialWhatsAppMessage()
+            : getPrescriptionWhatsAppMessage()
+
+        if (activeTab === 'financeiro') {
+            setSendingWhatsApp(true)
+            try {
+                const result = await sendCustomerFinancialSummaryWhatsApp({
+                    storeId,
+                    customerId: selectedCustomer.id,
+                })
+
+                if (result.success) {
+                    toast.success('PDF financeiro enviado via WhatsApp da loja.')
+                    return
+                }
+
+                if (result.fallbackReason && textFallbackReasons.has(result.fallbackReason)) {
+                    await sendManualWhatsAppFromClient({
+                        storeId,
+                        remotePhone: selectedCustomer.fone || '',
+                        messageText: textMessage,
+                        messageType: 'customer_history',
+                        source: 'customer_history.financial_button',
+                        metadata: {
+                            customerId: selectedCustomer.id,
+                            tab: activeTab,
+                            prescriptionGroup: null,
+                        },
+                    })
+                    return
+                }
+
+                toast.error(result.message)
+            } catch (error) {
+                console.error('[CustomerHistoryModal] Erro ao enviar PDF financeiro:', error)
+                toast.error('Nao foi possivel enviar o PDF financeiro.')
+            } finally {
+                setSendingWhatsApp(false)
+            }
+            return
+        }
+
+        setSendingWhatsApp(true)
+        try {
+            const result = await sendCustomerPrescriptionSummaryWhatsApp({
+                storeId,
+                customerId: selectedCustomer.id,
+                prescriptionGroupId: selectedPrescriptionGroupId,
+            })
+
+            if (result.success) {
+                toast.success('PDF das receitas enviado via WhatsApp da loja.')
+                return
+            }
+
+            if (result.fallbackReason && textFallbackReasons.has(result.fallbackReason)) {
+                await sendManualWhatsAppFromClient({
+                    storeId,
+                    remotePhone: selectedCustomer.fone || '',
+                    messageText: textMessage,
+                    messageType: 'customer_history',
+                    source: 'customer_history.prescription_button',
+                    metadata: {
+                        customerId: selectedCustomer.id,
+                        tab: activeTab,
+                        prescriptionGroup: selectedPrescriptionGroupId,
+                    },
+                })
+                return
+            }
+
+            toast.error(result.message)
+        } catch (error) {
+            console.error('[CustomerHistoryModal] Erro ao enviar PDF das receitas:', error)
+            toast.error('Nao foi possivel enviar o PDF das receitas.')
+        } finally {
+            setSendingWhatsApp(false)
+        }
+    }
+    void openWhatsApp
 
     // =============================================
     // RENDER
@@ -599,12 +690,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                             {selectedCustomer && (
                                 <div className="bg-slate-800/60 border-t border-white/10 p-4 backdrop-blur-md">
                                     <button
-                                        onClick={async () => {
-                                            const message = activeTab === 'financeiro'
-                                                ? getFinancialWhatsAppMessage()
-                                                : getPrescriptionWhatsAppMessage()
-                                            await openWhatsApp(message)
-                                        }}
+                                        onClick={handleWhatsAppSend}
                                         disabled={
                                             sendingWhatsApp ||
                                             (activeTab === 'financeiro' && (!financialData || financialData.totais.totalParcelas === 0)) ||

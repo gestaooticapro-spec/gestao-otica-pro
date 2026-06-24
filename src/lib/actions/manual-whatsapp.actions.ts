@@ -8,7 +8,15 @@ import type { Json } from '@/lib/database.types'
 import { getWhatsAppLink } from '@/lib/utils'
 import { digitsOnly, toEvolutionNumber } from '@/lib/whatsapp/phone'
 import { markStoreInitiatedConversation } from '@/lib/whatsapp/customer-status'
-import { generateInstallmentReceiptPDF } from '@/lib/pdf-generator'
+import {
+  generateCustomerFinancialSummaryPDF,
+  generateCustomerPrescriptionSummaryPDF,
+  generateInstallmentReceiptPDF,
+} from '@/lib/pdf-generator'
+import {
+  getCustomerFinancialSummary,
+  getCustomerPrescriptionSummary,
+} from '@/lib/actions/customer-history.actions'
 
 const ALLOWED_ROLES = ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico']
 
@@ -61,6 +69,17 @@ export type SendManualWhatsAppMediaInput = {
 export type SendInstallmentReceiptWhatsAppInput = {
   storeId: number
   installmentId: number
+}
+
+export type SendCustomerFinancialSummaryWhatsAppInput = {
+  storeId: number
+  customerId: number
+}
+
+export type SendCustomerPrescriptionSummaryWhatsAppInput = {
+  storeId: number
+  customerId: number
+  prescriptionGroupId?: string | null
 }
 
 type AccessProfile = {
@@ -598,6 +617,224 @@ export async function sendManualWhatsAppMedia(input: SendManualWhatsAppMediaInpu
   }
 }
 
+async function getStoreDocumentProfile(
+  supabaseAdmin: ReturnType<typeof createAdminClient>,
+  storeId: number
+) {
+  const { data: store, error: storeError } = await (supabaseAdmin.from('stores') as any)
+    .select('name, razao_social, phone, whatsapp, email, cep, street, number, neighborhood, city, state, settings')
+    .eq('id', storeId)
+    .maybeSingle()
+
+  if (storeError) throw storeError
+  if (!store?.name) {
+    throw new Error('Loja nao encontrada para montar o documento.')
+  }
+
+  const storeSettings = (store.settings && typeof store.settings === 'object')
+    ? (store.settings as { logo?: unknown })
+    : null
+
+  return {
+    name: store.name,
+    legalName: store.razao_social,
+    phone: store.phone,
+    whatsapp: store.whatsapp,
+    email: store.email,
+    cep: store.cep,
+    street: store.street,
+    number: store.number,
+    neighborhood: store.neighborhood,
+    city: store.city,
+    state: store.state,
+    logoFile: typeof storeSettings?.logo === 'string' ? storeSettings.logo : null,
+  }
+}
+
+export async function sendCustomerFinancialSummaryWhatsApp(
+  input: SendCustomerFinancialSummaryWhatsAppInput
+): Promise<SendManualWhatsAppResult> {
+  const storeId = Number(input.storeId)
+  const customerId = Number(input.customerId)
+
+  try {
+    if (!Number.isInteger(storeId) || storeId <= 0 || !Number.isInteger(customerId) || customerId <= 0) {
+      return {
+        success: false,
+        routeUsed: 'external_fallback',
+        message: 'Loja ou cliente invalido.',
+        shouldOpenExternal: false,
+      }
+    }
+
+    const { supabaseAdmin } = await getSendContext(storeId)
+    const { data: customer, error: customerError } = await (supabaseAdmin.from('customers') as any)
+      .select('id, store_id, full_name, phone, fone_movel')
+      .eq('id', customerId)
+      .eq('store_id', storeId)
+      .maybeSingle()
+
+    if (customerError) throw customerError
+    if (!customer) {
+      return {
+        success: false,
+        routeUsed: 'external_fallback',
+        message: 'Cliente nao encontrado nesta loja.',
+        shouldOpenExternal: false,
+      }
+    }
+
+    const remotePhone = customer.fone_movel || customer.phone
+    if (!remotePhone) {
+      return {
+        success: false,
+        routeUsed: 'external_fallback',
+        message: 'O cliente nao possui telefone cadastrado.',
+        shouldOpenExternal: false,
+      }
+    }
+
+    const financialData = await getCustomerFinancialSummary(customerId, storeId)
+    if (!financialData || financialData.totais.totalParcelas === 0) {
+      return {
+        success: false,
+        routeUsed: 'external_fallback',
+        message: 'Nenhum financiamento encontrado para este cliente.',
+        shouldOpenExternal: false,
+      }
+    }
+
+    const storeProfile = await getStoreDocumentProfile(supabaseAdmin, storeId)
+    const pdfBuffer = await generateCustomerFinancialSummaryPDF({
+      customerName: customer.full_name || 'Cliente',
+      store: storeProfile,
+      totals: financialData.totais,
+      nextDue: financialData.proximoVencimento,
+      financiamentos: financialData.financiamentos,
+    })
+    const firstName = String(customer.full_name || '').trim().split(/\s+/)[0] || 'cliente'
+
+    return await sendManualWhatsAppMediaWithContext({
+      storeId,
+      remotePhone,
+      mediaType: 'pdf',
+      mimeType: 'application/pdf',
+      fileName: `financeiro-cliente-${customerId}.pdf`,
+      fileBase64: pdfBuffer.toString('base64'),
+      caption: `Ola, ${firstName}! Segue o detalhamento financeiro atualizado.`,
+      messageType: 'document_attachment',
+      source: 'customer_history.financial_pdf_button',
+      metadata: {
+        customerId,
+        documentType: 'customer_financial_summary',
+      },
+    }, supabaseAdmin)
+  } catch (error) {
+    console.error('[Manual WhatsApp] Failed to send customer financial summary:', error)
+    return {
+      success: false,
+      routeUsed: 'external_fallback',
+      message: formatActionError(error, 'Nao foi possivel gerar ou enviar o PDF financeiro.'),
+      fallbackReason: 'unexpected_error',
+      shouldOpenExternal: false,
+    }
+  }
+}
+
+export async function sendCustomerPrescriptionSummaryWhatsApp(
+  input: SendCustomerPrescriptionSummaryWhatsAppInput
+): Promise<SendManualWhatsAppResult> {
+  const storeId = Number(input.storeId)
+  const customerId = Number(input.customerId)
+  const requestedGroupId = String(input.prescriptionGroupId || 'titular').trim() || 'titular'
+
+  try {
+    if (!Number.isInteger(storeId) || storeId <= 0 || !Number.isInteger(customerId) || customerId <= 0) {
+      return {
+        success: false,
+        routeUsed: 'external_fallback',
+        message: 'Loja ou cliente invalido.',
+        shouldOpenExternal: false,
+      }
+    }
+
+    const { supabaseAdmin } = await getSendContext(storeId)
+    const { data: customer, error: customerError } = await (supabaseAdmin.from('customers') as any)
+      .select('id, store_id, full_name, phone, fone_movel')
+      .eq('id', customerId)
+      .eq('store_id', storeId)
+      .maybeSingle()
+
+    if (customerError) throw customerError
+    if (!customer) {
+      return {
+        success: false,
+        routeUsed: 'external_fallback',
+        message: 'Cliente nao encontrado nesta loja.',
+        shouldOpenExternal: false,
+      }
+    }
+
+    const remotePhone = customer.fone_movel || customer.phone
+    if (!remotePhone) {
+      return {
+        success: false,
+        routeUsed: 'external_fallback',
+        message: 'O cliente nao possui telefone cadastrado.',
+        shouldOpenExternal: false,
+      }
+    }
+
+    const groups = await getCustomerPrescriptionSummary(customerId, storeId)
+    const selectedGroup = groups.find((group) => group.id === requestedGroupId) || groups[0] || null
+    if (!selectedGroup || selectedGroup.receitas.length === 0) {
+      return {
+        success: false,
+        routeUsed: 'external_fallback',
+        message: 'Nenhuma receita encontrada para esta selecao.',
+        shouldOpenExternal: false,
+      }
+    }
+
+    const storeProfile = await getStoreDocumentProfile(supabaseAdmin, storeId)
+    const pdfBuffer = await generateCustomerPrescriptionSummaryPDF({
+      customerName: customer.full_name || 'Cliente',
+      subjectLabel: selectedGroup.dependenteId === null
+        ? customer.full_name || 'Titular'
+        : selectedGroup.label || 'Dependente',
+      store: storeProfile,
+      prescriptions: selectedGroup.receitas,
+    })
+    const firstName = String(customer.full_name || '').trim().split(/\s+/)[0] || 'cliente'
+
+    return await sendManualWhatsAppMediaWithContext({
+      storeId,
+      remotePhone,
+      mediaType: 'pdf',
+      mimeType: 'application/pdf',
+      fileName: `receitas-cliente-${customerId}-${selectedGroup.id}.pdf`,
+      fileBase64: pdfBuffer.toString('base64'),
+      caption: `Ola, ${firstName}! Segue o detalhamento das receitas registradas.`,
+      messageType: 'document_attachment',
+      source: 'customer_history.prescription_pdf_button',
+      metadata: {
+        customerId,
+        prescriptionGroupId: selectedGroup.id,
+        documentType: 'customer_prescription_summary',
+      },
+    }, supabaseAdmin)
+  } catch (error) {
+    console.error('[Manual WhatsApp] Failed to send customer prescription summary:', error)
+    return {
+      success: false,
+      routeUsed: 'external_fallback',
+      message: formatActionError(error, 'Nao foi possivel gerar ou enviar o PDF das receitas.'),
+      fallbackReason: 'unexpected_error',
+      shouldOpenExternal: false,
+    }
+  }
+}
+
 export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentReceiptWhatsAppInput): Promise<SendManualWhatsAppResult> {
   const storeId = Number(input.storeId)
   const installmentId = Number(input.installmentId)
@@ -678,25 +915,7 @@ export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentRecei
       }
     }
 
-    const { data: store, error: storeError } = await (supabaseAdmin.from('stores') as any)
-      .select('name, razao_social, phone, whatsapp, email, cep, street, number, neighborhood, city, state, settings')
-      .eq('id', storeId)
-      .maybeSingle()
-
-    if (storeError) throw storeError
-    if (!store?.name) {
-      return {
-        success: false,
-        routeUsed: 'external_fallback',
-        message: 'Loja nao encontrada para montar o recibo.',
-        shouldOpenExternal: false,
-      }
-    }
-
-    const storeSettings = (store.settings && typeof store.settings === 'object')
-      ? (store.settings as { logo?: unknown })
-      : null
-
+    const storeProfile = await getStoreDocumentProfile(supabaseAdmin, storeId)
     const pdfBuffer = await generateInstallmentReceiptPDF({
       customerName: customer.full_name,
       installmentNumber: installment.numero_parcela,
@@ -705,20 +924,7 @@ export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentRecei
       dueDate: installment.data_vencimento,
       paymentDate: installment.data_pagamento || new Date().toISOString(),
       isReprint: Boolean(installment.receipt_printed_at),
-      store: {
-        name: store.name,
-        legalName: store.razao_social,
-        phone: store.phone,
-        whatsapp: store.whatsapp,
-        email: store.email,
-        cep: store.cep,
-        street: store.street,
-        number: store.number,
-        neighborhood: store.neighborhood,
-        city: store.city,
-        state: store.state,
-        logoFile: typeof storeSettings?.logo === 'string' ? storeSettings.logo : null,
-      },
+      store: storeProfile,
     })
     const firstName = String(customer.full_name || '').trim().split(/\s+/)[0] || 'cliente'
 

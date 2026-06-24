@@ -187,6 +187,65 @@ export interface InstallmentReceiptData {
   }
 }
 
+export interface CustomerFinancialSummaryPdfData {
+  customerName: string
+  store: InstallmentReceiptData['store']
+  totals: {
+    parcelasPagas: number
+    parcelasPendentes: number
+    totalParcelas: number
+    valorPago: number
+    valorRestante: number
+    valorTotalFinanciado: number
+  }
+  nextDue: {
+    data: string | null
+    valor: number
+    numeroParcela: number
+  } | null
+  financiamentos: Array<{
+    id: number
+    vendaId: number
+    dataVenda: string
+    totalParcelas: number
+    parcelasPagas: number
+    parcelasPendentes: number
+    valorFinanciado: number
+    parcelas: Array<{
+      numeroParcela: number
+      dataVencimento: string
+      valor: number
+      dataPagamento: string | null
+      valorPago: number
+      status: string
+    }>
+  }>
+}
+
+export interface CustomerPrescriptionSummaryPdfData {
+  customerName: string
+  subjectLabel: string
+  store: InstallmentReceiptData['store']
+  prescriptions: Array<{
+    id: number
+    dataCompra: string
+    longeOdEsf: string | null
+    longeOdCil: string | null
+    longeOdEixo: string | null
+    longeOeEsf: string | null
+    longeOeCil: string | null
+    longeOeEixo: string | null
+    pertoOdEsf: string | null
+    pertoOdCil: string | null
+    pertoOdEixo: string | null
+    pertoOeEsf: string | null
+    pertoOeCil: string | null
+    pertoOeEixo: string | null
+    adicao: string | null
+    medico: string | null
+  }>
+}
+
 function formatDateBR(dateStr: string) {
   if (!dateStr) return ''
   if (dateStr.length === 10 && dateStr.includes('-')) {
@@ -260,6 +319,380 @@ async function loadStoreLogoDataUrl(logoFile?: string | null) {
   } catch {
     return null
   }
+}
+
+async function drawCompactDocumentFrame(
+  doc: jsPDF,
+  store: InstallmentReceiptData['store'],
+  title: string,
+  subtitle: string,
+  options?: { pageLabel?: string; generatedAt?: string }
+) {
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const pageHeight = doc.internal.pageSize.getHeight()
+  const logoDataUrl = await loadStoreLogoDataUrl(store.logoFile)
+  const contentLeft = logoDataUrl ? 28 : 10
+  const generatedAt = options?.generatedAt || new Date().toLocaleDateString('pt-BR')
+
+  doc.setFillColor(15, 23, 42)
+  doc.rect(0, 0, pageWidth, 21, 'F')
+
+  if (logoDataUrl) {
+    doc.setFillColor(255, 255, 255)
+    doc.roundedRect(8, 4.5, 16, 12, 2, 2, 'F')
+    try {
+      const properties = doc.getImageProperties(logoDataUrl)
+      const maxWidth = 12
+      const maxHeight = 8
+      const scale = Math.min(maxWidth / properties.width, maxHeight / properties.height)
+      const drawWidth = properties.width * scale
+      const drawHeight = properties.height * scale
+      const drawX = 8 + ((16 - drawWidth) / 2)
+      const drawY = 4.5 + ((12 - drawHeight) / 2)
+      doc.addImage(logoDataUrl, drawX, drawY, drawWidth, drawHeight, undefined, 'FAST')
+    } catch {
+      doc.addImage(logoDataUrl, 10, 6.5, 11, 7, undefined, 'FAST')
+    }
+  }
+
+  doc.setTextColor(255, 255, 255)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10.2)
+  doc.text(store.name || 'Documento da Loja', contentLeft, 8)
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(5.8)
+  const storeIdentity = store.legalName && store.legalName !== store.name
+    ? store.legalName
+    : null
+  if (storeIdentity) {
+    doc.text(storeIdentity, contentLeft, 11.8)
+  }
+
+  const addressBlock = buildStoreAddress(store).join(' | ')
+  if (addressBlock) {
+    const addressLines = doc.splitTextToSize(addressBlock, 58)
+    doc.text(addressLines.slice(0, 2), contentLeft, 15)
+  }
+
+  let contactLine = [formatPhoneBR(store.whatsapp), formatPhoneBR(store.phone)].filter(Boolean).join(' | ')
+  if (store.email) {
+    contactLine = contactLine ? `${contactLine} | ${store.email}` : store.email
+  }
+  if (contactLine) {
+    const contactLines = doc.splitTextToSize(contactLine, 42)
+    doc.setFontSize(5.6)
+    doc.text(contactLines.slice(0, 2), pageWidth - 8, 8, { align: 'right' })
+  }
+
+  doc.setTextColor(17, 24, 39)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10.4)
+  doc.text(title, 10, 27)
+
+  doc.setFontSize(6.2)
+  doc.setTextColor(100, 116, 139)
+  doc.text(`Emitido em ${generatedAt}`, pageWidth - 10, 27, { align: 'right' })
+
+  doc.setFillColor(248, 250, 252)
+  doc.setDrawColor(226, 232, 240)
+  doc.roundedRect(10, 31, pageWidth - 20, 10, 3, 3, 'FD')
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(6.2)
+  doc.setTextColor(51, 65, 85)
+  const subtitleLines = doc.splitTextToSize(subtitle, pageWidth - 28)
+  doc.text(subtitleLines.slice(0, 2), 14, 35.2)
+
+  if (options?.pageLabel) {
+    doc.setDrawColor(203, 213, 225)
+    doc.setTextColor(100, 116, 139)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(5.6)
+    doc.text(options.pageLabel, pageWidth - 10, pageHeight - 4, { align: 'right' })
+  }
+
+  return { pageWidth, pageHeight, contentTop: 45 }
+}
+
+function drawCompactFooter(doc: jsPDF, leftText: string, rightText: string) {
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const pageHeight = doc.internal.pageSize.getHeight()
+
+  doc.setDrawColor(203, 213, 225)
+  doc.line(10, pageHeight - 12, pageWidth - 10, pageHeight - 12)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(5.8)
+  doc.setTextColor(100, 116, 139)
+  doc.text('Observacoes', 10, pageHeight - 8)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(5.6)
+  doc.setTextColor(51, 65, 85)
+  doc.text(leftText, 10, pageHeight - 4)
+  doc.setFontSize(5.4)
+  doc.setTextColor(148, 163, 184)
+  doc.text(rightText, pageWidth - 10, pageHeight - 4, { align: 'right' })
+}
+
+function drawWrappedLineBlock(
+  doc: jsPDF,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number
+) {
+  const lines = doc.splitTextToSize(text, maxWidth)
+  doc.text(lines, x, y, { lineHeightFactor: 1 })
+  return y + (lines.length * lineHeight)
+}
+
+function compactStatusLabel(status: string) {
+  return String(status || '').toLowerCase() === 'pago' ? 'Pago' : 'Pendente'
+}
+
+export async function generateCustomerFinancialSummaryPDF(data: CustomerFinancialSummaryPdfData): Promise<Buffer> {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [85, 150] })
+  const generatedAt = new Date().toLocaleDateString('pt-BR')
+  let pageNumber = 1
+
+  const startPage = async (continuation?: string) => {
+    if (pageNumber > 1) doc.addPage()
+    const subtitleBase = `Cliente: ${data.customerName}. Resumo financeiro detalhado para consulta e envio digital.`
+    const subtitle = continuation ? `${subtitleBase} ${continuation}` : subtitleBase
+    return drawCompactDocumentFrame(doc, data.store, 'DETALHE FINANCEIRO', subtitle, {
+      pageLabel: `Pagina ${pageNumber}`,
+      generatedAt,
+    })
+  }
+
+  let { pageWidth, pageHeight, contentTop } = await startPage()
+  let y = contentTop
+  const bottomLimit = pageHeight - 16
+  const lineHeight = 3.5
+
+  doc.setDrawColor(226, 232, 240)
+  doc.setFillColor(239, 246, 255)
+  doc.roundedRect(10, y, 62, 16, 3, 3, 'FD')
+  doc.roundedRect(76, y, pageWidth - 86, 16, 3, 3, 'FD')
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(6)
+  doc.setTextColor(37, 99, 235)
+  doc.text('RESUMO', 14, y + 4.5)
+  doc.text('PROXIMO VENCIMENTO', 80, y + 4.5)
+
+  doc.setTextColor(30, 41, 59)
+  doc.setFontSize(7)
+  doc.text(`${data.totals.parcelasPagas}/${data.totals.totalParcelas} pagas`, 14, y + 9.5)
+  doc.text(`Pago: ${formatMoneyBR(data.totals.valorPago)}`, 14, y + 13)
+  doc.text(`Restante: ${formatMoneyBR(data.totals.valorRestante)}`, 42, y + 13)
+
+  if (data.nextDue?.data) {
+    doc.text(formatDateBR(data.nextDue.data), 80, y + 9.5)
+    doc.text(`Parcela ${data.nextDue.numeroParcela} - ${formatMoneyBR(data.nextDue.valor)}`, 80, y + 13)
+  } else {
+    doc.text('Nenhuma parcela pendente.', 80, y + 11.2)
+  }
+
+  y += 21
+
+  for (const financiamento of data.financiamentos) {
+    const estimatedLines = 3 + financiamento.parcelas.length
+    const estimatedHeight = 9 + (estimatedLines * lineHeight)
+
+    if (y + estimatedHeight > bottomLimit) {
+      pageNumber += 1
+      ;({ pageWidth, pageHeight, contentTop } = await startPage('(continua)'))
+      y = contentTop
+    }
+
+    doc.setFillColor(248, 250, 252)
+    doc.setDrawColor(226, 232, 240)
+    doc.roundedRect(10, y, pageWidth - 20, 7, 2.5, 2.5, 'FD')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(6.5)
+    doc.setTextColor(15, 23, 42)
+    doc.text(`Carne Venda #${financiamento.vendaId}`, 13, y + 4.5)
+    doc.text(
+      `${financiamento.parcelasPagas}/${financiamento.totalParcelas} pagas`,
+      pageWidth - 13,
+      y + 4.5,
+      { align: 'right' }
+    )
+
+    y += 10
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(5.8)
+    doc.setTextColor(71, 85, 105)
+    doc.text(
+      `Venda em ${formatDateBR(financiamento.dataVenda)} | Financiado: ${formatMoneyBR(financiamento.valorFinanciado)}`,
+      13,
+      y
+    )
+    y += 4
+
+    for (const parcela of financiamento.parcelas) {
+      if (y + lineHeight > bottomLimit) {
+        pageNumber += 1
+        ;({ pageWidth, pageHeight, contentTop } = await startPage(`(continua carne #${financiamento.vendaId})`))
+        y = contentTop
+      }
+
+      const linha = [
+        `${compactStatusLabel(parcela.status)} ${parcela.numeroParcela}`,
+        `Venc ${formatDateBR(parcela.dataVencimento)}`,
+        formatMoneyBR(parcela.valor),
+        parcela.dataPagamento ? `Pgto ${formatDateBR(parcela.dataPagamento)}` : 'Sem pagamento',
+      ].join(' | ')
+
+      doc.setFontSize(5.6)
+      doc.setTextColor(
+        String(parcela.status || '').toLowerCase() === 'pago' ? 22 : 71,
+        String(parcela.status || '').toLowerCase() === 'pago' ? 163 : 85,
+        String(parcela.status || '').toLowerCase() === 'pago' ? 74 : 105
+      )
+      y = drawWrappedLineBlock(doc, linha, 14, y, pageWidth - 28, lineHeight)
+
+      if (String(parcela.status || '').toLowerCase() === 'pago') {
+        doc.setTextColor(51, 65, 85)
+        doc.text(`Valor pago: ${formatMoneyBR(parcela.valorPago || parcela.valor)}`, pageWidth - 14, y - 0.6, {
+          align: 'right',
+        })
+      }
+
+      y += 0.8
+    }
+
+    y += 2
+  }
+
+  drawCompactFooter(
+    doc,
+    'Documento nao fiscal para compartilhamento do detalhamento financeiro do cliente.',
+    'PDF digital gerado para envio via WhatsApp.'
+  )
+
+  return Buffer.from(doc.output('arraybuffer'))
+}
+
+export async function generateCustomerPrescriptionSummaryPDF(data: CustomerPrescriptionSummaryPdfData): Promise<Buffer> {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [85, 150] })
+  const generatedAt = new Date().toLocaleDateString('pt-BR')
+  let pageNumber = 1
+
+  const startPage = async (continuation?: string) => {
+    if (pageNumber > 1) doc.addPage()
+    const subtitleBase = `Paciente: ${data.subjectLabel}. Historico de receitas opticas de ${data.customerName}.`
+    const subtitle = continuation ? `${subtitleBase} ${continuation}` : subtitleBase
+    return drawCompactDocumentFrame(doc, data.store, 'DETALHE DE RECEITAS', subtitle, {
+      pageLabel: `Pagina ${pageNumber}`,
+      generatedAt,
+    })
+  }
+
+  let { pageWidth, pageHeight, contentTop } = await startPage()
+  let y = contentTop
+  const bottomLimit = pageHeight - 16
+  const lineHeight = 3.3
+
+  for (const rx of data.prescriptions) {
+    const rowCount =
+      5
+      + (rx.medico ? 1 : 0)
+      + ((rx.pertoOdEsf || rx.pertoOdCil || rx.pertoOdEixo || rx.pertoOeEsf || rx.pertoOeCil || rx.pertoOeEixo) ? 2 : 0)
+      + (rx.adicao ? 1 : 0)
+    const estimatedHeight = 10 + (rowCount * lineHeight)
+
+    if (y + estimatedHeight > bottomLimit) {
+      pageNumber += 1
+      ;({ pageWidth, pageHeight, contentTop } = await startPage('(continua)'))
+      y = contentTop
+    }
+
+    doc.setFillColor(248, 250, 252)
+    doc.setDrawColor(226, 232, 240)
+    doc.roundedRect(10, y, pageWidth - 20, estimatedHeight, 3, 3, 'FD')
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(6.6)
+    doc.setTextColor(15, 23, 42)
+    doc.text(`Receita de ${formatDateBR(rx.dataCompra)}`, 13, y + 4.8)
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(5.8)
+    doc.setTextColor(71, 85, 105)
+    let innerY = y + 8.5
+    if (rx.medico) {
+      innerY = drawWrappedLineBlock(doc, `Medico: ${rx.medico}`, 13, innerY, pageWidth - 26, lineHeight)
+      innerY += 0.4
+    }
+
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(37, 99, 235)
+    doc.text('Longe', 13, innerY)
+    innerY += 3
+
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(51, 65, 85)
+    innerY = drawWrappedLineBlock(
+      doc,
+      `OD: ESF ${rx.longeOdEsf || '-'} | CIL ${rx.longeOdCil || '-'} | EIXO ${rx.longeOdEixo || '-'}`,
+      13,
+      innerY,
+      pageWidth - 26,
+      lineHeight
+    )
+    innerY = drawWrappedLineBlock(
+      doc,
+      `OE: ESF ${rx.longeOeEsf || '-'} | CIL ${rx.longeOeCil || '-'} | EIXO ${rx.longeOeEixo || '-'}`,
+      13,
+      innerY,
+      pageWidth - 26,
+      lineHeight
+    )
+
+    if (rx.pertoOdEsf || rx.pertoOdCil || rx.pertoOdEixo || rx.pertoOeEsf || rx.pertoOeCil || rx.pertoOeEixo) {
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(14, 116, 144)
+      doc.text('Perto', 13, innerY)
+      innerY += 3
+
+      doc.setFont('helvetica', 'normal')
+      doc.setTextColor(51, 65, 85)
+      innerY = drawWrappedLineBlock(
+        doc,
+        `OD: ESF ${rx.pertoOdEsf || '-'} | CIL ${rx.pertoOdCil || '-'} | EIXO ${rx.pertoOdEixo || '-'}`,
+        13,
+        innerY,
+        pageWidth - 26,
+        lineHeight
+      )
+      innerY = drawWrappedLineBlock(
+        doc,
+        `OE: ESF ${rx.pertoOeEsf || '-'} | CIL ${rx.pertoOeCil || '-'} | EIXO ${rx.pertoOeEixo || '-'}`,
+        13,
+        innerY,
+        pageWidth - 26,
+        lineHeight
+      )
+    }
+
+    if (rx.adicao) {
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(30, 41, 59)
+      doc.text(`Adicao: ${rx.adicao}`, 13, innerY)
+    }
+
+    y += estimatedHeight + 3
+  }
+
+  drawCompactFooter(
+    doc,
+    'Documento nao fiscal para compartilhamento do historico de receitas opticas.',
+    'PDF digital gerado para envio via WhatsApp.'
+  )
+
+  return Buffer.from(doc.output('arraybuffer'))
 }
 
 export async function generateInstallmentReceiptPDF(data: InstallmentReceiptData): Promise<Buffer> {
