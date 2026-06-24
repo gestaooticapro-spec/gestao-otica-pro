@@ -1,6 +1,8 @@
 // Caminho: src/lib/actions/customer-history.actions.ts
 'use server'
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { createAdminClient } from '@/lib/supabase/admin'
 
 // =============================================
@@ -41,6 +43,7 @@ export interface FinancialSummary {
         id: number
         vendaId: number
         dataVenda: string
+        dependenteNames: string[]
         entrada: number
         valorFinanciado: number
         totalParcelas: number
@@ -148,6 +151,32 @@ export async function getCustomerFinancialSummary(
         }
     }
 
+    const vendaIds = (financiamentos || [])
+        .map((f: any) => Number(f.venda_id))
+        .filter((id: number) => Number.isFinite(id) && id > 0)
+
+    const dependentNamesByVenda = new Map<number, string[]>()
+    if (vendaIds.length > 0) {
+        const { data: serviceOrders } = await (supabaseAdmin
+            .from('service_orders') as any)
+            .select('venda_id, dependente_id, dependentes(full_name)')
+            .eq('store_id', storeId)
+            .in('venda_id', vendaIds)
+
+        for (const row of serviceOrders || []) {
+            const vendaId = Number(row.venda_id)
+            if (!Number.isFinite(vendaId) || vendaId <= 0) continue
+            const dependenteName = String(row.dependentes?.full_name || '').trim()
+            if (!dependenteName) continue
+
+            const current = dependentNamesByVenda.get(vendaId) || []
+            if (!current.includes(dependenteName)) {
+                current.push(dependenteName)
+                dependentNamesByVenda.set(vendaId, current)
+            }
+        }
+    }
+
     let parcelasPagas = 0
     let parcelasPendentes = 0
     let valorPago = 0
@@ -197,6 +226,7 @@ export async function getCustomerFinancialSummary(
             id: f.id,
             vendaId: f.venda_id,
             dataVenda: f.created_at,
+            dependenteNames: dependentNamesByVenda.get(Number(f.venda_id)) || [],
             entrada: 0,
             valorFinanciado: f.valor_total_financiado || 0,
             totalParcelas: f.quantidade_parcelas || 0,

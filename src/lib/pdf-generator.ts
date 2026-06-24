@@ -207,6 +207,7 @@ export interface CustomerFinancialSummaryPdfData {
     id: number
     vendaId: number
     dataVenda: string
+    dependenteNames: string[]
     totalParcelas: number
     parcelasPagas: number
     parcelasPendentes: number
@@ -457,7 +458,7 @@ export async function generateCustomerFinancialSummaryPDF(data: CustomerFinancia
 
   const startPage = async (continuation?: string) => {
     if (pageNumber > 1) doc.addPage()
-    const subtitleBase = `Cliente: ${data.customerName}. Resumo financeiro detalhado para consulta e envio digital.`
+    const subtitleBase = `Cliente: ${data.customerName}. Parcelas discriminadas por venda para consulta e envio digital.`
     const subtitle = continuation ? `${subtitleBase} ${continuation}` : subtitleBase
     return drawCompactDocumentFrame(doc, data.store, 'DETALHE FINANCEIRO', subtitle, {
       pageLabel: `Pagina ${pageNumber}`,
@@ -468,102 +469,118 @@ export async function generateCustomerFinancialSummaryPDF(data: CustomerFinancia
   let { pageWidth, pageHeight, contentTop } = await startPage()
   let y = contentTop
   const bottomLimit = pageHeight - 16
-  const lineHeight = 3.5
+  const rowHeight = 4.6
 
-  doc.setDrawColor(226, 232, 240)
-  doc.setFillColor(239, 246, 255)
-  doc.roundedRect(10, y, 62, 16, 3, 3, 'FD')
-  doc.roundedRect(76, y, pageWidth - 86, 16, 3, 3, 'FD')
-
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(6)
-  doc.setTextColor(37, 99, 235)
-  doc.text('RESUMO', 14, y + 4.5)
-  doc.text('PROXIMO VENCIMENTO', 80, y + 4.5)
-
-  doc.setTextColor(30, 41, 59)
-  doc.setFontSize(7)
-  doc.text(`${data.totals.parcelasPagas}/${data.totals.totalParcelas} pagas`, 14, y + 9.5)
-  doc.text(`Pago: ${formatMoneyBR(data.totals.valorPago)}`, 14, y + 13)
-  doc.text(`Restante: ${formatMoneyBR(data.totals.valorRestante)}`, 42, y + 13)
-
-  if (data.nextDue?.data) {
-    doc.text(formatDateBR(data.nextDue.data), 80, y + 9.5)
-    doc.text(`Parcela ${data.nextDue.numeroParcela} - ${formatMoneyBR(data.nextDue.valor)}`, 80, y + 13)
-  } else {
-    doc.text('Nenhuma parcela pendente.', 80, y + 11.2)
+  const ensureSpace = async (requiredHeight: number, continuation?: string) => {
+    if (y + requiredHeight <= bottomLimit) return
+    pageNumber += 1
+    ;({ pageWidth, pageHeight, contentTop } = await startPage(continuation || '(continua)'))
+    y = contentTop
   }
 
-  y += 21
-
   for (const financiamento of data.financiamentos) {
-    const estimatedLines = 3 + financiamento.parcelas.length
-    const estimatedHeight = 9 + (estimatedLines * lineHeight)
+    const blockHeaderHeight = 18
+    const tableHeaderHeight = 6
+    const totalsHeight = 8
+    const estimatedHeight = blockHeaderHeight + tableHeaderHeight + (financiamento.parcelas.length * rowHeight) + totalsHeight + 4
+    await ensureSpace(estimatedHeight, '(continua)')
 
-    if (y + estimatedHeight > bottomLimit) {
-      pageNumber += 1
-      ;({ pageWidth, pageHeight, contentTop } = await startPage('(continua)'))
-      y = contentTop
-    }
+    const dependenteText = financiamento.dependenteNames.length > 0
+      ? `Dependente(s): ${financiamento.dependenteNames.join(', ')}`
+      : null
 
     doc.setFillColor(248, 250, 252)
     doc.setDrawColor(226, 232, 240)
-    doc.roundedRect(10, y, pageWidth - 20, 7, 2.5, 2.5, 'FD')
+    doc.roundedRect(10, y, pageWidth - 20, estimatedHeight - 2, 2.5, 2.5, 'FD')
+
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(6.5)
     doc.setTextColor(15, 23, 42)
-    doc.text(`Carne Venda #${financiamento.vendaId}`, 13, y + 4.5)
-    doc.text(
-      `${financiamento.parcelasPagas}/${financiamento.totalParcelas} pagas`,
-      pageWidth - 13,
-      y + 4.5,
-      { align: 'right' }
-    )
+    doc.text(`Venda #${financiamento.vendaId}`, 13, y + 4.8)
 
-    y += 10
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(5.8)
     doc.setTextColor(71, 85, 105)
     doc.text(
-      `Venda em ${formatDateBR(financiamento.dataVenda)} | Financiado: ${formatMoneyBR(financiamento.valorFinanciado)}`,
+      `Data da venda: ${formatDateBR(financiamento.dataVenda)}`,
       13,
-      y
+      y + 8.5
     )
-    y += 4
-
-    for (const parcela of financiamento.parcelas) {
-      if (y + lineHeight > bottomLimit) {
-        pageNumber += 1
-        ;({ pageWidth, pageHeight, contentTop } = await startPage(`(continua carne #${financiamento.vendaId})`))
-        y = contentTop
-      }
-
-      const linha = [
-        `${compactStatusLabel(parcela.status)} ${parcela.numeroParcela}`,
-        `Venc ${formatDateBR(parcela.dataVencimento)}`,
-        formatMoneyBR(parcela.valor),
-        parcela.dataPagamento ? `Pgto ${formatDateBR(parcela.dataPagamento)}` : 'Sem pagamento',
-      ].join(' | ')
-
-      doc.setFontSize(5.6)
-      doc.setTextColor(
-        String(parcela.status || '').toLowerCase() === 'pago' ? 22 : 71,
-        String(parcela.status || '').toLowerCase() === 'pago' ? 163 : 85,
-        String(parcela.status || '').toLowerCase() === 'pago' ? 74 : 105
-      )
-      y = drawWrappedLineBlock(doc, linha, 14, y, pageWidth - 28, lineHeight)
-
-      if (String(parcela.status || '').toLowerCase() === 'pago') {
-        doc.setTextColor(51, 65, 85)
-        doc.text(`Valor pago: ${formatMoneyBR(parcela.valorPago || parcela.valor)}`, pageWidth - 14, y - 0.6, {
-          align: 'right',
-        })
-      }
-
-      y += 0.8
+    if (dependenteText) {
+      doc.text(dependenteText, 13, y + 12.2)
     }
 
-    y += 2
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(5.5)
+    doc.setTextColor(100, 116, 139)
+    doc.text('N', 13, y + 17.2)
+    doc.text('VENC.', 21, y + 17.2)
+    doc.text('VALOR', 42, y + 17.2)
+    doc.text('DT PGTO', 63, y + 17.2)
+    doc.text('VLR PAGO', 87, y + 17.2)
+    doc.text('STATUS', 114, y + 17.2)
+
+    doc.setLineWidth(0.2)
+    doc.line(12, y + 18.5, pageWidth - 12, y + 18.5)
+
+    let rowY = y + 22
+    let totalPagoVenda = 0
+    let totalPendenteVenda = 0
+
+    for (const parcela of financiamento.parcelas) {
+      if (rowY + rowHeight + totalsHeight > bottomLimit) {
+        pageNumber += 1
+        ;({ pageWidth, pageHeight, contentTop } = await startPage(`(continua venda #${financiamento.vendaId})`))
+        y = contentTop
+        rowY = y + 8
+
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(6.2)
+        doc.setTextColor(15, 23, 42)
+        doc.text(`Venda #${financiamento.vendaId} (continua)`, 13, y + 3.8)
+        doc.setFontSize(5.5)
+        doc.setTextColor(100, 116, 139)
+        doc.text('N', 13, y + 8)
+        doc.text('VENC.', 21, y + 8)
+        doc.text('VALOR', 42, y + 8)
+        doc.text('DT PGTO', 63, y + 8)
+        doc.text('VLR PAGO', 87, y + 8)
+        doc.text('STATUS', 114, y + 8)
+        doc.line(12, y + 9.3, pageWidth - 12, y + 9.3)
+        rowY = y + 13
+      }
+
+      const isPago = String(parcela.status || '').toLowerCase() === 'pago'
+      const valorPago = isPago ? (parcela.valorPago || parcela.valor) : 0
+      totalPagoVenda += valorPago
+      totalPendenteVenda += isPago ? 0 : parcela.valor
+
+      doc.setDrawColor(226, 232, 240)
+      doc.line(12, rowY + 2.7, pageWidth - 12, rowY + 2.7)
+
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(5.4)
+      doc.setTextColor(51, 65, 85)
+      doc.text(String(parcela.numeroParcela), 13, rowY)
+      doc.text(formatDateBR(parcela.dataVencimento), 21, rowY)
+      doc.text(formatMoneyBR(parcela.valor), 42, rowY)
+      doc.text(parcela.dataPagamento ? formatDateBR(parcela.dataPagamento) : '-', 63, rowY)
+      doc.text(isPago ? formatMoneyBR(valorPago) : '-', 87, rowY)
+      doc.text(compactStatusLabel(parcela.status), 114, rowY)
+
+      rowY += rowHeight
+    }
+
+    doc.setDrawColor(203, 213, 225)
+    doc.line(12, rowY + 0.5, pageWidth - 12, rowY + 0.5)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(5.6)
+    doc.setTextColor(30, 41, 59)
+    doc.text(`Total da venda: ${formatMoneyBR(financiamento.valorFinanciado)}`, 13, rowY + 4.4)
+    doc.text(`Pago: ${formatMoneyBR(totalPagoVenda)}`, 65, rowY + 4.4)
+    doc.text(`Pendente: ${formatMoneyBR(totalPendenteVenda)}`, pageWidth - 13, rowY + 4.4, { align: 'right' })
+
+    y = rowY + 9
   }
 
   drawCompactFooter(
@@ -579,10 +596,14 @@ export async function generateCustomerPrescriptionSummaryPDF(data: CustomerPresc
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [85, 150] })
   const generatedAt = new Date().toLocaleDateString('pt-BR')
   let pageNumber = 1
+  const isTitularSelection = data.subjectLabel.trim() === data.customerName.trim()
+  const selectionLabel = isTitularSelection
+    ? 'Selecao: Titular'
+    : `Dependente: ${data.subjectLabel}`
 
   const startPage = async (continuation?: string) => {
     if (pageNumber > 1) doc.addPage()
-    const subtitleBase = `Paciente: ${data.subjectLabel}. Historico de receitas opticas de ${data.customerName}.`
+    const subtitleBase = `Titular: ${data.customerName}. ${selectionLabel}. Historico de receitas opticas para consulta e envio digital.`
     const subtitle = continuation ? `${subtitleBase} ${continuation}` : subtitleBase
     return drawCompactDocumentFrame(doc, data.store, 'DETALHE DE RECEITAS', subtitle, {
       pageLabel: `Pagina ${pageNumber}`,
