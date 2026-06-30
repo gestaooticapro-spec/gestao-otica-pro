@@ -910,7 +910,7 @@ export default function OperatorMenuLojaVazia({
                 onClick={handleOpenSupport}
                 className={supportButtonClass}
                 style={{ right: 'max(1rem, env(safe-area-inset-right))', bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
-                title={supportHasUnread ? 'Suporte respondeu' : supportHasActiveTicket ? `Chamado ${supportStatus?.protocol || 'em andamento'}` : 'Suporte tecnico'}
+                title={supportHasUnread ? 'Suporte respondeu' : supportHasActiveTicket ? `Chamado ${supportStatus?.protocol || 'em andamento'}` : 'Suporte técnico'}
             >
                 <Headset className="w-4 h-4 group-hover:scale-110 transition-transform" />
                 <span className="text-xs font-bold uppercase tracking-wider">Suporte</span>
@@ -927,7 +927,7 @@ export default function OperatorMenuLojaVazia({
                         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
                             <div className="flex items-center gap-2 text-slate-200">
                                 <Headset className="h-4 w-4 text-amber-300" />
-                                <span className="text-xs font-black uppercase tracking-wider">Suporte tecnico</span>
+                                <span className="text-xs font-black uppercase tracking-wider">Suporte técnico</span>
                             </div>
                             <button
                                 onClick={() => {
@@ -955,7 +955,7 @@ export default function OperatorMenuLojaVazia({
                             {supportIframeUrl && !supportLoading && !supportError && (
                                 <iframe
                                     src={supportIframeUrl}
-                                    title="Suporte tecnico"
+                                    title="Suporte técnico"
                                     className="h-full w-full border-0"
                                 />
                             )}
