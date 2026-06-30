@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import {
     DollarSign, HeartHandshake, Megaphone, Archive, Search, Globe, Printer,
     ArrowLeftRight, FileInput, Tag, FileSpreadsheet, ArrowLeft, Clock,
     AlertCircle, Gift, Calendar, Package, ChevronRight, ChevronDown, ChevronUp,
-    MessageCircle, CalendarClock, CalendarCheck, ArrowRight, Send, Users2, UserMinus, Layers3, Receipt
+    MessageCircle, CalendarClock, CalendarCheck, ArrowRight, Send, Users2, UserMinus, Layers3, Receipt,
+    Headset, X
 } from 'lucide-react';
 import { getWhatsAppLink } from '@/lib/utils';
 import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client';
@@ -92,6 +93,33 @@ interface RadarData {
     isWhatsAppConnected: boolean;
 }
 
+interface SupportStatus {
+    active: boolean;
+    ticketId?: string;
+    protocol?: string;
+    status?: string;
+    unreadSupportCount: number;
+}
+
+type RadarColor = 'amber' | 'rose' | 'indigo' | 'emerald' | 'pink' | 'orange';
+
+type RadarWidgetProps = {
+    title: string;
+    subtitle: string;
+    icon: React.ComponentType<{ className?: string }>;
+    colorClass: RadarColor;
+    count: number;
+    children: ReactNode;
+    isOpen: boolean;
+    setIsOpen: Dispatch<SetStateAction<boolean>>;
+};
+
+type RadarColorClasses = {
+    bg: string;
+    text: string;
+    border: string;
+};
+
 const formatDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 const formatMoney = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -150,6 +178,11 @@ export default function OperatorMenuLojaVazia({
     const [loading, setLoading] = useState(true);
     const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
     const [whatsAppInitialPhone, setWhatsAppInitialPhone] = useState<string | null>(null);
+    const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
+    const [supportIframeUrl, setSupportIframeUrl] = useState<string | null>(null);
+    const [supportLoading, setSupportLoading] = useState(false);
+    const [supportError, setSupportError] = useState<string | null>(null);
+    const [supportStatus, setSupportStatus] = useState<SupportStatus | null>(null);
 
     useEffect(() => {
         async function fetchData() {
@@ -178,6 +211,42 @@ export default function OperatorMenuLojaVazia({
         }
         fetchData();
     }, [storeId]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function fetchSupportStatus() {
+            try {
+                const response = await fetch('/api/support/status', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ storeId }),
+                    cache: 'no-store',
+                });
+                const payload = await response.json().catch(() => null);
+
+                if (!cancelled && response.ok && payload) {
+                    setSupportStatus({
+                        active: payload.active === true,
+                        ticketId: typeof payload.ticketId === 'string' ? payload.ticketId : undefined,
+                        protocol: typeof payload.protocol === 'string' ? payload.protocol : undefined,
+                        status: typeof payload.status === 'string' ? payload.status : undefined,
+                        unreadSupportCount: Number(payload.unreadSupportCount || 0),
+                    });
+                }
+            } catch (error) {
+                console.error('[Support] Erro ao buscar status:', error);
+            }
+        }
+
+        fetchSupportStatus();
+        const interval = window.setInterval(fetchSupportStatus, 30000);
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(interval);
+        };
+    }, [storeId, isSupportModalOpen]);
 
     const handleZapAniversario = async (fone: string | null, nome: string) => {
         if (sendingWhatsAppKey) return;
@@ -269,6 +338,38 @@ export default function OperatorMenuLojaVazia({
         window.open(getWhatsAppLink(phone), '_blank');
     };
 
+    const handleOpenSupport = async () => {
+        setIsSupportModalOpen(true);
+        setSupportError(null);
+        setSupportStatus((current) => current ? { ...current, unreadSupportCount: 0 } : current);
+
+        if (supportIframeUrl) return;
+
+        setSupportLoading(true);
+        try {
+            const response = await fetch('/api/support/session', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    storeId,
+                    storeName,
+                    origem: window.location.pathname,
+                }),
+            });
+            const payload = await response.json();
+
+            if (!response.ok || !payload.iframeUrl) {
+                throw new Error(payload.error || 'Nao foi possivel abrir o suporte.');
+            }
+
+            setSupportIframeUrl(payload.iframeUrl);
+        } catch (error) {
+            setSupportError(error instanceof Error ? error.message : 'Nao foi possivel abrir o suporte.');
+        } finally {
+            setSupportLoading(false);
+        }
+    };
+
     const RadarWidget = ({
         title,
         subtitle,
@@ -278,9 +379,9 @@ export default function OperatorMenuLojaVazia({
         children,
         isOpen,
         setIsOpen
-    }: any) => {
+    }: RadarWidgetProps) => {
         // Mapeamento de Cores para Tailwind (evita classes dinâmicas quebradas)
-        const colors: any = {
+        const colors: Record<RadarColor, RadarColorClasses> = {
             amber: { bg: 'bg-amber-500/20', text: 'text-amber-300', border: 'hover:border-amber-500/30' },
             rose: { bg: 'bg-rose-500/20', text: 'text-rose-300', border: 'hover:border-rose-500/30' },
             indigo: { bg: 'bg-indigo-500/20', text: 'text-indigo-300', border: 'hover:border-indigo-500/30' },
@@ -326,6 +427,15 @@ export default function OperatorMenuLojaVazia({
     const [openEntregas, setOpenEntregas] = useState(false);
     const [openRetornos, setOpenRetornos] = useState(false);
     const [openLaboratorio, setOpenLaboratorio] = useState(false);
+
+    const supportUnreadCount = supportStatus?.unreadSupportCount || 0;
+    const supportHasUnread = supportUnreadCount > 0;
+    const supportHasActiveTicket = supportStatus?.active === true;
+    const supportButtonClass = supportHasUnread
+        ? 'fixed flex items-center gap-2 px-4 py-2 rounded-full bg-amber-400/20 hover:bg-amber-400/30 text-amber-100 hover:text-white transition-all duration-300 border border-amber-300/40 backdrop-blur-sm z-20 group shadow-[0_0_24px_rgba(251,191,36,0.25)] animate-pulse'
+        : supportHasActiveTicket
+            ? 'fixed flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-200 hover:text-white transition-all duration-300 border border-emerald-300/25 backdrop-blur-sm z-20 group'
+            : 'fixed flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all duration-300 border border-white/5 hover:border-white/20 backdrop-blur-sm z-20 group';
 
     return (
         <div className="min-h-screen relative flex flex-col items-center p-6 overflow-hidden bg-slate-950 font-sans transition-colors duration-500">
@@ -796,6 +906,60 @@ export default function OperatorMenuLojaVazia({
                 <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
                 <span className="text-xs font-bold uppercase tracking-wider">Voltar</span>
             </button>
+
+            <button
+                onClick={handleOpenSupport}
+                className={supportButtonClass}
+                style={{ right: 'max(1rem, env(safe-area-inset-right))', bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+                title={supportHasUnread ? 'Suporte respondeu' : supportHasActiveTicket ? `Chamado ${supportStatus?.protocol || 'em andamento'}` : 'Suporte tecnico'}
+            >
+                <Headset className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                <span className="text-xs font-bold uppercase tracking-wider">Suporte</span>
+                {supportHasUnread && (
+                    <span className="ml-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-300 px-1.5 text-[10px] font-black text-slate-950 shadow-lg">
+                        {supportUnreadCount > 9 ? '9+' : supportUnreadCount}
+                    </span>
+                )}
+            </button>
+
+            {isSupportModalOpen && (
+                <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+                    <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-[0_24px_80px_rgba(0,0,0,0.65)]">
+                        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                            <div className="flex items-center gap-2 text-slate-200">
+                                <Headset className="h-4 w-4 text-amber-300" />
+                                <span className="text-xs font-black uppercase tracking-wider">Suporte tecnico</span>
+                            </div>
+                            <button
+                                onClick={() => setIsSupportModalOpen(false)}
+                                className="rounded-full p-2 text-slate-400 transition hover:bg-white/10 hover:text-white"
+                                title="Fechar suporte"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+                        <div className="h-[520px] bg-slate-900">
+                            {supportLoading && (
+                                <div className="flex h-full items-center justify-center text-sm font-bold text-slate-400">
+                                    Abrindo suporte...
+                                </div>
+                            )}
+                            {supportError && (
+                                <div className="flex h-full items-center justify-center px-6 text-center text-sm font-bold text-rose-300">
+                                    {supportError}
+                                </div>
+                            )}
+                            {supportIframeUrl && !supportLoading && !supportError && (
+                                <iframe
+                                    src={supportIframeUrl}
+                                    title="Suporte tecnico"
+                                    className="h-full w-full border-0"
+                                />
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
             {/* Tooltip personalizado */}
             {tooltip.visible && (
                 <div

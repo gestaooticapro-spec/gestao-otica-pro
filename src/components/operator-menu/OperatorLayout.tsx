@@ -126,7 +126,7 @@ export default function OperatorLayout({
     }
 
     if (currentMenu === 'loja-vazia') {
-        return <OperatorMenuLojaVazia storeId={storeId} onBack={handleBack} onNavigate={handleRouteNavigate} deliveryDateEnabled={liveDeliveryDateEnabled} />;
+        return <OperatorMenuLojaVazia storeId={storeId} storeName={storeName} onBack={handleBack} onNavigate={handleRouteNavigate} deliveryDateEnabled={liveDeliveryDateEnabled} />;
     }
 
     return (
