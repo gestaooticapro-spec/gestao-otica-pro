@@ -342,8 +342,7 @@ export default function OperatorMenuLojaVazia({
         setIsSupportModalOpen(true);
         setSupportError(null);
         setSupportStatus((current) => current ? { ...current, unreadSupportCount: 0 } : current);
-
-        if (supportIframeUrl) return;
+        setSupportIframeUrl(null);
 
         setSupportLoading(true);
         try {
@@ -931,7 +930,11 @@ export default function OperatorMenuLojaVazia({
                                 <span className="text-xs font-black uppercase tracking-wider">Suporte tecnico</span>
                             </div>
                             <button
-                                onClick={() => setIsSupportModalOpen(false)}
+                                onClick={() => {
+                                    setIsSupportModalOpen(false);
+                                    setSupportIframeUrl(null);
+                                    setSupportError(null);
+                                }}
                                 className="rounded-full p-2 text-slate-400 transition hover:bg-white/10 hover:text-white"
                                 title="Fechar suporte"
                             >
