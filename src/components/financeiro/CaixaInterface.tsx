@@ -208,9 +208,47 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
     // --- RENDERIZAÇÃO CONDICIONAL ---
 
     // 1. MODO CAIXA FECHADO
-    if (!initialData) {
+    if (!initialData && !auditData) {
         return (
-            <div className="flex items-center justify-center h-full">
+            <div className="flex flex-col h-full space-y-4">
+                <div className="flex items-center justify-between shrink-0 gap-3">
+                    <div className="flex items-center gap-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-lg px-3 py-1.5">
+                        <CalendarDays className="h-4 w-4 text-amber-400" />
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Auditar dia:</label>
+                        <input
+                            type="date"
+                            value={auditDate}
+                            max={new Date().toISOString().split('T')[0]}
+                            onChange={(e) => handleAuditDateChange(e.target.value)}
+                            className="bg-transparent border-none text-slate-200 text-xs font-bold focus:outline-none cursor-pointer [color-scheme:dark]"
+                        />
+                    </div>
+
+                    <button
+                        onClick={() => setIsHistoricoModalOpen(true)}
+                        className="bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 px-3 py-1.5 rounded-lg flex items-center gap-2 text-xs font-bold shadow-sm transition-all backdrop-blur-sm"
+                        title="Ver histórico do caixa e abrir dias anteriores"
+                    >
+                        <History className="h-4 w-4 text-emerald-400" />
+                        <span className="hidden sm:inline">Histórico do Caixa</span>
+                    </button>
+                </div>
+
+                {auditMode && auditLoading && (
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex items-center gap-3 animate-pulse">
+                        <Loader2 className="h-5 w-5 text-amber-400 animate-spin" />
+                        <span className="text-sm text-amber-300 font-bold">Carregando dados do dia...</span>
+                    </div>
+                )}
+
+                {auditMode && auditNotFound && (
+                    <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-center gap-3">
+                        <AlertTriangle className="h-5 w-5 text-red-400" />
+                        <span className="text-sm text-red-300 font-bold">Nenhum movimento encontrado para esta data.</span>
+                    </div>
+                )}
+
+                <div className="flex items-center justify-center flex-1">
                 <div className="bg-white/5 backdrop-blur-xl p-8 rounded-2xl shadow-2xl shadow-black/30 max-w-md w-full border border-white/10">
                     <div className="text-center mb-6">
                         <div className="inline-flex items-center justify-center p-4 bg-emerald-500/20 rounded-full mb-4 border border-emerald-500/20">
@@ -220,7 +258,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                         <p className="text-slate-400 text-sm mt-1 font-medium">
                             {isSameDayReopen
                                 ? 'Ja existe um caixa fechado hoje. Vamos reabrir esse mesmo caixa para manter os dados do dia organizados.'
-                                : 'Inicie o dia informando o fundo de troco.'}
+                                : 'Inicie o dia informando o fundo de troco. A auditoria do movimento continua disponivel acima.'}
                         </p>
                     </div>
 
@@ -300,6 +338,19 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                         </button>
                     </form>
                 </div>
+                </div>
+
+                {isHistoricoModalOpen && (
+                    <HistoricoCaixaModal
+                        storeId={storeId}
+                        onClose={() => setIsHistoricoModalOpen(false)}
+                        onAuditDate={(dateStr: string) => {
+                            setIsHistoricoModalOpen(false)
+                            openAuditFromDate(dateStr)
+                        }}
+                    />
+                )}
+
                 <CalculadoraNotasModal isOpen={isCalcOpen} onClose={() => setIsCalcOpen(false)} />
             </div>
         )
@@ -308,6 +359,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
     // 2. MODO CAIXA ABERTO (Dashboard)
     // Decide which data source to use: audit data or live data
     const activeData = auditMode && auditData ? auditData : initialData
+    if (!activeData) return null
     const isReadOnly = auditMode && auditData !== null
     const { totais, vendas, movimentacoes, movimentacoes_detalhadas, categoriasUsadas } = activeData
     const valorInicialGaveta = Number(activeData.caixa?.saldo_inicial || 0)
@@ -590,7 +642,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                             placeholder="Ex: Limpeza, Motoboy..."
                                         />
                                         <datalist id="categorias-list">
-                                            {categoriasUsadas.map(cat => <option key={cat} value={cat} />)}
+                                            {categoriasUsadas.map((cat: string) => <option key={cat} value={cat} />)}
                                         </datalist>
                                     </div>
 

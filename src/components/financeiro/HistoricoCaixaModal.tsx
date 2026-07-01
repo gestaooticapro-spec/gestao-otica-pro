@@ -67,7 +67,7 @@ export default function HistoricoCaixaModal({ storeId, onClose, onAuditDate }: {
                         <div className="flex items-center gap-3">
                             <h3 className="text-lg font-bold text-white flex items-center gap-2">
                                 <DollarSign className="h-5 w-5 text-emerald-400" />
-                                Histórico de Fechamentos (Auditoria)
+                                Histórico do Caixa (Auditoria)
                             </h3>
                             <button 
                                 className="text-[10px] text-slate-400 font-normal bg-white/5 hover:bg-white/10 transition-colors px-2 py-1 rounded-full flex items-center gap-1.5 cursor-help" 
@@ -131,7 +131,14 @@ export default function HistoricoCaixaModal({ storeId, onClose, onAuditDate }: {
                             <tbody className="divide-y divide-white/5">
                                 {filteredExtrato.map((item: any, idx: number) => (
                                     <tr key={idx} className="hover:bg-white/5 transition-colors">
-                                        <td className="px-4 py-2 font-mono text-[11px] font-bold text-slate-400">{formatDate(item.data?.split('T')[0] || '')}</td>
+                                        <td className="px-4 py-2 font-mono text-[11px] font-bold text-slate-400">
+                                            <div className="flex flex-col">
+                                                <span>{formatDate(item.data?.split('T')[0] || '')}</span>
+                                                <span className={`text-[9px] uppercase tracking-wider ${item.status === 'Fechado' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                                                    {item.status === 'Fechado' ? 'Fechado' : 'Aberto'}
+                                                </span>
+                                            </div>
+                                        </td>
                                         <td className="px-4 py-2 text-right font-medium text-emerald-400 bg-emerald-500/5">
                                             {item.entradas > 0 ? `+ ${formatCurrency(item.entradas)}` : '-'}
                                         </td>

@@ -497,11 +497,11 @@ export async function getUltimoFechamento(storeId: number) {
 export async function getHistoricoCaixa(storeId: number) {
     const sb = createAdminClient()
 
-    // 1. Buscas os últimos 30 caixas fechados
+    // 1. Busca os últimos 30 caixas, mesmo que algum dia tenha ficado aberto.
+    // Isso permite auditar um movimento antigo que nunca chegou a ser fechado.
     const { data } = await (sb.from('caixa_diario') as any)
-        .select('id, data_abertura, data_fechamento, saldo_inicial, saldo_final, quebra_caixa, obs')
+        .select('id, status, data_abertura, data_fechamento, saldo_inicial, saldo_final, quebra_caixa, obs')
         .eq('store_id', storeId)
-        .eq('status', 'Fechado')
         .order('created_at', { ascending: false })
         .limit(30)
 
@@ -544,16 +544,20 @@ export async function getHistoricoCaixa(storeId: number) {
         const saldoInicial = Number(cx.saldo_inicial)
         const saldoEsperado = saldoInicial + entradasEmDinheiro + movimentoManual.entradas - movimentoManual.saidas
         const saldoFinal = cx.saldo_final === null ? null : Number(cx.saldo_final)
-        const quebra = saldoFinal === null ? Number(cx.quebra_caixa) || 0 : saldoFinal - saldoEsperado
+        const quebra = cx.status === 'Fechado'
+            ? (saldoFinal === null ? Number(cx.quebra_caixa) || 0 : saldoFinal - saldoEsperado)
+            : 0
 
         return {
             id: cx.id,
+            status: cx.status,
             data: cx.data_abertura,
+            data_fechamento: cx.data_fechamento,
             saldo_inicial: saldoInicial,
             entradas: entradasEmDinheiro + movimentoManual.entradas,
             saidas: movimentoManual.saidas,
             saldo_esperado: saldoEsperado,
-            saldo_final: saldoFinal ?? 0,
+            saldo_final: saldoFinal ?? saldoEsperado,
             quebra,
             obs: cx.obs
         }

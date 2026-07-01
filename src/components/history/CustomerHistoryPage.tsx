@@ -5,10 +5,12 @@ import { CustomerXRayData } from '@/lib/actions/history.actions'
 import {
     User, ShoppingBag, TrendingUp, Calendar,
     ArrowUpRight, Clock, Star, Search, Users, Wallet, FileText, Eye, EyeOff, ChevronDown, AlertTriangle, X,
-    Stethoscope, ChevronUp, Filter, Loader2
+    Stethoscope, Loader2, MessageCircle
 } from 'lucide-react'
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
-import { getCustomerParcelasFiltradas, ParcelaFiltro } from '@/lib/actions/parcelas.actions'
+import { getCustomerParcelasFiltradas } from '@/lib/actions/parcelas.actions'
+import { sendInstallmentReceiptWhatsApp } from '@/lib/actions/manual-whatsapp.actions'
+import { toast } from 'sonner'
 
 interface CustomerHistoryPageProps {
     data: CustomerXRayData
@@ -57,6 +59,8 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
     const [parcelasModalData, setParcelasModalData] = useState<any[]>([])
     const [isParcelasLoading, setIsParcelasLoading] = useState(false)
     const [expandedSales, setExpandedSales] = useState<Record<number, boolean>>({})
+    const [sendingReceiptInstallmentId, setSendingReceiptInstallmentId] = useState<number | null>(null)
+    const [sentReceiptInstallmentIds, setSentReceiptInstallmentIds] = useState<number[]>([])
 
     const fetchParcelas = async () => {
         setIsParcelasLoading(true)
@@ -78,8 +82,37 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
     useEffect(() => {
         if (isParcelasModalOpen) {
             fetchParcelas()
+            setSendingReceiptInstallmentId(null)
+            setSentReceiptInstallmentIds([])
         }
     }, [isParcelasModalOpen])
+
+    const handleSendInstallmentReceipt = async (installmentId: number) => {
+        if (sendingReceiptInstallmentId === installmentId) return
+
+        setSendingReceiptInstallmentId(installmentId)
+        try {
+            const result = await sendInstallmentReceiptWhatsApp({
+                storeId,
+                installmentId,
+            })
+
+            if (!result.success) {
+                toast.error(result.message)
+                return
+            }
+
+            setSentReceiptInstallmentIds((current) =>
+                current.includes(installmentId) ? current : [...current, installmentId]
+            )
+            toast.success('Recibo enviado em PDF pelo WhatsApp da loja.')
+        } catch (error) {
+            console.error('[CustomerHistoryPage] Erro ao enviar recibo da parcela:', error)
+            toast.error('Nao foi possivel enviar o recibo por WhatsApp.')
+        } finally {
+            setSendingReceiptInstallmentId(null)
+        }
+    }
 
     const groupedSalesInModal = useMemo(() => {
         return parcelasModalData.reduce((acc: Record<number, any[]>, p: any) => {
@@ -791,6 +824,7 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                                                                     <th className="px-4 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider">Vencimento</th>
                                                                     <th className="px-4 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider">Data Pagamento</th>
                                                                     <th className="px-4 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider text-right">Valor</th>
+                                                                    <th className="px-4 py-2.5 text-[9px] font-black text-slate-500 uppercase tracking-wider text-right">Comprovante</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody className="divide-y divide-white/5">
@@ -799,6 +833,8 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                                                                     const vencStr = p.data_vencimento ? p.data_vencimento.split('T')[0] : ''
                                                                     const hojeStr2 = new Date().toISOString().split('T')[0]
                                                                     const isAtrasado = !isPago && vencStr < hojeStr2
+                                                                    const isSendingReceipt = sendingReceiptInstallmentId === p.id
+                                                                    const receiptSent = sentReceiptInstallmentIds.includes(p.id)
 
                                                                     return (
                                                                         <tr key={p.id} className="hover:bg-white/5 transition-colors">
@@ -822,6 +858,26 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                                                                             </td>
                                                                             <td className="px-4 py-2 text-right text-white font-bold">
                                                                                 {formatCurrency(p.valor_parcela)}
+                                                                            </td>
+                                                                            <td className="px-4 py-2">
+                                                                                <div className="flex justify-end">
+                                                                                    {isPago ? (
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={() => handleSendInstallmentReceipt(p.id)}
+                                                                                            disabled={isSendingReceipt}
+                                                                                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                                                                            title="Enviar comprovante desta parcela por WhatsApp"
+                                                                                        >
+                                                                                            {isSendingReceipt ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MessageCircle className="w-3.5 h-3.5" />}
+                                                                                            <span className="text-[10px] font-bold uppercase tracking-wide">
+                                                                                                {isSendingReceipt ? 'Enviando' : receiptSent ? 'Reenviar' : 'Enviar'}
+                                                                                            </span>
+                                                                                        </button>
+                                                                                    ) : (
+                                                                                        <span className="text-[10px] text-slate-600 font-medium">-</span>
+                                                                                    )}
+                                                                                </div>
                                                                             </td>
                                                                         </tr>
                                                                     )
