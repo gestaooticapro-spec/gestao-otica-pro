@@ -12,6 +12,15 @@ type ExistingGlobalCommission = {
     status: string
 }
 
+const STORE_UTC_OFFSET = '-03:00'
+
+function getStoreDayRangeFromKey(dateKey: string) {
+    return {
+        startIso: new Date(`${dateKey}T00:00:00${STORE_UTC_OFFSET}`).toISOString(),
+        endIso: new Date(`${dateKey}T23:59:59.999${STORE_UTC_OFFSET}`).toISOString()
+    }
+}
+
 async function getCommissionGenerationMode(storeId: number): Promise<CommissionGenerationMode> {
     const supabase = createAdminClient()
 
@@ -159,10 +168,10 @@ export async function calcularERegistrarComissao(vendaId: number) {
                 .eq('type', 'individual') // Garante que só deleta as individuais
                 .eq('status', 'Pendente')
 
-            // CORREÇÃO: Usa data_fechamento da venda como referência temporal da comissão
+            // Usa a data original da venda como referência temporal da comissão individual.
             const dataComissao = commissionStage === 'provisional'
                 ? (venda.created_at || new Date().toISOString())
-                : (venda.data_fechamento || new Date().toISOString())
+                : (venda.created_at || venda.data_fechamento || new Date().toISOString())
 
             await (supabase.from('commissions') as any).insert({
                 tenant_id: venda.tenant_id,
@@ -236,8 +245,8 @@ function isCurrentMonthlyPeriod(inicio: string, fim: string) {
 // ================================================================
 export async function calcularComissoesGlobais(storeId: number, inicio: string, fim: string) {
     const supabase = createAdminClient()
-    const dataInicio = `${inicio}T00:00:00`
-    const dataFim = `${fim}T23:59:59`
+    const { startIso: dataInicio } = getStoreDayRangeFromKey(inicio)
+    const { endIso: dataFim } = getStoreDayRangeFromKey(fim)
     const periodRef = `${inicio}_${fim}`
 
     try {
@@ -378,8 +387,10 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
     const supabase = createAdminClient()
 
     // Ajusta datas para cobrir o período completo
-    const dataInicio = `${inicio}T00:00:00`
-    const dataFim = `${fim}T23:59:59`
+    const { startIso: dataInicio } = getStoreDayRangeFromKey(inicio)
+    const { endIso: dataFim } = getStoreDayRangeFromKey(fim)
+    const dataInicioTime = new Date(dataInicio).getTime()
+    const dataFimTime = new Date(dataFim).getTime()
 
     // Só autogera o mês corrente; períodos históricos ficam somente leitura
     // para não recalcular com as taxas atuais ao abrir um relatório antigo.
@@ -468,9 +479,8 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
             }
         })
 
-        // CORREÇÃO: Busca comissões e filtra pela data_fechamento da VENDA,
-        // não pelo created_at da comissão. Assim o relatório reflete o mês 
-        // correto de fechamento.
+        // Busca comissões e filtra pela data operacional da venda nos itens individuais.
+        // Globais continuam usando a referência consolidada do período.
         const { data: comissoes, error } = await (supabase
             .from('commissions') as any)
             .select(`
@@ -496,19 +506,20 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
 
         if (error) throw error
 
-        // Filtra no lado do client pela data_fechamento da venda
+        // Filtra no lado do client pela data original da venda
         // (Supabase não suporta filtros em colunas de tabelas relacionadas via .gte/.lte)
         const comissoesFiltradas = (comissoes || []).filter((c: any) => {
-            // Usa data_fechamento da venda como referência.
-            // Se não existir (vendas antigas), faz fallback para created_at da comissão.
-            // Trunca para 19 chars para evitar que o sufixo +00:00 quebre a comparação de strings.
-            const isProvisional = c.commission_stage === 'provisional'
-            const dataRef = ((isProvisional
-                ? (c.vendas?.created_at || c.created_at)
-                : (c.vendas?.data_fechamento || c.created_at)
+            // Usa created_at da venda como referência.
+            // Se não existir (vendas antigas/globais), faz fallback para created_at da comissão.
+            // Compara por timestamp para respeitar o intervalo local da loja.
+            const isGlobalStore = (c.type || 'individual') === 'global_store'
+            const dataRef = (
+                isGlobalStore
+                    ? c.created_at
+                    : (c.vendas?.created_at || c.created_at)
             ) || ''
-            ).substring(0, 19)
-            return dataRef >= dataInicio && dataRef <= dataFim
+            const dataRefTime = new Date(dataRef).getTime()
+            return Number.isFinite(dataRefTime) && dataRefTime >= dataInicioTime && dataRefTime <= dataFimTime
         })
 
         // Agrupamento manual por funcionário
@@ -572,10 +583,8 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
 
             resumo.detalhes.push({
                 id: c.id,
-                // Mostra a data de fechamento da venda ou do período (para global)
-                data: c.commission_stage === 'provisional'
-                    ? (c.vendas?.created_at || c.created_at)
-                    : (c.vendas?.data_fechamento || c.created_at),
+                // Mostra a data original da venda ou do período (para global)
+                data: isGlobalStore ? c.created_at : (c.vendas?.created_at || c.created_at),
                 venda_id: c.venda_id,
                 valor_venda: c.vendas?.valor_final || 0,
                 valor_comissao: valor,
