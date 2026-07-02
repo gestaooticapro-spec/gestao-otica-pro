@@ -1426,6 +1426,15 @@ export async function setWhatsAppCustomerControl(input: {
       return { success: true, message: 'Cliente voltou para o modo automatico.', mode }
     }
 
+    if (mode === 'force_ai') {
+      const { error: stateClearError } = await (supabaseAdmin.from('whatsapp_conversation_states') as any)
+        .delete()
+        .eq('channel_id', channel.id)
+        .eq('remote_phone', remotePhone)
+
+      if (stateClearError) throw stateClearError
+    }
+
     const { error } = await (supabaseAdmin.from('whatsapp_customer_control') as any)
       .upsert({
         tenant_id: channel.tenant_id,

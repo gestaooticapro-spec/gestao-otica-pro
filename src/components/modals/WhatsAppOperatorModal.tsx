@@ -173,6 +173,24 @@ type SimulationEntry = {
   createdAt: string
 }
 
+function hasSystemReplyAfterLatestInbound(messages: WhatsAppOperatorThreadMessage[] | undefined) {
+  if (!messages?.length) return false
+
+  const latestInboundAt = messages
+    .filter((message) => message.direction === 'inbound')
+    .map((message) => new Date(message.createdAt).getTime())
+    .filter(Number.isFinite)
+    .sort((a, b) => b - a)[0]
+
+  if (!latestInboundAt) return false
+
+  return messages.some((message) => {
+    if (message.actor !== 'system') return false
+    const createdAt = new Date(message.createdAt).getTime()
+    return Number.isFinite(createdAt) && createdAt > latestInboundAt
+  })
+}
+
 function SimulationBubble({ entry }: { entry: SimulationEntry }) {
   return (
     <div className="flex justify-end">
@@ -513,10 +531,21 @@ export default function WhatsAppOperatorModal({
     setControlMessage(null)
   }, [isOpen, selectedPhone])
 
-  const selectedThread = useMemo(
-    () => threads.find((thread) => thread.remotePhone === selectedPhone) || selectedDetail?.thread || null,
-    [threads, selectedPhone, selectedDetail]
-  )
+  const selectedThread = useMemo(() => {
+    const detailThread = selectedDetail?.thread.remotePhone === selectedPhone ? selectedDetail.thread : null
+    const listThread = threads.find((thread) => thread.remotePhone === selectedPhone) || null
+    const thread = detailThread || listThread
+    if (!thread) return null
+
+    if (thread.overrideMode === 'force_ai' && hasSystemReplyAfterLatestInbound(selectedDetail?.messages)) {
+      return {
+        ...thread,
+        overrideMode: 'auto' as WhatsAppCustomerControlMode,
+      }
+    }
+
+    return thread
+  }, [threads, selectedPhone, selectedDetail])
   const simulationEntries = selectedThread ? (simulationByPhone[selectedThread.remotePhone] || []) : []
   const messageRenderKey = useMemo(() => {
     const parts = [
@@ -564,6 +593,8 @@ export default function WhatsAppOperatorModal({
     if (!selectedThread) return
 
     setControlMessage(null)
+    setSendError(null)
+    setSendSuccess(null)
 
     startControlTransition(async () => {
       const result = await setWhatsAppCustomerControl({
