@@ -304,11 +304,11 @@ function attachmentFollowupText() {
 }
 
 function aiGreetingText() {
-  return 'Oi! Sou a IAra, assistente virtual da otica. Como posso te ajudar hoje?'
+  return 'Oi! Sou a IAra, assistente virtual da \u00f3tica. Como posso te ajudar hoje?'
 }
 
 function aiClarificationText() {
-  return 'Entendi. Para eu te ajudar melhor, me diga por favor se voce quer falar sobre pedido, horario da loja, pagamento, orcamento ou atendimento com a equipe.'
+  return 'Entendi. Para eu te ajudar melhor, me diga por favor se voc\u00ea quer falar sobre pedido, hor\u00e1rio da loja, pagamento, or\u00e7amento ou atendimento com a equipe.'
 }
 
 function buildClosedStoreText(hoursFacts: ReturnType<typeof evaluateStoreHours>) {
@@ -319,29 +319,29 @@ function buildClosedStoreText(hoursFacts: ReturnType<typeof evaluateStoreHours>)
   const lowerReason = (exceptionalReason || '').toLowerCase()
   const isLunchBreak = lowerReason.includes('almo') || lowerReason.includes('intervalo')
   const nextSentence = nextOpen ? ` Voltamos ${nextOpen}.` : ''
-  const weeklySentence = weeklySchedule ? ` Nosso horario normal de atendimento e: ${weeklySchedule}.` : ''
+  const weeklySentence = weeklySchedule ? ` Nosso hor\u00e1rio normal de atendimento \u00e9: ${weeklySchedule}.` : ''
 
   if (hoursFacts.is_exceptional_closure && exceptionalReason) {
-    return `Oi! No momento nossa loja esta fechada por um motivo especial: ${exceptionalReason}.${nextSentence} Queremos te atender assim que retornarmos, entao pode deixar sua mensagem por aqui.${weeklySentence}`.trim()
+    return `Oi! No momento nossa loja est\u00e1 fechada por um motivo especial: ${exceptionalReason}.${nextSentence} Queremos te atender assim que retornarmos, ent\u00e3o pode deixar sua mensagem por aqui.${weeklySentence}`.trim()
   }
 
   if (isLunchBreak) {
-    return `Oi! No momento estamos em ${exceptionalReason || 'intervalo'} e por isso a loja esta temporariamente fechada.${nextSentence} Queremos te atender assim que voltarmos.${weeklySentence}`.trim()
+    return `Oi! No momento estamos em ${exceptionalReason || 'intervalo'} e por isso a loja est\u00e1 temporariamente fechada.${nextSentence} Queremos te atender assim que voltarmos.${weeklySentence}`.trim()
   }
 
   if (nextOpen.startsWith('Segunda-feira')) {
-    return `Oi! No momento nossa loja esta fechada.${nextSentence} Se preferir, ja pode deixar sua mensagem que atenderemos voce assim que abrirmos.${weeklySentence}`.trim()
+    return `Oi! No momento nossa loja est\u00e1 fechada.${nextSentence} Se preferir, j\u00e1 pode deixar sua mensagem que atenderemos voc\u00ea assim que abrirmos.${weeklySentence}`.trim()
   }
 
   if (nextOpen.startsWith('Hoje')) {
-    return `Oi! No momento nossa loja esta fechada, mas abrimos novamente ${nextOpen.toLowerCase()}. Queremos te atender, entao se preferir ja pode deixar sua mensagem por aqui.${weeklySentence}`.trim()
+    return `Oi! No momento nossa loja est\u00e1 fechada, mas abrimos novamente ${nextOpen.toLowerCase()}. Queremos te atender, ent\u00e3o se preferir j\u00e1 pode deixar sua mensagem por aqui.${weeklySentence}`.trim()
   }
 
   if (todaySchedule && todaySchedule !== 'Fechado') {
-    return `Oi! No momento estamos fora do horario de atendimento de hoje (${todaySchedule}).${nextSentence} Queremos te atender assim que retornarmos.${weeklySentence}`.trim()
+    return `Oi! No momento estamos fora do hor\u00e1rio de atendimento de hoje (${todaySchedule}).${nextSentence} Queremos te atender assim que retornarmos.${weeklySentence}`.trim()
   }
 
-  return `Oi! No momento nossa loja esta fechada.${nextSentence} Queremos te atender assim que abrirmos, entao pode deixar sua mensagem por aqui.${weeklySentence}`.trim()
+  return `Oi! No momento nossa loja est\u00e1 fechada.${nextSentence} Queremos te atender assim que abrirmos, ent\u00e3o pode deixar sua mensagem por aqui.${weeklySentence}`.trim()
 }
 
 function normalizeDisplayText(value: string | null | undefined) {
@@ -381,8 +381,29 @@ function buildStoreLocationText(store: StoreProfileRow) {
   if (!address) return null
 
   const phone = normalizeDisplayText(store.whatsapp) || normalizeDisplayText(store.phone)
+  const mapsUrl = buildStoreMapsUrl(store)
   const extra = phone ? ` Se precisar, nosso contato é ${phone}.` : ''
-  return `Nossa loja fica em ${address}.${extra}`.trim()
+  const mapsText = mapsUrl ? ` Se preferir, aqui esta nossa localizacao no mapa: ${mapsUrl}` : ''
+  return `Nossa loja fica em ${address}.${mapsText}${extra}`.trim()
+}
+
+function buildStoreMapsUrl(store: StoreProfileRow) {
+  const address = formatStoreAddress(store)
+  if (!address) return null
+
+  const query = new URLSearchParams({ query: address }).toString()
+  return `https://www.google.com/maps/search/?api=1&${query}`
+}
+
+function buildStoreLocationReply(store: StoreProfileRow) {
+  const address = formatStoreAddress(store)
+  if (!address) return null
+
+  const phone = normalizeDisplayText(store.whatsapp) || normalizeDisplayText(store.phone)
+  const mapsUrl = buildStoreMapsUrl(store)
+  const extra = phone ? ` Se precisar, nosso contato \u00e9 ${phone}.` : ''
+  const mapsText = mapsUrl ? ` Se preferir, aqui est\u00e1 nossa localiza\u00e7\u00e3o no mapa: ${mapsUrl}` : ''
+  return `Nossa loja fica em ${address}.${mapsText}${extra}`.trim()
 }
 
 function extractStoreHoursText(settings: StoreSettings | undefined) {
@@ -2810,7 +2831,7 @@ export async function resolveCustomerStatus(
     await recordAiResult('intent_classification', classification)
 
     const storeHoursText = buildStoreHoursText(storeProfile)
-    const storeLocationText = buildStoreLocationText(storeProfile)
+    const storeLocationText = buildStoreLocationReply(storeProfile)
     const postClassificationRoute = applyForceAiPostClassificationRoute(
       decidePostClassificationRoute({
         classificationSuccess: classification.success,
@@ -3658,7 +3679,7 @@ export async function simulateCustomerStatus(
     aiDiagnostics.push(buildAiDiagnostic('intent_classification', classification))
 
     const storeHoursText = buildStoreHoursText(storeProfile)
-    const storeLocationText = buildStoreLocationText(storeProfile)
+    const storeLocationText = buildStoreLocationReply(storeProfile)
     const postClassificationRoute = applyForceAiPostClassificationRoute(
       decidePostClassificationRoute({
         classificationSuccess: classification.success,
