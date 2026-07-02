@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { Search, CalendarRange, Filter, AlertCircle, Loader2, ArrowLeft, ArrowRight } from 'lucide-react'
+import { Search, CalendarRange, Filter, AlertCircle, Loader2, ArrowLeft, ArrowRight, MessageCircle } from 'lucide-react'
 import Link from 'next/link'
 import { getParcelasFiltradas, ParcelaFiltro } from '@/lib/actions/parcelas.actions'
+import { sendInstallmentReceiptWhatsApp } from '@/lib/actions/manual-whatsapp.actions'
+import { toast } from 'sonner'
 
 type ParcelaData = {
     id: number
@@ -18,9 +19,13 @@ type ParcelaData = {
     customers?: { full_name: string, cpf: string }
 }
 
+type ParcelasPorVenda = Record<string, ParcelaData[]>
+type ParcelasAgrupadasPorCliente = Record<string, {
+    customer?: ParcelaData['customers']
+    sales: ParcelasPorVenda
+}>
+
 export default function ParcelasInterface({ storeId }: { storeId: number }) {
-    const router = useRouter()
-    
     const [filtros, setFiltros] = useState<ParcelaFiltro>({
         status: 'todas',
         dataInicial: '',
@@ -32,6 +37,8 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
     const [loading, setLoading] = useState(false)
     const [hasSearched, setHasSearched] = useState(false)
     const [viewMode, setViewMode] = useState<'cards' | 'table'>('table')
+    const [sendingReceiptInstallmentId, setSendingReceiptInstallmentId] = useState<number | null>(null)
+    const [sentReceiptInstallmentIds, setSentReceiptInstallmentIds] = useState<number[]>([])
 
     const handleSearch = async () => {
         setLoading(true)
@@ -62,7 +69,6 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
 
     // Helper para exibir status bonito
     const getStatusBadge = (p: ParcelaData) => {
-        const isCardMode = !!(filtros.busca && filtros.busca.trim() !== '')
         const isPago = p.status === 'pago' || p.data_pagamento !== null
         
         if (isPago) {
@@ -84,6 +90,33 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
         }
 
         return <span className="px-2 py-1 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-md text-[10px] font-bold uppercase tracking-wider">Pendente</span>
+    }
+
+    const handleSendReceipt = async (parcelaId: number) => {
+        if (sendingReceiptInstallmentId === parcelaId) return
+
+        setSendingReceiptInstallmentId(parcelaId)
+        try {
+            const result = await sendInstallmentReceiptWhatsApp({
+                storeId,
+                installmentId: parcelaId,
+            })
+
+            if (!result.success) {
+                toast.error(result.message)
+                return
+            }
+
+            setSentReceiptInstallmentIds((current) =>
+                current.includes(parcelaId) ? current : [...current, parcelaId]
+            )
+            toast.success('Recibo enviado em PDF pelo WhatsApp da loja.')
+        } catch (error) {
+            console.error('[ParcelasInterface] Erro ao enviar recibo:', error)
+            toast.error('Nao foi possivel enviar o recibo por WhatsApp.')
+        } finally {
+            setSendingReceiptInstallmentId(null)
+        }
     }
 
     return (
@@ -134,7 +167,7 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
                     <select
                         className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                         value={filtros.status}
-                        onChange={e => setFiltros({ ...filtros, status: e.target.value as any })}
+                        onChange={e => setFiltros({ ...filtros, status: e.target.value as ParcelaFiltro['status'] })}
                     >
                         <option value="todas">Todas</option>
                         <option value="pendente">Pendentes</option>
@@ -204,7 +237,7 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
                 ) : viewMode === 'cards' ? (
                     <div className="flex flex-col gap-6">
                         {(() => {
-                            const groupedData = parcelas.reduce((acc, p) => {
+                            const groupedData = parcelas.reduce<ParcelasAgrupadasPorCliente>((acc, p) => {
                                 const customerId = p.customer_id;
                                 if (!acc[customerId]) {
                                     acc[customerId] = {
@@ -218,7 +251,7 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
                                 }
                                 acc[customerId].sales[vendaId].push(p);
                                 return acc;
-                            }, {} as any);
+                            }, {});
 
                             const customerIds = Object.keys(groupedData);
 
@@ -264,28 +297,53 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
                                                                         <th className="bg-transparent border-b border-white/5 px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Vencimento</th>
                                                                         <th className="bg-transparent border-b border-white/5 px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pagamento</th>
                                                                         <th className="bg-transparent border-b border-white/5 px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right">Valor</th>
+                                                                        <th className="bg-transparent border-b border-white/5 px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right">Comprovante</th>
                                                                     </tr>
                                                                 </thead>
                                                                 <tbody className="divide-y divide-white/5">
-                                                                    {saleParcelas.map((p: any) => (
-                                                                        <tr key={p.id} className="hover:bg-white/5 transition-colors">
-                                                                            <td className="px-4 py-2 text-xs text-slate-300 font-bold">
-                                                                                {p.numero_parcela}
-                                                                            </td>
-                                                                            <td className="px-4 py-2 whitespace-nowrap">
-                                                                                {getStatusBadge(p)}
-                                                                            </td>
-                                                                            <td className="px-4 py-2 text-xs text-slate-300 font-medium">
-                                                                                {formatDate(p.data_vencimento)}
-                                                                            </td>
-                                                                            <td className="px-4 py-2 text-xs text-slate-300 font-medium">
-                                                                                {p.data_pagamento ? formatDate(p.data_pagamento) : '-'}
-                                                                            </td>
-                                                                            <td className="px-4 py-2 text-xs font-bold text-white text-right">
-                                                                                {formatCurrency(p.valor_parcela)}
-                                                                            </td>
-                                                                        </tr>
-                                                                    ))}
+                                                                    {saleParcelas.map((p: ParcelaData) => {
+                                                                        const isPago = p.status === 'pago' || p.data_pagamento !== null
+                                                                        const isSendingReceipt = sendingReceiptInstallmentId === p.id
+                                                                        const receiptSent = sentReceiptInstallmentIds.includes(p.id)
+
+                                                                        return (
+                                                                            <tr key={p.id} className="hover:bg-white/5 transition-colors">
+                                                                                <td className="px-4 py-2 text-xs text-slate-300 font-bold">
+                                                                                    {p.numero_parcela}
+                                                                                </td>
+                                                                                <td className="px-4 py-2 whitespace-nowrap">
+                                                                                    {getStatusBadge(p)}
+                                                                                </td>
+                                                                                <td className="px-4 py-2 text-xs text-slate-300 font-medium">
+                                                                                    {formatDate(p.data_vencimento)}
+                                                                                </td>
+                                                                                <td className="px-4 py-2 text-xs text-slate-300 font-medium">
+                                                                                    {p.data_pagamento ? formatDate(p.data_pagamento) : '-'}
+                                                                                </td>
+                                                                                <td className="px-4 py-2 text-xs font-bold text-white text-right">
+                                                                                    {formatCurrency(p.valor_parcela)}
+                                                                                </td>
+                                                                                <td className="px-4 py-2 text-right">
+                                                                                    {isPago ? (
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={() => handleSendReceipt(p.id)}
+                                                                                            disabled={isSendingReceipt}
+                                                                                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                                                                            title="Enviar comprovante desta parcela por WhatsApp"
+                                                                                        >
+                                                                                            {isSendingReceipt ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />}
+                                                                                            <span className="text-[10px] font-bold uppercase tracking-wide">
+                                                                                                {isSendingReceipt ? 'Enviando' : receiptSent ? 'Reenviar' : 'Enviar'}
+                                                                                            </span>
+                                                                                        </button>
+                                                                                    ) : (
+                                                                                        <span className="text-[10px] text-slate-600">-</span>
+                                                                                    )}
+                                                                                </td>
+                                                                            </tr>
+                                                                        )
+                                                                    })}
                                                                 </tbody>
                                                             </table>
                                                         </div>
@@ -311,50 +369,75 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
                                         <th className="bg-slate-800/50 border-b border-white/10 px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Vencimento</th>
                                         <th className="bg-slate-800/50 border-b border-white/10 px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Pagamento</th>
                                         <th className="bg-slate-800/50 border-b border-white/10 px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Valor</th>
+                                        <th className="bg-slate-800/50 border-b border-white/10 px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Comprovante</th>
                                         <th className="bg-slate-800/50 border-b border-white/10 px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Ação</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-white/5">
-                                    {parcelas.map((p) => (
-                                        <tr key={p.id} className="hover:bg-slate-800/30 transition-colors group">
-                                            <td className="px-4 py-3 whitespace-nowrap">
-                                                {getStatusBadge(p)}
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <div className="text-sm font-bold text-white truncate max-w-[200px]" title={p.customers?.full_name}>
-                                                    {p.customers?.full_name || 'Desconhecido'}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <span className="text-sm text-slate-300 font-mono">#{p.financiamento_loja?.venda_id}</span>
-                                            </td>
-                                            <td className="px-4 py-3 text-sm text-slate-300 font-bold">
-                                                {p.numero_parcela}
-                                            </td>
-                                            <td className="px-4 py-3 text-sm text-slate-300 font-medium">
-                                                {formatDate(p.data_vencimento)}
-                                            </td>
-                                            <td className="px-4 py-3 text-sm text-slate-300 font-medium">
-                                                {p.data_pagamento ? formatDate(p.data_pagamento) : '-'}
-                                            </td>
-                                            <td className="px-4 py-3 text-sm font-bold text-white">
-                                                {formatCurrency(p.valor_parcela)}
-                                            </td>
-                                            <td className="px-4 py-3 text-right">
-                                                {p.financiamento_loja?.venda_id ? (
-                                                    <Link 
-                                                        href={`/dashboard/loja/${storeId}/vendas/${p.financiamento_loja?.venda_id}/experimental`}
-                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-white/10 rounded-lg text-xs font-bold text-slate-300 hover:text-white transition-all opacity-0 group-hover:opacity-100"
-                                                    >
-                                                        Ver Venda
-                                                        <ArrowRight className="h-3 w-3" />
-                                                    </Link>
-                                                ) : (
-                                                    <span className="text-[10px] text-slate-500 italic">Avulsa</span>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
+                                    {parcelas.map((p) => {
+                                        const isPago = p.status === 'pago' || p.data_pagamento !== null
+                                        const isSendingReceipt = sendingReceiptInstallmentId === p.id
+                                        const receiptSent = sentReceiptInstallmentIds.includes(p.id)
+
+                                        return (
+                                            <tr key={p.id} className="hover:bg-slate-800/30 transition-colors group">
+                                                <td className="px-4 py-3 whitespace-nowrap">
+                                                    {getStatusBadge(p)}
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <div className="text-sm font-bold text-white truncate max-w-[200px]" title={p.customers?.full_name}>
+                                                        {p.customers?.full_name || 'Desconhecido'}
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className="text-sm text-slate-300 font-mono">#{p.financiamento_loja?.venda_id}</span>
+                                                </td>
+                                                <td className="px-4 py-3 text-sm text-slate-300 font-bold">
+                                                    {p.numero_parcela}
+                                                </td>
+                                                <td className="px-4 py-3 text-sm text-slate-300 font-medium">
+                                                    {formatDate(p.data_vencimento)}
+                                                </td>
+                                                <td className="px-4 py-3 text-sm text-slate-300 font-medium">
+                                                    {p.data_pagamento ? formatDate(p.data_pagamento) : '-'}
+                                                </td>
+                                                <td className="px-4 py-3 text-sm font-bold text-white">
+                                                    {formatCurrency(p.valor_parcela)}
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    {isPago ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleSendReceipt(p.id)}
+                                                            disabled={isSendingReceipt}
+                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                                            title="Enviar comprovante desta parcela por WhatsApp"
+                                                        >
+                                                            {isSendingReceipt ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />}
+                                                            <span className="text-[10px] font-bold uppercase tracking-wide">
+                                                                {isSendingReceipt ? 'Enviando' : receiptSent ? 'Reenviar' : 'Enviar'}
+                                                            </span>
+                                                        </button>
+                                                    ) : (
+                                                        <span className="text-[10px] text-slate-600">-</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-3 text-right">
+                                                    {p.financiamento_loja?.venda_id ? (
+                                                        <Link 
+                                                            href={`/dashboard/loja/${storeId}/vendas/${p.financiamento_loja?.venda_id}/experimental`}
+                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-white/10 rounded-lg text-xs font-bold text-slate-300 hover:text-white transition-all opacity-0 group-hover:opacity-100"
+                                                        >
+                                                            Ver Venda
+                                                            <ArrowRight className="h-3 w-3" />
+                                                        </Link>
+                                                    ) : (
+                                                        <span className="text-[10px] text-slate-500 italic">Avulsa</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
                                 </tbody>
                             </table>
                         </div>
