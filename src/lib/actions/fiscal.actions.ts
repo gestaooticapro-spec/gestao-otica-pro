@@ -355,6 +355,20 @@ function formatFiscalProviderMessage(message: string) {
     return normalized;
 }
 
+function isNuvemLocalFiscalUrl(baseUrl: string) {
+    return /(^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$)|fiscal\.mentebinaria\.com/i.test(baseUrl.replace(/\/$/, ""));
+}
+
+function getFiscalProviderError(result: any, fallback: string) {
+    return (
+        result?.error?.message ||
+        result?.message ||
+        result?.motivo_status ||
+        result?.mensagens?.[0]?.descricao ||
+        fallback
+    );
+}
+
 async function tryFetchXmlByUuid(
     token: string,
     baseUrl: string,
@@ -1573,11 +1587,18 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
             }
         }
 
+        const baseUrl = env === 'production'
+            ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
+            : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
+
+        const localFiscal = isNuvemLocalFiscalUrl(baseUrl);
         let endpoint = "";
         let body: any = { justificativa };
 
         if (invoice.tipo_documento === 'NFCe') {
-            endpoint = `/nfce/${invoice.nuvemfiscal_uuid}/cancelar`;
+            endpoint = localFiscal
+                ? `/nfce/${invoice.nuvemfiscal_uuid}/cancelar`
+                : `/nfce/${invoice.nuvemfiscal_uuid}/cancelamento`;
         } else {
             endpoint = `/nfse/${invoice.nuvemfiscal_uuid}/cancelar`;
             body = {
@@ -1588,10 +1609,6 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
 
         console.log(`[Cancelar] Enviando pedido para ${endpoint}...`);
 
-        const baseUrl = env === 'production'
-            ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
-            : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
-
         const response = await fetch(`${baseUrl}${endpoint}`, {
             method: "POST",
             headers: {
@@ -1601,11 +1618,17 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
             body: JSON.stringify(body)
         });
 
-        const result = await response.json();
+        const responseText = await response.text();
+        let result: any = {};
+        try {
+            result = responseText ? JSON.parse(responseText) : {};
+        } catch {
+            result = { message: responseText };
+        }
         console.log("[Cancelar] Resultado:", JSON.stringify(result, null, 2));
 
         if (!response.ok) {
-            return { success: false, error: result.error?.message || "Erro ao cancelar nota." };
+            return { success: false, error: getFiscalProviderError(result, `Erro ao cancelar nota. Status ${response.status}.`) };
         }
 
         await supabase
