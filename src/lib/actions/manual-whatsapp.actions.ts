@@ -103,6 +103,28 @@ function formatActionError(error: unknown, fallback: string) {
   return fallback
 }
 
+function formatMediaSendFailure(errorMessage: string) {
+  const normalized = errorMessage.toLowerCase()
+
+  if (
+    normalized.includes('"exists":false')
+    || normalized.includes('exists:false')
+    || normalized.includes('number exists false')
+  ) {
+    return 'Nao foi possivel enviar o PDF porque o telefone cadastrado nao existe no WhatsApp. Confira o numero do cliente.'
+  }
+
+  if (normalized.includes('invalid media payload')) {
+    return 'Nao foi possivel enviar o PDF porque o anexo foi recusado antes do envio.'
+  }
+
+  if (normalized.includes('evolution media send failed')) {
+    return 'Nao foi possivel enviar o PDF pelo WhatsApp da loja. Verifique o numero do cliente e tente novamente.'
+  }
+
+  return 'Nao foi possivel enviar o arquivo. Nenhum anexo foi enviado.'
+}
+
 function normalizeRemotePhone(value: string) {
   const digits = digitsOnly(value)
   if (!digits) return value.trim()
@@ -583,7 +605,7 @@ async function sendManualWhatsAppMediaWithContext(
     return {
       success: false,
       routeUsed: 'external_fallback',
-      message: 'Nao foi possivel enviar o arquivo. Nenhum anexo foi enviado.',
+      message: formatMediaSendFailure(errorMessage),
       outboundMessageId: outbound.id,
       fallbackReason: 'send_failed',
       shouldOpenExternal: false,
