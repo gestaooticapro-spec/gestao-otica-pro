@@ -218,6 +218,15 @@ type RtcMvpContext = {
     sameState: boolean;
 };
 
+const RTC_IBS_UF_RATE = 0.10;
+const RTC_IBS_MUN_RATE = 0;
+const RTC_CBS_RATE = 0.90;
+
+function fiscalMoney(value?: number | string | null) {
+    const parsed = typeof value === "string" ? Number(value.replace(",", ".")) : Number(value || 0);
+    return Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : 0;
+}
+
 function shouldSendRtcMvpGroup(
     environment: "production" | "homologation",
     context?: RtcMvpContext
@@ -240,28 +249,35 @@ function shouldSendRtcMvpGroup(
 
 function buildRtcMvpItemImposto(
     environment: "production" | "homologation",
-    context?: RtcMvpContext
+    context?: RtcMvpContext,
+    baseValue?: number
 ) {
     if (!shouldSendRtcMvpGroup(environment, context)) return {};
+
+    const vBC = fiscalMoney(baseValue);
+    const vIBSUF = fiscalMoney(vBC * RTC_IBS_UF_RATE / 100);
+    const vIBSMun = fiscalMoney(vBC * RTC_IBS_MUN_RATE / 100);
+    const vIBS = fiscalMoney(vIBSUF + vIBSMun);
+    const vCBS = fiscalMoney(vBC * RTC_CBS_RATE / 100);
 
     return {
         IBSCBS: {
             CST: "000",
             cClassTrib: "000001",
             gIBSCBS: {
-                vBC: 0,
+                vBC,
                 gIBSUF: {
                     pIBSUF: "0.10",
-                    vIBSUF: 0,
+                    vIBSUF,
                 },
                 gIBSMun: {
                     pIBSMun: "0",
-                    vIBSMun: 0,
+                    vIBSMun,
                 },
-                vIBS: 0,
+                vIBS,
                 gCBS: {
                     pCBS: "0.90",
-                    vCBS: 0,
+                    vCBS,
                 },
             },
         },
@@ -270,13 +286,42 @@ function buildRtcMvpItemImposto(
 
 function buildRtcMvpTotal(
     environment: "production" | "homologation",
-    context?: RtcMvpContext
+    context?: RtcMvpContext,
+    baseValue?: number
 ) {
     if (!shouldSendRtcMvpGroup(environment, context)) return {};
 
+    const vBCIBSCBS = fiscalMoney(baseValue);
+    const vIBSUF = fiscalMoney(vBCIBSCBS * RTC_IBS_UF_RATE / 100);
+    const vIBSMun = fiscalMoney(vBCIBSCBS * RTC_IBS_MUN_RATE / 100);
+    const vIBS = fiscalMoney(vIBSUF + vIBSMun);
+    const vCBS = fiscalMoney(vBCIBSCBS * RTC_CBS_RATE / 100);
+
     return {
         IBSCBSTot: {
-            vBCIBSCBS: 0,
+            vBCIBSCBS,
+            gIBS: {
+                gIBSUF: {
+                    vDif: 0,
+                    vDevTrib: 0,
+                    vIBSUF,
+                },
+                gIBSMun: {
+                    vDif: 0,
+                    vDevTrib: 0,
+                    vIBSMun,
+                },
+                vIBS,
+                vCredPres: 0,
+                vCredPresCondSus: 0,
+            },
+            gCBS: {
+                vDif: 0,
+                vDevTrib: 0,
+                vCBS,
+                vCredPres: 0,
+                vCredPresCondSus: 0,
+            },
         },
     };
 }
@@ -701,7 +746,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
                             finality: 1,
                             cfop: item.cfop || "5102",
                             sameState,
-                        })
+                        }, item.valor_total)
                     }
                 })),
                 total: {
@@ -731,7 +776,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
                         finality: 1,
                         cfop: "5102",
                         sameState,
-                    })
+                    }, payload.valor_total)
                 },
                 transp: {
                     modFrete: 9 // 9 = Sem OcorrÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âªncia de Transporte

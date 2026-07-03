@@ -510,6 +510,10 @@ type RtcMvpContext = {
     sameState: boolean;
 };
 
+const RTC_IBS_UF_RATE = 0.10;
+const RTC_IBS_MUN_RATE = 0;
+const RTC_CBS_RATE = 0.90;
+
 function shouldSendRtcMvpGroup(
     environment: NFeEnvironment,
     context?: RtcMvpContext
@@ -532,28 +536,35 @@ function shouldSendRtcMvpGroup(
 
 function buildRtcMvpItemImposto(
     environment: NFeEnvironment,
-    context?: RtcMvpContext
+    context?: RtcMvpContext,
+    baseValue?: number
 ) {
     if (!shouldSendRtcMvpGroup(environment, context)) return {};
+
+    const vBC = money(baseValue);
+    const vIBSUF = money(vBC * RTC_IBS_UF_RATE / 100);
+    const vIBSMun = money(vBC * RTC_IBS_MUN_RATE / 100);
+    const vIBS = money(vIBSUF + vIBSMun);
+    const vCBS = money(vBC * RTC_CBS_RATE / 100);
 
     return {
         IBSCBS: {
             CST: "000",
             cClassTrib: "000001",
             gIBSCBS: {
-                vBC: 0,
+                vBC,
                 gIBSUF: {
                     pIBSUF: "0.10",
-                    vIBSUF: 0,
+                    vIBSUF,
                 },
                 gIBSMun: {
                     pIBSMun: "0",
-                    vIBSMun: 0,
+                    vIBSMun,
                 },
-                vIBS: 0,
+                vIBS,
                 gCBS: {
                     pCBS: "0.90",
-                    vCBS: 0,
+                    vCBS,
                 },
             },
         },
@@ -562,13 +573,42 @@ function buildRtcMvpItemImposto(
 
 function buildRtcMvpTotal(
     environment: NFeEnvironment,
-    context?: RtcMvpContext
+    context?: RtcMvpContext,
+    baseValue?: number
 ) {
     if (!shouldSendRtcMvpGroup(environment, context)) return {};
 
+    const vBCIBSCBS = money(baseValue);
+    const vIBSUF = money(vBCIBSCBS * RTC_IBS_UF_RATE / 100);
+    const vIBSMun = money(vBCIBSCBS * RTC_IBS_MUN_RATE / 100);
+    const vIBS = money(vIBSUF + vIBSMun);
+    const vCBS = money(vBCIBSCBS * RTC_CBS_RATE / 100);
+
     return {
         IBSCBSTot: {
-            vBCIBSCBS: 0,
+            vBCIBSCBS,
+            gIBS: {
+                gIBSUF: {
+                    vDif: 0,
+                    vDevTrib: 0,
+                    vIBSUF,
+                },
+                gIBSMun: {
+                    vDif: 0,
+                    vDevTrib: 0,
+                    vIBSMun,
+                },
+                vIBS,
+                vCredPres: 0,
+                vCredPresCondSus: 0,
+            },
+            gCBS: {
+                vDif: 0,
+                vDevTrib: 0,
+                vCBS,
+                vCredPres: 0,
+                vCredPresCondSus: 0,
+            },
         },
     };
 }
@@ -1775,6 +1815,14 @@ export async function emitirNFe(input: NFeSaleInput) {
             };
         });
         const rtcTotalContext = rtcContexts.find((context) => shouldSendRtcMvpGroup(environment, context));
+        const rtcBasesPorItem = fiscalItems.map((item, index) => money(
+            item.valor_total
+            + (fretesPorItem[index] || 0)
+            + (segurosPorItem[index] || 0)
+            + (outrasPorItem[index] || 0)
+            - (descontosPorItem[index] || 0)
+        ));
+        const rtcTotalBase = money(rtcBasesPorItem.reduce((sum, value) => sum + value, 0));
 
         const nfePayload = {
             ambiente: isProduction ? "producao" : "homologacao",
@@ -1854,7 +1902,7 @@ export async function emitirNFe(input: NFeSaleInput) {
                             : isReturnOperation
                             ? buildReturnItemTax(item)
                             : buildItemTax(item, template.csosn)),
-                        ...buildRtcMvpItemImposto(environment, rtcContexts[index]),
+                        ...buildRtcMvpItemImposto(environment, rtcContexts[index], rtcBasesPorItem[index]),
                     },
                 })),
                 total: {
@@ -1889,7 +1937,7 @@ export async function emitirNFe(input: NFeSaleInput) {
                         vOutro: outrasDespesasTotal,
                         vNF: valorTotal,
                     },
-                    ...(rtcTotalContext ? buildRtcMvpTotal(environment, rtcTotalContext) : {}),
+                    ...(rtcTotalContext ? buildRtcMvpTotal(environment, rtcTotalContext, rtcTotalBase) : {}),
                 },
                 transp: isAdvancedOperation ? advancedTransport : { modFrete: 9 },
                 pag: { detPag },
