@@ -503,6 +503,75 @@ function buildDest(customer: any, override?: NFeSaleInput["cliente"]) {
     };
 }
 
+type RtcMvpContext = {
+    model: 55 | 65;
+    finality: 1 | 2 | 3 | 4;
+    cfop: string;
+    sameState: boolean;
+};
+
+function shouldSendRtcMvpGroup(
+    environment: NFeEnvironment,
+    context?: RtcMvpContext
+) {
+    if (!["homologation", "production"].includes(environment)) return false;
+    if (!context) return true;
+
+    if (context.model === 65) {
+        return context.finality === 1 && context.sameState;
+    }
+
+    return (
+        context.model === 55 &&
+        (
+            (context.finality === 1 && ["5101", "5102", "6101", "6102"].includes(context.cfop)) ||
+            (context.finality === 4 && ["5202", "6202"].includes(context.cfop))
+        )
+    );
+}
+
+function buildRtcMvpItemImposto(
+    environment: NFeEnvironment,
+    context?: RtcMvpContext
+) {
+    if (!shouldSendRtcMvpGroup(environment, context)) return {};
+
+    return {
+        IBSCBS: {
+            CST: "000",
+            cClassTrib: "000001",
+            gIBSCBS: {
+                vBC: 0,
+                gIBSUF: {
+                    pIBSUF: "0.10",
+                    vIBSUF: 0,
+                },
+                gIBSMun: {
+                    pIBSMun: "0",
+                    vIBSMun: 0,
+                },
+                vIBS: 0,
+                gCBS: {
+                    pCBS: "0.90",
+                    vCBS: 0,
+                },
+            },
+        },
+    };
+}
+
+function buildRtcMvpTotal(
+    environment: NFeEnvironment,
+    context?: RtcMvpContext
+) {
+    if (!shouldSendRtcMvpGroup(environment, context)) return {};
+
+    return {
+        IBSCBSTot: {
+            vBCIBSCBS: 0,
+        },
+    };
+}
 function buildItemTax(item: FiscalItem, csosn: "102" | "400" = "102") {
     return {
         ICMS: {
@@ -1696,6 +1765,16 @@ export async function emitirNFe(input: NFeSaleInput) {
                 idCadIntTran: cleanText(advanced.intermediador?.id_cadastro),
             }
             : undefined;
+        const rtcContexts = fiscalItems.map((item): RtcMvpContext => {
+            const cfop = isAdvancedOperation ? cleanDigits(item.cfop) : template.cfop;
+            return {
+                model: 55,
+                finality: Number(template.finNFe) as 1 | 2 | 3 | 4,
+                cfop,
+                sameState,
+            };
+        });
+        const rtcTotalContext = rtcContexts.find((context) => shouldSendRtcMvpGroup(environment, context));
 
         const nfePayload = {
             ambiente: isProduction ? "producao" : "homologacao",
@@ -1712,6 +1791,7 @@ export async function emitirNFe(input: NFeSaleInput) {
                     tpNF: isAdvancedOperation ? Number(advanced.tipo_nfe ?? 1) : 1,
                     idDest: sameState ? 1 : 2,
                     cMunFG: Number(cleanDigits(hydratedStore.codigo_municipio_ibge)),
+                    ...(rtcTotalContext ? { cMunFGIBS: Number(cleanDigits(hydratedStore.codigo_municipio_ibge)) } : {}),
                     tpImp: 1,
                     tpEmis: 1,
                     cDV,
@@ -1768,11 +1848,14 @@ export async function emitirNFe(input: NFeSaleInput) {
                         vUnTrib: item.valor_unitario,
                         indTot: 1,
                     },
-                    imposto: isAdvancedOperation
-                        ? buildAdvancedItemTax(item)
-                        : isReturnOperation
-                        ? buildReturnItemTax(item)
-                        : buildItemTax(item, template.csosn),
+                    imposto: {
+                        ...(isAdvancedOperation
+                            ? buildAdvancedItemTax(item)
+                            : isReturnOperation
+                            ? buildReturnItemTax(item)
+                            : buildItemTax(item, template.csosn)),
+                        ...buildRtcMvpItemImposto(environment, rtcContexts[index]),
+                    },
                 })),
                 total: {
                     ICMSTot: {
@@ -1806,6 +1889,7 @@ export async function emitirNFe(input: NFeSaleInput) {
                         vOutro: outrasDespesasTotal,
                         vNF: valorTotal,
                     },
+                    ...(rtcTotalContext ? buildRtcMvpTotal(environment, rtcTotalContext) : {}),
                 },
                 transp: isAdvancedOperation ? advancedTransport : { modFrete: 9 },
                 pag: { detPag },
@@ -1887,10 +1971,11 @@ export async function emitirNFe(input: NFeSaleInput) {
             return { success: false, error: providerError || "Erro na emissao da NF-e.", invoiceId };
         }
 
-        if (result.status === "rejeitado") {
-            const code = result.autorizacao?.codigo_status || "N/A";
-            const reason = result.autorizacao?.motivo_status || "Motivo nao informado";
-            const rejectedNumber = Number(result.numero || nextNumber) || extractNFeNumberFromAccessKey(result.chave) || nextNumber;
+        const providerStatus = String(result.status || "").toLowerCase();
+        if (["erro", "rejeitado", "denegado"].includes(providerStatus)) {
+            const code = result.autorizacao?.codigo_status || result.motivo_status || "N/A";
+            const reason = result.autorizacao?.motivo_status || result.motivo || "Motivo nao informado";
+            const rejectedNumber = extractNFeNumberFromAccessKey(result.chave) || nextNumber;
             if (String(code) === "539") {
                 await ensureNFeSequenceAtLeast(supabase, organizationId, input.storeId, serie, rejectedNumber, environment);
             }
@@ -1900,8 +1985,8 @@ export async function emitirNFe(input: NFeSaleInput) {
                     status: "rejected",
                     nuvemfiscal_uuid: result.id,
                     chave_acesso: result.chave,
-                    numero: String(result.numero || rejectedNumber || ""),
-                    serie: String(result.serie || ""),
+                    numero: String(rejectedNumber || ""),
+                    serie: String(serie || ""),
                     error_message: `Erro ${code}: ${reason}`,
                     motivo_rejeicao: reason,
                 })
@@ -1944,3 +2029,4 @@ export async function emitirNFe(input: NFeSaleInput) {
         return { success: false, error: error.message || "Erro inesperado ao emitir NF-e." };
     }
 }
+
