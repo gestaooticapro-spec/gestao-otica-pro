@@ -1302,6 +1302,112 @@ export async function consultarNFCe(invoiceId: string) {
     }
 }
 
+export async function consultarNFe(invoiceId: string) {
+    const supabase = createAdminClient() as any;
+
+    try {
+        const { data: invoice } = await supabase
+            .from("fiscal_invoices")
+            .select("*")
+            .eq("id", invoiceId)
+            .single();
+
+        if (!invoice || !invoice.nuvemfiscal_uuid) {
+            return { success: false, error: "Nota não encontrada ou sem ID da NuvemFiscal." };
+        }
+
+        if (invoice.store_id && !(await isStoreModuleEnabledForStore(invoice.store_id, "fiscal"))) {
+            return { success: false, error: "Modulo fiscal desativado para esta loja." };
+        }
+
+        const env = (invoice.environment as 'production' | 'homologation') || 'production';
+        const token = await getNuvemFiscalToken(env);
+
+        const baseUrl = env === 'production'
+            ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
+            : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
+
+        const response = await fetch(`${baseUrl}/nfe/${invoice.nuvemfiscal_uuid}`, {
+            method: "GET",
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json"
+            }
+        });
+
+        const result = await response.json();
+        console.log("[Consultar NF-e] Resultado:", JSON.stringify(result, null, 2));
+
+        if (!response.ok) {
+            return { success: false, error: result.error?.message || "Erro ao consultar status." };
+        }
+
+        let novoStatus = invoice.status;
+        let errorMessage = null;
+
+        if (result.status === 'autorizado') novoStatus = 'authorized';
+        else if (result.status === 'rejeitado') {
+            novoStatus = 'rejected';
+            errorMessage = extractFiscalAuthorizationMessage(result, "Rejeitada pela SEFAZ");
+        }
+        else if (result.status === 'erro' || result.status === 'negado') {
+            novoStatus = 'error';
+            errorMessage = result.motivo_status || "Erro na autorização";
+        }
+        else if (result.status === 'cancelado') novoStatus = 'cancelled';
+
+        if (novoStatus === 'error') {
+            errorMessage = extractFiscalAuthorizationMessage(result, errorMessage || "Erro na autorizacao");
+        }
+
+        const updatePayload: Record<string, any> = {
+            status: novoStatus,
+            numero: result.numero,
+            serie: result.serie,
+            chave_acesso: result.chave || result.codigo_verificacao,
+            xml_url: result.xml_url,
+            pdf_url: result.pdf_url || result.link_url,
+            error_message: errorMessage
+        };
+
+        // Salvar XML localmente (xml_url ou fallback por UUID)
+        if ((novoStatus === 'authorized' || novoStatus === 'cancelled') && !invoice.xml_content) {
+            let xmlContent: string | null = null;
+
+            if (result.xml_url) {
+                try {
+                    const xmlResponse = await fetch(result.xml_url);
+                    if (xmlResponse.ok) {
+                        xmlContent = await xmlResponse.text();
+                    }
+                } catch (xmlErr) {
+                    console.warn('[NFe] Não foi possível baixar XML via xml_url.', xmlErr);
+                }
+            }
+
+            if (!xmlContent) {
+                xmlContent = await tryFetchXmlByUuid(token, baseUrl, "NFe", invoice.nuvemfiscal_uuid);
+            }
+
+            if (xmlContent) {
+                updatePayload.xml_content = xmlContent;
+                console.log(`[NFe] XML salvo localmente para nota ${result.numero || invoiceId}`);
+            }
+        }
+
+        await supabase
+            .from("fiscal_invoices")
+            .update(updatePayload)
+            .eq("id", invoiceId);
+
+        return { success: true, status: novoStatus, data: result };
+
+    } catch (error: any) {
+        console.error("Erro ao consultar NF-e:", error);
+        return { success: false, error: error.message };
+    }
+}
+
 export async function recuperarXmlsNFCePeriodo(params: {
     storeId: number;
     month: number; // 0-11
@@ -1743,11 +1849,13 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
             return { success: false, error: "Modulo fiscal desativado para esta loja." };
         }
 
-        const env = (invoice.environment as 'production' | 'homologation') || 'production';
+        const env = (invoice.environment as ‘production’ | ‘homologation’) || ‘production’;
         const token = await getNuvemFiscalToken(env);
 
-        // Verificar prazo de cancelamento para NFC-e (30 minutos)
-        if (invoice.tipo_documento === 'NFCe') {
+        // Verificar prazo de cancelamento por modelo:
+        // - NFC-e: 30 minutos
+        // - NF-e: 24 horas
+        if (invoice.tipo_documento === ‘NFCe’) {
             const emissionTime = new Date(invoice.created_at).getTime();
             const now = Date.now();
             const thirtyMinutes = 30 * 60 * 1000;
@@ -1755,12 +1863,23 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
             if (now - emissionTime > thirtyMinutes) {
                 return {
                     success: false,
-                    error: "NFC-e nÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o pode ser cancelada: Prazo de 30 minutos expirado."
+                    error: "NFC-e não pode ser cancelada: Prazo de 30 minutos expirado."
+                };
+            }
+        } else if (invoice.tipo_documento === ‘NFe’) {
+            const emissionTime = new Date(invoice.created_at).getTime();
+            const now = Date.now();
+            const twentyFourHours = 24 * 60 * 60 * 1000;
+
+            if (now - emissionTime > twentyFourHours) {
+                return {
+                    success: false,
+                    error: "NF-e não pode ser cancelada: Prazo de 24 horas expirado."
                 };
             }
         }
 
-        const baseUrl = env === 'production'
+        const baseUrl = env === ‘production’
             ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
             : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
 
@@ -1768,14 +1887,18 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
         let endpoint = "";
         let body: any = { justificativa };
 
-        if (invoice.tipo_documento === 'NFCe') {
+        if (invoice.tipo_documento === ‘NFCe’) {
             endpoint = localFiscal
                 ? `/nfce/${invoice.nuvemfiscal_uuid}/cancelar`
                 : `/nfce/${invoice.nuvemfiscal_uuid}/cancelamento`;
+        } else if (invoice.tipo_documento === ‘NFe’) {
+            endpoint = localFiscal
+                ? `/nfe/${invoice.nuvemfiscal_uuid}/cancelar`
+                : `/nfe/${invoice.nuvemfiscal_uuid}/cancelamento`;
         } else {
             endpoint = `/nfse/${invoice.nuvemfiscal_uuid}/cancelar`;
             body = {
-                codigo: "2", // 2 - Erro na emissÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o
+                codigo: "2", // 2 - Erro na emissão
                 motivo: justificativa
             };
         }

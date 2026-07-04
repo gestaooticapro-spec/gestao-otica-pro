@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getFiscalInvoices } from "@/lib/actions/fiscal-db.actions";
-import { consultarNFCe, cancelarNota } from "@/lib/actions/fiscal.actions";
+import { consultarNFCe, consultarNFe, cancelarNota } from "@/lib/actions/fiscal.actions";
 import BackButton from "@/components/ui/BackButton";
 import {
     FileText, Plus, Search, Loader2, AlertCircle,
@@ -92,6 +92,9 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
                 if (inv.tipo_documento === "NFCe") {
                     const res = await consultarNFCe(inv.id);
                     if (res.success && res.status !== "processing") updated = true;
+                } else if (inv.tipo_documento === "NFe") {
+                    const res = await consultarNFe(inv.id);
+                    if (res.success && res.status !== "processing") updated = true;
                 }
             }
             if (updated) fetchInvoices();
@@ -133,7 +136,11 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
     const handleRefreshStatus = async (invoiceId: string) => {
         alert("Consultando status na Nuvem Fiscal...");
         try {
-            const res = await consultarNFCe(invoiceId);
+            const invoice = invoices.find((inv) => inv.id === invoiceId);
+            const tipo = invoice?.tipo_documento;
+            const res = tipo === "NFe"
+                ? await consultarNFe(invoiceId)
+                : await consultarNFCe(invoiceId);
             if (res.success) {
                 if (res.status === "error" || res.status === "rejected") {
                     let msg = res.data?.autorizacao?.motivo_status || res.data?.motivo_status || res.data?.error?.message;
