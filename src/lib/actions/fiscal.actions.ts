@@ -525,12 +525,12 @@ function getFiscalProviderError(result: any, fallback: string) {
 async function tryFetchXmlByUuid(
     token: string,
     baseUrl: string,
-    tipoDocumento: "NFCe" | "NFSe",
+    tipoDocumento: "NFCe" | "NFe" | "NFSe",
     uuid?: string | null
 ) {
     if (!uuid) return null;
     try {
-        const endpointType = tipoDocumento === "NFCe" ? "nfce" : "nfse";
+        const endpointType = tipoDocumento === "NFCe" ? "nfce" : tipoDocumento === "NFe" ? "nfe" : "nfse";
         const response = await fetch(`${baseUrl}/${endpointType}/${uuid}/xml`, {
             method: "GET",
             headers: {
@@ -1849,13 +1849,13 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
             return { success: false, error: "Modulo fiscal desativado para esta loja." };
         }
 
-        const env = (invoice.environment as ‘production’ | ‘homologation’) || ‘production’;
+        const env = (invoice.environment as 'production' | 'homologation') || 'production';
         const token = await getNuvemFiscalToken(env);
 
         // Verificar prazo de cancelamento por modelo:
         // - NFC-e: 30 minutos
         // - NF-e: 24 horas
-        if (invoice.tipo_documento === ‘NFCe’) {
+        if (invoice.tipo_documento === 'NFCe') {
             const emissionTime = new Date(invoice.created_at).getTime();
             const now = Date.now();
             const thirtyMinutes = 30 * 60 * 1000;
@@ -1866,7 +1866,7 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
                     error: "NFC-e não pode ser cancelada: Prazo de 30 minutos expirado."
                 };
             }
-        } else if (invoice.tipo_documento === ‘NFe’) {
+        } else if (invoice.tipo_documento === 'NFe') {
             const emissionTime = new Date(invoice.created_at).getTime();
             const now = Date.now();
             const twentyFourHours = 24 * 60 * 60 * 1000;
@@ -1879,7 +1879,7 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
             }
         }
 
-        const baseUrl = env === ‘production’
+        const baseUrl = env === 'production'
             ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
             : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
 
@@ -1887,11 +1887,11 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
         let endpoint = "";
         let body: any = { justificativa };
 
-        if (invoice.tipo_documento === ‘NFCe’) {
+        if (invoice.tipo_documento === 'NFCe') {
             endpoint = localFiscal
                 ? `/nfce/${invoice.nuvemfiscal_uuid}/cancelar`
                 : `/nfce/${invoice.nuvemfiscal_uuid}/cancelamento`;
-        } else if (invoice.tipo_documento === ‘NFe’) {
+        } else if (invoice.tipo_documento === 'NFe') {
             endpoint = localFiscal
                 ? `/nfe/${invoice.nuvemfiscal_uuid}/cancelar`
                 : `/nfe/${invoice.nuvemfiscal_uuid}/cancelamento`;
