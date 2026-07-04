@@ -199,7 +199,11 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
     const handleWhatsApp = (inv: Invoice) => {
         const pdfLink = `${window.location.origin}/api/fiscal/print/${inv.id}?download=true`;
         const firstName = inv.destinatario_nome?.split(" ")[0] || "";
-        const tipoText = inv.tipo_documento === "NFSe" ? "Nota Fiscal de Serviço (NFS-e)" : "Nota Fiscal de Consumidor (NFC-e)";
+        const tipoText = inv.tipo_documento === "NFSe"
+            ? "Nota Fiscal de Serviço (NFS-e)"
+            : inv.tipo_documento === "NFe"
+                ? "Nota Fiscal Eletrônica (NF-e)"
+                : "Nota Fiscal de Consumidor (NFC-e)";
         const text = `Olá${firstName ? `, ${firstName}` : ""}! Segue o link para baixar sua ${tipoText}:\n\n${pdfLink}`;
         window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
     };
