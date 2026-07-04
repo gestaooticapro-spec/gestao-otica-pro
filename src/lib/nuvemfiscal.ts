@@ -24,7 +24,7 @@ function resolveAuthUrl(environment: 'production' | 'homologation') {
         : process.env.NUVEMFISCAL_HOM_URL;
 
     const isLocalOverride = Boolean(
-        baseUrl && /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?(?:\/|$)/i.test(baseUrl)
+        baseUrl && /(^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(?:\/|$))|fiscal\.mentebinaria\.com/i.test(baseUrl)
     );
 
     if (isLocalOverride) {

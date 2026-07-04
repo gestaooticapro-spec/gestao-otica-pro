@@ -65,6 +65,45 @@ function normalizeIbgeCode(value?: string | number | null) {
     return String(value ?? "").replace(/\D/g, "");
 }
 
+function keepFilledOnly<T>(value: T): T | undefined {
+    if (value === null || value === undefined) return undefined;
+
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        return trimmed ? trimmed as T : undefined;
+    }
+
+    if (Array.isArray(value)) {
+        const items = value
+            .map((item) => keepFilledOnly(item))
+            .filter((item) => item !== undefined);
+        return items.length ? items as T : undefined;
+    }
+
+    if (typeof value === "object") {
+        const entries = Object.entries(value as Record<string, unknown>)
+            .map(([key, item]) => [key, keepFilledOnly(item)] as const)
+            .filter(([, item]) => item !== undefined);
+
+        return entries.length ? Object.fromEntries(entries) as T : undefined;
+    }
+
+    return value;
+}
+
+function buildLocalFiscalBasicAuthHeader() {
+    const username =
+        process.env.NUVEMLOCALFISCAL_ADMIN_USERNAME ||
+        process.env.ADMIN_USERNAME ||
+        "admin";
+    const password =
+        process.env.NUVEMLOCALFISCAL_ADMIN_PASSWORD ||
+        process.env.ADMIN_PASSWORD ||
+        "admin";
+
+    return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+}
+
 const IBGE_UF_CODES: Record<string, string> = {
     RO: "11", AC: "12", AM: "13", RR: "14", PA: "15", AP: "16", TO: "17",
     MA: "21", PI: "22", CE: "23", RN: "24", PB: "25", PE: "26", AL: "27", SE: "28", BA: "29",
@@ -1800,16 +1839,24 @@ export async function syncStoreFiscalData(
             const baseUrl = env === 'production'
                 ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
                 : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
+            const isLocalFiscal = isNuvemLocalFiscalUrl(baseUrl);
+            const ambienteFiscal = env === 'production' ? 'producao' : 'homologacao';
 
-            const companyPayload = {
+            const companyPayload = keepFilledOnly({
+                ...(isLocalFiscal ? {
+                    ambiente: ambienteFiscal,
+                    regime_tributario: Number(storeData.regime_tributario || '1'),
+                    inscricao_municipal: normalizeDocument(storeData.inscricao_municipal),
+                } : {}),
                 cpf_cnpj: cnpj,
                 nome_razao_social: storeData.razao_social,
                 nome_fantasia: storeData.name,
+                email: storeData.email,
                 inscricao_estadual: storeData.inscricao_estadual?.replace(/\D/g, ""),
                 endereco: {
                     logradouro: storeData.street,
                     numero: storeData.number,
-                    complemento: null,
+                    complemento: storeData.complement,
                     bairro: storeData.neighborhood,
                     codigo_municipio: normalizeIbgeCode(storeData.codigo_municipio_ibge) || undefined,
                     cidade: storeData.city,
@@ -1817,39 +1864,79 @@ export async function syncStoreFiscalData(
                     cep: storeData.cep?.replace(/\D/g, ""),
                     pais: "BRASIL"
                 }
-            };
+            });
+
+            if (isLocalFiscal) {
+                const environmentPayload = keepFilledOnly({
+                    razaoSocial: storeData.razao_social,
+                    nomeFantasia: storeData.name,
+                    uf: normalizeText(storeData.state).toUpperCase(),
+                    ie: normalizeDocument(storeData.inscricao_estadual),
+                    crt: String(storeData.regime_tributario || '1'),
+                    serieNfe: Number(storeData.nfe_serie || 1),
+                    serieNfce: Number(storeData.nfce_serie || 1),
+                    ativo: true
+                });
+
+                const environmentResponse = await fetch(
+                    `${baseUrl}/admin/api/companies/${cnpj}/environments/${ambienteFiscal}`,
+                    {
+                        method: "POST",
+                        headers: {
+                            "Authorization": buildLocalFiscalBasicAuthHeader(),
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(environmentPayload)
+                    }
+                );
+
+                if (!environmentResponse.ok) {
+                    const errText = await environmentResponse.text();
+                    throw new Error(`Falha ao sincronizar ambiente ${env} na Nuvem Local: ${errText}`);
+                }
+            }
 
             const checkResponse = await fetch(`${baseUrl}/empresas/${cnpj}`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
 
             if (checkResponse.ok) {
-                await fetch(`${baseUrl}/empresas/${cnpj}`, {
+                const updateResponse = await fetch(`${baseUrl}/empresas/${cnpj}`, {
                     method: "PUT",
                     headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
                     body: JSON.stringify(companyPayload)
                 });
+                if (!updateResponse.ok) {
+                    const errText = await updateResponse.text();
+                    throw new Error(`Falha ao atualizar empresa em ${env}: ${errText}`);
+                }
             } else if (checkResponse.status === 404) {
                 const createResponse = await fetch(`${baseUrl}/empresas`, {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
                     body: JSON.stringify(companyPayload)
                 });
-                if (!createResponse.ok) throw new Error(`Falha ao criar empresa em ${env}`);
+                if (!createResponse.ok) {
+                    const errText = await createResponse.text();
+                    throw new Error(`Falha ao criar empresa em ${env}: ${errText}`);
+                }
+            } else {
+                const errText = await checkResponse.text();
+                throw new Error(`Falha ao consultar empresa em ${env}: ${errText}`);
             }
             const cscId = env === 'production' ? storeData.csc_id_producao : storeData.csc_id_homologacao;
             const cscToken = env === 'production' ? storeData.csc_producao : storeData.csc_homologacao;
             if (cscId && cscToken) {
                 console.log(`[Sync Fiscal] Enviando configuracao NFC-e para ${env}...`);
-                const nfcePayload = {
-                    ambiente: env === 'production' ? 'producao' : 'homologacao',
+                const nfcePayload = keepFilledOnly({
+                    ambiente: ambienteFiscal,
                     sefaz: {
                         id_csc: Number(String(cscId).replace(/\D/g, '')),
                         csc: String(cscToken).trim()
                     },
                     serie: Number(storeData.nfce_serie || 1),
                     CRT: Number(storeData.regime_tributario || '1')
-                };
+                });
 
                 const nfceResponse = await fetch(`${baseUrl}/empresas/${cnpj}/nfce`, {
                     method: "PUT",
