@@ -650,8 +650,11 @@ export async function startWhatsAppActivation(input: {
   if (!profile) return { success: false, message: 'Acesso negado.' }
 
   const normalizedPhone = toEvolutionNumber(parsed.data.phoneNumber)
-  if (normalizedPhone.length < 12 || normalizedPhone.length > 13) {
-    return { success: false, message: 'Informe um telefone brasileiro vÃ¡lido com DDD.' }
+  // Aceita BR (55 + 10-11 dígitos) ou PY (595 + 9 dígitos)
+  const isValidBR = normalizedPhone.startsWith('55') && (normalizedPhone.length === 12 || normalizedPhone.length === 13)
+  const isValidPY = normalizedPhone.startsWith('595') && normalizedPhone.length === 12
+  if (!isValidBR && !isValidPY) {
+    return { success: false, message: 'Informe um telefone válido (Brasil com DDD ou Paraguai).' }
   }
 
   try {
@@ -824,8 +827,11 @@ export async function saveWhatsAppChannel(input: {
   if (!profile) return { success: false, message: 'Acesso negado.' }
 
   const normalizedPhone = toEvolutionNumber(parsed.data.phoneNumber)
-  if (normalizedPhone.length < 12 || normalizedPhone.length > 13) {
-    return { success: false, message: 'Informe um telefone brasileiro válido com DDD.' }
+  // Aceita BR (55 + 10-11 dígitos) ou PY (595 + 9 dígitos)
+  const isValidBR = normalizedPhone.startsWith('55') && (normalizedPhone.length === 12 || normalizedPhone.length === 13)
+  const isValidPY = normalizedPhone.startsWith('595') && normalizedPhone.length === 12
+  if (!isValidBR && !isValidPY) {
+    return { success: false, message: 'Informe um telefone válido (Brasil com DDD ou Paraguai).' }
   }
 
   try {
