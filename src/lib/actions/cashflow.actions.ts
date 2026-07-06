@@ -51,8 +51,13 @@ function formatarCategoria(texto: string | null | undefined) {
 
 const STORE_TIMEZONE = 'America/Sao_Paulo'
 const STORE_UTC_OFFSET = '-03:00'
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/
 
 function getStoreDateKey(dateInput: string | Date) {
+    if (typeof dateInput === 'string' && DATE_ONLY_RE.test(dateInput)) {
+        return dateInput
+    }
+
     const parts = new Intl.DateTimeFormat('en-CA', {
         timeZone: STORE_TIMEZONE,
         year: 'numeric',
@@ -72,6 +77,37 @@ function getStoreDayRange(dateKey: string) {
         startIso: new Date(`${dateKey}T00:00:00${STORE_UTC_OFFSET}`).toISOString(),
         endIso: new Date(`${dateKey}T23:59:59${STORE_UTC_OFFSET}`).toISOString()
     }
+}
+
+function getInstallmentPaymentRef(pg: any) {
+    const obs = String(pg?.obs || '')
+    const vendaId = pg?.venda_id || obs.match(/Venda #(\d+)/)?.[1]
+    const numeroParcela = obs.match(/Parc\.\s*(\d+)/i)?.[1]
+
+    if (!vendaId || !numeroParcela) return null
+    return `${vendaId}-${numeroParcela}`
+}
+
+function getInstallmentRowRef(pc: any) {
+    const vendaId = pc?.financiamento_loja?.venda_id
+    const numeroParcela = pc?.numero_parcela
+
+    if (!vendaId || !numeroParcela) return null
+    return `${vendaId}-${numeroParcela}`
+}
+
+function hasPaymentForInstallment(pc: any, pagamentos: any[], refsProcessadas: Set<string>) {
+    const parcelaRef = getInstallmentRowRef(pc)
+    if (parcelaRef && refsProcessadas.has(parcelaRef)) return true
+
+    const vendaId = pc?.financiamento_loja?.venda_id
+    if (!vendaId) return false
+
+    return pagamentos.some((pagamento: any) =>
+        Number(pagamento.valor_pago) === Number(pc.valor_parcela) &&
+        pagamento.obs &&
+        pagamento.obs.includes(`Venda #${vendaId}`)
+    )
 }
 
 async function getCashReceiptsByDateKeys(storeId: number, dateKeys: string[]) {
@@ -95,11 +131,11 @@ async function getCashReceiptsByDateKeys(storeId: number, dateKeys: string[]) {
 
     const { data: parcelasPagas } = await supabaseAdmin
         .from('financiamento_parcelas')
-        .select('id, valor_parcela, data_pagamento, financiamento_loja(venda_id)')
+        .select('id, numero_parcela, valor_parcela, data_pagamento, financiamento_loja(venda_id)')
         .eq('store_id', storeId)
         .eq('status', 'Pago')
-        .gte('data_pagamento', startIso)
-        .lte('data_pagamento', endIso)
+        .gte('data_pagamento', uniqueDateKeys[0])
+        .lte('data_pagamento', uniqueDateKeys[uniqueDateKeys.length - 1])
 
     const listaPagamentos = pagamentosVendas || []
     const listaParcelas = parcelasPagas || []
@@ -127,14 +163,10 @@ async function getCashReceiptsByDateKeys(storeId: number, dateKeys: string[]) {
         const dateKey = getStoreDateKey(pc.data_pagamento)
         if (!allowedDateKeys.has(dateKey)) return
 
-        const vendaId = pc.financiamento_loja?.venda_id
         const pagamentosDia = pagamentosPorDia.get(dateKey) || []
+        const refsProcessadas = new Set(pagamentosDia.map(getInstallmentPaymentRef).filter(Boolean) as string[])
 
-        const duplicado = Boolean(vendaId && pagamentosDia.some((pagamento: any) =>
-            Number(pagamento.valor_pago) === Number(pc.valor_parcela) &&
-            pagamento.obs &&
-            pagamento.obs.includes(`Venda #${vendaId}`)
-        ))
+        const duplicado = hasPaymentForInstallment(pc, pagamentosDia, refsProcessadas)
 
         if (!duplicado) {
             adicionarAoTotal(dateKey, Number(pc.valor_parcela) || 0)
@@ -751,10 +783,10 @@ export async function getResumoCaixa(storeId: number): Promise<ResumoCaixa | nul
     // 5. PARCELAS (Fonte Legado / Backup para Falhas)
     const { data: parcelasPagas } = await supabaseAdmin
         .from('financiamento_parcelas')
-        .select(`id, valor_parcela, data_pagamento, customer_id, customers (full_name), financiamento_loja(venda_id)`)
+        .select(`id, numero_parcela, valor_parcela, data_pagamento, customer_id, customers (full_name), financiamento_loja(venda_id)`)
         .eq('store_id', storeId)
         .eq('status', 'Pago')
-        .gte('data_pagamento', dataRef.toISOString())
+        .gte('data_pagamento', getStoreDateKey(caixa.data_abertura))
 
     const listaParcelas = parcelasPagas || []
 
@@ -811,73 +843,17 @@ export async function getResumoCaixa(storeId: number): Promise<ResumoCaixa | nul
         })
 
         // Marca como processado para deduplicação
-        if (ehParcela && vendaIdRef && numParcRef) {
+        const installmentRef = getInstallmentPaymentRef(pg)
+        if (installmentRef) {
+            pagamentosProcessados.add(installmentRef)
+        } else if (ehParcela && vendaIdRef && numParcRef) {
             pagamentosProcessados.add(`${vendaIdRef}-${numParcRef}`)
         }
     })
 
-    // PROCESSAR PARCELAS (LEGADO OU FALHA DE INSERT)
-    // Só adiciona se NÃO encontrar correspondente no Set
     listaParcelas.forEach((pc: any) => {
-        const vendaId = pc.financiamento_loja?.venda_id
-        // Tenta achar o número da parcela? O select atual não pegou 'numero_parcela'. 
-        // Vamos assumir deduplicação por "Se já tem um pagamento recente com esse valor e cliente..."
-        // Mas a lógica mais segura agora é: Se o pagamento falhou no insert (caso atual do usuario), ele NÃO está no Set.
-        // Então ele VAI entrar aqui.
-
-        // CORREÇÃO: Precisamos saber qual parcela é para deduplicar corretamente no futuro.
-        // Mas para o caso do usuário AGORA, o pagamento não existe, então ele vai cair aqui.
-        // O problema é a duplicação futura. 
-        // Como o insert agora está corrigido, futuros terão o registro no pagamentos e no Set.
-        // E aqui teremos o registro da parcela.
-        // Precisamos do 'numero_parcela' no select da listaParcelas para a chave bater.
-
-        // Porem, no select acima eu não pus numero_parcela. Vou confiar que se existir no Pagamentos, ESTÁ OK.
-        // Se não existir (caso legado ou bug), entra aqui como "Dinheiro" (que é o fallback do legado).
-
-        // Mas espere! Se eu adicionar aqui, vai ser Dinheiro. O usuário queria PIX.
-        // O usuário pagou PIX, mas o sistema salvou só na parcela (sem info de forma).
-        // ENTÃO O DADO 'PIX' FOI PERDIDO neste caso específico de erro.
-        // O usuário terá que ver como "Dinheiro" ou editar manualmente se o banco permitisse.
-        // Mas pelo menos o valor reaparece no caixa (como Dinheiro).
-
-        // Para evitar duplicidade futura:
-        // Vou verificar se existe algum pagamento com mesmo VALOR e DATA (dia) e venda_id (se tiver).
-        // É uma heurística fraca, mas melhor que nada.
-        // Na prática, o correto é: Pagamentos é a fonte real. Parcelas é redundância.
-        // Se está em Pagamentos, ignore Parcelas.
-        // Se NÃO está em Pagamentos, mostre Parcela.
-        // Como saber se "é a mesma"?
-
-        // Vou deixar ambos por enquanto, mas com um filtro simples:
-        // Se a parcela tem data de pagamento hoje, e existe um pagamento de recebimento com mesmo valor?
-
-        // Simplificação: Vou adicionar TUDO da listaParcelas.
-        // O usuário reclamou que SUMIU. Melhor aparecer Duplicado (e eu aviso) do que Sumir.
-        // Mas espere, se aparecer duplicado, o caixa não bate.
-
-        // VOU USAR A LÓGICA DO SET COM O QUE TENHO.
-        // Vou adicionar 'numero_parcela' ao select de parcelas.
-
         const clienteNome = pc.customers?.full_name || 'Cliente'
-        // ... logica de adicionar ...
-        // Como o select original não tinha numero_parcela, vou assumir risco de duplicidade APENAS se o pagamento existir.
-        // Mas no caso atual, o pagamento NÃO existe. Então não duplica.
-        // Nos casos futuros, o pagamento existirá. E a parcela existirá.
-        // AI VAI DUPLICAR.
-
-        // SOLUÇÃO: Filtro por venda_id (que tenho no financiamento_loja) e valor.
-        // Se eu tenho um Pagamento vinculado a essa Venda (via obs) com esse valor, ignoro a parcela.
-
-        let duplicado = false
-        if (vendaId) {
-            // Procura nos pagamentos algum que mencione essa venda no obs e tenha mesmo valor
-            const match = listaPagamentos.find((p: any) =>
-                p.valor_pago === pc.valor_parcela &&
-                p.obs && p.obs.includes(`Venda #${vendaId}`)
-            )
-            if (match) duplicado = true
-        }
+        const duplicado = hasPaymentForInstallment(pc, listaPagamentos, pagamentosProcessados)
 
         if (!duplicado) {
             historicoUnificado.push({
@@ -1047,12 +1023,13 @@ export async function getResumoCaixaPorData(storeId: number, dataISO: string): P
     // 5. PARCELAS do dia
     const { data: parcelasPagas } = await supabaseAdmin
         .from('financiamento_parcelas')
-        .select(`id, valor_parcela, data_pagamento, customer_id, customers (full_name), financiamento_loja(venda_id)`)
+        .select(`id, numero_parcela, valor_parcela, data_pagamento, customer_id, customers (full_name), financiamento_loja(venda_id)`)
         .eq('store_id', storeId)
         .eq('status', 'Pago')
-        .gte('data_pagamento', dataRef.toISOString())
-        .lte('data_pagamento', dataFim.toISOString())
+        .gte('data_pagamento', dataISO)
+        .lte('data_pagamento', dataISO)
     const listaParcelas = parcelasPagas || []
+    const pagamentosProcessados = new Set<string>()
 
     if (!caixa && listaPagamentos.length === 0 && listaParcelas.length === 0) return null
 
@@ -1109,19 +1086,18 @@ export async function getResumoCaixaPorData(storeId: number, dataISO: string): P
         historicoUnificado.push({
             id: `pg-${pg.id}`, tipo, descricao: clienteNome, categoria, valor: Number(pg.valor_pago), horario: pg.created_at, forma_pagamento: pg.forma_pagamento, origem: origemCalculada, employee_id: pg.employee_id ?? null
         })
+
+        const installmentRef = getInstallmentPaymentRef(pg)
+        if (installmentRef) {
+            pagamentosProcessados.add(installmentRef)
+        } else if (ehParcela && vendaIdRef && numParcRef) {
+            pagamentosProcessados.add(`${vendaIdRef}-${numParcRef}`)
+        }
     })
 
     listaParcelas.forEach((pc: any) => {
-        const vendaId = pc.financiamento_loja?.venda_id
         const clienteNome = pc.customers?.full_name || 'Cliente'
-        let duplicado = false
-        if (vendaId) {
-            const match = listaPagamentos.find((p: any) =>
-                p.valor_pago === pc.valor_parcela &&
-                p.obs && p.obs.includes(`Venda #${vendaId}`)
-            )
-            if (match) duplicado = true
-        }
+        const duplicado = hasPaymentForInstallment(pc, listaPagamentos, pagamentosProcessados)
         if (!duplicado) {
             historicoUnificado.push({
                 id: `parc-${pc.id}`, tipo: 'Recebimento', descricao: `Carnê - ${clienteNome}`, categoria: 'Recebimento', valor: Number(pc.valor_parcela), horario: pc.data_pagamento, forma_pagamento: 'Dinheiro', origem: 'Caixa'
