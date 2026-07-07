@@ -268,7 +268,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                 })
 
                 if (result.success) {
-                    toast.success('PDF financeiro enviado via WhatsApp da loja.')
+                    toast.success('Imagem financeira enviada via WhatsApp da loja.')
                     return
                 }
 
@@ -290,8 +290,8 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
 
                 toast.error(result.message)
             } catch (error) {
-                console.error('[CustomerHistoryModal] Erro ao enviar PDF financeiro:', error)
-                toast.error('Nao foi possivel enviar o PDF financeiro.')
+                console.error('[CustomerHistoryModal] Erro ao enviar imagem financeira:', error)
+                toast.error('Nao foi possivel enviar a imagem financeira.')
             } finally {
                 setSendingWhatsApp(false)
             }
@@ -307,7 +307,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
             })
 
             if (result.success) {
-                toast.success('PDF das receitas enviado via WhatsApp da loja.')
+                toast.success('Imagem das receitas enviada via WhatsApp da loja.')
                 return
             }
 
@@ -329,8 +329,8 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
 
             toast.error(result.message)
         } catch (error) {
-            console.error('[CustomerHistoryModal] Erro ao enviar PDF das receitas:', error)
-            toast.error('Nao foi possivel enviar o PDF das receitas.')
+            console.error('[CustomerHistoryModal] Erro ao enviar imagem das receitas:', error)
+            toast.error('Nao foi possivel enviar a imagem das receitas.')
         } finally {
             setSendingWhatsApp(false)
         }

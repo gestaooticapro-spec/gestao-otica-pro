@@ -9,10 +9,12 @@ import { getWhatsAppLink } from '@/lib/utils'
 import { digitsOnly, toEvolutionNumber } from '@/lib/whatsapp/phone'
 import { markStoreInitiatedConversation } from '@/lib/whatsapp/customer-status'
 import {
-  generateCustomerFinancialSummaryPDF,
-  generateCustomerPrescriptionSummaryPDF,
   generateInstallmentReceiptPDF,
 } from '@/lib/pdf-generator'
+import {
+  generateCustomerFinancialSummaryImage,
+  generateCustomerPrescriptionSummaryImage,
+} from '@/lib/whatsapp-summary-image'
 import {
   getCustomerFinancialSummary,
   getCustomerPrescriptionSummary,
@@ -111,15 +113,15 @@ function formatMediaSendFailure(errorMessage: string) {
     || normalized.includes('exists:false')
     || normalized.includes('number exists false')
   ) {
-    return 'Nao foi possivel enviar o PDF porque o telefone cadastrado nao existe no WhatsApp. Confira o numero do cliente.'
+    return 'Nao foi possivel enviar a imagem porque o telefone cadastrado nao existe no WhatsApp. Confira o numero do cliente.'
   }
 
   if (normalized.includes('invalid media payload')) {
-    return 'Nao foi possivel enviar o PDF porque o anexo foi recusado antes do envio.'
+    return 'Nao foi possivel enviar a imagem porque o anexo foi recusado antes do envio.'
   }
 
   if (normalized.includes('evolution media send failed')) {
-    return 'Nao foi possivel enviar o PDF pelo WhatsApp da loja. Verifique o numero do cliente e tente novamente.'
+    return 'Nao foi possivel enviar a imagem pelo WhatsApp da loja. Verifique o numero do cliente e tente novamente.'
   }
 
   return 'Nao foi possivel enviar o arquivo. Nenhum anexo foi enviado.'
@@ -521,7 +523,7 @@ async function sendManualWhatsAppMediaWithContext(
     return {
       success: false,
       routeUsed: 'external_fallback',
-      message: 'O PDF nao foi enviado porque o WhatsApp da loja nao esta conectado.',
+      message: 'A imagem nao foi enviada porque o WhatsApp da loja nao esta conectado.',
       fallbackReason: channel?.id ? 'channel_disconnected' : 'channel_not_configured',
       shouldOpenExternal: false,
     }
@@ -727,7 +729,7 @@ export async function sendCustomerFinancialSummaryWhatsApp(
     }
 
     const storeProfile = await getStoreDocumentProfile(supabaseAdmin, storeId)
-    const pdfBuffer = await generateCustomerFinancialSummaryPDF({
+    const imageBuffer = await generateCustomerFinancialSummaryImage({
       customerName: customer.full_name || 'Cliente',
       store: storeProfile,
       totals: financialData.totais,
@@ -739,16 +741,17 @@ export async function sendCustomerFinancialSummaryWhatsApp(
     return await sendManualWhatsAppMediaWithContext({
       storeId,
       remotePhone,
-      mediaType: 'pdf',
-      mimeType: 'application/pdf',
-      fileName: `financeiro-cliente-${customerId}.pdf`,
-      fileBase64: pdfBuffer.toString('base64'),
+      mediaType: 'image',
+      mimeType: 'image/png',
+      fileName: `financeiro-cliente-${customerId}.png`,
+      fileBase64: imageBuffer.toString('base64'),
       caption: `Ola, ${firstName}! Segue o detalhamento financeiro atualizado.`,
       messageType: 'document_attachment',
-      source: 'customer_history.financial_pdf_button',
+      source: 'customer_history.financial_image_button',
       metadata: {
         customerId,
         documentType: 'customer_financial_summary',
+        mediaFormat: 'png',
       },
     }, supabaseAdmin)
   } catch (error) {
@@ -756,7 +759,7 @@ export async function sendCustomerFinancialSummaryWhatsApp(
     return {
       success: false,
       routeUsed: 'external_fallback',
-      message: formatActionError(error, 'Nao foi possivel gerar ou enviar o PDF financeiro.'),
+      message: formatActionError(error, 'Nao foi possivel gerar ou enviar a imagem financeira.'),
       fallbackReason: 'unexpected_error',
       shouldOpenExternal: false,
     }
@@ -819,7 +822,7 @@ export async function sendCustomerPrescriptionSummaryWhatsApp(
     }
 
     const storeProfile = await getStoreDocumentProfile(supabaseAdmin, storeId)
-    const pdfBuffer = await generateCustomerPrescriptionSummaryPDF({
+    const imageBuffer = await generateCustomerPrescriptionSummaryImage({
       customerName: customer.full_name || 'Cliente',
       subjectLabel: selectedGroup.dependenteId === null
         ? customer.full_name || 'Titular'
@@ -832,17 +835,18 @@ export async function sendCustomerPrescriptionSummaryWhatsApp(
     return await sendManualWhatsAppMediaWithContext({
       storeId,
       remotePhone,
-      mediaType: 'pdf',
-      mimeType: 'application/pdf',
-      fileName: `receitas-cliente-${customerId}-${selectedGroup.id}.pdf`,
-      fileBase64: pdfBuffer.toString('base64'),
+      mediaType: 'image',
+      mimeType: 'image/png',
+      fileName: `receitas-cliente-${customerId}-${selectedGroup.id}.png`,
+      fileBase64: imageBuffer.toString('base64'),
       caption: `Ola, ${firstName}! Segue o detalhamento das receitas registradas.`,
       messageType: 'document_attachment',
-      source: 'customer_history.prescription_pdf_button',
+      source: 'customer_history.prescription_image_button',
       metadata: {
         customerId,
         prescriptionGroupId: selectedGroup.id,
         documentType: 'customer_prescription_summary',
+        mediaFormat: 'png',
       },
     }, supabaseAdmin)
   } catch (error) {
@@ -850,7 +854,7 @@ export async function sendCustomerPrescriptionSummaryWhatsApp(
     return {
       success: false,
       routeUsed: 'external_fallback',
-      message: formatActionError(error, 'Nao foi possivel gerar ou enviar o PDF das receitas.'),
+      message: formatActionError(error, 'Nao foi possivel gerar ou enviar a imagem das receitas.'),
       fallbackReason: 'unexpected_error',
       shouldOpenExternal: false,
     }
