@@ -189,17 +189,17 @@ export async function generateCustomerFinancialSummaryImage(data: CustomerFinanc
             <div style={{ display: 'flex', flex: 1, background: '#eff6ff', borderRadius: 24, padding: 22, border: '2px solid #bfdbfe', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontSize: 18, color: '#1d4ed8' }}>Pago</div>
               <div style={{ fontSize: 34, fontWeight: 700, color: '#1e3a8a' }}>
-                {data.totals.parcelasPagas}/{data.totals.totalParcelas} parcelas | {formatMoneyBR(data.totals.valorPago)}
+                {`${data.totals.parcelasPagas}/${data.totals.totalParcelas} parcelas | ${formatMoneyBR(data.totals.valorPago)}`}
               </div>
             </div>
             <div style={{ display: 'flex', flex: 1, background: '#fff7ed', borderRadius: 24, padding: 22, border: '2px solid #fed7aa', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontSize: 18, color: '#c2410c' }}>Em aberto</div>
               <div style={{ fontSize: 34, fontWeight: 700, color: '#9a3412' }}>
-                {data.totals.parcelasPendentes} parcelas | {formatMoneyBR(data.totals.valorRestante)}
+                {`${data.totals.parcelasPendentes} parcelas | ${formatMoneyBR(data.totals.valorRestante)}`}
               </div>
               {data.nextDue?.data ? (
                 <div style={{ fontSize: 18, color: '#7c2d12' }}>
-                  Proximo vencimento: parcela {data.nextDue.numeroParcela} em {formatDateBR(data.nextDue.data)} ({formatMoneyBR(data.nextDue.valor)})
+                  {`Proximo vencimento: parcela ${data.nextDue.numeroParcela} em ${formatDateBR(data.nextDue.data)} (${formatMoneyBR(data.nextDue.valor)})`}
                 </div>
               ) : null}
             </div>
@@ -231,19 +231,19 @@ export async function generateCustomerFinancialSummaryImage(data: CustomerFinanc
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <div style={{ fontSize: 28, fontWeight: 700 }}>Venda #{financiamento.vendaId}</div>
-                      <div style={{ fontSize: 18, color: '#475569' }}>Data da venda: {formatDateBR(financiamento.dataVenda)}</div>
+                      <div style={{ fontSize: 28, fontWeight: 700 }}>{`Venda #${financiamento.vendaId}`}</div>
+                      <div style={{ fontSize: 18, color: '#475569' }}>{`Data da venda: ${formatDateBR(financiamento.dataVenda)}`}</div>
                       {financiamento.dependenteNames.length > 0 ? (
                         <div style={{ fontSize: 18, color: '#475569' }}>
-                          Dependente(s): {financiamento.dependenteNames.join(', ')}
+                          {`Dependente(s): ${financiamento.dependenteNames.join(', ')}`}
                         </div>
                       ) : null}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
                       <div style={{ fontSize: 18, color: '#64748b' }}>Total da venda</div>
                       <div style={{ fontSize: 24, fontWeight: 700 }}>{formatMoneyBR(financiamento.valorFinanciado)}</div>
-                      <div style={{ fontSize: 18, color: '#16a34a' }}>Pago: {formatMoneyBR(totalPagoVenda)}</div>
-                      <div style={{ fontSize: 18, color: '#ea580c' }}>Pendente: {formatMoneyBR(totalPendenteVenda)}</div>
+                      <div style={{ fontSize: 18, color: '#16a34a' }}>{`Pago: ${formatMoneyBR(totalPagoVenda)}`}</div>
+                      <div style={{ fontSize: 18, color: '#ea580c' }}>{`Pendente: ${formatMoneyBR(totalPendenteVenda)}`}</div>
                     </div>
                   </div>
 
@@ -350,21 +350,21 @@ export async function generateCustomerPrescriptionSummaryImage(data: CustomerPre
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, alignItems: 'center' }}>
                     <div style={{ fontSize: 28, fontWeight: 700 }}>{formatDateBR(rx.dataCompra)}</div>
-                    {rx.medico ? <div style={{ fontSize: 18, color: '#475569' }}>Medico: {rx.medico}</div> : null}
+                    {rx.medico ? <div style={{ fontSize: 18, color: '#475569' }}>{`Medico: ${rx.medico}`}</div> : null}
                   </div>
 
                   <div style={{ display: 'flex', gap: 18 }}>
                     <div style={{ display: 'flex', flex: 1, flexDirection: 'column', background: '#eff6ff', borderRadius: 20, padding: 18, gap: 8 }}>
                       <div style={{ fontSize: 18, fontWeight: 700, color: '#1e3a8a' }}>Longe - OD</div>
-                      <div style={{ fontSize: 20 }}>Esf {rx.longeOdEsf || '-'}</div>
-                      <div style={{ fontSize: 20 }}>Cil {rx.longeOdCil || '-'}</div>
-                      <div style={{ fontSize: 20 }}>Eixo {rx.longeOdEixo || '-'}</div>
+                      <div style={{ fontSize: 20 }}>{`Esf ${rx.longeOdEsf || '-'}`}</div>
+                      <div style={{ fontSize: 20 }}>{`Cil ${rx.longeOdCil || '-'}`}</div>
+                      <div style={{ fontSize: 20 }}>{`Eixo ${rx.longeOdEixo || '-'}`}</div>
                     </div>
                     <div style={{ display: 'flex', flex: 1, flexDirection: 'column', background: '#eff6ff', borderRadius: 20, padding: 18, gap: 8 }}>
                       <div style={{ fontSize: 18, fontWeight: 700, color: '#1e3a8a' }}>Longe - OE</div>
-                      <div style={{ fontSize: 20 }}>Esf {rx.longeOeEsf || '-'}</div>
-                      <div style={{ fontSize: 20 }}>Cil {rx.longeOeCil || '-'}</div>
-                      <div style={{ fontSize: 20 }}>Eixo {rx.longeOeEixo || '-'}</div>
+                      <div style={{ fontSize: 20 }}>{`Esf ${rx.longeOeEsf || '-'}`}</div>
+                      <div style={{ fontSize: 20 }}>{`Cil ${rx.longeOeCil || '-'}`}</div>
+                      <div style={{ fontSize: 20 }}>{`Eixo ${rx.longeOeEixo || '-'}`}</div>
                     </div>
                   </div>
 
@@ -372,15 +372,15 @@ export async function generateCustomerPrescriptionSummaryImage(data: CustomerPre
                     <div style={{ display: 'flex', gap: 18 }}>
                       <div style={{ display: 'flex', flex: 1, flexDirection: 'column', background: '#f8fafc', borderRadius: 20, padding: 18, gap: 8 }}>
                         <div style={{ fontSize: 18, fontWeight: 700, color: '#334155' }}>Perto - OD</div>
-                        <div style={{ fontSize: 20 }}>Esf {rx.pertoOdEsf || '-'}</div>
-                        <div style={{ fontSize: 20 }}>Cil {rx.pertoOdCil || '-'}</div>
-                        <div style={{ fontSize: 20 }}>Eixo {rx.pertoOdEixo || '-'}</div>
+                        <div style={{ fontSize: 20 }}>{`Esf ${rx.pertoOdEsf || '-'}`}</div>
+                        <div style={{ fontSize: 20 }}>{`Cil ${rx.pertoOdCil || '-'}`}</div>
+                        <div style={{ fontSize: 20 }}>{`Eixo ${rx.pertoOdEixo || '-'}`}</div>
                       </div>
                       <div style={{ display: 'flex', flex: 1, flexDirection: 'column', background: '#f8fafc', borderRadius: 20, padding: 18, gap: 8 }}>
                         <div style={{ fontSize: 18, fontWeight: 700, color: '#334155' }}>Perto - OE</div>
-                        <div style={{ fontSize: 20 }}>Esf {rx.pertoOeEsf || '-'}</div>
-                        <div style={{ fontSize: 20 }}>Cil {rx.pertoOeCil || '-'}</div>
-                        <div style={{ fontSize: 20 }}>Eixo {rx.pertoOeEixo || '-'}</div>
+                        <div style={{ fontSize: 20 }}>{`Esf ${rx.pertoOeEsf || '-'}`}</div>
+                        <div style={{ fontSize: 20 }}>{`Cil ${rx.pertoOeCil || '-'}`}</div>
+                        <div style={{ fontSize: 20 }}>{`Eixo ${rx.pertoOeEixo || '-'}`}</div>
                       </div>
                     </div>
                   ) : null}
@@ -398,7 +398,7 @@ export async function generateCustomerPrescriptionSummaryImage(data: CustomerPre
                         fontWeight: 700,
                       }}
                     >
-                      Adicao: {rx.adicao}
+                      {`Adicao: ${rx.adicao}`}
                     </div>
                   ) : null}
                 </div>

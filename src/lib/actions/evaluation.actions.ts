@@ -839,15 +839,31 @@ export async function getRecentEvaluationsForEmployee(
 
 export async function getRecentEvaluationsForStore(
   storeId: number,
-  limit: number = 30
+  limit: number = 30,
+  onlyOpen: boolean = false,
+  maxAgeDays?: number
 ): Promise<OpticalEvaluationListItem[]> {
   try {
-    const { data: records, error } = await createAdminClient()
+    let query: any = createAdminClient()
       .from('optical_evaluations')
       .select('*')
       .eq('store_id', storeId)
       .order('created_at', { ascending: false })
       .limit(limit)
+
+    if (onlyOpen) {
+      query = query
+        .is('exported_venda_id', null)
+        .is('outcome_status', null)
+    }
+
+    if (typeof maxAgeDays === 'number' && Number.isFinite(maxAgeDays) && maxAgeDays > 0) {
+      const cutoff = new Date()
+      cutoff.setDate(cutoff.getDate() - maxAgeDays)
+      query = query.gte('updated_at', cutoff.toISOString())
+    }
+
+    const { data: records, error } = await query
 
     if (error) {
       console.error('getRecentEvaluationsForStore: Query error', error)

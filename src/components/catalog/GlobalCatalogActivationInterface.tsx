@@ -5,24 +5,26 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import {
+  ArrowLeft,
   CheckCircle2,
   Clock3,
   Database,
   Layers3,
+  Power,
   RefreshCcw,
   ShieldCheck,
   Sparkles,
   Tag,
-  ArrowLeft,
 } from 'lucide-react'
 import {
   activateGlobalCatalogForStore,
+  deactivateGlobalCatalogForStore,
   type StoreCatalogOverview,
   type StoreCatalogVersionSummary,
 } from '@/lib/actions/global-catalog.actions'
 
 function formatDate(value: string | null) {
-  if (!value) return '—'
+  if (!value) return '-'
   return new Date(value).toLocaleString('pt-BR')
 }
 
@@ -81,10 +83,27 @@ function VersionCard({
   const [isPending, startTransition] = useTransition()
 
   const buttonLabel = isCurrent
-    ? 'Re-sincronizar versão'
+    ? 'Re-sincronizar versao'
     : replacesSameLabActive
-      ? 'Ativar e substituir versão'
+      ? 'Ativar e substituir versao'
       : 'Ativar nesta loja'
+
+  const handleDeactivate = () => {
+    if (!window.confirm(`Desligar a tabela ${version.laboratorio} (${version.versao}) nesta loja?`)) {
+      return
+    }
+
+    startTransition(async () => {
+      const result = await deactivateGlobalCatalogForStore(storeId, version.id)
+      if (!result.success) {
+        toast.error(result.message)
+        return
+      }
+
+      toast.success('Catalogo desligado da loja.')
+      router.refresh()
+    })
+  }
 
   const handleActivate = () => {
     startTransition(async () => {
@@ -94,9 +113,7 @@ function VersionCard({
         return
       }
 
-      toast.success(
-        isCurrent ? 'Catálogo re-sincronizado com sucesso.' : 'Catálogo ativado nesta loja.',
-      )
+      toast.success(isCurrent ? 'Catalogo re-sincronizado com sucesso.' : 'Catalogo ativado nesta loja.')
       router.refresh()
     })
   }
@@ -108,17 +125,17 @@ function VersionCard({
           <div className="flex flex-wrap items-center gap-2">
             <VersionStatusBadge status={version.status} />
             <ActivationBadge activation={version.activation} />
-            {isCurrent && (
+            {isCurrent ? (
               <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/25 bg-cyan-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                Catálogo ativo deste laboratório
+                Catalogo ativo deste laboratorio
               </span>
-            )}
-            {!isCurrent && replacesSameLabActive && (
+            ) : null}
+            {!isCurrent && replacesSameLabActive ? (
               <span className="inline-flex items-center rounded-full border border-amber-400/25 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">
-                Substitui a versão ativa deste laboratório
+                Substitui a versao ativa deste laboratorio
               </span>
-            )}
+            ) : null}
           </div>
 
           <div>
@@ -134,7 +151,7 @@ function VersionCard({
             <div className="rounded-2xl border border-white/8 bg-black/20 px-4 py-3">
               <div className="flex items-center gap-2 text-slate-400">
                 <Layers3 className="h-4 w-4" />
-                Famílias
+                Familias
               </div>
               <div className="mt-2 text-xl font-black text-white">{version.familiesCount}</div>
             </div>
@@ -171,7 +188,7 @@ function VersionCard({
               <ShieldCheck className="mt-0.5 h-4 w-4 text-slate-500" />
               <div>
                 <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
-                  Publicação
+                  Publicacao
                 </p>
                 <p>{formatDate(version.publishedAt)}</p>
               </div>
@@ -181,25 +198,38 @@ function VersionCard({
               <Database className="mt-0.5 h-4 w-4 text-slate-500" />
               <div>
                 <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
-                  Última sincronização
+                  Ultima sincronizacao
                 </p>
                 <p>{formatDate(version.activation?.lastSyncedAt || null)}</p>
               </div>
             </div>
           </div>
 
-          <button
-            onClick={handleActivate}
-            disabled={isPending}
-            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-500 px-4 py-3 font-black text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isPending ? (
-              <RefreshCcw className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCcw className="h-4 w-4" />
-            )}
-            {buttonLabel}
-          </button>
+          <div className="mt-5 flex flex-col gap-3">
+            <button
+              onClick={handleActivate}
+              disabled={isPending}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-500 px-4 py-3 font-black text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isPending ? (
+                <RefreshCcw className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCcw className="h-4 w-4" />
+              )}
+              {buttonLabel}
+            </button>
+
+            {isCurrent ? (
+              <button
+                onClick={handleDeactivate}
+                disabled={isPending}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-black text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Power className="h-4 w-4" />
+                Desligar nesta loja
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
@@ -239,31 +269,31 @@ export default function GlobalCatalogActivationInterface({
               <div className="flex items-center gap-3">
                 <Link
                   href={`/dashboard/loja/${overview.storeId}`}
-                  className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
+                  className="rounded-xl border border-white/10 bg-white/5 p-1.5 text-slate-400 transition-all hover:bg-white/10 hover:text-white active:scale-95"
                   title="Voltar para o Painel"
                 >
                   <ArrowLeft className="h-4 w-4" />
                 </Link>
                 <p className="text-[11px] font-black uppercase tracking-[0.3em] text-cyan-300/80">
-                  Catálogo Global
+                  Catalogo Global
                 </p>
               </div>
               <h1 className="mt-2 text-4xl font-black tracking-tight text-white">
-                Ative tabelas de laboratório nesta loja
+                Ative tabelas de laboratorio nesta loja
               </h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-                A loja pode manter vários fornecedores ativos ao mesmo tempo. Ao ativar uma nova
-                versão do <span className="font-semibold text-white">mesmo laboratório</span>, a
-                versão anterior desse fornecedor é substituída. Cada ativação cria um snapshot
+                A loja pode manter varios fornecedores ativos ao mesmo tempo. Ao ativar uma nova
+                versao do <span className="font-semibold text-white">mesmo laboratorio</span>, a
+                versao anterior desse fornecedor e substituida. Cada ativacao cria um snapshot
                 local em <span className="font-semibold text-white">ofertas</span> e{' '}
                 <span className="font-semibold text-white">tratamentos</span>, preservando o
-                histórico e preparando a base para recomendação por IA e tabela visual.
+                historico e preparando a base para recomendacao por IA e tabela visual.
               </p>
             </div>
 
             <div className="w-full max-w-md rounded-3xl border border-cyan-400/15 bg-black/20 p-5">
               <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
-                Catálogos ativos
+                Catalogos ativos
               </p>
               {overview.activeActivations.length ? (
                 <div className="mt-3 space-y-3">
@@ -282,7 +312,7 @@ export default function GlobalCatalogActivationInterface({
                 </div>
               ) : (
                 <p className="mt-3 text-sm text-slate-400">
-                  Ainda não existe nenhuma tabela global ativa nesta loja.
+                  Ainda nao existe nenhuma tabela global ativa nesta loja.
                 </p>
               )}
             </div>
@@ -292,11 +322,11 @@ export default function GlobalCatalogActivationInterface({
         <div className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-slate-900/60 p-5 backdrop-blur-md md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-sm font-semibold text-slate-300">
-              Versões disponíveis para ativação
+              Versoes disponiveis para ativacao
             </p>
             <p className="text-xs text-slate-500">
-              Você pode ativar fornecedores diferentes em paralelo e re-sincronizar qualquer
-              versão já ativa. Ao ativar uma nova versão do mesmo laboratório, a anterior é
+              Voce pode ativar fornecedores diferentes em paralelo e re-sincronizar qualquer
+              versao ja ativa. Ao ativar uma nova versao do mesmo laboratorio, a anterior e
               desativada automaticamente.
             </p>
           </div>
@@ -304,7 +334,7 @@ export default function GlobalCatalogActivationInterface({
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Buscar por laboratório ou versão"
+            placeholder="Buscar por laboratorio ou versao"
             className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/40 md:max-w-sm"
           />
         </div>
@@ -323,11 +353,11 @@ export default function GlobalCatalogActivationInterface({
             />
           ))}
 
-          {!filteredVersions.length && (
+          {!filteredVersions.length ? (
             <div className="rounded-3xl border border-dashed border-white/10 bg-slate-900/50 px-6 py-10 text-center text-slate-400">
-              Nenhuma versão encontrada para esse filtro.
+              Nenhuma versao encontrada para esse filtro.
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

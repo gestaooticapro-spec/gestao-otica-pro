@@ -38,6 +38,7 @@ import {
   getOpticalEvaluationsForSubject,
   createSaleAndServiceOrderFromEvaluation,
   upsertOpticalEvaluation,
+  getRecentEvaluationsForStore,
   type OpticalEvaluationListItem
 } from '@/lib/actions/evaluation.actions'
 import {
@@ -52,7 +53,7 @@ import {
 } from '@/lib/actions/gemini-narratives.actions'
 import { Database } from '@/lib/database.types'
 import { EvaluationDashboard } from './EvaluationDashboard'
-import { getRecentEvaluationsForEmployee, updateEvaluationPanicReason, updateEvaluationOutcomeStatus } from '@/lib/actions/evaluation.actions'
+import { updateEvaluationPanicReason, updateEvaluationOutcomeStatus } from '@/lib/actions/evaluation.actions'
 import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/BackgroundToggle'
 import type {
   RecommendationCaseInput,
@@ -2894,7 +2895,7 @@ export default function EvaluationInterface({
     }
 
     setIsLoadingDashboard(true)
-    getRecentEvaluationsForEmployee(authenticatedEmployee.id, storeId, 8, true, 7)
+    getRecentEvaluationsForStore(storeId, 8, true, 7)
       .then((recent) => {
         setAllRecentEvaluations(recent)
       })
