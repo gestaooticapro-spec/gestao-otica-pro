@@ -17,6 +17,12 @@ type HeadOffset = {
   headX: number
   headY: number
 }
+type HeadSandboxCalibration = {
+  xNegative: number
+  xPositive: number
+  yNegative: number
+  yPositive: number
+}
 type CameraSettings = {
   width?: number
   height?: number
@@ -58,6 +64,7 @@ type SessionSample = {
   targetY: number
   headOnlyProjection?: boolean
   verticalHeadDebug?: boolean
+  headCalibration?: HeadSandboxCalibration
 }
 type ProjectionDebugTrace = {
   mode: 'headSandbox' | 'vertical'
@@ -68,6 +75,12 @@ type ProjectionDebugTrace = {
   normalizedTargetY: number
   strongestHeadX: number
   strongestHeadY: number
+  headCarryX: number
+  headCarryY: number
+  headShareX: number
+  headShareY: number
+  eyeShareX: number
+  eyeShareY: number
   residualX: number
   residualY: number
   compensated: boolean
@@ -145,7 +158,16 @@ const EYE_RESPONSE_Y = 0.52
 const HEAD_RESPONSE_X = 0.64
 const HEAD_RESPONSE_Y = 0.58
 const HEAD_ONLY_HEAD_X_SCALE = 0.55
-const HEAD_ONLY_HEAD_Y_SCALE = 0.12
+const HEAD_ONLY_HEAD_Y_SCALE = 0.09
+const DEFAULT_HEAD_SANDBOX_CALIBRATION: HeadSandboxCalibration = {
+  xNegative: HEAD_ONLY_HEAD_X_SCALE,
+  xPositive: HEAD_ONLY_HEAD_X_SCALE,
+  yNegative: HEAD_ONLY_HEAD_Y_SCALE,
+  yPositive: HEAD_ONLY_HEAD_Y_SCALE,
+}
+const HEAD_SANDBOX_NOISE_FLOOR_X = 0.055
+const HEAD_SANDBOX_NOISE_FLOOR_Y = 0.07
+const HEAD_SANDBOX_MIN_SCALE_DEMAND = 0.45
 const VERTICAL_DEBUG_HEAD_THRESHOLD = 0.055
 const HEAD_COMPENSATION_DOT_Y_GAIN = 2.6
 const LENS_DISTANCE_REFERENCE_Y = 0.38
@@ -466,6 +488,80 @@ function getHeadOnlyCarryY(headY: number, targetY = 0) {
   return clamp(direction * Math.min(carry, maxCarry), -1.25, 1.25)
 }
 
+function getCalibratedHeadCarry(
+  head: number,
+  target: number,
+  negativeFullHead: number,
+  positiveFullHead: number,
+  noiseFloor: number,
+) {
+  const demand = Math.abs(target)
+  if (demand < 0.08) return { carry: 0, share: 0 }
+  const directionalHead = -head
+  if (Math.sign(directionalHead) !== Math.sign(target)) return { carry: 0, share: 0 }
+
+  const fullHead = target < 0 ? negativeFullHead : positiveFullHead
+  const absHead = Math.abs(directionalHead)
+  if (absHead <= noiseFloor) return { carry: 0, share: 0 }
+
+  const expectedHeadForTarget = noiseFloor + fullHead * Math.max(demand, HEAD_SANDBOX_MIN_SCALE_DEMAND)
+  const usableHead = absHead - noiseFloor
+  const usableExpectedHead = Math.max(expectedHeadForTarget - noiseFloor, 0.0001)
+  const headShare = clamp(usableHead / usableExpectedHead, 0, 1)
+
+  return {
+    carry: target * headShare,
+    share: headShare,
+  }
+}
+
+function projectHeadSandboxSample(sample: SessionSample) {
+  const target = normalizeTargetOffset(sample.targetX, sample.targetY)
+  const calibration = sample.headCalibration ?? DEFAULT_HEAD_SANDBOX_CALIBRATION
+  const xProjection = getCalibratedHeadCarry(
+    sample.headX,
+    target.x,
+    calibration.xNegative,
+    calibration.xPositive,
+    HEAD_SANDBOX_NOISE_FLOOR_X,
+  )
+  const yProjection = getCalibratedHeadCarry(
+    sample.headY,
+    target.y,
+    calibration.yNegative,
+    calibration.yPositive,
+    HEAD_SANDBOX_NOISE_FLOOR_Y,
+  )
+  const lensEyeX = clamp(target.x - xProjection.carry, -1.2, 1.2)
+  const lensEyeY = clamp(target.y - yProjection.carry, -1.2, 1.2)
+
+  return {
+    target,
+    lensEyeX,
+    lensEyeY,
+    headShareX: xProjection.share,
+    headShareY: yProjection.share,
+    eyeShareX: 1 - xProjection.share,
+    eyeShareY: 1 - yProjection.share,
+  }
+}
+
+function buildHeadSandboxCalibration(samplesByStep: Record<string, FaceMetrics>, center: FaceMetrics) {
+  const headMagnitude = (key: string, axis: 'headX' | 'headY', fallback: number) => {
+    const sample = samplesByStep[key]
+    if (!sample?.faceDetected) return fallback
+    const minimum = axis === 'headY' ? fallback : fallback * 0.55
+    return clamp(Math.abs(sample[axis] - center[axis]), minimum, fallback * 2.8)
+  }
+
+  return {
+    xNegative: headMagnitude('headLeft', 'headX', DEFAULT_HEAD_SANDBOX_CALIBRATION.xNegative),
+    xPositive: headMagnitude('headRight', 'headX', DEFAULT_HEAD_SANDBOX_CALIBRATION.xPositive),
+    yNegative: headMagnitude('headUp', 'headY', DEFAULT_HEAD_SANDBOX_CALIBRATION.yNegative),
+    yPositive: headMagnitude('headDown', 'headY', DEFAULT_HEAD_SANDBOX_CALIBRATION.yPositive),
+  }
+}
+
 function getVerticalDebugCarryY(headY: number, targetY: number) {
   if (Math.abs(targetY) < 0.08) return 0
   if (Math.abs(headY) < VERTICAL_DEBUG_HEAD_THRESHOLD) return 0
@@ -475,6 +571,11 @@ function getVerticalDebugCarryY(headY: number, targetY: number) {
 function projectLensY(lensEyeY: number, multiplier = 1) {
   const gain = lensEyeY < 0 ? LENS_UP_GAIN : LENS_DOWN_GAIN
   return clamp(LENS_DISTANCE_REFERENCE_Y + lensEyeY * gain * multiplier, 0.03, 0.95)
+}
+
+function projectSandboxLensY(lensEyeY: number, multiplier = 1) {
+  const range = lensEyeY < 0 ? LENS_DISTANCE_REFERENCE_Y : 1 - LENS_DISTANCE_REFERENCE_Y
+  return clamp(LENS_DISTANCE_REFERENCE_Y + lensEyeY * range * multiplier, 0.03, 0.95)
 }
 
 function dramaticEyeFollow(value: number) {
@@ -535,14 +636,13 @@ function projectSampleToLens(sample: SessionSample) {
   }
 
   if (sample.headOnlyProjection) {
-    const headCarryX = getHeadOnlyCarryX(sample.headX, target.x)
-    const headCarryY = getHeadOnlyCarryY(sample.headY, target.y)
-    const lensEyeX = clamp(target.x - headCarryX, -1.2, 1.2)
-    const lensEyeY = clamp(target.y - headCarryY, -1.2, 1.2)
-    const headShareX = clamp(Math.abs(headCarryX) / Math.max(Math.abs(target.x), 0.0001), 0, 1)
-    const headShareY = clamp(Math.abs(headCarryY) / Math.max(Math.abs(target.y), 0.0001), 0, 1)
-    const eyeShareX = 1 - headShareX
-    const eyeShareY = 1 - headShareY
+    const sandboxProjection = projectHeadSandboxSample(sample)
+    const lensEyeX = sandboxProjection.lensEyeX
+    const lensEyeY = sandboxProjection.lensEyeY
+    const headShareX = sandboxProjection.headShareX
+    const headShareY = sandboxProjection.headShareY
+    const eyeShareX = sandboxProjection.eyeShareX
+    const eyeShareY = sandboxProjection.eyeShareY
     const demandedWeight = Math.max(demandX + demandY, 0.0001)
     const eyeDemandShare = clamp((eyeShareX * demandX + eyeShareY * demandY) / demandedWeight, 0, 1)
     const eyeNorm = clamp(Math.hypot(lensEyeX, lensEyeY) / 0.65, 0, 1.5)
@@ -551,11 +651,11 @@ function projectSampleToLens(sample: SessionSample) {
     return {
       point: {
         x: clamp(0.5 + lensEyeX * 0.5, 0.03, 0.97),
-        y: projectLensY(lensEyeY, 0.86),
+        y: projectSandboxLensY(lensEyeY, 0.98),
       },
       heatPoint: {
         x: clamp(0.5 + lensEyeX * 0.52, 0.03, 0.97),
-        y: projectLensY(lensEyeY, 0.9),
+        y: projectSandboxLensY(lensEyeY, 1),
       },
       radius: 1.7 + edgeSpread * 1.18,
       spreadX: 0.006 + Math.abs(lensEyeX) * 0.052 + eyeDemandShare * 0.012,
@@ -1167,6 +1267,7 @@ export default function GazeHeatmapLab({
   const baselineRef = useRef({ eyeX: 0, eyeY: 0, headX: 0, headY: 0 })
   const sandboxStepRef = useRef<{ step: SandboxCalibrationStep; startedAt: number; samples: FaceMetrics[] } | null>(null)
   const sandboxCollectedRef = useRef<Record<string, FaceMetrics[]>>({})
+  const headSandboxCalibrationRef = useRef<HeadSandboxCalibration>(DEFAULT_HEAD_SANDBOX_CALIBRATION)
   const eyeFollowIntroRef = useRef<{ point: NormalizedPoint; baselineEyeX: number | null; baselineEyeY: number | null } | null>(null)
   const headOnlyProjectionRef = useRef(false)
   const verticalHeadDebugRef = useRef(false)
@@ -1527,6 +1628,7 @@ export default function GazeHeatmapLab({
     targetSequenceRef.current = []
     targetIndexRef.current = 0
     baselineRef.current = { eyeX: 0, eyeY: 0, headX: 0, headY: 0 }
+    headSandboxCalibrationRef.current = DEFAULT_HEAD_SANDBOX_CALIBRATION
     sandboxStepRef.current = null
     sandboxCollectedRef.current = {}
     eyeFollowIntroRef.current = null
@@ -1556,6 +1658,7 @@ export default function GazeHeatmapLab({
     targetIndexRef.current = 0
     currentTargetRef.current = { x: 0.5, y: 0.5 }
     eyeFollowIntroRef.current = null
+    headSandboxCalibrationRef.current = DEFAULT_HEAD_SANDBOX_CALIBRATION
     headOnlyProjectionRef.current = false
     verticalHeadDebugRef.current = false
     projectionDebugTraceRef.current = []
@@ -1585,16 +1688,26 @@ export default function GazeHeatmapLab({
   }
 
   function pushProjectionDebugTrace(sample: SessionSample, sampleCount: number) {
+    if (sampleCount <= 0) return
+
     const normalizedTarget = normalizeTargetOffset(sample.targetX, sample.targetY)
     const isVerticalDebug = Boolean(sample.verticalHeadDebug)
-    const headCarryX = isVerticalDebug ? 0 : getHeadOnlyCarryX(sample.headX, normalizedTarget.x)
+    const sandboxProjection = projectHeadSandboxSample(sample)
+    const headCarryX = isVerticalDebug ? 0 : normalizedTarget.x - sandboxProjection.lensEyeX
     const headCarryY = isVerticalDebug
       ? getVerticalDebugCarryY(sample.headY, normalizedTarget.y)
-      : getHeadOnlyCarryY(sample.headY, normalizedTarget.y)
+      : normalizedTarget.y - sandboxProjection.lensEyeY
     const residualX = clamp(normalizedTarget.x - headCarryX, -1.2, 1.2)
     const residualY = clamp(normalizedTarget.y - headCarryY, -1.2, 1.2)
     const demand = Math.hypot(normalizedTarget.x, normalizedTarget.y)
     const residual = Math.hypot(residualX, residualY)
+    const headDemandShare = clamp(
+      (sandboxProjection.headShareX * Math.abs(normalizedTarget.x) +
+        sandboxProjection.headShareY * Math.abs(normalizedTarget.y)) /
+        Math.max(Math.abs(normalizedTarget.x) + Math.abs(normalizedTarget.y), 0.0001),
+      0,
+      1,
+    )
     const verticalCompensated =
       Math.abs(normalizedTarget.y) > 0.08 && Math.abs(sample.headY) >= VERTICAL_DEBUG_HEAD_THRESHOLD
     const headSandboxCentralized = demand <= 0.08 || residual <= Math.max(0.14, demand * 0.35)
@@ -1603,9 +1716,9 @@ export default function GazeHeatmapLab({
       ? verticalCompensated
         ? 'centralized'
         : 'target'
-      : headSandboxCentralized
+      : headDemandShare >= 0.72 || headSandboxCentralized
         ? 'centralized'
-        : headSandboxPartial
+        : headDemandShare >= 0.32 || headSandboxPartial
           ? 'partial'
           : 'target'
     const trace: ProjectionDebugTrace = {
@@ -1617,6 +1730,12 @@ export default function GazeHeatmapLab({
       normalizedTargetY: normalizedTarget.y,
       strongestHeadX: sample.headX,
       strongestHeadY: sample.headY,
+      headCarryX,
+      headCarryY,
+      headShareX: sandboxProjection.headShareX,
+      headShareY: sandboxProjection.headShareY,
+      eyeShareX: sandboxProjection.eyeShareX,
+      eyeShareY: sandboxProjection.eyeShareY,
       residualX,
       residualY,
       compensated: decision === 'centralized',
@@ -1640,6 +1759,7 @@ export default function GazeHeatmapLab({
           targetY: currentTargetRef.current.y,
           headOnlyProjection: headOnlyProjectionRef.current,
           verticalHeadDebug: verticalHeadDebugRef.current,
+          headCalibration: headSandboxCalibrationRef.current,
         }
         pushProjectionDebugTrace(fallbackSample, 0)
       }
@@ -1659,6 +1779,7 @@ export default function GazeHeatmapLab({
     )
     averagedSample.headOnlyProjection = samples.some((sample) => sample.headOnlyProjection)
     averagedSample.verticalHeadDebug = samples.some((sample) => sample.verticalHeadDebug)
+    averagedSample.headCalibration = samples.find((sample) => sample.headCalibration)?.headCalibration
     if (averagedSample.headOnlyProjection) {
       const strongestHeadX = samples.reduce(
         (best, sample) => (Math.abs(sample.headX) > Math.abs(best) ? sample.headX : best),
@@ -1768,6 +1889,7 @@ export default function GazeHeatmapLab({
     samplesRef.current = []
     targetSamplesRef.current = []
     projectionDebugTraceRef.current = []
+    headSandboxCalibrationRef.current = DEFAULT_HEAD_SANDBOX_CALIBRATION
     headOnlyProjectionRef.current = true
     verticalHeadDebugRef.current = false
     setHeadOnlyProjection(true)
@@ -1831,6 +1953,7 @@ export default function GazeHeatmapLab({
     samplesRef.current = []
     targetSamplesRef.current = []
     projectionDebugTraceRef.current = []
+    headSandboxCalibrationRef.current = DEFAULT_HEAD_SANDBOX_CALIBRATION
     headOnlyProjectionRef.current = true
     verticalHeadDebugRef.current = true
     setHeadOnlyProjection(true)
@@ -1871,6 +1994,7 @@ export default function GazeHeatmapLab({
     }
 
     baselineRef.current = center
+    headSandboxCalibrationRef.current = buildHeadSandboxCalibration(averaged, center)
     headOnlyProjectionRef.current = true
     verticalHeadDebugRef.current = false
     setHeadOnlyProjection(true)
@@ -1913,6 +2037,7 @@ export default function GazeHeatmapLab({
     calibrationSamplesRef.current = []
     sandboxCollectedRef.current = {}
     sandboxStepRef.current = null
+    headSandboxCalibrationRef.current = DEFAULT_HEAD_SANDBOX_CALIBRATION
     verticalHeadDebugRef.current = false
     setHasCalibration(false)
     setVerticalHeadDebug(false)
@@ -2028,6 +2153,7 @@ export default function GazeHeatmapLab({
           targetY: currentTargetRef.current.y,
           headOnlyProjection: headOnlyProjectionRef.current,
           verticalHeadDebug: verticalHeadDebugRef.current,
+          headCalibration: headSandboxCalibrationRef.current,
         }
         samplesRef.current.push(sample)
         targetSamplesRef.current.push(sample)
@@ -2544,10 +2670,26 @@ export default function GazeHeatmapLab({
                               </span>
                               <span className="font-bold text-slate-300">{trace.sampleCount} amostras</span>
                             </div>
-                            <div className="mt-1 grid grid-cols-3 gap-2 text-[11px] text-slate-300">
-                              <span>alvo {Math.round(trace.targetX * 100)} · {Math.round(trace.targetY * 100)}%</span>
-                              <span>head {Math.round(trace.strongestHeadX * 100)} · {Math.round(trace.strongestHeadY * 100)}%</span>
-                              <span>resto {Math.round(trace.residualX * 100)} · {Math.round(trace.residualY * 100)}%</span>
+                            <div className="mt-2 grid gap-2 text-[11px] text-slate-300 sm:grid-cols-2 lg:grid-cols-4">
+                              <span>
+                                <b className="block text-slate-100">Alvo lente</b>
+                                X {Math.round(trace.normalizedTargetX * 100)} · Y {Math.round(trace.normalizedTargetY * 100)}%
+                              </span>
+                              <span>
+                                <b className="block text-emerald-100">Cabeça compensou</b>
+                                X {Math.round(trace.headCarryX * 100)} · Y {Math.round(trace.headCarryY * 100)}%
+                              </span>
+                              <span>
+                                <b className="block text-cyan-100">Olho restante</b>
+                                X {Math.round(trace.residualX * 100)} · Y {Math.round(trace.residualY * 100)}%
+                              </span>
+                              <span>
+                                <b className="block text-amber-100">Cabeça eixo</b>
+                                X {Math.round(trace.headShareX * 100)} · Y {Math.round(trace.headShareY * 100)}%
+                              </span>
+                            </div>
+                            <div className="mt-2 text-[10px] text-slate-400">
+                              leitura bruta cabeça X {Math.round(trace.strongestHeadX * 100)} · Y {Math.round(trace.strongestHeadY * 100)}%
                             </div>
                           </div>
                         ))}
