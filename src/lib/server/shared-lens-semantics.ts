@@ -137,6 +137,62 @@ const SHARED_FAMILY_SEMANTICS: SharedFamilySemanticProfile[] = [
       'Alternativa clínica à progressiva para pré-présbitas com adição ≤ 1.5: risco de adaptação próximo de zero, visão de longe integral (inclusive para dirigir), conforto de perto embutido. Indicada quando o principal incômodo é digital/perto e a adaptação a progressivo é uma preocupação real.',
   },
   {
+    key: 'argos',
+    entity_name: 'Argos',
+    manufacturer_or_brand: 'Hoya / Hoyalux',
+    category: 'progressiva',
+    positioning: 'entrada',
+    aliases: ['argos', 'hoyalux argos'],
+    usage_tags: ['uso_geral', 'leitura', 'dirigir', 'custo_beneficio'],
+    benefit_tags: ['custo_beneficio', 'adaptacao_tradicional', 'versatilidade', 'progressiva_standard'],
+    commercial_summary:
+      'Progressiva Argos, tambem publicada como ARGOS ou Hoyalux Argos, posicionada como linha standard de custo-beneficio para uso geral.',
+    recommendation_notes:
+      'Argos, ARGOS e Hoyalux Argos devem ser tratados como a mesma linha base; diferencas entre catalogos refletem recorte comercial, materiais e tratamentos disponiveis.',
+  },
+  {
+    key: 'espace_short',
+    entity_name: 'Espace Short',
+    manufacturer_or_brand: 'Essilor / Espace',
+    category: 'progressiva',
+    positioning: 'entrada',
+    aliases: ['espace short'],
+    usage_tags: ['uso_geral', 'leitura', 'dirigir', 'armacoes_pequenas'],
+    benefit_tags: ['custo_beneficio', 'corredor_curto', 'versatilidade', 'adaptacao_tradicional'],
+    commercial_summary:
+      'Progressiva Espace Short, mantida como familia propria por indicar uma variacao short/corredor curto.',
+    recommendation_notes:
+      'Nao conciliar automaticamente com Espace ou Espace Plus; o nome Short indica proposta geometrica/comercial distinta.',
+  },
+  {
+    key: 'espace_plus',
+    entity_name: 'Espace Plus',
+    manufacturer_or_brand: 'Essilor / Espace',
+    category: 'progressiva',
+    positioning: 'entrada',
+    aliases: ['espace plus', 'espace plus digital', 'espace plus tradicional'],
+    usage_tags: ['uso_geral', 'computador', 'leitura', 'dirigir'],
+    benefit_tags: ['custo_beneficio', 'versatilidade', 'conforto_visual', 'opcoes_materiais'],
+    commercial_summary:
+      'Progressiva Espace Plus, com nomes de origem como Espace Plus Digital e Espace Plus Tradicional em alguns catalogos.',
+    recommendation_notes:
+      'Tratar Espace Plus, Espace Plus Digital e Espace Plus Tradicional como a mesma lente comercial; variam laboratorio, materiais, tratamentos e precos.',
+  },
+  {
+    key: 'espace',
+    entity_name: 'Espace',
+    manufacturer_or_brand: 'Essilor / Espace',
+    category: 'progressiva',
+    positioning: 'entrada',
+    aliases: ['espace', 'espace tradicional'],
+    usage_tags: ['uso_geral', 'leitura', 'dirigir'],
+    benefit_tags: ['custo_beneficio', 'versatilidade', 'adaptacao_suave'],
+    commercial_summary:
+      'Progressiva Espace, incluindo nomes de origem como Espace Tradicional.',
+    recommendation_notes:
+      'Tratar Espace e Espace Tradicional como a mesma lente comercial. Manter separada de Espace Plus e Espace Short.',
+  },
+  {
     key: 'eyezen_kids',
     entity_name: 'Eyezen Kids',
     manufacturer_or_brand: 'Essilor / Eyezen',
@@ -156,7 +212,7 @@ const SHARED_FAMILY_SEMANTICS: SharedFamilySemanticProfile[] = [
     manufacturer_or_brand: 'Essilor / Stellest',
     category: 'controle_miopia',
     positioning: 'premium',
-    aliases: ['stellest'],
+    aliases: ['stellest', 'stellest 2.0', 'stellest sun'],
     usage_tags: ['criancas', 'controle_miopia', 'estudo'],
     benefit_tags: ['controle_miopia', 'nitidez', 'uso_infantil'],
     commercial_summary:
@@ -165,18 +221,88 @@ const SHARED_FAMILY_SEMANTICS: SharedFamilySemanticProfile[] = [
       'Priorizar quando existir estratégia clínica de controle de miopia. Não tratar como simples lente digital infantil.',
   },
   {
+    key: 'airwear_kids',
+    entity_name: 'Airwear Kids',
+    manufacturer_or_brand: 'Essilor / Airwear',
+    category: 'visao_simples',
+    positioning: 'intermediaria',
+    aliases: ['airwear kids', 'linha kids airwear'],
+    usage_tags: ['criancas', 'uso_infantil', 'estudo'],
+    benefit_tags: ['visao_nitida', 'uso_infantil', 'resistencia', 'leveza'],
+    commercial_summary:
+      'Lente infantil Airwear de visao simples, separada de Stellest por nao ser controle de miopia.',
+    recommendation_notes:
+      'Nao conciliar com Stellest nem Eyezen Kids: Airwear Kids e uma lente infantil de visao simples/resistencia, nao controle de miopia nem suporte digital Eyezen.',
+  },
+  {
+    key: 'vs_essilor_surfacada',
+    entity_name: 'VS Essilor Surfaçada',
+    manufacturer_or_brand: 'Essilor',
+    category: 'visao_simples',
+    positioning: 'intermediaria',
+    aliases: ['vs essilor surfacada', 'vs essilor surfaçada', 'lentes visao simples surfacadas', 'lentes visão simples surfaçadas'],
+    usage_tags: ['visao_simples', 'surfacada', 'grau_personalizado', 'uso_diario'],
+    benefit_tags: ['correcao_visual', 'ampla_disponibilidade', 'tratamentos_essilor'],
+    commercial_summary:
+      'Visao simples surfacada Essilor, separada do antigo guarda-chuva Lentes Essilor.',
+    recommendation_notes:
+      'Manter separada de Interview e de lentes prontas: esta familia representa visao simples surfacada.',
+  },
+  {
+    key: 'lentes_essilor_prontas',
+    entity_name: 'Lentes Essilor Prontas',
+    manufacturer_or_brand: 'Essilor',
+    category: 'visao_simples',
+    positioning: 'entrada',
+    aliases: ['lentes essilor prontas', 'essilor prontas'],
+    usage_tags: ['visao_simples', 'pronta', 'uso_diario'],
+    benefit_tags: ['correcao_visual', 'ampla_disponibilidade', 'tratamentos_essilor'],
+    commercial_summary:
+      'Lentes Essilor prontas de visao simples, separadas de Interview e VS surfaçada.',
+    recommendation_notes:
+      'Nao usar como familia de geometria progressiva/ocupacional; e residual de visao simples pronta.',
+  },
+  {
     key: 'interview',
     entity_name: 'Interview',
     manufacturer_or_brand: 'Essilor',
     category: 'ocupacional',
     positioning: 'intermediaria',
-    aliases: ['interview'],
+    aliases: ['interview', 'essilor interview', 'visao intermediaria essilor interview', 'visão intermediária essilor interview'],
     usage_tags: ['intermediario', 'computador', 'leitura', 'escritorio'],
     benefit_tags: ['campo_intermediario', 'conforto_proximo', 'ergonomia_visual'],
     commercial_summary:
       'Linha ocupacional voltada a tarefas de perto e intermediário, como computador, leitura e rotina de escritório.',
     recommendation_notes:
       'Não concorre diretamente com progressiva geral. Indicar quando a demanda principal é mesa, tela e leitura prolongada.',
+  },
+  {
+    key: 'digitime_mid',
+    entity_name: 'Varilux Digitime.mid',
+    manufacturer_or_brand: 'Essilor / Varilux',
+    category: 'ocupacional',
+    positioning: 'premium',
+    aliases: ['digitime.mid', 'digitime mid', 'varilux digitime.mid', 'varilux digitime mid'],
+    usage_tags: ['computador', 'leitura', 'escritorio', 'intermediario'],
+    benefit_tags: ['campo_intermediario', 'ergonomia_visual', 'conforto_proximo', 'reducao_de_esforco'],
+    commercial_summary:
+      'Linha ocupacional premium Varilux Digitime.mid para tarefas de perto e intermediario, separada do antigo guarda-chuva Activities.',
+    recommendation_notes:
+      'Manter separada de Digitime.near: mid prioriza maior alcance intermediario, enquanto near prioriza perto.',
+  },
+  {
+    key: 'digitime_near',
+    entity_name: 'Varilux Digitime.near',
+    manufacturer_or_brand: 'Essilor / Varilux',
+    category: 'ocupacional',
+    positioning: 'premium',
+    aliases: ['digitime.near', 'digitime near', 'varilux digitime.near', 'varilux digitime near'],
+    usage_tags: ['leitura', 'computador', 'escritorio', 'perto'],
+    benefit_tags: ['campo_perto', 'ergonomia_visual', 'conforto_proximo', 'reducao_de_esforco'],
+    commercial_summary:
+      'Linha ocupacional premium Varilux Digitime.near para tarefas de perto, separada do antigo guarda-chuva Activities.',
+    recommendation_notes:
+      'Manter separada de Digitime.mid: near prioriza perto, enquanto mid prioriza maior alcance intermediario.',
   },
   {
     key: 'digitime',
@@ -186,11 +312,95 @@ const SHARED_FAMILY_SEMANTICS: SharedFamilySemanticProfile[] = [
     positioning: 'premium',
     aliases: ['digitime', 'varilux digitime'],
     usage_tags: ['computador', 'leitura', 'escritorio', 'intermediario'],
-    benefit_tags: ['campo_intermediario', 'ergonomia_visual', 'conforto_proximo', 'redução_de_esforco'],
+    benefit_tags: ['campo_intermediario', 'ergonomia_visual', 'conforto_proximo', 'reducao_de_esforco'],
     commercial_summary:
-      'Linha ocupacional premium para tarefas de perto e intermediário, com ênfase em ergonomia visual para escritórios e telas.',
+      'Linha ocupacional premium para tarefas de perto e intermediario, com enfase em ergonomia visual para escritorios e telas.',
     recommendation_notes:
-      'Boa candidata quando o cliente passa muito tempo em computador ou leitura e precisa mais campo útil de perto/intermediário do que visão de longe.',
+      'Usar como perfil generico apenas quando a tabela nao especificar Digitime.mid ou Digitime.near.',
+  },
+  {
+    key: 'roadpilot',
+    entity_name: 'Varilux Roadpilot',
+    manufacturer_or_brand: 'Essilor / Varilux',
+    category: 'ocupacional',
+    positioning: 'premium',
+    aliases: ['roadpilot', 'road pilot', 'varilux roadpilot', 'varilux road pilot'],
+    usage_tags: ['dirigir', 'dirigir_noite', 'uso_externo', 'longe'],
+    benefit_tags: ['conforto_ao_dirigir', 'campo_visual_ao_dirigir', 'seguranca_visual'],
+    commercial_summary:
+      'Linha ocupacional Varilux Roadpilot voltada a direcao, separada do antigo guarda-chuva Activities.',
+    recommendation_notes:
+      'Nao tratar como ocupacional de escritorio. Priorizar quando a demanda principal envolve dirigir, longe e conforto em uso externo.',
+  },
+  {
+    key: 'varilux_sport',
+    entity_name: 'Varilux Sport',
+    manufacturer_or_brand: 'Essilor / Varilux',
+    category: 'progressiva',
+    positioning: 'premium',
+    aliases: ['varilux sport', 'varilux sportwrap', 'sportwrap'],
+    usage_tags: ['esporte', 'uso_externo', 'uso_dinamico', 'dirigir'],
+    benefit_tags: ['campo_visual_esportivo', 'estabilidade_visual', 'conforto_visual'],
+    commercial_summary:
+      'Linha multifocal esportiva Varilux Sport/Sportwrap, separada do antigo guarda-chuva Activities.',
+    recommendation_notes:
+      'Manter separada de Roadpilot e Digitime: Sport/Sportwrap e multifocal esportiva, nao ocupacional de escritorio ou direcao dedicada.',
+  },
+  {
+    key: 'kodak_unique_infinite',
+    entity_name: 'Kodak Unique Infinite',
+    manufacturer_or_brand: 'KODAK Lens',
+    category: 'progressiva',
+    positioning: 'ultra_premium',
+    aliases: ['kodak unique infinite'],
+    usage_tags: ['uso_geral', 'computador', 'leitura', 'dirigir', 'uso_dinamico'],
+    benefit_tags: ['customizacao', 'campo_visual_amplo', 'qualidade_optica', 'conforto_visual'],
+    commercial_summary:
+      'Progressiva premium Kodak Unique Infinite, separada do antigo guarda-chuva Kodak.',
+    recommendation_notes:
+      'Tratar como familia propria na geometria e na tabela de preco; nao agrupar com Kodak Unique UHD ou Kodak generico.',
+  },
+  {
+    key: 'kodak_unique_uhd',
+    entity_name: 'Kodak Unique UHD',
+    manufacturer_or_brand: 'KODAK Lens',
+    category: 'progressiva',
+    positioning: 'premium',
+    aliases: ['kodak unique uhd'],
+    usage_tags: ['uso_geral', 'computador', 'leitura', 'dirigir'],
+    benefit_tags: ['customizacao', 'campo_visual_amplo', 'qualidade_optica'],
+    commercial_summary:
+      'Progressiva digital Kodak Unique UHD, separada do antigo guarda-chuva Kodak.',
+    recommendation_notes:
+      'Tratar como familia propria na geometria e na tabela de preco; nao agrupar com Kodak Unique Infinite.',
+  },
+  {
+    key: 'kodak_network_uhd',
+    entity_name: 'Kodak Network UHD',
+    manufacturer_or_brand: 'KODAK Lens',
+    category: 'progressiva',
+    positioning: 'premium',
+    aliases: ['kodak network uhd'],
+    usage_tags: ['uso_geral', 'computador', 'leitura', 'intermediario', 'uso_digital'],
+    benefit_tags: ['uso_digital', 'campo_visual_amplo', 'menos_distorcao', 'adaptacao_rapida'],
+    commercial_summary:
+      'Progressiva digital Kodak Network UHD, separada do antigo guarda-chuva Kodak.',
+    recommendation_notes:
+      'Forte candidata para presbitas que trabalham muito em telas, mantendo visao de longe. Usar como familia propria.',
+  },
+  {
+    key: 'kodak_precise_uhd',
+    entity_name: 'Kodak Precise UHD',
+    manufacturer_or_brand: 'KODAK Lens',
+    category: 'progressiva',
+    positioning: 'intermediaria',
+    aliases: ['kodak precise uhd'],
+    usage_tags: ['uso_geral', 'leitura', 'dirigir', 'uso_digital'],
+    benefit_tags: ['adaptacao_rapida', 'transicao_suave', 'nitidez'],
+    commercial_summary:
+      'Progressiva digital Kodak Precise UHD, separada do antigo guarda-chuva Kodak.',
+    recommendation_notes:
+      'Manter separada de Kodak Precise tradicional; UHD aparece como subfamilia propria nos catalogos.',
   },
   {
     key: 'kodak_precise',
@@ -235,6 +445,76 @@ const SHARED_FAMILY_SEMANTICS: SharedFamilySemanticProfile[] = [
       'Boa candidata para clientes que pedem progressiva premium da marca com percepção de personalização e modernidade.',
   },
   // Vision (marca própria baseada em Hayteck) — ordem: mais específico → menos específico para evitar match parcial
+  {
+    key: 'kodak_softwear',
+    entity_name: 'Kodak Softwear',
+    manufacturer_or_brand: 'KODAK Lens',
+    category: 'ocupacional',
+    positioning: 'intermediaria',
+    aliases: ['kodak softwear', 'lentes kodak softwear'],
+    usage_tags: ['computador', 'leitura', 'escritorio', 'intermediario'],
+    benefit_tags: ['campo_intermediario', 'conforto_proximo', 'ergonomia_visual'],
+    commercial_summary:
+      'Ocupacional digital Kodak Softwear, separada do antigo guarda-chuva Kodak.',
+    recommendation_notes:
+      'Nao tratar como progressiva geral; priorizar quando a demanda principal for perto e intermediario.',
+  },
+  {
+    key: 'kodak_easy_sun',
+    entity_name: 'Kodak Easy Sun',
+    manufacturer_or_brand: 'KODAK Lens',
+    category: 'progressiva',
+    positioning: 'premium',
+    aliases: ['kodak easy sun'],
+    usage_tags: ['uso_externo', 'solar', 'dirigir', 'leitura'],
+    benefit_tags: ['protecao_solar', 'coloracao', 'conforto_externo'],
+    commercial_summary:
+      'Multifocal solar Kodak Easy Sun, separada do antigo guarda-chuva Kodak.',
+    recommendation_notes:
+      'Tratar como multifocal solar propria. Manter separada de Kodak Single Sun, que e visao simples solar.',
+  },
+  {
+    key: 'kodak_single_sun',
+    entity_name: 'Kodak Single Sun',
+    manufacturer_or_brand: 'KODAK Lens',
+    category: 'plana_solar',
+    positioning: 'intermediaria',
+    aliases: ['kodak single sun'],
+    usage_tags: ['uso_externo', 'solar', 'visao_simples'],
+    benefit_tags: ['protecao_solar', 'coloracao', 'conforto_externo'],
+    commercial_summary:
+      'Visao simples solar Kodak Single Sun, separada do antigo guarda-chuva Kodak.',
+    recommendation_notes:
+      'Nao usar como familia multifocal ou ocupacional; e a linha solar de visao simples.',
+  },
+  {
+    key: 'kodak_single',
+    entity_name: 'Kodak Single',
+    manufacturer_or_brand: 'KODAK Lens',
+    category: 'visao_simples',
+    positioning: 'intermediaria',
+    aliases: ['kodak single', 'lentes kodak single'],
+    usage_tags: ['visao_simples', 'uso_diario', 'longe'],
+    benefit_tags: ['correcao_visual', 'nitidez', 'tratamentos_kodak'],
+    commercial_summary:
+      'Visao simples Kodak Single, separada do antigo guarda-chuva Kodak.',
+    recommendation_notes:
+      'Nao usar como familia de geometria progressiva/ocupacional; e a linha de visao simples Kodak.',
+  },
+  {
+    key: 'kodak_acabadas',
+    entity_name: 'Kodak Acabadas',
+    manufacturer_or_brand: 'KODAK Lens',
+    category: 'visao_simples',
+    positioning: 'entrada',
+    aliases: ['kodak acabadas', 'lentes prontas kodak', 'lentes kodak prontas'],
+    usage_tags: ['visao_simples', 'pronta_entrega', 'uso_diario'],
+    benefit_tags: ['correcao_visual', 'pronta_entrega', 'tratamentos_kodak'],
+    commercial_summary:
+      'Lentes prontas Kodak, separadas do antigo guarda-chuva Kodak.',
+    recommendation_notes:
+      'Nao usar como familia de geometria progressiva/ocupacional; e a linha pronta de visao simples Kodak.',
+  },
   {
     key: 'vision_plus_4k_premium',
     entity_name: 'Vision Plus 4K Premium',

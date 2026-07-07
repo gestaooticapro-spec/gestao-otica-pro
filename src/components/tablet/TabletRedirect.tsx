@@ -13,11 +13,14 @@ export function TabletRedirect({ storeId }: { storeId: number }) {
 
   useEffect(() => {
     // Permite navegar para rotas liberadas do dashboard sem loop de redirecionamento.
-    const allowedTabletDashboardRoutes = [
+    const allowedTabletDashboardRoutePrefixes = [
       `/dashboard/loja/${storeId}/tabela-precos`,
       `/dashboard/loja/${storeId}/lentes/mapa-calor`,
+      `/dashboard/loja/${storeId}/lentes/visualizar`,
     ]
-    if (allowedTabletDashboardRoutes.includes(pathname)) return
+    if (allowedTabletDashboardRoutePrefixes.some((routePrefix) => pathname.startsWith(routePrefix))) {
+      return
+    }
 
     // Limpa configuracao antiga persistente para evitar ficar preso no desktop.
     localStorage.removeItem('forceDesktop')
