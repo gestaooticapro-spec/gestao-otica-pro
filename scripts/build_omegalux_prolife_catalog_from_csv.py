@@ -12,6 +12,29 @@ REPORT = Path("tmp/omegalux_prolife_catalog_build_report_2026_07.md")
 
 
 REFERENCE_SEMANTICS: dict[str, dict[str, Any]] = {
+    "PRO LIFE VI": {
+        "equivalent": "Hoyalux iD LifeStyle 4",
+        "geometry_source": "Hoyalux iD LifeStyle 4",
+        "clinical_category": "multifocal",
+        "positioning": "premium",
+        "design": "iD Premium",
+        "usage_tags": ["indoor", "urban", "outdoor", "perto", "intermediario", "longe"],
+        "benefit_tags": [
+            "adaptacao_facilitada",
+            "menos_distorcoes",
+            "conforto_visual",
+            "foco_perto_intermediario",
+            "segmentacao_por_estilo_de_vida",
+        ],
+        "summary": (
+            "Marca propria da loja com equivalencia tecnica/comercial declarada para Hoyalux iD LifeStyle 4. "
+            "Manter como lente comercial distinta; herda apenas semantica e geometria."
+        ),
+        "recommendation_notes": (
+            "Usar como progressiva premium com leitura de estilo de vida Indoor, Urban e Outdoor, seguindo a semantica "
+            "da Hoyalux iD LifeStyle 4, sem copiar precos ou combinacoes comerciais da HOYA."
+        ),
+    },
     "OMEGALUX IN": {
         "equivalent": "Varilux Liberty 3.0",
         "geometry_source": "Varilux Liberty 3.0",
@@ -217,8 +240,6 @@ def build_features(family_name: str, treatment_name: str, photo: bool, semantic:
         features["same_semantics_not_same_commercial_lens"] = True
     else:
         features["semantic_pending"] = True
-    if normalize_key(family_name) == "PRO LIFE VI":
-        features["semantic_pending_reason"] = "Equivalencia comercial ainda nao informada pelo lojista."
     return features
 
 

@@ -266,6 +266,10 @@ function fiscalMoney(value?: number | string | null) {
     return Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : 0;
 }
 
+function fiscalMoneyText(value?: number | string | null) {
+    return fiscalMoney(value).toFixed(2);
+}
+
 function shouldSendRtcMvpGroup(
     environment: "production" | "homologation",
     context?: RtcMvpContext
@@ -304,19 +308,19 @@ function buildRtcMvpItemImposto(
             CST: "000",
             cClassTrib: "000001",
             gIBSCBS: {
-                vBC,
+                vBC: fiscalMoneyText(vBC),
                 gIBSUF: {
                     pIBSUF: "0.10",
-                    vIBSUF,
+                    vIBSUF: fiscalMoneyText(vIBSUF),
                 },
                 gIBSMun: {
                     pIBSMun: "0",
-                    vIBSMun,
+                    vIBSMun: fiscalMoneyText(vIBSMun),
                 },
-                vIBS,
+                vIBS: fiscalMoneyText(vIBS),
                 gCBS: {
                     pCBS: "0.90",
-                    vCBS,
+                    vCBS: fiscalMoneyText(vCBS),
                 },
             },
         },
@@ -338,26 +342,26 @@ function buildRtcMvpTotal(
 
     return {
         IBSCBSTot: {
-            vBCIBSCBS,
+            vBCIBSCBS: fiscalMoneyText(vBCIBSCBS),
             gIBS: {
                 gIBSUF: {
                     vDif: 0,
                     vDevTrib: 0,
-                    vIBSUF,
+                    vIBSUF: fiscalMoneyText(vIBSUF),
                 },
                 gIBSMun: {
                     vDif: 0,
                     vDevTrib: 0,
-                    vIBSMun,
+                    vIBSMun: fiscalMoneyText(vIBSMun),
                 },
-                vIBS,
+                vIBS: fiscalMoneyText(vIBS),
                 vCredPres: 0,
                 vCredPresCondSus: 0,
             },
             gCBS: {
                 vDif: 0,
                 vDevTrib: 0,
-                vCBS,
+                vCBS: fiscalMoneyText(vCBS),
                 vCredPres: 0,
                 vCredPresCondSus: 0,
             },

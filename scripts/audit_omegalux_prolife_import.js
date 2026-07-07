@@ -27,6 +27,7 @@ const OUT_MD = 'tmp/omegalux_prolife_import_audit.md'
 const EXPECTED_LAB = 'OMEGALUX / PRO LIFE'
 const EXPECTED_VERSION = 'OMEGALUX PRO LIFE Julho 2026'
 const GEOMETRY_EXPECTED = new Map([
+  ['PRO LIFE VI', 'Hoyalux iD LifeStyle 4'],
   ['OMEGALUX IN', 'Varilux Liberty 3.0'],
   ['OMEGALUX DIGITAL', 'Varilux Comfort Max'],
   ['OMEGALUX 4K', 'Varilux XR Pro'],

@@ -248,6 +248,10 @@ function money(value?: number | string | null) {
     return Number(Number(value || 0).toFixed(2));
 }
 
+function moneyText(value?: number | string | null) {
+    return money(value).toFixed(2);
+}
+
 function leftPad(value: string | number, length: number) {
     return String(value ?? "").replace(/\D/g, "").padStart(length, "0").slice(-length);
 }
@@ -552,19 +556,19 @@ function buildRtcMvpItemImposto(
             CST: "000",
             cClassTrib: "000001",
             gIBSCBS: {
-                vBC,
+                vBC: moneyText(vBC),
                 gIBSUF: {
                     pIBSUF: "0.10",
-                    vIBSUF,
+                    vIBSUF: moneyText(vIBSUF),
                 },
                 gIBSMun: {
                     pIBSMun: "0",
-                    vIBSMun,
+                    vIBSMun: moneyText(vIBSMun),
                 },
-                vIBS,
+                vIBS: moneyText(vIBS),
                 gCBS: {
                     pCBS: "0.90",
-                    vCBS,
+                    vCBS: moneyText(vCBS),
                 },
             },
         },
@@ -586,26 +590,26 @@ function buildRtcMvpTotal(
 
     return {
         IBSCBSTot: {
-            vBCIBSCBS,
+            vBCIBSCBS: moneyText(vBCIBSCBS),
             gIBS: {
                 gIBSUF: {
                     vDif: 0,
                     vDevTrib: 0,
-                    vIBSUF,
+                    vIBSUF: moneyText(vIBSUF),
                 },
                 gIBSMun: {
                     vDif: 0,
                     vDevTrib: 0,
-                    vIBSMun,
+                    vIBSMun: moneyText(vIBSMun),
                 },
-                vIBS,
+                vIBS: moneyText(vIBS),
                 vCredPres: 0,
                 vCredPresCondSus: 0,
             },
             gCBS: {
                 vDif: 0,
                 vDevTrib: 0,
-                vCBS,
+                vCBS: moneyText(vCBS),
                 vCredPres: 0,
                 vCredPresCondSus: 0,
             },
