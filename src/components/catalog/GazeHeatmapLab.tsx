@@ -423,27 +423,36 @@ function buildTargetSequence() {
   const sessionLowerInnerY = 0.8
   const sessionUpperBridgeY = 0.42
   const requiredCoverage = [
-    { x: 0.08, y: 0.5 },
-    { x: 0.92, y: 0.5 },
+    { x: 0.16, y: FAR_TARGET_Y },
+    { x: 0.34, y: FAR_TARGET_Y },
     { x: 0.5, y: FAR_TARGET_Y },
-    { x: 0.5, y: sessionNearY },
-    { x: 0.08, y: FAR_TARGET_Y },
-    { x: 0.92, y: FAR_TARGET_Y },
-    { x: 0.24, y: MID_FAR_TARGET_Y },
-    { x: 0.76, y: MID_FAR_TARGET_Y },
+    { x: 0.66, y: FAR_TARGET_Y },
+    { x: 0.84, y: FAR_TARGET_Y },
+    { x: 0.1, y: MID_FAR_TARGET_Y },
+    { x: 0.26, y: MID_FAR_TARGET_Y },
+    { x: 0.42, y: MID_FAR_TARGET_Y },
+    { x: 0.58, y: MID_FAR_TARGET_Y },
+    { x: 0.74, y: MID_FAR_TARGET_Y },
+    { x: 0.9, y: MID_FAR_TARGET_Y },
     { x: 0.28, y: sessionUpperBridgeY },
     { x: 0.5, y: sessionUpperBridgeY },
     { x: 0.72, y: sessionUpperBridgeY },
-    { x: 0.24, y: sessionMidNearY },
-    { x: 0.76, y: sessionMidNearY },
-    { x: 0.36, y: sessionLowerInnerY },
-    { x: 0.64, y: sessionLowerInnerY },
-    { x: 0.5, y: MID_FAR_TARGET_Y },
-    { x: 0.5, y: sessionMidNearY },
+    { x: 0.08, y: 0.5 },
+    { x: 0.24, y: 0.5 },
+    { x: 0.4, y: 0.5 },
+    { x: 0.6, y: 0.5 },
+    { x: 0.76, y: 0.5 },
+    { x: 0.92, y: 0.5 },
+    { x: 0.22, y: 0.66 },
+    { x: 0.38, y: 0.66 },
+    { x: 0.5, y: 0.66 },
+    { x: 0.62, y: 0.66 },
+    { x: 0.78, y: 0.66 },
+    { x: 0.34, y: MID_NEAR_TARGET_Y },
+    { x: 0.5, y: MID_NEAR_TARGET_Y },
+    { x: 0.66, y: MID_NEAR_TARGET_Y },
     { x: 0.5, y: sessionLowerInnerY },
     { x: 0.5, y: sessionNearY },
-    { x: 0.24, y: 0.5 },
-    { x: 0.76, y: 0.5 },
   ]
 
   return [
@@ -585,7 +594,7 @@ function projectLensY(lensEyeY: number, multiplier = 1) {
 }
 
 function projectSandboxLensY(lensEyeY: number, multiplier = 1) {
-  const range = lensEyeY < 0 ? LENS_DISTANCE_REFERENCE_Y : 1 - LENS_DISTANCE_REFERENCE_Y
+  const range = lensEyeY < 0 ? LENS_DISTANCE_REFERENCE_Y * 1.45 : 1 - LENS_DISTANCE_REFERENCE_Y
   return clamp(LENS_DISTANCE_REFERENCE_Y + lensEyeY * range * multiplier, 0.03, 0.95)
 }
 
@@ -835,6 +844,64 @@ function getRiskInsetAtY(y: number, profile: ProfileDescriptor) {
   return topValue + (profile.bottomInset - topValue) * bottomBlend
 }
 
+function getHeatmapLateralOpenness(grid: Float32Array, samples: SessionSample[]) {
+  const maxValue = getHeatMax(grid)
+  if (maxValue <= 0) {
+    if (!samples.length) return 0.2
+    const points = samples.map((sample) => projectSampleToLens(sample).point)
+    const sideDemand = points.reduce((max, point) => Math.max(max, Math.abs(point.x - 0.5)), 0)
+    return clamp((sideDemand - 0.16) / 0.34, 0, 1)
+  }
+
+  const threshold = maxValue * 0.14
+  let sideDemand = 0
+  for (let row = 0; row < HEAT_ROWS; row += 1) {
+    for (let col = 0; col < HEAT_COLS; col += 1) {
+      const value = grid[row * HEAT_COLS + col]
+      if (value < threshold) continue
+      const x = (col + 0.5) / HEAT_COLS
+      sideDemand = Math.max(sideDemand, Math.abs(x - 0.5))
+    }
+  }
+
+  return clamp((sideDemand - 0.18) / 0.3, 0, 1)
+}
+
+function buildFallbackKodakLinePaths(width: number, height: number, grid: Float32Array, samples: SessionSample[]) {
+  const openness = getHeatmapLateralOpenness(grid, samples)
+  const edgeMode = smoothstep(0.45, 0.95, openness)
+  const pushX = width * (0.02 + edgeMode * 0.14)
+  const pushY = height * edgeMode * 0.2
+
+  const makeSide = (mirror: boolean) => {
+    const path = new Path2D()
+    const direction = mirror ? -1 : 1
+    const mirrorX = (x: number) => (mirror ? width - x : x)
+    const point = (x: number, y: number) => ({
+      x: clamp(mirrorX(width * x) - direction * pushX, width * 0.018, width * 0.982),
+      y: clamp(height * y + pushY, height * 0.12, height * 0.94),
+    })
+
+    const start = point(0.055, 0.3)
+    const c1 = point(0.18, 0.3)
+    const c2 = point(0.29, 0.31)
+    const neck = point(0.29, 0.44)
+    const c3 = point(0.29, 0.57)
+    const c4 = point(0.22, 0.68)
+    const end = point(0.16, 0.92)
+
+    path.moveTo(start.x, start.y)
+    path.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, neck.x, neck.y)
+    path.bezierCurveTo(c3.x, c3.y, c4.x, c4.y, end.x, end.y)
+    return path
+  }
+
+  return {
+    left: makeSide(false),
+    right: makeSide(true),
+  }
+}
+
 function isRiskPoint(x: number, y: number, profile: ProfileDescriptor) {
   const inset = getRiskInsetAtY(y, profile)
   return x <= inset || x >= 1 - inset
@@ -875,13 +942,14 @@ function drawContinuousHeat(ctx: CanvasRenderingContext2D, grid: Float32Array, w
     for (let col = 0; col < HEAT_COLS; col += 1) {
       const value = grid[row * HEAT_COLS + col] / maxValue
       if (value < 0.08) continue
+      const intensity = Math.pow(value, 0.82)
       const centerX = ((col + 0.5) / HEAT_COLS) * width
       const centerY = ((row + 0.5) / HEAT_ROWS) * height
-      const radius = (width / HEAT_COLS) * (0.85 + value * 1.9)
+      const radius = (width / HEAT_COLS) * (1 + intensity * 1.65)
       const gradient = ctx.createRadialGradient(centerX, centerY, radius * 0.12, centerX, centerY, radius)
-      gradient.addColorStop(0, `rgba(239, 68, 68, ${0.14 + value * 0.44})`)
-      gradient.addColorStop(0.35, `rgba(249, 115, 22, ${0.1 + value * 0.34})`)
-      gradient.addColorStop(0.72, `rgba(251, 191, 36, ${0.06 + value * 0.18})`)
+      gradient.addColorStop(0, `rgba(239, 92, 68, ${0.1 + intensity * 0.3})`)
+      gradient.addColorStop(0.38, `rgba(249, 130, 22, ${0.08 + intensity * 0.24})`)
+      gradient.addColorStop(0.76, `rgba(251, 191, 36, ${0.05 + intensity * 0.14})`)
       gradient.addColorStop(1, 'rgba(255, 255, 255, 0)')
       ctx.fillStyle = gradient
       ctx.beginPath()
@@ -1059,6 +1127,17 @@ function drawLensHeatmap(
     ctx.lineCap = 'round'
     ctx.stroke(buildOpenLinePath(renderablePins.lineA, lensWidth, lensHeight))
     ctx.stroke(buildOpenLinePath(renderablePins.lineB, lensWidth, lensHeight))
+  } else {
+    const fallbackLines = buildFallbackKodakLinePaths(lensWidth, lensHeight, grid, samples)
+    ctx.strokeStyle = 'rgba(250, 204, 21, 0.92)'
+    ctx.lineWidth = 3.2
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.shadowColor = 'rgba(250, 204, 21, 0.32)'
+    ctx.shadowBlur = 8
+    ctx.stroke(fallbackLines.left)
+    ctx.stroke(fallbackLines.right)
+    ctx.shadowBlur = 0
   }
 
   if (mode === 'normalized' && envelopeRadii.length) {
@@ -1123,26 +1202,26 @@ function getHeatmapFieldOpenness(grid: Float32Array, samples: SessionSample[]) {
 function buildAdaptiveVisionBoundaryPaths(width: number, height: number, grid: Float32Array, samples: SessionSample[]) {
   const openness = getHeatmapFieldOpenness(grid, samples)
   const edgeMode = smoothstep(0.48, 0.9, openness)
-  const shiftX = width * (0.06 + edgeMode * 0.24)
-  const shiftY = height * edgeMode * 0.38
+  const shiftX = width * (0.03 + edgeMode * 0.11)
+  const shiftY = height * edgeMode * 0.16
 
   const makeSide = (mirror: boolean) => {
     const path = new Path2D()
     const direction = mirror ? -1 : 1
     const mirrorX = (x: number) => (mirror ? width - x : x)
     const point = (x: number, y: number) => ({
-      x: mirrorX(width * x) - direction * shiftX,
-      y: height * y + shiftY,
+      x: clamp(mirrorX(width * x) - direction * shiftX, width * 0.025, width * 0.975),
+      y: clamp(height * y + shiftY, height * 0.16, height * 0.94),
     })
 
     // Curva rigida inspirada nas geometrias reais: a forma nao muda, so e deslocada.
-    const start = point(0.035, 0.27)
-    const c1 = point(0.18, 0.28)
-    const c2 = point(0.29, 0.3)
-    const neck = point(0.29, 0.43)
-    const c3 = point(0.29, 0.56)
-    const c4 = point(0.23, 0.66)
-    const end = point(0.17, 0.9)
+    const start = point(0.06, 0.29)
+    const c1 = point(0.18, 0.29)
+    const c2 = point(0.3, 0.31)
+    const neck = point(0.3, 0.44)
+    const c3 = point(0.3, 0.57)
+    const c4 = point(0.23, 0.68)
+    const end = point(0.16, 0.91)
 
     path.moveTo(start.x, start.y)
     path.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, neck.x, neck.y)
@@ -1215,15 +1294,18 @@ function drawClientIdealLensResult(
   ctx.fillRect(0, 0, lensWidth, lensHeight)
 
   if (maxValue > 0) {
-    ctx.globalCompositeOperation = 'multiply'
     drawContinuousHeat(ctx, grid, lensWidth, lensHeight, maxValue)
-    ctx.globalCompositeOperation = 'source-over'
   }
 
   ctx.save()
-  ctx.strokeStyle = 'rgba(250, 204, 21, 0.92)'
-  ctx.lineWidth = 3.4
+  ctx.strokeStyle = 'rgba(15, 23, 42, 0.48)'
+  ctx.lineWidth = 6.2
   ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.stroke(fieldBoundaries.left)
+  ctx.stroke(fieldBoundaries.right)
+  ctx.strokeStyle = 'rgba(250, 204, 21, 0.96)'
+  ctx.lineWidth = 3.6
   ctx.shadowColor = 'rgba(250, 204, 21, 0.32)'
   ctx.shadowBlur = 10
   ctx.stroke(fieldBoundaries.left)
