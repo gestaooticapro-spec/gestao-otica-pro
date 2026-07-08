@@ -1365,7 +1365,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
             }
         }
         if (operation === "return") {
-            if (purpose !== "Devolução de compra") issues.push("Apenas Devolução de compra está liberada nesta etapa.");
+            if (purpose !== "Devolucao de compra") issues.push("Apenas Devolução de compra está liberada nesta etapa.");
             if (!selectedOrigin) issues.push("Selecione uma NF-e de entrada importada.");
         }
         if (operation === "shipment" && purpose.startsWith("Retorno") && !selectedShipmentOrigin) {
