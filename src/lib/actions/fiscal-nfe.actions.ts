@@ -656,7 +656,7 @@ function buildReturnItemTax(item: FiscalItem) {
                     modBC: Number(item.icms_mod_bc ?? 3),
                     vBC: base,
                     pICMS: moneyText(rate),
-                    vICMS: money(item.icms_valor),
+                    vICMS: moneyText(item.icms_valor),
                 },
             },
             PIS: { PISOutr: { CST: "99", vBC: 0, pPIS: 0, vPIS: 0 } },
@@ -1916,7 +1916,7 @@ export async function emitirNFe(input: NFeSaleInput) {
                             ? money(fiscalItems.reduce((sum, item) => sum + (Number(item.icms_valor || 0) > 0 ? Number(item.icms_base || item.valor_total) : 0), 0))
                             : 0,
                         vICMS: isReturnOperation
-                            ? money(fiscalItems.reduce((sum, item) => sum + Number(item.icms_valor || 0), 0))
+                            ? moneyText(fiscalItems.reduce((sum, item) => sum + Number(item.icms_valor || 0), 0))
                             : 0,
                         vICMSDeson: 0,
                         vFCP: 0,
