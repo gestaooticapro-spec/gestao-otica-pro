@@ -152,61 +152,127 @@ function StoreHeader({ title, subtitle, store, logoDataUrl }: StoreHeaderProps) 
   )
 }
 
+type CompactStoreHeaderProps = {
+  title: string
+  subtitle: string
+  store: InstallmentReceiptData['store']
+  pageLabel: string
+}
+
+function CompactStoreHeader({ title, subtitle, store, pageLabel }: CompactStoreHeaderProps) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        width: '100%',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        background: '#0f172a',
+        color: '#ffffff',
+        borderRadius: 24,
+        padding: '20px 26px',
+        gap: 24,
+      }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+        <div style={{ fontSize: 26, fontWeight: 700 }}>{store.name || title}</div>
+        <div style={{ fontSize: 16, opacity: 0.86 }}>{subtitle}</div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+        <div style={{ fontSize: 20, fontWeight: 700, textAlign: 'right' }}>{title}</div>
+        <div style={{ fontSize: 16, opacity: 0.82, textAlign: 'right' }}>{pageLabel}</div>
+      </div>
+    </div>
+  )
+}
+
 export async function generateCustomerFinancialSummaryImage(data: CustomerFinancialSummaryPdfData): Promise<Buffer> {
+  const images = await generateCustomerFinancialSummaryImages(data)
+  return images[0]
+}
+
+export async function generateCustomerFinancialSummaryImages(data: CustomerFinancialSummaryPdfData): Promise<Buffer[]> {
   const generatedAt = new Date().toLocaleDateString('pt-BR')
   const logoDataUrl = await loadStoreLogoDataUrl(data.store.logoFile)
-  const rowCount = data.financiamentos.reduce((sum, item) => sum + item.parcelas.length, 0)
-  const blockCount = data.financiamentos.length
   const width = 1400
-  const height = Math.max(900, 330 + (blockCount * 170) + (rowCount * 48))
+  const maxRowsPerPage = 4
+  const chunks = data.financiamentos.flatMap((financiamento) => {
+    const pages = []
+    for (let index = 0; index < financiamento.parcelas.length; index += maxRowsPerPage) {
+      pages.push({
+        financiamento,
+        parcelas: financiamento.parcelas.slice(index, index + maxRowsPerPage),
+      })
+    }
+    return pages
+  })
 
-  return imageResponseToBuffer(
-    (
-      <div
-        style={{
-          display: 'flex',
-          width: '100%',
-          height: '100%',
-          background: 'linear-gradient(180deg, #e2e8f0 0%, #f8fafc 16%, #ffffff 100%)',
-          fontFamily: 'Arial, sans-serif',
-          padding: 36,
-          color: '#0f172a',
-        }}
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: 24 }}>
-          <StoreHeader
-            title="Resumo financeiro"
-            subtitle={`${data.customerName} | Emitido em ${generatedAt}`}
-            store={data.store}
-            logoDataUrl={logoDataUrl}
-          />
+  const totalPages = Math.max(1, chunks.length)
+  const renderPage = async (pageIndex: number) => {
+    const chunk = chunks[pageIndex]
+    const includeSummary = pageIndex === 0
+    const headerHeight = includeSummary ? 290 : 100
+    const height = Math.max(920, headerHeight + 170 + (chunk.parcelas.length * 98))
 
-          <div style={{ display: 'flex', gap: 18, width: '100%' }}>
-            <div style={{ display: 'flex', flex: 1, background: '#ffffff', borderRadius: 24, padding: 22, border: '2px solid #dbeafe', flexDirection: 'column', gap: 10 }}>
-              <div style={{ fontSize: 18, color: '#64748b' }}>Total financiado</div>
-              <div style={{ fontSize: 34, fontWeight: 700 }}>{formatMoneyBR(data.totals.valorTotalFinanciado)}</div>
-            </div>
-            <div style={{ display: 'flex', flex: 1, background: '#eff6ff', borderRadius: 24, padding: 22, border: '2px solid #bfdbfe', flexDirection: 'column', gap: 10 }}>
-              <div style={{ fontSize: 18, color: '#1d4ed8' }}>Pago</div>
-              <div style={{ fontSize: 34, fontWeight: 700, color: '#1e3a8a' }}>
-                {`${data.totals.parcelasPagas}/${data.totals.totalParcelas} parcelas | ${formatMoneyBR(data.totals.valorPago)}`}
-              </div>
-            </div>
-            <div style={{ display: 'flex', flex: 1, background: '#fff7ed', borderRadius: 24, padding: 22, border: '2px solid #fed7aa', flexDirection: 'column', gap: 10 }}>
-              <div style={{ fontSize: 18, color: '#c2410c' }}>Em aberto</div>
-              <div style={{ fontSize: 34, fontWeight: 700, color: '#9a3412' }}>
-                {`${data.totals.parcelasPendentes} parcelas | ${formatMoneyBR(data.totals.valorRestante)}`}
-              </div>
-              {data.nextDue?.data ? (
-                <div style={{ fontSize: 18, color: '#7c2d12' }}>
-                  {`Proximo vencimento: parcela ${data.nextDue.numeroParcela} em ${formatDateBR(data.nextDue.data)} (${formatMoneyBR(data.nextDue.valor)})`}
+    return imageResponseToBuffer(
+      (
+        <div
+          style={{
+            display: 'flex',
+            width: '100%',
+            height: '100%',
+            background: 'linear-gradient(180deg, #e2e8f0 0%, #f8fafc 16%, #ffffff 100%)',
+            fontFamily: 'Arial, sans-serif',
+            padding: 36,
+            color: '#0f172a',
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: 24 }}>
+            {includeSummary ? (
+              <StoreHeader
+                title="Resumo financeiro"
+                subtitle={`${data.customerName} | Emitido em ${generatedAt}`}
+                store={data.store}
+                logoDataUrl={logoDataUrl}
+              />
+            ) : (
+              <CompactStoreHeader
+                title="Resumo financeiro"
+                subtitle={`${data.customerName} | Emitido em ${generatedAt}`}
+                store={data.store}
+                pageLabel={`Pagina ${pageIndex + 1} de ${totalPages}`}
+              />
+            )}
+
+            {includeSummary ? (
+              <div style={{ display: 'flex', gap: 18, width: '100%' }}>
+                <div style={{ display: 'flex', flex: 1, background: '#ffffff', borderRadius: 24, padding: 22, border: '2px solid #dbeafe', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ fontSize: 18, color: '#64748b' }}>Total financiado</div>
+                  <div style={{ fontSize: 34, fontWeight: 700 }}>{formatMoneyBR(data.totals.valorTotalFinanciado)}</div>
                 </div>
-              ) : null}
-            </div>
-          </div>
+                <div style={{ display: 'flex', flex: 1, background: '#eff6ff', borderRadius: 24, padding: 22, border: '2px solid #bfdbfe', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ fontSize: 18, color: '#1d4ed8' }}>Pago</div>
+                  <div style={{ fontSize: 34, fontWeight: 700, color: '#1e3a8a' }}>
+                    {`${data.totals.parcelasPagas}/${data.totals.totalParcelas} parcelas | ${formatMoneyBR(data.totals.valorPago)}`}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flex: 1, background: '#fff7ed', borderRadius: 24, padding: 22, border: '2px solid #fed7aa', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ fontSize: 18, color: '#c2410c' }}>Em aberto</div>
+                  <div style={{ fontSize: 34, fontWeight: 700, color: '#9a3412' }}>
+                    {`${data.totals.parcelasPendentes} parcelas | ${formatMoneyBR(data.totals.valorRestante)}`}
+                  </div>
+                  {data.nextDue?.data ? (
+                    <div style={{ fontSize: 18, color: '#7c2d12' }}>
+                      {`Proximo vencimento: parcela ${data.nextDue.numeroParcela} em ${formatDateBR(data.nextDue.data)} (${formatMoneyBR(data.nextDue.valor)})`}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-            {data.financiamentos.map((financiamento) => {
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {(() => {
+                const financiamento = chunk.financiamento
               const totalPagoVenda = financiamento.parcelas.reduce((sum, parcela) => {
                 const isPago = String(parcela.status || '').toLowerCase() === 'pago'
                 return sum + (isPago ? (parcela.valorPago || parcela.valor) : 0)
@@ -216,7 +282,7 @@ export async function generateCustomerFinancialSummaryImage(data: CustomerFinanc
                 return sum + (isPago ? 0 : parcela.valor)
               }, 0)
 
-              return (
+                return (
                 <div
                   key={financiamento.id}
                   style={{
@@ -256,7 +322,7 @@ export async function generateCustomerFinancialSummaryImage(data: CustomerFinanc
                       <div style={{ width: 200 }}>Valor pago</div>
                       <div style={{ flex: 1 }}>Status</div>
                     </div>
-                    {financiamento.parcelas.map((parcela) => {
+                    {chunk.parcelas.map((parcela) => {
                       const isPago = String(parcela.status || '').toLowerCase() === 'pago'
                       const valorPago = isPago ? (parcela.valorPago || parcela.valor) : 0
                       return (
@@ -284,15 +350,18 @@ export async function generateCustomerFinancialSummaryImage(data: CustomerFinanc
                     })}
                   </div>
                 </div>
-              )
-            })}
+                )
+              })()}
+            </div>
           </div>
         </div>
-      </div>
-    ),
-    width,
-    height
-  )
+      ),
+      width,
+      height
+    )
+  }
+
+  return Promise.all(Array.from({ length: totalPages }, (_, index) => renderPage(index)))
 }
 
 export async function generateCustomerPrescriptionSummaryImage(data: CustomerPrescriptionSummaryPdfData): Promise<Buffer> {

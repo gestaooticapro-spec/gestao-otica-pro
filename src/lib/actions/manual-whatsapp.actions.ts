@@ -13,6 +13,7 @@ import {
 } from '@/lib/pdf-generator'
 import {
   generateCustomerFinancialSummaryImage,
+  generateCustomerFinancialSummaryImages,
   generateCustomerPrescriptionSummaryImage,
 } from '@/lib/whatsapp-summary-image'
 import {
@@ -734,7 +735,7 @@ export async function sendCustomerFinancialSummaryWhatsApp(
     }
 
     const storeProfile = await getStoreDocumentProfile(supabaseAdmin, storeId)
-    const imageBuffer = await generateCustomerFinancialSummaryImage({
+    const imageBuffers = await generateCustomerFinancialSummaryImages({
       customerName: customer.full_name || 'Cliente',
       store: storeProfile,
       totals: financialData.totais,
@@ -742,23 +743,43 @@ export async function sendCustomerFinancialSummaryWhatsApp(
       financiamentos: financialData.financiamentos,
     })
     const firstName = String(customer.full_name || '').trim().split(/\s+/)[0] || 'cliente'
+    let lastResult: SendManualWhatsAppResult | null = null
 
-    return await sendManualWhatsAppMediaWithContext({
-      storeId,
-      remotePhone,
-      mediaType: 'image',
-      mimeType: 'image/png',
-      fileName: `financeiro-cliente-${customerId}.png`,
-      fileBase64: imageBuffer.toString('base64'),
-      caption: `Ola, ${firstName}! Segue o detalhamento financeiro atualizado.`,
-      messageType: 'document_attachment',
-      source: 'customer_history.financial_image_button',
-      metadata: {
-        customerId,
-        documentType: 'customer_financial_summary',
-        mediaFormat: 'png',
-      },
-    }, supabaseAdmin)
+    for (let index = 0; index < imageBuffers.length; index += 1) {
+      const isMultiPage = imageBuffers.length > 1
+      const pageSuffix = isMultiPage ? ` (${index + 1}/${imageBuffers.length})` : ''
+      const result = await sendManualWhatsAppMediaWithContext({
+        storeId,
+        remotePhone,
+        mediaType: 'image',
+        mimeType: 'image/png',
+        fileName: `financeiro-cliente-${customerId}-${index + 1}.png`,
+        fileBase64: imageBuffers[index].toString('base64'),
+        caption: `Ola, ${firstName}! Segue o detalhamento financeiro atualizado${pageSuffix}.`,
+        messageType: 'document_attachment',
+        source: 'customer_history.financial_image_button',
+        metadata: {
+          customerId,
+          documentType: 'customer_financial_summary',
+          mediaFormat: 'png',
+          pageIndex: index + 1,
+          pageCount: imageBuffers.length,
+        },
+      }, supabaseAdmin)
+
+      if (!result.success) {
+        return result
+      }
+
+      lastResult = result
+    }
+
+    return lastResult || {
+      success: false,
+      routeUsed: 'external_fallback',
+      message: 'Nao foi possivel gerar a imagem financeira.',
+      shouldOpenExternal: false,
+    }
   } catch (error) {
     console.error('[Manual WhatsApp] Failed to send customer financial summary:', error)
     return {
