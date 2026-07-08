@@ -41,6 +41,7 @@ type FinanciamentoBoxProps = {
     disabled: boolean
     isQuitado?: boolean
     isModal?: boolean
+    whatsappReceiptEnabled?: boolean
 }
 
 // Helpers
@@ -191,6 +192,7 @@ export default function FinanciamentoBox({
     disabled,
     isQuitado = false,
     isModal = false,
+    whatsappReceiptEnabled = false,
 }: FinanciamentoBoxProps) {
 
     const modules = useStoreModules()
@@ -439,19 +441,21 @@ export default function FinanciamentoBox({
                                                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-500/20 text-green-400 text-[10px] font-bold border border-green-500/30">
                                                     <CheckCircle2 className="h-3 w-3" /> PAGO
                                                 </span>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => void handleSendInstallmentReceipt(p.id)}
-                                                    disabled={sendingReceiptInstallmentId === p.id}
-                                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-300 text-[10px] font-bold border border-emerald-500/20 hover:bg-emerald-500/20 transition-all disabled:opacity-50"
-                                                >
-                                                    {sendingReceiptInstallmentId === p.id ? (
-                                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                                    ) : (
-                                                        <MessageCircle className="h-3 w-3" />
-                                                    )}
-                                                    {sentReceiptInstallmentIds.includes(p.id) ? 'ENVIADO' : 'RECIBO'}
-                                                </button>
+                                                {whatsappReceiptEnabled ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void handleSendInstallmentReceipt(p.id)}
+                                                        disabled={sendingReceiptInstallmentId === p.id}
+                                                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-300 text-[10px] font-bold border border-emerald-500/20 hover:bg-emerald-500/20 transition-all disabled:opacity-50"
+                                                    >
+                                                        {sendingReceiptInstallmentId === p.id ? (
+                                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                                        ) : (
+                                                            <MessageCircle className="h-3 w-3" />
+                                                        )}
+                                                        {sentReceiptInstallmentIds.includes(p.id) ? 'ENVIADO' : 'RECIBO'}
+                                                    </button>
+                                                ) : null}
                                             </div>
                                         ) : (
                                             <button

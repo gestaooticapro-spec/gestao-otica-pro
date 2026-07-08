@@ -21,6 +21,7 @@ type ListaPagamentosProps = {
   storeId: number
   onDelete: () => Promise<void>
   disabled: boolean
+  whatsappReceiptEnabled?: boolean
 }
 
 const formatCurrency = (value: number | null | undefined): string => {
@@ -86,6 +87,7 @@ export default function ListaPagamentos({
   storeId,
   onDelete,
   disabled,
+  whatsappReceiptEnabled = false,
 }: ListaPagamentosProps) {
   const [sendingReceiptPaymentId, setSendingReceiptPaymentId] = useState<number | null>(null)
   const [sentReceiptPaymentIds, setSentReceiptPaymentIds] = useState<number[]>([])
@@ -129,7 +131,7 @@ export default function ListaPagamentos({
         <div className="w-2/12">Responsavel</div>
         <div className="w-2/12 text-right">Valor</div>
         <div className="w-1/12 text-center">Parc.</div>
-        <div className="w-1/12 text-center">WA</div>
+        <div className="w-1/12 text-center">{whatsappReceiptEnabled ? 'WA' : ''}</div>
         <div className="w-1/12 text-right pr-2"></div>
       </div>
 
@@ -160,20 +162,22 @@ export default function ListaPagamentos({
                 {pag.parcelas}x
               </div>
               <div className="w-full md:w-1/12 flex justify-end md:justify-center pr-1 md:pr-0 mt-2 md:mt-0">
-                <button
-                  type="button"
-                  onClick={() => void handleSendReceipt(pag.id)}
-                  disabled={sendingReceiptPaymentId === pag.id}
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-emerald-500/20 bg-emerald-500/10 text-[10px] font-bold uppercase tracking-wide text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50 transition-colors"
-                  title="Enviar recibo por WhatsApp"
-                >
-                  {sendingReceiptPaymentId === pag.id ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <MessageCircle className="h-3.5 w-3.5" />
-                  )}
-                  {sentReceiptPaymentIds.includes(pag.id) ? 'Enviado' : 'Recibo'}
-                </button>
+                {whatsappReceiptEnabled ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleSendReceipt(pag.id)}
+                    disabled={sendingReceiptPaymentId === pag.id}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-emerald-500/20 bg-emerald-500/10 text-[10px] font-bold uppercase tracking-wide text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50 transition-colors"
+                    title="Enviar recibo por WhatsApp"
+                  >
+                    {sendingReceiptPaymentId === pag.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <MessageCircle className="h-3.5 w-3.5" />
+                    )}
+                    {sentReceiptPaymentIds.includes(pag.id) ? 'Enviado' : 'Recibo'}
+                  </button>
+                ) : null}
               </div>
 
               <div className="w-full md:w-1/12 flex justify-end pr-1 opacity-0 group-hover:opacity-100 transition-opacity">

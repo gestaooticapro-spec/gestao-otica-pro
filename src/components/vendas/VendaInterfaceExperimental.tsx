@@ -762,6 +762,7 @@ export default function VendaInterfaceExperimental({
     const hasPhone = !!(customer?.fone_movel || customer?.phone)?.toString().replace(/\D/g, '')
     const canOpenParcelamento = modules.installments && hasCpf && hasPhone
     const isSingleOSMode = storeSettings?.service_order_mode === 'single'
+    const isWhatsAppAutomaticEnabled = storeSettings?.whatsapp_automation?.enabled === true
     const singleServiceOrder = serviceOrders[singleOSIndex] || serviceOrders[0]
     const showSingleOSCard = isSingleOSMode && (!!singleServiceOrder || isSingleOSDraftOpen)
     const canLaunchSingleOS = isSingleOSMode && !singleServiceOrder && !isSingleOSDraftOpen && !isVendaFechadaOuCancelada
@@ -1018,7 +1019,14 @@ export default function VendaInterfaceExperimental({
                         theme="green"
                     >
                         <div className="p-1">
-                            <ListaPagamentos pagamentos={pagamentos} vendaId={venda.id} storeId={venda.store_id} onDelete={onDataReload} disabled={isVendaFechadaOuCancelada} />
+                            <ListaPagamentos
+                                pagamentos={pagamentos}
+                                vendaId={venda.id}
+                                storeId={venda.store_id}
+                                onDelete={onDataReload}
+                                disabled={isVendaFechadaOuCancelada}
+                                whatsappReceiptEnabled={isWhatsAppAutomaticEnabled}
+                            />
                         </div>
                     </SectionCard>
 
@@ -1043,6 +1051,7 @@ export default function VendaInterfaceExperimental({
                                     onFinanceAdded={onDataReload}
                                     disabled={venda.status === 'Cancelada'}
                                     isQuitado={isQuitado}
+                                    whatsappReceiptEnabled={isWhatsAppAutomaticEnabled}
                                 />
                             ) : (
                                 <div className="text-center py-6 text-slate-500 text-xs font-medium italic border-2 border-dashed border-white/10 rounded-xl bg-white/5">
@@ -1158,6 +1167,7 @@ export default function VendaInterfaceExperimental({
                     disabled={isVendaFechadaOuCancelada}
                     isQuitado={isQuitado}
                     isModal={true}
+                    whatsappReceiptEnabled={isWhatsAppAutomaticEnabled}
                 />
             </SimpleModal>}
 

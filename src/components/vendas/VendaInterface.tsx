@@ -184,7 +184,7 @@ export default function VendaInterface({
 
                         {modules.installments && activeTab === 'carne' && (
                             <div className="space-y-3">
-                                <FinanciamentoBox financiamento={financiamento} vendaId={venda.id} customerId={venda.customer_id} customer={customer} storeId={venda.store_id} employeeId={employeeIdFinanceiro} valorRestante={venda.valor_restante ?? 0} onFinanceAdded={onDataReload} disabled={isVendaFechadaOuCancelada} isQuitado={isQuitado} />
+                                <FinanciamentoBox financiamento={financiamento} vendaId={venda.id} customerId={venda.customer_id} customer={customer} storeId={venda.store_id} employeeId={employeeIdFinanceiro} valorRestante={venda.valor_restante ?? 0} onFinanceAdded={onDataReload} disabled={isVendaFechadaOuCancelada} isQuitado={isQuitado} whatsappReceiptEnabled={false} />
                             </div>
                         )}
                     </div>
@@ -210,7 +210,7 @@ export default function VendaInterface({
                                 <span className="text-[10px] font-bold text-gray-500 uppercase">Extrato Financeiro</span>
                             </div>
                             <div className="p-1">
-                                <ListaPagamentos pagamentos={pagamentos} vendaId={venda.id} storeId={venda.store_id} onDelete={onDataReload} disabled={isVendaFechadaOuCancelada} />
+                                <ListaPagamentos pagamentos={pagamentos} vendaId={venda.id} storeId={venda.store_id} onDelete={onDataReload} disabled={isVendaFechadaOuCancelada} whatsappReceiptEnabled={false} />
                             </div>
                         </div>
 
