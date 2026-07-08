@@ -647,7 +647,7 @@ function buildItemTax(item: FiscalItem, csosn: "102" | "400" = "102") {
 function buildReturnItemTax(item: FiscalItem) {
     const rate = Number(item.icms_aliquota || 0);
     if (rate > 0 && Number(item.icms_valor || 0) > 0) {
-        const base = money(item.valor_total);
+        const base = money(item.icms_base || item.valor_total);
         return {
             ICMS: {
                 ICMSSN900: {
@@ -656,7 +656,7 @@ function buildReturnItemTax(item: FiscalItem) {
                     modBC: Number(item.icms_mod_bc ?? 3),
                     vBC: base,
                     pICMS: moneyText(rate),
-                    vICMS: money(base * rate / 100),
+                    vICMS: money(item.icms_valor),
                 },
             },
             PIS: { PISOutr: { CST: "99", vBC: 0, pPIS: 0, vPIS: 0 } },
@@ -1542,6 +1542,7 @@ export async function emitirNFe(input: NFeSaleInput) {
                     const requested = requestedByCode.get(cleanText(originItem.codigo))!;
                     const quantity = Number(requested.quantidade || 0);
                     const originalQuantity = Number(originItem.quantidade || 0);
+                    const quantityFactor = originalQuantity > 0 ? quantity / originalQuantity : 1;
                     const ncm = cleanDigits(originItem.ncm);
                     if (quantity <= 0 || quantity > originalQuantity) {
                         throw new Error(`Quantidade de devolucao invalida para o item ${originItem.descricao}. Maximo: ${originalQuantity}.`);
@@ -1560,9 +1561,9 @@ export async function emitirNFe(input: NFeSaleInput) {
                         valor_unitario: money(originItem.valor_unitario),
                         valor_total: money(quantity * Number(originItem.valor_unitario || 0)),
                         origem: Number(originItem.origem || 0),
-                        icms_base: Number(originItem.icms_base || 0),
+                        icms_base: money(Number(originItem.icms_base || 0) * quantityFactor),
                         icms_aliquota: Number(originItem.icms_aliquota || 0),
-                        icms_valor: Number(originItem.icms_valor || 0),
+                        icms_valor: money(Number(originItem.icms_valor || 0) * quantityFactor),
                         icms_mod_bc: Number(originItem.icms_mod_bc ?? 3),
                     };
                 });
@@ -1912,10 +1913,10 @@ export async function emitirNFe(input: NFeSaleInput) {
                 total: {
                     ICMSTot: {
                         vBC: isReturnOperation
-                            ? money(fiscalItems.reduce((sum, item) => sum + (Number(item.icms_aliquota || 0) > 0 ? item.valor_total : 0), 0))
+                            ? money(fiscalItems.reduce((sum, item) => sum + (Number(item.icms_valor || 0) > 0 ? Number(item.icms_base || item.valor_total) : 0), 0))
                             : 0,
                         vICMS: isReturnOperation
-                            ? money(fiscalItems.reduce((sum, item) => sum + money(item.valor_total * Number(item.icms_aliquota || 0) / 100), 0))
+                            ? money(fiscalItems.reduce((sum, item) => sum + Number(item.icms_valor || 0), 0))
                             : 0,
                         vICMSDeson: 0,
                         vFCP: 0,
