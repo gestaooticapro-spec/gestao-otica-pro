@@ -56,6 +56,40 @@ export async function generateSmartBarcode(storeId: number, costPrice: number | 
   return `${prefixo}${nextSeq}`
 }
 
+function isSupplierPrimaryKeyConflict(error: any) {
+  return error?.code === '23505'
+    && String(error?.message || error?.details || '').includes('suppliers_pkey')
+}
+
+async function insertSupplierWithPkeyRetry(supabaseAdmin: any, payload: Record<string, unknown>) {
+  const { data: inserted, error } = await supabaseAdmin
+    .from('suppliers')
+    .insert(payload)
+    .select('*')
+    .single()
+
+  if (!isSupplierPrimaryKeyConflict(error)) {
+    return { data: inserted, error }
+  }
+
+  console.warn('[saveSupplier] Sequence de suppliers desalinhada. Tentando inserir com proximo ID disponivel.')
+
+  const { data: maxRow, error: maxError } = await supabaseAdmin
+    .from('suppliers')
+    .select('id')
+    .order('id', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (maxError) return { data: null, error: maxError }
+
+  return supabaseAdmin
+    .from('suppliers')
+    .insert({ ...payload, id: (maxRow?.id || 0) + 1 })
+    .select('*')
+    .single()
+}
+
 // --- SCHEMAS ---
 const LenteSchema = z.object({
   id: z.coerce.number().optional(),
@@ -492,7 +526,7 @@ export async function saveSupplier(prevState: CatalogActionResult, formData: For
       const res = await (supabaseAdmin.from('suppliers') as any).update(payload).eq('id', id)
       error = res.error
     } else {
-      const res = await (supabaseAdmin.from('suppliers') as any).insert(payload)
+      const res = await insertSupplierWithPkeyRetry(supabaseAdmin as any, payload)
       error = res.error
     }
 

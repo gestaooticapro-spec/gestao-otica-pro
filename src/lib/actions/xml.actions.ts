@@ -57,6 +57,40 @@ const parseFloatSafe = (val: any) => {
     return parseFloat(val)
 }
 
+function isSupplierPrimaryKeyConflict(error: any) {
+    return error?.code === '23505'
+        && String(error?.message || error?.details || '').includes('suppliers_pkey')
+}
+
+async function insertSupplierWithPkeyRetry(supabaseAdmin: any, payload: Record<string, unknown>) {
+    const { data: inserted, error } = await supabaseAdmin
+        .from('suppliers')
+        .insert(payload)
+        .select()
+        .single()
+
+    if (!isSupplierPrimaryKeyConflict(error)) {
+        return { data: inserted, error }
+    }
+
+    console.warn('[XML Import] Sequence de suppliers desalinhada. Tentando inserir com proximo ID disponivel.')
+
+    const { data: maxRow, error: maxError } = await supabaseAdmin
+        .from('suppliers')
+        .select('id')
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+    if (maxError) return { data: null, error: maxError }
+
+    return supabaseAdmin
+        .from('suppliers')
+        .insert({ ...payload, id: (maxRow?.id || 0) + 1 })
+        .select()
+        .single()
+}
+
 export async function parseNfeAndPreview(formData: FormData): Promise<{ success: boolean, data?: XmlPreviewData, message?: string }> {
     const supabaseAdmin = createAdminClient()
     const { data: { user } } = await createClient().auth.getUser()
@@ -197,7 +231,7 @@ export async function saveImportedData(data: XmlPreviewData, storeId: number) {
         let supplierId = data.fornecedor.id_sistema
 
         if (!supplierId) {
-            const { data: newSup, error } = await (supabaseAdmin.from('suppliers') as any).insert({
+            const supplierPayload = {
                 tenant_id: (profile as any).tenant_id,
                 store_id: storeId,
                 nome_fantasia: data.fornecedor.fantasia,
@@ -206,7 +240,9 @@ export async function saveImportedData(data: XmlPreviewData, storeId: number) {
                 inscricao_estadual: data.fornecedor.ie,
                 cidade: data.fornecedor.cidade,
                 uf: data.fornecedor.uf,
-            }).select().single()
+            }
+
+            const { data: newSup, error } = await insertSupplierWithPkeyRetry(supabaseAdmin as any, supplierPayload)
 
             if (error) throw new Error(`Erro ao criar fornecedor: ${error.message}`)
             supplierId = newSup.id
