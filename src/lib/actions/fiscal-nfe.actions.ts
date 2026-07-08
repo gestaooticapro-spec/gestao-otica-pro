@@ -655,7 +655,7 @@ function buildReturnItemTax(item: FiscalItem) {
                     CSOSN: "900",
                     modBC: Number(item.icms_mod_bc ?? 3),
                     vBC: base,
-                    pICMS: rate,
+                    pICMS: moneyText(rate),
                     vICMS: money(base * rate / 100),
                 },
             },
