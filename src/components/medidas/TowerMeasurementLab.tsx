@@ -2,13 +2,14 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
-import { ArrowLeft, Bot, Camera, Loader2, Maximize2, MonitorUp, Play, ScanLine, Square, Wand2, ZoomIn, ZoomOut } from 'lucide-react'
+import { ArrowLeft, Bot, Camera, ImageUp, Loader2, Maximize2, MonitorUp, Play, ScanLine, Square, Wand2, ZoomIn, ZoomOut } from 'lucide-react'
 import { locateTowerMeasurementPointsWithAiAction } from '@/lib/actions/tower-measurement-ai.actions'
 
 type Landmark = { x: number; y: number; z?: number }
 type MediaPipeModule = typeof import('@mediapipe/tasks-vision')
 type FaceLandmarkerInstance = Awaited<ReturnType<MediaPipeModule['FaceLandmarker']['createFromOptions']>>
 type LensType = 'surfacada' | 'bifocal' | 'pronto'
+type DetectionPreset = 'standard' | 'transparent' | 'closedContour'
 
 type PointKey =
   | 'calibA'
@@ -29,7 +30,6 @@ type PointKey =
   | 'palpebraL'
 
 type Pt = { x: number; y: number }
-type CropRect = { x: number; y: number; width: number; height: number }
 type Handles = Record<PointKey, Pt>
 type CameraSettings = { width?: number; height?: number; frameRate?: number }
 type CapturePayload = {
@@ -97,6 +97,11 @@ const MEASURE_GROUPS: Array<{ label: string; keys: PointKey[] }> = [
   { label: 'Palpebra', keys: ['palpebraR', 'palpebraL'] },
 ]
 const SNAP_KEYS = new Set<PointKey>(['bridgeR', 'bridgeL', 'lensLeft', 'lensRight', 'lensTop', 'lensBottom', 'diagA', 'diagB'])
+const DETECTION_PRESETS: Array<{ key: DetectionPreset; label: string }> = [
+  { key: 'standard', label: 'Padrao' },
+  { key: 'transparent', label: 'Aro transparente' },
+  { key: 'closedContour', label: 'Contorno fechado' },
+]
 
 interface TowerMeasurementLabProps {
   storeId: number
@@ -106,14 +111,13 @@ interface TowerMeasurementLabProps {
 export default function TowerMeasurementLab({ storeId, clientMode = false }: TowerMeasurementLabProps) {
   const channelName = `tower-measurement-lab-${storeId}`
   const channelRef = useRef<BroadcastChannel | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const stageRef = useRef<HTMLElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const landmarkerRef = useRef<FaceLandmarkerInstance | null>(null)
   const svgRef = useRef<SVGSVGElement | null>(null)
   const draggingRef = useRef<PointKey | null>(null)
-  const cropDragRef = useRef<'move' | 'nw' | 'ne' | 'sw' | 'se' | null>(null)
-  const cropMoveOffsetRef = useRef<Pt>({ x: 0, y: 0 })
   const snapImageDataRef = useRef<ImageData | null>(null)
   const statusRef = useRef(clientMode ? 'Aguardando painel' : 'Tela cliente aguardando')
 
@@ -121,13 +125,13 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
   const [handles, setHandles] = useState<Handles | null>(null)
   const [activeKeys, setActiveKeys] = useState<PointKey[]>(MEASURE_GROUPS[0].keys)
   const [lensType, setLensType] = useState<LensType>('surfacada')
+  const [detectionPreset, setDetectionPreset] = useState<DetectionPreset>('standard')
   const [referenceMm, setReferenceMm] = useState(CARD_MM)
   const [cameraOn, setCameraOn] = useState(false)
   const [status, setStatus] = useState(clientMode ? 'Aguardando painel' : 'Tela cliente aguardando')
   const [cameraSettings, setCameraSettings] = useState<CameraSettings | undefined>()
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [operatorZoom, setOperatorZoom] = useState(1)
-  const [aiCrop, setAiCrop] = useState<CropRect | null>(null)
   const [isAiPending, startAiTransition] = useTransition()
 
   useEffect(() => {
@@ -263,7 +267,11 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
     const file = await takeCameraPhoto()
     if (!file) return
 
-    setStatus('Processando foto')
+    await processPhotoFile(file, 'Processando foto', 'Foto enviada')
+  }
+
+  async function processPhotoFile(file: File, processingStatus: string, successPrefix: string) {
+    setStatus(processingStatus)
     const dataUrl = await readFileAsDataUrl(file)
     const image = await loadImage(dataUrl)
     const landmarks = await detectLandmarks(image)
@@ -278,7 +286,12 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
     }
     channelRef.current?.postMessage({ type: 'capture', capture: payload } satisfies TowerMessage)
     void applyCapture(payload)
-    setStatus(landmarks?.length ? 'Foto enviada com rosto detectado' : 'Foto enviada')
+    setStatus(landmarks?.length ? `${successPrefix} com rosto detectado` : successPrefix)
+  }
+
+  async function handleUploadedPhoto(file: File | null) {
+    if (!file) return
+    await processPhotoFile(file, 'Processando foto carregada', 'Foto carregada')
   }
 
   async function takeCameraPhoto() {
@@ -349,12 +362,22 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
     void applyCapture(capture)
   }
 
-  async function applyCapture(nextCapture: CapturePayload) {
+  function updateDetectionPreset(nextPreset: DetectionPreset) {
+    setDetectionPreset(nextPreset)
+    if (capture) void applyCapture(capture, nextPreset)
+  }
+
+  function cycleDetectionPreset() {
+    const currentIndex = DETECTION_PRESETS.findIndex((preset) => preset.key === detectionPreset)
+    const nextPreset = DETECTION_PRESETS[(currentIndex + 1) % DETECTION_PRESETS.length]?.key ?? 'standard'
+    updateDetectionPreset(nextPreset)
+  }
+
+  async function applyCapture(nextCapture: CapturePayload, preset = detectionPreset) {
     setCapture(nextCapture)
     snapImageDataRef.current = null
-    const fallbackHandles = createInitialHandles(nextCapture)
+    const fallbackHandles = createInitialHandles(nextCapture, undefined, preset)
     setHandles(fallbackHandles)
-    setAiCrop(buildAiCropRect(nextCapture, fallbackHandles))
     setOperatorZoom(1)
     setStatus('Foto recebida')
     setCameraSettings(nextCapture.cameraSettings)
@@ -362,9 +385,8 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
     try {
       const image = await loadImage(nextCapture.dataUrl)
       snapImageDataRef.current = createImageData(image)
-      const nextHandles = createInitialHandles(nextCapture, image)
+      const nextHandles = createInitialHandles(nextCapture, image, preset)
       setHandles(nextHandles)
-      setAiCrop(buildAiCropRect(nextCapture, nextHandles))
     } catch {
       snapImageDataRef.current = null
       // The proportional fallback above is enough when pixel inspection is unavailable.
@@ -372,22 +394,24 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
   }
 
   function updateHandle(key: PointKey, point: Pt) {
-    const nextPoint = SNAP_KEYS.has(key) ? snapToDarkEdge(snapImageDataRef.current, point, 18) : point
-    setHandles((current) => (current ? { ...current, [key]: nextPoint } : current))
+    const nextPoint = SNAP_KEYS.has(key) ? snapToLensBoundary(snapImageDataRef.current, point, 18) : point
+    setHandles((current) => {
+      if (!current) return current
+      const next = { ...current, [key]: nextPoint }
+      return ['pupilR', 'pupilL', 'bridgeR', 'bridgeL'].includes(key) ? alignBridgeHandlesToPupilAxis(next) : next
+    })
   }
 
   function locateWithAi() {
     if (!capture || !handles) return
-    setStatus('IA localizando armacao...')
+    setStatus('IA localizando lente...')
     startAiTransition(() => {
       void (async () => {
-        const crop = await createAiCrop(capture, aiCrop ?? buildAiCropRect(capture, handles))
         const result = await locateTowerMeasurementPointsWithAiAction({
-          dataUrl: crop.dataUrl,
-          width: crop.width,
-          height: crop.height,
-          crop: crop.rect,
-          existingHandles: remapHandlesForCrop(handles, crop.rect),
+          dataUrl: capture.dataUrl,
+          width: capture.width,
+          height: capture.height,
+          existingHandles: handles,
         })
 
         if (!result.success || !result.handles) {
@@ -397,8 +421,7 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
 
         setHandles((current) => {
           if (!current) return current
-          const remapped = remapHandlesFromCrop(result.handles ?? {}, crop.rect)
-          return { ...current, ...remapped }
+          return stabilizeBridgeHandlesToPupilAxis({ ...current, ...(result.handles ?? {}) }, estimatePxPerMmFromPupils(current))
         })
         setStatus(`IA aplicada: ${result.model ?? result.provider ?? 'modelo vision'} (${Object.keys(result.handles).length} pontos)`)
       })()
@@ -421,39 +444,6 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
       x: clamp(transformed.x, 0, capture?.width ?? 0),
       y: clamp(transformed.y, 0, capture?.height ?? 0),
     }
-  }
-
-  function updateAiCropFromPointer(event: React.PointerEvent<SVGSVGElement>) {
-    if (!capture || !aiCrop || !cropDragRef.current) return
-    const point = pointFromPointer(event)
-    if (!point) return
-
-    setAiCrop((current): CropRect | null => {
-      if (!current || !capture || !cropDragRef.current) return current
-      const minSize = Math.max(80, Math.min(capture.width, capture.height) * 0.08)
-
-      if (cropDragRef.current === 'move') {
-        const x = clamp(point.x - cropMoveOffsetRef.current.x, 0, capture.width - current.width)
-        const y = clamp(point.y - cropMoveOffsetRef.current.y, 0, capture.height - current.height)
-        return { ...current, x, y }
-      }
-
-      const left = current.x
-      const right = current.x + current.width
-      const top = current.y
-      const bottom = current.y + current.height
-      const nextLeft = cropDragRef.current.includes('w') ? clamp(point.x, 0, right - minSize) : left
-      const nextRight = cropDragRef.current.includes('e') ? clamp(point.x, left + minSize, capture.width) : right
-      const nextTop = cropDragRef.current.includes('n') ? clamp(point.y, 0, bottom - minSize) : top
-      const nextBottom = cropDragRef.current.includes('s') ? clamp(point.y, top + minSize, capture.height) : bottom
-
-      return {
-        x: nextLeft,
-        y: nextTop,
-        width: nextRight - nextLeft,
-        height: nextBottom - nextTop,
-      }
-    })
   }
 
   if (clientMode) {
@@ -500,9 +490,24 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
             Voltar
           </Link>
           <div className="flex flex-wrap gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null
+                void handleUploadedPhoto(file)
+                event.currentTarget.value = ''
+              }}
+            />
             <button type="button" onClick={openClientScreen} className={buttonClass('light')}>
               <MonitorUp className="h-4 w-4" />
               Tela cliente
+            </button>
+            <button type="button" onClick={() => fileInputRef.current?.click()} className={buttonClass('light')}>
+              <ImageUp className="h-4 w-4" />
+              Carregar foto
             </button>
             <button type="button" onClick={() => sendCommand('startCamera')} className={buttonClass('dark')}>
               <Play className="h-4 w-4" />
@@ -557,10 +562,6 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
                   preserveAspectRatio="xMidYMid meet"
                   className="absolute inset-0 h-full w-full touch-none"
                   onPointerMove={(event) => {
-                    if (cropDragRef.current) {
-                      updateAiCropFromPointer(event)
-                      return
-                    }
                     const key = draggingRef.current
                     if (!key) return
                     const point = pointFromPointer(event)
@@ -568,15 +569,12 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
                   }}
                   onPointerUp={() => {
                     draggingRef.current = null
-                    cropDragRef.current = null
                   }}
                   onPointerLeave={() => {
                     draggingRef.current = null
-                    cropDragRef.current = null
                   }}
                 >
                   <image href={capture.dataUrl} x={0} y={0} width={capture.width} height={capture.height} preserveAspectRatio="none" />
-                  {aiCrop && <AiCropOverlay crop={aiCrop} />}
                   <MeasurementLines handles={handles} lensType={lensType} />
                   {(Object.keys(handles) as PointKey[]).map((key) => {
                     const point = handles[key]
@@ -599,41 +597,6 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
                       </g>
                     )
                   })}
-                  {aiCrop && (
-                    <g>
-                      <rect
-                        x={aiCrop.x}
-                        y={aiCrop.y}
-                        width={aiCrop.width}
-                        height={aiCrop.height}
-                        fill="transparent"
-                        stroke="#22d3ee"
-                        strokeWidth={5}
-                        strokeDasharray="18 12"
-                        className="cursor-move"
-                        onPointerDown={(event) => {
-                          const point = pointFromClient(event.clientX, event.clientY)
-                          if (!point) return
-                          cropDragRef.current = 'move'
-                          cropMoveOffsetRef.current = { x: point.x - aiCrop.x, y: point.y - aiCrop.y }
-                          event.currentTarget.setPointerCapture(event.pointerId)
-                        }}
-                      />
-                      {cropHandles(aiCrop).map(({ key, point }) => (
-                        <g
-                          key={key}
-                          transform={`translate(${point.x} ${point.y})`}
-                          className="cursor-grab"
-                          onPointerDown={(event) => {
-                            cropDragRef.current = key
-                            event.currentTarget.setPointerCapture(event.pointerId)
-                          }}
-                        >
-                          <rect x={-19} y={-19} width={38} height={38} rx={8} fill="#020617" stroke="#67e8f9" strokeWidth={4} />
-                        </g>
-                      ))}
-                    </g>
-                  )}
                 </svg>
               </>
             ) : (
@@ -677,22 +640,12 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  if (capture && handles) setAiCrop(buildAiCropRect(capture, handles))
-                }}
-                disabled={!capture || !handles}
-                className={`${buttonClass('light')} mt-3 w-full justify-center disabled:opacity-40`}
-              >
-                Resetar recorte IA
-              </button>
-              <button
-                type="button"
                 onClick={locateWithAi}
                 disabled={!capture || !handles || isAiPending}
                 className={`${buttonClass('dark')} mt-3 w-full justify-center disabled:opacity-40`}
               >
                 {isAiPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
-                IA localizar armacao
+                IA localizar lente
               </button>
             </Panel>
 
@@ -720,11 +673,26 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
                 <option value="bifocal">Bifocal</option>
                 <option value="pronto">Pronto</option>
               </select>
+              <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-3">
+                <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+                  Motor em teste: {DETECTION_PRESETS.find((preset) => preset.key === detectionPreset)?.label ?? 'Padrao'}
+                </div>
+                <button
+                  type="button"
+                  onClick={cycleDetectionPreset}
+                  disabled={!capture}
+                  className={`${buttonClass('light')} mt-2 w-full justify-center disabled:opacity-40`}
+                >
+                  <Wand2 className="h-4 w-4" />
+                  Tentar outra leitura
+                </button>
+              </div>
             </Panel>
 
             <Panel title="Medidas">
               {measurements ? (
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <Metric label="DP" value={measurements.dp} />
                   <Metric label="DNP OD" value={measurements.dnpOD} />
                   <Metric label="DNP OE" value={measurements.dnpOE} />
                   <Metric label="Alt OD" value={measurements.altOD} />
@@ -806,101 +774,7 @@ function Metric({ label, value }: { label: string; value: number }) {
   )
 }
 
-function AiCropOverlay({ crop }: { crop: CropRect }) {
-  return (
-    <g pointerEvents="none">
-      <rect x={0} y={0} width="100%" height={crop.y} fill="rgba(2,6,23,0.34)" />
-      <rect x={0} y={crop.y + crop.height} width="100%" height="100%" fill="rgba(2,6,23,0.34)" />
-      <rect x={0} y={crop.y} width={crop.x} height={crop.height} fill="rgba(2,6,23,0.34)" />
-      <rect x={crop.x + crop.width} y={crop.y} width="100%" height={crop.height} fill="rgba(2,6,23,0.34)" />
-      <text x={crop.x + 18} y={crop.y + 34} className="fill-cyan-100 text-[24px] font-black">
-        RECORTE IA
-      </text>
-    </g>
-  )
-}
-
-function cropHandles(crop: CropRect): Array<{ key: 'nw' | 'ne' | 'sw' | 'se'; point: Pt }> {
-  return [
-    { key: 'nw', point: { x: crop.x, y: crop.y } },
-    { key: 'ne', point: { x: crop.x + crop.width, y: crop.y } },
-    { key: 'sw', point: { x: crop.x, y: crop.y + crop.height } },
-    { key: 'se', point: { x: crop.x + crop.width, y: crop.y + crop.height } },
-  ]
-}
-
-async function createAiCrop(capture: CapturePayload, rect: CropRect) {
-  const image = await loadImage(capture.dataUrl)
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.round(rect.width)
-  canvas.height = Math.round(rect.height)
-  const context = canvas.getContext('2d')
-  if (!context) {
-    return { dataUrl: capture.dataUrl, width: capture.width, height: capture.height, rect: { x: 0, y: 0, width: capture.width, height: capture.height } }
-  }
-  context.drawImage(image, rect.x, rect.y, rect.width, rect.height, 0, 0, canvas.width, canvas.height)
-  return {
-    dataUrl: canvas.toDataURL('image/jpeg', 0.88),
-    width: canvas.width,
-    height: canvas.height,
-    rect: { x: rect.x, y: rect.y, width: canvas.width, height: canvas.height },
-  }
-}
-
-function buildAiCropRect(capture: CapturePayload, handles: Handles) {
-  const points = [
-    handles.pupilR,
-    handles.pupilL,
-    handles.bridgeR,
-    handles.bridgeL,
-    handles.lensLeft,
-    handles.lensRight,
-    handles.lensTop,
-    handles.lensBottom,
-    handles.diagA,
-    handles.diagB,
-  ]
-  const minX = Math.min(...points.map((point) => point.x))
-  const maxX = Math.max(...points.map((point) => point.x))
-  const minY = Math.min(...points.map((point) => point.y))
-  const maxY = Math.max(...points.map((point) => point.y))
-  const width = Math.max(maxX - minX, distance(handles.pupilR, handles.pupilL) * 1.85, capture.width * 0.34)
-  const height = Math.max(maxY - minY, width * 0.42, capture.height * 0.18)
-  const padX = width * 0.42
-  const padTop = height * 0.72
-  const padBottom = height * 0.62
-  const x = clamp(Math.round(minX - padX), 0, capture.width - 1)
-  const y = clamp(Math.round(minY - padTop), 0, capture.height - 1)
-  const right = clamp(Math.round(maxX + padX), x + 1, capture.width)
-  const bottom = clamp(Math.round(maxY + padBottom), y + 1, capture.height)
-
-  return {
-    x,
-    y,
-    width: right - x,
-    height: bottom - y,
-  }
-}
-
-function remapHandlesForCrop(handles: Handles, crop: { x: number; y: number }) {
-  return Object.fromEntries(
-    (Object.entries(handles) as Array<[PointKey, Pt]>).map(([key, point]) => [
-      key,
-      { x: point.x - crop.x, y: point.y - crop.y },
-    ]),
-  ) as Partial<Handles>
-}
-
-function remapHandlesFromCrop(handles: Partial<Handles>, crop: { x: number; y: number }) {
-  return Object.fromEntries(
-    (Object.entries(handles) as Array<[PointKey, Pt]>).map(([key, point]) => [
-      key,
-      { x: point.x + crop.x, y: point.y + crop.y },
-    ]),
-  ) as Partial<Handles>
-}
-
-function createInitialHandles(capture: CapturePayload, image?: HTMLImageElement): Handles {
+function createInitialHandles(capture: CapturePayload, image?: HTMLImageElement, preset: DetectionPreset = 'standard'): Handles {
   const w = capture.width
   const h = capture.height
   const cx = w / 2
@@ -931,33 +805,38 @@ function createInitialHandles(capture: CapturePayload, image?: HTMLImageElement)
     top: Math.min(rightEyeTop.y - 11 * pxPerMm, pupilR.y - 18 * pxPerMm),
     bottom: Math.max(rightEyeBottom.y + 13 * pxPerMm, pupilR.y + 20 * pxPerMm),
   }
-  const detectedLens = image ? detectLensShape(image, pupilR, fallbackLens, pxPerMm) : fallbackLensToShape(fallbackLens)
+  const detectedLens = image ? detectLensShape(image, pupilR, fallbackLens, pxPerMm, preset) : fallbackLensToShape(fallbackLens)
   const lensLeftX = detectedLens.left
   const lensRightX = detectedLens.right
+  const lensAxisX = (lensLeftX + lensRightX) / 2
   const lensTopY = detectedLens.top
   const lensBottomY = detectedLens.bottom
   const lensCenterY = (lensTopY + lensBottomY) / 2
   const bridgeHalf = Math.max(7.5 * pxPerMm, (pupilL.x - pupilR.x) * 0.08)
   const bridgeY = clamp(bridge.y - 1.5 * pxPerMm, lensTopY, lensBottomY)
 
-  return {
+  const handles: Handles = {
     calibA: { x: Math.max(0, cx - w * 0.11), y: h * 0.12 },
     calibB: { x: Math.min(w, cx + w * 0.11), y: h * 0.12 },
     pupilR,
     pupilL,
     bridgeR: { x: Math.min(lensRightX, bridge.x - bridgeHalf), y: bridgeY },
     bridgeL: { x: bridge.x + bridgeHalf, y: bridgeY },
-    mountR: { x: pupilR.x, y: clamp(pupilR.y + 18 * pxPerMm, lensTopY, lensBottomY) },
-    mountL: { x: pupilL.x, y: pupilL.y + 18 * pxPerMm },
+    mountR: { x: pupilR.x, y: lensBottomY },
+    mountL: { x: pupilL.x, y: lensBottomY },
     lensLeft: { x: lensLeftX, y: lensCenterY },
     lensRight: { x: lensRightX, y: lensCenterY },
-    lensTop: { x: pupilR.x, y: lensTopY },
-    lensBottom: { x: pupilR.x, y: lensBottomY },
+    lensTop: { x: lensAxisX, y: lensTopY },
+    lensBottom: { x: lensAxisX, y: lensBottomY },
     diagA: detectedLens.diagA,
     diagB: detectedLens.diagB,
     palpebraR: rightEyeBottom,
     palpebraL: toPx(lm?.[LEFT_EYE_BOTTOM], { x: pupilL.x, y: pupilL.y + 6 * pxPerMm }),
   }
+
+  if (!image) return stabilizeBridgeHandlesToPupilAxis(handles, pxPerMm)
+  const imageData = createImageData(image)
+  return imageData ? anchorInitialHandlesToFrame(imageData, handles, pxPerMm, preset) : stabilizeBridgeHandlesToPupilAxis(handles, pxPerMm)
 }
 
 function detectLensShape(
@@ -965,6 +844,7 @@ function detectLensShape(
   pupil: Pt,
   fallback: { left: number; right: number; top: number; bottom: number },
   pxPerMm: number,
+  preset: DetectionPreset,
 ): LensShape {
   const imageData = createImageData(image)
   if (!imageData) return fallbackLensToShape(fallback)
@@ -973,14 +853,16 @@ function detectLensShape(
   const verticalBand = Math.max(12, Math.round(pxPerMm * 2.8))
   const minScore = 0.26
 
-  const left = findDarkRimX(imageData, pupil, -1, fallback.left, fallback.right, sampleRadius)
-  const right = findDarkRimX(imageData, pupil, 1, fallback.left, fallback.right, sampleRadius)
-  const top = findDarkRimY(imageData, pupil, -1, fallback.top, fallback.bottom, horizontalBand)
-  const bottom = findDarkRimY(imageData, pupil, 1, fallback.top, fallback.bottom, verticalBand)
+  const left = findLensBoundaryX(imageData, pupil, -1, fallback.left, fallback.right, sampleRadius)
+  const right = findLensBoundaryX(imageData, pupil, 1, fallback.left, fallback.right, sampleRadius)
+  const top = findLensBoundaryY(imageData, pupil, -1, fallback.top, fallback.bottom, horizontalBand)
+  const bottom = findLensBoundaryY(imageData, pupil, 1, fallback.top, fallback.bottom, verticalBand)
   const rays = scanLensRays(imageData, pupil, fallback, pxPerMm)
   const box = detectLensBox(imageData, pupil, fallback, pxPerMm)
+  const brightBox = preset === 'transparent' ? detectBrightRimLensBox(imageData, fallback, pxPerMm) : null
+  const darkContourBox = preset === 'closedContour' ? detectDarkContourLensBox(imageData, fallback, pxPerMm) : null
 
-  const next: LensShape = box ?? {
+  const next: LensShape = normalizeLensShapeToFacialFallback(darkContourBox ?? brightBox ?? box ?? {
     left: rays.left
       ? blendNumber(left.score >= minScore ? left.value : fallback.left, rays.left.x, 0.72)
       : left.score >= minScore
@@ -1003,14 +885,118 @@ function detectLensShape(
         : fallback.bottom,
     diagA: rays.diagA ?? { x: fallback.left, y: fallback.top },
     diagB: rays.diagB ?? { x: fallback.right, y: fallback.bottom },
-  }
+  }, pupil, fallback, pxPerMm, preset)
 
   if (next.right - next.left < 34 * pxPerMm || next.bottom - next.top < 22 * pxPerMm) {
     return fallbackLensToShape(fallback)
   }
-  if (!rays.diagA) next.diagA = { x: next.left, y: next.top }
-  if (!rays.diagB) next.diagB = { x: next.right, y: next.bottom }
+  if (!isPlausibleLensShape(next, pupil, fallback, pxPerMm)) {
+    return fallbackLensToShape(fallback)
+  }
+  const diagonal = resolveLensDiagonal(imageData, next, pxPerMm, preset)
+  next.diagA = diagonal.diagA
+  next.diagB = diagonal.diagB
   return next
+}
+
+function isPlausibleLensShape(
+  shape: LensShape,
+  pupil: Pt,
+  fallback: { left: number; right: number; top: number; bottom: number },
+  pxPerMm: number,
+) {
+  const width = shape.right - shape.left
+  const height = shape.bottom - shape.top
+  const fallbackWidth = fallback.right - fallback.left
+  const fallbackHeight = fallback.bottom - fallback.top
+  if (width < 34 * pxPerMm || width > Math.max(74 * pxPerMm, fallbackWidth * 1.55)) return false
+  if (height < 20 * pxPerMm || height > Math.max(56 * pxPerMm, fallbackHeight * 1.75)) return false
+  if (pupil.x < shape.left - 5 * pxPerMm || pupil.x > shape.right + 5 * pxPerMm) return false
+  if (pupil.y < shape.top - 7 * pxPerMm || pupil.y > shape.bottom + 7 * pxPerMm) return false
+  return true
+}
+
+function normalizeLensShapeToFacialFallback(
+  shape: LensShape,
+  pupil: Pt,
+  fallback: { left: number; right: number; top: number; bottom: number },
+  pxPerMm: number,
+  preset: DetectionPreset,
+): LensShape {
+  const next = { ...shape }
+  const minBottom = Math.max(fallback.bottom, pupil.y + 20 * pxPerMm)
+  const maxLeftDrift = fallback.left - (preset === 'transparent' ? 13 : preset === 'closedContour' ? 9 : 5) * pxPerMm
+
+  if (next.bottom < minBottom - 2 * pxPerMm) {
+    next.bottom = blendNumber(next.bottom, minBottom, 0.72)
+  }
+
+  if (next.left < maxLeftDrift) {
+    next.left = blendNumber(next.left, maxLeftDrift, 0.78)
+  }
+
+  if (next.diagB.y < next.bottom - 12 * pxPerMm) {
+    next.diagB = { x: next.right, y: next.bottom }
+  }
+
+  return next
+}
+
+function anchorInitialHandlesToFrame(imageData: ImageData, handles: Handles, pxPerMm: number, preset: DetectionPreset): Handles {
+  const edgeRadius = Math.max(10, Math.round(pxPerMm * 3.4))
+  const rimKeys: PointKey[] = [
+    'bridgeR',
+    'bridgeL',
+    'mountR',
+    'mountL',
+    'lensLeft',
+    'lensRight',
+    'lensTop',
+    'lensBottom',
+  ]
+
+  const bottomKeys = new Set<PointKey>(['mountR', 'mountL', 'lensBottom'])
+  const sideGuards: Partial<Record<PointKey, (snapped: Pt, original: Pt) => boolean>> = {
+    lensLeft: (snapped, original) => snapped.x < original.x - pxPerMm * (preset === 'transparent' ? 7 : 2.2),
+    lensRight: (snapped, original) => snapped.x > original.x + pxPerMm * (preset === 'transparent' ? 7 : 2.2),
+  }
+  const transparentBottom = preset === 'transparent' ? snapToBrightHorizontalRim(imageData, handles.lensBottom, pxPerMm) : null
+  const anchored = rimKeys.reduce((next, key) => {
+    const snapped = preset === 'closedContour' ? snapToDarkContourBoundary(imageData, handles[key], edgeRadius, pxPerMm) : snapToLensBoundary(imageData, handles[key], edgeRadius)
+    const reflectiveSide = preset === 'transparent' && (key === 'lensLeft' || key === 'lensRight') ? snapToBrightVerticalRim(imageData, handles[key], pxPerMm) : null
+    const reflectiveBottom =
+      preset === 'transparent' && transparentBottom && bottomKeys.has(key)
+        ? { x: handles[key].x, y: transparentBottom.y }
+        : null
+    const preferred = reflectiveSide ?? reflectiveBottom ?? snapped
+    const escapedSide = sideGuards[key]?.(preferred, handles[key]) ?? false
+    const escapedBottom = bottomKeys.has(key) && preferred.y < handles[key].y - pxPerMm * 2.5
+    const nextPoint = escapedSide || escapedBottom ? handles[key] : preferred
+    return {
+      ...next,
+      [key]: nextPoint,
+    }
+  }, handles)
+
+  const diagonal = resolveLensDiagonal(
+    imageData,
+    {
+      left: anchored.lensLeft.x,
+      right: anchored.lensRight.x,
+      top: anchored.lensTop.y,
+      bottom: anchored.lensBottom.y,
+      diagA: anchored.diagA,
+      diagB: anchored.diagB,
+    },
+    pxPerMm,
+    preset,
+  )
+
+  return stabilizeBridgeHandlesToPupilAxis({
+    ...anchored,
+    diagA: diagonal.diagA,
+    diagB: diagonal.diagB,
+  }, pxPerMm)
 }
 
 function detectLensBox(
@@ -1033,7 +1019,7 @@ function detectLensBox(
 
   for (let y = yMin; y <= yMax; y += 1) {
     for (let x = xMin; x <= xMax; x += 1) {
-      if (!isFrameCandidate(imageData, x, y)) continue
+      if (!isLensBoundaryCandidate(imageData, x, y)) continue
       colCounts[x - xMin] += 1
       rowCounts[y - yMin] += 1
       candidateCount += 1
@@ -1067,9 +1053,224 @@ function detectLensBox(
     right,
     top,
     bottom,
-    diagA: nearestFrameCandidate(imageData, { x: left, y: top }, 18) ?? { x: left, y: top },
-    diagB: nearestFrameCandidate(imageData, { x: right, y: bottom }, 18) ?? { x: right, y: bottom },
+    ...resolveLensDiagonal(
+      imageData,
+      {
+        left,
+        right,
+        top,
+        bottom,
+        diagA: { x: left, y: top },
+        diagB: { x: right, y: bottom },
+      },
+      pxPerMm,
+      'standard',
+    ),
   }
+}
+
+function detectBrightRimLensBox(
+  imageData: ImageData,
+  fallback: { left: number; right: number; top: number; bottom: number },
+  pxPerMm: number,
+): LensShape | null {
+  const xMin = clamp(Math.round(fallback.left - 18 * pxPerMm), 0, imageData.width - 1)
+  const xMax = clamp(Math.round(fallback.right + 14 * pxPerMm), 0, imageData.width - 1)
+  const yMin = clamp(Math.round(fallback.top - 10 * pxPerMm), 0, imageData.height - 1)
+  const yMax = clamp(Math.round(fallback.bottom + 12 * pxPerMm), 0, imageData.height - 1)
+  const width = xMax - xMin + 1
+  const height = yMax - yMin + 1
+  if (width < 30 || height < 24) return null
+
+  const colCounts = new Array(width).fill(0) as number[]
+  const rowCounts = new Array(height).fill(0) as number[]
+  let hits = 0
+
+  for (let y = yMin; y <= yMax; y += 1) {
+    for (let x = xMin; x <= xMax; x += 1) {
+      if (!isBrightRimPixel(imageData, x, y)) continue
+      colCounts[x - xMin] += 1
+      rowCounts[y - yMin] += 1
+      hits += 1
+    }
+  }
+
+  if (hits < width * height * 0.006) return null
+
+  const smoothedCols = smoothCounts(colCounts, Math.max(2, Math.round(pxPerMm * 0.45)))
+  const smoothedRows = smoothCounts(rowCounts, Math.max(2, Math.round(pxPerMm * 0.45)))
+  const colThreshold = Math.max(4, height * 0.065)
+  const rowThreshold = Math.max(4, width * 0.055)
+  const leftIndex = firstStrongIndex(smoothedCols, colThreshold, 0, Math.round(width * 0.42))
+  const rightIndex = lastStrongIndex(smoothedCols, colThreshold, Math.round(width * 0.46), width - 1)
+  const topIndex = firstStrongIndex(smoothedRows, rowThreshold, 0, Math.round(height * 0.42))
+  const bottomIndex = lastStrongIndex(smoothedRows, rowThreshold, Math.round(height * 0.46), height - 1)
+
+  if (leftIndex === null || rightIndex === null || topIndex === null || bottomIndex === null) return null
+
+  const left = xMin + leftIndex
+  const right = xMin + rightIndex
+  const top = yMin + topIndex
+  const bottom = yMin + bottomIndex
+  if (right - left < 34 * pxPerMm || bottom - top < 20 * pxPerMm) return null
+
+  return {
+    left,
+    right,
+    top,
+    bottom,
+    diagA: { x: left, y: top },
+    diagB: { x: right, y: bottom },
+  }
+}
+
+function detectDarkContourLensBox(
+  imageData: ImageData,
+  fallback: { left: number; right: number; top: number; bottom: number },
+  pxPerMm: number,
+): LensShape | null {
+  const xMin = clamp(Math.round(fallback.left - 13 * pxPerMm), 0, imageData.width - 1)
+  const xMax = clamp(Math.round(fallback.right + 10 * pxPerMm), 0, imageData.width - 1)
+  const yMin = clamp(Math.round(fallback.top - 8 * pxPerMm), 0, imageData.height - 1)
+  const yMax = clamp(Math.round(fallback.bottom + 10 * pxPerMm), 0, imageData.height - 1)
+  const width = xMax - xMin + 1
+  const height = yMax - yMin + 1
+  if (width < 30 || height < 24) return null
+
+  const colCounts = new Array(width).fill(0) as number[]
+  const rowCounts = new Array(height).fill(0) as number[]
+  let hits = 0
+
+  for (let y = yMin; y <= yMax; y += 1) {
+    for (let x = xMin; x <= xMax; x += 1) {
+      if (!isDarkRimPixel(imageData, x, y)) continue
+      colCounts[x - xMin] += 1
+      rowCounts[y - yMin] += 1
+      hits += 1
+    }
+  }
+
+  if (hits < width * height * 0.018) return null
+
+  const smoothedCols = smoothCounts(colCounts, Math.max(2, Math.round(pxPerMm * 0.35)))
+  const smoothedRows = smoothCounts(rowCounts, Math.max(2, Math.round(pxPerMm * 0.35)))
+  const colThreshold = Math.max(5, height * 0.09)
+  const rowThreshold = Math.max(5, width * 0.09)
+  const leftIndex = firstStrongIndex(smoothedCols, colThreshold, 0, Math.round(width * 0.45))
+  const rightIndex = lastStrongIndex(smoothedCols, colThreshold, Math.round(width * 0.48), width - 1)
+  const topIndex = firstStrongIndex(smoothedRows, rowThreshold, 0, Math.round(height * 0.45))
+  const bottomIndex = lastStrongIndex(smoothedRows, rowThreshold, Math.round(height * 0.44), height - 1)
+
+  if (leftIndex === null || rightIndex === null || topIndex === null || bottomIndex === null) return null
+
+  const left = xMin + leftIndex
+  const right = xMin + rightIndex
+  const top = yMin + topIndex
+  const bottom = yMin + bottomIndex
+  if (right - left < 34 * pxPerMm || bottom - top < 20 * pxPerMm) return null
+
+  return {
+    left,
+    right,
+    top,
+    bottom,
+    ...resolveLensDiagonal(
+      imageData,
+      {
+        left,
+        right,
+        top,
+        bottom,
+        diagA: { x: left, y: top },
+        diagB: { x: right, y: bottom },
+      },
+      pxPerMm,
+      'closedContour',
+    ),
+  }
+}
+
+function resolveLensDiagonal(imageData: ImageData, shape: LensShape, pxPerMm: number, preset: DetectionPreset = 'standard') {
+  const width = Math.max(shape.right - shape.left, 1)
+  const height = Math.max(shape.bottom - shape.top, 1)
+  const transparent = preset === 'transparent'
+  const closedContour = preset === 'closedContour'
+  const diagAStartX = shape.left + Math.max(width * 0.035, pxPerMm * 1.6)
+  const diagALimitX = shape.left + width * 0.28
+  const diagAStartY = shape.top
+  const diagALimitY = shape.top + height * 0.2
+  const diagBStartX = shape.left + width * 0.62
+  const diagBLimitX = shape.left + width * (transparent || closedContour ? 0.96 : 0.93)
+  const diagBStartY = shape.top + height * (transparent || closedContour ? 0.62 : 0.52)
+  const diagBLimitY = shape.top + height * (transparent || closedContour ? 0.98 : 0.86)
+  const diagBTarget = {
+    x: shape.right - width * (transparent || closedContour ? 0.1 : 0.14),
+    y: shape.bottom - height * (transparent || closedContour ? 0.08 : 0.2),
+  }
+
+  const diagA =
+    bestBoundaryInRect(
+      imageData,
+      {
+        left: clamp(Math.round(diagAStartX), 0, imageData.width - 1),
+        right: clamp(Math.round(diagALimitX), 0, imageData.width - 1),
+        top: clamp(Math.round(diagAStartY), 0, imageData.height - 1),
+        bottom: clamp(Math.round(diagALimitY), 0, imageData.height - 1),
+      },
+      { x: shape.left + width * 0.075, y: shape.top + height * 0.04 },
+      (point) => {
+        const yNearTop = 1 - Math.min(Math.abs(point.y - (shape.top + height * 0.04)) / Math.max(height * 0.14, 1), 1)
+        const xNearLeftLens = 1 - Math.min(Math.abs(point.x - (shape.left + width * 0.075)) / Math.max(width * 0.12, 1), 1)
+        const darkBonus = closedContour && isDarkRimPixel(imageData, Math.round(point.x), Math.round(point.y)) ? 0.18 : 0
+        return yNearTop * 0.5 + xNearLeftLens * 0.42 + darkBonus
+      },
+    ) ?? { x: shape.left, y: shape.top }
+
+  const diagB =
+    bestBoundaryInRect(
+      imageData,
+      {
+        left: clamp(Math.round(diagBStartX), 0, imageData.width - 1),
+        right: clamp(Math.round(diagBLimitX), 0, imageData.width - 1),
+        top: clamp(Math.round(diagBStartY), 0, imageData.height - 1),
+        bottom: clamp(Math.round(diagBLimitY), 0, imageData.height - 1),
+      },
+      diagBTarget,
+      (point) => {
+        const yNearLowerCurve = 1 - Math.min(Math.abs(point.y - diagBTarget.y) / Math.max(height * (transparent || closedContour ? 0.18 : 0.23), 1), 1)
+        const xNearA2 = 1 - Math.min(Math.abs(point.x - diagBTarget.x) / Math.max(width * (transparent || closedContour ? 0.16 : 0.2), 1), 1)
+        const belowEyeBias = transparent || closedContour ? Math.min(Math.max((point.y - (shape.top + height * 0.58)) / Math.max(height * 0.35, 1), 0), 1) : 0
+        const darkBonus = closedContour && isDarkRimPixel(imageData, Math.round(point.x), Math.round(point.y)) ? 0.22 : 0
+        return yNearLowerCurve * (transparent || closedContour ? 0.48 : 0.34) + xNearA2 * (transparent || closedContour ? 0.34 : 0.48) + belowEyeBias * 0.12 + darkBonus
+      },
+    ) ?? { x: shape.right, y: shape.bottom }
+
+  return { diagA, diagB }
+}
+
+function bestBoundaryInRect(
+  imageData: ImageData,
+  rect: { left: number; right: number; top: number; bottom: number },
+  target: Pt,
+  geometryScore: (point: Pt) => number,
+) {
+  let best: { point: Pt; score: number } | null = null
+  const maxDistance = Math.max(distance({ x: rect.left, y: rect.top }, { x: rect.right, y: rect.bottom }), 1)
+
+  for (let y = rect.top; y <= rect.bottom; y += 1) {
+    if (y < 1 || y >= imageData.height - 1) continue
+    for (let x = rect.left; x <= rect.right; x += 1) {
+      if (x < 1 || x >= imageData.width - 1) continue
+      if (!isLensBoundaryCandidate(imageData, x, y)) continue
+      const closeness = 1 - Math.min(distance(target, { x, y }) / maxDistance, 1)
+      const edge = Math.min(localEdgeStrength(imageData, x, y) / 90, 1)
+      const highlight = isSpecularLensHint(imageData, x, y) ? 0.18 : 0
+      const score = edge * 0.38 + closeness * 0.14 + highlight + geometryScore({ x, y })
+      if (!best || score > best.score) best = { point: { x, y }, score }
+    }
+  }
+
+  return best?.point ?? null
 }
 
 function createImageData(image: HTMLImageElement) {
@@ -1082,12 +1283,12 @@ function createImageData(image: HTMLImageElement) {
   return context.getImageData(0, 0, canvas.width, canvas.height)
 }
 
-function snapToDarkEdge(imageData: ImageData | null, point: Pt, radius: number): Pt {
+function snapToLensBoundary(imageData: ImageData | null, point: Pt, radius: number): Pt {
   if (!imageData) return point
-  return nearestFrameCandidate(imageData, point, radius) ?? point
+  return nearestLensBoundaryCandidate(imageData, point, radius) ?? point
 }
 
-function nearestFrameCandidate(imageData: ImageData, point: Pt, radius: number): Pt | null {
+function nearestLensBoundaryCandidate(imageData: ImageData, point: Pt, radius: number): Pt | null {
   let best: { point: Pt; score: number } | null = null
   const centerX = Math.round(point.x)
   const centerY = Math.round(point.y)
@@ -1096,10 +1297,11 @@ function nearestFrameCandidate(imageData: ImageData, point: Pt, radius: number):
     if (y < 1 || y >= imageData.height - 1) continue
     for (let x = centerX - radius; x <= centerX + radius; x += 1) {
       if (x < 1 || x >= imageData.width - 1) continue
-      if (!isFrameCandidate(imageData, x, y)) continue
+      if (!isLensBoundaryCandidate(imageData, x, y)) continue
       const closeness = 1 - Math.min(distance(point, { x, y }) / radius, 1)
-      const darkness = 1 - Math.min(pixelLuminance(imageData, x, y) / 130, 1)
-      const score = darkness * 0.7 + closeness * 0.3
+      const edge = Math.min(localEdgeStrength(imageData, x, y) / 90, 1)
+      const highlight = isSpecularLensHint(imageData, x, y) ? 0.22 : 0
+      const score = edge * 0.68 + closeness * 0.25 + highlight
       if (!best || score > best.score) best = { point: { x, y }, score }
     }
   }
@@ -1107,7 +1309,98 @@ function nearestFrameCandidate(imageData: ImageData, point: Pt, radius: number):
   return best?.point ?? null
 }
 
-function findDarkRimX(
+function snapToDarkContourBoundary(imageData: ImageData, point: Pt, radius: number, pxPerMm: number): Pt {
+  let best: { point: Pt; score: number } | null = null
+  const centerX = Math.round(point.x)
+  const centerY = Math.round(point.y)
+  const continuityRadius = Math.max(3, Math.round(pxPerMm * 0.65))
+
+  for (let y = centerY - radius; y <= centerY + radius; y += 1) {
+    if (y < 2 || y >= imageData.height - 2) continue
+    for (let x = centerX - radius; x <= centerX + radius; x += 1) {
+      if (x < 2 || x >= imageData.width - 2) continue
+      if (!isDarkRimPixel(imageData, x, y)) continue
+      const closeness = 1 - Math.min(distance(point, { x, y }) / Math.max(radius, 1), 1)
+      const edge = Math.min(localEdgeStrength(imageData, x, y) / 90, 1)
+      const continuity = darkContinuityScore(imageData, x, y, continuityRadius)
+      const score = continuity * 0.48 + edge * 0.3 + closeness * 0.22
+      if (!best || score > best.score) best = { point: { x, y }, score }
+    }
+  }
+
+  return best && best.score > 0.34 ? best.point : snapToLensBoundary(imageData, point, radius)
+}
+
+function snapToBrightVerticalRim(imageData: ImageData, point: Pt, pxPerMm: number): Pt | null {
+  const radiusX = Math.max(16, Math.round(pxPerMm * 10))
+  const radiusY = Math.max(20, Math.round(pxPerMm * 10))
+  const centerX = Math.round(point.x)
+  const centerY = Math.round(point.y)
+  let best: { point: Pt; score: number } | null = null
+
+  for (let x = centerX - radiusX; x <= centerX + radiusX; x += 1) {
+    if (x < 2 || x >= imageData.width - 2) continue
+    let hits = 0
+    let weightedY = 0
+    let edgeTotal = 0
+
+    for (let y = centerY - radiusY; y <= centerY + radiusY; y += 1) {
+      if (y < 2 || y >= imageData.height - 2) continue
+      if (!isBrightRimPixel(imageData, x, y)) continue
+      const edge = localEdgeStrength(imageData, x, y)
+      hits += 1
+      weightedY += y * Math.max(edge, 1)
+      edgeTotal += Math.max(edge, 1)
+    }
+
+    if (hits < Math.max(5, Math.round(radiusY * 0.28))) continue
+    const avgY = edgeTotal ? weightedY / edgeTotal : centerY
+    const closeness = 1 - Math.min(Math.abs(x - centerX) / Math.max(radiusX, 1), 1)
+    const continuity = Math.min(hits / Math.max(radiusY * 1.25, 1), 1)
+    const score = continuity * 0.62 + closeness * 0.2 + Math.min(edgeTotal / Math.max(hits * 70, 1), 1) * 0.18
+    if (!best || score > best.score) best = { point: { x, y: avgY }, score }
+  }
+
+  return best && best.score > 0.42 ? best.point : null
+}
+
+function snapToBrightHorizontalRim(imageData: ImageData, point: Pt, pxPerMm: number): Pt | null {
+  const radiusX = Math.max(28, Math.round(pxPerMm * 18))
+  const radiusUp = Math.max(10, Math.round(pxPerMm * 4))
+  const radiusDown = Math.max(22, Math.round(pxPerMm * 11))
+  const centerX = Math.round(point.x)
+  const centerY = Math.round(point.y)
+  let best: { point: Pt; score: number } | null = null
+
+  for (let y = centerY - radiusUp; y <= centerY + radiusDown; y += 1) {
+    if (y < 2 || y >= imageData.height - 2) continue
+    let hits = 0
+    let weightedX = 0
+    let edgeTotal = 0
+
+    for (let x = centerX - radiusX; x <= centerX + radiusX; x += 1) {
+      if (x < 2 || x >= imageData.width - 2) continue
+      if (!isBrightRimPixel(imageData, x, y)) continue
+      const edge = localEdgeStrength(imageData, x, y)
+      hits += 1
+      weightedX += x * Math.max(edge, 1)
+      edgeTotal += Math.max(edge, 1)
+    }
+
+    if (hits < Math.max(6, Math.round(radiusX * 0.22))) continue
+    const avgX = edgeTotal ? weightedX / edgeTotal : centerX
+    const lowerBias = Math.min(Math.max((y - centerY + radiusUp) / Math.max(radiusUp + radiusDown, 1), 0), 1)
+    const centered = 1 - Math.min(Math.abs(avgX - centerX) / Math.max(radiusX, 1), 1)
+    const continuity = Math.min(hits / Math.max(radiusX * 0.72, 1), 1)
+    const edgeScore = Math.min(edgeTotal / Math.max(hits * 68, 1), 1)
+    const score = continuity * 0.48 + lowerBias * 0.24 + centered * 0.12 + edgeScore * 0.16
+    if (!best || score > best.score) best = { point: { x: centerX, y }, score }
+  }
+
+  return best && best.score > 0.4 ? best.point : null
+}
+
+function findLensBoundaryX(
   imageData: ImageData,
   pupil: Pt,
   direction: -1 | 1,
@@ -1122,21 +1415,21 @@ function findDarkRimX(
 
   for (let x = start; direction < 0 ? x >= limit : x <= limit; x += direction) {
     if (x < 0 || x >= width) continue
-    let dark = 0
+    let hits = 0
     let total = 0
     for (let y = Math.round(pupil.y - radius * 2); y <= Math.round(pupil.y + radius * 2); y += 1) {
       if (y < 0 || y >= height) continue
-      if (isDarkPixel(imageData, x, y)) dark += 1
+      if (isLensBoundaryCandidate(imageData, x, y)) hits += 1
       total += 1
     }
-    const score = total ? dark / total : 0
+    const score = total ? hits / total : 0
     if (score > best.score) best = { value: x, score }
   }
 
   return best
 }
 
-function findDarkRimY(
+function findLensBoundaryY(
   imageData: ImageData,
   pupil: Pt,
   direction: -1 | 1,
@@ -1151,14 +1444,14 @@ function findDarkRimY(
 
   for (let y = start; direction < 0 ? y >= limit : y <= limit; y += direction) {
     if (y < 0 || y >= height) continue
-    let dark = 0
+    let hits = 0
     let total = 0
     for (let x = Math.round(pupil.x - halfBand); x <= Math.round(pupil.x + halfBand); x += 2) {
       if (x < 0 || x >= width) continue
-      if (isDarkPixel(imageData, x, y)) dark += 1
+      if (isLensBoundaryCandidate(imageData, x, y)) hits += 1
       total += 1
     }
-    const score = total ? dark / total : 0
+    const score = total ? hits / total : 0
     if (score > best.score) best = { value: y, score }
   }
 
@@ -1187,7 +1480,7 @@ function scanLensRays(
     left: bestRayHit(imageData, pupil, angles.left, start, maxRadius, (point, best) => !best || point.x < best.x),
     right: bestRayHit(imageData, pupil, angles.right, start, maxRadius, (point, best) => !best || point.x > best.x),
     top: bestRayHit(imageData, pupil, angles.top, start, maxRadius, (point, best) => !best || point.y < best.y),
-    bottom: bestRayHit(imageData, pupil, angles.bottom, start, maxRadius, (point, best) => !best || point.y > best.y),
+    bottom: bestRayHit(imageData, pupil, angles.bottom, start, maxRadius, (point, best) => !best || point.y > best.y, 'last'),
     diagA: bestRayHit(imageData, pupil, angles.diagA, start, maxRadius, (point, best) => !best || point.x + point.y < best.x + best.y),
     diagB: bestRayHit(imageData, pupil, angles.diagB, start, maxRadius, (point, best) => !best || point.x + point.y > best.x + best.y),
   }
@@ -1200,48 +1493,106 @@ function bestRayHit(
   start: number,
   maxRadius: number,
   isBetter: (point: Pt, best: Pt | null) => boolean,
+  mode: 'first' | 'last' = 'first',
 ) {
   let best: Pt | null = null
   for (const angle of angles) {
-    const hit = scanRayForDarkCluster(imageData, origin, angle, start, maxRadius)
+    const hit = scanRayForLensBoundary(imageData, origin, angle, start, maxRadius, mode)
     if (hit && isBetter(hit, best)) best = hit
   }
   return best
 }
 
-function scanRayForDarkCluster(imageData: ImageData, origin: Pt, degrees: number, start: number, maxRadius: number) {
+function scanRayForLensBoundary(imageData: ImageData, origin: Pt, degrees: number, start: number, maxRadius: number, mode: 'first' | 'last') {
   const radians = (degrees * Math.PI) / 180
   const dx = Math.cos(radians)
   const dy = Math.sin(radians)
   let streak = 0
+  let lastHit: Pt | null = null
 
   for (let radius = start; radius <= maxRadius; radius += 2) {
     const x = Math.round(origin.x + dx * radius)
     const y = Math.round(origin.y + dy * radius)
     if (x < 1 || y < 1 || x >= imageData.width - 1 || y >= imageData.height - 1) break
 
-    if (isDarkPixel(imageData, x, y) || hasLocalDarkEdge(imageData, x, y)) {
+    if (isLensBoundaryCandidate(imageData, x, y)) {
       streak += 1
-      if (streak >= 2) return { x, y }
+      if (streak >= 2) {
+        lastHit = { x, y }
+        if (mode === 'first') return lastHit
+      }
     } else {
       streak = 0
     }
   }
 
-  return null
+  return lastHit
 }
 
-function hasLocalDarkEdge(imageData: ImageData, x: number, y: number) {
+function hasLocalEdge(imageData: ImageData, x: number, y: number) {
+  return localEdgeStrength(imageData, x, y) > 34
+}
+
+function localEdgeStrength(imageData: ImageData, x: number, y: number) {
   const center = pixelLuminance(imageData, x, y)
   const left = pixelLuminance(imageData, x - 1, y)
   const right = pixelLuminance(imageData, x + 1, y)
   const top = pixelLuminance(imageData, x, y - 1)
   const bottom = pixelLuminance(imageData, x, y + 1)
-  return center < 112 && Math.max(Math.abs(center - left), Math.abs(center - right), Math.abs(center - top), Math.abs(center - bottom)) > 42
+  return Math.max(Math.abs(center - left), Math.abs(center - right), Math.abs(center - top), Math.abs(center - bottom))
 }
 
-function isFrameCandidate(imageData: ImageData, x: number, y: number) {
-  return isDarkPixel(imageData, x, y) || hasLocalDarkEdge(imageData, x, y)
+function isSpecularLensHint(imageData: ImageData, x: number, y: number) {
+  const index = (y * imageData.width + x) * 4
+  const red = imageData.data[index]
+  const green = imageData.data[index + 1]
+  const blue = imageData.data[index + 2]
+  const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+  const contrast = Math.max(red, green, blue) - Math.min(red, green, blue)
+  return luminance > 178 && contrast < 58 && localEdgeStrength(imageData, x, y) > 18
+}
+
+function isBrightRimPixel(imageData: ImageData, x: number, y: number) {
+  const index = (y * imageData.width + x) * 4
+  const red = imageData.data[index]
+  const green = imageData.data[index + 1]
+  const blue = imageData.data[index + 2]
+  const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+  const contrast = Math.max(red, green, blue) - Math.min(red, green, blue)
+  return luminance > 150 && contrast < 72 && localEdgeStrength(imageData, x, y) > 12
+}
+
+function isDarkRimPixel(imageData: ImageData, x: number, y: number) {
+  const index = (y * imageData.width + x) * 4
+  const red = imageData.data[index]
+  const green = imageData.data[index + 1]
+  const blue = imageData.data[index + 2]
+  const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+  const contrast = Math.max(red, green, blue) - Math.min(red, green, blue)
+  return luminance < 92 && contrast < 96
+}
+
+function darkContinuityScore(imageData: ImageData, x: number, y: number, radius: number) {
+  let horizontal = 0
+  let vertical = 0
+  let total = 0
+
+  for (let offset = -radius; offset <= radius; offset += 1) {
+    if (x + offset > 1 && x + offset < imageData.width - 2) {
+      if (isDarkRimPixel(imageData, x + offset, y)) horizontal += 1
+      total += 1
+    }
+    if (y + offset > 1 && y + offset < imageData.height - 2) {
+      if (isDarkRimPixel(imageData, x, y + offset)) vertical += 1
+      total += 1
+    }
+  }
+
+  return total ? Math.max(horizontal, vertical) / Math.max(radius * 2 + 1, 1) : 0
+}
+
+function isLensBoundaryCandidate(imageData: ImageData, x: number, y: number) {
+  return hasLocalEdge(imageData, x, y) || isSpecularLensHint(imageData, x, y)
 }
 
 function smoothCounts(values: number[], radius: number) {
@@ -1301,16 +1652,6 @@ function blendNumber(a: number, b: number, amount: number) {
   return a + (b - a) * amount
 }
 
-function isDarkPixel(imageData: ImageData, x: number, y: number) {
-  const index = (y * imageData.width + x) * 4
-  const red = imageData.data[index]
-  const green = imageData.data[index + 1]
-  const blue = imageData.data[index + 2]
-  const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
-  const contrast = Math.max(red, green, blue) - Math.min(red, green, blue)
-  return luminance < 78 && contrast < 74
-}
-
 function pixelLuminance(imageData: ImageData, x: number, y: number) {
   const index = (y * imageData.width + x) * 4
   return 0.2126 * imageData.data[index] + 0.7152 * imageData.data[index + 1] + 0.0722 * imageData.data[index + 2]
@@ -1318,12 +1659,19 @@ function pixelLuminance(imageData: ImageData, x: number, y: number) {
 
 function calculateMeasurements(handles: Handles, referenceMm: number) {
   const mmpp = referenceMm / Math.max(distance(handles.calibA, handles.calibB), 0.0001)
-  const bridgeCenterX = (handles.bridgeR.x + handles.bridgeL.x) / 2
+  const pupilAxis = unitVector(handles.pupilR, handles.pupilL)
+  const axisValue = (point: Pt) => (point.x - handles.pupilR.x) * pupilAxis.x + (point.y - handles.pupilR.y) * pupilAxis.y
+  const pupilRValue = 0
+  const pupilLValue = axisValue(handles.pupilL)
+  const bridgeRValue = axisValue(handles.bridgeR)
+  const bridgeLValue = axisValue(handles.bridgeL)
   const horizontal = distance(handles.lensLeft, handles.lensRight) * mmpp
   const vertical = distance(handles.lensTop, handles.lensBottom) * mmpp
-  const ponte = distance(handles.bridgeR, handles.bridgeL) * mmpp
-  const dnpOD = Math.abs(handles.pupilR.x - bridgeCenterX) * mmpp
-  const dnpOE = Math.abs(handles.pupilL.x - bridgeCenterX) * mmpp
+  const dp = Math.abs(pupilLValue - pupilRValue) * mmpp
+  const ponte = Math.abs(bridgeLValue - bridgeRValue) * mmpp
+  const halfBridge = ponte / 2
+  const dnpOD = Math.abs(bridgeRValue - pupilRValue) * mmpp + halfBridge
+  const dnpOE = Math.abs(pupilLValue - bridgeLValue) * mmpp + halfBridge
   const altOD = Math.abs(handles.mountR.y - handles.pupilR.y) * mmpp
   const altOE = Math.abs(handles.mountL.y - handles.pupilL.y) * mmpp
   const diam = (dnp: number, alt: number) => {
@@ -1333,6 +1681,7 @@ function calculateMeasurements(handles: Handles, referenceMm: number) {
   }
 
   return {
+    dp,
     dnpOD,
     dnpOE,
     altOD,
@@ -1346,6 +1695,10 @@ function calculateMeasurements(handles: Handles, referenceMm: number) {
     palpebraOD: Math.abs(handles.mountR.y - handles.palpebraR.y) * mmpp,
     palpebraOE: Math.abs(handles.mountL.y - handles.palpebraL.y) * mmpp,
   }
+}
+
+function estimatePxPerMmFromPupils(handles: Pick<Handles, 'pupilR' | 'pupilL'>) {
+  return Math.max(distance(handles.pupilR, handles.pupilL) / 63, 1)
 }
 
 function buttonClass(tone: 'dark' | 'light') {
@@ -1389,6 +1742,65 @@ function nextBlank(value: number) {
 
 function distance(a: Pt, b: Pt) {
   return Math.hypot(a.x - b.x, a.y - b.y)
+}
+
+function unitVector(a: Pt, b: Pt) {
+  const length = Math.max(distance(a, b), 0.0001)
+  return { x: (b.x - a.x) / length, y: (b.y - a.y) / length }
+}
+
+function projectPointToLine(point: Pt, lineStart: Pt, lineEnd: Pt) {
+  const axis = unitVector(lineStart, lineEnd)
+  const amount = (point.x - lineStart.x) * axis.x + (point.y - lineStart.y) * axis.y
+  return {
+    x: lineStart.x + axis.x * amount,
+    y: lineStart.y + axis.y * amount,
+  }
+}
+
+function alignBridgeHandlesToPupilAxis(handles: Handles): Handles {
+  return {
+    ...handles,
+    bridgeR: projectPointToLine(handles.bridgeR, handles.pupilR, handles.pupilL),
+    bridgeL: projectPointToLine(handles.bridgeL, handles.pupilR, handles.pupilL),
+  }
+}
+
+function stabilizeBridgeHandlesToPupilAxis(handles: Handles, pxPerMm: number): Handles {
+  const aligned = alignBridgeHandlesToPupilAxis(handles)
+  const axis = unitVector(aligned.pupilR, aligned.pupilL)
+  const axisValue = (point: Pt) => (point.x - aligned.pupilR.x) * axis.x + (point.y - aligned.pupilR.y) * axis.y
+  const dp = Math.max(axisValue(aligned.pupilL), 1)
+  const bridgeRValue = axisValue(aligned.bridgeR)
+  const bridgeLValue = axisValue(aligned.bridgeL)
+  const bridgeWidth = bridgeLValue - bridgeRValue
+
+  const minBridge = 11 * pxPerMm
+  const maxBridge = 28 * pxPerMm
+  const bridgeIsOrdered = bridgeRValue < bridgeLValue
+  const bridgeIsInsideDp = bridgeRValue > dp * 0.2 && bridgeLValue < dp * 0.82
+  const bridgeHasPlausibleWidth = bridgeWidth >= minBridge && bridgeWidth <= maxBridge
+
+  if (bridgeIsOrdered && bridgeIsInsideDp && bridgeHasPlausibleWidth) return aligned
+
+  const fallbackWidth = clamp(Math.abs(bridgeWidth) || 18 * pxPerMm, 16 * pxPerMm, 23 * pxPerMm)
+  const detectedCenter = bridgeIsOrdered ? (bridgeRValue + bridgeLValue) / 2 : dp / 2
+  const center = clamp(detectedCenter, dp * 0.43, dp * 0.62)
+  const bridgeR = pointOnLine(aligned.pupilR, axis, center - fallbackWidth / 2)
+  const bridgeL = pointOnLine(aligned.pupilR, axis, center + fallbackWidth / 2)
+
+  return {
+    ...aligned,
+    bridgeR,
+    bridgeL,
+  }
+}
+
+function pointOnLine(start: Pt, axis: Pt, amount: number) {
+  return {
+    x: start.x + axis.x * amount,
+    y: start.y + axis.y * amount,
+  }
 }
 
 function midpoint(a: Pt, b: Pt) {

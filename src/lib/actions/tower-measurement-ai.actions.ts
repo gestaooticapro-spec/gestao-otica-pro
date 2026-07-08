@@ -188,7 +188,7 @@ function buildPrompt(
 Voce e um especialista em medidas opticas olhando uma foto de uma pessoa usando oculos.
 
 Tarefa:
-Marque pontos 2D da armacao em coordenadas de pixel da imagem enviada.
+Marque pontos 2D do contorno util das lentes em coordenadas de pixel da imagem enviada.
 Imagem enviada: largura ${width}px, altura ${height}px. Origem (0,0) no canto superior esquerdo.
 ${crop ? `Observacao: esta imagem e um recorte da foto original. O recorte comeca em x=${crop.x}, y=${crop.y} na foto original e tem ${crop.width}x${crop.height}px. Responda coordenadas do recorte, nao da foto original.` : ''}
 
@@ -201,20 +201,20 @@ Use a perspectiva de quem olha a foto:
 - A lente direita do cliente aparece no lado esquerdo da imagem. E nela que A, B e D principais devem ser calculados.
 - rightLensContour: exatamente 12 pontos seguindo o contorno externo visivel da lente direita do cliente, em sentido horario.
 - leftLensContour: exatamente 12 pontos seguindo o contorno externo visivel da lente esquerda do cliente, em sentido horario.
-- Cada ponto de rightLensContour deve cair sobre o aro preto/escuro ou sobre a borda externa real da lente, nao no reflexo azul e nao no olho.
-- Cada ponto de leftLensContour tambem deve cair sobre o aro preto/escuro ou borda externa real da lente.
-- Distribua os 12 pontos pelo aro: canto superior externo, topo, topo interno, ponte interna, lateral interna, canto inferior interno, base, base externa, lateral externa e pontos intermediarios da curva.
+- Cada ponto de rightLensContour deve cair sobre a borda externa real/visivel da lente. Reflexos e mudancas de brilho na lente sao pistas validas quando indicam o limite da lente.
+- Cada ponto de leftLensContour tambem deve cair sobre a borda externa real/visivel da lente. Nao dependa da cor da armacao; ela pode ser preta, clara, metalica ou transparente.
+- Distribua os 12 pontos pelo contorno da lente: canto superior externo, topo, topo interno, ponte interna, lateral interna, canto inferior interno, base, base externa, lateral externa e pontos intermediarios da curva.
 - rightLensBox: caixa aproximada que envolve a lente direita do cliente.
 - leftLensBox: caixa aproximada que envolve a lente esquerda do cliente.
 - pupilR/pupilL: centros das pupilas/iris do cliente.
-- bridge.right/bridge.left: pontos internos do aro na ponte, onde as lentes encontram a ponte.
+- bridge.right/bridge.left: pontos internos do contorno da lente na ponte, onde as lentes se aproximam da ponte.
 
 Prioridade absoluta:
-1. Os pontos de aro devem ficar sobre a borda preta/externa da armação.
+1. Os pontos devem ficar sobre o contorno util/visivel da lente, nao sobre pele, olho, sobrancelha ou fundo.
 2. A linha A deve representar a maior largura util da lente direita.
 3. A linha B deve representar a altura util da lente direita.
-4. A diagonal D deve ir de canto de aro a canto de aro. Nunca atravesse a pupila como se fosse ponto final.
-5. Nao responda uma caixa retangular generica se o aro for curvo/trapezoidal. O contorno precisa seguir a forma visivel da armação.
+4. A diagonal D deve ir de canto util da lente a canto util da lente. Nunca atravesse a pupila como se fosse ponto final.
+5. Nao responda uma caixa retangular generica se a lente for curva/trapezoidal. O contorno precisa seguir a forma visivel da lente.
 
 Responda somente JSON valido, sem markdown, neste formato:
 {
