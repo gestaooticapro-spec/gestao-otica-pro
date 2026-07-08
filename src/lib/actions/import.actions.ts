@@ -29,6 +29,8 @@ export type XmlPreviewData = {
     nfe_numero: string
     nfe_serie: string
     data_emissao: string
+    valor_total: number
+    xml_content: string
     fornecedor: {
         cnpj: string
         nome: string // xNome
@@ -83,6 +85,36 @@ async function insertSupplierWithPkeyRetry(supabaseAdmin: any, payload: Record<s
         .insert({ ...payload, id: (maxRow?.id || 0) + 1 })
         .select()
         .single()
+}
+
+async function upsertImportedQueueFromXml(params: {
+    supabaseAdmin: any
+    organizationId: string
+    storeId: number
+    accessKey: string
+    xmlContent: string
+    issuerName: string
+    issuerCnpj: string
+    issuedAt: string
+    total: number
+}) {
+    const { error } = await params.supabaseAdmin
+        .from('nfe_import_queue')
+        .upsert({
+            organization_id: params.organizationId,
+            chave_acesso: params.accessKey,
+            resumo: false,
+            status: 'imported',
+            emitente_nome: params.issuerName || null,
+            emitente_cnpj: params.issuerCnpj || null,
+            data_emissao: params.issuedAt || null,
+            valor_total: Number.isFinite(params.total) ? params.total : null,
+            xml_content: params.xmlContent,
+            metadata: { store_id: params.storeId },
+            updated_at: new Date().toISOString(),
+        }, { onConflict: 'organization_id,chave_acesso' })
+
+    if (error) throw new Error("Erro ao salvar XML na fila fiscal: " + error.message)
 }
 
 // ============================================================================
@@ -213,6 +245,8 @@ export async function parseNfeAndPreview(formData: FormData): Promise<{ success:
                 nfe_numero: infNFe.ide.nNF,
                 nfe_serie: infNFe.ide.serie,
                 data_emissao: infNFe.ide.dhEmi,
+                valor_total: parseFloatSafe(infNFe.total?.ICMSTot?.vNF),
+                xml_content: text,
                 fornecedor: fornecedorPreview,
                 itens: itensPreview
             }
@@ -365,6 +399,18 @@ export async function saveImportedData(data: XmlPreviewData, storeId: number) {
             series: data.nfe_serie,
             supplier_id: supplierId,
             imported_at: new Date().toISOString()
+        })
+
+        await upsertImportedQueueFromXml({
+            supabaseAdmin: supabaseAdmin as any,
+            organizationId: profile.tenant_id,
+            storeId,
+            accessKey: data.access_key,
+            xmlContent: data.xml_content,
+            issuerName: data.fornecedor.nome,
+            issuerCnpj: data.fornecedor.cnpj,
+            issuedAt: data.data_emissao,
+            total: data.valor_total
         })
 
         revalidatePath(`/dashboard/loja/${storeId}/cadastros`)

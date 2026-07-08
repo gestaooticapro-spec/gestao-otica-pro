@@ -169,7 +169,7 @@ export async function listImportedNFeOriginsAction(storeId: number) {
 
     const { data: imported, error } = await supabase
         .from("imported_invoices")
-        .select("id, access_key, nfe_number, series, imported_at")
+        .select("id, access_key, nfe_number, series, imported_at, supplier_id")
         .eq("tenant_id", tenantId)
         .eq("store_id", storeId)
         .order("imported_at", { ascending: false })
@@ -188,18 +188,27 @@ export async function listImportedNFeOriginsAction(storeId: number) {
         .in("chave_acesso", accessKeys);
 
     const queueByKey = new Map((queueItems || []).map((item: any) => [item.chave_acesso, item]));
+    const supplierIds = imported.map((invoice: any) => invoice.supplier_id).filter(Boolean);
+    const { data: suppliers } = supplierIds.length > 0
+        ? await supabase
+            .from("suppliers")
+            .select("id, nome_fantasia, razao_social, cnpj")
+            .in("id", supplierIds)
+        : { data: [] as any[] };
+    const supplierById = new Map((suppliers || []).map((supplier: any) => [supplier.id, supplier]));
 
     return imported.map((invoice: any) => {
         const queue = queueByKey.get(invoice.access_key) as any;
+        const supplier = supplierById.get(invoice.supplier_id) as any;
         return {
             id: invoice.id,
             accessKey: invoice.access_key,
             number: invoice.nfe_number,
             series: invoice.series,
             importedAt: invoice.imported_at,
-            issuerName: queue?.emitente_nome || null,
-            issuerCnpj: queue?.emitente_cnpj || null,
-            issuedAt: queue?.data_emissao || null,
+            issuerName: queue?.emitente_nome || supplier?.nome_fantasia || supplier?.razao_social || null,
+            issuerCnpj: queue?.emitente_cnpj || supplier?.cnpj || null,
+            issuedAt: queue?.data_emissao || invoice.imported_at || null,
             total: queue?.valor_total ?? null,
             xmlAvailable: Boolean(queue?.xml_content),
         };
