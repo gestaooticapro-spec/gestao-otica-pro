@@ -860,7 +860,7 @@ function detectLensShape(
   const rays = scanLensRays(imageData, pupil, fallback, pxPerMm)
   const box = detectLensBox(imageData, pupil, fallback, pxPerMm)
   const brightBox = preset === 'transparent' ? detectBrightRimLensBox(imageData, fallback, pxPerMm) : null
-  const darkContourBox = preset === 'closedContour' ? detectDarkContourLensBox(imageData, fallback, pxPerMm) : null
+  const darkContourBox = preset === 'closedContour' ? detectDarkContourLensBox(imageData, pupil, fallback, pxPerMm) : null
 
   const next: LensShape = normalizeLensShapeToFacialFallback(darkContourBox ?? brightBox ?? box ?? {
     left: rays.left
@@ -943,6 +943,11 @@ function normalizeLensShapeToFacialFallback(
 }
 
 function anchorInitialHandlesToFrame(imageData: ImageData, handles: Handles, pxPerMm: number, preset: DetectionPreset): Handles {
+  if (preset === 'closedContour') {
+    const insetHandles = insetClosedContourHandles(handles, pxPerMm)
+    return stabilizeBridgeHandlesToPupilAxis(insetHandles, pxPerMm)
+  }
+
   const edgeRadius = Math.max(10, Math.round(pxPerMm * 3.4))
   const rimKeys: PointKey[] = [
     'bridgeR',
@@ -962,7 +967,7 @@ function anchorInitialHandlesToFrame(imageData: ImageData, handles: Handles, pxP
   }
   const transparentBottom = preset === 'transparent' ? snapToBrightHorizontalRim(imageData, handles.lensBottom, pxPerMm) : null
   const anchored = rimKeys.reduce((next, key) => {
-    const snapped = preset === 'closedContour' ? snapToDarkContourBoundary(imageData, handles[key], edgeRadius, pxPerMm) : snapToLensBoundary(imageData, handles[key], edgeRadius)
+    const snapped = snapToLensBoundary(imageData, handles[key], edgeRadius)
     const reflectiveSide = preset === 'transparent' && (key === 'lensLeft' || key === 'lensRight') ? snapToBrightVerticalRim(imageData, handles[key], pxPerMm) : null
     const reflectiveBottom =
       preset === 'transparent' && transparentBottom && bottomKeys.has(key)
@@ -1126,62 +1131,32 @@ function detectBrightRimLensBox(
 
 function detectDarkContourLensBox(
   imageData: ImageData,
+  pupil: Pt,
   fallback: { left: number; right: number; top: number; bottom: number },
   pxPerMm: number,
 ): LensShape | null {
-  const xMin = clamp(Math.round(fallback.left - 13 * pxPerMm), 0, imageData.width - 1)
-  const xMax = clamp(Math.round(fallback.right + 10 * pxPerMm), 0, imageData.width - 1)
-  const yMin = clamp(Math.round(fallback.top - 8 * pxPerMm), 0, imageData.height - 1)
-  const yMax = clamp(Math.round(fallback.bottom + 10 * pxPerMm), 0, imageData.height - 1)
-  const width = xMax - xMin + 1
-  const height = yMax - yMin + 1
-  if (width < 30 || height < 24) return null
+  const left = findDarkInnerBoundaryX(imageData, pupil, -1, fallback, pxPerMm)
+  const right = findDarkInnerBoundaryX(imageData, pupil, 1, fallback, pxPerMm)
+  const top = findDarkInnerBoundaryY(imageData, pupil, -1, fallback, pxPerMm)
+  const bottom = findDarkInnerBoundaryY(imageData, pupil, 1, fallback, pxPerMm)
 
-  const colCounts = new Array(width).fill(0) as number[]
-  const rowCounts = new Array(height).fill(0) as number[]
-  let hits = 0
-
-  for (let y = yMin; y <= yMax; y += 1) {
-    for (let x = xMin; x <= xMax; x += 1) {
-      if (!isDarkRimPixel(imageData, x, y)) continue
-      colCounts[x - xMin] += 1
-      rowCounts[y - yMin] += 1
-      hits += 1
-    }
-  }
-
-  if (hits < width * height * 0.018) return null
-
-  const smoothedCols = smoothCounts(colCounts, Math.max(2, Math.round(pxPerMm * 0.35)))
-  const smoothedRows = smoothCounts(rowCounts, Math.max(2, Math.round(pxPerMm * 0.35)))
-  const colThreshold = Math.max(5, height * 0.09)
-  const rowThreshold = Math.max(5, width * 0.09)
-  const leftIndex = firstStrongIndex(smoothedCols, colThreshold, 0, Math.round(width * 0.45))
-  const rightIndex = lastStrongIndex(smoothedCols, colThreshold, Math.round(width * 0.48), width - 1)
-  const topIndex = firstStrongIndex(smoothedRows, rowThreshold, 0, Math.round(height * 0.45))
-  const bottomIndex = lastStrongIndex(smoothedRows, rowThreshold, Math.round(height * 0.44), height - 1)
-
-  if (leftIndex === null || rightIndex === null || topIndex === null || bottomIndex === null) return null
-
-  const left = xMin + leftIndex
-  const right = xMin + rightIndex
-  const top = yMin + topIndex
-  const bottom = yMin + bottomIndex
-  if (right - left < 34 * pxPerMm || bottom - top < 20 * pxPerMm) return null
+  if (left === null || right === null || top === null || bottom === null) return null
+  const innerTop = Math.min(top + 1.6 * pxPerMm, pupil.y - 7 * pxPerMm)
+  if (right - left < 34 * pxPerMm || bottom - innerTop < 20 * pxPerMm) return null
 
   return {
     left,
     right,
-    top,
+    top: innerTop,
     bottom,
     ...resolveLensDiagonal(
       imageData,
       {
         left,
         right,
-        top,
+        top: innerTop,
         bottom,
-        diagA: { x: left, y: top },
+        diagA: { x: left, y: innerTop },
         diagB: { x: right, y: bottom },
       },
       pxPerMm,
@@ -1190,11 +1165,94 @@ function detectDarkContourLensBox(
   }
 }
 
+function findDarkInnerBoundaryX(
+  imageData: ImageData,
+  pupil: Pt,
+  direction: -1 | 1,
+  fallback: { left: number; right: number; top: number; bottom: number },
+  pxPerMm: number,
+) {
+  const start = Math.round(pupil.x + direction * Math.max(6, pxPerMm * 4))
+  const limit = direction < 0 ? Math.round(fallback.left - 6 * pxPerMm) : Math.round(fallback.right + 5 * pxPerMm)
+  const yTop = Math.round(Math.max(fallback.top + 4 * pxPerMm, pupil.y - 11 * pxPerMm))
+  const yBottom = Math.round(Math.min(fallback.bottom - 3 * pxPerMm, pupil.y + 13 * pxPerMm))
+  const minHits = Math.max(7, Math.round((yBottom - yTop + 1) * 0.32))
+  let streak = 0
+  let lastStrongX: number | null = null
+
+  for (let x = start; direction < 0 ? x >= limit : x <= limit; x += direction) {
+    if (x < 2 || x >= imageData.width - 2) continue
+    let hits = 0
+    let edgeTotal = 0
+
+    for (let y = yTop; y <= yBottom; y += 1) {
+      if (y < 2 || y >= imageData.height - 2) continue
+      if (!isDarkRimPixel(imageData, x, y)) continue
+      hits += 1
+      edgeTotal += localEdgeStrength(imageData, x, y)
+    }
+
+    if (hits >= minHits) {
+      streak += 1
+      const edgeScore = Math.min(edgeTotal / Math.max(hits * 70, 1), 1)
+      if (streak >= 2 && edgeScore > 0.12) {
+        if (direction > 0) return x
+        lastStrongX = x
+      }
+    } else {
+      streak = 0
+    }
+  }
+
+  return lastStrongX
+}
+
+function findDarkInnerBoundaryY(
+  imageData: ImageData,
+  pupil: Pt,
+  direction: -1 | 1,
+  fallback: { left: number; right: number; top: number; bottom: number },
+  pxPerMm: number,
+) {
+  const start = Math.round(pupil.y + direction * Math.max(7, pxPerMm * 5))
+  const limit = direction < 0 ? Math.round(fallback.top - 4 * pxPerMm) : Math.round(fallback.bottom + 5 * pxPerMm)
+  const xLeft = Math.round(Math.max(fallback.left + 8 * pxPerMm, pupil.x - 18 * pxPerMm))
+  const xRight = Math.round(Math.min(fallback.right - 5 * pxPerMm, pupil.x + 18 * pxPerMm))
+  const minHits = Math.max(9, Math.round((xRight - xLeft + 1) * (direction < 0 ? 0.24 : 0.2)))
+  let streak = 0
+
+  for (let y = start; direction < 0 ? y >= limit : y <= limit; y += direction) {
+    if (y < 2 || y >= imageData.height - 2) continue
+    let hits = 0
+    let edgeTotal = 0
+
+    for (let x = xLeft; x <= xRight; x += 1) {
+      if (x < 2 || x >= imageData.width - 2) continue
+      if (!isDarkRimPixel(imageData, x, y)) continue
+      hits += 1
+      edgeTotal += localEdgeStrength(imageData, x, y)
+    }
+
+    if (hits >= minHits) {
+      streak += 1
+      const edgeScore = Math.min(edgeTotal / Math.max(hits * 70, 1), 1)
+      if (streak >= 2 && edgeScore > 0.1) return y
+    } else {
+      streak = 0
+    }
+  }
+
+  return null
+}
+
 function resolveLensDiagonal(imageData: ImageData, shape: LensShape, pxPerMm: number, preset: DetectionPreset = 'standard') {
   const width = Math.max(shape.right - shape.left, 1)
   const height = Math.max(shape.bottom - shape.top, 1)
   const transparent = preset === 'transparent'
   const closedContour = preset === 'closedContour'
+  const boundaryCandidate = closedContour
+    ? (x: number, y: number) => isDarkRimPixel(imageData, x, y)
+    : (x: number, y: number) => isLensBoundaryCandidate(imageData, x, y)
   const diagAStartX = shape.left + Math.max(width * 0.035, pxPerMm * 1.6)
   const diagALimitX = shape.left + width * 0.28
   const diagAStartY = shape.top
@@ -1224,6 +1282,7 @@ function resolveLensDiagonal(imageData: ImageData, shape: LensShape, pxPerMm: nu
         const darkBonus = closedContour && isDarkRimPixel(imageData, Math.round(point.x), Math.round(point.y)) ? 0.18 : 0
         return yNearTop * 0.5 + xNearLeftLens * 0.42 + darkBonus
       },
+      boundaryCandidate,
     ) ?? { x: shape.left, y: shape.top }
 
   const diagB =
@@ -1243,6 +1302,7 @@ function resolveLensDiagonal(imageData: ImageData, shape: LensShape, pxPerMm: nu
         const darkBonus = closedContour && isDarkRimPixel(imageData, Math.round(point.x), Math.round(point.y)) ? 0.22 : 0
         return yNearLowerCurve * (transparent || closedContour ? 0.48 : 0.34) + xNearA2 * (transparent || closedContour ? 0.34 : 0.48) + belowEyeBias * 0.12 + darkBonus
       },
+      boundaryCandidate,
     ) ?? { x: shape.right, y: shape.bottom }
 
   return { diagA, diagB }
@@ -1253,6 +1313,7 @@ function bestBoundaryInRect(
   rect: { left: number; right: number; top: number; bottom: number },
   target: Pt,
   geometryScore: (point: Pt) => number,
+  isCandidate: (x: number, y: number) => boolean = (x, y) => isLensBoundaryCandidate(imageData, x, y),
 ) {
   let best: { point: Pt; score: number } | null = null
   const maxDistance = Math.max(distance({ x: rect.left, y: rect.top }, { x: rect.right, y: rect.bottom }), 1)
@@ -1261,7 +1322,7 @@ function bestBoundaryInRect(
     if (y < 1 || y >= imageData.height - 1) continue
     for (let x = rect.left; x <= rect.right; x += 1) {
       if (x < 1 || x >= imageData.width - 1) continue
-      if (!isLensBoundaryCandidate(imageData, x, y)) continue
+      if (!isCandidate(x, y)) continue
       const closeness = 1 - Math.min(distance(target, { x, y }) / maxDistance, 1)
       const edge = Math.min(localEdgeStrength(imageData, x, y) / 90, 1)
       const highlight = isSpecularLensHint(imageData, x, y) ? 0.18 : 0
@@ -1307,28 +1368,6 @@ function nearestLensBoundaryCandidate(imageData: ImageData, point: Pt, radius: n
   }
 
   return best?.point ?? null
-}
-
-function snapToDarkContourBoundary(imageData: ImageData, point: Pt, radius: number, pxPerMm: number): Pt {
-  let best: { point: Pt; score: number } | null = null
-  const centerX = Math.round(point.x)
-  const centerY = Math.round(point.y)
-  const continuityRadius = Math.max(3, Math.round(pxPerMm * 0.65))
-
-  for (let y = centerY - radius; y <= centerY + radius; y += 1) {
-    if (y < 2 || y >= imageData.height - 2) continue
-    for (let x = centerX - radius; x <= centerX + radius; x += 1) {
-      if (x < 2 || x >= imageData.width - 2) continue
-      if (!isDarkRimPixel(imageData, x, y)) continue
-      const closeness = 1 - Math.min(distance(point, { x, y }) / Math.max(radius, 1), 1)
-      const edge = Math.min(localEdgeStrength(imageData, x, y) / 90, 1)
-      const continuity = darkContinuityScore(imageData, x, y, continuityRadius)
-      const score = continuity * 0.48 + edge * 0.3 + closeness * 0.22
-      if (!best || score > best.score) best = { point: { x, y }, score }
-    }
-  }
-
-  return best && best.score > 0.34 ? best.point : snapToLensBoundary(imageData, point, radius)
 }
 
 function snapToBrightVerticalRim(imageData: ImageData, point: Pt, pxPerMm: number): Pt | null {
@@ -1572,25 +1611,6 @@ function isDarkRimPixel(imageData: ImageData, x: number, y: number) {
   return luminance < 92 && contrast < 96
 }
 
-function darkContinuityScore(imageData: ImageData, x: number, y: number, radius: number) {
-  let horizontal = 0
-  let vertical = 0
-  let total = 0
-
-  for (let offset = -radius; offset <= radius; offset += 1) {
-    if (x + offset > 1 && x + offset < imageData.width - 2) {
-      if (isDarkRimPixel(imageData, x + offset, y)) horizontal += 1
-      total += 1
-    }
-    if (y + offset > 1 && y + offset < imageData.height - 2) {
-      if (isDarkRimPixel(imageData, x, y + offset)) vertical += 1
-      total += 1
-    }
-  }
-
-  return total ? Math.max(horizontal, vertical) / Math.max(radius * 2 + 1, 1) : 0
-}
-
 function isLensBoundaryCandidate(imageData: ImageData, x: number, y: number) {
   return hasLocalEdge(imageData, x, y) || isSpecularLensHint(imageData, x, y)
 }
@@ -1763,6 +1783,38 @@ function alignBridgeHandlesToPupilAxis(handles: Handles): Handles {
     ...handles,
     bridgeR: projectPointToLine(handles.bridgeR, handles.pupilR, handles.pupilL),
     bridgeL: projectPointToLine(handles.bridgeL, handles.pupilR, handles.pupilL),
+  }
+}
+
+function insetClosedContourHandles(handles: Handles, pxPerMm: number): Handles {
+  const leftInset = -5.4 * pxPerMm
+  const rightInset = 2.2 * pxPerMm
+  const topInset = 10.5 * pxPerMm
+  const bridgeInset = 2.1 * pxPerMm
+  const bridgeLeftInset = 4.6 * pxPerMm
+  const lensLeft = { ...handles.lensLeft, x: handles.lensLeft.x + leftInset }
+  const lensRight = { ...handles.lensRight, x: handles.lensRight.x - rightInset }
+  const lensTop = { ...handles.lensTop, y: Math.min(handles.lensTop.y + topInset, handles.pupilR.y - 4.8 * pxPerMm) }
+  const bridgeR = { ...handles.bridgeR, x: Math.min(handles.bridgeR.x - bridgeInset, lensRight.x - 0.6 * pxPerMm) }
+  const bridgeL = { ...handles.bridgeL, x: handles.bridgeL.x + bridgeLeftInset }
+  const width = Math.max(lensRight.x - lensLeft.x, 1)
+  const height = Math.max(handles.lensBottom.y - lensTop.y, 1)
+
+  return {
+    ...handles,
+    lensLeft,
+    lensRight,
+    lensTop,
+    bridgeR,
+    bridgeL,
+    diagA: {
+      x: lensLeft.x + width * 0.006,
+      y: lensTop.y + height * 0.1,
+    },
+    diagB: {
+      x: lensRight.x - width * 0.075,
+      y: handles.lensBottom.y - height * 0.26,
+    },
   }
 }
 
