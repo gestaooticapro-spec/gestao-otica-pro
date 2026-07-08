@@ -73,6 +73,11 @@ export type SendInstallmentReceiptWhatsAppInput = {
   installmentId: number
 }
 
+export type SendSalePaymentReceiptWhatsAppInput = {
+  storeId: number
+  paymentId: number
+}
+
 export type SendCustomerFinancialSummaryWhatsAppInput = {
   storeId: number
   customerId: number
@@ -978,6 +983,144 @@ export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentRecei
       success: false,
       routeUsed: 'external_fallback',
       message: formatActionError(error, 'Nao foi possivel gerar ou enviar o recibo.'),
+      fallbackReason: 'unexpected_error',
+      shouldOpenExternal: false,
+    }
+  }
+}
+
+export async function sendSalePaymentReceiptWhatsApp(
+  input: SendSalePaymentReceiptWhatsAppInput
+): Promise<SendManualWhatsAppResult> {
+  const storeId = Number(input.storeId)
+  const paymentId = Number(input.paymentId)
+
+  try {
+    if (!Number.isInteger(storeId) || storeId <= 0 || !Number.isInteger(paymentId) || paymentId <= 0) {
+      return {
+        success: false,
+        routeUsed: 'external_fallback',
+        message: 'Loja ou pagamento invalido.',
+        shouldOpenExternal: false,
+      }
+    }
+
+    const { supabaseAdmin } = await getSendContext(storeId)
+    const { data: payment, error: paymentError } = await (supabaseAdmin.from('pagamentos') as any)
+      .select('*')
+      .eq('id', paymentId)
+      .eq('store_id', storeId)
+      .maybeSingle()
+
+    if (paymentError) throw paymentError
+    if (!payment?.venda_id) {
+      return {
+        success: false,
+        routeUsed: 'external_fallback',
+        message: 'Pagamento nao encontrado nesta loja.',
+        shouldOpenExternal: false,
+      }
+    }
+
+    const [{ data: sale, error: saleError }, { data: payments, error: paymentsError }] = await Promise.all([
+      (supabaseAdmin.from('vendas') as any)
+        .select('id, store_id, customer_id')
+        .eq('id', payment.venda_id)
+        .eq('store_id', storeId)
+        .maybeSingle(),
+      (supabaseAdmin.from('pagamentos') as any)
+        .select('id, created_at, data_pagamento')
+        .eq('venda_id', payment.venda_id)
+        .eq('store_id', storeId)
+        .order('data_pagamento', { ascending: true })
+        .order('created_at', { ascending: true }),
+    ])
+
+    if (saleError) throw saleError
+    if (paymentsError) throw paymentsError
+    if (!sale?.customer_id) {
+      return {
+        success: false,
+        routeUsed: 'external_fallback',
+        message: 'Venda sem cliente cadastrado nesta loja.',
+        shouldOpenExternal: false,
+      }
+    }
+
+    const { data: customer, error: customerError } = await (supabaseAdmin.from('customers') as any)
+      .select('id, store_id, full_name, phone, fone_movel')
+      .eq('id', sale.customer_id)
+      .eq('store_id', storeId)
+      .maybeSingle()
+
+    if (customerError) throw customerError
+    if (!customer) {
+      return {
+        success: false,
+        routeUsed: 'external_fallback',
+        message: 'Cliente do pagamento nao encontrado nesta loja.',
+        shouldOpenExternal: false,
+      }
+    }
+
+    const remotePhone = customer.fone_movel || customer.phone
+    if (!remotePhone) {
+      return {
+        success: false,
+        routeUsed: 'external_fallback',
+        message: 'O cliente nao possui telefone cadastrado.',
+        shouldOpenExternal: false,
+      }
+    }
+
+    const orderedPayments = Array.isArray(payments) ? payments : []
+    const paymentIndex = orderedPayments.findIndex((item) => item.id === paymentId)
+    const paymentOrdinal = paymentIndex >= 0 ? paymentIndex + 1 : 1
+    const totalPayments = orderedPayments.length || 1
+    const paymentDate = payment.data_pagamento || payment.created_at || new Date().toISOString()
+    const paymentDateLabel = paymentDate ? new Date(paymentDate).toLocaleDateString('pt-BR') : '-'
+
+    const storeProfile = await getStoreDocumentProfile(supabaseAdmin, storeId)
+    const pdfBuffer = await generateInstallmentReceiptPDF({
+      customerName: customer.full_name,
+      installmentNumber: paymentOrdinal,
+      totalInstallments: totalPayments,
+      amount: payment.valor_pago,
+      dueDate: paymentDate,
+      paymentDate,
+      isReprint: Boolean(payment.receipt_printed_at),
+      receiptTitle: 'RECIBO DE PAGAMENTO',
+      referenceLabel: 'PAGAMENTO',
+      referenceValue: `${paymentOrdinal} de ${totalPayments}`,
+      declarationText: `Recebemos de ${customer.full_name || 'Consumidor Final'} a importancia de ${Number(payment.valor_pago || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}, referente ao pagamento registrado em ${paymentDateLabel} para a venda #${payment.venda_id}.`,
+      footerNote: 'Documento nao fiscal emitido para comprovacao deste pagamento.',
+      store: storeProfile,
+    })
+    const firstName = String(customer.full_name || '').trim().split(/\s+/)[0] || 'cliente'
+
+    return await sendManualWhatsAppMediaWithContext({
+      storeId,
+      remotePhone,
+      mediaType: 'pdf',
+      mimeType: 'application/pdf',
+      fileName: `recibo-pagamento-${paymentId}.pdf`,
+      fileBase64: pdfBuffer.toString('base64'),
+      caption: `Ola, ${firstName}! Segue o recibo deste pagamento.`,
+      messageType: 'document_attachment',
+      source: 'sale_payment.receipt_button',
+      metadata: {
+        paymentId,
+        saleId: payment.venda_id,
+        customerId: customer.id,
+        documentType: 'sale_payment_receipt',
+      },
+    }, supabaseAdmin)
+  } catch (error) {
+    console.error('[Manual WhatsApp] Failed to send sale payment receipt:', error)
+    return {
+      success: false,
+      routeUsed: 'external_fallback',
+      message: formatActionError(error, 'Nao foi possivel gerar ou enviar o recibo do pagamento.'),
       fallbackReason: 'unexpected_error',
       shouldOpenExternal: false,
     }

@@ -183,6 +183,8 @@ const EYE_FOLLOW_SMOOTHING = 0.92
 const ENVELOPE_BINS = 72
 const CUTOUT = { x: 0.24, y: 0.22, w: 0.52, h: 0.46 }
 const HEATMAP_LAB_BUILD = 'heatmap-v10-geometry-picker-2026-04-30'
+const CLIENT_RESULT_TITLE = 'Encontramos campos de visão que combinam com o seu padrão visual.'
+const CLIENT_RESULT_SUBTITLE = 'Aguarde enquanto encontramos a melhor lente para você.'
 const SANDBOX_CALIBRATION_STEPS: SandboxCalibrationStep[] = [
   { key: 'center', target: { x: 0.5, y: 0.5 }, instruction: '1/9 · centro · cabeça neutra' },
   { key: 'eyeLeft', target: { x: 0.08, y: 0.5 }, instruction: '2/9 · só olhos · esquerda' },
@@ -416,21 +418,30 @@ function shuffleTargetPoints(points: NormalizedPoint[]) {
 }
 
 function buildTargetSequence() {
+  const sessionNearY = 0.9
+  const sessionMidNearY = 0.72
+  const sessionLowerInnerY = 0.8
+  const sessionUpperBridgeY = 0.42
   const requiredCoverage = [
     { x: 0.08, y: 0.5 },
     { x: 0.92, y: 0.5 },
     { x: 0.5, y: FAR_TARGET_Y },
-    { x: 0.5, y: NEAR_TARGET_Y },
+    { x: 0.5, y: sessionNearY },
     { x: 0.08, y: FAR_TARGET_Y },
     { x: 0.92, y: FAR_TARGET_Y },
-    { x: 0.08, y: NEAR_TARGET_Y },
-    { x: 0.92, y: NEAR_TARGET_Y },
     { x: 0.24, y: MID_FAR_TARGET_Y },
     { x: 0.76, y: MID_FAR_TARGET_Y },
-    { x: 0.24, y: MID_NEAR_TARGET_Y },
-    { x: 0.76, y: MID_NEAR_TARGET_Y },
+    { x: 0.28, y: sessionUpperBridgeY },
+    { x: 0.5, y: sessionUpperBridgeY },
+    { x: 0.72, y: sessionUpperBridgeY },
+    { x: 0.24, y: sessionMidNearY },
+    { x: 0.76, y: sessionMidNearY },
+    { x: 0.36, y: sessionLowerInnerY },
+    { x: 0.64, y: sessionLowerInnerY },
     { x: 0.5, y: MID_FAR_TARGET_Y },
-    { x: 0.5, y: MID_NEAR_TARGET_Y },
+    { x: 0.5, y: sessionMidNearY },
+    { x: 0.5, y: sessionLowerInnerY },
+    { x: 0.5, y: sessionNearY },
     { x: 0.24, y: 0.5 },
     { x: 0.76, y: 0.5 },
   ]
@@ -646,7 +657,7 @@ function projectSampleToLens(sample: SessionSample) {
     const demandedWeight = Math.max(demandX + demandY, 0.0001)
     const eyeDemandShare = clamp((eyeShareX * demandX + eyeShareY * demandY) / demandedWeight, 0, 1)
     const eyeNorm = clamp(Math.hypot(lensEyeX, lensEyeY) / 0.65, 0, 1.5)
-    const edgeSpread = clamp(0.52 + eyeNorm * 1.05 + eyeDemandShare * 0.32, 0.52, 1.92)
+    const edgeSpread = clamp(0.48 + eyeNorm * 0.88 + eyeDemandShare * 0.24, 0.48, 1.58)
 
     return {
       point: {
@@ -657,9 +668,9 @@ function projectSampleToLens(sample: SessionSample) {
         x: clamp(0.5 + lensEyeX * 0.52, 0.03, 0.97),
         y: projectSandboxLensY(lensEyeY, 1),
       },
-      radius: 1.7 + edgeSpread * 1.18,
+      radius: 1.55 + edgeSpread * 0.98,
       spreadX: 0.006 + Math.abs(lensEyeX) * 0.052 + eyeDemandShare * 0.012,
-      spreadY: 0.012 + Math.abs(lensEyeY) * 0.075 + eyeDemandShare * 0.016,
+      spreadY: 0.011 + Math.abs(lensEyeY) * 0.05 + eyeDemandShare * 0.011,
       weight: 1 + eyeDemandShare * 0.22,
       eyeDominance: eyeDemandShare,
       headDominance: 1 - eyeDemandShare,
@@ -1072,6 +1083,163 @@ function drawLensHeatmap(
   ctx.restore()
 }
 
+function getProjectedSampleStats(samples: SessionSample[]) {
+  if (!samples.length) {
+    return { meanX: 0.5, meanY: LENS_DISTANCE_REFERENCE_Y, spreadX: 0.08, spreadY: 0.12 }
+  }
+
+  const points = samples.map((sample) => projectSampleToLens(sample).point)
+  const meanX = points.reduce((sum, point) => sum + point.x, 0) / points.length
+  const meanY = points.reduce((sum, point) => sum + point.y, 0) / points.length
+  const spreadX = Math.sqrt(points.reduce((sum, point) => sum + (point.x - meanX) ** 2, 0) / points.length)
+  const spreadY = Math.sqrt(points.reduce((sum, point) => sum + (point.y - meanY) ** 2, 0) / points.length)
+
+  return { meanX, meanY, spreadX, spreadY }
+}
+
+function getHeatmapFieldOpenness(grid: Float32Array, samples: SessionSample[]) {
+  const maxValue = getHeatMax(grid)
+  if (maxValue <= 0) {
+    const fallback = getProjectedSampleStats(samples)
+    return clamp((fallback.spreadX - 0.06) / 0.26, 0, 1)
+  }
+
+  const threshold = maxValue * 0.12
+  let sideDemand = 0
+
+  for (let row = 0; row < HEAT_ROWS; row += 1) {
+    for (let col = 0; col < HEAT_COLS; col += 1) {
+      const value = grid[row * HEAT_COLS + col]
+      if (value < threshold) continue
+
+      const x = (col + 0.5) / HEAT_COLS
+      sideDemand = Math.max(sideDemand, Math.abs(x - 0.5))
+    }
+  }
+
+  return clamp((sideDemand - 0.17) / 0.25, 0, 1)
+}
+
+function buildAdaptiveVisionBoundaryPaths(width: number, height: number, grid: Float32Array, samples: SessionSample[]) {
+  const openness = getHeatmapFieldOpenness(grid, samples)
+  const edgeMode = smoothstep(0.48, 0.9, openness)
+  const shiftX = width * (0.06 + edgeMode * 0.24)
+  const shiftY = height * edgeMode * 0.38
+
+  const makeSide = (mirror: boolean) => {
+    const path = new Path2D()
+    const direction = mirror ? -1 : 1
+    const mirrorX = (x: number) => (mirror ? width - x : x)
+    const point = (x: number, y: number) => ({
+      x: mirrorX(width * x) - direction * shiftX,
+      y: height * y + shiftY,
+    })
+
+    // Curva rigida inspirada nas geometrias reais: a forma nao muda, so e deslocada.
+    const start = point(0.035, 0.27)
+    const c1 = point(0.18, 0.28)
+    const c2 = point(0.29, 0.3)
+    const neck = point(0.29, 0.43)
+    const c3 = point(0.29, 0.56)
+    const c4 = point(0.23, 0.66)
+    const end = point(0.17, 0.9)
+
+    path.moveTo(start.x, start.y)
+    path.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, neck.x, neck.y)
+    path.bezierCurveTo(c3.x, c3.y, c4.x, c4.y, end.x, end.y)
+    return path
+  }
+
+  return {
+    left: makeSide(false),
+    right: makeSide(true),
+  }
+}
+
+function drawClientIdealLensResult(
+  canvas: HTMLCanvasElement,
+  grid: Float32Array,
+  summary: SessionSummary | null,
+  geometry: LensGeometry | null,
+  samples: SessionSample[],
+) {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  const width = canvas.width
+  const height = canvas.height
+  const paddingX = 56
+  const paddingY = 44
+  const availableWidth = width - paddingX * 2
+  const availableHeight = height - paddingY * 2
+  const targetLensAspect = 1.9
+  let lensWidth = availableWidth
+  let lensHeight = lensWidth / targetLensAspect
+  if (lensHeight > availableHeight) {
+    lensHeight = availableHeight
+    lensWidth = lensHeight * targetLensAspect
+  }
+  const lensX = (width - lensWidth) / 2
+  const lensY = (height - lensHeight) / 2
+  const maxValue = getHeatMax(grid)
+  const renderablePins = getRenderablePins(geometry)
+  const lensPath = renderablePins?.lensRim.length
+    ? buildPinPath(renderablePins.lensRim, lensWidth, lensHeight)
+    : buildLensPath(lensWidth, lensHeight)
+  const fieldBoundaries = buildAdaptiveVisionBoundaryPaths(lensWidth, lensHeight, grid, samples)
+
+  ctx.clearRect(0, 0, width, height)
+
+  const background = ctx.createLinearGradient(0, 0, width, height)
+  background.addColorStop(0, '#07111f')
+  background.addColorStop(0.48, '#0d1c2f')
+  background.addColorStop(1, '#020617')
+  ctx.fillStyle = background
+  ctx.fillRect(0, 0, width, height)
+
+  ctx.save()
+  ctx.translate(lensX, lensY)
+  ctx.shadowColor = 'rgba(34, 211, 238, 0.24)'
+  ctx.shadowBlur = 42
+  ctx.fillStyle = 'rgba(241, 245, 249, 0.96)'
+  ctx.fill(lensPath)
+  ctx.shadowBlur = 0
+  ctx.save()
+  ctx.clip(lensPath)
+
+  const lensGradient = ctx.createLinearGradient(0, 0, 0, lensHeight)
+  lensGradient.addColorStop(0, '#eff6ff')
+  lensGradient.addColorStop(0.48, '#e0f2fe')
+  lensGradient.addColorStop(1, '#eef2ff')
+  ctx.fillStyle = lensGradient
+  ctx.fillRect(0, 0, lensWidth, lensHeight)
+
+  if (maxValue > 0) {
+    ctx.globalCompositeOperation = 'multiply'
+    drawContinuousHeat(ctx, grid, lensWidth, lensHeight, maxValue)
+    ctx.globalCompositeOperation = 'source-over'
+  }
+
+  ctx.save()
+  ctx.strokeStyle = 'rgba(250, 204, 21, 0.92)'
+  ctx.lineWidth = 3.4
+  ctx.lineCap = 'round'
+  ctx.shadowColor = 'rgba(250, 204, 21, 0.32)'
+  ctx.shadowBlur = 10
+  ctx.stroke(fieldBoundaries.left)
+  ctx.stroke(fieldBoundaries.right)
+  ctx.restore()
+
+  ctx.restore()
+  ctx.strokeStyle = 'rgba(129, 140, 248, 0.48)'
+  ctx.lineWidth = 6
+  ctx.stroke(lensPath)
+  ctx.strokeStyle = 'rgba(226, 232, 240, 0.9)'
+  ctx.lineWidth = 1.4
+  ctx.stroke(lensPath)
+  ctx.restore()
+}
+
 function drawTrackingOverlay(
   canvas: HTMLCanvasElement,
   landmarks: NormalizedPoint[] | null,
@@ -1249,6 +1417,7 @@ export default function GazeHeatmapLab({
   const contourHeatmapRef = useRef<HTMLCanvasElement>(null)
   const wideHeatmapRef = useRef<HTMLCanvasElement>(null)
   const narrowHeatmapRef = useRef<HTMLCanvasElement>(null)
+  const clientResultCanvasRef = useRef<HTMLCanvasElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const landmarkerRef = useRef<FaceLandmarkerInstance | null>(null)
@@ -1260,6 +1429,7 @@ export default function GazeHeatmapLab({
   const lastTickRef = useRef<number>(0)
   const lastUiTickRef = useRef<number>(0)
   const phaseRef = useRef<SessionPhase>('idle')
+  const clientResultVisibleRef = useRef(false)
   const heatmapRef = useRef<Float32Array>(makeHeatmap())
   const samplesRef = useRef<SessionSample[]>([])
   const targetSamplesRef = useRef<SessionSample[]>([])
@@ -1282,6 +1452,9 @@ export default function GazeHeatmapLab({
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [loadingModel, setLoadingModel] = useState(false)
   const [phase, setPhase] = useState<SessionPhase>('idle')
+  const [clientResultVisible, setClientResultVisible] = useState(false)
+  const [typedClientTitle, setTypedClientTitle] = useState('')
+  const [typedClientSubtitle, setTypedClientSubtitle] = useState('')
   const [hasCalibration, setHasCalibration] = useState(false)
   const [status, setStatus] = useState('Abra a câmera frontal e alinhe o rosto ao centro.')
   const [target, setTarget] = useState<NormalizedPoint>({ x: 0.5, y: 0.5 })
@@ -1351,7 +1524,16 @@ export default function GazeHeatmapLab({
         'continuous',
       )
     }
-  }, [selectedGeometry])
+    if (clientResultCanvasRef.current) {
+      drawClientIdealLensResult(
+        clientResultCanvasRef.current,
+        heatmapRef.current,
+        summary,
+        selectedGeometry,
+        samplesRef.current,
+      )
+    }
+  }, [selectedGeometry, summary])
 
   useEffect(() => {
     setSecureContextWarning(typeof window !== 'undefined' && !window.isSecureContext)
@@ -1438,9 +1620,10 @@ export default function GazeHeatmapLab({
 
   useEffect(() => {
     if (!clientMode) return
+    if (phase === 'finished' || clientResultVisible) return
     if (cameraReady) return
     void startCamera()
-  }, [clientMode, cameraReady])
+  }, [clientMode, cameraReady, clientResultVisible, phase])
 
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -1465,7 +1648,7 @@ export default function GazeHeatmapLab({
     const stage = stageRef.current
     if (!stage) return
 
-    if (isFocusMode) {
+    if (isFocusMode || phase === 'finished' || clientResultVisible) {
       if (document.fullscreenElement !== stage) {
         stage.requestFullscreen?.().catch(() => {})
       }
@@ -1475,7 +1658,49 @@ export default function GazeHeatmapLab({
     if (document.fullscreenElement) {
       document.exitFullscreen?.().catch(() => {})
     }
-  }, [clientMode, isFocusMode])
+  }, [clientMode, clientResultVisible, isFocusMode, phase])
+
+  useEffect(() => {
+    if (!clientMode || (!clientResultVisible && phase !== 'finished')) return
+    const frame = requestAnimationFrame(() => redrawHeatmaps())
+    return () => cancelAnimationFrame(frame)
+  }, [clientMode, clientResultVisible, phase, redrawHeatmaps])
+
+  useEffect(() => {
+    const shouldType = clientMode && (clientResultVisible || phase === 'finished')
+    if (!shouldType) {
+      setTypedClientTitle('')
+      setTypedClientSubtitle('')
+      return
+    }
+
+    setTypedClientTitle('')
+    setTypedClientSubtitle('')
+
+    const pauseBetweenLines = 10
+    const totalSteps = CLIENT_RESULT_TITLE.length + pauseBetweenLines + CLIENT_RESULT_SUBTITLE.length
+    let step = 0
+
+    const timer = window.setInterval(() => {
+      step += 1
+
+      if (step <= CLIENT_RESULT_TITLE.length) {
+        setTypedClientTitle(CLIENT_RESULT_TITLE.slice(0, step))
+        return
+      }
+
+      const subtitleStep = step - CLIENT_RESULT_TITLE.length - pauseBetweenLines
+      if (subtitleStep > 0) {
+        setTypedClientSubtitle(CLIENT_RESULT_SUBTITLE.slice(0, subtitleStep))
+      }
+
+      if (step >= totalSteps) {
+        window.clearInterval(timer)
+      }
+    }, 34)
+
+    return () => window.clearInterval(timer)
+  }, [clientMode, clientResultVisible, phase])
 
   const toggleFullscreen = useCallback(async () => {
     const stage = stageRef.current
@@ -1558,6 +1783,13 @@ export default function GazeHeatmapLab({
 
       video.srcObject = stream
       await video.play()
+      if (clientResultVisibleRef.current) {
+        stream.getTracks().forEach((track) => track.stop())
+        if (streamRef.current === stream) streamRef.current = null
+        setCameraSettings(null)
+        if (video.srcObject === stream) video.srcObject = null
+        return
+      }
       setCameraReady(true)
       setStatus('Câmera ativa. Deixe o rosto centralizado e inicie a calibração.')
     } catch (error) {
@@ -1620,6 +1852,8 @@ export default function GazeHeatmapLab({
   }
 
   function resetLab() {
+    clientResultVisibleRef.current = false
+    setClientResultVisible(false)
     stopSessionTimers()
     heatmapRef.current = makeHeatmap()
     samplesRef.current = []
@@ -1651,6 +1885,8 @@ export default function GazeHeatmapLab({
   }
 
   function cancelRun() {
+    clientResultVisibleRef.current = false
+    setClientResultVisible(false)
     stopSessionTimers()
     sandboxStepRef.current = null
     targetSamplesRef.current = []
@@ -1827,6 +2063,8 @@ export default function GazeHeatmapLab({
     }
 
     stopSessionTimers()
+    clientResultVisibleRef.current = false
+    setClientResultVisible(false)
 
     heatmapRef.current = makeHeatmap()
     samplesRef.current = []
@@ -1878,6 +2116,8 @@ export default function GazeHeatmapLab({
 
   async function startHeadOnlySandbox() {
     if (!cameraReady) return
+    clientResultVisibleRef.current = false
+    setClientResultVisible(false)
     await applyTrackingCameraProfile()
     await ensureLandmarker()
     startTrackingLoop()
@@ -1917,6 +2157,8 @@ export default function GazeHeatmapLab({
 
   async function startCalibration() {
     if (!cameraReady) return
+    clientResultVisibleRef.current = false
+    setClientResultVisible(false)
     await applyTrackingCameraProfile()
     await ensureLandmarker()
     startTrackingLoop()
@@ -1942,6 +2184,8 @@ export default function GazeHeatmapLab({
 
   async function startVerticalHeadDebug() {
     if (!cameraReady) return
+    clientResultVisibleRef.current = false
+    setClientResultVisible(false)
     await applyTrackingCameraProfile()
     await ensureLandmarker()
     startTrackingLoop()
@@ -2027,6 +2271,8 @@ export default function GazeHeatmapLab({
 
   async function startSandboxCalibration() {
     if (!cameraReady) return
+    clientResultVisibleRef.current = false
+    setClientResultVisible(false)
     await applyTrackingCameraProfile()
     await ensureLandmarker()
     startTrackingLoop()
@@ -2052,6 +2298,9 @@ export default function GazeHeatmapLab({
   function finishSession() {
     flushTargetHeatSample()
     stopSessionTimers()
+    phaseRef.current = 'finished'
+    clientResultVisibleRef.current = true
+    setClientResultVisible(true)
     setPhase('finished')
     const nextSummary = summarizeSession(samplesRef.current)
     setSummary(nextSummary)
@@ -2238,8 +2487,9 @@ export default function GazeHeatmapLab({
     : 'absolute left-1/2 top-1/2 bg-cyan-100/90 -translate-x-1/2 -translate-y-1/2'
   const floatingActionClassName =
     'absolute top-1/2 z-30 inline-flex -translate-y-1/2 items-center gap-2 rounded-2xl border border-white/15 bg-slate-950/74 px-4 py-3 text-sm font-black text-slate-100 shadow-[0_18px_42px_rgba(2,6,23,0.34)] backdrop-blur transition hover:bg-slate-900/88 disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-slate-950/42 disabled:text-slate-500'
-  const clientVideoVisible = clientMode && !isFocusMode
-  const showClientTarget = !clientMode || isFocusMode
+  const clientResultMode = clientMode && (clientResultVisible || phase === 'finished')
+  const clientVideoVisible = clientMode && !isFocusMode && !clientResultMode
+  const showClientTarget = !clientMode || (isFocusMode && !clientResultMode)
 
   const stageNode = (
     <div ref={stageRef} className={stageClassName}>
@@ -2266,10 +2516,98 @@ export default function GazeHeatmapLab({
         }
         style={{ opacity: 0, pointerEvents: 'none' }}
       />
+      {clientResultMode && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center px-8 py-10">
+          <div className="relative flex h-full w-full max-w-[1180px] flex-col items-center justify-center overflow-hidden rounded-[44px] border border-cyan-200/18 bg-[linear-gradient(145deg,_rgba(8,47,73,0.62),_rgba(15,23,42,0.82)_48%,_rgba(2,6,23,0.96))] p-7 shadow-[0_36px_110px_rgba(2,6,23,0.62)]">
+            <div className="pointer-events-none absolute -left-20 top-10 h-64 w-64 rounded-full bg-cyan-300/12 blur-3xl" />
+            <div className="pointer-events-none absolute -right-16 bottom-4 h-72 w-72 rounded-full bg-emerald-300/12 blur-3xl" />
+            <div className="pointer-events-none absolute inset-x-10 top-8 h-px overflow-hidden rounded-full bg-white/10">
+              <div className="h-full w-1/3 animate-[heatmap-scan_2.6s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-cyan-200 to-transparent shadow-[0_0_22px_rgba(125,211,252,0.9)]" />
+            </div>
+            <div className="relative z-10 mb-5 max-w-4xl text-center">
+              <p className="text-[11px] font-black uppercase tracking-[0.32em] text-cyan-200/90">
+                Analisando padrão visual
+              </p>
+              <h1
+                className="mt-3 min-h-[2.4em] text-balance text-3xl font-black leading-tight text-white sm:text-5xl"
+                aria-label={CLIENT_RESULT_TITLE}
+              >
+                {typedClientTitle}
+                {typedClientTitle.length < CLIENT_RESULT_TITLE.length && (
+                  <span className="ml-1 inline-block h-[0.9em] w-[3px] animate-pulse rounded-full bg-cyan-200 align-[-0.08em] shadow-[0_0_16px_rgba(125,211,252,0.9)]" />
+                )}
+              </h1>
+              <p
+                className="mt-3 min-h-[1.8em] text-lg font-semibold text-slate-300 sm:text-2xl"
+                aria-label={CLIENT_RESULT_SUBTITLE}
+              >
+                {typedClientSubtitle}
+                {typedClientTitle.length >= CLIENT_RESULT_TITLE.length &&
+                  typedClientSubtitle.length < CLIENT_RESULT_SUBTITLE.length && (
+                    <span className="ml-1 inline-block h-[0.85em] w-[2px] animate-pulse rounded-full bg-emerald-200 align-[-0.05em] shadow-[0_0_14px_rgba(167,243,208,0.75)]" />
+                  )}
+              </p>
+            </div>
+            <div className="relative z-10 w-full max-w-5xl overflow-hidden rounded-[36px] border border-white/12 bg-slate-950/42 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_28px_80px_rgba(2,6,23,0.45)]">
+              <div className="pointer-events-none absolute inset-y-4 left-0 z-20 w-1/4 animate-[heatmap-sweep_3.2s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-cyan-100/18 to-transparent blur-md" />
+              <div className="pointer-events-none absolute inset-x-12 top-1/2 z-20 h-px animate-pulse bg-gradient-to-r from-transparent via-cyan-100/60 to-transparent shadow-[0_0_24px_rgba(125,211,252,0.55)]" />
+              <canvas
+                ref={clientResultCanvasRef}
+                width={1100}
+                height={600}
+                className="h-auto w-full rounded-[28px]"
+              />
+            </div>
+            <div className="relative z-10 mt-5 flex flex-wrap items-center justify-center gap-3 text-xs font-black uppercase tracking-[0.18em] text-slate-300">
+              <span className="rounded-full border border-cyan-200/18 bg-cyan-300/10 px-4 py-2 text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.12)]">
+                <span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-cyan-200" />
+                Lendo heatmap
+              </span>
+              <span className="rounded-full border border-emerald-200/18 bg-emerald-300/10 px-4 py-2 text-emerald-100 shadow-[0_0_18px_rgba(52,211,153,0.1)]">
+                <span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-200 [animation-delay:350ms]" />
+                Cruzando geometrias
+              </span>
+              <span className="rounded-full border border-amber-200/18 bg-amber-300/10 px-4 py-2 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.1)]">
+                <span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-amber-200 [animation-delay:700ms]" />
+                Preparando opções
+              </span>
+            </div>
+            <style jsx>{`
+              @keyframes heatmap-scan {
+                0% {
+                  transform: translateX(-120%);
+                  opacity: 0.1;
+                }
+                45% {
+                  opacity: 1;
+                }
+                100% {
+                  transform: translateX(360%);
+                  opacity: 0.15;
+                }
+              }
+
+              @keyframes heatmap-sweep {
+                0% {
+                  transform: translateX(-140%);
+                  opacity: 0;
+                }
+                25% {
+                  opacity: 0.9;
+                }
+                100% {
+                  transform: translateX(520%);
+                  opacity: 0;
+                }
+              }
+            `}</style>
+          </div>
+        </div>
+      )}
       {showClientTarget && (
         <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.06)_1px,transparent_1px)] bg-[size:32px_32px]" />
       )}
-      {clientMode && (
+      {clientMode && !clientResultMode && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
           <div className="relative h-[min(58vh,520px)] w-[min(58vh,520px)] rounded-[32px] border border-white/10 bg-slate-950/26 shadow-[0_30px_90px_rgba(2,6,23,0.38)] backdrop-blur-[2px]">
             <div className="absolute left-1/2 top-8 h-[calc(100%-64px)] w-px -translate-x-1/2 bg-white/10" />
@@ -2371,7 +2709,7 @@ export default function GazeHeatmapLab({
           {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           {isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
         </button>
-        {!cameraReady && (
+        {!cameraReady && !clientResultMode && (
           <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/72 p-6 backdrop-blur-sm">
             <div className="max-w-sm rounded-[28px] border border-cyan-300/25 bg-slate-900/92 p-5 text-center shadow-[0_30px_90px_rgba(2,6,23,0.5)]">
               <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan-200">Tela do cliente</p>

@@ -8,7 +8,7 @@ export default async function StoreLensHeatmapLabPage({
   searchParams,
 }: {
   params: { storeId: string }
-  searchParams?: { family?: string }
+  searchParams?: { client?: string; family?: string }
 }) {
   const storeId = parseInt(params.storeId, 10)
   const supabase = createClient()
@@ -19,6 +19,7 @@ export default async function StoreLensHeatmapLabPage({
   if (!user) return redirect('/login')
 
   const geometries = await getAllLensGeometries()
+  const clientMode = searchParams?.client === '1'
   const requestedFamily = searchParams?.family ? decodeURIComponent(searchParams.family) : null
   const geometry =
     geometries.find((item) => item.family_name === requestedFamily) ??
@@ -31,6 +32,7 @@ export default async function StoreLensHeatmapLabPage({
       backPath={`/dashboard/loja/${storeId}/recomendacao-lentes`}
       geometry={geometry}
       geometries={geometries}
+      clientMode={clientMode}
     />
   )
 }

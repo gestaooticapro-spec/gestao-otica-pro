@@ -171,6 +171,11 @@ export interface InstallmentReceiptData {
   dueDate: string
   paymentDate: string
   isReprint?: boolean
+  receiptTitle?: string
+  referenceLabel?: string
+  referenceValue?: string
+  declarationText?: string
+  footerNote?: string
   store: {
     name: string
     legalName?: string | null
@@ -640,6 +645,12 @@ export async function generateInstallmentReceiptPDF(data: InstallmentReceiptData
   const receiptGeneratedAt = new Date().toLocaleDateString('pt-BR')
   const logoDataUrl = await loadStoreLogoDataUrl(data.store.logoFile)
   const contentLeft = logoDataUrl ? 28 : 10
+  const referenceLabel = data.referenceLabel || 'PARCELA'
+  const referenceValue = data.referenceValue || `${data.installmentNumber} de ${data.totalInstallments}`
+  const receiptTitle = data.receiptTitle || 'RECIBO DE PAGAMENTO'
+  const defaultDeclaration = `Recebemos de ${data.customerName || 'Consumidor Final'} a importancia de ${amount}, referente ao pagamento da parcela ${data.installmentNumber}/${data.totalInstallments}, com vencimento em ${dueDate}.`
+  const declaration = data.declarationText || defaultDeclaration
+  const footerNote = data.footerNote || 'Documento nao fiscal emitido para comprovacao de recebimento desta parcela.'
 
   doc.setFillColor(15, 23, 42)
   doc.rect(0, 0, pageWidth, 21, 'F')
@@ -697,7 +708,7 @@ export async function generateInstallmentReceiptPDF(data: InstallmentReceiptData
   doc.setTextColor(17, 24, 39)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(10.4)
-  doc.text('RECIBO DE PAGAMENTO', 10, 27)
+  doc.text(receiptTitle, 10, 27)
 
   doc.setFontSize(6.2)
   doc.setTextColor(100, 116, 139)
@@ -722,7 +733,7 @@ export async function generateInstallmentReceiptPDF(data: InstallmentReceiptData
   doc.setFontSize(6.1)
   doc.setTextColor(100, 116, 139)
   doc.text('CLIENTE', 14, 35.8)
-  doc.text('PARCELA', 14, 41.8)
+  doc.text(referenceLabel, 14, 41.8)
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(8.4)
@@ -730,7 +741,7 @@ export async function generateInstallmentReceiptPDF(data: InstallmentReceiptData
   const customerLines = doc.splitTextToSize(data.customerName || 'Consumidor Final', 70)
   doc.text(customerLines.slice(0, 2), 14, 39)
   doc.setFontSize(7.6)
-  doc.text(`${data.installmentNumber} de ${data.totalInstallments}`, 14, 44.2)
+  doc.text(referenceValue, 14, 44.2)
 
   doc.setFontSize(6.1)
   doc.setTextColor(100, 116, 139)
@@ -756,7 +767,6 @@ export async function generateInstallmentReceiptPDF(data: InstallmentReceiptData
   doc.setTextColor(51, 65, 85)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(6.3)
-  const declaration = `Recebemos de ${data.customerName || 'Consumidor Final'} a importancia de ${amount}, referente ao pagamento da parcela ${data.installmentNumber}/${data.totalInstallments}, com vencimento em ${dueDate}.`
   const declarationLines = doc.splitTextToSize(declaration, pageWidth - 24)
   doc.text(declarationLines.slice(0, 2), 10, 65.5, {
     maxWidth: pageWidth - 24,
@@ -772,7 +782,7 @@ export async function generateInstallmentReceiptPDF(data: InstallmentReceiptData
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(5.6)
   doc.setTextColor(51, 65, 85)
-  doc.text('Documento nao fiscal emitido para comprovacao de recebimento desta parcela.', 10, pageHeight - 4)
+  doc.text(footerNote, 10, pageHeight - 4)
 
   doc.setFontSize(5.4)
   doc.setTextColor(148, 163, 184)
