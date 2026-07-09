@@ -144,7 +144,7 @@ type NFeItemForm = {
 };
 
 type ImportedNFeOrigin = {
-    id: number;
+    id: number | string;
     accessKey: string;
     number: string | null;
     series: string | null;

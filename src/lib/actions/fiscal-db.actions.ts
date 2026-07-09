@@ -8,6 +8,43 @@ import type { ParsedNFeItem } from "@/types/nfe";
 
 export type { ParsedNFeItem };
 
+type ImportedOriginQueueRow = {
+    id: string | number;
+    chave_acesso: string | null;
+    numero?: string | null;
+    serie?: string | null;
+    emitente_nome?: string | null;
+    emitente_cnpj?: string | null;
+    data_emissao?: string | null;
+    valor_total?: number | null;
+    xml_content?: string | null;
+    metadata?: Record<string, unknown> | null;
+};
+
+function queueOriginBelongsToStore(item: ImportedOriginQueueRow | null | undefined, storeId: number) {
+    const metadataStoreId = Number(item?.metadata?.store_id);
+    return Number.isInteger(metadataStoreId) && metadataStoreId === storeId;
+}
+
+async function getImportedOriginContext(storeId: number) {
+    const auth = await createClient();
+    const { data: { user } } = await auth.auth.getUser();
+    if (!user) return null;
+
+    const supabase = createAdminClient() as any;
+    const tenantId = await getTenantIdByStore(storeId);
+    if (!tenantId) return null;
+
+    const { data: profile } = await supabase
+        .from("profiles")
+        .select("tenant_id")
+        .eq("id", user.id)
+        .maybeSingle();
+    if (profile?.tenant_id !== tenantId) return null;
+
+    return { supabase, tenantId };
+}
+
 export async function getTenantIdByStore(storeId: number) {
     // Usa admin client para ignorar RLS da tabela stores
     const supabase = createAdminClient() as any;
@@ -152,20 +189,9 @@ export async function searchCloneableNFeInvoicesAction(params: {
 }
 
 export async function listImportedNFeOriginsAction(storeId: number) {
-    const auth = await createClient();
-    const { data: { user } } = await auth.auth.getUser();
-    if (!user) return [];
-
-    const supabase = createAdminClient() as any;
-    const tenantId = await getTenantIdByStore(storeId);
-    if (!tenantId) return [];
-
-    const { data: profile } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", user.id)
-        .maybeSingle();
-    if (profile?.tenant_id !== tenantId) return [];
+    const context = await getImportedOriginContext(storeId);
+    if (!context) return [];
+    const { supabase, tenantId } = context;
 
     const { data: imported, error } = await supabase
         .from("imported_invoices")
@@ -175,20 +201,22 @@ export async function listImportedNFeOriginsAction(storeId: number) {
         .order("imported_at", { ascending: false })
         .limit(50);
 
-    if (error || !imported?.length) {
-        if (error) console.error("Erro ao listar NF-e importadas para devolucao:", error);
+    if (error) {
+        console.error("Erro ao listar NF-e importadas para devolucao:", error);
         return [];
     }
 
-    const accessKeys = imported.map((invoice: any) => invoice.access_key).filter(Boolean);
     const { data: queueItems } = await supabase
         .from("nfe_import_queue")
-        .select("chave_acesso, emitente_nome, emitente_cnpj, data_emissao, valor_total, xml_content")
+        .select("id, chave_acesso, numero, serie, emitente_nome, emitente_cnpj, data_emissao, valor_total, xml_content, metadata")
         .eq("organization_id", tenantId)
-        .in("chave_acesso", accessKeys);
+        .contains("metadata", { store_id: storeId })
+        .order("data_emissao", { ascending: false })
+        .limit(50);
 
     const queueByKey = new Map((queueItems || []).map((item: any) => [item.chave_acesso, item]));
-    const supplierIds = imported.map((invoice: any) => invoice.supplier_id).filter(Boolean);
+    const importedRows = imported || [];
+    const supplierIds = importedRows.map((invoice: any) => invoice.supplier_id).filter(Boolean);
     const { data: suppliers } = supplierIds.length > 0
         ? await supabase
             .from("suppliers")
@@ -197,7 +225,7 @@ export async function listImportedNFeOriginsAction(storeId: number) {
         : { data: [] as any[] };
     const supplierById = new Map((suppliers || []).map((supplier: any) => [supplier.id, supplier]));
 
-    return imported.map((invoice: any) => {
+    const importedResults = importedRows.map((invoice: any) => {
         const queue = queueByKey.get(invoice.access_key) as any;
         const supplier = supplierById.get(invoice.supplier_id) as any;
         return {
@@ -213,30 +241,38 @@ export async function listImportedNFeOriginsAction(storeId: number) {
             xmlAvailable: Boolean(queue?.xml_content),
         };
     });
+
+    const importedKeys = new Set(importedResults.map((invoice: { accessKey: string }) => invoice.accessKey));
+    const queueOnlyResults = (queueItems || [])
+        .filter((item: any) => queueOriginBelongsToStore(item, storeId))
+        .filter((item: any) => /^\d{44}$/.test(String(item.chave_acesso || "")))
+        .filter((item: any) => !importedKeys.has(String(item.chave_acesso)))
+        .map((item: any) => ({
+            id: String(item.id),
+            accessKey: item.chave_acesso,
+            number: item.numero || null,
+            series: item.serie || null,
+            importedAt: item.data_emissao || null,
+            issuerName: item.emitente_nome || null,
+            issuerCnpj: item.emitente_cnpj || null,
+            issuedAt: item.data_emissao || null,
+            total: item.valor_total ?? null,
+            xmlAvailable: Boolean(item.xml_content),
+        }));
+
+    return [...importedResults, ...queueOnlyResults]
+        .sort((a, b) => new Date(b.issuedAt || b.importedAt || 0).getTime() - new Date(a.issuedAt || a.importedAt || 0).getTime())
+        .slice(0, 50);
 }
 
 export async function getImportedNFeOriginAction(params: {
     storeId: number;
     accessKey: string;
 }) {
-    const auth = await createClient();
-    const { data: { user } } = await auth.auth.getUser();
-    if (!user) return { success: false, error: "Usuario nao autenticado." };
-
-    const supabase = createAdminClient() as any;
-    const tenantId = await getTenantIdByStore(params.storeId);
+    const context = await getImportedOriginContext(params.storeId);
+    if (!context) return { success: false, error: "Esta loja nao pertence ao usuario autenticado." };
+    const { supabase, tenantId } = context;
     const accessKey = String(params.accessKey || "").replace(/\D/g, "");
-
-    if (!tenantId) return { success: false, error: "Tenant da loja nao encontrado." };
-
-    const { data: profile } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", user.id)
-        .maybeSingle();
-    if (profile?.tenant_id !== tenantId) {
-        return { success: false, error: "Esta loja nao pertence ao usuario autenticado." };
-    }
 
     if (!/^\d{44}$/.test(accessKey)) {
         return { success: false, error: "A chave da NF-e de origem deve ter 44 digitos." };
@@ -250,16 +286,18 @@ export async function getImportedNFeOriginAction(params: {
         .eq("access_key", accessKey)
         .maybeSingle();
 
-    if (!imported) {
-        return { success: false, error: "Esta NF-e de entrada nao foi importada nesta loja." };
-    }
-
     const { data: queueItem } = await supabase
         .from("nfe_import_queue")
-        .select("id, xml_content")
+        .select("id, xml_content, metadata")
         .eq("organization_id", tenantId)
         .eq("chave_acesso", accessKey)
         .maybeSingle();
+
+    const queueBelongsToStore = queueOriginBelongsToStore(queueItem as ImportedOriginQueueRow | null, params.storeId);
+
+    if (!imported && !queueBelongsToStore) {
+        return { success: false, error: "Esta NF-e de entrada nao foi importada nesta loja." };
+    }
 
     if (!queueItem) {
         return { success: false, error: "O XML da NF-e importada nao foi localizado na fila fiscal." };
