@@ -2508,7 +2508,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                                 </div>
                                                 <div className="xl:col-span-2">
                                                     <NumberField
-                                                        label={itemsLocked ? `Qtd (max. ${item.maxQuantity || item.quantidade})` : "Qtd"}
+                                                        label="Qtd"
                                                         value={item.quantidade}
                                                         onChange={(v) => updateItem(index, { quantidade: v })}
                                                         max={itemsLocked ? item.maxQuantity : undefined}
