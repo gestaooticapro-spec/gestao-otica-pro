@@ -1201,6 +1201,7 @@ export async function emitirNFe(input: NFeSaleInput) {
         const isAdvancedOperation = operation === "advanced";
         const referenceKey = cleanDigits(input.referenceKey);
         const shipmentPurpose: NFeShipmentPurpose = input.finalidade_remessa || "Remessa para conserto";
+        const isWarrantyShipment = isShipmentOperation && shipmentPurpose === "Remessa em garantia";
         const isShipmentReturn = isShipmentOperation && shipmentPurpose.startsWith("Retorno");
         const isDemonstrationReturn = isShipmentOperation && shipmentPurpose === "Retorno de demonstracao";
         const isRegularShipmentReturn = isShipmentReturn && !isDemonstrationReturn;
@@ -1248,6 +1249,9 @@ export async function emitirNFe(input: NFeSaleInput) {
                 throw new Error("Selecione uma NF-e de entrada importada para emitir a devolucao.");
             }
             await ensureNoActiveReturnForOrigin(supabase, organizationId, input.storeId, referenceKey, environment);
+        }
+        if (isWarrantyShipment && !/^\d{44}$/.test(referenceKey)) {
+            throw new Error("Selecione uma NF-e de entrada importada para emitir a remessa em garantia.");
         }
         if (isRegularShipmentReturn) {
             if (!/^\d{44}$/.test(referenceKey)) {
@@ -1505,6 +1509,67 @@ export async function emitirNFe(input: NFeSaleInput) {
 
             if (fiscalItems.length !== input.itens.length) {
                 throw new Error("Um ou mais itens selecionados nao pertencem a remessa de origem.");
+            }
+            salePayments = [];
+        } else if (isWarrantyShipment) {
+            const originResult = await getImportedNFeOriginAction({
+                storeId: input.storeId,
+                accessKey: referenceKey,
+            });
+            if (!originResult.success || !originResult.participant || !originResult.items) {
+                throw new Error(originResult.error || "Nao foi possivel carregar a NF-e de entrada para garantia.");
+            }
+
+            customer = {
+                full_name: originResult.participant.nome,
+                cpf: originResult.participant.cpf_cnpj,
+                email: originResult.participant.email,
+                rua: originResult.participant.logradouro,
+                numero: originResult.participant.numero,
+                bairro: originResult.participant.bairro,
+                cidade: originResult.participant.cidade,
+                uf: originResult.participant.uf,
+                cep: originResult.participant.cep,
+                codigo_municipio_ibge: originResult.participant.codigo_municipio,
+                inscricao_estadual: originResult.participant.inscricao_estadual,
+                ind_ie_dest: Number(originResult.participant.ind_ie_dest || 9),
+            };
+
+            if (!input.itens?.length) {
+                throw new Error("Selecione ao menos um item da NF-e de entrada para remessa em garantia.");
+            }
+
+            const requestedByCode = new Map(input.itens.map((item) => [cleanText(item.codigo), item]));
+            fiscalItems = originResult.items
+                .filter((originItem) => requestedByCode.has(cleanText(originItem.codigo)))
+                .map((originItem): FiscalItem => {
+                    const requested = requestedByCode.get(cleanText(originItem.codigo))!;
+                    const quantity = Number(requested.quantidade || 0);
+                    const originalQuantity = Number(originItem.quantidade || 0);
+                    const ncm = cleanDigits(originItem.ncm);
+
+                    if (quantity <= 0 || quantity > originalQuantity) {
+                        throw new Error(`Quantidade de remessa em garantia invalida para o item ${originItem.descricao}. Maximo: ${originalQuantity}.`);
+                    }
+                    if (!/^\d{8}$/.test(ncm) || ncm === "00000000") {
+                        throw new Error(`NCM invalido na NF-e de entrada para o item ${originItem.descricao}.`);
+                    }
+
+                    return {
+                        codigo: cleanText(originItem.codigo),
+                        descricao: cleanText(originItem.descricao),
+                        ncm,
+                        cest: cleanDigits(originItem.cest) || undefined,
+                        unidade: normalizeFiscalUnit(originItem.unidade),
+                        quantidade: quantity,
+                        valor_unitario: money(originItem.valor_unitario),
+                        valor_total: money(quantity * Number(originItem.valor_unitario || 0)),
+                        origem: Number(originItem.origem || 0),
+                    };
+                });
+
+            if (fiscalItems.length !== input.itens.length) {
+                throw new Error("Um ou mais itens selecionados nao pertencem a NF-e de entrada.");
             }
             salePayments = [];
         } else if (isReturnOperation) {

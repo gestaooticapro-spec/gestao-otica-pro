@@ -227,6 +227,18 @@ type CloneInvoiceSummary = {
     } | null;
 };
 
+function importedOriginCfop(input: {
+    operation: OperationGroup;
+    purpose: string;
+    sameState: boolean;
+}) {
+    if (input.operation === "shipment" && input.purpose === "Remessa em garantia") {
+        return input.sameState ? "5915" : "6915";
+    }
+
+    return input.sameState ? "5202" : "6202";
+}
+
 const STEPS: { id: StepId; label: string }[] = [
     { id: "operation", label: "Operação" },
     { id: "participant", label: "Participante" },
@@ -1007,11 +1019,17 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         setParticipantDirty(false);
         setParticipantSaveState("idle");
         setParticipantSaveMessage("");
+        const sameState = Boolean(storeUf && result.participant.uf && storeUf === result.participant.uf);
+        const cfop = importedOriginCfop({
+            operation,
+            purpose,
+            sameState,
+        });
         setItems(result.items.map((item) => ({
             codigo: item.codigo,
             descricao: item.descricao,
             ncm: item.ncm,
-            cfop: storeUf && result.participant.uf && storeUf !== result.participant.uf ? "6202" : "5202",
+            cfop,
             unidade: item.unidade,
             quantidade: item.quantidade,
             maxQuantity: item.quantidade,
@@ -1368,6 +1386,9 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
             if (purpose !== "Devolucao de compra") issues.push("Apenas Devolução de compra está liberada nesta etapa.");
             if (!selectedOrigin) issues.push("Selecione uma NF-e de entrada importada.");
         }
+        if (operation === "shipment" && purpose === "Remessa em garantia" && !selectedOrigin) {
+            issues.push("Selecione uma NF-e de entrada importada para montar a remessa em garantia.");
+        }
         if (operation === "shipment" && purpose.startsWith("Retorno") && !selectedShipmentOrigin) {
             issues.push("Selecione uma NF-e de remessa autorizada para o retorno.");
         }
@@ -1544,6 +1565,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                         : "sale",
             referenceKey: operation === "return"
                 ? selectedOrigin?.accessKey
+                : operation === "shipment" && purpose === "Remessa em garantia"
+                    ? selectedOrigin?.accessKey
                 : operation === "shipment" && purpose.startsWith("Retorno")
                     ? selectedShipmentOrigin?.accessKey
                     : operation === "transfer" && purpose === "Retorno de deposito"
@@ -1681,9 +1704,11 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
             ? (Array.isArray(garantiaOrigins) ? garantiaOrigins : [])
             : (Array.isArray(consertoOrigins) ? consertoOrigins : []);
     const participantLocked = operation === "return"
+        || (operation === "shipment" && purpose === "Remessa em garantia")
         || (operation === "shipment" && purpose.startsWith("Retorno"))
         || (operation === "transfer" && (purpose === "Transferencia entre filiais" || purpose === "Retorno de deposito"));
     const itemsLocked = operation === "return"
+        || (operation === "shipment" && purpose === "Remessa em garantia")
         || (operation === "shipment" && purpose.startsWith("Retorno"))
         || (operation === "transfer" && purpose === "Retorno de deposito");
     const filteredSales = pendingSales
@@ -2024,6 +2049,52 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                             ))}
                                         </div>
                                     )}
+                                </div>
+                            )}
+
+                            {operation === "shipment" && purpose === "Remessa em garantia" && (
+                                <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+                                    <div>
+                                        <p className="text-sm font-black text-cyan-950">NF-e de entrada para garantia</p>
+                                        <p className="mt-1 text-xs font-medium text-cyan-400">
+                                            Selecione a nota de entrada recebida do fornecedor. Participante, itens, CFOP 5915/6915 e chave NFref serao carregados automaticamente.
+                                        </p>
+                                    </div>
+
+                                    <div className="mt-4 max-h-72 space-y-2 overflow-y-auto">
+                                        {importedOrigins.length === 0 ? (
+                                            <p className="rounded-xl bg-black/40 px-4 py-4 text-center text-xs font-bold text-slate-400">
+                                                Nenhuma NF-e de entrada importada foi encontrada nesta loja.
+                                            </p>
+                                        ) : importedOrigins.map((origin) => (
+                                            <button
+                                                key={origin.id}
+                                                type="button"
+                                                onClick={() => void selectImportedOrigin(origin)}
+                                                disabled={loadingOriginKey !== null}
+                                                className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left transition ${
+                                                    selectedOrigin?.id === origin.id
+                                                        ? "border-[#FACC15] bg-[#FACC15]/10"
+                                                        : "border-cyan-100 bg-black/40 hover:border-cyan-300"
+                                                }`}
+                                            >
+                                                <span>
+                                                    <span className="block text-xs font-black text-white">
+                                                        NF {origin.number || "-"} | {origin.issuerName || "Fornecedor"}
+                                                    </span>
+                                                    <span className="mt-1 block text-[10px] font-bold text-slate-400">
+                                                        {origin.issuedAt ? new Date(origin.issuedAt).toLocaleDateString("pt-BR") : "Data nao informada"}
+                                                        {" | "}
+                                                        {origin.issuerCnpj || "CNPJ nao informado"}
+                                                    </span>
+                                                </span>
+                                                <span className="flex items-center gap-2 text-xs font-black text-white">
+                                                    {money(origin.total)}
+                                                    {loadingOriginKey === origin.accessKey && <Loader2 size={14} className="animate-spin" />}
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
 
