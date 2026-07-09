@@ -9,11 +9,28 @@ import { getManagerKPIs, getAdminKPIs } from '@/lib/actions/dashboard.actions'
 import { getAlertasOperacionais, getAniversariantes, getVencimentosProximos, getWhatsAppHumanOverrideCount, getWhatsAppPendencias } from '@/lib/actions/consultas.actions'
 import { getRetornosDeHoje } from '@/lib/actions/collection.actions'
 import { getStoreModulesForStore } from '@/lib/store-modules.server'
+import type { StoreSettings } from '@/lib/store-modules'
 
 // Importação dos Painéis Visuais
 import { ManagerDashboard, AdminDashboard } from '@/components/dashboard/DashboardViews'
 import ActionMenuDashboard from '@/components/dashboard/ActionMenuDashboard'
 import { TabletRedirect } from '@/components/tablet/TabletRedirect'
+
+type StoreDashboardRow = {
+    name: string | null
+    settings: StoreSettings | null
+}
+
+type WhatsAppChannelDashboardRow = {
+    connection_status: 'unknown' | 'connecting' | 'connected' | 'disconnected'
+    is_active: boolean
+    instance_key: string | null
+}
+
+type DashboardProfile = {
+    role: string
+    store_id?: number | null
+}
 
 export default async function StoreHomePage({ params }: { params: { storeId: string } }) {
     const storeId = parseInt(params.storeId, 10)
@@ -23,24 +40,28 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return redirect('/login')
 
-    const profile = await getProfileByAdmin(user.id) as any
+    const profile = await getProfileByAdmin(user.id) as DashboardProfile | null
     if (!profile) return redirect('/login')
 
     // Busca nome da loja
     const supabaseAdmin = createAdminClient()
-    const { data: store } = await (supabaseAdmin.from('stores') as any)
+    const { data: storeRaw } = await supabaseAdmin.from('stores')
         .select('name, settings')
         .eq('id', storeId)
         .single()
+    const store = storeRaw as StoreDashboardRow | null
 
-    const { data: whatsAppChannel } = await (supabaseAdmin.from('whatsapp_store_channels') as any)
-        .select('connection_status, is_active')
+    const { data: whatsAppChannelRaw } = await supabaseAdmin.from('whatsapp_store_channels')
+        .select('connection_status, is_active, instance_key')
         .eq('store_id', storeId)
         .eq('provider', 'evolution')
         .maybeSingle()
+    const whatsAppChannel = whatsAppChannelRaw as WhatsAppChannelDashboardRow | null
 
     const storeName = store?.name || `Loja ${storeId}`
     const deliveryDateEnabled = store?.settings?.delivery_date_enabled !== false
+    const isWhatsAppAutomationEnabled = store?.settings?.whatsapp_automation?.enabled !== false
+    const isWhatsAppChannelConfigured = Boolean(whatsAppChannel?.instance_key)
     const isWhatsAppConnected = whatsAppChannel?.connection_status === 'connected' && whatsAppChannel?.is_active === true
 
     // 1. ADMIN (Dono da Rede)
@@ -100,6 +121,8 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
                 retornos={retornos}
                 whatsAppPendencias={whatsAppPendencias}
                 whatsAppHumanOverrides={whatsAppHumanOverrides}
+                isWhatsAppAutomationEnabled={isWhatsAppAutomationEnabled}
+                isWhatsAppChannelConfigured={isWhatsAppChannelConfigured}
                 isWhatsAppConnected={isWhatsAppConnected}
             />
         </>

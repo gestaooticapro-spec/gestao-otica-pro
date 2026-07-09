@@ -50,6 +50,13 @@ export type WhatsAppActivationResult = WhatsAppChannelResult & {
   qrCodeBase64?: string | null
 }
 
+export type DashboardWhatsAppWakePingResult = {
+  success: boolean
+  status: 'connected' | 'connecting' | 'disconnected' | 'automation_disabled' | 'not_configured' | 'unreachable'
+  message: string
+  channel?: WhatsAppChannel | null
+}
+
 export type WhatsAppOsResponderSettings = {
   enabled: boolean
   templates: WhatsAppOsReplyTemplates
@@ -160,6 +167,19 @@ async function getAuthorizedProfile(storeId: number) {
 
   const profile = await getProfileByAdmin(user.id) as any
   if (!profile || !['admin', 'manager'].includes(profile.role)) return null
+  if (profile.role !== 'admin' && Number(profile.store_id) !== storeId) return null
+
+  return profile
+}
+
+async function getAuthorizedOperationalProfile(storeId: number) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const profile = await getProfileByAdmin(user.id) as any
+  const allowedRoles = ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico']
+  if (!profile || !allowedRoles.includes(profile.role)) return null
   if (profile.role !== 'admin' && Number(profile.store_id) !== storeId) return null
 
   return profile
@@ -729,6 +749,87 @@ export async function refreshWhatsAppConnection(storeId: number): Promise<WhatsA
   } catch (error) {
     console.error('[WhatsApp] Failed to refresh connection:', error)
     return { success: false, message: 'NÃ£o foi possÃ­vel verificar a conexÃ£o.' }
+  }
+}
+
+export async function runDashboardWhatsAppWakePing(storeId: number): Promise<DashboardWhatsAppWakePingResult> {
+  const parsed = StatusSchema.safeParse({ storeId })
+  if (!parsed.success) {
+    return { success: false, status: 'unreachable', message: 'Loja invalida.' }
+  }
+
+  const profile = await getAuthorizedOperationalProfile(parsed.data.storeId)
+  if (!profile) {
+    return { success: false, status: 'unreachable', message: 'Acesso negado.' }
+  }
+
+  try {
+    const settings = await loadStoreSettings(parsed.data.storeId)
+    if (settings.whatsapp_automation?.enabled === false) {
+      return {
+        success: true,
+        status: 'automation_disabled',
+        message: 'Automacao do WhatsApp desativada para esta loja.',
+      }
+    }
+
+    const supabase = createAdminClient()
+    const { data: current, error: channelError } = await (supabase.from('whatsapp_store_channels') as any)
+      .select('id, store_id, instance_key, phone_number, is_active, connection_status, last_connection_at, updated_at')
+      .eq('store_id', parsed.data.storeId)
+      .eq('provider', 'evolution')
+      .maybeSingle()
+
+    if (channelError) throw channelError
+
+    if (!current?.instance_key) {
+      return {
+        success: true,
+        status: 'not_configured',
+        message: 'WhatsApp da loja ainda nao foi configurado na VPS.',
+        channel: null,
+      }
+    }
+
+    const result = await automationRequest<{
+      connectionStatus: WhatsAppChannel['connection_status']
+    }>('/admin/instances/status', { instanceKey: current.instance_key })
+
+    const store = await loadStoreForWhatsApp(parsed.data.storeId)
+    const connectionStatus: WhatsAppChannel['connection_status'] =
+      result.connectionStatus === 'connected'
+        ? 'connected'
+        : result.connectionStatus === 'connecting'
+          ? 'connecting'
+          : 'disconnected'
+
+    const channel = await upsertWhatsAppChannel({
+      tenantId: store.tenant_id,
+      storeId: store.id,
+      instanceKey: current.instance_key,
+      phoneNumber: current.phone_number,
+      isActive: connectionStatus === 'connected',
+      connectionStatus,
+    })
+
+    revalidatePath(`/dashboard/loja/${store.id}`)
+    revalidatePath(`/dashboard/loja/${store.id}/config`)
+
+    return {
+      success: connectionStatus === 'connected',
+      status: connectionStatus,
+      message: connectionStatus === 'connected'
+        ? 'WhatsApp da VPS respondeu normalmente.'
+        : 'WhatsApp da loja nao respondeu como conectado.',
+      channel,
+    }
+  } catch (error) {
+    console.error('[WhatsApp] Dashboard wake ping failed:', error)
+    return {
+      success: false,
+      status: 'unreachable',
+      message: 'Nao foi possivel consultar a VPS do WhatsApp.',
+    }
   }
 }
 
