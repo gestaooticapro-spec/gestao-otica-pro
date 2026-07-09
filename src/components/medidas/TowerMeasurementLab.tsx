@@ -9,7 +9,7 @@ type Landmark = { x: number; y: number; z?: number }
 type MediaPipeModule = typeof import('@mediapipe/tasks-vision')
 type FaceLandmarkerInstance = Awaited<ReturnType<MediaPipeModule['FaceLandmarker']['createFromOptions']>>
 type LensType = 'surfacada' | 'bifocal' | 'pronto'
-type DetectionPreset = 'standard' | 'transparent' | 'closedContour'
+type DetectionPreset = 'standard' | 'transparent' | 'closedContour' | 'closedContourText'
 
 type PointKey =
   | 'calibA'
@@ -101,6 +101,7 @@ const DETECTION_PRESETS: Array<{ key: DetectionPreset; label: string }> = [
   { key: 'standard', label: 'Padrao' },
   { key: 'transparent', label: 'Aro transparente' },
   { key: 'closedContour', label: 'Contorno fechado' },
+  { key: 'closedContourText', label: 'Contorno com texto' },
 ]
 
 interface TowerMeasurementLabProps {
@@ -805,38 +806,56 @@ function createInitialHandles(capture: CapturePayload, image?: HTMLImageElement,
     top: Math.min(rightEyeTop.y - 11 * pxPerMm, pupilR.y - 18 * pxPerMm),
     bottom: Math.max(rightEyeBottom.y + 13 * pxPerMm, pupilR.y + 20 * pxPerMm),
   }
-  const detectedLens = image ? detectLensShape(image, pupilR, fallbackLens, pxPerMm, preset) : fallbackLensToShape(fallbackLens)
-  const lensLeftX = detectedLens.left
-  const lensRightX = detectedLens.right
-  const lensAxisX = (lensLeftX + lensRightX) / 2
-  const lensTopY = detectedLens.top
-  const lensBottomY = detectedLens.bottom
-  const lensCenterY = (lensTopY + lensBottomY) / 2
   const bridgeHalf = Math.max(7.5 * pxPerMm, (pupilL.x - pupilR.x) * 0.08)
-  const bridgeY = clamp(bridge.y - 1.5 * pxPerMm, lensTopY, lensBottomY)
 
-  const handles: Handles = {
-    calibA: { x: Math.max(0, cx - w * 0.11), y: h * 0.12 },
-    calibB: { x: Math.min(w, cx + w * 0.11), y: h * 0.12 },
-    pupilR,
-    pupilL,
-    bridgeR: { x: Math.min(lensRightX, bridge.x - bridgeHalf), y: bridgeY },
-    bridgeL: { x: bridge.x + bridgeHalf, y: bridgeY },
-    mountR: { x: pupilR.x, y: lensBottomY },
-    mountL: { x: pupilL.x, y: lensBottomY },
-    lensLeft: { x: lensLeftX, y: lensCenterY },
-    lensRight: { x: lensRightX, y: lensCenterY },
-    lensTop: { x: lensAxisX, y: lensTopY },
-    lensBottom: { x: lensAxisX, y: lensBottomY },
-    diagA: detectedLens.diagA,
-    diagB: detectedLens.diagB,
-    palpebraR: rightEyeBottom,
-    palpebraL: toPx(lm?.[LEFT_EYE_BOTTOM], { x: pupilL.x, y: pupilL.y + 6 * pxPerMm }),
+  const buildHandles = (detectedLens: LensShape): Handles => {
+    const lensLeftX = detectedLens.left
+    const lensRightX = detectedLens.right
+    const lensAxisX = (lensLeftX + lensRightX) / 2
+    const lensTopY = detectedLens.top
+    const lensBottomY = detectedLens.bottom
+    const lensCenterY = (lensTopY + lensBottomY) / 2
+    const bridgeY = clamp(bridge.y - 1.5 * pxPerMm, lensTopY, lensBottomY)
+
+    return {
+      calibA: { x: Math.max(0, cx - w * 0.11), y: h * 0.12 },
+      calibB: { x: Math.min(w, cx + w * 0.11), y: h * 0.12 },
+      pupilR,
+      pupilL,
+      bridgeR: { x: Math.min(lensRightX, bridge.x - bridgeHalf), y: bridgeY },
+      bridgeL: { x: bridge.x + bridgeHalf, y: bridgeY },
+      mountR: { x: pupilR.x, y: lensBottomY },
+      mountL: { x: pupilL.x, y: lensBottomY },
+      lensLeft: { x: lensLeftX, y: lensCenterY },
+      lensRight: { x: lensRightX, y: lensCenterY },
+      lensTop: { x: lensAxisX, y: lensTopY },
+      lensBottom: { x: lensAxisX, y: lensBottomY },
+      diagA: detectedLens.diagA,
+      diagB: detectedLens.diagB,
+      palpebraR: rightEyeBottom,
+      palpebraL: toPx(lm?.[LEFT_EYE_BOTTOM], { x: pupilL.x, y: pupilL.y + 6 * pxPerMm }),
+    }
   }
+
+  const detectedLens = image ? detectLensShape(image, pupilR, fallbackLens, pxPerMm, preset) : fallbackLensToShape(fallbackLens)
+  const handles = buildHandles(detectedLens)
 
   if (!image) return stabilizeBridgeHandlesToPupilAxis(handles, pxPerMm)
   const imageData = createImageData(image)
-  return imageData ? anchorInitialHandlesToFrame(imageData, handles, pxPerMm, preset) : stabilizeBridgeHandlesToPupilAxis(handles, pxPerMm)
+  if (!imageData) return stabilizeBridgeHandlesToPupilAxis(handles, pxPerMm)
+
+  if (preset === 'closedContourText') {
+    const standardLens = detectLensShape(image, pupilR, fallbackLens, pxPerMm, 'standard')
+    const standardHandles = anchorInitialHandlesToFrame(imageData, buildHandles(standardLens), pxPerMm, 'standard')
+    const textHandles = anchorInitialHandlesToFrame(imageData, handles, pxPerMm, preset)
+    return {
+      ...textHandles,
+      bridgeR: standardHandles.bridgeR,
+      bridgeL: standardHandles.bridgeL,
+    }
+  }
+
+  return anchorInitialHandlesToFrame(imageData, handles, pxPerMm, preset)
 }
 
 function detectLensShape(
@@ -860,7 +879,7 @@ function detectLensShape(
   const rays = scanLensRays(imageData, pupil, fallback, pxPerMm)
   const box = detectLensBox(imageData, pupil, fallback, pxPerMm)
   const brightBox = preset === 'transparent' ? detectBrightRimLensBox(imageData, fallback, pxPerMm) : null
-  const darkContourBox = preset === 'closedContour' ? detectDarkContourLensBox(imageData, pupil, fallback, pxPerMm) : null
+  const darkContourBox = isClosedContourPreset(preset) ? detectDarkContourLensBox(imageData, pupil, fallback, pxPerMm) : null
 
   const next: LensShape = normalizeLensShapeToFacialFallback(darkContourBox ?? brightBox ?? box ?? {
     left: rays.left
@@ -925,7 +944,7 @@ function normalizeLensShapeToFacialFallback(
 ): LensShape {
   const next = { ...shape }
   const minBottom = Math.max(fallback.bottom, pupil.y + 20 * pxPerMm)
-  const maxLeftDrift = fallback.left - (preset === 'transparent' ? 13 : preset === 'closedContour' ? 9 : 5) * pxPerMm
+  const maxLeftDrift = fallback.left - (preset === 'transparent' ? 13 : isClosedContourPreset(preset) ? 9 : 5) * pxPerMm
 
   if (next.bottom < minBottom - 2 * pxPerMm) {
     next.bottom = blendNumber(next.bottom, minBottom, 0.72)
@@ -942,10 +961,19 @@ function normalizeLensShapeToFacialFallback(
   return next
 }
 
+function isClosedContourPreset(preset: DetectionPreset) {
+  return preset === 'closedContour' || preset === 'closedContourText'
+}
+
 function anchorInitialHandlesToFrame(imageData: ImageData, handles: Handles, pxPerMm: number, preset: DetectionPreset): Handles {
   if (preset === 'closedContour') {
     const insetHandles = insetClosedContourHandles(handles, pxPerMm)
     return stabilizeBridgeHandlesToPupilAxis(insetHandles, pxPerMm)
+  }
+
+  if (preset === 'closedContourText') {
+    const insetHandles = insetClosedContourTextHandles(handles, pxPerMm, imageData)
+    return alignBridgeHandlesToPupilAxis(insetHandles)
   }
 
   const edgeRadius = Math.max(10, Math.round(pxPerMm * 3.4))
@@ -1249,7 +1277,7 @@ function resolveLensDiagonal(imageData: ImageData, shape: LensShape, pxPerMm: nu
   const width = Math.max(shape.right - shape.left, 1)
   const height = Math.max(shape.bottom - shape.top, 1)
   const transparent = preset === 'transparent'
-  const closedContour = preset === 'closedContour'
+  const closedContour = isClosedContourPreset(preset)
   const boundaryCandidate = closedContour
     ? (x: number, y: number) => isDarkRimPixel(imageData, x, y)
     : (x: number, y: number) => isLensBoundaryCandidate(imageData, x, y)
@@ -1816,6 +1844,239 @@ function insetClosedContourHandles(handles: Handles, pxPerMm: number): Handles {
       y: handles.lensBottom.y - height * 0.26,
     },
   }
+}
+
+function insetClosedContourTextHandles(handles: Handles, pxPerMm: number, imageData?: ImageData): Handles {
+  const base = insetClosedContourHandles(handles, pxPerMm)
+  if (!imageData) return base
+
+  const detectedNasalRimX = findClosedContourNasalRimX(imageData, handles, pxPerMm)
+  const lensRight = detectedNasalRimX ? { ...base.lensRight, x: detectedNasalRimX } : base.lensRight
+  const brightLeftRimX = findHybridBrightLeftRimX(imageData, base, pxPerMm)
+  const lensLeft = brightLeftRimX ? { ...base.lensLeft, x: brightLeftRimX } : base.lensLeft
+  const width = Math.max(lensRight.x - lensLeft.x, 1)
+  const axisY = (lensLeft.y + lensRight.y) / 2
+  const lensAxisX = (lensLeft.x + lensRight.x) / 2
+  const geometricTopY = clamp(axisY - width * 0.22, 0, imageData.height - 1)
+  const geometricBottomY = clamp(axisY + width * 0.52, 0, imageData.height - 1)
+  const darkTopRimY = findHybridDarkTopRimY(imageData, { ...base, lensLeft, lensRight }, pxPerMm)
+  const topPixelIsPlausible =
+    darkTopRimY !== null &&
+    darkTopRimY > geometricTopY - 1.5 * pxPerMm &&
+    darkTopRimY < geometricTopY + 3.5 * pxPerMm
+  const lensTop = { ...base.lensTop, x: lensAxisX, y: topPixelIsPlausible ? darkTopRimY : geometricTopY }
+  const detectedLowerRimY = findHybridBrightLowerRimY(imageData, { ...base, lensLeft, lensRight, lensTop }, pxPerMm)
+  const bottomPixelIsPlausible =
+    detectedLowerRimY !== null &&
+    detectedLowerRimY > geometricBottomY - 3 * pxPerMm &&
+    detectedLowerRimY < geometricBottomY + 5 * pxPerMm
+  const lensBottom = { ...base.lensBottom, x: lensAxisX, y: bottomPixelIsPlausible ? detectedLowerRimY : geometricBottomY }
+  const mountR = { ...base.mountR, y: lensBottom.y }
+  const mountL = { ...base.mountL, y: lensBottom.y }
+  const bridgeR = base.bridgeR
+  const bridgeL = base.bridgeL
+  const height = Math.max(lensBottom.y - lensTop.y, 1)
+  const diagB = findHybridDarkDiagB(imageData, { ...base, lensLeft, lensRight, lensTop, lensBottom }, pxPerMm) ?? base.diagB
+
+  return {
+    ...base,
+    lensLeft,
+    lensRight,
+    lensTop,
+    lensBottom,
+    mountR,
+    mountL,
+    bridgeR,
+    bridgeL,
+    diagA: {
+      x: lensLeft.x + width * 0.006,
+      y: lensTop.y + height * 0.1,
+    },
+    diagB,
+  }
+}
+
+function findClosedContourNasalRimX(imageData: ImageData, handles: Handles, pxPerMm: number) {
+  const start = Math.round(handles.lensRight.x - 0.8 * pxPerMm)
+  const limit = Math.round(Math.max(handles.pupilR.x + 7 * pxPerMm, handles.lensRight.x - 19 * pxPerMm))
+  const yTop = Math.round(Math.max(handles.lensTop.y + 5 * pxPerMm, handles.pupilR.y - 7 * pxPerMm))
+  const yBottom = Math.round(Math.min(handles.lensBottom.y - 5 * pxPerMm, handles.pupilR.y + 15 * pxPerMm))
+  const minHits = Math.max(7, Math.round((yBottom - yTop + 1) * 0.28))
+  let best: { x: number; score: number } | null = null
+
+  for (let x = start; x >= limit; x -= 1) {
+    if (x < 2 || x >= imageData.width - 2) continue
+    let hits = 0
+    let edgeTotal = 0
+
+    for (let y = yTop; y <= yBottom; y += 1) {
+      if (y < 2 || y >= imageData.height - 2) continue
+      if (!isDarkRimPixel(imageData, x, y)) continue
+      hits += 1
+      edgeTotal += localEdgeStrength(imageData, x, y)
+    }
+
+    if (hits < minHits) continue
+
+    const continuity = hits / Math.max(yBottom - yTop + 1, 1)
+    const edgeScore = Math.min(edgeTotal / Math.max(hits * 80, 1), 1)
+    const distanceFromBridge = Math.min((handles.lensRight.x - x) / Math.max(13 * pxPerMm, 1), 1)
+    const score = continuity * 0.5 + edgeScore * 0.32 + distanceFromBridge * 0.18
+    if (!best || score > best.score) best = { x, score }
+  }
+
+  return best && best.score > 0.42 ? best.x : null
+}
+
+function findHybridDarkTopRimY(imageData: ImageData, handles: Handles, pxPerMm: number) {
+  const left = Math.round(Math.max(2, handles.lensLeft.x + 5 * pxPerMm))
+  const right = Math.round(Math.min(imageData.width - 3, handles.lensRight.x - 4 * pxPerMm))
+  const width = right - left + 1
+  if (width < 24) return null
+
+  const yStart = Math.round(Math.max(2, handles.lensTop.y - 13 * pxPerMm))
+  const yEnd = Math.round(Math.min(handles.pupilR.y - 7 * pxPerMm, handles.lensTop.y + 2 * pxPerMm))
+  const minTotalHits = Math.max(14, Math.round(width * 0.14))
+  const minRun = Math.max(18, Math.round(width * 0.18))
+  let best: { y: number; score: number } | null = null
+
+  for (let y = yStart; y <= yEnd; y += 1) {
+    if (y < 2 || y >= imageData.height - 2) continue
+    let totalHits = 0
+    let edgeTotal = 0
+    let currentRun = 0
+    let longestRun = 0
+
+    for (let x = left; x <= right; x += 1) {
+      if (!isDarkRimPixel(imageData, x, y)) {
+        currentRun = 0
+        continue
+      }
+      currentRun += 1
+      longestRun = Math.max(longestRun, currentRun)
+      totalHits += 1
+      edgeTotal += localEdgeStrength(imageData, x, y)
+    }
+
+    if (totalHits < minTotalHits || longestRun < minRun) continue
+
+    const runScore = Math.min(longestRun / Math.max(width * 0.3, 1), 1)
+    const coverage = Math.min(totalHits / Math.max(width * 0.24, 1), 1)
+    const edgeScore = Math.min(edgeTotal / Math.max(totalHits * 80, 1), 1)
+    const topBias = 1 - Math.min((y - yStart) / Math.max(yEnd - yStart, 1), 1)
+    const score = runScore * 0.42 + coverage * 0.28 + edgeScore * 0.16 + topBias * 0.14
+    if (!best || score > best.score) best = { y, score }
+  }
+
+  return best && best.score > 0.48 ? best.y : null
+}
+
+function findHybridDarkDiagB(imageData: ImageData, handles: Handles, pxPerMm: number): Pt | null {
+  const width = Math.max(handles.lensRight.x - handles.lensLeft.x, 1)
+  const height = Math.max(handles.lensBottom.y - handles.lensTop.y, 1)
+  const rect = {
+    left: clamp(Math.round(handles.lensRight.x - width * 0.22), 0, imageData.width - 1),
+    right: clamp(Math.round(handles.lensRight.x + 2 * pxPerMm), 0, imageData.width - 1),
+    top: clamp(Math.round(handles.lensTop.y + height * 0.52), 0, imageData.height - 1),
+    bottom: clamp(Math.round(handles.lensBottom.y - height * 0.05), 0, imageData.height - 1),
+  }
+  const target = {
+    x: handles.lensRight.x - width * 0.08,
+    y: handles.lensBottom.y - height * 0.2,
+  }
+
+  return bestBoundaryInRect(
+    imageData,
+    rect,
+    target,
+    (point) => {
+      const xNearRim = 1 - Math.min(Math.abs(point.x - target.x) / Math.max(width * 0.12, 1), 1)
+      const yNearLower = 1 - Math.min(Math.abs(point.y - target.y) / Math.max(height * 0.18, 1), 1)
+      const awayFromNose = point.x <= handles.lensRight.x + pxPerMm ? 0.18 : 0
+      return xNearRim * 0.42 + yNearLower * 0.4 + awayFromNose
+    },
+    (x, y) => isDarkRimPixel(imageData, x, y),
+  )
+}
+
+function findHybridBrightLeftRimX(imageData: ImageData, handles: Handles, pxPerMm: number) {
+  const start = Math.round(handles.pupilR.x - 10 * pxPerMm)
+  const limit = Math.round(Math.max(2, handles.lensLeft.x - 4 * pxPerMm))
+  const yTop = Math.round(Math.max(2, handles.lensTop.y + 7 * pxPerMm))
+  const yBottom = Math.round(Math.min(imageData.height - 3, handles.lensBottom.y - 8 * pxPerMm))
+  const minHits = Math.max(8, Math.round((yBottom - yTop + 1) * 0.16))
+  let best: { x: number; score: number } | null = null
+
+  for (let x = start; x >= limit; x -= 1) {
+    if (x < 2 || x >= imageData.width - 2) continue
+    let hits = 0
+    let edgeTotal = 0
+
+    for (let y = yTop; y <= yBottom; y += 1) {
+      if (y < 2 || y >= imageData.height - 2) continue
+      if (!isBrightRimPixel(imageData, x, y) && !isSpecularLensHint(imageData, x, y)) continue
+      hits += 1
+      edgeTotal += localEdgeStrength(imageData, x, y)
+    }
+
+    if (hits < minHits) continue
+
+    const continuity = hits / Math.max(yBottom - yTop + 1, 1)
+    const edgeScore = Math.min(edgeTotal / Math.max(hits * 75, 1), 1)
+    const outsideBias = Math.min((handles.pupilR.x - x) / Math.max(30 * pxPerMm, 1), 1)
+    const score = continuity * 0.46 + edgeScore * 0.3 + outsideBias * 0.24
+    if (!best || score > best.score) best = { x, score }
+  }
+
+  return best && best.score > 0.34 ? best.x : null
+}
+
+function findHybridBrightLowerRimY(imageData: ImageData, handles: Handles, pxPerMm: number) {
+  const left = Math.round(Math.max(2, handles.lensLeft.x + 4 * pxPerMm))
+  const right = Math.round(Math.min(imageData.width - 3, handles.lensRight.x - 6 * pxPerMm))
+  const width = right - left + 1
+  if (width < 24) return null
+
+  const yStart = Math.round(Math.max(handles.pupilR.y + 25 * pxPerMm, handles.lensBottom.y + 11 * pxPerMm))
+  const yEnd = Math.round(Math.min(imageData.height - 3, handles.lensBottom.y + 38 * pxPerMm))
+  const minTotalHits = Math.max(10, Math.round(width * 0.075))
+  const minRun = Math.max(8, Math.round(width * 0.08))
+  let best: { y: number; score: number } | null = null
+
+  for (let y = yStart; y <= yEnd; y += 1) {
+    if (y < 2 || y >= imageData.height - 2) continue
+    let totalHits = 0
+    let edgeTotal = 0
+    let currentRun = 0
+    let longestRun = 0
+    let sideHits = 0
+
+    for (let x = left; x <= right; x += 1) {
+      const relative = (x - left) / Math.max(width - 1, 1)
+      const isSideBand = relative < 0.34 || relative > 0.68
+      const hit = isBrightRimPixel(imageData, x, y) || isSpecularLensHint(imageData, x, y)
+      if (!hit || !isSideBand) {
+        currentRun = 0
+        continue
+      }
+      currentRun += 1
+      longestRun = Math.max(longestRun, currentRun)
+      totalHits += 1
+      sideHits += 1
+      edgeTotal += localEdgeStrength(imageData, x, y)
+    }
+
+    if (totalHits < minTotalHits || longestRun < minRun || sideHits < minTotalHits) continue
+
+    const runScore = Math.min(longestRun / Math.max(width * 0.15, 1), 1)
+    const coverage = Math.min(totalHits / Math.max(width * 0.14, 1), 1)
+    const edgeScore = Math.min(edgeTotal / Math.max(totalHits * 75, 1), 1)
+    const lowerBias = Math.min((y - yStart) / Math.max(yEnd - yStart, 1), 1)
+    const score = runScore * 0.38 + coverage * 0.18 + edgeScore * 0.14 + lowerBias * 0.3
+    if (!best || score > best.score) best = { y, score }
+  }
+
+  return best && best.score > 0.4 ? best.y : null
 }
 
 function stabilizeBridgeHandlesToPupilAxis(handles: Handles, pxPerMm: number): Handles {
