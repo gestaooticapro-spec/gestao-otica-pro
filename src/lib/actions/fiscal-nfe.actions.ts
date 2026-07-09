@@ -26,7 +26,7 @@ type NFeBonusPurpose = "Bonificacao" | "Brinde" | "Doacao";
 type NFeShipmentPurpose =
     | "Remessa para conserto"
     | "Retorno de conserto"
-    | "Remessa em garantia"
+    | "Remessa em garantia - Índio"
     | "Retorno de garantia"
     | "Remessa para demonstracao"
     | "Retorno de demonstracao";
@@ -1224,7 +1224,7 @@ export async function emitirNFe(input: NFeSaleInput) {
         const isAdvancedOperation = operation === "advanced";
         const referenceKey = cleanDigits(input.referenceKey);
         const shipmentPurpose: NFeShipmentPurpose = input.finalidade_remessa || "Remessa para conserto";
-        const isWarrantyShipment = isShipmentOperation && shipmentPurpose === "Remessa em garantia";
+        const isWarrantyShipment = isShipmentOperation && shipmentPurpose === "Remessa em garantia - Índio";
         const isShipmentReturn = isShipmentOperation && shipmentPurpose.startsWith("Retorno");
         const isDemonstrationReturn = isShipmentOperation && shipmentPurpose === "Retorno de demonstracao";
         const isRegularShipmentReturn = isShipmentReturn && !isDemonstrationReturn;
@@ -1742,7 +1742,7 @@ export async function emitirNFe(input: NFeSaleInput) {
                 }
                 : isShipmentOperation
                     ? {
-                        natOp: shipmentPurpose === "Remessa em garantia"
+                        natOp: shipmentPurpose === "Remessa em garantia - Índio"
                             ? "REMESSA EM GARANTIA"
                             : shipmentPurpose === "Retorno de garantia"
                                 ? "RETORNO DE GARANTIA"
@@ -1754,14 +1754,14 @@ export async function emitirNFe(input: NFeSaleInput) {
                                     ? "RETORNO DE CONSERTO"
                                     : "REMESSA PARA CONSERTO",
                         cfop: sameState
-                            ? isDemonstrationReturn ? "5913" : shipmentPurpose === "Remessa para demonstracao" ? "5912" : isShipmentReturn ? "5916" : shipmentPurpose === "Remessa em garantia" ? "5949" : "5915"
-                            : isDemonstrationReturn ? "6913" : shipmentPurpose === "Remessa para demonstracao" ? "6912" : isShipmentReturn ? "6916" : shipmentPurpose === "Remessa em garantia" ? "6949" : "6915",
+                            ? isDemonstrationReturn ? "5913" : shipmentPurpose === "Remessa para demonstracao" ? "5912" : isShipmentReturn ? "5916" : shipmentPurpose === "Remessa em garantia - Índio" ? "5949" : "5915"
+                            : isDemonstrationReturn ? "6913" : shipmentPurpose === "Remessa para demonstracao" ? "6912" : isShipmentReturn ? "6916" : shipmentPurpose === "Remessa em garantia - Índio" ? "6949" : "6915",
                         csosn: "400" as const,
                         indPres: 9,
                         finNFe: 1,
                         indFinal: dest.indIEDest === 9 ? 1 : 0,
                         detPag: [{ tPag: "90", vPag: 0 }],
-                        infCpl: shipmentPurpose === "Remessa em garantia"
+                        infCpl: shipmentPurpose === "Remessa em garantia - Índio"
                             ? "REMESSA DE MERCADORIA/BEM EM GARANTIA. SEM INCIDENCIA DE COBRANCA."
                             : shipmentPurpose === "Retorno de garantia"
                                 ? "RETORNO DE MERCADORIA/BEM REMETIDO EM GARANTIA. SEM INCIDENCIA DE COBRANCA."

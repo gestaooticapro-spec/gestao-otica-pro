@@ -236,7 +236,7 @@ function importedOriginCfop(input: {
     purpose: string;
     sameState: boolean;
 }) {
-    if (input.operation === "shipment" && input.purpose === "Remessa em garantia") {
+    if (input.operation === "shipment" && input.purpose === "Remessa em garantia - Índio") {
         return input.sameState ? "5949" : "6949";
     }
 
@@ -280,7 +280,7 @@ const OPERATIONS: {
         title: "Remessa/Retorno",
         subtitle: "Conserto, garantia, demonstração",
         icon: Repeat2,
-        purposes: ["Remessa para conserto", "Retorno de conserto", "Remessa em garantia", "Retorno de garantia", "Remessa para demonstracao", "Retorno de demonstracao"],
+        purposes: ["Remessa para conserto", "Retorno de conserto", "Remessa em garantia - Índio", "Retorno de garantia", "Remessa para demonstracao", "Retorno de demonstracao"],
         enabled: true,
     },
     {
@@ -432,7 +432,7 @@ function inferCloneOperation(infNFe: Record<string, unknown>): {
             return { operation: "shipment", purpose: "Remessa para conserto", nature, tipoNFe, finalidadeNFe };
         }
         if (normalizedNature.includes("GARANT")) {
-            return { operation: "shipment", purpose: "Remessa em garantia", nature, tipoNFe, finalidadeNFe };
+            return { operation: "shipment", purpose: "Remessa em garantia - Índio", nature, tipoNFe, finalidadeNFe };
         }
         if (normalizedNature.includes("DEMONSTR")) {
             return { operation: "shipment", purpose: "Remessa para demonstracao", nature, tipoNFe, finalidadeNFe };
@@ -1312,6 +1312,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
             const destinationUf = customerForm.uf.trim().toUpperCase();
             const isReturn = purpose.startsWith("Retorno");
             const prefix = storeUf && destinationUf && storeUf !== destinationUf ? "6" : "5";
+            if (purpose === "Remessa em garantia - Índio") return `${prefix}949`;
             if (purpose === "Remessa para demonstracao") return `${prefix}912`;
             if (purpose === "Retorno de demonstracao") return `${prefix}913`;
             return `${prefix}${isReturn ? "916" : "915"}`;
@@ -1403,7 +1404,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
             if (purpose !== "Devolucao de compra") issues.push("Apenas Devolução de compra está liberada nesta etapa.");
             if (!selectedOrigin) issues.push("Selecione uma NF-e de entrada importada.");
         }
-        if (operation === "shipment" && purpose === "Remessa em garantia" && !selectedOrigin) {
+        if (operation === "shipment" && purpose === "Remessa em garantia - Índio" && !selectedOrigin) {
             issues.push("Selecione uma NF-e de entrada importada para montar a remessa em garantia.");
         }
         if (operation === "shipment" && purpose.startsWith("Retorno") && !selectedShipmentOrigin) {
@@ -1582,7 +1583,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                         : "sale",
             referenceKey: operation === "return"
                 ? selectedOrigin?.accessKey
-                : operation === "shipment" && purpose === "Remessa em garantia"
+                : operation === "shipment" && purpose === "Remessa em garantia - Índio"
                     ? selectedOrigin?.accessKey
                 : operation === "shipment" && purpose.startsWith("Retorno")
                     ? selectedShipmentOrigin?.accessKey
@@ -1595,7 +1596,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                 ? purpose as "Bonificacao" | "Brinde" | "Doacao"
                 : undefined,
             finalidade_remessa: operation === "shipment"
-                ? purpose as "Remessa para conserto" | "Retorno de conserto" | "Remessa em garantia" | "Retorno de garantia" | "Remessa para demonstracao" | "Retorno de demonstracao"
+                ? purpose as "Remessa para conserto" | "Retorno de conserto" | "Remessa em garantia - Índio" | "Retorno de garantia" | "Remessa para demonstracao" | "Retorno de demonstracao"
                 : undefined,
             finalidade_transferencia: operation === "transfer"
                 ? purpose as "Transferencia entre filiais" | "Transferencia para deposito" | "Retorno de deposito"
@@ -1725,11 +1726,11 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
             ? (Array.isArray(garantiaOrigins) ? garantiaOrigins : [])
             : (Array.isArray(consertoOrigins) ? consertoOrigins : []);
     const participantLocked = operation === "return"
-        || (operation === "shipment" && purpose === "Remessa em garantia")
+        || (operation === "shipment" && purpose === "Remessa em garantia - Índio")
         || (operation === "shipment" && purpose.startsWith("Retorno"))
         || (operation === "transfer" && (purpose === "Transferencia entre filiais" || purpose === "Retorno de deposito"));
     const itemsLocked = operation === "return"
-        || (operation === "shipment" && purpose === "Remessa em garantia")
+        || (operation === "shipment" && purpose === "Remessa em garantia - Índio")
         || (operation === "shipment" && purpose.startsWith("Retorno"))
         || (operation === "transfer" && purpose === "Retorno de deposito");
     const filteredSales = pendingSales
@@ -2073,7 +2074,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                 </div>
                             )}
 
-                            {operation === "shipment" && purpose === "Remessa em garantia" && (
+                            {operation === "shipment" && purpose === "Remessa em garantia - Índio" && (
                                 <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
                                     <div>
                                         <p className="text-sm font-black text-cyan-950">NF-e de entrada para garantia</p>
