@@ -1754,8 +1754,8 @@ export async function emitirNFe(input: NFeSaleInput) {
                                     ? "RETORNO DE CONSERTO"
                                     : "REMESSA PARA CONSERTO",
                         cfop: sameState
-                            ? isDemonstrationReturn ? "5913" : shipmentPurpose === "Remessa para demonstracao" ? "5912" : isShipmentReturn ? "5916" : "5915"
-                            : isDemonstrationReturn ? "6913" : shipmentPurpose === "Remessa para demonstracao" ? "6912" : isShipmentReturn ? "6916" : "6915",
+                            ? isDemonstrationReturn ? "5913" : shipmentPurpose === "Remessa para demonstracao" ? "5912" : isShipmentReturn ? "5916" : shipmentPurpose === "Remessa em garantia" ? "5949" : "5915"
+                            : isDemonstrationReturn ? "6913" : shipmentPurpose === "Remessa para demonstracao" ? "6912" : isShipmentReturn ? "6916" : shipmentPurpose === "Remessa em garantia" ? "6949" : "6915",
                         csosn: "400" as const,
                         indPres: 9,
                         finNFe: 1,

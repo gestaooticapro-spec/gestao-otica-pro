@@ -237,7 +237,7 @@ function importedOriginCfop(input: {
     sameState: boolean;
 }) {
     if (input.operation === "shipment" && input.purpose === "Remessa em garantia") {
-        return input.sameState ? "5915" : "6915";
+        return input.sameState ? "5949" : "6949";
     }
 
     return input.sameState ? "5202" : "6202";
@@ -2078,7 +2078,7 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                                     <div>
                                         <p className="text-sm font-black text-cyan-950">NF-e de entrada para garantia</p>
                                         <p className="mt-1 text-xs font-medium text-cyan-400">
-                                            Selecione a nota de entrada recebida do fornecedor. Participante, itens, CFOP 5915/6915 e chave NFref serao carregados automaticamente.
+                                            Selecione a nota de entrada recebida do fornecedor. Participante, itens, CFOP 5949/6949 e chave NFref serao carregados automaticamente.
                                         </p>
                                     </div>
 
