@@ -506,7 +506,7 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
                                                         <button
                                                             onClick={() => handleCancelar(inv.id)}
                                                             className="p-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg transition"
-                                                            title="Cancelar nota (30 min)"
+                                                            title={inv.tipo_documento === "NFe" ? "Cancelar NF-e (24h)" : "Cancelar NFC-e (30 min)"}
                                                         >
                                                             <Ban size={15} />
                                                         </button>
