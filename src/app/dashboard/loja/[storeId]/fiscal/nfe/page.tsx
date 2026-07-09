@@ -123,6 +123,10 @@ type NFeItemForm = {
     valorTotal: number;
     origem?: number;
     csosn?: string;
+    icmsBase?: number;
+    icmsAliquota?: number;
+    icmsValor?: number;
+    icmsModBc?: number;
     cbenef?: string;
     ipiCst?: string;
     ipiCEnq?: string;
@@ -334,6 +338,10 @@ const emptyItem: NFeItemForm = {
     valorTotal: 0,
     origem: 0,
     csosn: "102",
+    icmsBase: 0,
+    icmsAliquota: 0,
+    icmsValor: 0,
+    icmsModBc: 3,
     cbenef: "",
     ipiCst: "",
     ipiCEnq: "999",
@@ -454,6 +462,10 @@ function cloneDraftItem(item: ParsedNFeItem, index: number): NFeItemForm {
         valorTotal: Number(item.valor_total || 0),
         origem: Number(item.origem || 0),
         csosn: item.csosn || "102",
+        icmsBase: Number(item.icms_base || 0),
+        icmsAliquota: Number(item.icms_aliquota || 0),
+        icmsValor: Number(item.icms_valor || 0),
+        icmsModBc: Number(item.icms_mod_bc ?? 3),
         cbenef: item.cbenef || "",
         ipiCst: item.ipi_cst || "",
         ipiCEnq: item.ipi_cenq || "999",
@@ -1035,6 +1047,11 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
             maxQuantity: item.quantidade,
             valorUnitario: item.valor_unitario,
             valorTotal: item.valor_total,
+            origem: Number(item.origem || 0),
+            icmsBase: Number(item.icms_base || 0),
+            icmsAliquota: Number(item.icms_aliquota || 0),
+            icmsValor: Number(item.icms_valor || 0),
+            icmsModBc: Number(item.icms_mod_bc ?? 3),
         })));
         setStep("participant");
     }
@@ -1642,6 +1659,10 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
                 valor_total: Number(item.valorTotal),
                 origem: item.origem,
                 csosn: item.csosn,
+                icms_base: item.icmsBase,
+                icms_aliquota: item.icmsAliquota,
+                icms_valor: item.icmsValor,
+                icms_mod_bc: item.icmsModBc,
                 cbenef: item.cbenef,
                 ipi_cst: item.ipiCst,
                 ipi_cenq: item.ipiCEnq,

@@ -667,6 +667,29 @@ function buildReturnItemTax(item: FiscalItem) {
     return buildItemTax(item, "102");
 }
 
+function buildWarrantyShipmentItemTax(item: FiscalItem) {
+    const rate = Number(item.icms_aliquota || 0);
+    if (rate > 0 && Number(item.icms_valor || 0) > 0) {
+        const base = money(item.icms_base || item.valor_total);
+        return {
+            ICMS: {
+                ICMSSN900: {
+                    orig: Number(item.origem ?? 0),
+                    CSOSN: "900",
+                    modBC: Number(item.icms_mod_bc ?? 3),
+                    vBC: base,
+                    pICMS: moneyText(rate),
+                    vICMS: moneyText(item.icms_valor),
+                },
+            },
+            PIS: { PISOutr: { CST: "99", vBC: 0, pPIS: 0, vPIS: 0 } },
+            COFINS: { COFINSOutr: { CST: "99", vBC: 0, pCOFINS: 0, vCOFINS: 0 } },
+        };
+    }
+
+    return buildItemTax(item, "400");
+}
+
 function buildAdvancedItemTax(item: FiscalItem) {
     const csosn = cleanDigits(item.csosn) || "102";
     const supportedCsosn = ["101", "102", "103", "201", "202", "203", "300", "400", "500", "900"];
@@ -1546,6 +1569,7 @@ export async function emitirNFe(input: NFeSaleInput) {
                     const requested = requestedByCode.get(cleanText(originItem.codigo))!;
                     const quantity = Number(requested.quantidade || 0);
                     const originalQuantity = Number(originItem.quantidade || 0);
+                    const quantityFactor = originalQuantity > 0 ? quantity / originalQuantity : 1;
                     const ncm = cleanDigits(originItem.ncm);
 
                     if (quantity <= 0 || quantity > originalQuantity) {
@@ -1565,6 +1589,10 @@ export async function emitirNFe(input: NFeSaleInput) {
                         valor_unitario: money(originItem.valor_unitario),
                         valor_total: money(quantity * Number(originItem.valor_unitario || 0)),
                         origem: Number(originItem.origem || 0),
+                        icms_base: money(Number(originItem.icms_base || 0) * quantityFactor),
+                        icms_aliquota: Number(originItem.icms_aliquota || 0),
+                        icms_valor: money(Number(originItem.icms_valor || 0) * quantityFactor),
+                        icms_mod_bc: Number(originItem.icms_mod_bc ?? 3),
                     };
                 });
 
@@ -1920,7 +1948,7 @@ export async function emitirNFe(input: NFeSaleInput) {
                     indIntermed: isAdvancedOperation ? Number(advanced.ind_intermed ?? 0) : 0,
                     procEmi: 0,
                     verProc: "GestaoOticaPro 1.0",
-                    ...(isReturnOperation || isShipmentReturn || isDepositReturn ? { NFref: [{ refNFe: referenceKey }] } : {}),
+                    ...(isReturnOperation || isWarrantyShipment || isShipmentReturn || isDepositReturn ? { NFref: [{ refNFe: referenceKey }] } : {}),
                     ...advancedReference,
                 },
                 emit: {
@@ -1971,16 +1999,18 @@ export async function emitirNFe(input: NFeSaleInput) {
                             ? buildAdvancedItemTax(item)
                             : isReturnOperation
                             ? buildReturnItemTax(item)
+                            : isWarrantyShipment
+                            ? buildWarrantyShipmentItemTax(item)
                             : buildItemTax(item, template.csosn)),
                         ...buildRtcMvpItemImposto(environment, rtcContexts[index], rtcBasesPorItem[index]),
                     },
                 })),
                 total: {
                     ICMSTot: {
-                        vBC: isReturnOperation
+                        vBC: isReturnOperation || isWarrantyShipment
                             ? money(fiscalItems.reduce((sum, item) => sum + (Number(item.icms_valor || 0) > 0 ? Number(item.icms_base || item.valor_total) : 0), 0))
                             : 0,
-                        vICMS: isReturnOperation
+                        vICMS: isReturnOperation || isWarrantyShipment
                             ? moneyText(fiscalItems.reduce((sum, item) => sum + Number(item.icms_valor || 0), 0))
                             : 0,
                         vICMSDeson: 0,
