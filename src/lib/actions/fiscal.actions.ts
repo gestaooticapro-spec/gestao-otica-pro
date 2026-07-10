@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getNuvemFiscalToken } from "@/lib/nuvemfiscal";
+import { getNuvemLocalToken } from "@/lib/nuvem-local";
 import { Database } from "@/lib/database.types";
 import { isStoreModuleEnabledForStore } from "@/lib/store-modules.server";
 
@@ -122,7 +122,7 @@ function isValidIbgeMunicipalityCode(value?: string | number | null, uf?: string
     return !normalizedUf || IBGE_UF_CODES[normalizedUf] === code.slice(0, 2);
 }
 
-async function hydrateStoreFiscalDataFromNuvemFiscal(
+async function hydrateStoreFiscalDataFromNuvemLocal(
     company: any,
     env: "production" | "homologation",
     token: string
@@ -175,7 +175,7 @@ async function hydrateStoreFiscalDataFromNuvemFiscal(
             inscricao_estadual: normalizeDocument(company.inscricao_estadual) || normalizeDocument(remoteCompany?.inscricao_estadual) || company.inscricao_estadual,
         };
     } catch (error) {
-        console.warn("[emitirNFCe] Nao foi possivel complementar dados da loja pela Nuvem Fiscal:", error);
+        console.warn("[emitirNFCe] Nao foi possivel complementar dados da loja pela Nuvem Local:", error);
         return company;
     }
 }
@@ -420,7 +420,7 @@ async function verifyCompanyInutilizationContract(params: {
     environment: "production" | "homologation";
     model: "NFCe" | "NFe";
 }) {
-    const token = await getNuvemFiscalToken(params.environment);
+    const token = await getNuvemLocalToken(params.environment);
     const baseUrl = params.environment === "production"
         ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
         : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
@@ -437,7 +437,7 @@ async function verifyCompanyInutilizationContract(params: {
         const providerMessage = result?.error?.message || result?.message;
         return {
             success: false as const,
-            error: providerMessage || `Nao foi possivel validar o cadastro da empresa na Nuvem Fiscal para ${params.model}.`,
+            error: providerMessage || `Nao foi possivel validar o cadastro da empresa na Nuvem Local para ${params.model}.`,
         };
     }
 
@@ -447,7 +447,7 @@ async function verifyCompanyInutilizationContract(params: {
     if (contractStatus.known && !contractStatus.enabled) {
         return {
             success: false as const,
-            error: `A empresa nao esta habilitada para inutilizacao de ${params.model} na Nuvem Fiscal neste ambiente.`,
+            error: `A empresa nao esta habilitada para inutilizacao de ${params.model} na Nuvem Local neste ambiente.`,
         };
     }
 
@@ -595,7 +595,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
             return { success: false, error: duplicateError };
         }
 
-        // 2. Buscar Token Nuvem Fiscal
+        // 2. Buscar token da Nuvem Local
         const fiscalModuleEnabled = payload.store_id
             ? await isStoreModuleEnabledForStore(payload.store_id, "fiscal")
             : false;
@@ -609,7 +609,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
             return { success: false, error: "Modulo fiscal desativado para esta loja." };
         }
 
-        const token = await getNuvemFiscalToken(env);
+        const token = await getNuvemLocalToken(env);
 
         const { data: store } = await adminSupabase
             .from("stores")
@@ -642,7 +642,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
             telefone: store.phone || store.whatsapp,
         };
 
-        company = await hydrateStoreFiscalDataFromNuvemFiscal(company, env, token);
+        company = await hydrateStoreFiscalDataFromNuvemLocal(company, env, token);
 
         console.log("[emitirNFCe] Dados da loja:", JSON.stringify(company, null, 2));
 
@@ -689,7 +689,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
         const issuedAt = new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }).replace(' ', 'T') + '-03:00';
 
-        // 6. Montar JSON para Nuvem Fiscal (NFC-e)
+        // 6. Montar JSON para Nuvem Local (NFC-e)
         // DocumentaÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o: https://dev.nuvemfiscal.com.br/docs/api#tag/Nfe/operation/EmitirNfe
         const nfePayload = {
             ambiente: env === 'production' ? 'producao' : 'homologacao',
@@ -878,8 +878,8 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
         invoiceId = invoice.id;
 
-        // 8. Enviar para Nuvem Fiscal
-        console.log("[NuvemFiscal] Enviando NFE Payload:", JSON.stringify(nfePayload, null, 2));
+        // 8. Enviar para Nuvem Local
+        console.log("[NuvemLocal] Enviando NFE Payload:", JSON.stringify(nfePayload, null, 2));
 
         const baseUrl = env === 'production'
             ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
@@ -894,16 +894,16 @@ export async function emitirNFCe(payload: EmissionPayload) {
             body: JSON.stringify(nfePayload)
         });
 
-        console.log("[NuvemFiscal] Response Status:", response.status);
+        console.log("[NuvemLocal] Response Status:", response.status);
 
         const responseText = await response.text();
-        console.log("[NuvemFiscal] Response Body:", responseText);
+        console.log("[NuvemLocal] Response Body:", responseText);
 
         let result;
         try {
             result = responseText ? JSON.parse(responseText) : {};
         } catch (e) {
-            console.error("[NuvemFiscal] Erro ao fazer parse da resposta:", responseText);
+            console.error("[NuvemLocal] Erro ao fazer parse da resposta:", responseText);
             // Atualizar banco para nÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o deixar nota em estado inconsistente
             if (invoice?.id) {
                 await adminSupabase.from("fiscal_invoices").update({
@@ -911,7 +911,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
                     error_message: `Resposta invÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡lida da API (Status ${response.status}). ProvÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡vel timeout.`
                 }).eq("id", invoice.id);
             }
-            return { success: false, error: `Erro na resposta da Nuvem Fiscal (Status ${response.status}). Verifique os logs.` };
+            return { success: false, error: `Erro na resposta da Nuvem Local (Status ${response.status}). Verifique os logs.` };
         }
 
         if (!response.ok) {
@@ -929,9 +929,9 @@ export async function emitirNFCe(payload: EmissionPayload) {
             return { success: false, error: formatFiscalProviderMessage(errorMsg) };
         }
 
-        // 9. Verificar status REAL retornado pela Nuvem Fiscal
+        // 9. Verificar status real retornado pela Nuvem Local
         const realStatus = result.status;
-        console.log("[NuvemFiscal] Status real retornado:", realStatus);
+        console.log("[NuvemLocal] Status real retornado:", realStatus);
 
         if (realStatus === 'rejeitado') {
             const codigoErro = result.autorizacao?.codigo_status || 'N/A';
@@ -1046,12 +1046,12 @@ export async function emitirNFSe(payload: EmissionPayload) {
     console.log("[emitirNFSe] User ID:", user?.id);
 
     try {
-        // 1. Buscar Token Nuvem Fiscal
+        // 1. Buscar token da Nuvem Local
         const env = payload.environment || 'production';
         if (payload.store_id && !(await isStoreModuleEnabledForStore(payload.store_id, "fiscal"))) {
             return { success: false, error: "Modulo fiscal desativado para esta loja." };
         }
-        const token = await getNuvemFiscalToken(env);
+        const token = await getNuvemLocalToken(env);
 
         // 2. Buscar ConfiguraÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âµes da Empresa
         const { data: company } = await supabase
@@ -1066,7 +1066,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
 
         const cnpj = company.cnpj || company.cpf_cnpj;
 
-        // 3. Montar JSON para Nuvem Fiscal (NFS-e - DPS)
+        // 3. Montar JSON para Nuvem Local (NFS-e - DPS)
         const servicoPrincipal = payload.itens[0]; // Assumindo um serviÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§o principal ou o primeiro para cabeÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§alho
         if (!servicoPrincipal) throw new Error("Nenhum serviÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§o informado.");
 
@@ -1134,8 +1134,8 @@ export async function emitirNFSe(payload: EmissionPayload) {
         if (dbError) throw dbError;
         invoiceId = invoice.id;
 
-        // 5. Enviar para Nuvem Fiscal
-        console.log("[NuvemFiscal] Enviando DPS Payload:", JSON.stringify(dpsPayload, null, 2));
+        // 5. Enviar para Nuvem Local
+        console.log("[NuvemLocal] Enviando DPS Payload:", JSON.stringify(dpsPayload, null, 2));
 
         const baseUrl = env === 'production'
             ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
@@ -1151,20 +1151,20 @@ export async function emitirNFSe(payload: EmissionPayload) {
         });
 
         const responseText = await response.text();
-        console.log("[NuvemFiscal] Response Status:", response.status);
-        console.log("[NuvemFiscal] Response Body:", responseText);
+        console.log("[NuvemLocal] Response Status:", response.status);
+        console.log("[NuvemLocal] Response Body:", responseText);
 
         let result;
         try {
             result = responseText ? JSON.parse(responseText) : {};
         } catch (e) {
-            console.error("[NuvemFiscal] Erro ao fazer parse da resposta:", responseText);
+            console.error("[NuvemLocal] Erro ao fazer parse da resposta:", responseText);
             result = {};
         }
 
         if (!response.ok) {
             const errorDetails = result.error?.message || JSON.stringify(result);
-            console.error("[NuvemFiscal] Erro detalhado:", errorDetails);
+            console.error("[NuvemLocal] Erro detalhado:", errorDetails);
 
             await adminSupabase
                 .from("fiscal_invoices")
@@ -1174,7 +1174,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
                 })
                 .eq("id", invoice.id);
 
-            return { success: false, error: `Erro NuvemFiscal: ${errorDetails}` };
+            return { success: false, error: `Erro Nuvem Local: ${errorDetails}` };
         }
 
         // 6. Sucesso
@@ -1213,7 +1213,7 @@ export async function consultarNFCe(invoiceId: string) {
             .single();
 
         if (!invoice || !invoice.nuvemfiscal_uuid) {
-            return { success: false, error: "Nota nÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o encontrada ou sem ID da NuvemFiscal." };
+            return { success: false, error: "Nota nao encontrada ou sem ID da Nuvem Local." };
         }
 
         if (invoice.store_id && !(await isStoreModuleEnabledForStore(invoice.store_id, "fiscal"))) {
@@ -1221,7 +1221,7 @@ export async function consultarNFCe(invoiceId: string) {
         }
 
         const env = (invoice.environment as 'production' | 'homologation') || 'production';
-        const token = await getNuvemFiscalToken(env);
+        const token = await getNuvemLocalToken(env);
 
         const baseUrl = env === 'production'
             ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
@@ -1319,7 +1319,7 @@ export async function consultarNFe(invoiceId: string) {
             .single();
 
         if (!invoice || !invoice.nuvemfiscal_uuid) {
-            return { success: false, error: "Nota não encontrada ou sem ID da NuvemFiscal." };
+            return { success: false, error: "Nota não encontrada ou sem ID da Nuvem Local." };
         }
 
         if (invoice.store_id && !(await isStoreModuleEnabledForStore(invoice.store_id, "fiscal"))) {
@@ -1327,7 +1327,7 @@ export async function consultarNFe(invoiceId: string) {
         }
 
         const env = (invoice.environment as 'production' | 'homologation') || 'production';
-        const token = await getNuvemFiscalToken(env);
+        const token = await getNuvemLocalToken(env);
 
         const baseUrl = env === 'production'
             ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
@@ -1560,7 +1560,7 @@ export async function inutilizarNumeracaoFiscal(params: {
         const result = await response.json();
         const duplicateAlreadyInutilized = !response.ok && isDuplicateInutilizationWithProtocol(result);
         if (!response.ok && !duplicateAlreadyInutilized) {
-            const apiError = result?.error?.message || "Erro ao solicitar inutilizaÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o na Nuvem Fiscal.";
+            const apiError = result?.error?.message || "Erro ao solicitar inutilizacao na Nuvem Local.";
             return { success: false, error: apiError, details: result };
         }
 
@@ -1701,7 +1701,7 @@ export async function consultarNFSe(invoiceId: string) {
             .single();
 
         if (!invoice || !invoice.nuvemfiscal_uuid) {
-            return { success: false, error: "Nota nÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o encontrada ou sem ID da NuvemFiscal." };
+            return { success: false, error: "Nota nao encontrada ou sem ID da Nuvem Local." };
         }
 
         if (invoice.store_id && !(await isStoreModuleEnabledForStore(invoice.store_id, "fiscal"))) {
@@ -1709,7 +1709,7 @@ export async function consultarNFSe(invoiceId: string) {
         }
 
         const env = (invoice.environment as 'production' | 'homologation') || 'production';
-        const token = await getNuvemFiscalToken(env);
+        const token = await getNuvemLocalToken(env);
 
         const baseUrl = env === 'production'
             ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
@@ -1776,7 +1776,7 @@ export async function updateCompanyCredentials(organizationId: string, environme
         }
 
         const cnpj = (company.cnpj || company.cpf_cnpj).replace(/\D/g, "");
-        const token = await getNuvemFiscalToken(environment);
+        const token = await getNuvemLocalToken(environment);
 
         const payload = {
             ambiente: environment === 'production' ? 'producao' : 'homologacao',
@@ -1848,7 +1848,7 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
             .single();
 
         if (!invoice || !invoice.nuvemfiscal_uuid) {
-            return { success: false, error: "Nota nÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o encontrada ou sem ID da NuvemFiscal." };
+            return { success: false, error: "Nota nao encontrada ou sem ID da Nuvem Local." };
         }
 
         if (invoice.store_id && !(await isStoreModuleEnabledForStore(invoice.store_id, "fiscal"))) {
@@ -1856,7 +1856,7 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
         }
 
         const env = (invoice.environment as 'production' | 'homologation') || 'production';
-        const token = await getNuvemFiscalToken(env);
+        const token = await getNuvemLocalToken(env);
 
         // Verificar prazo de cancelamento por modelo:
         // - NFC-e: 30 minutos
@@ -1963,7 +1963,7 @@ export async function syncStoreFiscalData(
         try {
             console.log(`[Sync Fiscal] Processando ambiente: ${env.toUpperCase()}`);
 
-            const token = await getNuvemFiscalToken(env);
+            const token = await getNuvemLocalToken(env);
             const cnpj = storeData.cnpj.replace(/\D/g, "");
             const baseUrl = env === 'production'
                 ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")

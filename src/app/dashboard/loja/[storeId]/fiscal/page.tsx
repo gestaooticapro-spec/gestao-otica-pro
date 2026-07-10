@@ -134,7 +134,7 @@ export default function FiscalDashboard({ params }: { params: { storeId: string 
     };
 
     const handleRefreshStatus = async (invoiceId: string) => {
-        alert("Consultando status na Nuvem Fiscal...");
+        alert("Consultando status na Nuvem Local...");
         try {
             const invoice = invoices.find((inv) => inv.id === invoiceId);
             const tipo = invoice?.tipo_documento;

@@ -5,7 +5,7 @@
 import { XMLParser } from 'fast-xml-parser'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import { getNuvemFiscalToken } from '@/lib/nuvemfiscal'
+import { getNuvemLocalToken } from '@/lib/nuvem-local'
 
 type QueueStatus = 'pending' | 'imported' | 'ignored' | 'error' | 'duplicated'
 
@@ -145,10 +145,10 @@ async function requestNfeDistribution(
     while (String(result.status || '').toLowerCase() === 'processando') {
         const distributionId = String(result.id || '').trim()
         if (!distributionId) {
-            throw new Error('A Nuvem Fiscal iniciou uma consulta assincrona sem retornar o identificador do pedido.')
+            throw new Error('A Nuvem Local iniciou uma consulta assincrona sem retornar o identificador do pedido.')
         }
         if (pollAttempts >= DISTRIBUTION_POLL_MAX_ATTEMPTS) {
-            throw new Error('A consulta ainda esta sendo processada pela Nuvem Fiscal. Tente novamente em alguns instantes.')
+            throw new Error('A consulta ainda esta sendo processada pela Nuvem Local. Tente novamente em alguns instantes.')
         }
 
         pollAttempts++
@@ -178,7 +178,7 @@ async function requestNfeDistribution(
             result?.error?.message
             || result?.mensagem
             || result?.motivo_status
-            || 'A Nuvem Fiscal nao conseguiu concluir a consulta de distribuicao NF-e.',
+            || 'A Nuvem Local nao conseguiu concluir a consulta de distribuicao NF-e.',
         )
     }
 
@@ -444,7 +444,7 @@ export async function listNfeImportQueue(storeId?: number) {
 export async function syncNfeFromSefaz(storeId?: number) {
     let diagnostico: Record<string, any> = {
         momento: new Date().toISOString(),
-        intermediario: 'Nuvem Fiscal',
+        intermediario: 'Nuvem Local',
         ambiente: NFE_AMBIENTE,
     }
 
@@ -496,7 +496,7 @@ export async function syncNfeFromSefaz(storeId?: number) {
             lastSyncAt: state.last_sync_at ?? null,
         }
 
-        const token = await getNuvemFiscalToken(NFE_ENVIRONMENT, 'empresa nfe distribuicao-nfe')
+        const token = await getNuvemLocalToken(NFE_ENVIRONMENT, 'empresa nfe distribuicao-nfe')
         const configResult = await ensureDistributionConfig(cpfCnpj, token)
         diagnostico.configuracaoDistribuicao = configResult
 
@@ -689,7 +689,7 @@ export async function searchNfeByAccessKey(chaveAcesso: string, storeId?: number
 
         const { organizationId, cpfCnpj, storeId: resolvedStoreId } = await getTenantAndCompany(storeId)
         const supabaseAdmin = createAdminClient() as any
-        const token = await getNuvemFiscalToken(NFE_ENVIRONMENT, 'empresa nfe distribuicao-nfe')
+        const token = await getNuvemLocalToken(NFE_ENVIRONMENT, 'empresa nfe distribuicao-nfe')
         await ensureDistributionConfig(cpfCnpj, token)
 
         const distribution = await requestNfeDistribution({
@@ -805,8 +805,8 @@ export async function getNfeQueueXml(queueId: string, storeId?: number) {
         const cachedXmlHasItems = xmlContent ? hasCompleteNfeItems(xmlContent) : false
 
         if (!xmlContent || !cachedXmlHasItems) {
-            if (!queueItem.nuvemfiscal_document_id) throw new Error('Documento sem identificador na Nuvem Fiscal.')
-            const token = await getNuvemFiscalToken(NFE_ENVIRONMENT, 'empresa nfe distribuicao-nfe')
+            if (!queueItem.nuvemfiscal_document_id) throw new Error('Documento sem identificador na Nuvem Local.')
+            const token = await getNuvemLocalToken(NFE_ENVIRONMENT, 'empresa nfe distribuicao-nfe')
 
             if ((queueItem.resumo || !cachedXmlHasItems) && queueItem.chave_acesso) {
                 await manifestScience(cpfCnpj, queueItem.chave_acesso, token)

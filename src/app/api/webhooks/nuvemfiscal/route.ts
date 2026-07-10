@@ -13,9 +13,9 @@ export async function POST(request: Request) {
         }
 
         const body = await request.json();
-        console.log("[Webhook NuvemFiscal] Recebido:", JSON.stringify(body, null, 2));
+        console.log("[Webhook NuvemLocal] Recebido:", JSON.stringify(body, null, 2));
 
-        // Estrutura esperada do Webhook da Nuvem Fiscal (exemplo genérico, ajustar conforme doc real)
+        // Mantem a rota legada por compatibilidade; o webhook e da Nuvem Local.
         // Geralmente vem: { id: "...", status: "autorizado", ... } ou dentro de um objeto "data"
 
         const nuvemFiscalId = body.id || body.data?.id;

@@ -120,7 +120,7 @@ async function getToken(environment: Environment) {
     : process.env.NUVEMFISCAL_HOM_CLIENT_SECRET
 
   if (!clientId || !clientSecret) {
-    throw new Error(`Credenciais Nuvem Fiscal ausentes para ${environment}.`)
+    throw new Error(`Credenciais Nuvem Local ausentes para ${environment}.`)
   }
 
   const body = new URLSearchParams()
@@ -139,7 +139,7 @@ async function getToken(environment: Environment) {
   const payload = text ? JSON.parse(text) : {}
 
   if (!response.ok) {
-    throw new Error(`Auth Nuvem Fiscal ${response.status}: ${text}`)
+    throw new Error(`Auth Nuvem Local ${response.status}: ${text}`)
   }
 
   return String(payload.access_token)

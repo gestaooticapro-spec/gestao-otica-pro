@@ -537,7 +537,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                     <div className="bg-black/40 rounded-2xl border border-white/10 shadow-sm p-6 mt-4">
                         <p className="font-bold text-white">Inutilização de numeração</p>
                         <p className="text-xs text-slate-400 mt-1">
-                            Automatiza o envio da solicitação para SEFAZ via Nuvem Fiscal no modelo e ambiente escolhidos. Antes do envio, validamos o cadastro/contrato da empresa na Nuvem Fiscal.
+                            Automatiza o envio da solicitação para SEFAZ via Nuvem Local no modelo e ambiente escolhidos. Antes do envio, validamos o cadastro/contrato da empresa na Nuvem Local.
                         </p>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-4">
                             <select

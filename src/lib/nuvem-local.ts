@@ -1,4 +1,4 @@
-// src/lib/nuvemfiscal.ts
+// Mantem as variaveis NUVEMFISCAL_* por compatibilidade com o ambiente legado.
 
 type CachedToken = {
     token: string;
@@ -34,7 +34,7 @@ function resolveAuthUrl(environment: 'production' | 'homologation') {
     return OFFICIAL_AUTH_URL;
 }
 
-export async function getNuvemFiscalToken(
+export async function getNuvemLocalToken(
     environment: 'production' | 'homologation' = 'production',
     scope = 'empresa nfce nfe nfse'
 ) {
@@ -43,16 +43,16 @@ export async function getNuvemFiscalToken(
     const cached = tokenCache[cacheKey];
 
     if (cached && cached.expiresAt > now + TOKEN_EXPIRY_SAFETY_MS) {
-        console.log(`[NuvemFiscal] Utilizando token cacheado para ${environment.toUpperCase()}.`);
+        console.log(`[NuvemLocal] Utilizando token cacheado para ${environment.toUpperCase()}.`);
         return cached.token;
     }
 
     if (tokenRequests[cacheKey]) {
-        console.log(`[NuvemFiscal] Aguardando token em andamento para ${environment.toUpperCase()}.`);
+        console.log(`[NuvemLocal] Aguardando token em andamento para ${environment.toUpperCase()}.`);
         return tokenRequests[cacheKey]!;
     }
 
-    tokenRequests[cacheKey] = fetchNuvemFiscalToken(environment, scope, cacheKey);
+    tokenRequests[cacheKey] = fetchNuvemLocalToken(environment, scope, cacheKey);
 
     try {
         return await tokenRequests[cacheKey]!;
@@ -61,7 +61,7 @@ export async function getNuvemFiscalToken(
     }
 }
 
-async function fetchNuvemFiscalToken(
+async function fetchNuvemLocalToken(
     environment: 'production' | 'homologation',
     scope: string,
     cacheKey: string
@@ -78,11 +78,11 @@ async function fetchNuvemFiscalToken(
 
     const authUrl = resolveAuthUrl(environment);
 
-    console.log(`[NuvemFiscal] Tentando autenticar em ${environment.toUpperCase()}...`);
-    console.log('[NuvemFiscal] Auth URL:', authUrl);
+    console.log(`[NuvemLocal] Tentando autenticar em ${environment.toUpperCase()}...`);
+    console.log('[NuvemLocal] Auth URL:', authUrl);
 
     if (!clientId || !clientSecret) {
-        throw new Error(`Credenciais da Nuvem Fiscal (${environment}) nao encontradas no .env.local`);
+        throw new Error(`Credenciais da Nuvem Local (${environment}) nao encontradas no .env.local`);
     }
 
     const params = new URLSearchParams();
@@ -100,11 +100,11 @@ async function fetchNuvemFiscalToken(
             body: params,
         });
 
-        console.log('[NuvemFiscal] Status da resposta:', response.status, response.statusText);
+        console.log('[NuvemLocal] Status da resposta:', response.status, response.statusText);
 
         if (!response.ok) {
             const errorText = await response.text();
-            console.error(`[NuvemFiscal] Erro ao autenticar (Status: ${response.status}):`, errorText);
+            console.error(`[NuvemLocal] Erro ao autenticar (Status: ${response.status}):`, errorText);
 
             let errorData;
             try {
@@ -117,7 +117,7 @@ async function fetchNuvemFiscalToken(
         }
 
         const data = await response.json();
-        console.log('[NuvemFiscal] Token obtido com sucesso!');
+        console.log('[NuvemLocal] Token obtido com sucesso!');
 
         const expiresInSeconds = Number(data.expires_in || 3600);
         tokenCache[cacheKey] = {
@@ -127,7 +127,7 @@ async function fetchNuvemFiscalToken(
 
         return data.access_token;
     } catch (error) {
-        console.error("[NuvemFiscal] Erro na conexao com Nuvem Fiscal:", error);
+        console.error("[NuvemLocal] Erro na conexao com Nuvem Local:", error);
         throw error;
     }
 }

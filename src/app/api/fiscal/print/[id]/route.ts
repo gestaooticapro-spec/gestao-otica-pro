@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getNuvemFiscalToken } from "@/lib/nuvemfiscal";
+import { getNuvemLocalToken } from "@/lib/nuvem-local";
 
 async function fetchFileBuffer(url: string, headers?: HeadersInit) {
     const response = await fetch(url, { method: "GET", headers });
@@ -94,7 +94,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         const endpointType = getFiscalEndpointType(invoice.tipo_documento);
 
         if (invoice.nuvemfiscal_uuid) {
-            const token = await getNuvemFiscalToken(env);
+            const token = await getNuvemLocalToken(env);
 
             if (format === "xml") {
                 const xmlUrl = `${baseUrl}/${endpointType}/${invoice.nuvemfiscal_uuid}/xml`;
@@ -104,7 +104,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
                 });
 
                 if (!xmlResponse.ok) {
-                    return NextResponse.json({ error: "Falha ao obter XML da NuvemFiscal" }, { status: xmlResponse.status });
+                    return NextResponse.json({ error: "Falha ao obter XML da Nuvem Local" }, { status: xmlResponse.status });
                 }
 
                 const xmlContent = await xmlResponse.text();
@@ -125,7 +125,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
             }
 
             const pdfUrl = `${baseUrl}/${endpointType}/${invoice.nuvemfiscal_uuid}/pdf`;
-            console.log(`[Fiscal Print] Buscando via NuvemFiscal: ${pdfUrl}`);
+            console.log(`[Fiscal Print] Buscando via Nuvem Local: ${pdfUrl}`);
             const result = await fetchFileBuffer(pdfUrl, { Authorization: `Bearer ${token}` });
 
             if (result.success) {
@@ -134,7 +134,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
                 });
             }
 
-            console.warn(`[Fiscal Print] Falha NuvemFiscal (${result.status}), tentando pdf_url...`);
+            console.warn(`[Fiscal Print] Falha Nuvem Local (${result.status}), tentando pdf_url...`);
         }
 
         if (invoice.pdf_url) {

@@ -29,7 +29,7 @@ Regra importante:
 - O modulo fiscal da otica precisa continuar respeitando `module_fiscal_enabled`.
 
 ## Camadas a Portar
-- Token Nuvem Fiscal com cache.
+- Token Nuvem Local com cache.
 - Rota de PDF/XML fiscal com suporte a `NFe`.
 - Sequencia atomica de NF-e por tenant, serie e ambiente.
 - Serie padrao de NF-e em `stores.nfe_serie`.
@@ -51,7 +51,7 @@ Regra importante:
 
 ## Checklist Inicial
 - [x] Criar branch dedicada.
-- [x] Atualizar token Nuvem Fiscal com cache.
+- [x] Atualizar token Nuvem Local com cache.
 - [x] Preparar print/download para `NFe`.
 - [x] Criar migration `nfe_sequences` e `stores.nfe_serie`.
 - [x] Rodar `npx tsc --noEmit`.
@@ -76,10 +76,10 @@ Escopo atual:
 - Valida NCM dos produtos.
 - Usa `get_next_nfe_number` para numeracao atomica.
 - Registra a NF-e em `fiscal_invoices` com `tipo_documento = NFe`.
-- Atualiza status autorizado, rejeitado, processamento ou erro conforme resposta da Nuvem Fiscal.
+- Atualiza status autorizado, rejeitado, processamento ou erro conforme resposta da Nuvem Local.
 
 Proxima pendencia:
-- Criar consulta/atualizacao de status especifica para NF-e quando a Nuvem Fiscal deixar a nota em processamento.
+- Criar consulta/atualizacao de status especifica para NF-e quando a Nuvem Local deixar a nota em processamento.
 - Rodar `migration_nfe_customer_fiscal_fields.sql` para persistir codigo IBGE e IE no cadastro de clientes.
 
 ## Reavaliacao Depois da Primeira Autorizacao

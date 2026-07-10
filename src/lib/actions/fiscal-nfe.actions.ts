@@ -1,7 +1,7 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getNuvemFiscalToken } from "@/lib/nuvemfiscal";
+import { getNuvemLocalToken } from "@/lib/nuvem-local";
 import { isStoreModuleEnabledForStore } from "@/lib/store-modules.server";
 import { getAuthorizedDepositTransferOriginAction, getAuthorizedShipmentOriginAction, getImportedDemonstrationOriginAction, getImportedNFeOriginAction, getTenantIdByStore, getTenantTransferStoreAction } from "@/lib/actions/fiscal-db.actions";
 
@@ -160,7 +160,7 @@ type NFeStoreData = {
     csrt_token_production?: string | null;
 };
 
-type NuvemFiscalCompany = {
+type NuvemLocalCompany = {
     nome_razao_social?: string | null;
     nome_fantasia?: string | null;
     inscricao_estadual?: string | number | null;
@@ -308,7 +308,7 @@ function generateNFeRandomCode(storeId: number, serie: number, number: number) {
     return cleanDigits(seed).slice(-8).padStart(8, "0");
 }
 
-function getNuvemFiscalBaseUrl(environment: NFeEnvironment) {
+function getNuvemLocalBaseUrl(environment: NFeEnvironment) {
     return environment === "homologation"
         ? (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br")
         : (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br");
@@ -400,7 +400,7 @@ function assertStoreReadyForNFe(store: NFeStoreData) {
     }
 }
 
-async function hydrateStoreFiscalDataFromNuvemFiscal(
+async function hydrateStoreFiscalDataFromNuvemLocal(
     supabase: any,
     storeId: number,
     store: NFeStoreData,
@@ -422,14 +422,14 @@ async function hydrateStoreFiscalDataFromNuvemFiscal(
     if (!missingLocalAddress) return store;
 
     try {
-        const token = await getNuvemFiscalToken(environment);
-        const response = await fetch(`${getNuvemFiscalBaseUrl(environment)}/empresas/${cnpj}`, {
+        const token = await getNuvemLocalToken(environment);
+        const response = await fetch(`${getNuvemLocalBaseUrl(environment)}/empresas/${cnpj}`, {
             headers: { Authorization: `Bearer ${token}` },
         });
 
         if (!response.ok) return store;
 
-        const company = await response.json() as NuvemFiscalCompany;
+        const company = await response.json() as NuvemLocalCompany;
         const address = company.endereco || {};
         const patch: Partial<NFeStoreData> = {};
 
@@ -453,7 +453,7 @@ async function hydrateStoreFiscalDataFromNuvemFiscal(
 
         return { ...store, ...patch };
     } catch (error) {
-        console.warn("[NF-e] Nao foi possivel complementar dados da loja pela Nuvem Fiscal:", error);
+        console.warn("[NF-e] Nao foi possivel complementar dados da loja pela Nuvem Local:", error);
         return store;
     }
 }
@@ -619,7 +619,7 @@ function buildRtcMvpTotal(
 function buildItemTax(item: FiscalItem, csosn: "102" | "400" = "102") {
     return {
         ICMS: {
-            // The Nuvem Fiscal DTO groups CSOSN 102/103/300/400 under ICMSSN102.
+            // The Nuvem Local DTO groups CSOSN 102/103/300/400 under ICMSSN102.
             ICMSSN102: {
                 orig: Number(item.origem ?? 0),
                 CSOSN: csosn,
@@ -1303,7 +1303,7 @@ export async function emitirNFe(input: NFeSaleInput) {
 
         if (!store) throw new Error("Loja nao encontrada.");
 
-        const hydratedStore = await hydrateStoreFiscalDataFromNuvemFiscal(supabase, input.storeId, store, environment);
+        const hydratedStore = await hydrateStoreFiscalDataFromNuvemLocal(supabase, input.storeId, store, environment);
         assertStoreReadyForNFe(hydratedStore);
         if (isAdvancedOperation && Number(hydratedStore.regime_tributario || 1) !== 1) {
             throw new Error("A operacao assistida esta liberada apenas para CRT 1 enquanto o motor usar CSOSN.");
@@ -2085,8 +2085,8 @@ export async function emitirNFe(input: NFeSaleInput) {
 
         invoiceId = invoice.id;
 
-        const token = await getNuvemFiscalToken(environment);
-        const baseUrl = getNuvemFiscalBaseUrl(environment);
+        const token = await getNuvemLocalToken(environment);
+        const baseUrl = getNuvemLocalBaseUrl(environment);
         const response = await fetch(`${baseUrl}/nfe`, {
             method: "POST",
             headers: {

@@ -530,7 +530,7 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                                     <input name="certificate_password" type="password" className={inputStyle} placeholder="Senha do arquivo" />
                                 </div>
                                 <p className="text-[9px] text-sky-400/60 leading-tight">
-                                    O certificado será enviado diretamente para a Nuvem Fiscal e não será salvo em nosso banco de dados por segurança.
+                                    O certificado será enviado diretamente para a Nuvem Local e não será salvo em nosso banco de dados por segurança.
                                 </p>
                             </div>
                         </div>

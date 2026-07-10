@@ -45,10 +45,10 @@ if (localRows.length) {
   console.log("Nenhum registro local encontrado para essa faixa.");
 }
 
-const token = await getNuvemFiscalToken(environment);
+const token = await getNuvemLocalToken(environment);
 const baseUrl = getBaseUrl(environment);
 
-printSection("Tentativas de consulta GET na Nuvem Fiscal");
+printSection("Tentativas de consulta GET na Nuvem Local");
 const getResults = await tryReadOnlyLookups({ token, baseUrl, cnpj, environment, year, serie, start, end });
 const successfulGet = getResults.find((item) => item.ok);
 for (const item of getResults) {
@@ -100,7 +100,7 @@ const isDuplicate = isDuplicateInutilizationWithProtocol(recoverResult.body);
 const isSuccess = recoverResult.ok || isDuplicate;
 
 if (!isSuccess) {
-  fail("A Nuvem Fiscal nao confirmou a inutilizacao nem retornou duplicidade com protocolo.");
+  fail("A Nuvem Local nao confirmou a inutilizacao nem retornou duplicidade com protocolo.");
 }
 
 const saved = await saveLocalInutilization({
@@ -146,7 +146,7 @@ function printHelp() {
 Uso:
   node scripts/recover_nfce_inutilization.mjs --store-id 1 --year 2026 --serie 2 --start 74 --end 75
 
-Consulta local + tentativas GET na Nuvem Fiscal:
+Consulta local + tentativas GET na Nuvem Local:
   node scripts/recover_nfce_inutilization.mjs --store-id 1 --year 2026 --serie 2 --start 74 --end 75 --env production
 
 Recuperar protocolo por retorno de duplicidade da SEFAZ:
@@ -193,7 +193,7 @@ function getAuthUrl(env) {
   return "https://auth.nuvemfiscal.com.br/oauth/token";
 }
 
-async function getNuvemFiscalToken(env) {
+async function getNuvemLocalToken(env) {
   const clientId = env === "production"
     ? process.env.NUVEMFISCAL_PROD_CLIENT_ID
     : process.env.NUVEMFISCAL_HOM_CLIENT_ID;
@@ -202,7 +202,7 @@ async function getNuvemFiscalToken(env) {
     : process.env.NUVEMFISCAL_HOM_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
-    fail(`Credenciais Nuvem Fiscal ausentes para ${env}.`);
+    fail(`Credenciais Nuvem Local ausentes para ${env}.`);
   }
 
   const authUrl = getAuthUrl(env);
@@ -227,7 +227,7 @@ async function getNuvemFiscalToken(env) {
 
   if (!response.ok || !body.access_token) {
     console.error(JSON.stringify(body, null, 2));
-    fail(`Falha ao autenticar na Nuvem Fiscal (${response.status}).`);
+    fail(`Falha ao autenticar na Nuvem Local (${response.status}).`);
   }
 
   return body.access_token;

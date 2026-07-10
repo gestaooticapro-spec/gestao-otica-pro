@@ -218,7 +218,7 @@ export default function ImportacaoPage() {
                     : 'cerca de 1 hora apos a ultima consulta'
                 setLastSyncInfo({
                     type: 'warning',
-                    message: 'A SEFAZ/Nuvem Fiscal recusou a consulta temporariamente com status 656.',
+                    message: 'A SEFAZ/Nuvem Local recusou a consulta temporariamente com status 656.',
                     details: `CNPJ: ${result.cpfCnpj || '-'} | Nova tentativa sugerida: ${nextAttemptText}.`,
                 })
                 return
@@ -615,11 +615,11 @@ export default function ImportacaoPage() {
                         {sefazDiagnostic && (
                             <details className="mx-4 mb-4 rounded-lg border border-sky-500/20 bg-sky-500/5 text-sky-100">
                                 <summary className="cursor-pointer px-4 py-3 text-sm font-bold">
-                                    Diagnostico da consulta Nuvem Fiscal / SEFAZ
+                                    Diagnostico da consulta Nuvem Local / SEFAZ
                                 </summary>
                                 <div className="border-t border-sky-500/20 p-4">
                                     <p className="mb-3 text-xs text-sky-200/70">
-                                        Nao inclui token, senha ou certificado. O campo request mostra exatamente o payload enviado para a Nuvem Fiscal.
+                                        Nao inclui token, senha ou certificado. O campo request mostra exatamente o payload enviado para a Nuvem Local.
                                     </p>
                                     <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-slate-950/70 p-3 text-xs text-slate-200">
                                         {JSON.stringify(sefazDiagnostic, null, 2)}
