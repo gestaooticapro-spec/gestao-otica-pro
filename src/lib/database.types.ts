@@ -728,6 +728,64 @@ export interface Database {
       }
 
       // --- NOVAS TABELAS DE ASSISTÊNCIA ---
+      tower_heatmap_sessions: {
+        Row: {
+          id: string
+          tenant_id: string
+          store_id: number
+          customer_id: number
+          optical_evaluation_id: number
+          created_by_user_id: string | null
+          status: 'created' | 'running' | 'completed' | 'cancelled' | 'failed'
+          algorithm_version: string
+          target_plan_version: string
+          result_summary: Json | null
+          target_samples: Json | null
+          started_at: string | null
+          completed_at: string | null
+          cancelled_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          store_id: number
+          customer_id: number
+          optical_evaluation_id: number
+          created_by_user_id?: string | null
+          status?: 'created' | 'running' | 'completed' | 'cancelled' | 'failed'
+          algorithm_version: string
+          target_plan_version: string
+          result_summary?: Json | null
+          target_samples?: Json | null
+          started_at?: string | null
+          completed_at?: string | null
+          cancelled_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          store_id?: number
+          customer_id?: number
+          optical_evaluation_id?: number
+          created_by_user_id?: string | null
+          status?: 'created' | 'running' | 'completed' | 'cancelled' | 'failed'
+          algorithm_version?: string
+          target_plan_version?: string
+          result_summary?: Json | null
+          target_samples?: Json | null
+          started_at?: string | null
+          completed_at?: string | null
+          cancelled_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+
       optical_evaluations: {
         Row: {
           id: number
@@ -1632,7 +1690,12 @@ export interface Database {
         Returns: void
       }
       get_next_nfce_number: {
-        Args: { p_org_id: string; p_serie: string | number }
+        Args: {
+          p_environment?: string
+          p_org_id: string
+          p_serie: string | number
+          p_store_id: number
+        }
         Returns: number
       }
     }

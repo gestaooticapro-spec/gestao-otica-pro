@@ -4,6 +4,11 @@ import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Camera, CircleDot, Loader2, Maximize2, Minimize2, Play, RotateCcw, ScanFace, StopCircle } from 'lucide-react'
 import type { LensGeometry, LensPins } from '@/lib/actions/lens-geometry.actions'
+import {
+  cancelTowerHeatmapSession,
+  completeTowerHeatmapSession,
+  startTowerHeatmapSession,
+} from '@/lib/actions/tower-heatmap.actions'
 
 type NormalizedPoint = { x: number; y: number }
 type FaceMetrics = {
@@ -1593,12 +1598,14 @@ export default function GazeHeatmapLab({
   geometry,
   geometries = [],
   clientMode = false,
+  heatmapSessionId = null,
 }: {
   storeId: number
   backPath: string
   geometry?: LensGeometry | null
   geometries?: LensGeometry[]
   clientMode?: boolean
+  heatmapSessionId?: string | null
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
@@ -1670,6 +1677,7 @@ export default function GazeHeatmapLab({
   const [headOnlyProjection, setHeadOnlyProjection] = useState(false)
   const [verticalHeadDebug, setVerticalHeadDebug] = useState(false)
   const [projectionDebugTrace, setProjectionDebugTrace] = useState<ProjectionDebugTrace[]>([])
+  const [sessionPersistenceStatus, setSessionPersistenceStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const isFocusMode = phase === 'calibrating' || phase === 'running'
   const selectedGeometry = geometries.find((item) => item.id === selectedGeometryId) ?? geometry ?? geometries[0] ?? null
 
@@ -2154,6 +2162,59 @@ export default function GazeHeatmapLab({
     setPrepSecondsLeft(0)
     setPhase('idle')
     setStatus(cameraReady ? 'Teste parado. A câmera continua pronta para recomeçar.' : 'Teste parado.')
+    if (heatmapSessionId) {
+      void cancelTowerHeatmapSession({ storeId, sessionId: heatmapSessionId }).then((result) => {
+        if (!result.success) console.error('Nao foi possivel cancelar a sessao do mapa visual:', result.message)
+      })
+    }
+  }
+
+  function markSessionAsRunning() {
+    if (!heatmapSessionId) return
+    setSessionPersistenceStatus('saving')
+    void startTowerHeatmapSession({ storeId, sessionId: heatmapSessionId }).then((result) => {
+      if (!result.success) {
+        console.error('Nao foi possivel iniciar a sessao do mapa visual:', result.message)
+        setSessionPersistenceStatus('error')
+        return
+      }
+      setSessionPersistenceStatus('idle')
+    })
+  }
+
+  function persistCompletedSession(nextSummary: SessionSummary) {
+    if (!heatmapSessionId) return
+
+    setSessionPersistenceStatus('saving')
+    const targetSamples = targetHeatSamplesRef.current.map((sample) => {
+      const projection = projectSampleToLens(sample)
+      return {
+        eyeX: sample.eyeX,
+        eyeY: sample.eyeY,
+        headX: sample.headX,
+        headY: sample.headY,
+        targetX: sample.targetX,
+        targetY: sample.targetY,
+        lensX: projection.point.x,
+        lensY: projection.point.y,
+        headOnlyProjection: sample.headOnlyProjection,
+        verticalHeadDebug: sample.verticalHeadDebug,
+      }
+    })
+
+    void completeTowerHeatmapSession({
+      storeId,
+      sessionId: heatmapSessionId,
+      summary: nextSummary,
+      targetSamples,
+    }).then((result) => {
+      if (!result.success) {
+        console.error('Nao foi possivel salvar o mapa visual:', result.message)
+        setSessionPersistenceStatus('error')
+        return
+      }
+      setSessionPersistenceStatus('saved')
+    })
   }
 
   function randomTarget() {
@@ -2313,6 +2374,7 @@ export default function GazeHeatmapLab({
     setProjectionDebugTrace([])
     setSummary(null)
     setPhase('running')
+    markSessionAsRunning()
     setStatus(
       headOnlyProjectionRef.current
         ? verticalHeadDebugRef.current
@@ -2544,6 +2606,7 @@ export default function GazeHeatmapLab({
     setPhase('finished')
     const nextSummary = summarizeSession(targetHeatSamplesRef.current)
     setSummary(nextSummary)
+    persistCompletedSession(nextSummary)
     stopCamera()
     setStatus('Sessão concluída. A câmera foi desligada para aliviar o tablet. Reabra a câmera quando quiser uma nova leitura.')
   }
@@ -3075,6 +3138,23 @@ export default function GazeHeatmapLab({
                   ? `CAM ${cameraSettings.width ?? '-'}x${cameraSettings.height ?? '-'} · ${Math.round(cameraSettings.frameRate ?? 0) || '-'}FPS`
                   : 'CAM aguardando tela cliente'}
               </span>
+              {heatmapSessionId && !clientMode && (
+                <span className={`rounded-full border px-3 py-1.5 text-xs font-black tracking-[0.14em] ${
+                  sessionPersistenceStatus === 'saved'
+                    ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-200'
+                    : sessionPersistenceStatus === 'error'
+                      ? 'border-rose-400/30 bg-rose-500/10 text-rose-100'
+                      : 'border-cyan-400/20 bg-cyan-500/10 text-cyan-100'
+                }`}>
+                  {sessionPersistenceStatus === 'saved'
+                    ? 'MAPA SALVO'
+                    : sessionPersistenceStatus === 'error'
+                      ? 'ERRO AO SALVAR'
+                      : sessionPersistenceStatus === 'saving'
+                        ? 'SALVANDO MAPA'
+                        : 'SESSAO VINCULADA'}
+                </span>
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 <label className="flex items-center gap-2 text-xs font-bold text-slate-400">
                   Geometria

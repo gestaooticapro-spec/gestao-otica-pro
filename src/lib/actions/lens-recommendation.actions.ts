@@ -9,6 +9,8 @@ import {
   type RecommendationConversationState,
 } from '@/lib/server/lens-recommendation'
 import { getAiSuggestionConfig } from '@/lib/actions/store.actions'
+import { getAllLensGeometries } from '@/lib/actions/lens-geometry.actions'
+import { getCompletedTowerHeatmapResult } from '@/lib/actions/tower-heatmap.actions'
 
 const RecommendationCaseSchema = z.object({
   storeId: z.number().int().positive().optional(),
@@ -30,6 +32,7 @@ const RecommendationCaseSchema = z.object({
   notes: z.string().optional().nullable(),
   targetPrice: z.number().optional().nullable(),
   topN: z.number().int().min(1).max(10).optional().default(3),
+  heatmapSessionId: z.string().uuid().optional(),
 })
 
 const RecommendationConversationSchema = z.object({
@@ -85,6 +88,25 @@ export async function generateLensRecommendationsAction(
     const aiConfig = parsed.storeId
       ? await getAiSuggestionConfig(parsed.storeId)
       : undefined
+    let heatmap: { samples: Array<{ x: number; y: number; targetX: number; targetY: number }>; geometries: Awaited<ReturnType<typeof getAllLensGeometries>> } | undefined
+
+    if (parsed.heatmapSessionId && parsed.storeId) {
+      const heatmapResult = await getCompletedTowerHeatmapResult({
+        storeId: parsed.storeId,
+        sessionId: parsed.heatmapSessionId,
+      })
+      if (heatmapResult.success && heatmapResult.data?.summary.isReliable) {
+        heatmap = {
+          samples: heatmapResult.data.targetSamples.map((sample) => ({
+            x: sample.lensX,
+            y: sample.lensY,
+            targetX: sample.targetX,
+            targetY: sample.targetY,
+          })),
+          geometries: await getAllLensGeometries(),
+        }
+      }
+    }
 
     const result = await startRecommendationConversation({
       versionId: parsed.versionId,
@@ -92,6 +114,7 @@ export async function generateLensRecommendationsAction(
       caseInput: toCaseInput(parsed),
       aiConfig,
       topN: parsed.topN,
+      heatmap,
     })
 
     return {

@@ -1,6 +1,13 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSharedFamilySemanticProfile } from '@/lib/server/shared-lens-semantics'
 import type { AiSuggestionConfig, AiStoreProfileLevel } from '@/lib/types/ai-config.types'
+import type { LensGeometry } from '@/lib/actions/lens-geometry.actions'
+import {
+  evaluateHeatmapGeometryCompatibility,
+  findGeometryForRecommendation,
+  type HeatmapGeometryCompatibility,
+  type PersistedHeatmapSample,
+} from '@/lib/server/heatmap-geometry-compatibility'
 
 export type BudgetMode = 'economico' | 'intermediario' | 'premium'
 export type ClinicalCategory =
@@ -63,6 +70,7 @@ export type RecommendationOption = {
   originalRank?: number
   presentationRank?: number
   commercialRole?: 'anchor' | 'target' | 'alternative'
+  heatmapCompatibility?: HeatmapGeometryCompatibility
 }
 
 export type RecommendationPresentationStrategy = {
@@ -2367,6 +2375,28 @@ function selectDiverseTopEntries(
     .sort((a, b) => b.score - a.score || a.finalPrice - b.finalPrice)
 }
 
+function applyHeatmapCompatibility(
+  entries: RecommendationOption[],
+  samples: PersistedHeatmapSample[],
+  geometries: LensGeometry[],
+): RecommendationOption[] {
+  return entries
+    .map((entry) => {
+      if (entry.clinicalCategory !== 'multifocal') return entry
+      const compatibility = evaluateHeatmapGeometryCompatibility(
+        samples,
+        findGeometryForRecommendation(entry.familyName, geometries),
+      )
+      return {
+        ...entry,
+        score: entry.score + compatibility.scoreAdjustment,
+        reasons: [...entry.reasons, `heatmap:${compatibility.status}`],
+        heatmapCompatibility: compatibility,
+      }
+    })
+    .sort((a, b) => b.score - a.score || a.finalPrice - b.finalPrice)
+}
+
 function isUnsafeTopRecommendation(
   input: RecommendationCaseInput,
   entry: RecommendationOption,
@@ -3422,6 +3452,10 @@ export async function startRecommendationConversation(params: {
   caseInput: RecommendationCaseInput
   topN?: number
   aiConfig?: AiSuggestionConfig
+  heatmap?: {
+    samples: PersistedHeatmapSample[]
+    geometries: LensGeometry[]
+  }
 }): Promise<{
   state: RecommendationConversationState
   recommendations: RecommendationOption[]
@@ -3452,16 +3486,23 @@ export async function startRecommendationConversation(params: {
   const initialMaxPrice = tPrice
     ? tPrice * (childControlMyopia || premiumTechnicalStretch ? 1.7 : 1.2)
     : undefined
+  const requestedTopN = params.topN || 3
   const rankedRecommendations = await recommendLensConfigurations({
     versionId: params.versionId,
     versionIds: params.versionIds,
     caseInput: state.caseInput,
     aiConfig: params.aiConfig,
-    topN: params.topN || 3,
+    topN: params.heatmap ? Math.max(8, requestedTopN) : requestedTopN,
     targetPrice: tPrice,
     maxPrice: initialMaxPrice,
   })
-  const { recommendations, presentationStrategy } = applyRecommendationPresentationStrategy(rankedRecommendations)
+  const heatmapAdjusted = params.heatmap
+    ? applyHeatmapCompatibility(rankedRecommendations, params.heatmap.samples, params.heatmap.geometries)
+    : rankedRecommendations
+  const finalRecommendations = params.heatmap
+    ? selectDiverseTopEntries(heatmapAdjusted, requestedTopN)
+    : heatmapAdjusted
+  const { recommendations, presentationStrategy } = applyRecommendationPresentationStrategy(finalRecommendations)
 
   state.lastRecommendations = recommendations
 

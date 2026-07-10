@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useId, useMemo, useRef, useState, useTransition } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   AlertTriangle,
@@ -54,6 +54,7 @@ import {
 import { Database } from '@/lib/database.types'
 import { EvaluationDashboard } from './EvaluationDashboard'
 import { updateEvaluationPanicReason, updateEvaluationOutcomeStatus } from '@/lib/actions/evaluation.actions'
+import { createTowerHeatmapSession, getCompletedTowerHeatmapResult } from '@/lib/actions/tower-heatmap.actions'
 import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/BackgroundToggle'
 import type {
   RecommendationCaseInput,
@@ -2778,7 +2779,9 @@ export default function EvaluationInterface({
 }) {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const storeId = parseInt(params.storeId as string, 10)
+  const heatmapSessionId = searchParams.get('heatmapSessionId') || undefined
   const { preference } = useBackgroundPreference()
 
   const [query, setQuery] = useState('')
@@ -2793,6 +2796,7 @@ export default function EvaluationInterface({
   const [form, setForm] = useState(createEmptyForm())
   const [evaluationId, setEvaluationId] = useState<number | null>(null)
   const evaluationIdRef = useRef<number | null>(null)
+  const restoredHeatmapSessionRef = useRef<string | null>(null)
   const isCreatingSaleRef = useRef(false)
   const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [searchError, setSearchError] = useState<string | null>(null)
@@ -2807,6 +2811,7 @@ export default function EvaluationInterface({
   const [isSearching, startSearchTransition] = useTransition()
   const [isImporting, startImportTransition] = useTransition()
   const [isSaving, startSaveTransition] = useTransition()
+  const [isStartingHeatmap, startHeatmapTransition] = useTransition()
   const [isCreatingVenda, startCreateVendaTransition] = useTransition()
   const [isLoadingHistory, startHistoryTransition] = useTransition()
   const [isGeneratingAi, startAiGenerationTransition] = useTransition()
@@ -3200,7 +3205,8 @@ export default function EvaluationInterface({
             : undefined,
         storeId,
         ...recommendationCaseInput,
-        topN: 3
+        topN: 3,
+        heatmapSessionId,
       })
 
       if (!result.success || !result.data) {
@@ -3406,6 +3412,62 @@ export default function EvaluationInterface({
 
     setCurrentEvaluationId(result.data.id)
     return result.data.id
+  }
+
+  useEffect(() => {
+    if (!heatmapSessionId || selectedCustomer || restoredHeatmapSessionRef.current === heatmapSessionId) return
+    restoredHeatmapSessionRef.current = heatmapSessionId
+
+    startHistoryTransition(async () => {
+      const sessionResult = await getCompletedTowerHeatmapResult({ storeId, sessionId: heatmapSessionId })
+      if (!sessionResult.success || !sessionResult.data) return
+
+      const evaluations = await getOpticalEvaluationsForSubject({
+        storeId,
+        customerId: sessionResult.data.customerId,
+        dependenteId: null,
+      })
+      const linkedEvaluation = evaluations.find((item) => item.id === sessionResult.data?.evaluationId)
+      if (linkedEvaluation) handleSelectEvaluation(linkedEvaluation)
+    })
+  }, [heatmapSessionId, selectedCustomer, storeId])
+
+  const handleStartHeatmap = () => {
+    if (!isHeatmapEligible || !selectedCustomer) {
+      setFormError('O mapa visual exige um titular com receita de longe, adicao e necessidade multifocal confirmada.')
+      return
+    }
+
+    setFormError(null)
+    setFeedback(null)
+
+    startHeatmapTransition(async () => {
+      // A mesma avaliacao e gravada antes de abrir a torre. A sessao persistida
+      // do heatmap sera criada na proxima etapa, pela migration dedicada.
+      const persistedEvaluationId = await persistEvaluationForSale({
+        displayName: form.recommendedLensName || '',
+        commercialSummary: form.commercialRecommendationRaw || null,
+        recommendedItems: aiRecommendations.length > 0 ? aiRecommendations : null,
+      })
+
+      if (!persistedEvaluationId) return
+
+      const sessionResult = await createTowerHeatmapSession({
+        storeId,
+        evaluationId: persistedEvaluationId,
+        customerId: selectedCustomer.id,
+      })
+
+      if (!sessionResult.success || !sessionResult.data) {
+        setFormError(sessionResult.message || 'Nao foi possivel preparar a sessao do mapa visual.')
+        return
+      }
+
+      const query = new URLSearchParams({
+        heatmapSessionId: sessionResult.data.id,
+      })
+      router.push(`/dashboard/loja/${storeId}/lentes/mapa-calor?${query.toString()}`)
+    })
   }
 
   const handleCreateSaleFromRecommendation = (recommendation: {
@@ -3897,6 +3959,16 @@ export default function EvaluationInterface({
   const isChild = patientAge !== null && patientAge <= 14
   const hasAdicao = aiCaseInput.adicao !== null
   const usedMultifocalBefore = form.tipoLenteAtual === 'multifocal' || form.tipoLenteAtual === 'bifocal'
+  const hasPositiveAdd = (aiCaseInput.adicao ?? 0) > 0
+  const hasExplicitMultifocalNeed =
+    form.tipoLenteAtual === 'multifocal' ||
+    form.objetivoCompra === 'primeira_multifocal'
+  const isHeatmapEligible =
+    selectedSubjectType === 'customer' &&
+    !!selectedCustomer &&
+    hasAnyDegreeData(form) &&
+    hasPositiveAdd &&
+    hasExplicitMultifocalNeed
   const canGenerateAi =
     hasCatalogForAi &&
     isSubjectChosen &&
@@ -5039,6 +5111,33 @@ export default function EvaluationInterface({
                   </div>
                 </div>
 
+                <div className="rounded-2xl border border-cyan-400/25 bg-cyan-500/5 p-5 shadow-[0_0_32px_rgba(34,211,238,0.07)]">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">
+                        Mapeamento visual para multifocais
+                      </p>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+                        Registre o padrao visual antes da indicacao. A avaliacao atual sera preservada e vinculada a proxima sessao de mapa de calor.
+                      </p>
+                      {!isHeatmapEligible && (
+                        <p className="mt-2 text-xs font-bold text-amber-200/90">
+                          Disponivel para titular com receita de longe, adicao positiva e necessidade multifocal confirmada.
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleStartHeatmap}
+                      disabled={isStartingHeatmap || isSaving || !isHeatmapEligible}
+                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-5 py-3 text-xs font-black uppercase tracking-[0.16em] text-cyan-100 transition-colors hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      {isStartingHeatmap ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      {isStartingHeatmap ? 'Preparando mapa...' : 'Mapear padrao visual'}
+                    </button>
+                  </div>
+                </div>
+
                 <div className={`${cardStyle} p-5`}>
                   <h3 className="mb-4 text-sm font-black uppercase tracking-[0.2em] text-indigo-300">
                     Recomendação Comercial
@@ -5351,6 +5450,20 @@ export default function EvaluationInterface({
                                     <p className="mt-3 whitespace-pre-line rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-3 text-sm leading-6 text-cyan-100">
                                       {buildSellerVisibleOptionNarrative(option, index, aiRecommendations[0] || option, lensSalesAssist)}
                                     </p>
+                                    {option.heatmapCompatibility && (
+                                      <div className={`mt-3 rounded-xl border px-3 py-3 text-sm leading-6 ${
+                                        option.heatmapCompatibility.status === 'nao_indicada'
+                                          ? 'border-amber-400/30 bg-amber-500/10 text-amber-100'
+                                          : option.heatmapCompatibility.status === 'sem_geometria'
+                                            ? 'border-slate-400/20 bg-slate-500/10 text-slate-200'
+                                            : 'border-emerald-400/20 bg-emerald-500/10 text-emerald-100'
+                                      }`}>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.18em]">
+                                          Mapa visual: {option.heatmapCompatibility.status.replaceAll('_', ' ')}
+                                        </p>
+                                        <p className="mt-1">{option.heatmapCompatibility.message}</p>
+                                      </div>
+                                    )}
                                   </div>
                                   <div className="flex lg:min-w-[220px] lg:max-w-sm lg:flex-col lg:justify-end">
                                     <button

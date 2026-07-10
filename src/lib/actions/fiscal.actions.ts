@@ -677,7 +677,9 @@ export async function emitirNFCe(payload: EmissionPayload) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data: nextNumber, error: rpcError } = await (adminSupabase as any).rpc("get_next_nfce_number", {
             p_org_id: payload.organization_id,
-            p_serie: currentSerie
+            p_store_id: payload.store_id,
+            p_serie: currentSerie,
+            p_environment: env,
         });
 
         if (rpcError || !nextNumber) {
