@@ -39,6 +39,7 @@ const StoreHoursPanel = dynamic(() => import('@/components/config/StoreHoursPane
 type Employee = Database['public']['Tables']['employees']['Row'];
 type EmployeeRole = NonNullable<Employee['role']>;
 type StoreFeatureSettings = SharedStoreSettings;
+type StoreFeatureSettingKey = keyof StoreFeatureSettings;
 type StoreData = {
     id: number;
     name: string;

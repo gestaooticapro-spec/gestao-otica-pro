@@ -715,13 +715,14 @@ function SingleServiceOrderCard({
 
 export default function VendaInterfaceExperimental({
     venda, customer, employee, vendaItens, serviceOrders,
-    pagamentos, financiamento, storeSettings, dependentes, oftalmologistas, employees, isQuitado, isVendaFechadaOuCancelada, onDataReload
+    pagamentos, financiamento, storeSettings, dependentes, oftalmologistas, employees, isQuitado, isVendaFechadaOuCancelada, onDataReload, appMode = 'full'
 }: VendaInterfaceProps) {
 
     const router = useRouter()
     const pathname = usePathname()
     const searchParams = useSearchParams()
     const modules = useStoreModules()
+    const isMvp = appMode === 'mvp'
     const { preference } = useBackgroundPreference();
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false)
 

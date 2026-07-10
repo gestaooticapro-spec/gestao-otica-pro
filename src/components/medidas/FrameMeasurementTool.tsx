@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Camera, CheckCircle2, Copy, ImageIcon, RotateCcw, Ruler, Save, ScanFace } from 'lucide-react'
+import { Camera, CheckCircle2, Copy, ImageIcon, RotateCcw, Ruler, Save, ScanFace, ZoomIn, ZoomOut } from 'lucide-react'
 import { findMedicaoOSByNumber, saveMedicaoOS, type MedicaoOSLookup } from '@/lib/actions/medidas.actions'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -166,6 +166,7 @@ export default function FrameMeasurementTool({
   const [cameraOpen,  setCameraOpen]  = useState(false)
   const [cameraMode, setCameraMode] = useState<CameraMode>('guide')
   const [cameraError, setCameraError] = useState<string | null>(null)
+  const [viewZoom,    setViewZoom]    = useState(1)
   const [gridDivs,    setGridDivs]    = useState(10)
   const [showDnpGuide, setShowDnpGuide] = useState(true)
   const [dnpGuideMm, setDnpGuideMm] = useState(32)

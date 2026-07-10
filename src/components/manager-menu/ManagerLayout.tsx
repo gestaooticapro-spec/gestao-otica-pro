@@ -23,6 +23,7 @@ import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/Backg
 import { OperatorLayout } from '@/components/operator-menu';
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
 import FullscreenToggleButton from '@/components/FullscreenToggleButton';
+import type { AppMode } from '@/lib/app-mode';
 
 type ManualManagerState = 'home' | 'gerencia' | 'operator';
 type ManagerState = ManualManagerState | 'page';

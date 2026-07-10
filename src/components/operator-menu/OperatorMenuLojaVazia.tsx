@@ -12,6 +12,7 @@ import { getWhatsAppLink } from '@/lib/utils';
 import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client';
 import Link from 'next/link';
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
+import type { AppMode } from '@/lib/app-mode';
 
 // Tipos importados (ou definidos localmente se preferir não importar do server action em client component)
 // Para evitar erros de build se o arquivo de actions não exportar tipos para client, definimos aqui compatível.
@@ -78,6 +79,7 @@ interface OperatorMenuLojaVaziaProps {
     onBack: () => void;
     onNavigate: (route: string) => void;
     deliveryDateEnabled?: boolean;
+    appMode?: AppMode;
 }
 
 interface RadarData {
@@ -133,7 +135,8 @@ export default function OperatorMenuLojaVazia({
     storeName = 'Ótica',
     onBack,
     onNavigate,
-    deliveryDateEnabled = true
+    deliveryDateEnabled = true,
+    appMode = 'full'
 }: OperatorMenuLojaVaziaProps) {
     const { preference } = useBackgroundPreference();
     const modules = useStoreModules();
@@ -183,6 +186,7 @@ export default function OperatorMenuLojaVazia({
     const [supportLoading, setSupportLoading] = useState(false);
     const [supportError, setSupportError] = useState<string | null>(null);
     const [supportStatus, setSupportStatus] = useState<SupportStatus | null>(null);
+    const isMvp = appMode === 'mvp';
 
     useEffect(() => {
         if (isMvp) {

@@ -75,6 +75,7 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
     const whatsAppChannel = whatsAppChannelRaw as WhatsAppChannelDashboardRow | null
 
     const storeName = store?.name || `Loja ${storeId}`
+    const appMode = getStoreAppMode(store?.settings)
     const deliveryDateEnabled = store?.settings?.delivery_date_enabled !== false
     const isWhatsAppAutomationEnabled = store?.settings?.whatsapp_automation?.enabled !== false
     const isWhatsAppChannelConfigured = Boolean(whatsAppChannel?.instance_key)
@@ -140,6 +141,7 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
                 isWhatsAppAutomationEnabled={isWhatsAppAutomationEnabled}
                 isWhatsAppChannelConfigured={isWhatsAppChannelConfigured}
                 isWhatsAppConnected={isWhatsAppConnected}
+                appMode={appMode}
             />
         </>
     )

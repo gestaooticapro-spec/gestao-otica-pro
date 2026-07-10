@@ -257,6 +257,7 @@ function ServiceOrderFormContent({
 }: FormProps) {
 
     const searchParams = useSearchParams()
+    const isMvp = appMode === 'mvp'
     const targetOsId = searchParams.get('os_id')
     const returnTo = searchParams.get('returnTo')
     const vendaUrl = returnTo || `/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`

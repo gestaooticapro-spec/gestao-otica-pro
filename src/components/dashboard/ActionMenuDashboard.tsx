@@ -20,6 +20,7 @@ import WidgetWhatsAppPendencias from '@/components/consultas/WidgetWhatsAppPende
 import WhatsAppOperatorModal from '@/components/modals/WhatsAppOperatorModal'
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 import { runDashboardWhatsAppWakePing, type DashboardWhatsAppWakePingResult } from '@/lib/actions/whatsapp.actions'
+import type { AppMode } from '@/lib/app-mode'
 
 interface Props {
   storeId: number
@@ -38,6 +39,7 @@ interface Props {
   retornos: RetornoCobranca[]
   whatsAppPendencias: WhatsAppPendencia[]
   whatsAppHumanOverrides: number
+  appMode?: AppMode
 }
 
 const WA_WAKE_PING_MAX_PER_DAY = 2
@@ -154,6 +156,7 @@ export default function ActionMenuDashboard({
   retornos,
   whatsAppPendencias,
   whatsAppHumanOverrides,
+  appMode = 'full',
 }: Props) {
   const [isParcelaModalOpen, setIsParcelaModalOpen] = useState(false)
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false)
@@ -166,6 +169,7 @@ export default function ActionMenuDashboard({
   const [wakePingAuditFlag, setWakePingAuditFlag] = useState<WakePingAuditFlag | null>(null)
   const router = useRouter()
   const modules = useStoreModules()
+  const isMvp = appMode === 'mvp'
 
   useEffect(() => {
     if (storeId !== 1) return

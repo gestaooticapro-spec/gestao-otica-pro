@@ -11,6 +11,7 @@ import { searchCustomersQuick, CustomerSearchResult } from '@/lib/actions/custom
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
 import FullscreenToggleButton from '@/components/FullscreenToggleButton';
+import type { AppMode } from '@/lib/app-mode';
 
 interface OperatorMenuAtendimentoProps {
     storeId: number;
@@ -124,6 +125,7 @@ export default function OperatorMenuAtendimento({
     const { preference } = useBackgroundPreference();
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const modules = useStoreModules();
+    const isMvp = appMode === 'mvp';
 
     const [tooltip, setTooltip] = useState<{ visible: boolean, x: number, y: number, text: string }>({ visible: false, x: 0, y: 0, text: '' });
     const hoverTimeout = useRef<NodeJS.Timeout | null>(null);

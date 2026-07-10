@@ -24,6 +24,15 @@ type PagamentoItem = {
     valor: number;
 };
 
+type ClienteEnderecoPayload = {
+    logradouro?: string;
+    numero?: string;
+    bairro?: string;
+    codigo_municipio?: string | number;
+    cep?: string;
+    uf?: string;
+};
+
 type EmissionPayload = {
     organization_id: string;
     store_id?: number; // NecessÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡rio para buscar a sÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©rie NFCe configurada na loja
@@ -1055,7 +1064,7 @@ export async function emitirNFe(payload: EmissionPayload) {
             return { success: false, error: duplicateError };
         }
 
-        const token = await getNuvemFiscalToken(env);
+        const token = await getNuvemLocalToken(env);
 
         if (!payload.store_id) {
             throw new Error("store_id ausente no payload. N?o ? poss?vel emitir sem identificar a loja.");

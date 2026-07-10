@@ -182,6 +182,110 @@ Nao deve ser tratado ainda como a implementacao final da torre.
 
 ---
 
+## Auditoria atual das quatro partes da torre
+
+Atualizado em **2026-07-10**. A auditoria foi feita sobre a rota de medidas e sobre o laboratorio de heatmap existente na repo.
+
+### 1. Operator UI - parcial, mas utilizavel para validacao
+
+Implementado em:
+
+- `src/components/medidas/TowerMeasurementLab.tsx`
+- `src/app/dashboard/loja/[storeId]/torre/medidas/page.tsx`
+
+O operador ja consegue:
+
+- abrir a tela cliente em outra janela;
+- carregar uma foto ou comandar a camera;
+- trabalhar em duas etapas: frontal e perfil direito;
+- alternar os quatro motores frontais existentes;
+- arrastar pontos e fazer ajuste fino;
+- visualizar DP, DNP, alturas, medidas A/B/D e diametros;
+- visualizar distancia de vertice, pantoscopico e eixo 0 no perfil;
+- inclinar manualmente o eixo 0 e ver o status das duas capturas.
+
+Ainda falta:
+
+- botao explicito de concluir e revisar a sessao;
+- salvar frontal e perfil como uma unica sessao de medidas;
+- separar esse componente em session engine, captura e apresentacao quando o fluxo estiver validado.
+
+### 2. Display UI - prototipo funcional
+
+O modo `?client=1` da mesma rota funciona como tela do cliente. Ele ja possui:
+
+- video em tela cheia;
+- comandos recebidos da tela do operador por `BroadcastChannel`;
+- instrucao frontal e instrucao de perfil direito;
+- indicacao visual de qual captura esta pronta;
+- comando de iniciar, capturar, parar e tela cheia.
+
+Ainda nao e uma UI final de TV: nao ha kiosk mode, identidade visual definitiva nem uma tela fisica separada. A sincronizacao atual e adequada para validar o fluxo no navegador.
+
+### 3. Capture engine - parcial e dependente do navegador
+
+O `TowerMeasurementLab` ja possui:
+
+- `getUserMedia` para camera;
+- `ImageCapture` quando suportado;
+- fallback para captura de frame do video;
+- upload de foto para teste sem camera;
+- transporte da foto, dimensoes, landmarks e configuracao da camera para a tela do operador;
+- suporte separado para foto frontal e perfil direito.
+
+Ainda falta validar com a camera dedicada, padronizar resolucao/FOV e transformar o transporte atual em um adaptador de camera reutilizavel pela torre.
+
+### 4. Analysis engine - dois niveis diferentes
+
+Na medicao frontal, o sistema ja tem:
+
+- MediaPipe para landmarks faciais;
+- quatro presets de leitura de contorno;
+- ancoragem heuristica em bordas, contrastes e reflexos;
+- ajuste manual dos pontos;
+- calculo das medidas frontais.
+
+No perfil direito, o sistema esta deliberadamente assistido:
+
+- sugere `C` a partir da iris quando disponivel;
+- sugere `L1/L2` a frente da cornea;
+- procura uma borda vertical com contraste, mas conserva o fallback quando a imagem e ambigua;
+- permite ajuste manual do plano da lente;
+- usa eixo 0 ajustavel e calcula distancia de vertice e pantoscopico em relacao a ele.
+
+Existe tambem um analysis engine mais avancado no heatmap:
+
+- `src/components/catalog/GazeHeatmapLab.tsx`;
+- MediaPipe em tempo real;
+- classificacao heuristica de olhos versus cabeca;
+- heatmap, auditoria e comparacao de geometrias;
+- persistencia por `tower_heatmap_sessions` atraves de `src/lib/actions/tower-heatmap.actions.ts`.
+
+Esse heatmap nao deve ser contado como se ja fosse a analise das medidas frontais/laterais. Ele e um laboratorio separado, embora possa reaproveitar sessao, camera e infraestrutura no futuro.
+
+### Leitura geral do estado
+
+As quatro partes ja estao em andamento, mas em graus diferentes:
+
+- Operator UI: **mais avancada na rota de medidas**;
+- Display UI: **funcional como prototipo de segunda tela**;
+- Capture engine: **funcional no navegador, ainda nao validada no hardware final**;
+- Analysis engine: **frontal validada por iteracao, lateral assistida e heatmap separado**.
+
+O que ainda nao existe e a separacao arquitetural final em quatro modulos. Fazer essa separacao agora aumentaria o risco sem termos ainda o teste da camera e da tela fisica. A prioridade deve ser validar a experiencia completa no navegador e so depois extrair os modulos que realmente permanecerem estaveis.
+
+### Proximo passo recomendado
+
+Como o gabarito e a camera dedicada nao estao disponiveis neste momento, o proximo passo nao deve ser uma nova tentativa de automatizar a borda lateral. O caminho recomendado e:
+
+1. Validar no stack o fluxo de duas telas: abrir cliente, capturar frontal, mudar para perfil direito, capturar e retornar ao operador.
+2. Confirmar que upload de foto reproduz o mesmo fluxo quando a camera nao esta disponivel.
+3. Fazer uma revisao de UX com o funcionario: entender se ele sabe qual etapa esta ativa, qual ponto deve arrastar e quando as duas fotos estao prontas.
+4. Quando o gabarito existir, substituir R1/R2 pela leitura de escala e eixo do gabarito.
+5. Somente depois criar persistencia da sessao de medidas e separar os quatro engines em arquivos proprios.
+
+---
+
 ## Problemas ja identificados no MVP de tablet
 
 ### 1. Campo visual pequeno induz comportamento artificial
@@ -459,4 +563,3 @@ Tudo o que for feito agora deve responder a esta pergunta:
 
 Se for "cerebro", vale investir.
 Se for detalhe temporario do tablet, deve ficar isolado.
-

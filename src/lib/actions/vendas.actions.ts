@@ -11,6 +11,7 @@ import { calcularERegistrarComissao, cancelarComissao, calcularComissaoMedico } 
 import { checkLensStock, confirmReservations, cancelReservations, getLensReservationForOsSlot, releaseReservationsForServiceOrder, reserveLensByAdmin, type LensReservationSlot } from './stock.actions'
 import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
 import { clearNfcTrayLinkForDeliveredOrder } from '@/lib/nfc-tray-cleanup'
+import { getStoreAppMode, type AppMode } from '@/lib/app-mode'
 
 // ================================================================
 // --- TIPOS GLOBAIS ---

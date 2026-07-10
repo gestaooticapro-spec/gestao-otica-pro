@@ -25,7 +25,6 @@ export default async function StoreLensHeatmapLabPage({
     : null
   const launchedFromEvaluation = !!heatmapSessionId
   const requestedFamily = searchParams?.family ? decodeURIComponent(searchParams.family) : null
-  const clientMode = searchParams?.client === '1'
   const geometry =
     geometries.find((item) => item.family_name === requestedFamily) ??
     geometries.find((item) => item.family_name === 'Kodak Network UHD') ??

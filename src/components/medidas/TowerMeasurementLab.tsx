@@ -10,6 +10,7 @@ type MediaPipeModule = typeof import('@mediapipe/tasks-vision')
 type FaceLandmarkerInstance = Awaited<ReturnType<MediaPipeModule['FaceLandmarker']['createFromOptions']>>
 type LensType = 'surfacada' | 'bifocal' | 'pronto'
 type DetectionPreset = 'standard' | 'transparent' | 'closedContour' | 'closedContourText'
+type MeasurementStage = 'front' | 'rightProfile'
 
 type PointKey =
   | 'calibA'
@@ -31,6 +32,8 @@ type PointKey =
 
 type Pt = { x: number; y: number }
 type Handles = Record<PointKey, Pt>
+type SidePointKey = 'referenceA' | 'referenceB' | 'cornea' | 'lensPlaneTop' | 'lensPlaneBottom'
+type SideHandles = Record<SidePointKey, Pt>
 type CameraSettings = { width?: number; height?: number; frameRate?: number }
 type CapturePayload = {
   dataUrl: string
@@ -50,8 +53,8 @@ type LensShape = {
 }
 
 type TowerMessage =
-  | { type: 'command'; command: 'startCamera' | 'stopCamera' | 'capture' | 'fullscreen' }
-  | { type: 'capture'; capture: CapturePayload }
+  | { type: 'command'; command: 'startCamera' | 'stopCamera' | 'captureFront' | 'captureRightProfile' | 'prepareFront' | 'prepareRightProfile' | 'fullscreen' }
+  | { type: 'capture'; capture: CapturePayload; stage: MeasurementStage }
   | { type: 'report'; cameraOn: boolean; status: string; cameraSettings?: CameraSettings }
 
 type ImageCaptureCtor = new (track: MediaStreamTrack) => { takePhoto: () => Promise<Blob> }
@@ -103,6 +106,18 @@ const DETECTION_PRESETS: Array<{ key: DetectionPreset; label: string }> = [
   { key: 'closedContour', label: 'Contorno fechado' },
   { key: 'closedContourText', label: 'Contorno com texto' },
 ]
+const SIDE_POINT_STYLE: Record<SidePointKey, { label: string; color: string }> = {
+  referenceA: { label: 'R1', color: '#e5e7eb' },
+  referenceB: { label: 'R2', color: '#e5e7eb' },
+  cornea: { label: 'C', color: '#38bdf8' },
+  lensPlaneTop: { label: 'L1', color: '#22c55e' },
+  lensPlaneBottom: { label: 'L2', color: '#22c55e' },
+}
+const SIDE_MEASURE_GROUPS: Array<{ label: string; keys: SidePointKey[] }> = [
+  { label: 'Referencia', keys: ['referenceA', 'referenceB'] },
+  { label: 'Cornea', keys: ['cornea'] },
+  { label: 'Plano da lente', keys: ['lensPlaneTop', 'lensPlaneBottom'] },
+]
 
 interface TowerMeasurementLabProps {
   storeId: number
@@ -119,12 +134,21 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
   const landmarkerRef = useRef<FaceLandmarkerInstance | null>(null)
   const svgRef = useRef<SVGSVGElement | null>(null)
   const draggingRef = useRef<PointKey | null>(null)
+  const sideSvgRef = useRef<SVGSVGElement | null>(null)
+  const sideDraggingRef = useRef<SidePointKey | null>(null)
+  const axisDraggingRef = useRef(false)
   const snapImageDataRef = useRef<ImageData | null>(null)
   const statusRef = useRef(clientMode ? 'Aguardando painel' : 'Tela cliente aguardando')
 
   const [capture, setCapture] = useState<CapturePayload | null>(null)
   const [handles, setHandles] = useState<Handles | null>(null)
+  const [rightProfileCapture, setRightProfileCapture] = useState<CapturePayload | null>(null)
+  const [rightProfileHandles, setRightProfileHandles] = useState<SideHandles | null>(null)
+  const [rightProfileAxisAngle, setRightProfileAxisAngle] = useState(0)
+  const [clientCapturedStages, setClientCapturedStages] = useState<MeasurementStage[]>([])
+  const [measurementStage, setMeasurementStage] = useState<MeasurementStage>('front')
   const [activeKeys, setActiveKeys] = useState<PointKey[]>(MEASURE_GROUPS[0].keys)
+  const [activeSideKeys, setActiveSideKeys] = useState<SidePointKey[]>(SIDE_MEASURE_GROUPS[0].keys)
   const [lensType, setLensType] = useState<LensType>('surfacada')
   const [detectionPreset, setDetectionPreset] = useState<DetectionPreset>('standard')
   const [referenceMm, setReferenceMm] = useState(CARD_MM)
@@ -133,6 +157,7 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
   const [cameraSettings, setCameraSettings] = useState<CameraSettings | undefined>()
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [operatorZoom, setOperatorZoom] = useState(1)
+  const [rightProfileZoom, setRightProfileZoom] = useState(1)
   const [isAiPending, startAiTransition] = useTransition()
 
   useEffect(() => {
@@ -150,13 +175,16 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
       if (clientMode && message.type === 'command') {
         if (message.command === 'startCamera') void startCamera()
         if (message.command === 'stopCamera') stopCamera('Camera desligada')
-        if (message.command === 'capture') void captureFrame()
+        if (message.command === 'captureFront') void captureFrame('front')
+        if (message.command === 'captureRightProfile') void captureFrame('rightProfile')
+        if (message.command === 'prepareFront') setMeasurementStage('front')
+        if (message.command === 'prepareRightProfile') setMeasurementStage('rightProfile')
         if (message.command === 'fullscreen') void toggleFullscreen()
         return
       }
 
       if (!clientMode && message.type === 'capture') {
-        void applyCapture(message.capture)
+        void applyCapture(message.capture, detectionPreset, message.stage)
       }
 
       if (!clientMode && message.type === 'report') {
@@ -187,6 +215,12 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
     return calculateMeasurements(handles, referenceMm)
   }, [handles, referenceMm])
   const operatorViewBox = capture ? buildZoomViewBox(capture.width, capture.height, operatorZoom) : ''
+  const rightProfileViewBox = rightProfileCapture ? buildZoomViewBox(rightProfileCapture.width, rightProfileCapture.height, rightProfileZoom) : ''
+  const sideMeasurements = useMemo(() => {
+    if (!rightProfileHandles) return null
+    return calculateRightProfileMeasurements(rightProfileHandles, referenceMm, rightProfileAxisAngle)
+  }, [referenceMm, rightProfileAxisAngle, rightProfileHandles])
+  const captureWorkflowComplete = Boolean(capture && rightProfileCapture)
 
   function sendCommand(command: TowerMessage extends infer T ? T extends { type: 'command'; command: infer C } ? C : never : never) {
     channelRef.current?.postMessage({ type: 'command', command } satisfies TowerMessage)
@@ -197,6 +231,7 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
     const url = new URL(window.location.href)
     url.searchParams.set('client', '1')
     window.open(url.toString(), 'tower-measurement-client', 'popup=yes,width=1080,height=1920')
+    window.setTimeout(() => sendCommand(measurementStage === 'front' ? 'prepareFront' : 'prepareRightProfile'), 500)
   }
 
   async function ensureLandmarker() {
@@ -264,14 +299,15 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
     setStatus(nextStatus)
   }
 
-  async function captureFrame() {
+  async function captureFrame(stage: MeasurementStage) {
     const file = await takeCameraPhoto()
     if (!file) return
 
-    await processPhotoFile(file, 'Processando foto', 'Foto enviada')
+    await processPhotoFile(file, 'Processando foto', stage === 'front' ? 'Foto frontal enviada' : 'Perfil direito enviado', stage)
+    setClientCapturedStages((current) => (current.includes(stage) ? current : [...current, stage]))
   }
 
-  async function processPhotoFile(file: File, processingStatus: string, successPrefix: string) {
+  async function processPhotoFile(file: File, processingStatus: string, successPrefix: string, stage: MeasurementStage) {
     setStatus(processingStatus)
     const dataUrl = await readFileAsDataUrl(file)
     const image = await loadImage(dataUrl)
@@ -285,14 +321,14 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
       cameraSettings,
       capturedAt: new Date().toISOString(),
     }
-    channelRef.current?.postMessage({ type: 'capture', capture: payload } satisfies TowerMessage)
-    void applyCapture(payload)
+    channelRef.current?.postMessage({ type: 'capture', capture: payload, stage } satisfies TowerMessage)
+    void applyCapture(payload, detectionPreset, stage)
     setStatus(landmarks?.length ? `${successPrefix} com rosto detectado` : successPrefix)
   }
 
-  async function handleUploadedPhoto(file: File | null) {
+  async function handleUploadedPhoto(file: File | null, stage: MeasurementStage) {
     if (!file) return
-    await processPhotoFile(file, 'Processando foto carregada', 'Foto carregada')
+    await processPhotoFile(file, 'Processando foto carregada', stage === 'front' ? 'Foto frontal carregada' : 'Perfil direito carregado', stage)
   }
 
   async function takeCameraPhoto() {
@@ -359,6 +395,24 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
   }
 
   function applyAutoHandles() {
+    if (measurementStage === 'rightProfile') {
+      if (!rightProfileCapture) return
+      const initialHandles = createInitialRightProfileHandles(rightProfileCapture)
+      setRightProfileHandles(initialHandles)
+      setRightProfileAxisAngle(0)
+      setRightProfileZoom(1)
+      setStatus('Pontos laterais reposicionados')
+      void (async () => {
+        try {
+          const image = await loadImage(rightProfileCapture.dataUrl)
+          const imageData = createImageData(image)
+          if (imageData) setRightProfileHandles(refineRightProfileLensPlane(imageData, initialHandles))
+        } catch {
+          // The initial points remain available for manual adjustment.
+        }
+      })()
+      return
+    }
     if (!capture) return
     void applyCapture(capture)
   }
@@ -374,7 +428,29 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
     updateDetectionPreset(nextPreset)
   }
 
-  async function applyCapture(nextCapture: CapturePayload, preset = detectionPreset) {
+  async function applyCapture(nextCapture: CapturePayload, preset = detectionPreset, stage: MeasurementStage = 'front') {
+    if (stage === 'rightProfile') {
+      setRightProfileCapture(nextCapture)
+      const initialHandles = createInitialRightProfileHandles(nextCapture)
+      setRightProfileHandles(initialHandles)
+      setRightProfileAxisAngle(0)
+      setMeasurementStage('rightProfile')
+      setRightProfileZoom(1)
+      setStatus(
+        nextCapture.landmarks?.length
+          ? 'Perfil direito recebido: pupila sugerida; confirme cornea e plano da lente'
+          : 'Perfil direito recebido: ajuste a referencia, cornea e plano da lente',
+      )
+      setCameraSettings(nextCapture.cameraSettings)
+      try {
+        const image = await loadImage(nextCapture.dataUrl)
+        const imageData = createImageData(image)
+        if (imageData) setRightProfileHandles(refineRightProfileLensPlane(imageData, initialHandles))
+      } catch {
+        // The cornea-relative line remains the safe fallback when pixels cannot be inspected.
+      }
+      return
+    }
     setCapture(nextCapture)
     snapImageDataRef.current = null
     const fallbackHandles = createInitialHandles(nextCapture, undefined, preset)
@@ -401,6 +477,10 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
       const next = { ...current, [key]: nextPoint }
       return ['pupilR', 'pupilL', 'bridgeR', 'bridgeL'].includes(key) ? alignBridgeHandlesToPupilAxis(next) : next
     })
+  }
+
+  function updateRightProfileHandle(key: SidePointKey, point: Pt) {
+    setRightProfileHandles((current) => (current ? { ...current, [key]: point } : current))
   }
 
   function locateWithAi() {
@@ -447,6 +527,20 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
     }
   }
 
+  function pointFromRightProfileClient(clientX: number, clientY: number) {
+    const svg = sideSvgRef.current
+    const matrix = svg?.getScreenCTM()
+    if (!svg || !matrix) return null
+    const point = svg.createSVGPoint()
+    point.x = clientX
+    point.y = clientY
+    const transformed = point.matrixTransform(matrix.inverse())
+    return {
+      x: clamp(transformed.x, 0, rightProfileCapture?.width ?? 0),
+      y: clamp(transformed.y, 0, rightProfileCapture?.height ?? 0),
+    }
+  }
+
   if (clientMode) {
     return (
       <main ref={stageRef} className="relative h-screen w-screen overflow-hidden bg-black text-white">
@@ -466,6 +560,21 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
               CAM {cameraSettings.width ?? '-'}x{cameraSettings.height ?? '-'}
             </div>
           )}
+        </div>
+        <div className="absolute bottom-5 left-1/2 w-[min(92vw,560px)] -translate-x-1/2 rounded-xl border border-white/15 bg-black/65 p-4 text-center backdrop-blur">
+          <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-200">Captura de medidas</div>
+          <div className="mt-2 text-lg font-black">{measurementStage === 'front' ? '1. Olhe de frente para a camera' : '2. Mostre o perfil direito'}</div>
+          <div className="mt-1 text-sm text-white/75">
+            {measurementStage === 'front' ? 'Mantenha o rosto reto e os oculos na posicao natural.' : 'Vire o nariz para a direita e mantenha a postura natural.'}
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-bold uppercase tracking-wide">
+            <div className={`rounded-md px-3 py-2 ${measurementStage === 'front' ? 'bg-cyan-400 text-slate-950' : 'bg-white/10 text-white/65'}`}>
+              {clientCapturedStages.includes('front') ? 'Frontal pronta' : 'Frontal'}
+            </div>
+            <div className={`rounded-md px-3 py-2 ${measurementStage === 'rightProfile' ? 'bg-cyan-400 text-slate-950' : 'bg-white/10 text-white/65'}`}>
+              {clientCapturedStages.includes('rightProfile') ? 'Perfil pronto' : 'Perfil direito'}
+            </div>
+          </div>
         </div>
         <button
           type="button"
@@ -498,7 +607,7 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
               className="hidden"
               onChange={(event) => {
                 const file = event.target.files?.[0] ?? null
-                void handleUploadedPhoto(file)
+                void handleUploadedPhoto(file, measurementStage)
                 event.currentTarget.value = ''
               }}
             />
@@ -514,9 +623,9 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
               <Play className="h-4 w-4" />
               Camera
             </button>
-            <button type="button" onClick={() => sendCommand('capture')} className={buttonClass('dark')}>
+            <button type="button" onClick={() => sendCommand(measurementStage === 'front' ? 'captureFront' : 'captureRightProfile')} className={buttonClass('dark')}>
               <ScanLine className="h-4 w-4" />
-              Capturar
+              Capturar {measurementStage === 'front' ? 'frontal' : 'perfil'}
             </button>
             <button type="button" onClick={() => sendCommand('stopCamera')} className={buttonClass('light')}>
               <Square className="h-4 w-4" />
@@ -525,9 +634,34 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
           </div>
         </header>
 
+        <div className="mt-5 grid gap-2 rounded-xl border border-white/10 bg-black/20 p-2 sm:grid-cols-2">
+          {([
+            { stage: 'front' as const, title: '1. Medidas frontais', detail: capture ? 'Foto pronta para validar' : 'Capture ou carregue a foto de frente', complete: Boolean(capture) },
+            { stage: 'rightProfile' as const, title: '2. Perfil direito', detail: rightProfileCapture ? 'Foto pronta para calibrar' : 'Nariz do cliente voltado para a direita', complete: Boolean(rightProfileCapture) },
+          ]).map(({ stage, title, detail, complete }) => (
+            <button
+              key={stage}
+              type="button"
+              onClick={() => {
+                setMeasurementStage(stage)
+                sendCommand(stage === 'front' ? 'prepareFront' : 'prepareRightProfile')
+              }}
+              className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+                measurementStage === stage ? 'border-cyan-300/50 bg-cyan-400/15 text-cyan-50' : 'border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/10'
+              }`}
+            >
+              <div className="text-sm font-black uppercase tracking-wide">{title}</div>
+              <div className="mt-1 flex items-center justify-between gap-3 text-xs font-semibold text-slate-400">
+                <span>{detail}</span>
+                <span className={complete ? 'font-black uppercase text-emerald-300' : 'font-black uppercase text-slate-500'}>{complete ? 'Pronta' : 'Pendente'}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+
         <section className="grid flex-1 gap-5 py-5 xl:grid-cols-[1fr_380px]">
           <div className="relative min-h-[560px] overflow-hidden rounded-lg border border-white/10 bg-black/35 shadow-2xl shadow-black/25 backdrop-blur">
-            {capture && handles ? (
+            {measurementStage === 'front' && capture && handles ? (
               <>
                 <div className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-white/10 bg-slate-950/85 p-2 shadow-lg backdrop-blur">
                   <button
@@ -600,6 +734,97 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
                   })}
                 </svg>
               </>
+            ) : measurementStage === 'rightProfile' && rightProfileCapture && rightProfileHandles ? (
+              <>
+                <div className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-white/10 bg-slate-950/85 p-2 shadow-lg backdrop-blur">
+                  <button
+                    type="button"
+                    onClick={() => setRightProfileZoom((zoom) => Math.max(1, Math.round((zoom - 0.25) * 100) / 100))}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-white/10 text-white hover:bg-white/15"
+                    aria-label="Diminuir zoom do perfil"
+                  >
+                    <ZoomOut className="h-4 w-4" />
+                  </button>
+                  <div className="min-w-14 text-center font-mono text-xs font-black text-slate-200">{Math.round(rightProfileZoom * 100)}%</div>
+                  <button
+                    type="button"
+                    onClick={() => setRightProfileZoom((zoom) => Math.min(4, Math.round((zoom + 0.25) * 100) / 100))}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-white/10 text-white hover:bg-white/15"
+                    aria-label="Aumentar zoom do perfil"
+                  >
+                    <ZoomIn className="h-4 w-4" />
+                  </button>
+                  <button type="button" onClick={() => setRightProfileZoom(1)} className="rounded-md bg-white/10 px-3 py-2 text-xs font-black text-white hover:bg-white/15">
+                    100%
+                  </button>
+                </div>
+                <div className="absolute bottom-4 left-4 z-20 max-w-sm rounded-lg border border-cyan-300/25 bg-slate-950/85 p-3 text-xs font-semibold text-slate-200 shadow-lg backdrop-blur">
+                  Perfil direito: arraste R1/R2 sobre a referencia, C para a cornea e L1/L2 sobre o plano interno. Arraste o marcador do EIXO 0 para compensar a inclinacao da cabeca.
+                </div>
+                <svg
+                  ref={sideSvgRef}
+                  viewBox={rightProfileViewBox}
+                  preserveAspectRatio="xMidYMid meet"
+                  className="absolute inset-0 h-full w-full touch-none"
+                  onPointerMove={(event) => {
+                    if (axisDraggingRef.current) {
+                      const point = pointFromRightProfileClient(event.clientX, event.clientY)
+                      if (point && rightProfileHandles) {
+                        // The handle is above the cornea, so invert the horizontal delta
+                        // to make the rendered axis follow the mouse direction.
+                        const angle = (Math.atan2(rightProfileHandles.cornea.x - point.x, rightProfileHandles.cornea.y - point.y) * 180) / Math.PI
+                        setRightProfileAxisAngle(clamp(angle, -45, 45))
+                      }
+                      return
+                    }
+                    const key = sideDraggingRef.current
+                    if (!key) return
+                    const point = pointFromRightProfileClient(event.clientX, event.clientY)
+                    if (point) updateRightProfileHandle(key, point)
+                  }}
+                  onPointerUp={() => {
+                    sideDraggingRef.current = null
+                    axisDraggingRef.current = false
+                  }}
+                  onPointerLeave={() => {
+                    sideDraggingRef.current = null
+                    axisDraggingRef.current = false
+                  }}
+                >
+                  <image href={rightProfileCapture.dataUrl} x={0} y={0} width={rightProfileCapture.width} height={rightProfileCapture.height} preserveAspectRatio="none" />
+                  <RightProfileLines
+                    handles={rightProfileHandles}
+                    height={rightProfileCapture.height}
+                    width={rightProfileCapture.width}
+                    axisAngle={rightProfileAxisAngle}
+                    onAxisPointerDown={(event) => {
+                      axisDraggingRef.current = true
+                      event.currentTarget.setPointerCapture(event.pointerId)
+                    }}
+                  />
+                  {(Object.keys(rightProfileHandles) as SidePointKey[]).map((key) => {
+                    const point = rightProfileHandles[key]
+                    const style = SIDE_POINT_STYLE[key]
+                    const active = activeSideKeys.includes(key)
+                    return (
+                      <g
+                        key={key}
+                        transform={`translate(${point.x} ${point.y})`}
+                        onPointerDown={(event) => {
+                          sideDraggingRef.current = key
+                          event.currentTarget.setPointerCapture(event.pointerId)
+                        }}
+                        className="cursor-grab"
+                      >
+                        <circle r={active ? 22 : 15} fill="rgba(0,0,0,0.72)" stroke={style.color} strokeWidth={active ? 5 : 3} />
+                        <text y={5} textAnchor="middle" className="select-none fill-white text-[18px] font-black">
+                          {style.label}
+                        </text>
+                      </g>
+                    )
+                  })}
+                </svg>
+              </>
             ) : (
               <div className="grid h-full min-h-[560px] place-items-center text-center text-white/65">
                 <div>
@@ -613,6 +838,22 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
           </div>
 
           <aside className="flex flex-col gap-4">
+            <Panel title="Sessao de captura">
+              <div className="space-y-2 text-sm font-semibold">
+                <div className={`flex items-center justify-between rounded-lg border px-3 py-2 ${capture ? 'border-emerald-300/25 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-black/20 text-slate-400'}`}>
+                  <span>1. Foto frontal</span>
+                  <span className="text-xs font-black uppercase">{capture ? 'Pronta' : 'Pendente'}</span>
+                </div>
+                <div className={`flex items-center justify-between rounded-lg border px-3 py-2 ${rightProfileCapture ? 'border-emerald-300/25 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-black/20 text-slate-400'}`}>
+                  <span>2. Perfil direito</span>
+                  <span className="text-xs font-black uppercase">{rightProfileCapture ? 'Pronto' : 'Pendente'}</span>
+                </div>
+              </div>
+              <div className={`mt-3 rounded-lg border p-3 text-xs font-semibold leading-relaxed ${captureWorkflowComplete ? 'border-cyan-300/25 bg-cyan-400/10 text-cyan-50' : 'border-white/10 bg-black/20 text-slate-400'}`}>
+                {captureWorkflowComplete ? 'Duas fotos registradas. Agora valide cada etapa e faça os ajustes finos.' : 'Capture as duas fotos antes de iniciar o ajuste fino.'}
+              </div>
+            </Panel>
+
             <Panel title="Controle">
               <div className="rounded-lg border border-white/10 bg-black/20 p-3 text-sm font-semibold text-slate-200">{status}</div>
               {cameraSettings && (
@@ -627,7 +868,9 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
             </Panel>
 
             <Panel title="Calibracao">
-              <label className="block text-xs font-black uppercase tracking-wide text-slate-400">Referencia em mm</label>
+              <label className="block text-xs font-black uppercase tracking-wide text-slate-400">
+                {measurementStage === 'front' ? 'Referencia em mm' : 'Referencia lateral em mm'}
+              </label>
               <input
                 value={referenceMm}
                 type="number"
@@ -635,63 +878,103 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
                 onChange={(event) => setReferenceMm(Number(event.target.value) || CARD_MM)}
                 className="mt-2 h-11 w-full rounded-lg border border-white/10 bg-black/25 px-3 text-sm font-bold text-slate-100 outline-none focus:border-cyan-400/60"
               />
-              <button type="button" onClick={applyAutoHandles} disabled={!capture} className={`${buttonClass('light')} mt-3 w-full justify-center disabled:opacity-40`}>
-                <Wand2 className="h-4 w-4" />
-                Reposicionar
-              </button>
               <button
                 type="button"
-                onClick={locateWithAi}
-                disabled={!capture || !handles || isAiPending}
-                className={`${buttonClass('dark')} mt-3 w-full justify-center disabled:opacity-40`}
+                onClick={applyAutoHandles}
+                disabled={measurementStage === 'front' ? !capture : !rightProfileCapture}
+                className={`${buttonClass('light')} mt-3 w-full justify-center disabled:opacity-40`}
               >
-                {isAiPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
-                IA localizar lente
+                <Wand2 className="h-4 w-4" />
+                {measurementStage === 'front' ? 'Reposicionar' : 'Reposicionar pontos laterais'}
               </button>
+              {measurementStage === 'front' ? (
+                <button
+                  type="button"
+                  onClick={locateWithAi}
+                  disabled={!capture || !handles || isAiPending}
+                  className={`${buttonClass('dark')} mt-3 w-full justify-center disabled:opacity-40`}
+                >
+                  {isAiPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
+                  IA localizar lente
+                </button>
+              ) : (
+                <div className="mt-3 rounded-lg border border-cyan-300/15 bg-cyan-400/5 p-3 text-xs font-semibold leading-relaxed text-cyan-50/85">
+                  O perfil direito e calibrado manualmente nesta fase. A leitura automatica entra depois que validarmos exemplos reais.
+                </div>
+              )}
             </Panel>
 
             <Panel title="Ajuste fino">
-              <div className="grid grid-cols-2 gap-2">
-                {MEASURE_GROUPS.map((group) => (
-                  <button
-                    key={group.label}
-                    type="button"
-                    onClick={() => setActiveKeys(group.keys)}
-                    className={`rounded-lg border px-3 py-2 text-xs font-black uppercase tracking-wide transition-colors ${
-                      activeKeys === group.keys ? 'border-cyan-300/50 bg-cyan-400/15 text-cyan-50' : 'border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/10'
-                    }`}
+              {measurementStage === 'front' ? (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    {MEASURE_GROUPS.map((group) => (
+                      <button
+                        key={group.label}
+                        type="button"
+                        onClick={() => setActiveKeys(group.keys)}
+                        className={`rounded-lg border px-3 py-2 text-xs font-black uppercase tracking-wide transition-colors ${
+                          activeKeys === group.keys ? 'border-cyan-300/50 bg-cyan-400/15 text-cyan-50' : 'border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/10'
+                        }`}
+                      >
+                        {group.label}
+                      </button>
+                    ))}
+                  </div>
+                  <select
+                    value={lensType}
+                    onChange={(event) => setLensType(event.target.value as LensType)}
+                    className="mt-3 h-11 w-full rounded-lg border border-white/10 bg-black/25 px-3 text-sm font-bold text-slate-100 outline-none focus:border-cyan-400/60"
                   >
-                    {group.label}
-                  </button>
-                ))}
-              </div>
-              <select
-                value={lensType}
-                onChange={(event) => setLensType(event.target.value as LensType)}
-                className="mt-3 h-11 w-full rounded-lg border border-white/10 bg-black/25 px-3 text-sm font-bold text-slate-100 outline-none focus:border-cyan-400/60"
-              >
-                <option value="surfacada">Surfacada</option>
-                <option value="bifocal">Bifocal</option>
-                <option value="pronto">Pronto</option>
-              </select>
-              <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-3">
-                <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
-                  Motor em teste: {DETECTION_PRESETS.find((preset) => preset.key === detectionPreset)?.label ?? 'Padrao'}
+                    <option value="surfacada">Surfacada</option>
+                    <option value="bifocal">Bifocal</option>
+                    <option value="pronto">Pronto</option>
+                  </select>
+                  <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-3">
+                    <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+                      Motor em teste: {DETECTION_PRESETS.find((preset) => preset.key === detectionPreset)?.label ?? 'Padrao'}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={cycleDetectionPreset}
+                      disabled={!capture}
+                      className={`${buttonClass('light')} mt-2 w-full justify-center disabled:opacity-40`}
+                    >
+                      <Wand2 className="h-4 w-4" />
+                      Tentar outra leitura
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="grid gap-2">
+                  {SIDE_MEASURE_GROUPS.map((group) => (
+                    <button
+                      key={group.label}
+                      type="button"
+                      onClick={() => setActiveSideKeys(group.keys)}
+                      className={`rounded-lg border px-3 py-3 text-left text-xs font-black uppercase tracking-wide transition-colors ${
+                        activeSideKeys === group.keys ? 'border-cyan-300/50 bg-cyan-400/15 text-cyan-50' : 'border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/10'
+                      }`}
+                    >
+                      {group.label}
+                    </button>
+                  ))}
                 </div>
-                <button
-                  type="button"
-                  onClick={cycleDetectionPreset}
-                  disabled={!capture}
-                  className={`${buttonClass('light')} mt-2 w-full justify-center disabled:opacity-40`}
-                >
-                  <Wand2 className="h-4 w-4" />
-                  Tentar outra leitura
-                </button>
-              </div>
+              )}
             </Panel>
 
             <Panel title="Medidas">
-              {measurements ? (
+              {measurementStage === 'rightProfile' ? (
+                sideMeasurements ? (
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    <Metric label="Dist. vertice" value={sideMeasurements.vertexDistance} />
+                    <Metric label="Pantoscopico" value={sideMeasurements.pantoscopicAngle} suffix=" graus" />
+                    <Metric label="Eixo 0" value={rightProfileAxisAngle} suffix=" graus" />
+                  </div>
+                ) : (
+                  <div className="text-sm font-semibold text-slate-500">Carregue ou capture o perfil direito</div>
+                )
+              ) : measurements ? (
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <Metric label="DP" value={measurements.dp} />
                   <Metric label="DNP OD" value={measurements.dnpOD} />
@@ -757,6 +1040,83 @@ function MeasurementLines({ handles, lensType }: { handles: Handles; lensType: L
   )
 }
 
+function RightProfileLines({
+  handles,
+  height,
+  width,
+  axisAngle,
+  onAxisPointerDown,
+}: {
+  handles: SideHandles
+  height: number
+  width: number
+  axisAngle: number
+  onAxisPointerDown: (event: React.PointerEvent<SVGGElement>) => void
+}) {
+  const lensAtCornea = pointOnSegmentAtY(handles.lensPlaneTop, handles.lensPlaneBottom, handles.cornea.y)
+  const axisRadians = (axisAngle * Math.PI) / 180
+  const axisXAtY = (y: number) => clamp(handles.cornea.x + Math.tan(axisRadians) * (y - handles.cornea.y), 0, width)
+  const axisTop = { x: axisXAtY(0), y: 0 }
+  const axisBottom = { x: axisXAtY(height), y: height }
+  const axisHandleY = clamp(handles.cornea.y - height * 0.16, 42, height - 42)
+  const axisHandle = { x: axisXAtY(axisHandleY), y: axisHandleY }
+
+  return (
+    <>
+      <line
+        x1={axisTop.x}
+        y1={axisTop.y}
+        x2={axisBottom.x}
+        y2={axisBottom.y}
+        stroke="#f8fafc"
+        strokeWidth={3}
+        strokeDasharray="14 12"
+        opacity={0.72}
+      />
+      <g className="cursor-ew-resize" onPointerDown={onAxisPointerDown}>
+        <circle cx={axisHandle.x} cy={axisHandle.y} r={28} fill="rgba(15,23,42,0.9)" stroke="#f8fafc" strokeWidth={4} />
+        <text x={axisHandle.x} y={axisHandle.y + 6} textAnchor="middle" className="select-none fill-white text-[16px] font-black">
+          0°
+        </text>
+      </g>
+      <text x={axisHandle.x + 34} y={axisHandle.y + 6} className="select-none fill-white text-[18px] font-black" opacity={0.9}>
+        EIXO 0
+      </text>
+      <line
+        x1={handles.referenceA.x}
+        y1={handles.referenceA.y}
+        x2={handles.referenceB.x}
+        y2={handles.referenceB.y}
+        stroke={SIDE_POINT_STYLE.referenceA.color}
+        strokeWidth={4}
+        strokeLinecap="round"
+        opacity={0.82}
+      />
+      <line
+        x1={handles.lensPlaneTop.x}
+        y1={handles.lensPlaneTop.y}
+        x2={handles.lensPlaneBottom.x}
+        y2={handles.lensPlaneBottom.y}
+        stroke={SIDE_POINT_STYLE.lensPlaneTop.color}
+        strokeWidth={4}
+        strokeLinecap="round"
+        opacity={0.82}
+      />
+      <line
+        x1={handles.cornea.x}
+        y1={handles.cornea.y}
+        x2={lensAtCornea.x}
+        y2={lensAtCornea.y}
+        stroke={SIDE_POINT_STYLE.cornea.color}
+        strokeWidth={4}
+        strokeDasharray="10 8"
+        strokeLinecap="round"
+        opacity={0.92}
+      />
+    </>
+  )
+}
+
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-lg border border-white/10 bg-white/[0.045] p-4 shadow-2xl shadow-black/10 backdrop-blur-md">
@@ -766,13 +1126,111 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   )
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
+function Metric({ label, value, suffix = '' }: { label: string; value: number; suffix?: string }) {
   return (
     <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-1">
       <span className="font-semibold text-slate-400">{label}</span>
-      <span className="font-mono font-black text-slate-50">{value.toFixed(1)}</span>
+      <span className="font-mono font-black text-slate-50">{value.toFixed(1)}{suffix}</span>
     </div>
   )
+}
+
+function createInitialRightProfileHandles(capture: CapturePayload): SideHandles {
+  const { width: w, height: h } = capture
+  const iris = pickProfileIris(capture.landmarks)
+  const cornea = iris ? { x: iris.x * w, y: iris.y * h } : { x: w * 0.61, y: h * 0.47 }
+  const lensDepth = Math.max(w * 0.055, 24)
+  const lensX = clamp(cornea.x + lensDepth, 0, w)
+
+  // The client is always photographed from the right side, with the nose facing right.
+  // The iris is only a starting suggestion; the operator confirms the cornea and lens plane.
+  return {
+    referenceA: { x: w * 0.12, y: h * 0.82 },
+    referenceB: { x: w * 0.34, y: h * 0.82 },
+    cornea,
+    // Keep the first frame-plane search within the lens opening, not across the whole face.
+    lensPlaneTop: { x: lensX, y: clamp(cornea.y - h * 0.065, 0, h) },
+    lensPlaneBottom: { x: lensX, y: clamp(cornea.y + h * 0.09, 0, h) },
+  }
+}
+
+function pickProfileIris(landmarks: Landmark[] | undefined) {
+  const candidates = [landmarks?.[RIGHT_IRIS], landmarks?.[LEFT_IRIS]].filter(
+    (landmark): landmark is Landmark => {
+      if (!landmark) return false
+      return Number.isFinite(landmark.x) && Number.isFinite(landmark.y)
+    },
+  )
+  return candidates[0]
+}
+
+function refineRightProfileLensPlane(imageData: ImageData, handles: SideHandles): SideHandles {
+  const expectedX = (handles.lensPlaneTop.x + handles.lensPlaneBottom.x) / 2
+  const startX = Math.round(clamp(handles.cornea.x + imageData.width * 0.018, 2, imageData.width - 3))
+  const endX = Math.round(clamp(handles.cornea.x + imageData.width * 0.19, startX + 1, imageData.width - 3))
+  const top = Math.round(clamp(handles.lensPlaneTop.y, 2, imageData.height - 3))
+  const bottom = Math.round(clamp(handles.lensPlaneBottom.y, top + 1, imageData.height - 3))
+  const samples = Math.max(1, Math.ceil((bottom - top) / 3))
+  let best: { x: number; score: number } | null = null
+
+  for (let x = startX; x <= endX; x += 1) {
+    let edgeTotal = 0
+    let edgeHits = 0
+    let darkHits = 0
+
+    for (let y = top; y <= bottom; y += 3) {
+      const edge = localEdgeStrength(imageData, x, y)
+      edgeTotal += edge
+      if (edge > 20) edgeHits += 1
+      if (pixelLuminance(imageData, x, y) < 105) darkHits += 1
+    }
+
+    const continuity = edgeHits / samples
+    const contrast = Math.min(edgeTotal / Math.max(samples * 70, 1), 1)
+    const darkFrameHint = darkHits / samples
+    const nearSuggestion = 1 - Math.min(Math.abs(x - expectedX) / Math.max(imageData.width * 0.1, 1), 1)
+    const score = continuity * 0.38 + contrast * 0.28 + darkFrameHint * 0.18 + nearSuggestion * 0.16
+    if (!best || score > best.score) best = { x, score }
+  }
+
+  if (!best || best.score < 0.52) return handles
+  return {
+    ...handles,
+    lensPlaneTop: { ...handles.lensPlaneTop, x: best.x },
+    lensPlaneBottom: { ...handles.lensPlaneBottom, x: best.x },
+  }
+}
+
+function calculateRightProfileMeasurements(handles: SideHandles, referenceMm: number, axisAngle: number) {
+  const pxPerMm = Math.max(distance(handles.referenceA, handles.referenceB) / Math.max(referenceMm, 1), 0.01)
+  const lensAtCornea = pointOnSegmentAtY(handles.lensPlaneTop, handles.lensPlaneBottom, handles.cornea.y)
+  const vertexDistance = Math.abs(lensAtCornea.x - handles.cornea.x) / pxPerMm
+  const top = handles.lensPlaneTop.y <= handles.lensPlaneBottom.y ? handles.lensPlaneTop : handles.lensPlaneBottom
+  const bottom = top === handles.lensPlaneTop ? handles.lensPlaneBottom : handles.lensPlaneTop
+  const lensAngle = (Math.atan2(bottom.x - top.x, bottom.y - top.y) * 180) / Math.PI
+  const pantoscopicAngle = Math.abs(normalizeAngleDifference(lensAngle - axisAngle))
+
+  return {
+    vertexDistance,
+    pantoscopicAngle,
+  }
+}
+
+function normalizeAngleDifference(angle: number) {
+  let normalized = angle % 180
+  if (normalized > 90) normalized -= 180
+  if (normalized < -90) normalized += 180
+  return normalized
+}
+
+function pointOnSegmentAtY(start: Pt, end: Pt, y: number) {
+  const deltaY = end.y - start.y
+  if (Math.abs(deltaY) < 0.001) return { x: (start.x + end.x) / 2, y: start.y }
+  const ratio = clamp((y - start.y) / deltaY, 0, 1)
+  return {
+    x: start.x + (end.x - start.x) * ratio,
+    y: start.y + deltaY * ratio,
+  }
 }
 
 function createInitialHandles(capture: CapturePayload, image?: HTMLImageElement, preset: DetectionPreset = 'standard'): Handles {

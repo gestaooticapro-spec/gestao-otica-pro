@@ -12,6 +12,7 @@ import { TabletRedirect } from '@/components/tablet/TabletRedirect';
 import { TabletModeButton } from '@/components/tablet/TabletModeButton';
 import { StoreModulesProvider } from '@/lib/contexts/StoreModulesContext';
 import { StoreSettings, getStoreModules } from '@/lib/store-modules';
+import { getStoreAppMode, isMvpMode, isMvpRouteAllowed } from '@/lib/app-mode';
 
 type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor' | 'tecnico';
 type StoreProfile = {
@@ -67,6 +68,7 @@ export default async function StoreLayout({
   const storeName = storeData?.name || 'Otica';
   const settings = storeData?.settings;
   const typedSettings = (settings as StoreSettings | null) || null;
+  const appMode = getStoreAppMode(settings);
   const storeModules = getStoreModules(typedSettings);
   let logoFile: string | null = null;
   const preSaleAnalysisEnabled = typedSettings?.pre_sale_analysis_enabled === true;
@@ -92,7 +94,7 @@ export default async function StoreLayout({
         <ModalsProvider storeId={storeIdParam}>
           <TabletRedirect storeId={storeIdParam} />
           <TabletModeButton storeId={storeIdParam} />
-          <OperatorLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl} preSaleAnalysisEnabled={preSaleAnalysisEnabled} deliveryDateEnabled={deliveryDateEnabled}>
+          <OperatorLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl} preSaleAnalysisEnabled={preSaleAnalysisEnabled} deliveryDateEnabled={deliveryDateEnabled} appMode={appMode}>
             {children}
           </OperatorLayout>
         </ModalsProvider>
@@ -106,7 +108,7 @@ export default async function StoreLayout({
         <ModalsProvider storeId={storeIdParam}>
           <TabletRedirect storeId={storeIdParam} />
           <TabletModeButton storeId={storeIdParam} />
-          <ManagerLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl}>
+          <ManagerLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl} appMode={appMode}>
             {children}
           </ManagerLayout>
         </ModalsProvider>
