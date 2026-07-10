@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Camera, CheckCircle2, Copy, ImageIcon, RotateCcw, Ruler, Save, ScanFace, ZoomIn, ZoomOut } from 'lucide-react'
-import { saveMedicaoOS } from '@/lib/actions/medidas.actions'
+import { Camera, CheckCircle2, Copy, ImageIcon, RotateCcw, Ruler, Save, ScanFace } from 'lucide-react'
+import { findMedicaoOSByNumber, saveMedicaoOS, type MedicaoOSLookup } from '@/lib/actions/medidas.actions'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Step     = 'capture' | 'calibrate' | 'measure' | 'done'
@@ -24,11 +24,9 @@ type HKey = keyof Handles
 type MPModule = typeof import('@mediapipe/tasks-vision')
 type FaceLandmarkerInstance = Awaited<ReturnType<MPModule['FaceLandmarker']['createFromOptions']>>
 type RawLm = { x: number; y: number; z: number }
-type MediaTrackWithImageCapture = MediaStreamTrack & { getSettings?: () => MediaTrackSettings }
-type FaceLandmarkerImageResult = { faceLandmarks?: RawLm[][] }
-type WindowWithImageCapture = Window & {
-  ImageCapture?: new (track: MediaStreamTrack) => { takePhoto: () => Promise<Blob> }
-}
+type FaceLandmarkerResult = { faceLandmarks?: RawLm[][] }
+type ImageCaptureConstructor = new (track: MediaStreamTrack) => { takePhoto: () => Promise<Blob> }
+type CameraMode = 'grid' | 'guide'
 
 // ─── Grupos de medição ────────────────────────────────────────────────────────
 interface MGroup { id: string; label: string; handles: HKey[]; refs?: HKey[] }
@@ -133,6 +131,7 @@ export default function FrameMeasurementTool({
   const canvasRef     = useRef<HTMLCanvasElement>(null)
   const fileRef       = useRef<HTMLInputElement>(null)
   const videoRef      = useRef<HTMLVideoElement>(null)
+  const cameraPreviewRef = useRef<HTMLDivElement>(null)
   const streamRef     = useRef<MediaStream | null>(null)
   const imgRef        = useRef<HTMLImageElement | null>(null)
   const landmarkerRef = useRef<FaceLandmarkerInstance | null>(null)
@@ -158,13 +157,28 @@ export default function FrameMeasurementTool({
   const [copied,      setCopied]      = useState(false)
   const [saving,      setSaving]      = useState(false)
   const [saved,       setSaved]       = useState(false)
-  const [cardMm,      setCardMm]      = useState(CC_MM)
+  const [linkedOS, setLinkedOS] = useState<MedicaoOSLookup | null>(null)
+  const [osNumberInput, setOsNumberInput] = useState('')
+  const [osLookupError, setOsLookupError] = useState<string | null>(null)
+  const [showOsModal, setShowOsModal] = useState(false)
+  const [cardMm,      setCardMm]      = useState(85.6)
   const [cardInput,   setCardInput]   = useState('85.6')
   const [cameraOpen,  setCameraOpen]  = useState(false)
+  const [cameraMode, setCameraMode] = useState<CameraMode>('guide')
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [gridDivs,    setGridDivs]    = useState(10)
-  const [cameraAspect, setCameraAspect] = useState<number>(16 / 9)
-  const [viewZoom,    setViewZoom]    = useState(1)
+  const [showDnpGuide, setShowDnpGuide] = useState(true)
+  const [dnpGuideMm, setDnpGuideMm] = useState(32)
+  const [livePupils, setLivePupils] = useState<{
+    r: Pt
+    l: Pt
+    center: Pt
+    faceCenter: Pt
+    rightPct: number
+    leftPct: number
+    balanceDiff: number
+  } | null>(null)
+  const isDetachedFlow = !osId
 
   useEffect(() => { imgBoundsRef.current = imgBounds   }, [imgBounds])
   useEffect(() => { activeGrpRef.current = activeGroup }, [activeGroup])
@@ -178,12 +192,77 @@ export default function FrameMeasurementTool({
 
     video.srcObject = stream
     video.onloadedmetadata = () => {
-      if (video.videoWidth > 0 && video.videoHeight > 0) {
-        setCameraAspect(video.videoWidth / video.videoHeight)
-      }
       video.play().catch(() => {})
     }
   }, [cameraOpen])
+
+  useEffect(() => {
+    if (!cameraOpen || cameraMode !== 'guide' || !showDnpGuide) {
+      setLivePupils(null)
+      return
+    }
+
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const toPreviewPoint = (lm: RawLm): Pt | null => {
+      const video = videoRef.current
+      const preview = cameraPreviewRef.current
+      if (!video || !preview || !video.videoWidth || !video.videoHeight) return null
+
+      const cw = preview.clientWidth
+      const ch = preview.clientHeight
+      const scale = Math.min(cw / video.videoWidth, ch / video.videoHeight)
+      const rw = video.videoWidth * scale
+      const rh = video.videoHeight * scale
+      const ox = (cw - rw) / 2
+      const oy = (ch - rh) / 2
+
+      return { x: ox + lm.x * rw, y: oy + lm.y * rh }
+    }
+
+    const tick = async () => {
+      if (cancelled) return
+      const video = videoRef.current
+      if (video?.readyState && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        const lm = await ensureLandmarker().catch(() => null)
+        if (lm && !cancelled) {
+          try {
+            const result = lm.detect(video) as FaceLandmarkerResult
+            const face = result.faceLandmarks?.[0]
+            const r = face?.[468] ? toPreviewPoint(face[468]) : null
+            const l = face?.[473] ? toPreviewPoint(face[473]) : null
+            const faceCenter = face?.[6] ? toPreviewPoint(face[6]) : null
+            if (r && l && faceCenter) {
+              const rightDistance = Math.max(0, faceCenter.x - r.x)
+              const leftDistance = Math.max(0, l.x - faceCenter.x)
+              const total = rightDistance + leftDistance
+              const rightPct = total > 0 ? Math.round((rightDistance / total) * 100) : 50
+              const leftPct = total > 0 ? 100 - rightPct : 50
+              setLivePupils({
+                r,
+                l,
+                center: { x: (r.x + l.x) / 2, y: (r.y + l.y) / 2 },
+                faceCenter,
+                rightPct,
+                leftPct,
+                balanceDiff: Math.abs(rightPct - leftPct),
+              })
+            } else setLivePupils(null)
+          } catch {
+            setLivePupils(null)
+          }
+        }
+      }
+      timer = setTimeout(tick, 220)
+    }
+
+    tick()
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [cameraOpen, cameraMode, showDnpGuide])
 
   // ── Resize ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -278,7 +357,7 @@ export default function FrameMeasurementTool({
     oc.height = Math.round(img.naturalHeight * s)
     oc.getContext('2d')!.drawImage(img, 0, 0, oc.width, oc.height)
     try {
-      const result = lm.detect(oc) as FaceLandmarkerImageResult
+      const result = lm.detect(oc) as FaceLandmarkerResult
       const detected: RawLm[] | undefined = result?.faceLandmarks?.[0]
       if (!detected?.length) return
       rawLmsRef.current = detected; setAutoOk(true)
@@ -309,12 +388,13 @@ export default function FrameMeasurementTool({
     const f = e.target.files?.[0]; if (f) processFile(f); e.target.value = ''
   }
 
-  async function startCamera() {
+  async function startCamera(mode: CameraMode) {
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraError('Camera indisponivel neste navegador')
       return
     }
     setCameraError(null)
+    setCameraMode(mode)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -339,18 +419,22 @@ export default function FrameMeasurementTool({
     const video = videoRef.current
     if (video) video.srcObject = null
     setCameraOpen(false)
+    setLivePupils(null)
   }
 
   async function takeCameraShot() {
     const stream = streamRef.current
-    let file: File | null = null
+    const video = videoRef.current
+    const preview = cameraPreviewRef.current
+    if (!video || !preview || !video.videoWidth || !video.videoHeight) return
 
-    // Preferimos frame nativo da camera para evitar distorcao introduzida pelo elemento <video>.
-    const track = stream?.getVideoTracks?.()[0] as MediaTrackWithImageCapture | undefined
-    const imageWindow = window as WindowWithImageCapture
-    if (track && imageWindow.ImageCapture) {
+    let file: File | null = null
+    const track = stream?.getVideoTracks?.()[0]
+    const ImageCaptureCtor = (window as Window & { ImageCapture?: ImageCaptureConstructor }).ImageCapture
+
+    if (track && ImageCaptureCtor) {
       try {
-        const imageCapture = new imageWindow.ImageCapture(track)
+        const imageCapture = new ImageCaptureCtor(track)
         const blob = await imageCapture.takePhoto()
         file = new File([blob], `captura-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' })
       } catch {
@@ -358,23 +442,32 @@ export default function FrameMeasurementTool({
       }
     }
 
-    // Fallback: captura do frame renderizado no video.
     if (!file) {
-      const video = videoRef.current
-      if (!video || !video.videoWidth || !video.videoHeight) return
-      const canvas = document.createElement('canvas')
-      canvas.width = video.videoWidth
-      canvas.height = video.videoHeight
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+    const previewW = preview.clientWidth || window.innerWidth
+    const previewH = preview.clientHeight || window.innerHeight
+    const outputW = Math.min(1600, Math.max(720, Math.round(previewW * window.devicePixelRatio)))
+    const outputH = Math.round(outputW * (previewH / previewW))
 
-      file = await new Promise<File | null>((resolve) => {
-        canvas.toBlob((blob) => {
-          if (!blob) return resolve(null)
-          resolve(new File([blob], `captura-${Date.now()}.jpg`, { type: 'image/jpeg' }))
-        }, 'image/jpeg', 0.92)
-      })
+    const canvas = document.createElement('canvas')
+    canvas.width = outputW
+    canvas.height = outputH
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const scale = Math.min(previewW / video.videoWidth, previewH / video.videoHeight)
+    const visibleW = previewW / scale
+    const visibleH = previewH / scale
+    const sx = Math.max(0, (video.videoWidth - visibleW) / 2)
+    const sy = Math.max(0, (video.videoHeight - visibleH) / 2)
+
+    ctx.drawImage(video, sx, sy, visibleW, visibleH, 0, 0, outputW, outputH)
+
+    file = await new Promise<File | null>((resolve) => {
+      canvas.toBlob((blob) => {
+        if (!blob) return resolve(null)
+        resolve(new File([blob], `captura-${Date.now()}.jpg`, { type: 'image/jpeg' }))
+      }, 'image/jpeg', 0.92)
+    })
     }
 
     if (!file) return
@@ -635,10 +728,55 @@ export default function FrameMeasurementTool({
   }
 
   // ── Salvar medidas na OS (fluxo tablet) ──────────────────────────────────
-  async function saveToOS() {
-    if (!pts || !osId) return
+  async function lookupOS() {
+    if (!storeId) {
+      setOsLookupError('Loja nao identificada para buscar a OS.')
+      return null
+    }
+
     setSaving(true)
+    setOsLookupError(null)
+    setLinkedOS(null)
     try {
+      const found = await findMedicaoOSByNumber(storeId, osNumberInput)
+      if (!found.ok || !found.os) {
+        setOsLookupError(found.error ?? 'Nao foi possivel encontrar a OS.')
+        return null
+      }
+
+      if (found.os.foto_medicao_url) {
+        setOsLookupError('Esta OS ja possui uma medicao gravada. Nao e possivel gravar por cima.')
+        return null
+      }
+
+      setLinkedOS(found.os)
+      return found.os
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function saveToOS() {
+    if (!pts) return
+    if (!storeId && !osId) {
+      setOsLookupError('Loja nao identificada para buscar a OS.')
+      return
+    }
+    if (isDetachedFlow && !linkedOS) {
+      setOsLookupError('Busque e confirme a OS antes de salvar a medicao.')
+      return
+    }
+
+    setSaving(true)
+    setOsLookupError(null)
+    try {
+      const targetOsId = linkedOS?.id ?? osId
+
+      if (!targetOsId) {
+        setOsLookupError('Busque e confirme a OS antes de salvar a medicao.')
+        return
+      }
+
       const m = calc(pts)
 
       // Captura o canvas como JPEG base64
@@ -650,7 +788,7 @@ export default function FrameMeasurementTool({
       }
 
       const result = await saveMedicaoOS({
-        osId,
+        osId: targetOsId,
         storeId,
         dnpOd: m.dnpOD, dnpOe: m.dnpOE,
         altOd: m.altOD,  altOe: m.altOE,
@@ -695,7 +833,7 @@ export default function FrameMeasurementTool({
   function reset() {
     setStep('capture'); setPts(null); setActiveGroup(null); setLensType(null)
     setAutoOk(false); setShowDiam(false); setSaved(false)
-    setViewZoom(1)
+    setLinkedOS(null); setOsNumberInput(''); setOsLookupError(null)
     rawLmsRef.current = null; imgRef.current = null
   }
 
@@ -766,11 +904,11 @@ export default function FrameMeasurementTool({
                 className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium transition-colors">
                 <ImageIcon className="w-4 h-4" /> Escolher da galeria
               </button>
-              <button onClick={() => { fileRef.current!.setAttribute('capture', 'environment'); fileRef.current!.click() }}
+              <button onClick={() => startCamera('guide')}
                 className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-medium transition-colors">
-                <Camera className="w-4 h-4" /> Abrir câmera
+                <Camera className="w-4 h-4" /> Câmera com guia DNP
               </button>
-              <button onClick={startCamera}
+              <button onClick={() => startCamera('grid')}
                 className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-cyan-700 hover:bg-cyan-600 rounded-xl text-sm font-medium transition-colors">
                 <Camera className="w-4 h-4" /> Camera com grade
               </button>
@@ -784,7 +922,7 @@ export default function FrameMeasurementTool({
       {step === 'capture' && cameraOpen && (
         <div className="absolute inset-0 z-30 bg-black">
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="relative h-full max-h-full w-full max-w-full" style={{ aspectRatio: `${cameraAspect}` }}>
+            <div ref={cameraPreviewRef} className="absolute inset-0 overflow-hidden">
               <video
                 ref={videoRef}
                 className="absolute inset-0 h-full w-full object-contain"
@@ -793,7 +931,8 @@ export default function FrameMeasurementTool({
                 muted
               />
 
-              <div className="pointer-events-none absolute inset-0">
+              {cameraMode === 'grid' && (
+                <div className="pointer-events-none absolute inset-0">
                 {Array.from({ length: gridDivs - 1 }).map((_, i) => (
                   <div
                     key={`v-${i}`}
@@ -816,23 +955,117 @@ export default function FrameMeasurementTool({
                     }}
                   />
                 ))}
-              </div>
+                </div>
+              )}
+
+              {cameraMode === 'guide' && showDnpGuide && (
+                <div className="pointer-events-none absolute inset-0">
+                  <div
+                    className="absolute rounded-full border-2 border-cyan-300/60"
+                    style={{
+                      left: '29%',
+                      right: '29%',
+                      top: '13%',
+                      bottom: '10%',
+                      boxShadow: '0 0 0 999px rgba(0,0,0,0.08)',
+                    }}
+                  />
+                  <div className="absolute bottom-[10%] top-[13%] left-1/2 w-px -translate-x-1/2 bg-cyan-300/80" />
+                  <div className="absolute left-[29%] right-[29%] top-[42%] h-px bg-cyan-300/80" />
+                  {livePupils ? (
+                    <>
+                      <div
+                        className={`absolute bottom-[10%] top-[13%] w-0.5 -translate-x-1/2 ${livePupils.balanceDiff <= 8 ? 'bg-emerald-300/90' : livePupils.balanceDiff <= 18 ? 'bg-amber-300/90' : 'bg-rose-300/90'}`}
+                        style={{ left: livePupils.faceCenter.x }}
+                      />
+                      <div
+                        className="absolute h-px bg-indigo-200/90"
+                        style={{
+                          left: `${Math.min(livePupils.r.x, livePupils.l.x)}px`,
+                          top: `${livePupils.center.y}px`,
+                          width: `${Math.abs(livePupils.l.x - livePupils.r.x)}px`,
+                        }}
+                      />
+                      <div className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-emerald-200 bg-emerald-500/35" style={{ left: livePupils.r.x, top: livePupils.r.y }} />
+                      <div className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-emerald-200 bg-emerald-500/35" style={{ left: livePupils.l.x, top: livePupils.l.y }} />
+                      <div
+                        className={`absolute -translate-x-1/2 rounded px-2 py-1 text-[11px] font-black tabular-nums ${livePupils.balanceDiff <= 8 ? 'bg-emerald-950/85 text-emerald-100' : livePupils.balanceDiff <= 18 ? 'bg-amber-950/85 text-amber-100' : 'bg-rose-950/85 text-rose-100'}`}
+                        style={{ left: livePupils.faceCenter.x, top: livePupils.center.y - 34 }}
+                      >
+                        {livePupils.rightPct}/{livePupils.leftPct}
+                      </div>
+                      <div className="absolute -translate-x-1/2 rounded bg-black/75 px-2 py-1 text-[10px] font-bold text-emerald-100" style={{ left: livePupils.r.x, top: livePupils.r.y + 14 }}>
+                        OD {dnpGuideMm}mm
+                      </div>
+                      <div className="absolute -translate-x-1/2 rounded bg-black/75 px-2 py-1 text-[10px] font-bold text-emerald-100" style={{ left: livePupils.l.x, top: livePupils.l.y + 14 }}>
+                        OE {dnpGuideMm}mm
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="absolute left-1/2 top-[42%] h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-200 bg-black/70" />
+                      <div className="absolute left-[36%] top-[42%] h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-indigo-300 bg-indigo-500/30" />
+                      <div className="absolute left-[64%] top-[42%] h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-indigo-300 bg-indigo-500/30" />
+                      <div className="absolute left-[36%] top-[42%] h-px w-[14%] bg-indigo-300/90" />
+                      <div className="absolute right-[36%] top-[42%] h-px w-[14%] bg-indigo-300/90" />
+                      <div className="absolute left-[36%] top-[calc(42%+14px)] -translate-x-1/2 rounded bg-black/70 px-2 py-1 text-[10px] font-bold text-indigo-100">
+                        OD {dnpGuideMm}mm
+                      </div>
+                      <div className="absolute left-[64%] top-[calc(42%+14px)] -translate-x-1/2 rounded bg-black/70 px-2 py-1 text-[10px] font-bold text-indigo-100">
+                        OE {dnpGuideMm}mm
+                      </div>
+                    </>
+                  )}
+                  <div className="absolute left-1/2 top-[17%] -translate-x-1/2 rounded bg-black/65 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-cyan-100">
+                    {livePupils
+                      ? livePupils.balanceDiff <= 8
+                        ? 'Rosto alinhado'
+                        : 'Vire o rosto para centralizar'
+                      : 'Rosto de frente'}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="absolute left-3 right-3 top-3 rounded-lg bg-black/45 px-3 py-2">
-            <div className="flex items-center gap-2">
-              <span className="whitespace-nowrap text-xs text-slate-100">Grade</span>
-              <input
-                type="range"
-                min={4}
-                max={16}
-                value={gridDivs}
-                onChange={e => setGridDivs(parseInt(e.target.value, 10))}
-                className="w-full"
-              />
-              <span className="w-12 text-right font-mono text-xs text-slate-100">{gridDivs}x{gridDivs}</span>
-            </div>
+          <div className="absolute left-3 right-3 top-3 space-y-2 rounded-lg bg-black/45 px-3 py-2">
+            {cameraMode === 'grid' && (
+              <div className="flex items-center gap-2">
+                <span className="w-16 whitespace-nowrap text-xs text-slate-100">Grade</span>
+                <input
+                  type="range"
+                  min={4}
+                  max={16}
+                  value={gridDivs}
+                  onChange={e => setGridDivs(parseInt(e.target.value, 10))}
+                  className="w-full"
+                />
+                <span className="w-12 text-right font-mono text-xs text-slate-100">{gridDivs}x{gridDivs}</span>
+              </div>
+            )}
+            {cameraMode === 'guide' && (
+              <div className="flex items-center gap-2">
+                <label className="flex w-16 items-center gap-1 whitespace-nowrap text-xs text-slate-100">
+                  <input
+                    type="checkbox"
+                    checked={showDnpGuide}
+                    onChange={e => setShowDnpGuide(e.target.checked)}
+                    className="h-3 w-3 accent-cyan-400"
+                  />
+                  DNP
+                </label>
+                <input
+                  type="range"
+                  min={26}
+                  max={40}
+                  value={dnpGuideMm}
+                  onChange={e => setDnpGuideMm(parseInt(e.target.value, 10))}
+                  className="w-full"
+                  disabled={!showDnpGuide}
+                />
+                <span className="w-12 text-right font-mono text-xs text-slate-100">{dnpGuideMm}mm</span>
+              </div>
+            )}
           </div>
 
           <div className="absolute bottom-4 left-4 right-4 flex gap-2">
@@ -1021,7 +1254,7 @@ export default function FrameMeasurementTool({
               )}
 
               {/* Ações */}
-              <div className="px-4 pb-3 pt-1 flex gap-2">
+              <div className="px-4 pb-3 pt-1 flex flex-wrap gap-2">
                 {step === 'measure' && !activeGroup && (
                   <>
                     <button onClick={() => setShowDiam(v => !v)}
@@ -1046,20 +1279,21 @@ export default function FrameMeasurementTool({
                       className={`flex-1 py-2 rounded-xl text-xs font-medium border transition-colors ${showDiam ? 'bg-indigo-900/60 border-indigo-500 text-indigo-200' : 'bg-white/5 border-white/10 text-slate-300'}`}>
                       {showDiam ? 'Ocultar Ø' : 'Calcular Ø'}
                     </button>
-                    {osId ? (
-                      <button onClick={saveToOS} disabled={saving}
-                        className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors">
-                        {saving
-                          ? <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                          : <Save className="w-3.5 h-3.5" />}
-                        {saving ? 'Salvando...' : 'Salvar na OS'}
-                      </button>
-                    ) : (
-                      <button onClick={copyResults}
-                        className={`flex-1 py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors ${copied ? 'bg-emerald-700 text-emerald-100' : 'bg-slate-700 hover:bg-slate-600'}`}>
-                        <Copy className="w-3.5 h-3.5" />{copied ? 'Copiado!' : 'Copiar'}
-                      </button>
-                    )}
+                    <button onClick={copyResults}
+                      className={`flex-1 py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors ${copied ? 'bg-emerald-700 text-emerald-100' : 'bg-slate-700 hover:bg-slate-600'}`}>
+                      <Copy className="w-3.5 h-3.5" />{copied ? 'Copiado!' : 'Copiar'}
+                    </button>
+                    <button onClick={() => {
+                        if (osId || linkedOS) saveToOS()
+                        else setShowOsModal(true)
+                      }} 
+                      disabled={saving}
+                      className="flex-[1.5] py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors">
+                      {saving
+                        ? <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" />
+                        : <Save className="w-3.5 h-3.5" />}
+                      {saving ? 'Salvando...' : 'Salvar na OS'}
+                    </button>
                   </>
                 )}
 
@@ -1085,6 +1319,58 @@ export default function FrameMeasurementTool({
             </div>
           )}
         </>
+      )}
+
+      {/* Modal de OS */}
+      {showOsModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-sm p-6 shadow-2xl flex flex-col">
+            <h3 className="text-lg font-bold text-white mb-2">Vincular Ordem de Serviço</h3>
+            <p className="text-sm text-slate-400 mb-6">Digite o número ou protocolo da OS para salvar estas medidas.</p>
+            
+            <div className="space-y-4">
+              <div>
+                <input
+                  value={osNumberInput}
+                  onChange={e => {
+                    setOsNumberInput(e.target.value)
+                    setLinkedOS(null)
+                    setOsLookupError(null)
+                  }}
+                  placeholder="Nº da OS"
+                  className="w-full h-12 rounded-xl border border-white/10 bg-black/30 px-4 text-base font-semibold text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+                  autoFocus
+                />
+              </div>
+              
+              {linkedOS && (
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl animate-in slide-in-from-top-2">
+                  <p className="text-sm font-semibold text-emerald-400 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4" /> OS encontrada!
+                  </p>
+                  <p className="text-xs text-emerald-300/80 mt-1.5">Cliente: {linkedOS.dependente_name ?? linkedOS.customer_name ?? 'Não identificado'}</p>
+                </div>
+              )}
+              
+              {osLookupError && <p className="text-sm text-rose-400">{osLookupError}</p>}
+
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => setShowOsModal(false)} className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-slate-300 rounded-xl font-medium text-sm transition-colors">
+                  Cancelar
+                </button>
+                {!linkedOS ? (
+                  <button onClick={lookupOS} disabled={saving || !osNumberInput.trim()} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium text-sm transition-colors disabled:opacity-50 flex justify-center items-center gap-2">
+                    {saving ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" /> : 'Buscar'}
+                  </button>
+                ) : (
+                  <button onClick={() => { setShowOsModal(false); saveToOS() }} disabled={saving} className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-medium text-sm transition-colors disabled:opacity-50 flex justify-center items-center gap-2">
+                    Salvar Medidas
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

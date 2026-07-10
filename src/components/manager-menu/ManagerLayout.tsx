@@ -18,11 +18,11 @@ import {
     Store
 } from 'lucide-react';
 
-import { createClient } from '@/lib/supabase/client';
+import { logoutAndRedirect } from '@/lib/auth/logout';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { OperatorLayout } from '@/components/operator-menu';
-import { useEffect } from 'react';
-import { type AppMode } from '@/lib/app-mode';
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
+import FullscreenToggleButton from '@/components/FullscreenToggleButton';
 
 type ManualManagerState = 'home' | 'gerencia' | 'operator';
 type ManagerState = ManualManagerState | 'page';
@@ -96,29 +96,20 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl, a
     const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
-    const supabase = createClient();
     const { preference } = useBackgroundPreference();
-    const isMvp = appMode === 'mvp';
+    const modules = useStoreModules();
 
     const menuParam = searchParams.get('menu');
     const [manualState, setManualState] = useState<ManualManagerState>('home');
 
-    useEffect(() => {
-        if (menuParam === 'atendimento' || menuParam === 'loja-vazia') {
-            setManualState('operator');
-        }
-    }, [menuParam]);
-
     const storeHomePath = `/dashboard/loja/${storeId}`;
-    const currentState: ManagerState = pathname !== storeHomePath && manualState !== 'operator' ? 'page' : manualState;
+    const effectiveManualState: ManualManagerState =
+        menuParam === 'atendimento' || menuParam === 'loja-vazia' ? 'operator' : manualState;
+    const currentState: ManagerState =
+        pathname !== storeHomePath && effectiveManualState !== 'operator' ? 'page' : effectiveManualState;
 
     const handleLogout = async () => {
-        const { error } = await supabase.auth.signOut();
-        if (error) {
-            alert('Erro ao sair');
-            return;
-        }
-        window.location.href = '/login';
+        await logoutAndRedirect();
     };
 
     if (currentState === 'operator') {
@@ -154,12 +145,18 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl, a
                         Hub Gerencial
                     </button>
                     <span className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em]">{storeName}</span>
-                    <button
-                        onClick={handleLogout}
-                        className="text-slate-500 hover:text-red-400 transition-colors text-sm font-medium"
-                    >
-                        Sair
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <FullscreenToggleButton
+                            variant="inline"
+                            className="h-9 w-9 bg-slate-900/80 text-white/65 hover:bg-slate-900"
+                        />
+                        <button
+                            onClick={handleLogout}
+                            className="text-slate-500 hover:text-red-400 transition-colors text-sm font-medium"
+                        >
+                            Sair
+                        </button>
+                    </div>
                 </div>
 
                 <main className="overflow-y-auto" style={{ height: 'calc(100vh - 57px)' }}>
@@ -171,7 +168,8 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl, a
 
     return (
         <div className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-950 font-sans transition-colors duration-500">
-            <div className="absolute top-6 right-6 z-50">
+            <div className="absolute top-6 right-6 z-50 flex items-center gap-3">
+                <FullscreenToggleButton className="right-20 top-6" />
                 <BackgroundToggle />
             </div>
 
@@ -273,7 +271,11 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl, a
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {GERENCIA_LINKS.filter(item => !isMvp || item.id === 'config').map((item) => {
+                            {GERENCIA_LINKS.filter((item) => {
+                                if (item.id === 'fiscal') return modules.fiscal;
+                                if (item.id === 'catalogo-global') return modules.globalTables;
+                                return true;
+                            }).map((item) => {
                                 const Icon = item.icon;
                                 return (
                                     <button

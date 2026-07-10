@@ -8,7 +8,7 @@ import CustomerHistoryModal from '@/components/modals/CustomerHistoryModal';
 
 // --- TIPOS ---
 interface ModalsContextType {
-    openParcelaModal: () => void;
+    openParcelaModal: (initialQuery?: string) => void;
     openLabModal: () => void;
     openEntregaModal: () => void;
     openCustomerHistoryModal: () => void;
@@ -26,11 +26,15 @@ const ModalsContext = createContext<ModalsContextType | undefined>(undefined);
 // --- PROVIDER ---
 export function ModalsProvider({ children, storeId }: ModalsProviderProps) {
     const [isParcelaModalOpen, setIsParcelaModalOpen] = useState(false);
+    const [parcelaInitialQuery, setParcelaInitialQuery] = useState<string | undefined>();
     const [isLabModalOpen, setIsLabModalOpen] = useState(false);
     const [isEntregaModalOpen, setIsEntregaModalOpen] = useState(false);
     const [isCustomerHistoryModalOpen, setIsCustomerHistoryModalOpen] = useState(false);
 
-    const openParcelaModal = () => setIsParcelaModalOpen(true);
+    const openParcelaModal = (initialQuery?: string) => {
+        setParcelaInitialQuery(initialQuery);
+        setIsParcelaModalOpen(true);
+    };
     const openLabModal = () => setIsLabModalOpen(true);
     const openEntregaModal = () => setIsEntregaModalOpen(true);
     const openCustomerHistoryModal = () => setIsCustomerHistoryModalOpen(true);
@@ -59,6 +63,7 @@ export function ModalsProvider({ children, storeId }: ModalsProviderProps) {
                 isOpen={isParcelaModalOpen}
                 onClose={() => setIsParcelaModalOpen(false)}
                 storeId={storeId}
+                initialQuery={parcelaInitialQuery}
             />
 
             <LabTrackingModal

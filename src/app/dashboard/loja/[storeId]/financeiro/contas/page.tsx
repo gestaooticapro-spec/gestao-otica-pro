@@ -3,6 +3,24 @@ import ContasInterface from '@/components/financeiro/ContasInterface'
 import { CalendarRange, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 
+function getReferenceDateParts(dateStr?: string) {
+    if (!dateStr) {
+        const now = new Date()
+        return { year: now.getUTCFullYear(), monthIndex: now.getUTCMonth() }
+    }
+
+    const match = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(dateStr)
+    if (match) {
+        return {
+            year: Number(match[1]),
+            monthIndex: Number(match[2]) - 1,
+        }
+    }
+
+    const parsed = new Date(dateStr)
+    return { year: parsed.getUTCFullYear(), monthIndex: parsed.getUTCMonth() }
+}
+
 export default async function ContasPage({
     params,
     searchParams
@@ -18,16 +36,21 @@ export default async function ContasPage({
     const { data: bills } = await getBills(storeId, dateRef)
 
     // Formatação do Mês para Exibição
-    const mesExtenso = new Date(dateRef).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+    const { year, monthIndex } = getReferenceDateParts(dateRef)
+    const mesExtenso = new Date(Date.UTC(year, monthIndex, 1)).toLocaleDateString('pt-BR', {
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+    })
 
     return (
         <div className="flex flex-col h-[calc(100vh-64px)] bg-slate-950 overflow-hidden font-sans">
             <div className="bg-slate-900/40 backdrop-blur-xl border-b border-white/10 px-6 py-4 shadow-xl shadow-black/20 flex-shrink-0 flex items-center justify-between">
                 <div className="flex items-center gap-4">
                     <Link
-                        href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                        href={`/dashboard/loja/${storeId}?menu=gerencia`}
                         className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
-                        title="Voltar para o Painel"
+                        title="Voltar para a Gerência"
                     >
                         <ArrowLeft className="h-5 w-5" />
                     </Link>

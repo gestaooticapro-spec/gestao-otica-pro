@@ -1,7 +1,7 @@
 // ARQUIVO: src/app/dashboard/loja/[storeId]/vendas/[vendaId]/experimental/page.tsx
 
 import { notFound } from 'next/navigation'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, unstable_noStore as noStore } from 'next/cache'
 import { getVendaPageData } from '@/lib/actions/vendas.actions'
 import VendaInterfaceExperimental from '@/components/vendas/VendaInterfaceExperimental'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -23,6 +23,8 @@ type StoreSettingsTable = {
 }
 
 export default async function VendaPageExperimental({ params }: Props) {
+    noStore()
+
     const storeId = parseInt(params.storeId)
     const vendaId = parseInt(params.vendaId)
 
@@ -49,6 +51,10 @@ export default async function VendaPageExperimental({ params }: Props) {
         pagamentos,
         serviceOrders,
         financiamento,
+        storeSettings,
+        dependentes,
+        oftalmologistas,
+        employees,
         lentes,
         armacoes,
         tratamentos
@@ -74,6 +80,10 @@ export default async function VendaPageExperimental({ params }: Props) {
             serviceOrders={serviceOrders}
             pagamentos={pagamentos}
             financiamento={financiamento}
+            storeSettings={storeSettings}
+            dependentes={dependentes}
+            oftalmologistas={oftalmologistas}
+            employees={employees}
             lentes={lentes || []}
             armacoes={armacoes || []}
             tratamentos={tratamentos || []}

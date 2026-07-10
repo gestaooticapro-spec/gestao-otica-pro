@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { Database } from '@/lib/database.types'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
 
 // --- Tipos ---
 export type DevedorResumo = {
@@ -36,6 +37,8 @@ export type RetornoCobranca = {
 
 // --- 1. BUSCAR LISTA DE INADIMPLENTES ---
 export async function getInadimplentes(storeId: number, filtro: 'cobrar' | 'ja_cobrados' = 'cobrar') {
+    if (!(await isStoreModuleEnabledForStore(storeId, 'installments'))) return []
+
     const supabaseAdmin = createAdminClient()
     const hoje = new Intl.DateTimeFormat('fr-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
 
@@ -53,6 +56,7 @@ export async function getInadimplentes(storeId: number, filtro: 'cobrar' | 'ja_c
             `)
             .eq('store_id', storeId)
             .eq('status', 'Pendente')
+            .gt('valor_parcela', 0.01)
             .lt('data_vencimento', hoje)
             .order('data_vencimento', { ascending: true })
 
@@ -190,6 +194,10 @@ export async function registrarCobranca(prevState: any, formData: FormData) {
         return { success: false, message: 'Perfil não encontrado' }
     }
 
+    if (!(await isStoreModuleEnabledForStore(profile.store_id, 'installments'))) {
+        return { success: false, message: 'Modulo de parcelamento desativado para esta loja.' }
+    }
+
     const validated = CobrancaSchema.safeParse({
         customer_id: formData.get('customer_id'),
         store_id: profile.store_id,
@@ -230,6 +238,10 @@ export async function registrarCobranca(prevState: any, formData: FormData) {
 
 // --- 3. TOGGLE SPC ---
 export async function toggleSpcStatus(customerId: number, currentStatus: boolean, storeId: number) {
+    if (!(await isStoreModuleEnabledForStore(storeId, 'installments'))) {
+        return { success: false, message: 'Modulo de parcelamento desativado para esta loja.' }
+    }
+
     const supabaseAdmin = createAdminClient()
     try {
         // CORREÇÃO: Cast as any pois is_spc foi adicionado via SQL manual
@@ -249,6 +261,13 @@ export async function getHistoricoCobranca(customerId: number) {
     const supabaseAdmin = createAdminClient()
     try {
         // Busca o histórico básico
+        const { data: customer } = await (supabaseAdmin.from('customers') as any)
+            .select('store_id')
+            .eq('id', customerId)
+            .maybeSingle()
+
+        if (!customer?.store_id || !(await isStoreModuleEnabledForStore(customer.store_id, 'installments'))) return []
+
         const { data, error } = await (supabaseAdmin.from('cobranca_historico') as any)
             .select('*')
             .eq('customer_id', customerId)
@@ -299,6 +318,8 @@ export async function getHistoricoCobranca(customerId: number) {
 
 // --- 5. BUSCAR DETALHES COMPLETOS ---
 export async function getDetalhesDivida(customerId: number, storeId: number) {
+    if (!(await isStoreModuleEnabledForStore(storeId, 'installments'))) return []
+
     const supabaseAdmin = createAdminClient()
 
     try {
@@ -340,6 +361,8 @@ export async function getDetalhesDivida(customerId: number, storeId: number) {
 
 // --- 6. BUSCAR RETORNOS AGENDADOS (PARA O RADAR) ---
 export async function getRetornosDeHoje(storeId: number): Promise<RetornoCobranca[]> {
+    if (!(await isStoreModuleEnabledForStore(storeId, 'installments'))) return []
+
     const supabaseAdmin = createAdminClient()
     const hoje = new Intl.DateTimeFormat('fr-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
 
@@ -381,6 +404,7 @@ export async function getRetornosDeHoje(storeId: number): Promise<RetornoCobranc
             .select('customer_id')
             .eq('store_id', storeId)
             .eq('status', 'Pendente')
+            .gt('valor_parcela', 0.01)
             .in('customer_id', customerIds)
 
         // Set com IDs de clientes que AINDA devem
@@ -408,6 +432,10 @@ export async function getRetornosDeHoje(storeId: number): Promise<RetornoCobranc
 
 // --- 7. ATUALIZAR STATUS DA COBRANÇA ---
 export async function updateCobrancaStatus(customerId: number, status: 'Normal' | 'Perdido' | 'Externa', storeId: number) {
+    if (!(await isStoreModuleEnabledForStore(storeId, 'installments'))) {
+        return { success: false, message: 'Modulo de parcelamento desativado para esta loja.' }
+    }
+
     const supabaseAdmin = createAdminClient()
     try {
         await (supabaseAdmin.from('customers') as any)
@@ -435,6 +463,9 @@ export async function concluirRetornoCobranca(historyId: number, storeId: number
     const profile = (await getProfileByAdmin(user.id)) as SimpleProfile | null
     if (!profile || profile.store_id !== storeId) {
         return { success: false, message: 'Acesso negado para concluir este retorno' }
+    }
+    if (!(await isStoreModuleEnabledForStore(profile.store_id, 'installments'))) {
+        return { success: false, message: 'Modulo de parcelamento desativado para esta loja.' }
     }
 
     const supabaseAdmin = createAdminClient()

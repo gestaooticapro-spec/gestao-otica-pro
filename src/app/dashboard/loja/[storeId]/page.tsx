@@ -6,8 +6,10 @@ import { getProfileByAdmin, createAdminClient } from '@/lib/supabase/admin'
 
 // Importação das Actions de Dados
 import { getManagerKPIs, getAdminKPIs } from '@/lib/actions/dashboard.actions'
-import { getAlertasOperacionais, getAniversariantes, getVencimentosProximos } from '@/lib/actions/consultas.actions'
+import { getAlertasOperacionais, getAniversariantes, getVencimentosProximos, getWhatsAppHumanOverrideCount, getWhatsAppPendencias } from '@/lib/actions/consultas.actions'
 import { getRetornosDeHoje } from '@/lib/actions/collection.actions'
+import { getStoreModulesForStore } from '@/lib/store-modules.server'
+import type { StoreSettings } from '@/lib/store-modules'
 
 // Importação dos Painéis Visuais
 import { ManagerDashboard, AdminDashboard } from '@/components/dashboard/DashboardViews'
@@ -30,6 +32,22 @@ type StoreHomeTable = {
     }
 }
 
+type StoreDashboardRow = {
+    name: string | null
+    settings: StoreSettings | null
+}
+
+type WhatsAppChannelDashboardRow = {
+    connection_status: 'unknown' | 'connecting' | 'connected' | 'disconnected'
+    is_active: boolean
+    instance_key: string | null
+}
+
+type DashboardProfile = {
+    role: string
+    store_id?: number | null
+}
+
 export default async function StoreHomePage({ params }: { params: { storeId: string } }) {
     const storeId = parseInt(params.storeId, 10)
     if (isNaN(storeId)) return notFound()
@@ -38,19 +56,29 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return redirect('/login')
 
-    const profile = await getProfileByAdmin(user.id) as StoreHomeProfile | null
+    const profile = await getProfileByAdmin(user.id) as DashboardProfile | null
     if (!profile) return redirect('/login')
 
     // Busca nome da loja
     const supabaseAdmin = createAdminClient()
-    const storesTable = supabaseAdmin.from('stores') as unknown as StoreHomeTable
-    const { data: store } = await storesTable
+    const { data: storeRaw } = await supabaseAdmin.from('stores')
         .select('name, settings')
         .eq('id', storeId)
         .single()
+    const store = storeRaw as StoreDashboardRow | null
+
+    const { data: whatsAppChannelRaw } = await supabaseAdmin.from('whatsapp_store_channels')
+        .select('connection_status, is_active, instance_key')
+        .eq('store_id', storeId)
+        .eq('provider', 'evolution')
+        .maybeSingle()
+    const whatsAppChannel = whatsAppChannelRaw as WhatsAppChannelDashboardRow | null
 
     const storeName = store?.name || `Loja ${storeId}`
-    const appMode = getStoreAppMode(store?.settings)
+    const deliveryDateEnabled = store?.settings?.delivery_date_enabled !== false
+    const isWhatsAppAutomationEnabled = store?.settings?.whatsapp_automation?.enabled !== false
+    const isWhatsAppChannelConfigured = Boolean(whatsAppChannel?.instance_key)
+    const isWhatsAppConnected = whatsAppChannel?.connection_status === 'connected' && whatsAppChannel?.is_active === true
 
     // 1. ADMIN (Dono da Rede)
     if (profile.role === 'admin') {
@@ -86,11 +114,14 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
     }
 
     // 3. OPERADOR / VENDEDOR (Dashboard Operacional)
-    const [alertas, aniversariantes, vencimentos, retornos] = await Promise.all([
+    const modules = await getStoreModulesForStore(storeId)
+    const [alertas, aniversariantes, vencimentos, retornos, whatsAppPendencias, whatsAppHumanOverrides] = await Promise.all([
         getAlertasOperacionais(storeId),
         getAniversariantes(storeId),
-        getVencimentosProximos(storeId),
-        getRetornosDeHoje(storeId)
+        modules.installments ? getVencimentosProximos(storeId) : Promise.resolve([]),
+        modules.installments ? getRetornosDeHoje(storeId) : Promise.resolve([]),
+        isWhatsAppConnected ? getWhatsAppPendencias(storeId) : Promise.resolve([]),
+        isWhatsAppConnected ? getWhatsAppHumanOverrideCount(storeId) : Promise.resolve(0)
     ])
 
     return (
@@ -99,11 +130,16 @@ export default async function StoreHomePage({ params }: { params: { storeId: str
             <ActionMenuDashboard
                 storeId={storeId}
                 storeName={storeName}
+                deliveryDateEnabled={deliveryDateEnabled}
                 alerts={alertas}
                 birthdays={aniversariantes}
                 vencimentos={vencimentos}
                 retornos={retornos}
-                appMode={appMode}
+                whatsAppPendencias={whatsAppPendencias}
+                whatsAppHumanOverrides={whatsAppHumanOverrides}
+                isWhatsAppAutomationEnabled={isWhatsAppAutomationEnabled}
+                isWhatsAppChannelConfigured={isWhatsAppChannelConfigured}
+                isWhatsAppConnected={isWhatsAppConnected}
             />
         </>
     )

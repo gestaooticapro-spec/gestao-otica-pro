@@ -1,18 +1,21 @@
-// ARQUIVO: src/components/modals/CustomerHistoryModal.tsx
 'use client'
-
-import { getWhatsAppLink } from '@/lib/utils'
 
 import { useState, useEffect, useCallback } from 'react'
 import { X, Loader2, Search, User, Wallet, Glasses, MessageCircle, Calendar, CreditCard, AlertCircle, ChevronRight } from 'lucide-react'
+import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
+import { toast } from 'sonner'
+import {
+    sendCustomerFinancialSummaryWhatsApp,
+    sendCustomerPrescriptionSummaryWhatsApp,
+} from '@/lib/actions/manual-whatsapp.actions'
 import {
     searchCustomersQuick,
     getCustomerFinancialSummary,
     getCustomerPrescriptionSummary,
     type CustomerSearchResult,
     type FinancialSummary,
-    type PrescriptionSummary,
-    type ParcelaDetail
+    type PrescriptionSummaryGroup,
+    type PrescriptionSummary
 } from '@/lib/actions/customer-history.actions'
 
 // =============================================
@@ -70,8 +73,10 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
 
     // Estados de dados
     const [financialData, setFinancialData] = useState<FinancialSummary | null>(null)
-    const [prescriptionData, setPrescriptionData] = useState<PrescriptionSummary[]>([])
+    const [prescriptionGroups, setPrescriptionGroups] = useState<PrescriptionSummaryGroup[]>([])
+    const [selectedPrescriptionGroupId, setSelectedPrescriptionGroupId] = useState('titular')
     const [isLoadingData, setIsLoadingData] = useState(false)
+    const [sendingWhatsApp, setSendingWhatsApp] = useState(false)
 
     // Reset ao fechar
     useEffect(() => {
@@ -80,14 +85,15 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
             setSearchResults([])
             setSelectedCustomer(null)
             setFinancialData(null)
-            setPrescriptionData([])
+            setPrescriptionGroups([])
+            setSelectedPrescriptionGroupId('titular')
             setActiveTab('financeiro')
         }
     }, [isOpen])
 
     // Busca com debounce
     const handleSearch = useCallback(async (termo: string) => {
-        if (termo.length < 2) {
+        if (termo.length < 3) {
             setSearchResults([])
             return
         }
@@ -121,7 +127,8 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                 getCustomerPrescriptionSummary(customer.id, storeId)
             ])
             setFinancialData(financial)
-            setPrescriptionData(prescriptions)
+            setPrescriptionGroups(prescriptions)
+            setSelectedPrescriptionGroupId('titular')
         } finally {
             setIsLoadingData(false)
         }
@@ -131,8 +138,18 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
     const handleBack = () => {
         setSelectedCustomer(null)
         setFinancialData(null)
-        setPrescriptionData([])
+        setPrescriptionGroups([])
+        setSelectedPrescriptionGroupId('titular')
     }
+
+    const selectedPrescriptionGroup =
+        prescriptionGroups.find((group) => group.id === selectedPrescriptionGroupId) || prescriptionGroups[0] || null
+    const prescriptionData: PrescriptionSummary[] = selectedPrescriptionGroup?.receitas || []
+    const selectedPrescriptionGroupLabel =
+        selectedPrescriptionGroup?.dependenteId === null
+            ? selectedCustomer?.nome || 'Titular'
+            : selectedPrescriptionGroup?.label || 'Dependente'
+    const textFallbackReasons = new Set(['channel_not_configured', 'channel_disconnected', 'send_failed'])
 
     // =============================================
     // WHATSAPP - FORMATAÇÃO DAS MENSAGENS
@@ -171,9 +188,9 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
     }
 
     const getPrescriptionWhatsAppMessage = (): string => {
-        if (!prescriptionData.length || !selectedCustomer) return ''
+        if (!prescriptionData.length || !selectedCustomer || !selectedPrescriptionGroup) return ''
 
-        let msg = `Seus ultimos graus:\n`
+        let msg = `Ultimos graus de ${selectedPrescriptionGroupLabel}:\n`
 
         prescriptionData.slice(0, 5).forEach((rx) => {
             const data = formatMonthYear(rx.dataCompra)
@@ -206,15 +223,119 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
         return msg.trim()
     }
 
-    const openWhatsApp = (message: string) => {
+    // Mantido como referencia do fluxo antigo de texto desta tela.
+    const openWhatsApp = async (message: string) => {
+        if (sendingWhatsApp) return
         if (!selectedCustomer?.fone) {
-            alert('Cliente não possui telefone cadastrado.')
+            toast.error('Cliente não possui telefone cadastrado.')
             return
         }
 
-        const url = getWhatsAppLink(selectedCustomer.fone, message)
-        window.open(url, '_blank')
+        setSendingWhatsApp(true)
+        try {
+            await sendManualWhatsAppFromClient({
+                storeId,
+                remotePhone: selectedCustomer.fone,
+                messageText: message,
+                messageType: 'customer_history',
+                source: activeTab === 'financeiro'
+                    ? 'customer_history.financial_button'
+                    : 'customer_history.prescription_button',
+                metadata: {
+                    customerId: selectedCustomer.id,
+                    tab: activeTab,
+                    prescriptionGroup: activeTab === 'receitas' ? selectedPrescriptionGroupId : null,
+                },
+            })
+        } finally {
+            setSendingWhatsApp(false)
+        }
     }
+
+    const handleWhatsAppSend = async () => {
+        if (!selectedCustomer || sendingWhatsApp) return
+
+        const textMessage = activeTab === 'financeiro'
+            ? getFinancialWhatsAppMessage()
+            : getPrescriptionWhatsAppMessage()
+
+        if (activeTab === 'financeiro') {
+            setSendingWhatsApp(true)
+            try {
+                const result = await sendCustomerFinancialSummaryWhatsApp({
+                    storeId,
+                    customerId: selectedCustomer.id,
+                })
+
+                if (result.success) {
+                    toast.success('Imagem financeira enviada via WhatsApp da loja.')
+                    return
+                }
+
+                if (result.fallbackReason && textFallbackReasons.has(result.fallbackReason)) {
+                    await sendManualWhatsAppFromClient({
+                        storeId,
+                        remotePhone: selectedCustomer.fone || '',
+                        messageText: textMessage,
+                        messageType: 'customer_history',
+                        source: 'customer_history.financial_button',
+                        metadata: {
+                            customerId: selectedCustomer.id,
+                            tab: activeTab,
+                            prescriptionGroup: null,
+                        },
+                    })
+                    return
+                }
+
+                toast.error(result.message)
+            } catch (error) {
+                console.error('[CustomerHistoryModal] Erro ao enviar imagem financeira:', error)
+                toast.error('Nao foi possivel enviar a imagem financeira.')
+            } finally {
+                setSendingWhatsApp(false)
+            }
+            return
+        }
+
+        setSendingWhatsApp(true)
+        try {
+            const result = await sendCustomerPrescriptionSummaryWhatsApp({
+                storeId,
+                customerId: selectedCustomer.id,
+                prescriptionGroupId: selectedPrescriptionGroupId,
+            })
+
+            if (result.success) {
+                toast.success('Imagem das receitas enviada via WhatsApp da loja.')
+                return
+            }
+
+            if (result.fallbackReason && textFallbackReasons.has(result.fallbackReason)) {
+                await sendManualWhatsAppFromClient({
+                    storeId,
+                    remotePhone: selectedCustomer.fone || '',
+                    messageText: textMessage,
+                    messageType: 'customer_history',
+                    source: 'customer_history.prescription_button',
+                    metadata: {
+                        customerId: selectedCustomer.id,
+                        tab: activeTab,
+                        prescriptionGroup: selectedPrescriptionGroupId,
+                    },
+                })
+                return
+            }
+
+            toast.error(result.message)
+        } catch (error) {
+            console.error('[CustomerHistoryModal] Erro ao enviar imagem das receitas:', error)
+            toast.error('Nao foi possivel enviar a imagem das receitas.')
+        } finally {
+            setSendingWhatsApp(false)
+        }
+    }
+    void openWhatsApp
 
     // =============================================
     // RENDER
@@ -227,7 +348,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
             onClick={onClose}
         >
             <div
-                className="relative w-full max-w-2xl bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl shadow-black/50 border border-white/10 overflow-hidden flex flex-col max-h-[85vh] min-h-[600px]"
+                className="relative w-full max-w-2xl bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl shadow-black/50 border border-white/10 overflow-hidden flex flex-col h-[600px]"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
@@ -302,7 +423,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                                             <ChevronRight className="h-5 w-5 text-slate-600 group-hover:text-indigo-400 transition-colors" />
                                         </button>
                                     ))
-                                ) : searchTerm.length >= 2 && !isSearching ? (
+                                ) : searchTerm.length >= 3 && !isSearching ? (
                                     <div className="text-center py-8 text-slate-500">
                                         <AlertCircle className="h-10 w-10 mx-auto mb-2 opacity-50" />
                                         <p>Nenhum cliente encontrado</p>
@@ -494,6 +615,22 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                                 ) : (
                                     // === TAB RECEITAS ===
                                     <div className="space-y-3">
+                                        <div className="flex flex-wrap gap-2">
+                                            {prescriptionGroups.map((group) => (
+                                                <button
+                                                    key={group.id}
+                                                    onClick={() => setSelectedPrescriptionGroupId(group.id)}
+                                                    className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors border ${
+                                                        selectedPrescriptionGroupId === group.id
+                                                            ? 'border-sky-400/40 bg-sky-500/20 text-sky-200'
+                                                            : 'border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-200'
+                                                    }`}
+                                                >
+                                                    {group.dependenteId === null ? selectedCustomer.nome : group.label}
+                                                </button>
+                                            ))}
+                                        </div>
+
                                         {prescriptionData.length > 0 ? (
                                             prescriptionData.map((rx) => (
                                                 <div key={rx.id} className="bg-white/5 rounded-xl border border-white/10 p-4 backdrop-blur-sm">
@@ -542,7 +679,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                                         ) : (
                                             <div className="text-center py-10 text-slate-500">
                                                 <Glasses className="h-10 w-10 mx-auto mb-2 opacity-50" />
-                                                <p>Nenhuma receita encontrada</p>
+                                                <p>Nenhuma receita encontrada para {selectedPrescriptionGroupLabel || 'esta selecao'}</p>
                                             </div>
                                         )}
                                     </div>
@@ -553,20 +690,18 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                             {selectedCustomer && (
                                 <div className="bg-slate-800/60 border-t border-white/10 p-4 backdrop-blur-md">
                                     <button
-                                        onClick={() => {
-                                            const message = activeTab === 'financeiro'
-                                                ? getFinancialWhatsAppMessage()
-                                                : getPrescriptionWhatsAppMessage()
-                                            openWhatsApp(message)
-                                        }}
+                                        onClick={handleWhatsAppSend}
                                         disabled={
+                                            sendingWhatsApp ||
                                             (activeTab === 'financeiro' && (!financialData || financialData.totais.totalParcelas === 0)) ||
                                             (activeTab === 'receitas' && prescriptionData.length === 0)
                                         }
                                         className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-lg shadow-emerald-500/20 border border-white/10"
                                     >
                                         <MessageCircle className="h-5 w-5" />
-                                        Enviar via WhatsApp
+                                        {activeTab === 'receitas'
+                                            ? `Enviar receita de ${selectedPrescriptionGroupLabel} via WhatsApp`
+                                            : 'Enviar financeiro via WhatsApp'}
                                     </button>
                                 </div>
                             )}

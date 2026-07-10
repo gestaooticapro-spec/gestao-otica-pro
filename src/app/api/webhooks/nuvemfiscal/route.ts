@@ -13,14 +13,18 @@ export async function POST(request: Request) {
         }
 
         const body = await request.json();
-        console.log("[Webhook NuvemFiscal] Recebido:", JSON.stringify(body, null, 2));
+        console.log("[Webhook NuvemLocal] Recebido:", JSON.stringify(body, null, 2));
 
-        // Estrutura esperada do Webhook da Nuvem Fiscal (exemplo genérico, ajustar conforme doc real)
+        // Mantem a rota legada por compatibilidade; o webhook e da Nuvem Local.
         // Geralmente vem: { id: "...", status: "autorizado", ... } ou dentro de um objeto "data"
 
         const nuvemFiscalId = body.id || body.data?.id;
         const statusNuvem = body.status || body.data?.status;
-        const motivo = body.motivo_status || body.data?.motivo_status;
+        const motivo =
+            body.autorizacao?.motivo_status ||
+            body.data?.autorizacao?.motivo_status ||
+            body.motivo_status ||
+            body.data?.motivo_status;
 
         if (!nuvemFiscalId) {
             return NextResponse.json({ message: "ID não encontrado no payload" }, { status: 400 });
@@ -33,7 +37,11 @@ export async function POST(request: Request) {
         let errorMessage = null;
 
         if (statusNuvem === 'autorizado') novoStatus = 'authorized';
-        else if (['erro', 'rejeitado', 'negado'].includes(statusNuvem)) {
+        else if (statusNuvem === 'rejeitado') {
+            novoStatus = 'rejected';
+            errorMessage = motivo || "Rejeicao reportada via Webhook";
+        }
+        else if (['erro', 'negado'].includes(statusNuvem)) {
             novoStatus = 'error';
             errorMessage = motivo || "Erro reportado via Webhook";
         }

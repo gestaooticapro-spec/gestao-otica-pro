@@ -1,5 +1,7 @@
 # Template CSV para Catalogo de Lentes
 
+> **Nota atual (2026):** este template serve apenas para tabelas simples ou para uma primeira planilha de revisao. Para tabelas com multiplas faixas por produto/indice/material, use um CSV de grades separado ou multiplas linhas de grade por oferta. Nao use este template para resumir varias faixas em `esferico_min/max` + `cilindrico_max`, pois isso achata a grade e pode liberar graus indevidos.
+
 Este template define as colunas recomendadas para cadastrar um catalogo manualmente (Excel/Google Sheets) e exportar em CSV confiavel para importacao futura.
 
 ## Colunas obrigatorias

@@ -1,12 +1,16 @@
 import Link from 'next/link'
 import { ArrowRight, ClipboardList, Tag } from 'lucide-react'
 import { DesktopModeButton } from '@/components/tablet/DesktopModeButton'
+import FullscreenToggleButton from '@/components/FullscreenToggleButton'
+import { getStoreModulesForStore } from '@/lib/store-modules.server'
 
-export default function TabletMenuPage({ params }: { params: { storeId: string } }) {
+export default async function TabletMenuPage({ params }: { params: { storeId: string } }) {
   const { storeId } = params
+  const modules = await getStoreModulesForStore(parseInt(storeId, 10))
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-8 gap-8">
+      <FullscreenToggleButton />
       <h1 className="text-2xl font-bold tracking-wide">Menu Tablet</h1>
 
       <div className="grid grid-cols-1 gap-6 w-full max-w-lg">
@@ -35,7 +39,7 @@ export default function TabletMenuPage({ params }: { params: { storeId: string }
           </div>
         </Link>
 
-        <Link
+        {modules.globalTables && <Link
           href={`/dashboard/loja/${storeId}/tabela-precos`}
           className="
             group rounded-3xl p-6 relative overflow-hidden transition-all duration-300
@@ -58,7 +62,7 @@ export default function TabletMenuPage({ params }: { params: { storeId: string }
             <p className="text-xs font-semibold text-white/70 uppercase tracking-widest">Consultar valores e tratamentos</p>
             <ArrowRight className="w-4 h-4 shrink-0 text-white/50 group-hover:text-white group-hover:translate-x-1 transition-all" />
           </div>
-        </Link>
+        </Link>}
       </div>
 
       <DesktopModeButton storeId={storeId} />

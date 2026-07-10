@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useTransition } from 'react';
 import {
-    Users, Plus, Save, Power, Loader2, Lock, User,
+    Users, Plus, Save, Power, Loader2, Lock, User, KeyRound, Eye, EyeOff, Mail,
     ShieldCheck, Briefcase, Wrench, BadgeCheck, Percent, CheckCircle2,
-    Store, MapPin, Phone, QrCode, ArrowLeft, AlertCircle, Sparkles
+    Store, MapPin, Phone, QrCode, ArrowLeft, AlertCircle, Sparkles, FileText, Wallet, HeartHandshake, Zap, Printer, UploadCloud,
+    MessageCircle, Clock
 } from 'lucide-react';
 import { getEmployees, saveEmployee, toggleEmployeeStatus } from '@/lib/actions/employee.actions';
 import { getStoreProfile, updateStoreProfile, updateStoreSettings } from '@/lib/actions/store.actions';
@@ -13,22 +14,31 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import dynamic from 'next/dynamic';
-import { getStoreAppMode, type AppMode } from '@/lib/app-mode';
+import { StoreSettings as SharedStoreSettings, getStoreModules } from '@/lib/store-modules';
+import {
+    getStoreAccessAccounts,
+    updateStoreAccessPassword,
+    type StoreAccessAccount
+} from '@/lib/actions/password.actions';
 
 const AiSuggestionConfigPanel = dynamic(() => import('@/components/config/AiSuggestionConfigPanel'), {
     loading: () => <div className="p-6 text-center"><Loader2 className="animate-spin h-6 w-6 text-cyan-400 mx-auto" /></div>,
     ssr: false,
 });
 
+const WhatsAppChannelPanel = dynamic(() => import('@/components/config/WhatsAppChannelPanel'), {
+    loading: () => <div className="p-6 text-center"><Loader2 className="animate-spin h-6 w-6 text-emerald-400 mx-auto" /></div>,
+    ssr: false,
+});
+
+const StoreHoursPanel = dynamic(() => import('@/components/config/StoreHoursPanel'), {
+    loading: () => <div className="p-6 text-center"><Loader2 className="animate-spin h-6 w-6 text-amber-400 mx-auto" /></div>,
+    ssr: false,
+});
+
 type Employee = Database['public']['Tables']['employees']['Row'];
 type EmployeeRole = NonNullable<Employee['role']>;
-type StoreFeatureSettings = {
-    logo?: string;
-    pre_sale_analysis_enabled?: boolean;
-    receipt_type?: 'pre_printed' | 'half_a4';
-    app_mode?: AppMode;
-};
-type StoreFeatureSettingKey = keyof StoreFeatureSettings;
+type StoreFeatureSettings = SharedStoreSettings;
 type StoreData = {
     id: number;
     name: string;
@@ -52,11 +62,21 @@ type StoreData = {
     csc_producao?: string | null;
     csc_id_producao?: string | null;
     nfce_serie?: number | null;
+    nfe_serie?: number | null;
     codigo_municipio_ibge?: string | null;
     regime_tributario?: string | null;
     certificate_thumbprint?: string | null;
     certificate_valid_until?: string | null;
     settings: StoreFeatureSettings | null;
+};
+
+type ViaCepResponse = {
+    logradouro?: string;
+    bairro?: string;
+    localidade?: string;
+    uf?: string;
+    ibge?: string;
+    erro?: boolean;
 };
 
 // ═══════════════════════════════════════════════
@@ -65,12 +85,37 @@ type StoreData = {
 const labelStyle = "block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-[0.2em]";
 const inputStyle = "block w-full rounded-lg border border-white/10 bg-black/20 shadow-inner text-slate-200 h-9 text-sm px-3 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 font-bold placeholder:font-normal placeholder:text-slate-500 disabled:bg-black/10 disabled:text-slate-500 transition-all outline-none backdrop-blur-sm";
 const cardStyle = "bg-white/5 backdrop-blur-xl border border-white/10 p-5 rounded-xl shadow-xl mb-4 relative overflow-hidden";
+const helpTextStyle = "text-[9px] mt-1";
+const EMPTY_EMPLOYEE_FORM = {
+    full_name: '',
+    pin: '',
+    role: 'vendedor' as 'vendedor' | 'gerente' | 'tecnico',
+    comm_rate_guaranteed: 0,
+    comm_rate_store_credit: 0,
+    comm_rate_store_total: 0,
+    comm_rate_received: 0,
+    comm_rate_profit: 0
+};
 
 // --- SUB-COMPONENTE: FORMULÁRIO DA LOJA ---
 function StoreDataForm({ storeId }: { storeId: number }) {
     const [data, setData] = useState<StoreData | null>(null)
     const [loading, setLoading] = useState(true)
     const [isSaving, startTransition] = useTransition()
+    const [cep, setCep] = useState('')
+    const [street, setStreet] = useState('')
+    const [neighborhood, setNeighborhood] = useState('')
+    const [city, setCity] = useState('')
+    const [stateUf, setStateUf] = useState('')
+    const [codigoMunicipioIbge, setCodigoMunicipioIbge] = useState('')
+    const [isCepLoading, setIsCepLoading] = useState(false)
+    const [cepMessage, setCepMessage] = useState<string | null>(null)
+
+    const maskCep = (value: string) => {
+        const digits = value.replace(/\D/g, '').slice(0, 8)
+        if (digits.length <= 5) return digits
+        return `${digits.slice(0, 5)}-${digits.slice(5)}`
+    }
 
     useEffect(() => {
         getStoreProfile(storeId).then(res => {
@@ -79,8 +124,105 @@ function StoreDataForm({ storeId }: { storeId: number }) {
         })
     }, [storeId])
 
+    useEffect(() => {
+        if (!data) return
+        setCep(maskCep(data.cep ?? ''))
+        setStreet(data.street ?? '')
+        setNeighborhood(data.neighborhood ?? '')
+        setCity(data.city ?? '')
+        setStateUf((data.state ?? '').toUpperCase())
+        setCodigoMunicipioIbge(data.codigo_municipio_ibge ?? '')
+    }, [data])
+
+    const handleCepChange = (value: string) => {
+        setCep(maskCep(value))
+        setCodigoMunicipioIbge('')
+        setCepMessage(null)
+    }
+
+    const resolveCepData = async (rawCep: string) => {
+        const cleanCep = rawCep.replace(/\D/g, '')
+        if (cleanCep.length !== 8) {
+            setCepMessage('Informe um CEP com 8 digitos.')
+            return null
+        }
+
+        setIsCepLoading(true)
+        setCepMessage(null)
+
+        try {
+            const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`)
+            if (!response.ok) throw new Error('Falha ao consultar CEP.')
+
+            const result = await response.json() as ViaCepResponse
+            if (result.erro) {
+                setCepMessage('CEP nao encontrado.')
+                return null
+            }
+
+            const resolved = {
+                cep: maskCep(cleanCep),
+                street: result.logradouro ?? '',
+                neighborhood: result.bairro ?? '',
+                city: result.localidade ?? '',
+                stateUf: (result.uf ?? '').toUpperCase(),
+                codigoMunicipioIbge: result.ibge ?? '',
+            }
+
+            setCepMessage(result.ibge ? 'Endereco e codigo IBGE preenchidos automaticamente.' : 'Endereco encontrado, mas o IBGE nao veio na consulta.')
+            return resolved
+        } catch (error) {
+            console.error('Erro ao consultar CEP da loja:', error)
+            setCepMessage('Nao foi possivel consultar o CEP.')
+            return null
+        } finally {
+            setIsCepLoading(false)
+        }
+    }
+
+    const applyResolvedCepData = (resolved: NonNullable<Awaited<ReturnType<typeof resolveCepData>>>) => {
+        setStreet(resolved.street)
+        setNeighborhood(resolved.neighborhood)
+        setCity(resolved.city)
+        setStateUf(resolved.stateUf)
+        setCodigoMunicipioIbge(resolved.codigoMunicipioIbge)
+        setCep(resolved.cep)
+    }
+
+    const handleCepLookup = async () => {
+        const resolved = await resolveCepData(cep)
+        if (!resolved) return
+        applyResolvedCepData(resolved)
+    }
+
     const handleSave = (formData: FormData) => {
         startTransition(async () => {
+            let nextCep = cep
+            let nextStreet = street
+            let nextNeighborhood = neighborhood
+            let nextCity = city
+            let nextStateUf = stateUf
+            let nextCodigoMunicipioIbge = codigoMunicipioIbge
+
+            if (cep.replace(/\D/g, '').length === 8 && (!codigoMunicipioIbge || !city || !stateUf)) {
+                const resolved = await resolveCepData(cep)
+                if (!resolved?.codigoMunicipioIbge) return
+
+                applyResolvedCepData(resolved)
+                nextCep = resolved.cep
+                nextStreet = resolved.street
+                nextNeighborhood = resolved.neighborhood
+                nextCity = resolved.city
+                nextStateUf = resolved.stateUf
+                nextCodigoMunicipioIbge = resolved.codigoMunicipioIbge
+            }
+
+            formData.set('cep', nextCep.replace(/\D/g, ''))
+            formData.set('street', nextStreet)
+            formData.set('neighborhood', nextNeighborhood)
+            formData.set('city', nextCity)
+            formData.set('state', nextStateUf)
+            formData.set('codigo_municipio_ibge', nextCodigoMunicipioIbge)
             const res = await updateStoreProfile(null, formData)
             if (res.success) alert(res.message)
             else alert("Erro: " + res.message)
@@ -89,6 +231,60 @@ function StoreDataForm({ storeId }: { storeId: number }) {
 
     if (loading) return <div className="p-10 text-center"><Loader2 className="animate-spin h-8 w-8 text-indigo-400 mx-auto" /></div>
     if (!data) return <div className="p-10 text-center text-sm font-bold text-red-300">Não foi possível carregar os dados da loja.</div>
+
+    /*
+    const modules = [
+        {
+            key: 'module_fiscal_enabled',
+            title: 'Módulo Fiscal',
+            description: 'Controla emissão de notas, painel fiscal e fechamento mensal da NFC-e.',
+            icon: FileText,
+            accent: 'text-rose-300',
+            iconBg: 'bg-rose-500/15 border-rose-400/20',
+        },
+        {
+            key: 'module_installments_enabled',
+            title: 'Módulo de Parcelamento',
+            description: 'Liga ou desliga baixa de parcelas, cobrança e relatórios do crediário/carnês.',
+            icon: Wallet,
+            accent: 'text-amber-300',
+            iconBg: 'bg-amber-500/15 border-amber-400/20',
+        },
+        {
+            key: 'module_post_sales_enabled',
+            title: 'Módulo de Pós-venda',
+            description: 'Habilita o fluxo de acompanhamento e os relatórios de pós-venda.',
+            icon: HeartHandshake,
+            accent: 'text-pink-300',
+            iconBg: 'bg-pink-500/15 border-pink-400/20',
+        },
+        {
+            key: 'pre_sale_analysis_enabled',
+            title: 'Módulo de Avaliação',
+            description: 'Mantém a tela de Avaliação disponível no atendimento e na análise pré-venda.',
+            icon: Sparkles,
+            accent: 'text-cyan-300',
+            iconBg: 'bg-cyan-500/15 border-cyan-400/20',
+        },
+        {
+            key: 'module_quick_sale_enabled',
+            title: 'Módulo de Venda Rápida',
+            description: 'Mostra ou esconde o fluxo de PDV Express para vendas de balcão.',
+            icon: Zap,
+            accent: 'text-violet-300',
+            iconBg: 'bg-violet-500/15 border-violet-400/20',
+        },
+        {
+            key: 'module_labels_enabled',
+            title: 'Módulo de Etiquetas',
+            description: 'Controla a geração e impressão de etiquetas dentro do estoque.',
+            icon: Printer,
+            accent: 'text-teal-300',
+            iconBg: 'bg-teal-500/15 border-teal-400/20',
+        },
+    ] as const
+    */
+
     return (
         <form action={handleSave} className="max-w-4xl mx-auto space-y-6 animate-in fade-in">
             <input type="hidden" name="id" value={storeId} />
@@ -158,23 +354,44 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                 <div className="grid grid-cols-6 gap-3">
                     <div className="col-span-2">
                         <label className={labelStyle}>CEP</label>
-                        <input name="cep" defaultValue={data.cep ?? ''} className={inputStyle} />
+                        <input
+                            name="cep"
+                            value={cep}
+                            onChange={(e) => handleCepChange(e.target.value)}
+                            onBlur={() => {
+                                if (cep.replace(/\D/g, '').length === 8) void handleCepLookup()
+                            }}
+                            className={inputStyle}
+                            placeholder={isCepLoading ? 'Buscando CEP...' : '00000-000'}
+                        />
+                        {cepMessage && (
+                            <p className={`${helpTextStyle} ${cepMessage.includes('automaticamente') ? 'text-emerald-400' : 'text-amber-400'}`}>
+                                {cepMessage}
+                            </p>
+                        )}
                     </div>
                     <div className="col-span-2">
                         <label className={labelStyle}>Cidade</label>
-                        <input name="city" defaultValue={data.city ?? ''} className={inputStyle} />
+                        <input name="city" value={city} onChange={(e) => setCity(e.target.value)} className={inputStyle} />
                     </div>
                     <div className="col-span-1">
                         <label className={labelStyle}>UF</label>
-                        <input name="state" defaultValue={data.state ?? ''} className={inputStyle} maxLength={2} />
+                        <input name="state" value={stateUf} onChange={(e) => setStateUf(e.target.value.toUpperCase().slice(0, 2))} className={inputStyle} maxLength={2} />
                     </div>
                     <div className="col-span-1">
                         <label className={labelStyle}>Cód. IBGE</label>
-                        <input name="codigo_municipio_ibge" defaultValue={data.codigo_municipio_ibge ?? ''} className={inputStyle} placeholder="Ex: 4108809" title="Código IBGE do município (obrigatório para NFCe)" />
+                        <input
+                            name="codigo_municipio_ibge"
+                            value={codigoMunicipioIbge}
+                            readOnly
+                            className={`${inputStyle} cursor-not-allowed`}
+                            placeholder="Preenchido pelo CEP"
+                            title="Codigo IBGE preenchido automaticamente a partir do CEP"
+                        />
                     </div>
                     <div className="col-span-4">
                         <label className={labelStyle}>Logradouro</label>
-                        <input name="street" defaultValue={data.street ?? ''} className={inputStyle} />
+                        <input name="street" value={street} onChange={(e) => setStreet(e.target.value)} className={inputStyle} />
                     </div>
                     <div className="col-span-2">
                         <label className={labelStyle}>Número</label>
@@ -182,7 +399,7 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                     </div>
                     <div className="col-span-3">
                         <label className={labelStyle}>Bairro</label>
-                        <input name="neighborhood" defaultValue={data.neighborhood ?? ''} className={inputStyle} />
+                        <input name="neighborhood" value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} className={inputStyle} />
                     </div>
                 </div>
             </div>
@@ -230,7 +447,7 @@ function StoreDataForm({ storeId }: { storeId: number }) {
 
                         <div className="bg-indigo-500/10 p-3 rounded-lg border border-indigo-500/20">
                             <p className="text-[10px] font-bold text-indigo-300 uppercase mb-2">Numeração & Regime</p>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-3 gap-3">
                                 <div>
                                     <label className={labelStyle}>Série NFCe</label>
                                     <input
@@ -244,6 +461,21 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                                     />
                                     <p className="text-[9px] text-indigo-400/60 mt-1 leading-tight">
                                         Use séries diferentes para lojas do mesmo CNPJ.
+                                    </p>
+                                </div>
+                                <div>
+                                    <label className={labelStyle}>Série NFe</label>
+                                    <input
+                                        name="nfe_serie"
+                                        type="number"
+                                        min="1"
+                                        max="999"
+                                        defaultValue={data.nfe_serie ?? 1}
+                                        className={inputStyle}
+                                        placeholder="Ex: 1"
+                                    />
+                                    <p className="text-[9px] text-indigo-400/60 mt-1 leading-tight">
+                                        Usada na NF-e modelo 55.
                                     </p>
                                 </div>
                                 <div>
@@ -298,7 +530,7 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                                     <input name="certificate_password" type="password" className={inputStyle} placeholder="Senha do arquivo" />
                                 </div>
                                 <p className="text-[9px] text-sky-400/60 leading-tight">
-                                    O certificado será enviado diretamente para a Nuvem Fiscal e não será salvo em nosso banco de dados por segurança.
+                                    O certificado será enviado diretamente para a Nuvem Local e não será salvo em nosso banco de dados por segurança.
                                 </p>
                             </div>
                         </div>
@@ -342,9 +574,12 @@ function StoreDataForm({ storeId }: { storeId: number }) {
 
 // --- SUB-COMPONENTE: RECURSOS ---
 function ResourcesForm({ storeId }: { storeId: number }) {
+    const router = useRouter()
     const [data, setData] = useState<StoreData | null>(null)
     const [loading, setLoading] = useState(true)
     const [isSaving, startTransition] = useTransition()
+    const deliveryDateEnabled = data?.settings?.delivery_date_enabled !== false
+    const serviceOrderMode = data?.settings?.service_order_mode === 'single' ? 'single' : 'multiple'
 
     useEffect(() => {
         getStoreProfile(storeId).then(res => {
@@ -368,6 +603,7 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                         [settingName]: value
                     }
                 } : null)
+                router.refresh()
             } else {
                 alert("Erro: " + res.message)
             }
@@ -377,7 +613,7 @@ function ResourcesForm({ storeId }: { storeId: number }) {
     if (loading) return <div className="p-10 text-center"><Loader2 className="animate-spin h-8 w-8 text-indigo-400 mx-auto" /></div>
     if (!data) return <div className="p-10 text-center text-sm font-bold text-red-300">Não foi possível carregar os dados da loja.</div>
 
-    const appMode = getStoreAppMode(data.settings)
+    const activeModules = getStoreModules(data.settings)
 
     return (
         <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in">
@@ -392,50 +628,166 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                     </div>}
                 </div>
 
-                <div className="rounded-xl border border-white/10 bg-black/20 p-4 transition-colors mb-4">
-                    <div>
-                        <p className="text-sm font-black text-white uppercase tracking-[0.15em] mb-2">
-                            Modo do Sistema
-                        </p>
-                        <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                            Escolha entre uma operaÃ§Ã£o enxuta para novas lojas ou o sistema completo.
-                        </p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <label className={`flex items-start gap-3 cursor-pointer rounded-xl border p-4 transition-colors ${appMode === 'mvp' ? 'border-cyan-500/40 bg-cyan-500/10' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {[
+                        {
+                            key: 'module_fiscal_enabled',
+                            moduleKey: 'fiscal',
+                            title: 'Módulo Fiscal',
+                            description: 'Controla emissão de notas, painel fiscal e fechamento mensal da NFC-e.',
+                            icon: FileText,
+                            accent: 'text-rose-300',
+                            iconBg: 'bg-rose-500/15 border-rose-400/20',
+                        },
+                        {
+                            key: 'module_installments_enabled',
+                            moduleKey: 'installments',
+                            title: 'Módulo de Parcelamento',
+                            description: 'Liga ou desliga baixa de parcelas, cobrança e relatórios do crediário/carnês.',
+                            icon: Wallet,
+                            accent: 'text-amber-300',
+                            iconBg: 'bg-amber-500/15 border-amber-400/20',
+                        },
+                        {
+                            key: 'module_post_sales_enabled',
+                            moduleKey: 'postSales',
+                            title: 'Módulo de Pós-venda',
+                            description: 'Habilita o fluxo de acompanhamento e os relatórios de pós-venda.',
+                            icon: HeartHandshake,
+                            accent: 'text-pink-300',
+                            iconBg: 'bg-pink-500/15 border-pink-400/20',
+                        },
+                        {
+                            key: 'pre_sale_analysis_enabled',
+                            moduleKey: 'evaluation',
+                            title: 'Módulo de Avaliação',
+                            description: 'Mantém a tela de Avaliação disponível no atendimento e na análise pré-venda.',
+                            icon: Sparkles,
+                            accent: 'text-cyan-300',
+                            iconBg: 'bg-cyan-500/15 border-cyan-400/20',
+                        },
+                        {
+                            key: 'module_global_tables_enabled',
+                            moduleKey: 'globalTables',
+                            title: 'Tabelas Globais',
+                            description: 'Libera catálogo global, importação de lentes e consulta visual das tabelas de laboratório.',
+                            icon: UploadCloud,
+                            accent: 'text-sky-300',
+                            iconBg: 'bg-sky-500/15 border-sky-400/20',
+                        },
+                        {
+                            key: 'module_quick_sale_enabled',
+                            moduleKey: 'quickSale',
+                            title: 'Módulo de Venda Rápida',
+                            description: 'Mostra ou esconde o fluxo de PDV Express para vendas de balcão.',
+                            icon: Zap,
+                            accent: 'text-violet-300',
+                            iconBg: 'bg-violet-500/15 border-violet-400/20',
+                        },
+                        {
+                            key: 'module_labels_enabled',
+                            moduleKey: 'labels',
+                            title: 'Módulo de Etiquetas',
+                            description: 'Controla a geração e impressão de etiquetas dentro do estoque.',
+                            icon: Printer,
+                            accent: 'text-teal-300',
+                            iconBg: 'bg-teal-500/15 border-teal-400/20',
+                        },
+                    ].map((module) => {
+                        const Icon = module.icon
+                        const isGlobalTables = module.moduleKey === 'globalTables'
+                        const isForcedByEvaluation = isGlobalTables && activeModules.evaluation
+                        const isChecked = activeModules[module.moduleKey as keyof typeof activeModules]
+                        const description = isForcedByEvaluation
+                            ? 'Enquanto Avaliação estiver ligada, Tabelas Globais fica ativa obrigatoriamente para sustentar catálogo, importação e consulta.'
+                            : module.description
+
+                        return (
+                            <label
+                                key={module.key}
+                                className="flex items-start gap-4 rounded-xl border border-white/10 bg-black/20 p-4 cursor-pointer hover:bg-white/5 transition-colors group"
+                            >
                                 <input
-                                    type="radio"
-                                    name="app_mode"
-                                    value="mvp"
-                                    checked={appMode === 'mvp'}
-                                    onChange={() => handleSettingChange('app_mode', 'mvp')}
-                                    disabled={isSaving}
-                                    className="mt-1 h-4 w-4 border-white/20 bg-slate-900 text-cyan-500 focus:ring-cyan-500 disabled:opacity-50"
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={(e) => handleSettingChange(module.key, e.target.checked)}
+                                    disabled={isSaving || isForcedByEvaluation}
+                                    className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-900 text-cyan-500 focus:ring-cyan-500 disabled:opacity-50"
                                 />
-                                <div>
-                                    <span className="text-sm text-slate-100 font-black uppercase tracking-[0.12em]">MVP</span>
-                                    <p className="mt-1 text-xs text-slate-400 leading-relaxed">Menus enxutos para operaÃ§Ã£o essencial.</p>
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`h-10 w-10 rounded-xl border flex items-center justify-center ${module.iconBg}`}>
+                                            <Icon className={`h-5 w-5 ${module.accent}`} />
+                                        </div>
+                                        <div>
+                                            <p className={`text-sm font-black uppercase tracking-[0.15em] ${module.accent}`}>
+                                                {module.title}
+                                            </p>
+                                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 mt-1">
+                                                {isForcedByEvaluation
+                                                    ? 'Ativado pela Avaliação'
+                                                    : isChecked
+                                                        ? 'Ativado'
+                                                        : 'Desativado'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <p className="mt-3 text-xs text-slate-400 leading-relaxed">
+                                        {description}
+                                    </p>
                                 </div>
                             </label>
-                            <label className={`flex items-start gap-3 cursor-pointer rounded-xl border p-4 transition-colors ${appMode === 'full' ? 'border-indigo-500/40 bg-indigo-500/10' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}>
-                                <input
-                                    type="radio"
-                                    name="app_mode"
-                                    value="full"
-                                    checked={appMode === 'full'}
-                                    onChange={() => handleSettingChange('app_mode', 'full')}
-                                    disabled={isSaving}
-                                    className="mt-1 h-4 w-4 border-white/20 bg-slate-900 text-indigo-500 focus:ring-indigo-500 disabled:opacity-50"
-                                />
-                                <div>
-                                    <span className="text-sm text-slate-100 font-black uppercase tracking-[0.12em]">Full</span>
-                                    <p className="mt-1 text-xs text-slate-400 leading-relaxed">Todos os mÃ³dulos e relatÃ³rios liberados.</p>
-                                </div>
-                            </label>
+                        )
+                    })}
+                </div>
+
+                <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4 transition-colors">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                        <div className="flex-1">
+                            <p className="text-sm font-black text-white uppercase tracking-[0.15em]">
+                                Data de Entrega na OS
+                            </p>
+                            <p className="mt-2 text-xs text-slate-400 leading-relaxed">
+                                Escolha se a loja usa a data de entrega prevista na ordem de serviço. Quando desligado, o programa continua igual e o radar operacional deixa de mostrar o bloco de próximas entregas.
+                            </p>
                         </div>
+
+                        <select
+                            value={deliveryDateEnabled ? 'enabled' : 'disabled'}
+                            onChange={(e) => handleSettingChange('delivery_date_enabled', e.target.value === 'enabled')}
+                            disabled={isSaving}
+                            className="min-w-[220px] rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-200 outline-none transition-colors focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/40 disabled:opacity-50"
+                        >
+                            <option value="enabled">Usa data de entrega</option>
+                            <option value="disabled">Não usa data de entrega</option>
+                        </select>
                     </div>
                 </div>
 
-                <label className="flex items-start gap-4 rounded-xl border border-white/10 bg-black/20 p-4 cursor-pointer hover:bg-white/5 transition-colors group">
+                <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4 transition-colors">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                        <div className="flex-1">
+                            <p className="text-sm font-black text-white uppercase tracking-[0.15em]">
+                                Modelo de Ordem de Serviço
+                            </p>
+                            <p className="mt-2 text-xs text-slate-400 leading-relaxed">
+                                Define se cada venda pode ter várias fichas técnicas ou se a venda experimental usa uma única OS embutida na própria venda.
+                            </p>
+                        </div>
+
+                        <select
+                            value={serviceOrderMode}
+                            onChange={(e) => handleSettingChange('service_order_mode', e.target.value)}
+                            disabled={isSaving}
+                            className="min-w-[240px] rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-200 outline-none transition-colors focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/40 disabled:opacity-50"
+                        >
+                            <option value="multiple">Várias OSs por venda</option>
+                            <option value="single">OS única por venda</option>
+                        </select>
+                    </div>
+                </div>
+
+                {false && (<label className="flex items-start gap-4 rounded-xl border border-white/10 bg-black/20 p-4 cursor-pointer hover:bg-white/5 transition-colors group">
                     <input
                         type="checkbox"
                         checked={Boolean(data?.settings?.pre_sale_analysis_enabled)}
@@ -452,7 +804,7 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                             e pode registrar análises antes da venda, com histórico individual por titular ou dependente.
                         </p>
                     </div>
-                </label>
+                </label>)}
 
                 <div className="rounded-xl border border-white/10 bg-black/20 p-4 transition-colors">
                     <div>
@@ -490,10 +842,56 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                         </div>
                     </div>
                 </div>
+
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4 transition-colors">
+                    <div className="flex items-start gap-3">
+                        <div className="h-10 w-10 rounded-xl border border-emerald-400/20 bg-emerald-500/15 flex items-center justify-center shrink-0">
+                            <Percent className="h-5 w-5 text-emerald-300" />
+                        </div>
+                        <div className="flex-1">
+                            <p className="text-sm font-black text-white uppercase tracking-[0.15em] mb-2">
+                                Geração de Comissão
+                            </p>
+                            <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                                Define quando a comissão do vendedor nasce no financeiro.
+                            </p>
+                            <div className="flex flex-col gap-3">
+                                <label className="flex items-center gap-3 cursor-pointer group">
+                                    <input
+                                        type="radio"
+                                        name="commission_generation_mode"
+                                        value="closed_only"
+                                        checked={data?.settings?.commission_generation_mode !== 'open_or_closed'}
+                                        onChange={() => handleSettingChange('commission_generation_mode', 'closed_only')}
+                                        disabled={isSaving}
+                                        className="h-4 w-4 border-white/20 bg-slate-900 text-emerald-500 focus:ring-emerald-500 disabled:opacity-50"
+                                    />
+                                    <span className="text-sm text-slate-300 group-hover:text-white font-medium">Gerar apenas com vendas fechadas</span>
+                                </label>
+                                <label className="flex items-center gap-3 cursor-pointer group">
+                                    <input
+                                        type="radio"
+                                        name="commission_generation_mode"
+                                        value="open_or_closed"
+                                        checked={data?.settings?.commission_generation_mode === 'open_or_closed'}
+                                        onChange={() => handleSettingChange('commission_generation_mode', 'open_or_closed')}
+                                        disabled={isSaving}
+                                        className="h-4 w-4 border-white/20 bg-slate-900 text-emerald-500 focus:ring-emerald-500 disabled:opacity-50"
+                                    />
+                                    <span className="text-sm text-slate-300 group-hover:text-white font-medium">Gerar mesmo com a venda aberta</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            {/* CONFIGURAÇÃO DO MOTOR DE IA */}
-            <AiSuggestionConfigPanel storeId={storeId} />
+            {activeModules.evaluation && (
+                <>
+                    {/* CONFIGURAÇÃO DO MOTOR DE IA */}
+                    <AiSuggestionConfigPanel storeId={storeId} />
+                </>
+            )}
         </div>
     )
 }
@@ -502,20 +900,12 @@ function ResourcesForm({ storeId }: { storeId: number }) {
 function TeamManagement({ storeId }: { storeId: number }) {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [selectedId, setSelectedId] = useState<number | null>(null);
+    const [isCreatingNew, setIsCreatingNew] = useState(false);
     const [loadingList, setLoadingList] = useState(true);
     const [isSaving, startTransition] = useTransition();
 
     // Formulário
-    const [formData, setFormData] = useState({
-        full_name: '',
-        pin: '',
-        role: 'vendedor' as 'vendedor' | 'gerente' | 'tecnico',
-        comm_rate_guaranteed: 0,
-        comm_rate_store_credit: 0,
-        comm_rate_store_total: 0,
-        comm_rate_received: 0,
-        comm_rate_profit: 0
-    });
+    const [formData, setFormData] = useState(EMPTY_EMPLOYEE_FORM);
 
     useEffect(() => {
         loadData();
@@ -531,6 +921,7 @@ function TeamManagement({ storeId }: { storeId: number }) {
 
     const handleSelect = (emp: Employee) => {
         setSelectedId(emp.id);
+        setIsCreatingNew(false);
             setFormData({
                 full_name: emp.full_name || '',
                 pin: emp.pin || '',
@@ -543,12 +934,16 @@ function TeamManagement({ storeId }: { storeId: number }) {
         });
     };
 
+    const resetEditor = () => {
+        setSelectedId(null);
+        setIsCreatingNew(false);
+        setFormData(EMPTY_EMPLOYEE_FORM);
+    };
+
     const handleNew = () => {
         setSelectedId(null);
-        setFormData({
-            full_name: '', pin: '', role: 'vendedor',
-            comm_rate_guaranteed: 0, comm_rate_store_credit: 0, comm_rate_store_total: 0, comm_rate_received: 0, comm_rate_profit: 0
-        });
+        setIsCreatingNew(true);
+        setFormData(EMPTY_EMPLOYEE_FORM);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -569,7 +964,7 @@ function TeamManagement({ storeId }: { storeId: number }) {
             const result = await saveEmployee({ success: false, message: '' }, payload);
             if (result.success) {
                 alert(result.message);
-                if (!selectedId) handleNew();
+                if (!selectedId) resetEditor();
                 loadData();
             } else {
                 alert(`Erro: ${result.message}`);
@@ -584,7 +979,7 @@ function TeamManagement({ storeId }: { storeId: number }) {
             const result = await toggleEmployeeStatus(emp.id, emp.is_active ?? true, storeId);
             if (result.success) {
                 loadData();
-                if (selectedId === emp.id) handleNew();
+                if (selectedId === emp.id) resetEditor();
             } else {
                 alert(result.message);
             }
@@ -606,15 +1001,12 @@ function TeamManagement({ storeId }: { storeId: number }) {
                         <h2 className="font-bold text-sm flex items-center gap-2 uppercase tracking-wide">
                             <ShieldCheck className="h-5 w-5" /> Equipe
                         </h2>
-                        <button onClick={handleNew} className="bg-white/10 hover:bg-white/20 text-indigo-200 px-3 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors border border-white/10">
-                            <Plus className="h-3 w-3" /> NOVO
-                        </button>
                     </div>
                 </div>
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
                     {loadingList ? (
                         <div className="flex justify-center p-8"><Loader2 className="animate-spin text-indigo-400 h-6 w-6" /></div>
-                    ) : employees.length === 0 ? (
+                    ) : !employees || employees.length === 0 ? (
                         <p className="text-center text-slate-500 text-xs p-6">Nenhum colaborador.</p>
                     ) : (
                         employees.map(emp => (
@@ -657,10 +1049,19 @@ function TeamManagement({ storeId }: { storeId: number }) {
             <div className="flex-1 bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl shadow-xl flex flex-col overflow-hidden">
                 <div className="bg-slate-900/60 px-6 py-4 border-b border-white/10 shadow-sm shrink-0 backdrop-blur-md">
                     <h2 className="text-lg font-bold text-slate-200 flex items-center gap-2">
-                        {selectedId ? `Editando: ${formData.full_name}` : 'Novo Cadastro'}
+                        {selectedId ? `Editando: ${formData.full_name}` : isCreatingNew ? 'Novo Cadastro' : 'Equipe & Acesso'}
                     </h2>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                    {!selectedId && !isCreatingNew ? (
+                        <div className="flex h-full min-h-[420px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 bg-black/10 px-8 text-center">
+                            <Users className="mb-4 h-10 w-10 text-slate-500" />
+                            <h3 className="text-lg font-black text-slate-200">Nenhum colaborador selecionado</h3>
+                            <p className="mt-2 max-w-md text-sm text-slate-400">
+                                Escolha um nome na lista ao lado para editar ou clique em <span className="font-bold text-indigo-300">Novo</span> para cadastrar outro acesso.
+                            </p>
+                        </div>
+                    ) : (
                     <form onSubmit={handleSubmit} className="space-y-6">
                         {/* SEÇÃO 1: ACESSO */}
                         <div className={cardStyle}>
@@ -759,21 +1160,279 @@ function TeamManagement({ storeId }: { storeId: number }) {
                                     <Power className="h-4 w-4" /> {employees.find(e => e.id === selectedId)?.is_active ? 'BLOQUEAR' : 'DESBLOQUEAR'}
                                 </button>
                             ) : <div></div>}
-                            <button type="submit" disabled={isSaving} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs shadow-lg shadow-indigo-500/20 transition-transform active:scale-95 flex items-center gap-2 disabled:opacity-50 border border-white/10">
-                                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                                SALVAR DADOS
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button type="button" onClick={handleNew} disabled={isSaving} className="px-4 py-2 bg-white/10 hover:bg-white/20 text-indigo-200 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors border border-white/10 disabled:opacity-50">
+                                    <Plus className="h-4 w-4" /> NOVO
+                                </button>
+                                <button type="submit" disabled={isSaving} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs shadow-lg shadow-indigo-500/20 transition-transform active:scale-95 flex items-center gap-2 disabled:opacity-50 border border-white/10">
+                                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                    SALVAR DADOS
+                                </button>
+                            </div>
                         </div>
                     </form>
+                    )}
                 </div>
+                {!selectedId && !isCreatingNew && (
+                    <div className="bg-slate-900/60 backdrop-blur-xl border-t border-white/10 p-3 shadow-[0_-5px_20px_rgba(0,0,0,0.2)] flex justify-end gap-2 z-20 shrink-0">
+                        <button
+                            type="button"
+                            onClick={handleNew}
+                            className="px-4 py-2 text-xs font-bold text-indigo-200 bg-white/10 hover:bg-white/20 border border-white/10 rounded-lg transition-colors flex items-center gap-2"
+                        >
+                            <Plus className="h-4 w-4" /> NOVO
+                        </button>
+                    </div>
+                )}
             </div>
+        </div>
+    )
+}
+
+function PasswordManagement({ storeId }: { storeId: number }) {
+    const [accounts, setAccounts] = useState<StoreAccessAccount[]>([])
+    const [selectedId, setSelectedId] = useState<string | null>(null)
+    const [newPassword, setNewPassword] = useState('')
+    const [confirmPassword, setConfirmPassword] = useState('')
+    const [showPassword, setShowPassword] = useState(false)
+    const [loading, setLoading] = useState(true)
+    const [isSaving, startTransition] = useTransition()
+    const [feedback, setFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null)
+
+    useEffect(() => {
+        let active = true
+
+        getStoreAccessAccounts(storeId).then(data => {
+            if (!active) return
+            setAccounts(data)
+            setSelectedId(current => current || data[0]?.id || null)
+            setLoading(false)
+        })
+
+        return () => {
+            active = false
+        }
+    }, [storeId])
+
+    const selectedAccount = accounts.find(account => account.id === selectedId)
+    const passwordIsValid = newPassword.length >= 6
+    const passwordsMatch = newPassword === confirmPassword
+
+    const handleSelect = (account: StoreAccessAccount) => {
+        setSelectedId(account.id)
+        setNewPassword('')
+        setConfirmPassword('')
+        setFeedback(null)
+    }
+
+    const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        setFeedback(null)
+
+        if (!selectedAccount) {
+            setFeedback({ type: 'error', message: 'Selecione uma conta de acesso.' })
+            return
+        }
+
+        if (!passwordIsValid) {
+            setFeedback({ type: 'error', message: 'A senha deve ter pelo menos 6 caracteres.' })
+            return
+        }
+
+        if (!passwordsMatch) {
+            setFeedback({ type: 'error', message: 'A confirmacao nao corresponde a nova senha.' })
+            return
+        }
+
+        startTransition(async () => {
+            const result = await updateStoreAccessPassword(storeId, selectedAccount.id, newPassword)
+            setFeedback({
+                type: result.success ? 'success' : 'error',
+                message: result.message
+            })
+
+            if (result.success) {
+                setNewPassword('')
+                setConfirmPassword('')
+            }
+        })
+    }
+
+    const roleLabel = (role: string) => {
+        if (role === 'manager') return 'Gerente'
+        if (role === 'store_operator') return 'Operador da loja'
+        if (role === 'admin') return 'Administrador'
+        return role
+    }
+
+    return (
+        <div className="mx-auto grid h-full max-w-6xl grid-cols-1 gap-4 lg:grid-cols-[340px_1fr]">
+            <section className="flex min-h-[520px] flex-col overflow-hidden rounded-xl border border-white/10 bg-white/5 shadow-xl backdrop-blur-xl">
+                <div className="border-b border-violet-500/20 bg-gradient-to-br from-violet-900/60 to-slate-900/60 p-4">
+                    <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-violet-200">
+                        <KeyRound className="h-5 w-5" /> Contas de login
+                    </h2>
+                    <p className="mt-2 text-[10px] leading-relaxed text-slate-400">
+                        Estas contas entram pela tela inicial. Os PINs de vendedores continuam na aba Equipe & Acesso.
+                    </p>
+                </div>
+
+                <div className="flex-1 space-y-2 overflow-y-auto p-2 custom-scrollbar">
+                    {loading ? (
+                        <div className="flex justify-center p-8">
+                            <Loader2 className="h-6 w-6 animate-spin text-violet-400" />
+                        </div>
+                    ) : accounts.length === 0 ? (
+                        <p className="p-6 text-center text-xs text-slate-500">Nenhuma conta de login vinculada a esta loja.</p>
+                    ) : accounts.map(account => (
+                        <button
+                            key={account.id}
+                            type="button"
+                            onClick={() => handleSelect(account)}
+                            className={`w-full rounded-xl border p-3 text-left transition-all ${
+                                selectedId === account.id
+                                    ? 'border-violet-500/40 bg-violet-500/20 shadow-lg shadow-violet-500/10'
+                                    : 'border-white/5 bg-white/5 hover:border-white/10 hover:bg-white/10'
+                            }`}
+                        >
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                    <p className="truncate text-xs font-bold text-slate-200">{account.email}</p>
+                                    <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                                        {roleLabel(account.role)}
+                                    </p>
+                                </div>
+                                {account.isCurrentUser && (
+                                    <span className="shrink-0 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[8px] font-black uppercase text-cyan-300">
+                                        Voce
+                                    </span>
+                                )}
+                            </div>
+                        </button>
+                    ))}
+                </div>
+            </section>
+
+            <section className="flex min-h-[520px] flex-col overflow-hidden rounded-xl border border-white/10 bg-white/5 shadow-xl backdrop-blur-xl">
+                <div className="border-b border-white/10 bg-slate-900/60 px-6 py-4">
+                    <h2 className="flex items-center gap-2 text-lg font-bold text-slate-200">
+                        <Lock className="h-5 w-5 text-violet-400" />
+                        {selectedAccount ? `Alterar senha de ${selectedAccount.email}` : 'Troca de senha'}
+                    </h2>
+                </div>
+
+                <div className="flex flex-1 items-center justify-center overflow-y-auto p-6 custom-scrollbar">
+                    {!selectedAccount ? (
+                        <div className="text-center">
+                            <KeyRound className="mx-auto mb-4 h-10 w-10 text-slate-600" />
+                            <p className="text-sm text-slate-400">Selecione uma conta para definir uma nova senha.</p>
+                        </div>
+                    ) : (
+                        <form onSubmit={handleSubmit} className="w-full max-w-xl space-y-5">
+                            <div className={cardStyle}>
+                                <div className="absolute left-0 top-0 h-full w-1 bg-violet-500" />
+                                <div className="mb-5 flex items-start gap-3">
+                                    <div className="rounded-xl border border-violet-500/20 bg-violet-500/10 p-3 text-violet-300">
+                                        <Mail className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-black text-slate-200">{selectedAccount.email}</p>
+                                        <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-500">
+                                            {roleLabel(selectedAccount.role)}
+                                            {selectedAccount.lastSignInAt
+                                                ? ` · Ultimo acesso: ${new Date(selectedAccount.lastSignInAt).toLocaleString('pt-BR')}`
+                                                : ' · Nunca acessou'}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className={labelStyle}>Nova senha</label>
+                                        <div className="relative">
+                                            <input
+                                                type={showPassword ? 'text' : 'password'}
+                                                value={newPassword}
+                                                onChange={event => setNewPassword(event.target.value)}
+                                                className={`${inputStyle} pr-11`}
+                                                placeholder="Minimo de 6 caracteres"
+                                                autoComplete="new-password"
+                                                disabled={isSaving}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPassword(current => !current)}
+                                                className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 transition-colors hover:text-slate-200"
+                                                title={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                                            >
+                                                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className={labelStyle}>Confirmar nova senha</label>
+                                        <input
+                                            type={showPassword ? 'text' : 'password'}
+                                            value={confirmPassword}
+                                            onChange={event => setConfirmPassword(event.target.value)}
+                                            className={inputStyle}
+                                            placeholder="Digite novamente"
+                                            autoComplete="new-password"
+                                            disabled={isSaving}
+                                        />
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-2 text-[9px] font-bold uppercase tracking-wider">
+                                        <span className={`rounded-full border px-2 py-1 ${
+                                            passwordIsValid
+                                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                                                : 'border-white/10 bg-white/5 text-slate-500'
+                                        }`}>
+                                            6+ caracteres
+                                        </span>
+                                        <span className={`rounded-full border px-2 py-1 ${
+                                            confirmPassword && passwordsMatch
+                                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                                                : 'border-white/10 bg-white/5 text-slate-500'
+                                        }`}>
+                                            Senhas iguais
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {feedback && (
+                                <div className={`rounded-xl border p-3 text-xs font-bold ${
+                                    feedback.type === 'success'
+                                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                                        : 'border-red-500/30 bg-red-500/10 text-red-300'
+                                }`}>
+                                    {feedback.message}
+                                </div>
+                            )}
+
+                            <div className="flex justify-end">
+                                <button
+                                    type="submit"
+                                    disabled={isSaving || !passwordIsValid || !passwordsMatch}
+                                    className="flex items-center gap-2 rounded-lg border border-white/10 bg-violet-600 px-6 py-2.5 text-xs font-bold text-white shadow-lg shadow-violet-500/20 transition-all hover:bg-violet-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                                    ALTERAR SENHA
+                                </button>
+                            </div>
+                        </form>
+                    )}
+                </div>
+            </section>
         </div>
     )
 }
 
 // --- COMPONENTE PRINCIPAL (COM ABAS) ---
 export default function ConfigInterface({ storeId }: { storeId: number }) {
-    const [activeTab, setActiveTab] = useState<'loja' | 'recursos' | 'equipe'>('loja')
+    const [activeTab, setActiveTab] = useState<'loja' | 'whatsapp' | 'horarios' | 'recursos' | 'equipe' | 'senhas'>('loja')
     const router = useRouter()
     const { preference } = useBackgroundPreference()
 
@@ -787,7 +1446,7 @@ export default function ConfigInterface({ storeId }: { storeId: number }) {
             </div>
 
             {/* Header de Abas */}
-            <div className="relative z-20 bg-slate-900/60 backdrop-blur-xl border-b border-white/10 px-6 flex items-center gap-6 shadow-lg shrink-0">
+            <div className="relative z-20 bg-slate-900/60 backdrop-blur-xl border-b border-white/10 px-6 flex items-center gap-6 shadow-lg shrink-0 overflow-x-auto">
                 <button
                     onClick={() => router.back()}
                     className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
@@ -805,6 +1464,18 @@ export default function ConfigInterface({ storeId }: { storeId: number }) {
                     <Store className="h-4 w-4" /> Dados da Loja
                 </button>
                 <button
+                    onClick={() => setActiveTab('whatsapp')}
+                    className={`py-4 text-[10px] font-black border-b-2 transition-colors flex items-center gap-2 uppercase tracking-[0.2em] ${activeTab === 'whatsapp' ? 'border-emerald-500 text-emerald-300' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
+                >
+                    <MessageCircle className="h-4 w-4" /> WhatsApp
+                </button>
+                <button
+                    onClick={() => setActiveTab('horarios')}
+                    className={`py-4 text-[10px] font-black border-b-2 transition-colors flex items-center gap-2 uppercase tracking-[0.2em] ${activeTab === 'horarios' ? 'border-amber-500 text-amber-300' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
+                >
+                    <Clock className="h-4 w-4" /> Horários
+                </button>
+                <button
                     onClick={() => setActiveTab('recursos')}
                     className={`py-4 text-[10px] font-black border-b-2 transition-colors flex items-center gap-2 uppercase tracking-[0.2em] ${activeTab === 'recursos' ? 'border-cyan-500 text-cyan-300' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
                 >
@@ -816,6 +1487,12 @@ export default function ConfigInterface({ storeId }: { storeId: number }) {
                 >
                     <Users className="h-4 w-4" /> Equipe & Acesso
                 </button>
+                <button
+                    onClick={() => setActiveTab('senhas')}
+                    className={`py-4 text-[10px] font-black border-b-2 transition-colors flex items-center gap-2 uppercase tracking-[0.2em] ${activeTab === 'senhas' ? 'border-violet-500 text-violet-300' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
+                >
+                    <KeyRound className="h-4 w-4" /> Senhas
+                </button>
 
                 <div className="flex-1" />
                 <BackgroundToggle />
@@ -823,8 +1500,11 @@ export default function ConfigInterface({ storeId }: { storeId: number }) {
 
             <div className="relative z-10 flex-1 overflow-y-auto p-6 custom-scrollbar">
                 {activeTab === 'loja' && <StoreDataForm storeId={storeId} />}
+                {activeTab === 'whatsapp' && <WhatsAppChannelPanel storeId={storeId} />}
+                {activeTab === 'horarios' && <StoreHoursPanel storeId={storeId} />}
                 {activeTab === 'recursos' && <ResourcesForm storeId={storeId} />}
                 {activeTab === 'equipe' && <TeamManagement storeId={storeId} />}
+                {activeTab === 'senhas' && <PasswordManagement storeId={storeId} />}
             </div>
         </div>
     )

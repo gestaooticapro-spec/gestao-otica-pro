@@ -4,6 +4,11 @@ import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Camera, CircleDot, Loader2, Maximize2, Minimize2, Play, RotateCcw, ScanFace, StopCircle } from 'lucide-react'
 import type { LensGeometry, LensPins } from '@/lib/actions/lens-geometry.actions'
+import {
+  cancelTowerHeatmapSession,
+  completeTowerHeatmapSession,
+  startTowerHeatmapSession,
+} from '@/lib/actions/tower-heatmap.actions'
 
 type NormalizedPoint = { x: number; y: number }
 type FaceMetrics = {
@@ -52,6 +57,10 @@ type SessionSummary = {
   sampleCount: number
   wideScore: number
   narrowScore: number
+  distanceCoverage: number
+  intermediateCoverage: number
+  nearCoverage: number
+  isReliable: boolean
   label: string
   message: string
 }
@@ -73,8 +82,8 @@ type ProjectionDebugTrace = {
   targetY: number
   normalizedTargetX: number
   normalizedTargetY: number
-  strongestHeadX: number
-  strongestHeadY: number
+  headX: number
+  headY: number
   headCarryX: number
   headCarryY: number
   headShareX: number
@@ -124,6 +133,7 @@ type ReportPayload = {
   prepSecondsLeft: number
   heatmap: Float32Array
   samples: SessionSample[]
+  targetSamples: SessionSample[]
   projectionDebugTrace: ProjectionDebugTrace[]
   cameraSettings: CameraSettings | null
 }
@@ -183,6 +193,8 @@ const EYE_FOLLOW_SMOOTHING = 0.92
 const ENVELOPE_BINS = 72
 const CUTOUT = { x: 0.24, y: 0.22, w: 0.52, h: 0.46 }
 const HEATMAP_LAB_BUILD = 'heatmap-v10-geometry-picker-2026-04-30'
+const CLIENT_RESULT_TITLE = 'Encontramos campos de visão que combinam com o seu padrão visual.'
+const CLIENT_RESULT_SUBTITLE = 'Aguarde enquanto encontramos a melhor lente para você.'
 const SANDBOX_CALIBRATION_STEPS: SandboxCalibrationStep[] = [
   { key: 'center', target: { x: 0.5, y: 0.5 }, instruction: '1/9 · centro · cabeça neutra' },
   { key: 'eyeLeft', target: { x: 0.08, y: 0.5 }, instruction: '2/9 · só olhos · esquerda' },
@@ -194,6 +206,11 @@ const SANDBOX_CALIBRATION_STEPS: SandboxCalibrationStep[] = [
   { key: 'headUp', target: { x: 0.5, y: 0.1 }, instruction: '8/9 · acompanhe com a cabeça · cima' },
   { key: 'headDown', target: { x: 0.5, y: 0.9 }, instruction: '9/9 · acompanhe com a cabeça · baixo' },
 ]
+const SESSION_TARGET_REGION_TOTALS = {
+  distance: 9,
+  intermediate: 6,
+  near: 4,
+} as const
 
 const LANDMARKS = {
   nose: 1,
@@ -261,6 +278,15 @@ function averageFaceMetrics(samples: FaceMetrics[]) {
     }),
     { faceDetected: true, eyeX: 0, eyeY: 0, headX: 0, headY: 0 },
   )
+}
+
+function median(values: number[]) {
+  if (!values.length) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const middle = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle]
 }
 
 function calibrationMagnitude(
@@ -415,29 +441,68 @@ function shuffleTargetPoints(points: NormalizedPoint[]) {
   return shuffled
 }
 
+function getTargetSide(point: NormalizedPoint) {
+  if (point.x < 0.4) return 'left'
+  if (point.x > 0.6) return 'right'
+  return 'center'
+}
+
+function getTargetBand(point: NormalizedPoint) {
+  if (point.y <= 0.5) return 'distance'
+  if (point.y <= 0.72) return 'intermediate'
+  return 'near'
+}
+
+function buildBalancedTargetOrder(points: NormalizedPoint[]) {
+  const remaining = shuffleTargetPoints(points)
+  const ordered: NormalizedPoint[] = []
+  let previousSide: string | null = 'center'
+  let previousBand: string | null = 'distance'
+
+  while (remaining.length) {
+    const nextIndex = remaining.findIndex((point) => (
+      getTargetSide(point) !== previousSide && getTargetBand(point) !== previousBand
+    ))
+    const alternateIndex = remaining.findIndex((point) => getTargetSide(point) !== previousSide)
+    const chosenIndex = nextIndex >= 0 ? nextIndex : alternateIndex >= 0 ? alternateIndex : 0
+    const [next] = remaining.splice(chosenIndex, 1)
+    ordered.push(next)
+    previousSide = getTargetSide(next)
+    previousBand = getTargetBand(next)
+  }
+
+  return ordered
+}
+
 function buildTargetSequence() {
+  const sessionUpperBridgeY = 0.42
   const requiredCoverage = [
-    { x: 0.08, y: 0.5 },
-    { x: 0.92, y: 0.5 },
+    // Longe: faixa superior ampla, sem depender das bordas extremas.
+    { x: 0.12, y: FAR_TARGET_Y },
+    { x: 0.3, y: FAR_TARGET_Y },
     { x: 0.5, y: FAR_TARGET_Y },
-    { x: 0.5, y: NEAR_TARGET_Y },
-    { x: 0.08, y: FAR_TARGET_Y },
-    { x: 0.92, y: FAR_TARGET_Y },
-    { x: 0.08, y: NEAR_TARGET_Y },
-    { x: 0.92, y: NEAR_TARGET_Y },
-    { x: 0.24, y: MID_FAR_TARGET_Y },
-    { x: 0.76, y: MID_FAR_TARGET_Y },
-    { x: 0.24, y: MID_NEAR_TARGET_Y },
-    { x: 0.76, y: MID_NEAR_TARGET_Y },
-    { x: 0.5, y: MID_FAR_TARGET_Y },
-    { x: 0.5, y: MID_NEAR_TARGET_Y },
-    { x: 0.24, y: 0.5 },
-    { x: 0.76, y: 0.5 },
+    { x: 0.7, y: FAR_TARGET_Y },
+    { x: 0.88, y: FAR_TARGET_Y },
+    { x: 0.2, y: sessionUpperBridgeY },
+    { x: 0.5, y: sessionUpperBridgeY },
+    { x: 0.8, y: sessionUpperBridgeY },
+    // Intermediario: cobre os dois lados, mas reduz a repeticao lateral.
+    { x: 0.16, y: 0.58 },
+    { x: 0.34, y: 0.58 },
+    { x: 0.66, y: 0.58 },
+    { x: 0.84, y: 0.58 },
+    { x: 0.35, y: 0.68 },
+    { x: 0.65, y: 0.68 },
+    // Perto: preserva a leitura na parte inferior central e deixa os cantos livres.
+    { x: 0.36, y: 0.78 },
+    { x: 0.64, y: 0.78 },
+    { x: 0.5, y: 0.84 },
+    { x: 0.5, y: 0.92 },
   ]
 
   return [
     { x: 0.5, y: LENS_DISTANCE_REFERENCE_Y },
-    ...shuffleTargetPoints(requiredCoverage),
+    ...buildBalancedTargetOrder(requiredCoverage),
   ]
 }
 
@@ -574,7 +639,7 @@ function projectLensY(lensEyeY: number, multiplier = 1) {
 }
 
 function projectSandboxLensY(lensEyeY: number, multiplier = 1) {
-  const range = lensEyeY < 0 ? LENS_DISTANCE_REFERENCE_Y : 1 - LENS_DISTANCE_REFERENCE_Y
+  const range = lensEyeY < 0 ? LENS_DISTANCE_REFERENCE_Y * 1.45 : 1 - LENS_DISTANCE_REFERENCE_Y
   return clamp(LENS_DISTANCE_REFERENCE_Y + lensEyeY * range * multiplier, 0.03, 0.95)
 }
 
@@ -646,7 +711,7 @@ function projectSampleToLens(sample: SessionSample) {
     const demandedWeight = Math.max(demandX + demandY, 0.0001)
     const eyeDemandShare = clamp((eyeShareX * demandX + eyeShareY * demandY) / demandedWeight, 0, 1)
     const eyeNorm = clamp(Math.hypot(lensEyeX, lensEyeY) / 0.65, 0, 1.5)
-    const edgeSpread = clamp(0.52 + eyeNorm * 1.05 + eyeDemandShare * 0.32, 0.52, 1.92)
+    const edgeSpread = clamp(0.48 + eyeNorm * 0.88 + eyeDemandShare * 0.24, 0.48, 1.58)
 
     return {
       point: {
@@ -657,9 +722,9 @@ function projectSampleToLens(sample: SessionSample) {
         x: clamp(0.5 + lensEyeX * 0.52, 0.03, 0.97),
         y: projectSandboxLensY(lensEyeY, 1),
       },
-      radius: 1.7 + edgeSpread * 1.18,
+      radius: 1.55 + edgeSpread * 0.98,
       spreadX: 0.006 + Math.abs(lensEyeX) * 0.052 + eyeDemandShare * 0.012,
-      spreadY: 0.012 + Math.abs(lensEyeY) * 0.075 + eyeDemandShare * 0.016,
+      spreadY: 0.011 + Math.abs(lensEyeY) * 0.05 + eyeDemandShare * 0.011,
       weight: 1 + eyeDemandShare * 0.22,
       eyeDominance: eyeDemandShare,
       headDominance: 1 - eyeDemandShare,
@@ -824,6 +889,64 @@ function getRiskInsetAtY(y: number, profile: ProfileDescriptor) {
   return topValue + (profile.bottomInset - topValue) * bottomBlend
 }
 
+function getHeatmapLateralOpenness(grid: Float32Array, samples: SessionSample[]) {
+  const maxValue = getHeatMax(grid)
+  if (maxValue <= 0) {
+    if (!samples.length) return 0.2
+    const points = samples.map((sample) => projectSampleToLens(sample).point)
+    const sideDemand = points.reduce((max, point) => Math.max(max, Math.abs(point.x - 0.5)), 0)
+    return clamp((sideDemand - 0.16) / 0.34, 0, 1)
+  }
+
+  const threshold = maxValue * 0.14
+  let sideDemand = 0
+  for (let row = 0; row < HEAT_ROWS; row += 1) {
+    for (let col = 0; col < HEAT_COLS; col += 1) {
+      const value = grid[row * HEAT_COLS + col]
+      if (value < threshold) continue
+      const x = (col + 0.5) / HEAT_COLS
+      sideDemand = Math.max(sideDemand, Math.abs(x - 0.5))
+    }
+  }
+
+  return clamp((sideDemand - 0.18) / 0.3, 0, 1)
+}
+
+function buildFallbackKodakLinePaths(width: number, height: number, grid: Float32Array, samples: SessionSample[]) {
+  const openness = getHeatmapLateralOpenness(grid, samples)
+  const edgeMode = smoothstep(0.45, 0.95, openness)
+  const pushX = width * (0.02 + edgeMode * 0.14)
+  const pushY = height * edgeMode * 0.2
+
+  const makeSide = (mirror: boolean) => {
+    const path = new Path2D()
+    const direction = mirror ? -1 : 1
+    const mirrorX = (x: number) => (mirror ? width - x : x)
+    const point = (x: number, y: number) => ({
+      x: clamp(mirrorX(width * x) - direction * pushX, width * 0.018, width * 0.982),
+      y: clamp(height * y + pushY, height * 0.12, height * 0.94),
+    })
+
+    const start = point(0.055, 0.3)
+    const c1 = point(0.18, 0.3)
+    const c2 = point(0.29, 0.31)
+    const neck = point(0.29, 0.44)
+    const c3 = point(0.29, 0.57)
+    const c4 = point(0.22, 0.68)
+    const end = point(0.16, 0.92)
+
+    path.moveTo(start.x, start.y)
+    path.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, neck.x, neck.y)
+    path.bezierCurveTo(c3.x, c3.y, c4.x, c4.y, end.x, end.y)
+    return path
+  }
+
+  return {
+    left: makeSide(false),
+    right: makeSide(true),
+  }
+}
+
 function isRiskPoint(x: number, y: number, profile: ProfileDescriptor) {
   const inset = getRiskInsetAtY(y, profile)
   return x <= inset || x >= 1 - inset
@@ -864,13 +987,14 @@ function drawContinuousHeat(ctx: CanvasRenderingContext2D, grid: Float32Array, w
     for (let col = 0; col < HEAT_COLS; col += 1) {
       const value = grid[row * HEAT_COLS + col] / maxValue
       if (value < 0.08) continue
+      const intensity = Math.pow(value, 0.82)
       const centerX = ((col + 0.5) / HEAT_COLS) * width
       const centerY = ((row + 0.5) / HEAT_ROWS) * height
-      const radius = (width / HEAT_COLS) * (0.85 + value * 1.9)
+      const radius = (width / HEAT_COLS) * (1 + intensity * 1.65)
       const gradient = ctx.createRadialGradient(centerX, centerY, radius * 0.12, centerX, centerY, radius)
-      gradient.addColorStop(0, `rgba(239, 68, 68, ${0.14 + value * 0.44})`)
-      gradient.addColorStop(0.35, `rgba(249, 115, 22, ${0.1 + value * 0.34})`)
-      gradient.addColorStop(0.72, `rgba(251, 191, 36, ${0.06 + value * 0.18})`)
+      gradient.addColorStop(0, `rgba(239, 92, 68, ${0.1 + intensity * 0.3})`)
+      gradient.addColorStop(0.38, `rgba(249, 130, 22, ${0.08 + intensity * 0.24})`)
+      gradient.addColorStop(0.76, `rgba(251, 191, 36, ${0.05 + intensity * 0.14})`)
       gradient.addColorStop(1, 'rgba(255, 255, 255, 0)')
       ctx.fillStyle = gradient
       ctx.beginPath()
@@ -878,6 +1002,41 @@ function drawContinuousHeat(ctx: CanvasRenderingContext2D, grid: Float32Array, w
       ctx.fill()
     }
   }
+}
+
+function getTargetRegion(targetY: number) {
+  if (targetY <= 0.5) return 'distance'
+  if (targetY <= 0.72) return 'intermediate'
+  return 'near'
+}
+
+function drawConsolidatedTargetPoints(
+  ctx: CanvasRenderingContext2D,
+  samples: SessionSample[],
+  width: number,
+  height: number,
+) {
+  samples.forEach((sample, index) => {
+    const projection = projectSampleToLens(sample)
+    const x = projection.point.x * width
+    const y = projection.point.y * height
+    const color = projection.headDominance >= projection.eyeDominance ? '#6ee7b7' : '#67e8f9'
+
+    ctx.beginPath()
+    ctx.arc(x, y, 7, 0, Math.PI * 2)
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.82)'
+    ctx.fill()
+    ctx.lineWidth = 2.4
+    ctx.strokeStyle = color
+    ctx.stroke()
+
+    ctx.fillStyle = '#f8fafc'
+    ctx.font = '700 8px ui-sans-serif, system-ui'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(String(index + 1), x, y + 0.5)
+  })
+  ctx.textBaseline = 'alphabetic'
 }
 
 function getEnvelopeRadii(samples: SessionSample[]) {
@@ -946,7 +1105,7 @@ function drawLensHeatmap(
   title?: string,
   geometry?: LensGeometry | null,
   samples: SessionSample[] = [],
-  mode: 'grid' | 'normalized' | 'contour' | 'continuous' = 'grid',
+  mode: 'grid' | 'normalized' | 'contour' | 'continuous' | 'audit' = 'grid',
 ) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
@@ -1025,7 +1184,7 @@ function drawLensHeatmap(
     ctx.stroke(envelopePath)
   } else if (mode === 'continuous' && maxValue > 0) {
     drawContinuousHeat(ctx, grid, lensWidth, lensHeight, maxValue)
-  } else if (maxValue > 0) {
+  } else if (mode !== 'audit' && maxValue > 0) {
     for (let row = 0; row < HEAT_ROWS; row += 1) {
       for (let col = 0; col < HEAT_COLS; col += 1) {
         const value = grid[row * HEAT_COLS + col] / maxValue
@@ -1048,6 +1207,21 @@ function drawLensHeatmap(
     ctx.lineCap = 'round'
     ctx.stroke(buildOpenLinePath(renderablePins.lineA, lensWidth, lensHeight))
     ctx.stroke(buildOpenLinePath(renderablePins.lineB, lensWidth, lensHeight))
+  } else {
+    const fallbackLines = buildFallbackKodakLinePaths(lensWidth, lensHeight, grid, samples)
+    ctx.strokeStyle = 'rgba(250, 204, 21, 0.92)'
+    ctx.lineWidth = 3.2
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.shadowColor = 'rgba(250, 204, 21, 0.32)'
+    ctx.shadowBlur = 8
+    ctx.stroke(fallbackLines.left)
+    ctx.stroke(fallbackLines.right)
+    ctx.shadowBlur = 0
+  }
+
+  if (mode === 'audit') {
+    drawConsolidatedTargetPoints(ctx, samples, lensWidth, lensHeight)
   }
 
   if (mode === 'normalized' && envelopeRadii.length) {
@@ -1068,6 +1242,175 @@ function drawLensHeatmap(
   }
 
   ctx.restore()
+  ctx.stroke(lensPath)
+  ctx.restore()
+}
+
+function getProjectedSampleStats(samples: SessionSample[]) {
+  if (!samples.length) {
+    return { meanX: 0.5, meanY: LENS_DISTANCE_REFERENCE_Y, spreadX: 0.08, spreadY: 0.12 }
+  }
+
+  const points = samples.map((sample) => projectSampleToLens(sample).point)
+  const meanX = points.reduce((sum, point) => sum + point.x, 0) / points.length
+  const meanY = points.reduce((sum, point) => sum + point.y, 0) / points.length
+  const spreadX = Math.sqrt(points.reduce((sum, point) => sum + (point.x - meanX) ** 2, 0) / points.length)
+  const spreadY = Math.sqrt(points.reduce((sum, point) => sum + (point.y - meanY) ** 2, 0) / points.length)
+
+  return { meanX, meanY, spreadX, spreadY }
+}
+
+function getHeatmapFieldOpenness(grid: Float32Array, samples: SessionSample[]) {
+  const maxValue = getHeatMax(grid)
+  if (maxValue <= 0) {
+    const fallback = getProjectedSampleStats(samples)
+    return clamp((fallback.spreadX - 0.06) / 0.26, 0, 1)
+  }
+
+  const threshold = maxValue * 0.12
+  let sideDemand = 0
+
+  for (let row = 0; row < HEAT_ROWS; row += 1) {
+    for (let col = 0; col < HEAT_COLS; col += 1) {
+      const value = grid[row * HEAT_COLS + col]
+      if (value < threshold) continue
+
+      const x = (col + 0.5) / HEAT_COLS
+      sideDemand = Math.max(sideDemand, Math.abs(x - 0.5))
+    }
+  }
+
+  return clamp((sideDemand - 0.17) / 0.25, 0, 1)
+}
+
+function buildAdaptiveVisionBoundaryPaths(width: number, height: number, grid: Float32Array, samples: SessionSample[]) {
+  const openness = getHeatmapFieldOpenness(grid, samples)
+  const edgeMode = smoothstep(0.48, 0.9, openness)
+  const shiftX = width * (0.03 + edgeMode * 0.11)
+  const shiftY = height * edgeMode * 0.16
+
+  const makeSide = (mirror: boolean) => {
+    const path = new Path2D()
+    const direction = mirror ? -1 : 1
+    const mirrorX = (x: number) => (mirror ? width - x : x)
+    const point = (x: number, y: number) => ({
+      x: clamp(mirrorX(width * x) - direction * shiftX, width * 0.025, width * 0.975),
+      y: clamp(height * y + shiftY, height * 0.16, height * 0.94),
+    })
+
+    // Curva rigida inspirada nas geometrias reais: a forma nao muda, so e deslocada.
+    const start = point(0.06, 0.29)
+    const c1 = point(0.18, 0.29)
+    const c2 = point(0.3, 0.31)
+    const neck = point(0.3, 0.44)
+    const c3 = point(0.3, 0.57)
+    const c4 = point(0.23, 0.68)
+    const end = point(0.16, 0.91)
+
+    path.moveTo(start.x, start.y)
+    path.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, neck.x, neck.y)
+    path.bezierCurveTo(c3.x, c3.y, c4.x, c4.y, end.x, end.y)
+    return path
+  }
+
+  return {
+    left: makeSide(false),
+    right: makeSide(true),
+  }
+}
+
+function drawClientIdealLensResult(
+  canvas: HTMLCanvasElement,
+  grid: Float32Array,
+  summary: SessionSummary | null,
+  geometry: LensGeometry | null,
+  samples: SessionSample[],
+  revealProgress = 1,
+) {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  const width = canvas.width
+  const height = canvas.height
+  const paddingX = 56
+  const paddingY = 44
+  const availableWidth = width - paddingX * 2
+  const availableHeight = height - paddingY * 2
+  const targetLensAspect = 1.9
+  let lensWidth = availableWidth
+  let lensHeight = lensWidth / targetLensAspect
+  if (lensHeight > availableHeight) {
+    lensHeight = availableHeight
+    lensWidth = lensHeight * targetLensAspect
+  }
+  const lensX = (width - lensWidth) / 2
+  const lensY = (height - lensHeight) / 2
+  const visibleSampleCount = Math.min(samples.length, Math.ceil(samples.length * clamp(revealProgress, 0, 1)))
+  const visibleSamples = samples.slice(0, visibleSampleCount)
+  const visibleGrid = visibleSampleCount === samples.length
+    ? grid
+    : visibleSamples.reduce<Float32Array>((partialGrid, sample) => {
+      stampHeatSample(partialGrid, sample)
+      return partialGrid
+    }, makeHeatmap())
+  const maxValue = getHeatMax(visibleGrid)
+  const renderablePins = getRenderablePins(geometry)
+  const lensPath = renderablePins?.lensRim.length
+    ? buildPinPath(renderablePins.lensRim, lensWidth, lensHeight)
+    : buildLensPath(lensWidth, lensHeight)
+  const fieldBoundaries = buildAdaptiveVisionBoundaryPaths(lensWidth, lensHeight, visibleGrid, visibleSamples)
+
+  ctx.clearRect(0, 0, width, height)
+
+  const background = ctx.createLinearGradient(0, 0, width, height)
+  background.addColorStop(0, '#07111f')
+  background.addColorStop(0.48, '#0d1c2f')
+  background.addColorStop(1, '#020617')
+  ctx.fillStyle = background
+  ctx.fillRect(0, 0, width, height)
+
+  ctx.save()
+  ctx.translate(lensX, lensY)
+  ctx.shadowColor = 'rgba(34, 211, 238, 0.24)'
+  ctx.shadowBlur = 42
+  ctx.fillStyle = 'rgba(241, 245, 249, 0.96)'
+  ctx.fill(lensPath)
+  ctx.shadowBlur = 0
+  ctx.save()
+  ctx.clip(lensPath)
+
+  const lensGradient = ctx.createLinearGradient(0, 0, 0, lensHeight)
+  lensGradient.addColorStop(0, '#eff6ff')
+  lensGradient.addColorStop(0.48, '#e0f2fe')
+  lensGradient.addColorStop(1, '#eef2ff')
+  ctx.fillStyle = lensGradient
+  ctx.fillRect(0, 0, lensWidth, lensHeight)
+
+  if (maxValue > 0) {
+    drawContinuousHeat(ctx, visibleGrid, lensWidth, lensHeight, maxValue)
+  }
+
+  ctx.save()
+  ctx.strokeStyle = 'rgba(15, 23, 42, 0.48)'
+  ctx.lineWidth = 6.2
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.stroke(fieldBoundaries.left)
+  ctx.stroke(fieldBoundaries.right)
+  ctx.strokeStyle = 'rgba(250, 204, 21, 0.96)'
+  ctx.lineWidth = 3.6
+  ctx.shadowColor = 'rgba(250, 204, 21, 0.32)'
+  ctx.shadowBlur = 10
+  ctx.stroke(fieldBoundaries.left)
+  ctx.stroke(fieldBoundaries.right)
+  ctx.restore()
+
+  ctx.restore()
+  ctx.strokeStyle = 'rgba(129, 140, 248, 0.48)'
+  ctx.lineWidth = 6
+  ctx.stroke(lensPath)
+  ctx.strokeStyle = 'rgba(226, 232, 240, 0.9)'
+  ctx.lineWidth = 1.4
   ctx.stroke(lensPath)
   ctx.restore()
 }
@@ -1148,6 +1491,10 @@ function summarizeSession(samples: SessionSample[]): SessionSummary {
       sampleCount: 0,
       wideScore: 0,
       narrowScore: 0,
+      distanceCoverage: 0,
+      intermediateCoverage: 0,
+      nearCoverage: 0,
+      isReliable: false,
       label: 'Sem amostras suficientes',
       message: 'A sessão ainda não coletou dados estáveis do rosto.',
     }
@@ -1163,10 +1510,17 @@ function summarizeSession(samples: SessionSample[]): SessionSummary {
   let sumY = 0
   let riskWide = 0
   let riskNarrow = 0
+  let distanceSamples = 0
+  let intermediateSamples = 0
+  let nearSamples = 0
 
   const points = samples.map((sample) => {
     const projection = projectSampleToLens(sample)
     const { x, y } = projection.point
+    const region = getTargetRegion(sample.targetY)
+    if (region === 'distance') distanceSamples += 1
+    else if (region === 'intermediate') intermediateSamples += 1
+    else nearSamples += 1
     eyeTotal += projection.eyeDominance * projection.demandWeight
     headTotal += projection.headDominance * projection.demandWeight
     eyeTotalX += projection.eyeShareX * Math.max(Math.abs(normalizeTargetOffset(sample.targetX, sample.targetY).x), 0.0001)
@@ -1199,6 +1553,10 @@ function summarizeSession(samples: SessionSample[]): SessionSummary {
   const heatSpreadY = Math.sqrt(varianceY / points.length)
   const wideScore = 1 - riskWide / points.length
   const narrowScore = 1 - riskNarrow / points.length
+  const distanceCoverage = clamp(distanceSamples / SESSION_TARGET_REGION_TOTALS.distance, 0, 1)
+  const intermediateCoverage = clamp(intermediateSamples / SESSION_TARGET_REGION_TOTALS.intermediate, 0, 1)
+  const nearCoverage = clamp(nearSamples / SESSION_TARGET_REGION_TOTALS.near, 0, 1)
+  const isReliable = distanceCoverage >= 0.7 && intermediateCoverage >= 0.7 && nearCoverage >= 0.7
 
   let label = 'Perfil misto'
   let message = 'O cliente alterna bem entre olhos e cabeça. Vale comparar conforto percebido entre campos médios e amplos.'
@@ -1225,6 +1583,10 @@ function summarizeSession(samples: SessionSample[]): SessionSummary {
     sampleCount: points.length,
     wideScore,
     narrowScore,
+    distanceCoverage,
+    intermediateCoverage,
+    nearCoverage,
+    isReliable,
     label,
     message,
   }
@@ -1236,19 +1598,25 @@ export default function GazeHeatmapLab({
   geometry,
   geometries = [],
   clientMode = false,
+  heatmapSessionId = null,
 }: {
   storeId: number
   backPath: string
   geometry?: LensGeometry | null
   geometries?: LensGeometry[]
   clientMode?: boolean
+  heatmapSessionId?: string | null
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
   const mainHeatmapRef = useRef<HTMLCanvasElement>(null)
+  const auditHeatmapRef = useRef<HTMLCanvasElement>(null)
   const contourHeatmapRef = useRef<HTMLCanvasElement>(null)
   const wideHeatmapRef = useRef<HTMLCanvasElement>(null)
   const narrowHeatmapRef = useRef<HTMLCanvasElement>(null)
+  const clientResultCanvasRef = useRef<HTMLCanvasElement>(null)
+  const clientResultAnimationFrameRef = useRef<number | null>(null)
+  const clientResultProgressRef = useRef(0)
   const stageRef = useRef<HTMLDivElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const landmarkerRef = useRef<FaceLandmarkerInstance | null>(null)
@@ -1260,8 +1628,10 @@ export default function GazeHeatmapLab({
   const lastTickRef = useRef<number>(0)
   const lastUiTickRef = useRef<number>(0)
   const phaseRef = useRef<SessionPhase>('idle')
+  const clientResultVisibleRef = useRef(false)
   const heatmapRef = useRef<Float32Array>(makeHeatmap())
   const samplesRef = useRef<SessionSample[]>([])
+  const targetHeatSamplesRef = useRef<SessionSample[]>([])
   const targetSamplesRef = useRef<SessionSample[]>([])
   const calibrationSamplesRef = useRef<FaceMetrics[]>([])
   const baselineRef = useRef({ eyeX: 0, eyeY: 0, headX: 0, headY: 0 })
@@ -1282,6 +1652,10 @@ export default function GazeHeatmapLab({
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [loadingModel, setLoadingModel] = useState(false)
   const [phase, setPhase] = useState<SessionPhase>('idle')
+  const [clientResultVisible, setClientResultVisible] = useState(false)
+  const [clientResultAnimationComplete, setClientResultAnimationComplete] = useState(false)
+  const [typedClientTitle, setTypedClientTitle] = useState('')
+  const [typedClientSubtitle, setTypedClientSubtitle] = useState('')
   const [hasCalibration, setHasCalibration] = useState(false)
   const [status, setStatus] = useState('Abra a câmera frontal e alinhe o rosto ao centro.')
   const [target, setTarget] = useState<NormalizedPoint>({ x: 0.5, y: 0.5 })
@@ -1303,6 +1677,7 @@ export default function GazeHeatmapLab({
   const [headOnlyProjection, setHeadOnlyProjection] = useState(false)
   const [verticalHeadDebug, setVerticalHeadDebug] = useState(false)
   const [projectionDebugTrace, setProjectionDebugTrace] = useState<ProjectionDebugTrace[]>([])
+  const [sessionPersistenceStatus, setSessionPersistenceStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const isFocusMode = phase === 'calibrating' || phase === 'running'
   const selectedGeometry = geometries.find((item) => item.id === selectedGeometryId) ?? geometry ?? geometries[0] ?? null
 
@@ -1314,8 +1689,19 @@ export default function GazeHeatmapLab({
         undefined,
         selectedGeometry ? `Mapa de calor sobreposto · ${selectedGeometry.family_name}` : 'Mapa de calor sobreposto',
         selectedGeometry,
-        samplesRef.current,
+        targetHeatSamplesRef.current,
         'continuous',
+      )
+    }
+    if (auditHeatmapRef.current) {
+      drawLensHeatmap(
+        auditHeatmapRef.current,
+        heatmapRef.current,
+        undefined,
+        `Auditoria por alvo · ${targetHeatSamplesRef.current.length} pontos consolidados`,
+        selectedGeometry,
+        targetHeatSamplesRef.current,
+        'audit',
       )
     }
     if (contourHeatmapRef.current) {
@@ -1325,7 +1711,7 @@ export default function GazeHeatmapLab({
         undefined,
         selectedGeometry ? `Contorno máximo · ${selectedGeometry.family_name}` : 'Contorno máximo de alcance',
         selectedGeometry,
-        samplesRef.current,
+        targetHeatSamplesRef.current,
         'contour',
       )
     }
@@ -1336,7 +1722,7 @@ export default function GazeHeatmapLab({
         COMPARISON_PROFILES[0],
         COMPARISON_PROFILES[0].name,
         selectedGeometry,
-        samplesRef.current,
+        targetHeatSamplesRef.current,
         'continuous',
       )
     }
@@ -1347,11 +1733,21 @@ export default function GazeHeatmapLab({
         COMPARISON_PROFILES[1],
         COMPARISON_PROFILES[1].name,
         selectedGeometry,
-        samplesRef.current,
+        targetHeatSamplesRef.current,
         'continuous',
       )
     }
-  }, [selectedGeometry])
+    if (clientResultCanvasRef.current) {
+      drawClientIdealLensResult(
+        clientResultCanvasRef.current,
+        heatmapRef.current,
+        summary,
+        selectedGeometry,
+        targetHeatSamplesRef.current,
+        clientResultProgressRef.current,
+      )
+    }
+  }, [selectedGeometry, summary])
 
   useEffect(() => {
     setSecureContextWarning(typeof window !== 'undefined' && !window.isSecureContext)
@@ -1385,6 +1781,7 @@ export default function GazeHeatmapLab({
         setPrepSecondsLeft(data.prepSecondsLeft)
         heatmapRef.current = new Float32Array(data.heatmap)
         samplesRef.current = data.samples
+        targetHeatSamplesRef.current = data.targetSamples ?? []
         projectionDebugTraceRef.current = data.projectionDebugTrace ?? []
         setProjectionDebugTrace(data.projectionDebugTrace ?? [])
         setCameraSettings(data.cameraSettings)
@@ -1431,6 +1828,7 @@ export default function GazeHeatmapLab({
       prepSecondsLeft,
       heatmap: heatmapRef.current,
       samples: samplesRef.current,
+      targetSamples: targetHeatSamplesRef.current,
       projectionDebugTrace,
       cameraSettings,
     } satisfies ReportPayload)
@@ -1438,9 +1836,10 @@ export default function GazeHeatmapLab({
 
   useEffect(() => {
     if (!clientMode) return
+    if (phase === 'finished' || clientResultVisible) return
     if (cameraReady) return
     void startCamera()
-  }, [clientMode, cameraReady])
+  }, [clientMode, cameraReady, clientResultVisible, phase])
 
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -1465,7 +1864,7 @@ export default function GazeHeatmapLab({
     const stage = stageRef.current
     if (!stage) return
 
-    if (isFocusMode) {
+    if (isFocusMode || phase === 'finished' || clientResultVisible) {
       if (document.fullscreenElement !== stage) {
         stage.requestFullscreen?.().catch(() => {})
       }
@@ -1475,7 +1874,87 @@ export default function GazeHeatmapLab({
     if (document.fullscreenElement) {
       document.exitFullscreen?.().catch(() => {})
     }
-  }, [clientMode, isFocusMode])
+  }, [clientMode, clientResultVisible, isFocusMode, phase])
+
+  useEffect(() => {
+    if (!clientMode || (!clientResultVisible && phase !== 'finished')) return
+
+    clientResultProgressRef.current = 0
+    setClientResultAnimationComplete(false)
+    const animationDuration = clamp(targetHeatSamplesRef.current.length * 420, 12000, 16000)
+    let startedAt: number | null = null
+
+    const animateResult = (timestamp: number) => {
+      if (startedAt === null) startedAt = timestamp
+      const elapsed = timestamp - startedAt
+      const rawProgress = clamp(elapsed / animationDuration, 0, 1)
+      // Acelera levemente no inicio para a pintura parecer uma leitura viva, sem pular alvos.
+      clientResultProgressRef.current = 1 - (1 - rawProgress) ** 2.15
+
+      const canvas = clientResultCanvasRef.current
+      if (canvas) {
+        drawClientIdealLensResult(
+          canvas,
+          heatmapRef.current,
+          summary,
+          selectedGeometry,
+          targetHeatSamplesRef.current,
+          clientResultProgressRef.current,
+        )
+      }
+
+      if (rawProgress < 1) {
+        clientResultAnimationFrameRef.current = requestAnimationFrame(animateResult)
+      } else {
+        clientResultAnimationFrameRef.current = null
+        setClientResultAnimationComplete(true)
+      }
+    }
+
+    clientResultAnimationFrameRef.current = requestAnimationFrame(animateResult)
+    return () => {
+      if (clientResultAnimationFrameRef.current !== null) {
+        cancelAnimationFrame(clientResultAnimationFrameRef.current)
+        clientResultAnimationFrameRef.current = null
+      }
+    }
+  }, [clientMode, clientResultVisible, phase, selectedGeometry, summary])
+
+  useEffect(() => {
+    const shouldType = clientMode && (clientResultVisible || phase === 'finished') && clientResultAnimationComplete
+    if (!shouldType) {
+      setTypedClientTitle('')
+      setTypedClientSubtitle('')
+      return
+    }
+
+    setTypedClientTitle('')
+    setTypedClientSubtitle('')
+
+    const pauseBetweenLines = 10
+    const totalSteps = CLIENT_RESULT_TITLE.length + pauseBetweenLines + CLIENT_RESULT_SUBTITLE.length
+    let step = 0
+
+    const timer = window.setInterval(() => {
+      step += 1
+
+      if (step <= CLIENT_RESULT_TITLE.length) {
+        setTypedClientTitle(CLIENT_RESULT_TITLE.slice(0, step))
+        return
+      }
+
+      const subtitleStep = step - CLIENT_RESULT_TITLE.length - pauseBetweenLines
+      if (subtitleStep > 0) {
+        setTypedClientSubtitle(CLIENT_RESULT_SUBTITLE.slice(0, subtitleStep))
+      }
+
+      if (step >= totalSteps) {
+        window.clearInterval(timer)
+      }
+    }, 34)
+
+    return () => window.clearInterval(timer)
+  }, [clientMode, clientResultAnimationComplete, clientResultVisible, phase])
 
   const toggleFullscreen = useCallback(async () => {
     const stage = stageRef.current
@@ -1493,6 +1972,7 @@ export default function GazeHeatmapLab({
   useEffect(() => {
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current)
+      if (clientResultAnimationFrameRef.current) cancelAnimationFrame(clientResultAnimationFrameRef.current)
       if (targetTimerRef.current) window.clearInterval(targetTimerRef.current)
       if (sessionTimerRef.current) window.clearTimeout(sessionTimerRef.current)
       if (calibrationTimerRef.current) window.clearTimeout(calibrationTimerRef.current)
@@ -1558,6 +2038,13 @@ export default function GazeHeatmapLab({
 
       video.srcObject = stream
       await video.play()
+      if (clientResultVisibleRef.current) {
+        stream.getTracks().forEach((track) => track.stop())
+        if (streamRef.current === stream) streamRef.current = null
+        setCameraSettings(null)
+        if (video.srcObject === stream) video.srcObject = null
+        return
+      }
       setCameraReady(true)
       setStatus('Câmera ativa. Deixe o rosto centralizado e inicie a calibração.')
     } catch (error) {
@@ -1620,9 +2107,12 @@ export default function GazeHeatmapLab({
   }
 
   function resetLab() {
+    clientResultVisibleRef.current = false
+    setClientResultVisible(false)
     stopSessionTimers()
     heatmapRef.current = makeHeatmap()
     samplesRef.current = []
+    targetHeatSamplesRef.current = []
     targetSamplesRef.current = []
     calibrationSamplesRef.current = []
     targetSequenceRef.current = []
@@ -1651,6 +2141,8 @@ export default function GazeHeatmapLab({
   }
 
   function cancelRun() {
+    clientResultVisibleRef.current = false
+    setClientResultVisible(false)
     stopSessionTimers()
     sandboxStepRef.current = null
     targetSamplesRef.current = []
@@ -1670,6 +2162,59 @@ export default function GazeHeatmapLab({
     setPrepSecondsLeft(0)
     setPhase('idle')
     setStatus(cameraReady ? 'Teste parado. A câmera continua pronta para recomeçar.' : 'Teste parado.')
+    if (heatmapSessionId) {
+      void cancelTowerHeatmapSession({ storeId, sessionId: heatmapSessionId }).then((result) => {
+        if (!result.success) console.error('Nao foi possivel cancelar a sessao do mapa visual:', result.message)
+      })
+    }
+  }
+
+  function markSessionAsRunning() {
+    if (!heatmapSessionId) return
+    setSessionPersistenceStatus('saving')
+    void startTowerHeatmapSession({ storeId, sessionId: heatmapSessionId }).then((result) => {
+      if (!result.success) {
+        console.error('Nao foi possivel iniciar a sessao do mapa visual:', result.message)
+        setSessionPersistenceStatus('error')
+        return
+      }
+      setSessionPersistenceStatus('idle')
+    })
+  }
+
+  function persistCompletedSession(nextSummary: SessionSummary) {
+    if (!heatmapSessionId) return
+
+    setSessionPersistenceStatus('saving')
+    const targetSamples = targetHeatSamplesRef.current.map((sample) => {
+      const projection = projectSampleToLens(sample)
+      return {
+        eyeX: sample.eyeX,
+        eyeY: sample.eyeY,
+        headX: sample.headX,
+        headY: sample.headY,
+        targetX: sample.targetX,
+        targetY: sample.targetY,
+        lensX: projection.point.x,
+        lensY: projection.point.y,
+        headOnlyProjection: sample.headOnlyProjection,
+        verticalHeadDebug: sample.verticalHeadDebug,
+      }
+    })
+
+    void completeTowerHeatmapSession({
+      storeId,
+      sessionId: heatmapSessionId,
+      summary: nextSummary,
+      targetSamples,
+    }).then((result) => {
+      if (!result.success) {
+        console.error('Nao foi possivel salvar o mapa visual:', result.message)
+        setSessionPersistenceStatus('error')
+        return
+      }
+      setSessionPersistenceStatus('saved')
+    })
   }
 
   function randomTarget() {
@@ -1728,8 +2273,8 @@ export default function GazeHeatmapLab({
       targetY: sample.targetY,
       normalizedTargetX: normalizedTarget.x,
       normalizedTargetY: normalizedTarget.y,
-      strongestHeadX: sample.headX,
-      strongestHeadY: sample.headY,
+      headX: sample.headX,
+      headY: sample.headY,
       headCarryX,
       headCarryY,
       headShareX: sandboxProjection.headShareX,
@@ -1741,7 +2286,7 @@ export default function GazeHeatmapLab({
       compensated: decision === 'centralized',
       sampleCount,
     }
-    const nextTrace = [...projectionDebugTraceRef.current.slice(-8), trace]
+    const nextTrace = [...projectionDebugTraceRef.current, trace]
     projectionDebugTraceRef.current = nextTrace
     setProjectionDebugTrace(nextTrace)
   }
@@ -1766,35 +2311,23 @@ export default function GazeHeatmapLab({
       return
     }
 
-    const averagedSample = samples.reduce<SessionSample>(
-      (acc, sample) => ({
-        eyeX: acc.eyeX + sample.eyeX / samples.length,
-        eyeY: acc.eyeY + sample.eyeY / samples.length,
-        headX: acc.headX + sample.headX / samples.length,
-        headY: acc.headY + sample.headY / samples.length,
-        targetX: acc.targetX + sample.targetX / samples.length,
-        targetY: acc.targetY + sample.targetY / samples.length,
-      }),
-      { eyeX: 0, eyeY: 0, headX: 0, headY: 0, targetX: 0, targetY: 0 },
-    )
-    averagedSample.headOnlyProjection = samples.some((sample) => sample.headOnlyProjection)
-    averagedSample.verticalHeadDebug = samples.some((sample) => sample.verticalHeadDebug)
-    averagedSample.headCalibration = samples.find((sample) => sample.headCalibration)?.headCalibration
-    if (averagedSample.headOnlyProjection) {
-      const strongestHeadX = samples.reduce(
-        (best, sample) => (Math.abs(sample.headX) > Math.abs(best) ? sample.headX : best),
-        0,
-      )
-      const strongestHeadY = samples.reduce(
-        (best, sample) => (Math.abs(sample.headY) > Math.abs(best) ? sample.headY : best),
-        0,
-      )
-      averagedSample.headX = strongestHeadX
-      averagedSample.headY = strongestHeadY
-      pushProjectionDebugTrace(averagedSample, samples.length)
+    const consolidatedSample: SessionSample = {
+      eyeX: median(samples.map((sample) => sample.eyeX)),
+      eyeY: median(samples.map((sample) => sample.eyeY)),
+      headX: median(samples.map((sample) => sample.headX)),
+      headY: median(samples.map((sample) => sample.headY)),
+      targetX: median(samples.map((sample) => sample.targetX)),
+      targetY: median(samples.map((sample) => sample.targetY)),
+      headOnlyProjection: samples.some((sample) => sample.headOnlyProjection),
+      verticalHeadDebug: samples.some((sample) => sample.verticalHeadDebug),
+      headCalibration: samples.find((sample) => sample.headCalibration)?.headCalibration,
     }
 
-    stampHeatSample(heatmapRef.current, averagedSample)
+    if (consolidatedSample.headOnlyProjection) {
+      pushProjectionDebugTrace(consolidatedSample, samples.length)
+    }
+    targetHeatSamplesRef.current.push(consolidatedSample)
+    stampHeatSample(heatmapRef.current, consolidatedSample)
     targetSamplesRef.current = []
   }
 
@@ -1827,9 +2360,12 @@ export default function GazeHeatmapLab({
     }
 
     stopSessionTimers()
+    clientResultVisibleRef.current = false
+    setClientResultVisible(false)
 
     heatmapRef.current = makeHeatmap()
     samplesRef.current = []
+    targetHeatSamplesRef.current = []
     targetSamplesRef.current = []
     projectionDebugTraceRef.current = []
     targetSequenceRef.current = verticalHeadDebugRef.current ? buildVerticalDebugTargetSequence() : buildTargetSequence()
@@ -1838,6 +2374,7 @@ export default function GazeHeatmapLab({
     setProjectionDebugTrace([])
     setSummary(null)
     setPhase('running')
+    markSessionAsRunning()
     setStatus(
       headOnlyProjectionRef.current
         ? verticalHeadDebugRef.current
@@ -1878,6 +2415,8 @@ export default function GazeHeatmapLab({
 
   async function startHeadOnlySandbox() {
     if (!cameraReady) return
+    clientResultVisibleRef.current = false
+    setClientResultVisible(false)
     await applyTrackingCameraProfile()
     await ensureLandmarker()
     startTrackingLoop()
@@ -1887,6 +2426,7 @@ export default function GazeHeatmapLab({
     sandboxCollectedRef.current = {}
     heatmapRef.current = makeHeatmap()
     samplesRef.current = []
+    targetHeatSamplesRef.current = []
     targetSamplesRef.current = []
     projectionDebugTraceRef.current = []
     headSandboxCalibrationRef.current = DEFAULT_HEAD_SANDBOX_CALIBRATION
@@ -1917,6 +2457,8 @@ export default function GazeHeatmapLab({
 
   async function startCalibration() {
     if (!cameraReady) return
+    clientResultVisibleRef.current = false
+    setClientResultVisible(false)
     await applyTrackingCameraProfile()
     await ensureLandmarker()
     startTrackingLoop()
@@ -1942,6 +2484,8 @@ export default function GazeHeatmapLab({
 
   async function startVerticalHeadDebug() {
     if (!cameraReady) return
+    clientResultVisibleRef.current = false
+    setClientResultVisible(false)
     await applyTrackingCameraProfile()
     await ensureLandmarker()
     startTrackingLoop()
@@ -1951,6 +2495,7 @@ export default function GazeHeatmapLab({
     sandboxCollectedRef.current = {}
     heatmapRef.current = makeHeatmap()
     samplesRef.current = []
+    targetHeatSamplesRef.current = []
     targetSamplesRef.current = []
     projectionDebugTraceRef.current = []
     headSandboxCalibrationRef.current = DEFAULT_HEAD_SANDBOX_CALIBRATION
@@ -2027,12 +2572,15 @@ export default function GazeHeatmapLab({
 
   async function startSandboxCalibration() {
     if (!cameraReady) return
+    clientResultVisibleRef.current = false
+    setClientResultVisible(false)
     await applyTrackingCameraProfile()
     await ensureLandmarker()
     startTrackingLoop()
     stopSessionTimers()
     heatmapRef.current = makeHeatmap()
     samplesRef.current = []
+    targetHeatSamplesRef.current = []
     targetSamplesRef.current = []
     calibrationSamplesRef.current = []
     sandboxCollectedRef.current = {}
@@ -2052,9 +2600,13 @@ export default function GazeHeatmapLab({
   function finishSession() {
     flushTargetHeatSample()
     stopSessionTimers()
+    phaseRef.current = 'finished'
+    clientResultVisibleRef.current = true
+    setClientResultVisible(true)
     setPhase('finished')
-    const nextSummary = summarizeSession(samplesRef.current)
+    const nextSummary = summarizeSession(targetHeatSamplesRef.current)
     setSummary(nextSummary)
+    persistCompletedSession(nextSummary)
     stopCamera()
     setStatus('Sessão concluída. A câmera foi desligada para aliviar o tablet. Reabra a câmera quando quiser uma nova leitura.')
   }
@@ -2188,6 +2740,9 @@ export default function GazeHeatmapLab({
   const headPercentX = Math.round((summary?.headShareX ?? 0) * 100)
   const eyePercentY = Math.round((summary?.eyeShareY ?? 0) * 100)
   const headPercentY = Math.round((summary?.headShareY ?? 0) * 100)
+  const distanceCoverage = Math.round((summary?.distanceCoverage ?? 0) * 100)
+  const intermediateCoverage = Math.round((summary?.intermediateCoverage ?? 0) * 100)
+  const nearCoverage = Math.round((summary?.nearCoverage ?? 0) * 100)
   const calibratedLiveHeadX = liveHeadOffset.headX
   const calibratedLiveHeadY = liveHeadOffset.headY
   const realHeadX = clamp(calibratedLiveHeadX, -1, 1)
@@ -2238,8 +2793,9 @@ export default function GazeHeatmapLab({
     : 'absolute left-1/2 top-1/2 bg-cyan-100/90 -translate-x-1/2 -translate-y-1/2'
   const floatingActionClassName =
     'absolute top-1/2 z-30 inline-flex -translate-y-1/2 items-center gap-2 rounded-2xl border border-white/15 bg-slate-950/74 px-4 py-3 text-sm font-black text-slate-100 shadow-[0_18px_42px_rgba(2,6,23,0.34)] backdrop-blur transition hover:bg-slate-900/88 disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-slate-950/42 disabled:text-slate-500'
-  const clientVideoVisible = clientMode && !isFocusMode
-  const showClientTarget = !clientMode || isFocusMode
+  const clientResultMode = clientMode && (clientResultVisible || phase === 'finished')
+  const clientVideoVisible = clientMode && !isFocusMode && !clientResultMode
+  const showClientTarget = !clientMode || (isFocusMode && !clientResultMode)
 
   const stageNode = (
     <div ref={stageRef} className={stageClassName}>
@@ -2266,10 +2822,87 @@ export default function GazeHeatmapLab({
         }
         style={{ opacity: 0, pointerEvents: 'none' }}
       />
+      {clientResultMode && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center px-8 py-10">
+          <div className="relative flex h-full w-full max-w-[1180px] flex-col items-center justify-center overflow-hidden rounded-[44px] border border-cyan-200/18 bg-[linear-gradient(145deg,_rgba(8,47,73,0.62),_rgba(15,23,42,0.82)_48%,_rgba(2,6,23,0.96))] p-7 shadow-[0_36px_110px_rgba(2,6,23,0.62)]">
+            <div className="pointer-events-none absolute -left-20 top-10 h-64 w-64 rounded-full bg-cyan-300/12 blur-3xl" />
+            <div className="pointer-events-none absolute -right-16 bottom-4 h-72 w-72 rounded-full bg-emerald-300/12 blur-3xl" />
+            <div className="pointer-events-none absolute inset-x-10 top-8 h-px overflow-hidden rounded-full bg-white/10">
+              <div className="h-full w-1/3 animate-[heatmap-scan_2.6s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-cyan-200 to-transparent shadow-[0_0_22px_rgba(125,211,252,0.9)]" />
+            </div>
+            <div className="relative z-10 mb-5 text-center">
+              <p className="text-[11px] font-black uppercase tracking-[0.32em] text-cyan-200/90">
+                Analisando padrão visual
+              </p>
+            </div>
+            <div className="relative z-10 w-full max-w-5xl overflow-hidden rounded-[36px] border border-white/12 bg-slate-950/42 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_28px_80px_rgba(2,6,23,0.45)]">
+              <div className="pointer-events-none absolute inset-y-4 left-0 z-20 w-1/4 animate-[heatmap-sweep_3.2s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-cyan-100/18 to-transparent blur-md" />
+              <div className="pointer-events-none absolute inset-x-12 top-1/2 z-20 h-px animate-pulse bg-gradient-to-r from-transparent via-cyan-100/60 to-transparent shadow-[0_0_24px_rgba(125,211,252,0.55)]" />
+              <canvas
+                ref={clientResultCanvasRef}
+                width={1100}
+                height={600}
+                className="h-auto w-full rounded-[28px]"
+              />
+            </div>
+            <div className="relative z-10 mt-5 min-h-[7.4rem] max-w-4xl text-center">
+              <h1
+                className="text-balance text-3xl font-black leading-tight text-white sm:text-5xl"
+                aria-label={CLIENT_RESULT_TITLE}
+              >
+                {typedClientTitle}
+                {clientResultAnimationComplete && typedClientTitle.length < CLIENT_RESULT_TITLE.length && (
+                  <span className="ml-1 inline-block h-[0.9em] w-[3px] animate-pulse rounded-full bg-cyan-200 align-[-0.08em] shadow-[0_0_16px_rgba(125,211,252,0.9)]" />
+                )}
+              </h1>
+              <p
+                className="mt-3 min-h-[1.8em] text-lg font-semibold text-slate-300 sm:text-2xl"
+                aria-label={CLIENT_RESULT_SUBTITLE}
+              >
+                {typedClientSubtitle}
+                {clientResultAnimationComplete &&
+                  typedClientTitle.length >= CLIENT_RESULT_TITLE.length &&
+                  typedClientSubtitle.length < CLIENT_RESULT_SUBTITLE.length && (
+                    <span className="ml-1 inline-block h-[0.85em] w-[2px] animate-pulse rounded-full bg-emerald-200 align-[-0.05em] shadow-[0_0_14px_rgba(167,243,208,0.75)]" />
+                  )}
+              </p>
+            </div>
+            <style jsx>{`
+              @keyframes heatmap-scan {
+                0% {
+                  transform: translateX(-120%);
+                  opacity: 0.1;
+                }
+                45% {
+                  opacity: 1;
+                }
+                100% {
+                  transform: translateX(360%);
+                  opacity: 0.15;
+                }
+              }
+
+              @keyframes heatmap-sweep {
+                0% {
+                  transform: translateX(-140%);
+                  opacity: 0;
+                }
+                25% {
+                  opacity: 0.9;
+                }
+                100% {
+                  transform: translateX(520%);
+                  opacity: 0;
+                }
+              }
+            `}</style>
+          </div>
+        </div>
+      )}
       {showClientTarget && (
         <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.06)_1px,transparent_1px)] bg-[size:32px_32px]" />
       )}
-      {clientMode && (
+      {clientMode && !clientResultMode && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
           <div className="relative h-[min(58vh,520px)] w-[min(58vh,520px)] rounded-[32px] border border-white/10 bg-slate-950/26 shadow-[0_30px_90px_rgba(2,6,23,0.38)] backdrop-blur-[2px]">
             <div className="absolute left-1/2 top-8 h-[calc(100%-64px)] w-px -translate-x-1/2 bg-white/10" />
@@ -2371,7 +3004,7 @@ export default function GazeHeatmapLab({
           {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           {isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
         </button>
-        {!cameraReady && (
+        {!cameraReady && !clientResultMode && (
           <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/72 p-6 backdrop-blur-sm">
             <div className="max-w-sm rounded-[28px] border border-cyan-300/25 bg-slate-900/92 p-5 text-center shadow-[0_30px_90px_rgba(2,6,23,0.5)]">
               <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan-200">Tela do cliente</p>
@@ -2505,6 +3138,23 @@ export default function GazeHeatmapLab({
                   ? `CAM ${cameraSettings.width ?? '-'}x${cameraSettings.height ?? '-'} · ${Math.round(cameraSettings.frameRate ?? 0) || '-'}FPS`
                   : 'CAM aguardando tela cliente'}
               </span>
+              {heatmapSessionId && !clientMode && (
+                <span className={`rounded-full border px-3 py-1.5 text-xs font-black tracking-[0.14em] ${
+                  sessionPersistenceStatus === 'saved'
+                    ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-200'
+                    : sessionPersistenceStatus === 'error'
+                      ? 'border-rose-400/30 bg-rose-500/10 text-rose-100'
+                      : 'border-cyan-400/20 bg-cyan-500/10 text-cyan-100'
+                }`}>
+                  {sessionPersistenceStatus === 'saved'
+                    ? 'MAPA SALVO'
+                    : sessionPersistenceStatus === 'error'
+                      ? 'ERRO AO SALVAR'
+                      : sessionPersistenceStatus === 'saving'
+                        ? 'SALVANDO MAPA'
+                        : 'SESSAO VINCULADA'}
+                </span>
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 <label className="flex items-center gap-2 text-xs font-bold text-slate-400">
                   Geometria
@@ -2651,7 +3301,7 @@ export default function GazeHeatmapLab({
                         .reverse()
                         .map((trace, index) => (
                           <div
-                            key={`${trace.mode}-${trace.targetX}-${trace.targetY}-${trace.strongestHeadX}-${trace.strongestHeadY}-${index}`}
+                            key={`${trace.mode}-${trace.targetX}-${trace.targetY}-${trace.headX}-${trace.headY}-${index}`}
                             className={`rounded-xl border px-3 py-2 text-xs ${
                               trace.decision === 'centralized'
                                 ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100'
@@ -2689,7 +3339,7 @@ export default function GazeHeatmapLab({
                               </span>
                             </div>
                             <div className="mt-2 text-[10px] text-slate-400">
-                              leitura bruta cabeça X {Math.round(trace.strongestHeadX * 100)} · Y {Math.round(trace.strongestHeadY * 100)}%
+                              leitura consolidada cabeça X {Math.round(trace.headX * 100)} · Y {Math.round(trace.headY * 100)}%
                             </div>
                           </div>
                         ))}
@@ -2697,7 +3347,7 @@ export default function GazeHeatmapLab({
                   </div>
                 )}
                 <p className="mt-3 text-xs text-slate-500">
-                  O bloco acima é só monitoramento instantâneo. O que vale para a lente é a leitura consolidada e os mapas abaixo.
+                  Cada cartão é um alvo consolidado pela mediana das amostras estáveis. Os mapas abaixo usam exatamente esses mesmos pontos.
                 </p>
               </div>
             </div>
@@ -2725,6 +3375,22 @@ export default function GazeHeatmapLab({
                     <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Cabeça</p>
                     <p className="mt-2 text-3xl font-black text-emerald-300">{headPercent}%</p>
                   </div>
+                </div>
+                <div className={`rounded-2xl border p-4 ${summary.isReliable ? 'border-emerald-400/20 bg-emerald-500/10' : 'border-amber-400/20 bg-amber-500/10'}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-200">Cobertura para decisão</p>
+                    <span className={`text-xs font-black ${summary.isReliable ? 'text-emerald-300' : 'text-amber-300'}`}>
+                      {summary.isReliable ? 'Sessão utilizável' : 'Sessão incompleta'}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid gap-2 text-sm font-bold sm:grid-cols-3">
+                    <span className="text-slate-200">Longe: {distanceCoverage}%</span>
+                    <span className="text-slate-200">Intermediário: {intermediateCoverage}%</span>
+                    <span className="text-slate-200">Perto: {nearCoverage}%</span>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-slate-400">
+                    A recomendação futura só deve usar este resultado quando cada região tiver pelo menos 70% dos alvos consolidados.
+                  </p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl border border-cyan-400/15 bg-cyan-500/10 p-4">
@@ -2765,7 +3431,14 @@ export default function GazeHeatmapLab({
           <div className="rounded-[28px] border border-white/10 bg-slate-900/90 p-5 shadow-[0_25px_70px_rgba(2,6,23,0.38)]">
             <canvas ref={mainHeatmapRef} width={620} height={360} className="h-auto w-full" />
             <p className="mt-3 text-xs leading-5 text-slate-500">
-              Este é o mapa principal da sessão: um heatmap contínuo sobreposto à lente real. Como a sequência de pontos agora é fixa, a leitura fica mais comparável de um teste para outro.
+              Este é o mapa principal da sessão: um heatmap contínuo sobreposto à lente real. A intensidade mostra frequência relativa, não a posição exata de cada alvo.
+            </p>
+          </div>
+
+          <div className="rounded-[28px] border border-cyan-300/20 bg-slate-900/90 p-5 shadow-[0_25px_70px_rgba(2,6,23,0.38)]">
+            <canvas ref={auditHeatmapRef} width={620} height={360} className="h-auto w-full" />
+            <p className="mt-3 text-xs leading-5 text-cyan-100/70">
+              Auditoria: cada número é um alvo do roteiro e marca o ponto exato que alimentou o heatmap. Ciano indica maior participação dos olhos; verde, maior compensação pela cabeça.
             </p>
           </div>
 

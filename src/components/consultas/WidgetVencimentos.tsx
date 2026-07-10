@@ -3,20 +3,24 @@
 import { useState } from 'react'
 import { CalendarClock, MessageCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import { VencimentoProximo } from '@/lib/actions/consultas.actions'
-import { getWhatsAppLink } from '@/lib/utils'
+import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
 
 const formatMoney = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 export default function WidgetVencimentos({
     dados,
-    storeName
+    storeName,
+    storeId
 }: {
     dados: VencimentoProximo[],
-    storeName: string
+    storeName: string,
+    storeId: number
 }) {
     const [isOpen, setIsOpen] = useState(false)
+    const [sendingWhatsAppId, setSendingWhatsAppId] = useState<number | null>(null)
 
-    const handleZap = (item: VencimentoProximo) => {
+    const handleZap = async (item: VencimentoProximo) => {
+        if (sendingWhatsAppId) return
         if (!item.fone_movel) return alert("Cliente sem celular cadastrado.")
 
         const primeiroNome = item.customer_name.split(' ')[0]
@@ -27,7 +31,25 @@ export default function WidgetVencimentos({
         // MENSAGEM PERSONALIZADA COM NOME DA LOJA
         const msg = `Olá ${primeiroNome}, tudo bem? Aqui é da ${storeName}. Passando apenas para lembrar que sua parcela (${item.numero_parcela}ª) vence ${textoDia}. Se precisar da chave Pix, é só pedir!`
 
-        window.open(getWhatsAppLink(item.fone_movel, msg), '_blank')
+        setSendingWhatsAppId(item.id)
+        try {
+            await sendManualWhatsAppFromClient({
+                storeId,
+                remotePhone: item.fone_movel,
+                messageText: msg,
+                messageType: 'billing_reminder',
+                source: 'due_installments_widget.reminder_button',
+                metadata: {
+                    installmentId: item.id,
+                    customerName: item.customer_name,
+                    dueDate: item.data_vencimento,
+                    installmentNumber: item.numero_parcela,
+                    amount: item.valor_parcela,
+                },
+            })
+        } finally {
+            setSendingWhatsAppId(null)
+        }
     }
 
     return (
@@ -77,7 +99,8 @@ export default function WidgetVencimentos({
 
                                 <button
                                     onClick={() => handleZap(item)}
-                                    className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white transition-all shadow-sm border border-emerald-500/20"
+                                    disabled={sendingWhatsAppId === item.id}
+                                    className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white transition-all shadow-sm border border-emerald-500/20 disabled:opacity-50"
                                     title="Enviar Lembrete WhatsApp"
                                 >
                                     <MessageCircle className="h-4 w-4" />

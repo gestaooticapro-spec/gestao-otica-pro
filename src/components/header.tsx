@@ -6,16 +6,27 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useParams, useRouter } from 'next/navigation'
 import { getStorePublicProfile, getTenantName } from '@/lib/actions/store.actions'
+import FullscreenToggleButton from '@/components/FullscreenToggleButton'
+import { logoutAndRedirect } from '@/lib/auth/logout'
+
+type HeaderBrandState = {
+  storeName: string | null
+  logoUrl: string | null
+  tenantName: string | null
+}
 
 export default function Header() {
   const router = useRouter()
   const params = useParams()
   const supabase = createClient()
-  const [storeName, setStoreName] = useState<string | null>(null)
-  const [logoUrl, setLogoUrl] = useState<string | null>(null)
-  const [tenantName, setTenantName] = useState<string | null>(null)
+  const [brandState, setBrandState] = useState<HeaderBrandState>({
+    storeName: null,
+    logoUrl: null,
+    tenantName: null,
+  })
 
   const storeId = params.storeId ? Number(params.storeId) : null
+  const { storeName, logoUrl, tenantName } = brandState
 
   // --- LÓGICA DE LOGOUT DIÁRIO ---
   useEffect(() => {
@@ -44,27 +55,54 @@ export default function Header() {
 
   // --- BUSCAR DADOS DA LOJA + TENANT ---
   useEffect(() => {
-    if (storeId) {
-      getStorePublicProfile(storeId).then(async (data) => {
-        if (data) {
-          setStoreName(data.name)
-          setLogoUrl(data.logo_url)
-          if (data.tenant_id) {
-            const name = await getTenantName(data.tenant_id)
-            if (name) setTenantName(name)
-          }
+    let isMounted = true
+
+    const loadBrandState = async () => {
+      if (!storeId) {
+        if (isMounted) {
+          setBrandState({
+            storeName: null,
+            logoUrl: null,
+            tenantName: null,
+          })
         }
-      })
-    } else {
-      setStoreName(null)
-      setLogoUrl(null)
-      setTenantName(null)
+        return
+      }
+
+      const data = await getStorePublicProfile(storeId)
+      if (!isMounted) return
+
+      let nextTenantName: string | null = null
+      if (data?.tenant_id) {
+        const tenant = await getTenantName(data.tenant_id)
+        if (!isMounted) return
+        nextTenantName = tenant || null
+      }
+
+      if (data) {
+        setBrandState({
+          storeName: data.name,
+          logoUrl: data.logo_url,
+          tenantName: nextTenantName,
+        })
+      } else {
+        setBrandState({
+          storeName: null,
+          logoUrl: null,
+          tenantName: null,
+        })
+      }
+    }
+
+    loadBrandState()
+
+    return () => {
+      isMounted = false
     }
   }, [storeId])
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    window.location.href = '/login'
+    await logoutAndRedirect()
   }
 
   return (
@@ -103,14 +141,17 @@ export default function Header() {
         )}
 
         {/* Direita: Sair */}
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-2 px-3 py-2 rounded-xl text-red-400/70 hover:bg-red-500/10 hover:text-red-300 border border-transparent hover:border-red-500/20 transition-all"
-          title="Sair do Sistema"
-        >
-          <LogOut className="h-4 w-4" />
-          <span className="hidden sm:inline text-sm font-bold uppercase tracking-wider">Sair</span>
-        </button>
+        <div className="flex items-center gap-3">
+          <FullscreenToggleButton variant="inline" />
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl text-red-400/70 hover:bg-red-500/10 hover:text-red-300 border border-transparent hover:border-red-500/20 transition-all"
+            title="Sair do Sistema"
+          >
+            <LogOut className="h-4 w-4" />
+            <span className="hidden sm:inline text-sm font-bold uppercase tracking-wider">Sair</span>
+          </button>
+        </div>
       </div>
     </header>
   )

@@ -19,7 +19,8 @@ import {
 } from 'lucide-react'
 import SaleDetailsModal from '@/components/modals/SaleDetailsModal'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
-import { getWhatsAppLink } from '@/lib/utils'
+import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
+import { toast } from 'sonner'
 
 // Helpers
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -61,6 +62,11 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
     const [rating, setRating] = useState(0)
     const [obsFinal, setObsFinal] = useState('')
 
+    // post_sales_id ativo para o item selecionado. Pode nascer de um
+    // saveInteraction (quando o item ainda nao tinha post_sales). Evita o bug
+    // stale em que "Concluir" exige um post_sales_id que so existe apos refresh.
+    const [activePostSalesId, setActivePostSalesId] = useState<number | null>(null)
+
     const [detailsModalOpen, setDetailsModalOpen] = useState(false)
     const [detailsData, setDetailsData] = useState<any>(null)
     const [loadingDetails, setLoadingDetails] = useState(false)
@@ -69,9 +75,14 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
     const [isEditingPhone, setIsEditingPhone] = useState(false)
     const [newPhoneValue, setNewPhoneValue] = useState('')
     const [savingPhone, setSavingPhone] = useState(false)
+    const [sendingWhatsApp, setSendingWhatsApp] = useState(false)
 
     const [isPending, startTransition] = useTransition()
     const selectedItem = initialQueue.find(item => item.os_id === selectedId)
+    // post_sales_id efetivo: preferencia do estado ativo (recem-criado),
+    // fallback para o do item da fila. Resolve a janela stale entre salvar a
+    // primeira interacao e o App Router reidratar o initialQueue.
+    const effectivePostSalesId = activePostSalesId ?? selectedItem?.post_sales_id ?? null
     const normalizedQuery = normalizeSearchText(searchName.trim())
     const filteredQueue = initialQueue.filter((item) => {
         if (!normalizedQuery) return true
@@ -88,6 +99,7 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
         setObsFinal('')
         setIsEditingPhone(false)
         setNewPhoneValue('')
+        setActivePostSalesId(null)
     }
 
     useEffect(() => {
@@ -102,13 +114,27 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
         }
     }, [selectedItem])
 
+    useEffect(() => {
+        const intervalId = window.setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                router.refresh()
+            }
+        }, 30000)
+
+        return () => window.clearInterval(intervalId)
+    }, [router])
+
     const handleSelectItem = (osId: number) => {
         resetClientFormState()
         setSelectedId(osId)
     }
 
-    const handleWhatsApp = () => {
-        if (!selectedItem || !selectedItem.titular_tel) return alert("Telefone não cadastrado. Clique em 'Sem fone' ao lado do nome do titular para cadastrar.")
+    const handleWhatsApp = async () => {
+        if (sendingWhatsApp) return
+        if (!selectedItem || !selectedItem.titular_tel) {
+            toast.error("Telefone não cadastrado. Clique em 'Sem fone' ao lado do nome do titular para cadastrar.")
+            return
+        }
         const nomeTitular = selectedItem.titular_nome.split(' ')[0]
         const dias = selectedItem.dias_desde_entrega
         const ehProprio = selectedItem.dependente_nome === selectedItem.titular_nome || !selectedItem.dependente_nome || selectedItem.dependente_nome === 'Mesmo'
@@ -117,7 +143,23 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
             ? `Olá ${nomeTitular}, aqui é da Ótica. Já faz ${dias} dias que vc buscou seu óculos. Como está a adaptação?`
             : `Olá ${nomeTitular}, aqui é da Ótica. Já faz ${dias} dias que ${selectedItem.dependente_nome?.split(' ')[0]} retirou os óculos. Como está a adaptação, você sabe?`
 
-        window.open(getWhatsAppLink(selectedItem.titular_tel, msg), '_blank')
+        setSendingWhatsApp(true)
+        try {
+            await sendManualWhatsAppFromClient({
+                storeId,
+                remotePhone: selectedItem.titular_tel,
+                messageText: msg,
+                messageType: 'post_sale_followup',
+                source: 'post_sales.followup_button',
+                metadata: {
+                    osId: selectedItem.os_id,
+                    postSalesId: selectedItem.post_sales_id,
+                    diasDesdeEntrega: dias,
+                },
+            })
+        } finally {
+            setSendingWhatsApp(false)
+        }
     }
 
     const handleSaveInteraction = (formData: FormData) => {
@@ -126,20 +168,28 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
             const res = await saveInteraction(formData)
             if (res.success) {
                 setResumoMsg('')
-                if (selectedItem.post_sales_id) {
-                    const hist = await getInteractions(selectedItem.post_sales_id)
+                // Se a action devolveu o post_sales_id (caso de criacao), guarda
+                // no estado ativo para liberar o "Concluir" imediatamente, sem
+                // depender do revalidate do App Router.
+                const psId = res.post_sales_id
+                if (psId) setActivePostSalesId(psId)
+                const histId = psId ?? selectedItem.post_sales_id
+                if (histId) {
+                    const hist = await getInteractions(histId)
                     setInteractions(hist)
                 }
+                // Refresh para reidratar o initialQueue com o post_sales_id.
+                router.refresh()
             } else alert(res.message)
         })
     }
 
     const handleConclude = () => {
-        if (!selectedItem?.post_sales_id) return alert("Salve uma interação primeiro.")
+        if (!effectivePostSalesId) return alert("Salve uma interação primeiro.")
         if (rating === 0) return alert("Avaliação obrigatória.")
 
         const formData = new FormData()
-        formData.append('post_sales_id', selectedItem.post_sales_id.toString())
+        formData.append('post_sales_id', effectivePostSalesId.toString())
         formData.append('store_id', storeId.toString())
         formData.append('nota', rating.toString())
         formData.append('obs', obsFinal)
@@ -352,6 +402,7 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
                                     </div>
                                     <button
                                         onClick={handleWhatsApp}
+                                        disabled={sendingWhatsApp}
                                         className="bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 px-5 py-3 rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.15)] font-bold flex items-center gap-2 transition-all hover:-translate-y-0.5"
                                     >
                                         <MessageCircle className="h-5 w-5" />
@@ -364,7 +415,7 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
                                     <form action={handleSaveInteraction} className="flex items-center gap-3">
                                         <input type="hidden" name="os_id" value={selectedItem.os_id} />
                                         <input type="hidden" name="store_id" value={storeId} />
-                                        <input type="hidden" name="post_sales_id" value={selectedItem.post_sales_id || ''} />
+                                        <input type="hidden" name="post_sales_id" value={effectivePostSalesId || ''} />
 
                                         <select name="tipo" value={tipoContato} onChange={e => setTipoContato(e.target.value)} className="w-28 rounded-xl bg-slate-800/80 border border-cyan-400/20 text-sm h-10 text-cyan-200 font-bold focus:ring-1 focus:ring-cyan-500/50 focus:border-cyan-500/50 cursor-pointer appearance-none px-3">
                                             <option className="bg-slate-800 text-cyan-200">WhatsApp</option>

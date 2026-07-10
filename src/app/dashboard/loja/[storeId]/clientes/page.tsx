@@ -14,6 +14,7 @@ import { saveCustomerDetails, deleteCustomer } from '@/lib/actions/customer.acti
 import { searchCustomersByName, getCustomerById, fetchDefaultCustomers } from '@/lib/actions/vendas.actions';
 import { getDependentes, deleteDependente, saveDependente } from '@/lib/actions/dependents.actions';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
+import CustomerPrescriptionHistoryModal from '@/components/modals/CustomerPrescriptionHistoryModal';
 
 type Customer = Database['public']['Tables']['customers']['Row'];
 type Dependente = Database['public']['Tables']['dependentes']['Row'];
@@ -132,6 +133,7 @@ export default function StoreClientPage() {
     const [editorMode, setEditorMode] = useState<EditorMode>('empty');
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<ActiveTab>('principal');
+    const [isPrescriptionHistoryOpen, setIsPrescriptionHistoryOpen] = useState(false);
 
     const [dependentesList, setDependentesList] = useState<Dependente[]>([]);
 
@@ -566,13 +568,28 @@ export default function StoreClientPage() {
                     {currentCustomer?.id && <input type="hidden" name="id" value={currentCustomer.id} />}
 
                     {/* Header das Abas */}
-                    <div className="bg-slate-900/60 border-b border-white/10 px-4 pt-3 flex gap-4 shadow-xl shadow-black/20 flex-shrink-0 z-20 backdrop-blur-md">
-                        <TabButton label="Dados Pessoais" icon={User} isActive={activeTab === 'principal'} onClick={() => setActiveTab('principal')} />
-                        <TabButton label="Detalhes" icon={ClipboardList} isActive={activeTab === 'detalhes'} onClick={() => setActiveTab('detalhes')} />
-                        <TabButton label="Ref. / Obs" icon={ScrollText} isActive={activeTab === 'referencias'} onClick={() => setActiveTab('referencias')} />
-                        {currentCustomer?.id && (
-                            <TabButton label={`Dependentes (${dependentesList.length})`} icon={Users2} isActive={activeTab === 'dependentes'} onClick={() => setActiveTab('dependentes')} />
-                        )}
+                    <div className="bg-slate-900/60 border-b border-white/10 px-4 pt-3 shadow-xl shadow-black/20 flex-shrink-0 z-20 backdrop-blur-md">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex flex-wrap gap-4">
+                                <TabButton label="Dados Pessoais" icon={User} isActive={activeTab === 'principal'} onClick={() => setActiveTab('principal')} />
+                                <TabButton label="Detalhes" icon={ClipboardList} isActive={activeTab === 'detalhes'} onClick={() => setActiveTab('detalhes')} />
+                                <TabButton label="Ref. / Obs" icon={ScrollText} isActive={activeTab === 'referencias'} onClick={() => setActiveTab('referencias')} />
+                                {currentCustomer?.id && (
+                                    <TabButton label={`Dependentes (${dependentesList.length})`} icon={Users2} isActive={activeTab === 'dependentes'} onClick={() => setActiveTab('dependentes')} />
+                                )}
+                            </div>
+
+                            {currentCustomer?.id && (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsPrescriptionHistoryOpen(true)}
+                                    className="mb-3 inline-flex items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-sky-200 transition-colors hover:bg-sky-500/20 hover:text-white"
+                                >
+                                    <ScrollText className="h-4 w-4" />
+                                    Historico de Graus
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     {/* Conteúdo com Scroll */}
@@ -673,6 +690,14 @@ export default function StoreClientPage() {
                     )}
                 </form>
             </div>
+
+            <CustomerPrescriptionHistoryModal
+                isOpen={isPrescriptionHistoryOpen}
+                onClose={() => setIsPrescriptionHistoryOpen(false)}
+                customerId={currentCustomer?.id ?? null}
+                customerName={currentCustomer?.full_name ?? ''}
+                storeId={storeId}
+            />
         </div>
     );
 }

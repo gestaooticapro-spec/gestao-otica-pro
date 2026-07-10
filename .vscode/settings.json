@@ -1,0 +1,14 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "npx eslint": true,
+        "/^node -e \"const fs=require\\('fs'\\);const b=fs\\.readFileSync\\('src/lib/whatsapp/customer-status\\.ts'\\);const idx=b\\.indexOf\\(Buffer\\.from\\('nÃºmero','latin1'\\)\\);console\\.log\\('mojibake nÃÂºmero found at byte:',idx\\);const idx2=b\\.indexOf\\(Buffer\\.from\\('seguranÃ§a','latin1'\\)\\);console\\.log\\('mojibake seguranÃÂ§a found at byte:',idx2\\);const idx3=b\\.indexOf\\('segurança'\\);console\\.log\\('proper seguranÃ§a found at byte:',idx3\\);\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^node --env-file=\\.env\\.local scripts/diagnose-nfc-trays\\.mjs$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "npx tsx": true
+    }
+}

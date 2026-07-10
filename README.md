@@ -1,37 +1,114 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# gestao-otica-pro
 
-## Getting Started
+Aplicacao principal de operacao para otica, com foco em atendimento, vendas, laboratorio, financeiro, pos-venda, relatorios e automacoes de WhatsApp por loja.
 
-First, run the development server:
+## Stack
+
+- Next.js 14
+- React 18
+- TypeScript
+- Supabase
+- Tailwind CSS
+- Vercel no app principal
+- Evolution API + servico Node separado para automacao de WhatsApp
+
+## Scripts
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run build
+npm run lint
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+O app local abre em `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Estrutura principal
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `src/app`
+  rotas do App Router, incluindo dashboard, tablet, laboratorio, NFC, impressao e APIs internas.
+- `src/lib/actions`
+  server actions e integracoes de negocio.
+- `src/lib/whatsapp`
+  regras da automacao, roteamento, estados de conversa, cobranca e pos-venda.
+- `src/components`
+  interface operacional, configuracoes e modais.
+- `supabase/migrations`
+  evolucao de schema e ajustes operacionais.
+- `services/whatsapp-automation`
+  servico externo que recebe webhook da Evolution e conversa com o app por rotas autenticadas.
 
-## Learn More
+## Modulos de negocio
 
-To learn more about Next.js, take a look at the following resources:
+- Atendimento e vendas por loja
+- Ordens de servico e laboratorio
+- Entrega e rastreio
+- Financeiro, parcelas e cobranca
+- Pos-venda
+- NFC para bandejas e fluxo de laboratorio
+- Relatorios operacionais e gerenciais
+- WhatsApp operacional com automacoes conservadoras
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## WhatsApp
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+O projeto tem duas partes separadas:
 
-## Deploy on Vercel
+1. `gestao-otica-pro`
+   define regras de negocio, filas, estados de conversa e rotas internas como:
+   - `/api/whatsapp/customer-status`
+   - `/api/whatsapp/delivery`
+   - `/api/whatsapp/installment-reminders`
+   - `/api/whatsapp/post-sale-followups`
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+2. `services/whatsapp-automation`
+   servico externo que recebe eventos da Evolution API e envia mensagens usando os endpoints internos do app.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-"# gestao-otica-pro" 
+Documentacao especifica desse servico:
+
+- [services/whatsapp-automation/README.md](/G:/projetos/gestao-otica-pro/services/whatsapp-automation/README.md:1)
+- [services/whatsapp-automation/deploy/evolution-compose.yml](/G:/projetos/gestao-otica-pro/services/whatsapp-automation/deploy/evolution-compose.yml:1)
+
+Observacao:
+detalhes operacionais sensiveis da VPS, acessos e cron devem ficar em documentacao local nao versionada.
+
+## Banco e migracoes
+
+As mudancas de banco ficam em `supabase/migrations`.
+
+Quando uma feature depender de tabela nova, indice novo ou alteracao estrutural, confirme que a migration foi aplicada antes de validar apenas pela interface.
+
+## Deploy
+
+### App principal
+
+- hospeda na Vercel
+- pode ser publicado por integracao Git ou `npx vercel --prod`
+
+### Automacao WhatsApp
+
+- roda separada do app principal
+- usa os artefatos em `services/whatsapp-automation`
+- pode usar Docker Compose na VPS ou `systemd`, conforme ambiente
+
+Antes de considerar um deploy completo de WhatsApp, normalmente precisamos validar:
+
+- app principal atualizado
+- migrations aplicadas
+- servico `whatsapp-automation` atualizado
+- cron ou scheduler das rotas internas configurado
+
+## Convencoes importantes
+
+- O projeto trabalha com contexto real de `storeId`.
+- Em fluxos de WhatsApp, o sistema deve respeitar handoff humano e nao atravessar conversa assumida por funcionario.
+- Para mudancas de configuracao por loja, a fonte canonica costuma ficar em `stores.settings`.
+- Em mudancas operacionais, priorize comportamento confiavel e auditavel antes de sofisticacao.
+
+## Arquivos de contexto util
+
+- [WHATSAPP_VPS_EVOLUTION_PLAN.md](/G:/projetos/gestao-otica-pro/WHATSAPP_VPS_EVOLUTION_PLAN.md:1)
+- [WHATSAPP_IA_MASTER_PLAN.md](/G:/projetos/gestao-otica-pro/WHATSAPP_IA_MASTER_PLAN.md:1)
+- [WHATSAPP_FAKE_MODAL_SPEC.md](/G:/projetos/gestao-otica-pro/WHATSAPP_FAKE_MODAL_SPEC.md:1)
+
+## Observacao final
+
+O `README.md` foi intencionalmente mantido sem IP, usuario, segredo, cron real ou passo a passo sensivel de infraestrutura. Esse tipo de detalhe deve ficar em runbook local ignorado pelo Git.

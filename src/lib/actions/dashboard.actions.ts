@@ -1,10 +1,10 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
 import { getAniversariantes } from '@/lib/actions/consultas.actions'
 
 export type StoreKPIs = {
+    storeId: number
     faturamentoDia: number
     faturamentoMes: number
     ticketMedio: number
@@ -23,18 +23,69 @@ export type NetworkKPIs = {
     }[]
 }
 
+const STORE_TIMEZONE = 'America/Sao_Paulo'
+const STORE_UTC_OFFSET = '-03:00'
+
+function getStoreDateParts(dateInput: string | Date) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: STORE_TIMEZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(new Date(dateInput))
+
+    const year = parts.find(part => part.type === 'year')?.value || '0000'
+    const month = parts.find(part => part.type === 'month')?.value || '00'
+    const day = parts.find(part => part.type === 'day')?.value || '00'
+
+    return { year, month, day }
+}
+
+function getStoreDateKey(dateInput: string | Date) {
+    const { year, month, day } = getStoreDateParts(dateInput)
+    return `${year}-${month}-${day}`
+}
+
+function getStoreDayRange(dateInput: string | Date) {
+    const dateKey = getStoreDateKey(dateInput)
+    return {
+        startIso: new Date(`${dateKey}T00:00:00${STORE_UTC_OFFSET}`).toISOString(),
+        endIso: new Date(`${dateKey}T23:59:59.999${STORE_UTC_OFFSET}`).toISOString()
+    }
+}
+
+function getStoreMonthRange(dateInput: string | Date) {
+    const { year, month } = getStoreDateParts(dateInput)
+    const startKey = `${year}-${month}-01`
+    const nextMonthKey = Number(month) === 12
+        ? `${String(Number(year) + 1).padStart(4, '0')}-01-01`
+        : `${year}-${String(Number(month) + 1).padStart(2, '0')}-01`
+
+    return {
+        startIso: new Date(`${startKey}T00:00:00${STORE_UTC_OFFSET}`).toISOString(),
+        endIso: new Date(new Date(`${nextMonthKey}T00:00:00${STORE_UTC_OFFSET}`).getTime() - 1).toISOString()
+    }
+}
+
+function getStoreYearRange(dateInput: string | Date) {
+    const { year } = getStoreDateParts(dateInput)
+    return {
+        startIso: new Date(`${year}-01-01T00:00:00${STORE_UTC_OFFSET}`).toISOString(),
+        endIso: new Date(`${year}-12-31T23:59:59.999${STORE_UTC_OFFSET}`).toISOString()
+    }
+}
+
 const getDates = () => {
     const now = new Date()
-    const inicioDia = new Date(now.setHours(0, 0, 0, 0)).toISOString()
-    const fimDia = new Date(now.setHours(23, 59, 59, 999)).toISOString()
-    const inicioMes = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-    return { inicioDia, fimDia, inicioMes }
+    const { startIso: inicioDia, endIso: fimDia } = getStoreDayRange(now)
+    const { startIso: inicioMes, endIso: fimMes } = getStoreMonthRange(now)
+    return { inicioDia, fimDia, inicioMes, fimMes }
 }
 
 // 1. KPI DO GERENTE (Loja Específica)
 export async function getManagerKPIs(storeId: number): Promise<StoreKPIs> {
     const supabase = createAdminClient()
-    const { inicioDia, fimDia, inicioMes } = getDates()
+    const { inicioDia, fimDia, inicioMes, fimMes } = getDates()
 
     console.log('[KPI] Calculando KPIs para loja', storeId)
 
@@ -57,6 +108,7 @@ export async function getManagerKPIs(storeId: number): Promise<StoreKPIs> {
         .eq('store_id', storeId)
         .eq('status', 'Fechada')
         .gte('created_at', inicioMes)
+        .lte('created_at', fimMes)
 
     const faturamentoMes = vendasMes?.reduce((acc: number, v: any) => acc + v.valor_final, 0) || 0
     const qtdVendasMes = vendasMes?.length || 0
@@ -74,6 +126,7 @@ export async function getManagerKPIs(storeId: number): Promise<StoreKPIs> {
     const aniversariantes = await getAniversariantes(storeId)
 
     return {
+        storeId,
         faturamentoDia,
         faturamentoMes,
         ticketMedio,
@@ -85,7 +138,6 @@ export async function getManagerKPIs(storeId: number): Promise<StoreKPIs> {
 
 export async function getAdminKPIs(): Promise<NetworkKPIs> {
     const supabase = createAdminClient()
-    const { inicioDia, inicioMes } = getDates()
 
     const { data: lojas } = await (supabase.from('stores') as any).select('id, name')
     if (!lojas) return { totalRedeDia: 0, totalRedeMes: 0, lojas: [] }
@@ -118,15 +170,10 @@ export async function getAdminKPIs(): Promise<NetworkKPIs> {
 export async function getSalesDetails(storeId: number, period: 'hoje' | 'mes' = 'mes') {
     const supabase = createAdminClient()
     const now = new Date()
-    let inicio = ''
-    let fim = new Date(now.setHours(23, 59, 59, 999)).toISOString()
-
-    if (period === 'hoje') {
-        inicio = new Date(now.setHours(0, 0, 0, 0)).toISOString()
-    } else {
-        // Mês atual
-        inicio = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-    }
+    const dayRange = getStoreDayRange(now)
+    const monthRange = getStoreMonthRange(now)
+    const inicio = period === 'hoje' ? dayRange.startIso : monthRange.startIso
+    const fim = period === 'hoje' ? dayRange.endIso : monthRange.endIso
 
     // 1. Buscar Pagamentos no período
     const { data: pagamentos } = await (supabase.from('pagamentos') as any)
@@ -158,8 +205,7 @@ export async function getSalesDetails(storeId: number, period: 'hoje' | 'mes' = 
 // ============================================================================
 export async function getTopCustomers(storeId: number) {
     const supabase = createAdminClient()
-    const now = new Date()
-    const inicioMes = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+    const { startIso: inicioMes, endIso: fimMes } = getStoreMonthRange(new Date())
 
     // 1. Buscar todas as vendas do mês
     const { data: vendas } = await (supabase.from('vendas') as any)
@@ -167,6 +213,7 @@ export async function getTopCustomers(storeId: number) {
         .eq('store_id', storeId)
         .eq('status', 'Fechada')
         .gte('created_at', inicioMes)
+        .lte('created_at', fimMes)
 
     if (!vendas) return []
 
@@ -201,8 +248,7 @@ export async function getTopCustomers(storeId: number) {
 // ============================================================================
 export async function getRecentSales(storeId: number, limit: number = 5) {
     const supabase = createAdminClient()
-    const now = new Date()
-    const inicioDia = new Date(now.setHours(0, 0, 0, 0)).toISOString()
+    const { startIso: inicioDia, endIso: fimDia } = getStoreDayRange(new Date())
 
     // 1. Busca vendas de hoje
     const { data: vendas } = await (supabase.from('vendas') as any)
@@ -213,6 +259,7 @@ export async function getRecentSales(storeId: number, limit: number = 5) {
         `)
         .eq('store_id', storeId)
         .gte('created_at', inicioDia)
+        .lte('created_at', fimDia)
         .order('created_at', { ascending: false })
         .limit(limit)
 
@@ -235,15 +282,22 @@ export async function getRecentSales(storeId: number, limit: number = 5) {
 export async function getTopProducts(storeId: number, period: 'mes' | 'ano' | 'hoje' = 'mes') {
     const supabase = createAdminClient()
     const now = new Date()
+
     let inicio = ''
+    let fim = ''
 
     if (period === 'hoje') {
-        inicio = new Date(now.setHours(0, 0, 0, 0)).toISOString()
+        const range = getStoreDayRange(now)
+        inicio = range.startIso
+        fim = range.endIso
     } else if (period === 'ano') {
-        inicio = new Date(now.getFullYear(), 0, 1).toISOString()
+        const range = getStoreYearRange(now)
+        inicio = range.startIso
+        fim = range.endIso
     } else {
-        // Mês atual (padrão)
-        inicio = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+        const range = getStoreMonthRange(now)
+        inicio = range.startIso
+        fim = range.endIso
     }
 
     // 1. Busca itens vendidos no período (apenas de vendas fechadas)
@@ -255,6 +309,7 @@ export async function getTopProducts(storeId: number, period: 'mes' | 'ano' | 'h
         .eq('store_id', storeId)
         .eq('vendas.status', 'Fechada')
         .gte('vendas.created_at', inicio)
+        .lte('vendas.created_at', fim)
 
     if (!itens) return []
 

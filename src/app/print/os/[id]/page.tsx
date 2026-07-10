@@ -129,6 +129,7 @@ export default function PrintOSPage({ params }: { params: { id: string } }) {
 
   // Formatador de Dinheiro
   const fmtMoney = (val: number) => val?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+  const protocoloHeader = [data.os_numero, `OS ${data.os_id}`].filter(Boolean).join('   ')
 
   return (
     <div className="print-container w-[210mm] h-[297mm] relative overflow-hidden bg-white text-black">
@@ -139,7 +140,7 @@ export default function PrintOSPage({ params }: { params: { id: string } }) {
       */}
 
       {/* === 1. CABEÇALHO === */}
-      <RenderField value={data.os_numero} config={PRINT_CONFIG.os_numero} />
+      <RenderField value={protocoloHeader} config={PRINT_CONFIG.os_numero} />
       <RenderField value={data.cliente_nome} config={PRINT_CONFIG.cliente_nome} />
       <RenderField value={data.cliente_fone} config={PRINT_CONFIG.cliente_fone} />
 

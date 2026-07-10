@@ -2,16 +2,17 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getNuvemFiscalToken } from "@/lib/nuvemfiscal";
+import { getNuvemLocalToken } from "@/lib/nuvem-local";
 import { Database } from "@/lib/database.types";
+import { isStoreModuleEnabledForStore } from "@/lib/store-modules.server";
 
-// Sanitiza xNome para atender à regex do SEFAZ: ^([!-ỹ]{1}[ -ỹ]{0,}[!-ỹ]{1}|[!-ỹ]{1})$
+// Sanitiza xNome para atender ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â  regex do SEFAZ: ^([!-ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹]{1}[ -ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹]{0,}[!-ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹]{1}|[!-ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹]{1})$
 function sanitizeXNome(nome: string | null | undefined): string {
     if (!nome) return "CONSUMIDOR";
     return nome
         .normalize("NFC")
-        .replace(/[^\x20-\xFFÀ-ỹ]/g, "") // remove fora do range válido
-        .replace(/\s+/g, " ")                        // colapsa espaços múltiplos
+        .replace(/[^\x20-\xFFÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬-ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹]/g, "") // remove fora do range vÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡lido
+        .replace(/\s+/g, " ")                        // colapsa espaÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§os mÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âºltiplos
         .trim()
         || "CONSUMIDOR";
 }
@@ -19,13 +20,13 @@ function sanitizeXNome(nome: string | null | undefined): string {
 type StoreRow = Database['public']['Tables']['stores']['Row'];
 
 type PagamentoItem = {
-    meio: string; // '01' Dinheiro, '03' Cartão Crédito, '04' Débito, '17' PIX, etc.
+    meio: string; // '01' Dinheiro, '03' CartÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o CrÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©dito, '04' DÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©bito, '17' PIX, etc.
     valor: number;
 };
 
 type EmissionPayload = {
     organization_id: string;
-    store_id?: number; // Necessário para buscar a série NFCe configurada na loja
+    store_id?: number; // NecessÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡rio para buscar a sÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©rie NFCe configurada na loja
     work_order_id?: number;
     cliente: {
         cpf_cnpj: string;
@@ -47,7 +48,7 @@ type EmissionPayload = {
         aliquota_iss?: number;
     }[];
     valor_total: number;
-    pagamentos: PagamentoItem[]; // Múltiplas formas de pagamento
+    pagamentos: PagamentoItem[]; // MÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âºltiplas formas de pagamento
     environment?: 'production' | 'homologation';
     natureza_operacao?: string;
     informacoes_complementares?: string;
@@ -56,6 +57,150 @@ type EmissionPayload = {
 function normalizeDocument(value?: string | null) {
     const normalized = value?.replace(/\D/g, "") || "";
     return normalized || null;
+}
+
+function normalizeText(value?: string | null) {
+    return String(value ?? "").trim();
+}
+
+function normalizeIbgeCode(value?: string | number | null) {
+    return String(value ?? "").replace(/\D/g, "");
+}
+
+function keepFilledOnly<T>(value: T): T | undefined {
+    if (value === null || value === undefined) return undefined;
+
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        return trimmed ? trimmed as T : undefined;
+    }
+
+    if (Array.isArray(value)) {
+        const items = value
+            .map((item) => keepFilledOnly(item))
+            .filter((item) => item !== undefined);
+        return items.length ? items as T : undefined;
+    }
+
+    if (typeof value === "object") {
+        const entries = Object.entries(value as Record<string, unknown>)
+            .map(([key, item]) => [key, keepFilledOnly(item)] as const)
+            .filter(([, item]) => item !== undefined);
+
+        return entries.length ? Object.fromEntries(entries) as T : undefined;
+    }
+
+    return value;
+}
+
+function buildLocalFiscalBasicAuthHeader() {
+    const username =
+        process.env.NUVEMLOCALFISCAL_ADMIN_USERNAME ||
+        process.env.ADMIN_USERNAME ||
+        "admin";
+    const password =
+        process.env.NUVEMLOCALFISCAL_ADMIN_PASSWORD ||
+        process.env.ADMIN_PASSWORD ||
+        "admin";
+
+    return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+}
+
+const IBGE_UF_CODES: Record<string, string> = {
+    RO: "11", AC: "12", AM: "13", RR: "14", PA: "15", AP: "16", TO: "17",
+    MA: "21", PI: "22", CE: "23", RN: "24", PB: "25", PE: "26", AL: "27", SE: "28", BA: "29",
+    MG: "31", ES: "32", RJ: "33", SP: "35",
+    PR: "41", SC: "42", RS: "43",
+    MS: "50", MT: "51", GO: "52", DF: "53",
+};
+
+function isValidIbgeMunicipalityCode(value?: string | number | null, uf?: string | null) {
+    const code = normalizeIbgeCode(value);
+    if (code.length !== 7 || !Object.values(IBGE_UF_CODES).includes(code.slice(0, 2))) {
+        return false;
+    }
+
+    const normalizedUf = normalizeText(uf).toUpperCase();
+    return !normalizedUf || IBGE_UF_CODES[normalizedUf] === code.slice(0, 2);
+}
+
+async function hydrateStoreFiscalDataFromNuvemLocal(
+    company: any,
+    env: "production" | "homologation",
+    token: string
+) {
+    const cnpj = normalizeDocument(company.cnpj || company.cpf_cnpj);
+    if (!cnpj) return company;
+
+    const hasValidIbge = isValidIbgeMunicipalityCode(company.codigo_municipio_ibge, company.uf);
+    const hasAddressBasics =
+        normalizeText(company.logradouro) &&
+        normalizeText(company.numero) &&
+        normalizeText(company.bairro) &&
+        normalizeText(company.cidade) &&
+        normalizeText(company.uf) &&
+        normalizeDocument(company.cep);
+
+    if (hasValidIbge && hasAddressBasics) return company;
+
+    try {
+        const baseUrl = env === "production"
+            ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
+            : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
+
+        const response = await fetch(`${baseUrl}/empresas/${cnpj}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (!response.ok) return company;
+
+        const remoteCompany = await response.json();
+        const address = remoteCompany?.endereco || {};
+        const remoteIbge = normalizeIbgeCode(address?.codigo_municipio);
+        const resolvedIbge = hasValidIbge
+            ? normalizeIbgeCode(company.codigo_municipio_ibge)
+            : isValidIbgeMunicipalityCode(remoteIbge, address?.uf)
+                ? remoteIbge
+                : normalizeIbgeCode(company.codigo_municipio_ibge);
+
+        return {
+            ...company,
+            razao_social: normalizeText(company.razao_social) || normalizeText(remoteCompany?.nome_razao_social) || company.razao_social,
+            nome_fantasia: normalizeText(company.nome_fantasia) || normalizeText(remoteCompany?.nome_fantasia) || company.nome_fantasia,
+            logradouro: normalizeText(company.logradouro) || normalizeText(address?.logradouro) || company.logradouro,
+            numero: normalizeText(company.numero) || normalizeText(address?.numero) || company.numero,
+            bairro: normalizeText(company.bairro) || normalizeText(address?.bairro) || company.bairro,
+            codigo_municipio_ibge: resolvedIbge,
+            cidade: normalizeText(company.cidade) || normalizeText(address?.cidade) || company.cidade,
+            uf: normalizeText(company.uf || address?.uf).toUpperCase() || company.uf,
+            cep: normalizeDocument(company.cep) || normalizeDocument(address?.cep) || company.cep,
+            inscricao_estadual: normalizeDocument(company.inscricao_estadual) || normalizeDocument(remoteCompany?.inscricao_estadual) || company.inscricao_estadual,
+        };
+    } catch (error) {
+        console.warn("[emitirNFCe] Nao foi possivel complementar dados da loja pela Nuvem Local:", error);
+        return company;
+    }
+}
+
+function buildRespTec(company: any, fallbackCnpj?: string | null) {
+    return {
+        CNPJ: normalizeDocument(process.env.NFE_RT_CNPJ || fallbackCnpj) || "",
+        xContato: String(
+            process.env.NFE_RT_CONTATO ||
+            company.razao_social ||
+            "Responsavel Tecnico"
+        ).trim().substring(0, 60),
+        email: String(
+            process.env.NFE_RT_EMAIL ||
+            company.email_contato ||
+            "email@exemplo.com"
+        ).trim(),
+        fone: normalizeDocument(
+            process.env.NFE_RT_FONE ||
+            company.telefone ||
+            "0000000000"
+        ) || "0000000000",
+    };
 }
 
 function buildOutputInvoiceSnapshot(
@@ -78,9 +223,241 @@ function extractProtocolFromInutilization(result: any) {
     const directProtocol = result?.numero_protocolo || result?.autorizacao?.numero_protocolo;
     if (directProtocol) return String(directProtocol);
 
-    const motivo = String(result?.motivo_status || result?.autorizacao?.motivo_status || "");
+    const motivo = String(result?.motivo_status || result?.autorizacao?.motivo_status || result?.error?.message || "");
     const match = motivo.match(/nProt:?\s*(\d+)/i);
     return match?.[1] || null;
+}
+
+function isDuplicateInutilizationWithProtocol(result: Parameters<typeof extractProtocolFromInutilization>[0]) {
+    const statusCode = result?.codigo_status || result?.autorizacao?.codigo_status || result?.error?.codigo_status;
+    const message = String(
+        result?.motivo_status
+        || result?.autorizacao?.motivo_status
+        || result?.error?.message
+        || ""
+    );
+
+    return (!statusCode || Number(statusCode) === 563) && /Ja existe pedido de Inutilizacao|J[aÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡] existe pedido de Inutiliza[cÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§][aÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£]o/i.test(message) && Boolean(extractProtocolFromInutilization(result));
+}
+
+function buildInutilizationExternalId(params: {
+    model: "NFCe" | "NFe";
+    environment: string;
+    cnpj: string;
+    year: number;
+    serie: number;
+    numeroInicial: number;
+    numeroFinal: number;
+}) {
+    return `${params.model.toLowerCase()}-inutilizacao:${params.environment}:${params.cnpj}:${params.year}:${params.serie}:${params.numeroInicial}:${params.numeroFinal}`;
+}
+
+type RtcMvpContext = {
+    model: 55 | 65;
+    finality: 1 | 2 | 3 | 4;
+    cfop: string;
+    sameState: boolean;
+};
+
+const RTC_IBS_UF_RATE = 0.10;
+const RTC_IBS_MUN_RATE = 0;
+const RTC_CBS_RATE = 0.90;
+
+function fiscalMoney(value?: number | string | null) {
+    const parsed = typeof value === "string" ? Number(value.replace(",", ".")) : Number(value || 0);
+    return Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : 0;
+}
+
+function fiscalMoneyText(value?: number | string | null) {
+    return fiscalMoney(value).toFixed(2);
+}
+
+function shouldSendRtcMvpGroup(
+    environment: "production" | "homologation",
+    context?: RtcMvpContext
+) {
+    if (!["homologation", "production"].includes(environment)) return false;
+    if (!context) return true;
+
+    if (context.model === 65) {
+        return context.finality === 1 && context.sameState;
+    }
+
+    return (
+        context.model === 55 &&
+        (
+            (context.finality === 1 && ["5101", "5102", "6101", "6102"].includes(context.cfop)) ||
+            (context.finality === 4 && ["5202", "6202"].includes(context.cfop))
+        )
+    );
+}
+
+function buildRtcMvpItemImposto(
+    environment: "production" | "homologation",
+    context?: RtcMvpContext,
+    baseValue?: number
+) {
+    if (!shouldSendRtcMvpGroup(environment, context)) return {};
+
+    const vBC = fiscalMoney(baseValue);
+    const vIBSUF = fiscalMoney(vBC * RTC_IBS_UF_RATE / 100);
+    const vIBSMun = fiscalMoney(vBC * RTC_IBS_MUN_RATE / 100);
+    const vIBS = fiscalMoney(vIBSUF + vIBSMun);
+    const vCBS = fiscalMoney(vBC * RTC_CBS_RATE / 100);
+
+    return {
+        IBSCBS: {
+            CST: "000",
+            cClassTrib: "000001",
+            gIBSCBS: {
+                vBC: fiscalMoneyText(vBC),
+                gIBSUF: {
+                    pIBSUF: "0.10",
+                    vIBSUF: fiscalMoneyText(vIBSUF),
+                },
+                gIBSMun: {
+                    pIBSMun: "0",
+                    vIBSMun: fiscalMoneyText(vIBSMun),
+                },
+                vIBS: fiscalMoneyText(vIBS),
+                gCBS: {
+                    pCBS: "0.90",
+                    vCBS: fiscalMoneyText(vCBS),
+                },
+            },
+        },
+    };
+}
+
+function buildRtcMvpTotal(
+    environment: "production" | "homologation",
+    context?: RtcMvpContext,
+    baseValue?: number
+) {
+    if (!shouldSendRtcMvpGroup(environment, context)) return {};
+
+    const vBCIBSCBS = fiscalMoney(baseValue);
+    const vIBSUF = fiscalMoney(vBCIBSCBS * RTC_IBS_UF_RATE / 100);
+    const vIBSMun = fiscalMoney(vBCIBSCBS * RTC_IBS_MUN_RATE / 100);
+    const vIBS = fiscalMoney(vIBSUF + vIBSMun);
+    const vCBS = fiscalMoney(vBCIBSCBS * RTC_CBS_RATE / 100);
+
+    return {
+        IBSCBSTot: {
+            vBCIBSCBS: fiscalMoneyText(vBCIBSCBS),
+            gIBS: {
+                gIBSUF: {
+                    vDif: 0,
+                    vDevTrib: 0,
+                    vIBSUF: fiscalMoneyText(vIBSUF),
+                },
+                gIBSMun: {
+                    vDif: 0,
+                    vDevTrib: 0,
+                    vIBSMun: fiscalMoneyText(vIBSMun),
+                },
+                vIBS: fiscalMoneyText(vIBS),
+                vCredPres: 0,
+                vCredPresCondSus: 0,
+            },
+            gCBS: {
+                vDif: 0,
+                vDevTrib: 0,
+                vCBS: fiscalMoneyText(vCBS),
+                vCredPres: 0,
+                vCredPresCondSus: 0,
+            },
+        },
+    };
+}
+function parseCompanyContractStatus(company: any, model: "NFCe" | "NFe") {
+    const lowerModel = model.toLowerCase();
+    const directKeys = [
+        lowerModel,
+        `${lowerModel}_config`,
+        `${lowerModel}_contrato`,
+        `${lowerModel}_contratado`,
+        `${lowerModel}_habilitado`,
+    ];
+
+    for (const key of directKeys) {
+        const value = company?.[key];
+        if (typeof value === "boolean") {
+            return { known: true, enabled: value };
+        }
+        if (value && typeof value === "object") {
+            const enabledCandidate = value.habilitado ?? value.ativo ?? value.enabled ?? value.contratado;
+            if (typeof enabledCandidate === "boolean") {
+                return { known: true, enabled: enabledCandidate };
+            }
+        }
+    }
+
+    const contractLists = [
+        company?.contratos,
+        company?.contrato,
+        company?.servicos,
+        company?.servicos_habilitados,
+        company?.modulos,
+        company?.planos,
+    ].filter(Array.isArray);
+
+    for (const list of contractLists) {
+        const match = list.find((item: any) => {
+            const text = JSON.stringify(item).toLowerCase();
+            return text.includes(lowerModel);
+        });
+
+        if (match) {
+            const enabledCandidate = match.habilitado ?? match.ativo ?? match.enabled ?? match.contratado ?? true;
+            return { known: true, enabled: Boolean(enabledCandidate) };
+        }
+    }
+
+    return { known: false, enabled: true };
+}
+
+async function verifyCompanyInutilizationContract(params: {
+    cnpj: string;
+    environment: "production" | "homologation";
+    model: "NFCe" | "NFe";
+}) {
+    const token = await getNuvemLocalToken(params.environment);
+    const baseUrl = params.environment === "production"
+        ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
+        : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
+
+    const response = await fetch(`${baseUrl}/empresas/${params.cnpj}`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+        },
+    });
+
+    if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        const providerMessage = result?.error?.message || result?.message;
+        return {
+            success: false as const,
+            error: providerMessage || `Nao foi possivel validar o cadastro da empresa na Nuvem Local para ${params.model}.`,
+        };
+    }
+
+    const company = await response.json().catch(() => ({}));
+    const contractStatus = parseCompanyContractStatus(company, params.model);
+
+    if (contractStatus.known && !contractStatus.enabled) {
+        return {
+            success: false as const,
+            error: `A empresa nao esta habilitada para inutilizacao de ${params.model} na Nuvem Local neste ambiente.`,
+        };
+    }
+
+    return {
+        success: true as const,
+        token,
+        baseUrl,
+    };
 }
 
 async function tryFetchXmlContent(xmlUrl?: string | null) {
@@ -95,20 +472,71 @@ async function tryFetchXmlContent(xmlUrl?: string | null) {
     }
 }
 
+function extractFiscalAuthorizationMessage(result: any, fallback: string) {
+    return (
+        result?.autorizacao?.motivo_status ||
+        result?.motivo_status ||
+        result?.error?.message ||
+        fallback
+    );
+}
+
+function formatFiscalProviderMessage(message: string) {
+    const normalized = String(message || "").trim();
+    const lower = normalized.toLowerCase();
+
+    if (
+        lower.includes("could not connect to server") ||
+        lower.includes("winhttp operation") ||
+        lower.includes("nfeautorizacao4") ||
+        lower.includes("error: (12029)")
+    ) {
+        return [
+            "Falha de comunicacao com a SEFAZ/PR no momento.",
+            "A nota nao foi autorizada e voce pode tentar novamente mais tarde.",
+            "",
+            `Detalhe tecnico: ${normalized}`,
+        ].join("\n");
+    }
+
+    if (
+        lower.includes("ora-04025") ||
+        (lower.includes("erro nao catalogado") && lower.includes("sql"))
+    ) {
+        return [
+            "A SEFAZ/PR respondeu com instabilidade interna durante a autorizacao.",
+            "Nao parece ser um erro de preenchimento da nota.",
+            "",
+            `Detalhe tecnico: ${normalized}`,
+        ].join("\n");
+    }
+
+    return normalized;
+}
+
+function isNuvemLocalFiscalUrl(baseUrl: string) {
+    return /(^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$)|fiscal\.mentebinaria\.com/i.test(baseUrl.replace(/\/$/, ""));
+}
+
+function getFiscalProviderError(result: any, fallback: string) {
+    return (
+        result?.error?.message ||
+        result?.message ||
+        result?.motivo_status ||
+        result?.mensagens?.[0]?.descricao ||
+        fallback
+    );
+}
+
 async function tryFetchXmlByUuid(
     token: string,
     baseUrl: string,
-    tipoDocumento: "NFe" | "NFCe" | "NFSe",
+    tipoDocumento: "NFCe" | "NFe" | "NFSe",
     uuid?: string | null
 ) {
     if (!uuid) return null;
     try {
-        const endpointType =
-            tipoDocumento === "NFe"
-                ? "nfe"
-                : tipoDocumento === "NFCe"
-                    ? "nfce"
-                    : "nfse";
+        const endpointType = tipoDocumento === "NFCe" ? "nfce" : tipoDocumento === "NFe" ? "nfe" : "nfse";
         const response = await fetch(`${baseUrl}/${endpointType}/${uuid}/xml`, {
             method: "GET",
             headers: {
@@ -163,19 +591,27 @@ export async function emitirNFCe(payload: EmissionPayload) {
     try {
         const env = payload.environment || 'production';
 
-        // 1. Validar duplicidade antes de qualquer operação
+        // 1. Validar duplicidade antes de qualquer operaÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o
         const duplicateError = await ensureNoActiveInvoiceForWorkOrder(adminSupabase, payload, "NFCe", env);
         if (duplicateError) {
             return { success: false, error: duplicateError };
         }
 
-        // 2. Buscar Token Nuvem Fiscal
-        const token = await getNuvemFiscalToken(env);
+        // 2. Buscar token da Nuvem Local
+        const fiscalModuleEnabled = payload.store_id
+            ? await isStoreModuleEnabledForStore(payload.store_id, "fiscal")
+            : false;
 
-        // 3. Buscar dados da loja (fonte de dados fiscais na ótica)
+        // 3. Buscar dados da loja (fonte de dados fiscais na ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³tica)
         if (!payload.store_id) {
-            throw new Error("store_id ausente no payload. Não é possível emitir sem identificar a loja.");
+            throw new Error("store_id ausente no payload. NÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© possÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­vel emitir sem identificar a loja.");
         }
+
+        if (!fiscalModuleEnabled) {
+            return { success: false, error: "Modulo fiscal desativado para esta loja." };
+        }
+
+        const token = await getNuvemLocalToken(env);
 
         const { data: store } = await adminSupabase
             .from("stores")
@@ -184,12 +620,12 @@ export async function emitirNFCe(payload: EmissionPayload) {
             .single() as unknown as { data: StoreRow | null; error: unknown };
 
         if (!store) {
-            console.error("Loja não encontrada para store_id:", payload.store_id);
-            throw new Error("Configurações da loja não encontradas.");
+            console.error("Loja nÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o encontrada para store_id:", payload.store_id);
+            throw new Error("ConfiguraÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âµes da loja nÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o encontradas.");
         }
 
         // Mapear campos da tabela stores para o formato esperado pelo payload NFCe
-        const company = {
+        let company = {
             cnpj: store.cnpj,
             cpf_cnpj: store.cnpj,
             razao_social: store.razao_social || store.name,
@@ -208,54 +644,72 @@ export async function emitirNFCe(payload: EmissionPayload) {
             telefone: store.phone || store.whatsapp,
         };
 
+        company = await hydrateStoreFiscalDataFromNuvemLocal(company, env, token);
+
         console.log("[emitirNFCe] Dados da loja:", JSON.stringify(company, null, 2));
 
         const cnpj = company.cnpj;
         if (!cnpj) {
-            throw new Error("CNPJ não configurado na loja. Preencha nas configurações.");
+            throw new Error("CNPJ nÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o configurado na loja. Preencha nas configuraÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âµes.");
         }
 
         if (!company.codigo_municipio_ibge) {
-            throw new Error("Código IBGE do município não configurado na loja. Preencha nas configurações.");
+            throw new Error("CÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³digo IBGE do municÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­pio nÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o configurado na loja. Preencha nas configuraÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âµes.");
         }
 
-        // 4. Buscar série NFCe configurada na loja
+        // 4. Buscar sÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©rie NFCe configurada na loja
+        const codigoMunicipioIbge = normalizeIbgeCode(company.codigo_municipio_ibge);
+        if (!isValidIbgeMunicipalityCode(codigoMunicipioIbge, company.uf)) {
+            throw new Error(`Codigo IBGE do municipio invalido na loja ${payload.store_id}: "${company.codigo_municipio_ibge || ""}". Informe os 7 digitos corretos nas configuracoes da loja.`);
+        }
+
+        const emitUf = normalizeText(company.uf).toUpperCase();
+        const destUf = normalizeText(payload.cliente.endereco?.uf).toUpperCase();
+        const sameState = !destUf || destUf === emitUf;
+        if (!sameState) {
+            return {
+                success: false,
+                error: "NFC-e interestadual nao e permitida. Emita NF-e para cliente de outra UF.",
+            };
+        }
         const currentSerie = store.nfce_serie || 1;
 
-        // 5. Obter próxima numeração sequencial de forma atômica via RPC
-        // Usa admin client para garantir permissão de execução independente de RLS
+        // 5. Obter prÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³xima numeraÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o sequencial de forma atÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â´mica via RPC
+        // Usa admin client para garantir permissÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o de execuÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o independente de RLS
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data: nextNumber, error: rpcError } = await (adminSupabase as any).rpc("get_next_nfce_number", {
             p_org_id: payload.organization_id,
-            p_serie: currentSerie
+            p_store_id: payload.store_id,
+            p_serie: currentSerie,
+            p_environment: env,
         });
 
         if (rpcError || !nextNumber) {
-            console.error("Erro ao obter numeração NFCe:", rpcError);
-            throw new Error("Não foi possível obter a numeração sequencial para a NFCe.");
+            console.error("Erro ao obter numeraÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o NFCe:", rpcError);
+            throw new Error("NÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o foi possÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­vel obter a numeraÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o sequencial para a NFCe.");
         }
 
         const issuedAt = new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }).replace(' ', 'T') + '-03:00';
 
-        // 6. Montar JSON para Nuvem Fiscal (NFC-e)
-        // Documentação: https://dev.nuvemfiscal.com.br/docs/api#tag/Nfe/operation/EmitirNfe
+        // 6. Montar JSON para Nuvem Local (NFC-e)
+        // DocumentaÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o: https://dev.nuvemfiscal.com.br/docs/api#tag/Nfe/operation/EmitirNfe
         const nfePayload = {
             ambiente: env === 'production' ? 'producao' : 'homologacao',
             infNFe: {
                 versao: "4.00",
                 ide: {
-                    cUF: Number(company.codigo_municipio_ibge?.substring(0, 2)),
+                    cUF: Number(codigoMunicipioIbge.substring(0, 2)),
                     natOp: "VENDA DE MERCADORIA",
                     mod: 65, // 65 = NFC-e
                     serie: currentSerie,
                     nNF: nextNumber,
                     dhEmi: issuedAt,
-                    tpNF: 1, // 1 = Saída
+                    tpNF: 1, // 1 = SaÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­da
                     idDest: 1, // 1 = Interna
-                    cMunFG: Number(company.codigo_municipio_ibge),
+                    cMunFG: Number(codigoMunicipioIbge),
                     tpImp: 4, // 4 = DANFE NFC-e
                     tpEmis: 1, // 1 = Normal
-                    tpAmb: env === 'production' ? 1 : 2, // 1 = Produção, 2 = Homologação
+                    tpAmb: env === 'production' ? 1 : 2, // 1 = ProduÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o, 2 = HomologaÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o
                     finNFe: 1, // 1 = Normal
                     indFinal: 1, // 1 = Consumidor Final
                     indPres: 1, // 1 = Presencial
@@ -267,14 +721,14 @@ export async function emitirNFCe(payload: EmissionPayload) {
                     xNome: company.razao_social,
                     xFant: company.nome_fantasia,
                     enderEmit: {
-                        xLgr: company.logradouro?.trim() || "Não Informado",
+                        xLgr: company.logradouro?.trim() || "NÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o Informado",
                         nro: (company.numero?.trim() && company.numero.trim() !== "") ? company.numero.trim() : "S/N",
                         xCpl: company.complemento?.trim() || undefined,
-                        xBairro: company.bairro?.trim() && company.bairro.trim().length >= 2 ? company.bairro.trim() : "Não Informado",
-                        cMun: Number(company.codigo_municipio_ibge),
-                        xMun: company.cidade?.trim() || "Não Informado",
-                        UF: company.uf,
-                        CEP: company.cep?.replace(/\D/g, ""),
+                        xBairro: company.bairro?.trim() && company.bairro.trim().length >= 2 ? company.bairro.trim() : "NÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o Informado",
+                        cMun: Number(codigoMunicipioIbge),
+                        xMun: company.cidade?.trim() || "NÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o Informado",
+                        UF: emitUf,
+                        CEP: normalizeDocument(company.cep) || undefined,
                         cPais: "1058",
                         xPais: "BRASIL"
                     },
@@ -288,7 +742,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
                         CNPJ: cleanDoc.length > 11 ? cleanDoc : undefined,
                         CPF: cleanDoc.length <= 11 ? cleanDoc : undefined,
                         xNome: sanitizeXNome(payload.cliente.nome),
-                        indIEDest: 9, // 9 = Não Contribuinte
+                        indIEDest: 9, // 9 = NÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o Contribuinte
                         email: payload.cliente.email || undefined
                     };
                 })(),
@@ -311,11 +765,11 @@ export async function emitirNFCe(payload: EmissionPayload) {
                         indTot: 1
                     },
                     imposto: {
-                        // Simples Nacional básico
+                        // Simples Nacional bÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡sico
                         ICMS: {
                             ICMSSN102: {
                                 orig: 0, // 0 = Nacional
-                                CSOSN: "102" // Tributada pelo Simples Nacional sem permissão de crédito
+                                CSOSN: "102" // Tributada pelo Simples Nacional sem permissÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o de crÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©dito
                             }
                         },
                         PIS: {
@@ -333,7 +787,13 @@ export async function emitirNFCe(payload: EmissionPayload) {
                                 pCOFINS: 0.00,
                                 vCOFINS: 0.00
                             }
-                        }
+                        },
+                        ...buildRtcMvpItemImposto(env, {
+                            model: 65,
+                            finality: 1,
+                            cfop: item.cfop || "5102",
+                            sameState,
+                        }, item.valor_total)
                     }
                 })),
                 total: {
@@ -357,10 +817,16 @@ export async function emitirNFCe(payload: EmissionPayload) {
                         vCOFINS: 0.00,
                         vOutro: 0.00,
                         vNF: payload.valor_total
-                    }
+                    },
+                    ...buildRtcMvpTotal(env, {
+                        model: 65,
+                        finality: 1,
+                        cfop: "5102",
+                        sameState,
+                    }, payload.valor_total)
                 },
                 transp: {
-                    modFrete: 9 // 9 = Sem Ocorrência de Transporte
+                    modFrete: 9 // 9 = Sem OcorrÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âªncia de Transporte
                 },
                 pag: {
                     detPag: (() => {
@@ -385,12 +851,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
                         return detPagList;
                     })()
                 },
-                infRespTec: {
-                    CNPJ: cnpj.replace(/\D/g, ""),
-                    xContato: company.razao_social ? company.razao_social.substring(0, 60) : "Responsavel Tecnico",
-                    email: company.email_contato || "email@exemplo.com",
-                    fone: company.telefone ? company.telefone.replace(/\D/g, "") : "0000000000"
-                }
+                infRespTec: buildRespTec(company, cnpj)
             }
         };
 
@@ -419,8 +880,8 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
         invoiceId = invoice.id;
 
-        // 8. Enviar para Nuvem Fiscal
-        console.log("[NuvemFiscal] Enviando NFE Payload:", JSON.stringify(nfePayload, null, 2));
+        // 8. Enviar para Nuvem Local
+        console.log("[NuvemLocal] Enviando NFE Payload:", JSON.stringify(nfePayload, null, 2));
 
         const baseUrl = env === 'production'
             ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
@@ -435,29 +896,29 @@ export async function emitirNFCe(payload: EmissionPayload) {
             body: JSON.stringify(nfePayload)
         });
 
-        console.log("[NuvemFiscal] Response Status:", response.status);
+        console.log("[NuvemLocal] Response Status:", response.status);
 
         const responseText = await response.text();
-        console.log("[NuvemFiscal] Response Body:", responseText);
+        console.log("[NuvemLocal] Response Body:", responseText);
 
         let result;
         try {
             result = responseText ? JSON.parse(responseText) : {};
         } catch (e) {
-            console.error("[NuvemFiscal] Erro ao fazer parse da resposta:", responseText);
-            // Atualizar banco para não deixar nota em estado inconsistente
+            console.error("[NuvemLocal] Erro ao fazer parse da resposta:", responseText);
+            // Atualizar banco para nÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o deixar nota em estado inconsistente
             if (invoice?.id) {
                 await adminSupabase.from("fiscal_invoices").update({
                     status: "error",
-                    error_message: `Resposta inválida da API (Status ${response.status}). Provável timeout.`
+                    error_message: `Resposta invÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡lida da API (Status ${response.status}). ProvÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡vel timeout.`
                 }).eq("id", invoice.id);
             }
-            return { success: false, error: `Erro na resposta da Nuvem Fiscal (Status ${response.status}). Verifique os logs.` };
+            return { success: false, error: `Erro na resposta da Nuvem Local (Status ${response.status}). Verifique os logs.` };
         }
 
         if (!response.ok) {
             const detailedError = result.error?.errors ? `Detalhes: ${JSON.stringify(result.error.errors)}` : '';
-            const errorMsg = `${result.error?.message || "Erro na emissão"}. ${detailedError}`;
+            const errorMsg = `${result.error?.message || "Erro na emissÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o"}. ${detailedError}`;
             
             await adminSupabase
                 .from("fiscal_invoices")
@@ -467,16 +928,16 @@ export async function emitirNFCe(payload: EmissionPayload) {
                 })
                 .eq("id", invoice.id);
 
-            return { success: false, error: errorMsg };
+            return { success: false, error: formatFiscalProviderMessage(errorMsg) };
         }
 
-        // 9. Verificar status REAL retornado pela Nuvem Fiscal
+        // 9. Verificar status real retornado pela Nuvem Local
         const realStatus = result.status;
-        console.log("[NuvemFiscal] Status real retornado:", realStatus);
+        console.log("[NuvemLocal] Status real retornado:", realStatus);
 
         if (realStatus === 'rejeitado') {
             const codigoErro = result.autorizacao?.codigo_status || 'N/A';
-            const motivoErro = result.autorizacao?.motivo_status || 'Motivo não informado';
+            const motivoErro = result.autorizacao?.motivo_status || 'Motivo nÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o informado';
 
             await adminSupabase
                 .from("fiscal_invoices")
@@ -492,7 +953,30 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
             return {
                 success: false,
-                error: `NFC-e Rejeitada: Erro ${codigoErro} - ${motivoErro}`,
+                error: formatFiscalProviderMessage(`Erro ${codigoErro}: ${motivoErro}`),
+                invoiceId: invoice.id
+            };
+        }
+
+        if (realStatus === 'erro' || realStatus === 'negado') {
+            const motivoErro = extractFiscalAuthorizationMessage(result, 'Erro na autorizacao');
+            const friendlyError = formatFiscalProviderMessage(motivoErro);
+
+            await adminSupabase
+                .from("fiscal_invoices")
+                .update({
+                    status: "error",
+                    nuvemfiscal_uuid: result.id,
+                    chave_acesso: result.chave,
+                    numero: result.numero,
+                    serie: result.serie,
+                    error_message: motivoErro
+                })
+                .eq("id", invoice.id);
+
+            return {
+                success: false,
+                error: friendlyError,
                 invoiceId: invoice.id
             };
         }
@@ -524,7 +1008,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
             return { success: true, invoiceId: invoice.id };
         }
 
-        // Status "processando" ou outro — manter como processing
+        // Status "processando" ou outro ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â manter como processing
         await adminSupabase
             .from("fiscal_invoices")
             .update({
@@ -539,7 +1023,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
         return { success: true, invoiceId: invoice.id, message: "Nota em processamento" };
 
     } catch (error: any) {
-        console.error("Erro na emissão:", error);
+        console.error("Erro na emissÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o:", error);
 
         if (invoiceId) {
             await adminSupabase
@@ -930,11 +1414,14 @@ export async function emitirNFSe(payload: EmissionPayload) {
     console.log("[emitirNFSe] User ID:", user?.id);
 
     try {
-        // 1. Buscar Token Nuvem Fiscal
+        // 1. Buscar token da Nuvem Local
         const env = payload.environment || 'production';
-        const token = await getNuvemFiscalToken(env);
+        if (payload.store_id && !(await isStoreModuleEnabledForStore(payload.store_id, "fiscal"))) {
+            return { success: false, error: "Modulo fiscal desativado para esta loja." };
+        }
+        const token = await getNuvemLocalToken(env);
 
-        // 2. Buscar Configurações da Empresa
+        // 2. Buscar ConfiguraÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âµes da Empresa
         const { data: company } = await supabase
             .from("company_settings")
             .select("*")
@@ -942,14 +1429,14 @@ export async function emitirNFSe(payload: EmissionPayload) {
             .single();
 
         if (!company || !company.nfse_login) {
-            throw new Error("Configurações de NFS-e não encontradas (Login/Senha da Prefeitura).");
+            throw new Error("ConfiguraÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âµes de NFS-e nÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o encontradas (Login/Senha da Prefeitura).");
         }
 
         const cnpj = company.cnpj || company.cpf_cnpj;
 
-        // 3. Montar JSON para Nuvem Fiscal (NFS-e - DPS)
-        const servicoPrincipal = payload.itens[0]; // Assumindo um serviço principal ou o primeiro para cabeçalho
-        if (!servicoPrincipal) throw new Error("Nenhum serviço informado.");
+        // 3. Montar JSON para Nuvem Local (NFS-e - DPS)
+        const servicoPrincipal = payload.itens[0]; // Assumindo um serviÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§o principal ou o primeiro para cabeÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§alho
+        if (!servicoPrincipal) throw new Error("Nenhum serviÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§o informado.");
 
         const dpsPayload = {
             ambiente: env === 'production' ? 'producao' : 'homologacao',
@@ -988,8 +1475,8 @@ export async function emitirNFSe(payload: EmissionPayload) {
                     },
                     trib: {
                         tribMun: {
-                            tribISSQN: 1, // 1 - Tributável
-                            tpRetISSQN: 2, // 2 - Não Retido
+                            tribISSQN: 1, // 1 - TributÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡vel
+                            tpRetISSQN: 2, // 2 - NÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o Retido
                             pAliq: servicoPrincipal.aliquota_iss || 2.01,
                             vISSQN: Number(((payload.valor_total * (servicoPrincipal.aliquota_iss || 2.01)) / 100).toFixed(2))
                         }
@@ -1015,8 +1502,8 @@ export async function emitirNFSe(payload: EmissionPayload) {
         if (dbError) throw dbError;
         invoiceId = invoice.id;
 
-        // 5. Enviar para Nuvem Fiscal
-        console.log("[NuvemFiscal] Enviando DPS Payload:", JSON.stringify(dpsPayload, null, 2));
+        // 5. Enviar para Nuvem Local
+        console.log("[NuvemLocal] Enviando DPS Payload:", JSON.stringify(dpsPayload, null, 2));
 
         const baseUrl = env === 'production'
             ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
@@ -1032,20 +1519,20 @@ export async function emitirNFSe(payload: EmissionPayload) {
         });
 
         const responseText = await response.text();
-        console.log("[NuvemFiscal] Response Status:", response.status);
-        console.log("[NuvemFiscal] Response Body:", responseText);
+        console.log("[NuvemLocal] Response Status:", response.status);
+        console.log("[NuvemLocal] Response Body:", responseText);
 
         let result;
         try {
             result = responseText ? JSON.parse(responseText) : {};
         } catch (e) {
-            console.error("[NuvemFiscal] Erro ao fazer parse da resposta:", responseText);
+            console.error("[NuvemLocal] Erro ao fazer parse da resposta:", responseText);
             result = {};
         }
 
         if (!response.ok) {
             const errorDetails = result.error?.message || JSON.stringify(result);
-            console.error("[NuvemFiscal] Erro detalhado:", errorDetails);
+            console.error("[NuvemLocal] Erro detalhado:", errorDetails);
 
             await adminSupabase
                 .from("fiscal_invoices")
@@ -1055,14 +1542,14 @@ export async function emitirNFSe(payload: EmissionPayload) {
                 })
                 .eq("id", invoice.id);
 
-            return { success: false, error: `Erro NuvemFiscal: ${errorDetails}` };
+            return { success: false, error: `Erro Nuvem Local: ${errorDetails}` };
         }
 
         // 6. Sucesso
         await adminSupabase
             .from("fiscal_invoices")
             .update({
-                status: "processing", // NFS-e é assíncrono
+                status: "processing", // NFS-e ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© assÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­ncrono
                 nuvemfiscal_uuid: result.id,
                 numero: result.numero,
                 serie: result.serie
@@ -1072,7 +1559,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
         return { success: true, invoiceId: invoice.id };
 
     } catch (error: any) {
-        console.error("Erro na emissão NFS-e:", error);
+        console.error("Erro na emissÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o NFS-e:", error);
         if (invoiceId) {
             await adminSupabase
                 .from("fiscal_invoices")
@@ -1094,11 +1581,15 @@ export async function consultarNFCe(invoiceId: string) {
             .single();
 
         if (!invoice || !invoice.nuvemfiscal_uuid) {
-            return { success: false, error: "Nota não encontrada ou sem ID da NuvemFiscal." };
+            return { success: false, error: "Nota nao encontrada ou sem ID da Nuvem Local." };
+        }
+
+        if (invoice.store_id && !(await isStoreModuleEnabledForStore(invoice.store_id, "fiscal"))) {
+            return { success: false, error: "Modulo fiscal desativado para esta loja." };
         }
 
         const env = (invoice.environment as 'production' | 'homologation') || 'production';
-        const token = await getNuvemFiscalToken(env);
+        const token = await getNuvemLocalToken(env);
 
         const baseUrl = env === 'production'
             ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
@@ -1125,13 +1616,17 @@ export async function consultarNFCe(invoiceId: string) {
         if (result.status === 'autorizado') novoStatus = 'authorized';
         else if (result.status === 'rejeitado') {
             novoStatus = 'rejected';
-            errorMessage = result.autorizacao?.motivo_status || result.motivo_status || "Rejeitada pela SEFAZ";
+            errorMessage = extractFiscalAuthorizationMessage(result, "Rejeitada pela SEFAZ");
         }
         else if (result.status === 'erro' || result.status === 'negado') {
             novoStatus = 'error';
-            errorMessage = result.motivo_status || "Erro na autorização";
+            errorMessage = result.motivo_status || "Erro na autorizaÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o";
         }
         else if (result.status === 'cancelado') novoStatus = 'cancelled';
+
+        if (novoStatus === 'error') {
+            errorMessage = extractFiscalAuthorizationMessage(result, errorMessage || "Erro na autorizacao");
+        }
 
         const updatePayload: Record<string, any> = {
             status: novoStatus,
@@ -1154,7 +1649,7 @@ export async function consultarNFCe(invoiceId: string) {
                         xmlContent = await xmlResponse.text();
                     }
                 } catch (xmlErr) {
-                    console.warn('[NFCe] Não foi possível baixar XML via xml_url.', xmlErr);
+                    console.warn('[NFCe] NÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o foi possÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­vel baixar XML via xml_url.', xmlErr);
                 }
             }
 
@@ -1192,11 +1687,15 @@ export async function consultarNFe(invoiceId: string) {
             .single();
 
         if (!invoice || !invoice.nuvemfiscal_uuid) {
-            return { success: false, error: "Nota n?o encontrada ou sem ID da NuvemFiscal." };
+            return { success: false, error: "Nota não encontrada ou sem ID da Nuvem Local." };
+        }
+
+        if (invoice.store_id && !(await isStoreModuleEnabledForStore(invoice.store_id, "fiscal"))) {
+            return { success: false, error: "Modulo fiscal desativado para esta loja." };
         }
 
         const env = (invoice.environment as 'production' | 'homologation') || 'production';
-        const token = await getNuvemFiscalToken(env);
+        const token = await getNuvemLocalToken(env);
 
         const baseUrl = env === 'production'
             ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
@@ -1223,13 +1722,17 @@ export async function consultarNFe(invoiceId: string) {
         if (result.status === 'autorizado') novoStatus = 'authorized';
         else if (result.status === 'rejeitado') {
             novoStatus = 'rejected';
-            errorMessage = result.autorizacao?.motivo_status || result.motivo_status || "Rejeitada pela SEFAZ";
+            errorMessage = extractFiscalAuthorizationMessage(result, "Rejeitada pela SEFAZ");
         }
         else if (result.status === 'erro' || result.status === 'negado') {
             novoStatus = 'error';
-            errorMessage = result.motivo_status || "Erro na autoriza??o";
+            errorMessage = result.motivo_status || "Erro na autorização";
         }
         else if (result.status === 'cancelado') novoStatus = 'cancelled';
+
+        if (novoStatus === 'error') {
+            errorMessage = extractFiscalAuthorizationMessage(result, errorMessage || "Erro na autorizacao");
+        }
 
         const updatePayload: Record<string, any> = {
             status: novoStatus,
@@ -1241,8 +1744,9 @@ export async function consultarNFe(invoiceId: string) {
             error_message: errorMessage
         };
 
+        // Salvar XML localmente (xml_url ou fallback por UUID)
         if ((novoStatus === 'authorized' || novoStatus === 'cancelled') && !invoice.xml_content) {
-            let xmlContent: string | null = None
+            let xmlContent: string | null = null;
 
             if (result.xml_url) {
                 try {
@@ -1251,7 +1755,7 @@ export async function consultarNFe(invoiceId: string) {
                         xmlContent = await xmlResponse.text();
                     }
                 } catch (xmlErr) {
-                    console.warn('[NFe] N?o foi poss?vel baixar XML via xml_url.', xmlErr);
+                    console.warn('[NFe] Não foi possível baixar XML via xml_url.', xmlErr);
                 }
             }
 
@@ -1261,6 +1765,7 @@ export async function consultarNFe(invoiceId: string) {
 
             if (xmlContent) {
                 updatePayload.xml_content = xmlContent;
+                console.log(`[NFe] XML salvo localmente para nota ${result.numero || invoiceId}`);
             }
         }
 
@@ -1287,6 +1792,10 @@ export async function recuperarXmlsNFCePeriodo(params: {
     const env = params.environment || "production";
 
     try {
+        if (!(await isStoreModuleEnabledForStore(params.storeId, "fiscal"))) {
+            return { success: false, error: "Modulo fiscal desativado para esta loja." };
+        }
+
         const start = new Date(Date.UTC(params.year, params.month, 1, 0, 0, 0)).toISOString();
         const end = new Date(Date.UTC(params.year, params.month + 1, 0, 23, 59, 59)).toISOString();
 
@@ -1339,8 +1848,193 @@ export async function recuperarXmlsNFCePeriodo(params: {
             refreshed,
         };
     } catch (error: any) {
-        console.error("Erro ao recuperar XMLs do período:", error);
+        console.error("Erro ao recuperar XMLs do perÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­odo:", error);
         return { success: false, error: error.message || "Erro inesperado ao recuperar XMLs." };
+    }
+}
+
+export async function inutilizarNumeracaoFiscal(params: {
+    storeId: number;
+    year: number;
+    serie: number;
+    numeroInicial: number;
+    numeroFinal: number;
+    justificativa: string;
+    model?: "NFCe" | "NFe";
+    environment?: "production" | "homologation";
+}) {
+    const supabase = createAdminClient() as any;
+    const env = params.environment || "production";
+    const model = params.model === "NFe" ? "NFe" : "NFCe";
+
+    try {
+        if (!(await isStoreModuleEnabledForStore(params.storeId, "fiscal"))) {
+            return { success: false, error: "Modulo fiscal desativado para esta loja." };
+        }
+
+        if (!params.justificativa || params.justificativa.trim().length < 15) {
+            return { success: false, error: "Justificativa deve ter ao menos 15 caracteres." };
+        }
+        if (params.numeroInicial <= 0 || params.numeroFinal <= 0 || params.numeroFinal < params.numeroInicial) {
+            return { success: false, error: "Faixa de numeraÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o invÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡lida." };
+        }
+
+        const { data: store, error: storeError } = await supabase
+            .from("stores")
+            .select("cnpj, tenant_id")
+            .eq("id", params.storeId)
+            .single();
+
+        if (storeError || !store?.cnpj) {
+            return { success: false, error: "CNPJ da loja nÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o encontrado." };
+        }
+
+        const cnpj = String(store.cnpj).replace(/\D/g, "");
+        if (!cnpj) {
+            return { success: false, error: "CNPJ invÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡lido na loja." };
+        }
+
+        const companyCheck = await verifyCompanyInutilizationContract({
+            cnpj,
+            environment: env,
+            model,
+        });
+        if (!companyCheck.success) {
+            return companyCheck;
+        }
+
+        const { token, baseUrl } = companyCheck;
+
+        const payload = {
+            ambiente: env === "production" ? "producao" : "homologacao",
+            cnpj,
+            ano: params.year % 100,
+            serie: params.serie,
+            numero_inicial: params.numeroInicial,
+            numero_final: params.numeroFinal,
+            justificativa: params.justificativa.trim(),
+        };
+
+        const endpoint = model === "NFe" ? "nfe" : "nfce";
+        const response = await fetch(`${baseUrl}/${endpoint}/inutilizacoes`, {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+        });
+
+        const result = await response.json();
+        const duplicateAlreadyInutilized = !response.ok && isDuplicateInutilizationWithProtocol(result);
+        if (!response.ok && !duplicateAlreadyInutilized) {
+            const apiError = result?.error?.message || "Erro ao solicitar inutilizacao na Nuvem Local.";
+            return { success: false, error: apiError, details: result };
+        }
+
+        let persistWarning: string | null = null;
+
+        // Persistir histÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³rico local para permitir download posterior de comprovantes
+        try {
+            const protocol = extractProtocolFromInutilization(result);
+            const externalId = result?.id
+                || result?.autorizacao?.id
+                || buildInutilizationExternalId({
+                    model,
+                    environment: env,
+                    cnpj,
+                    year: params.year,
+                    serie: params.serie,
+                    numeroInicial: params.numeroInicial,
+                    numeroFinal: params.numeroFinal,
+                });
+            const status = duplicateAlreadyInutilized
+                ? "ja_inutilizado"
+                : (result?.status || result?.autorizacao?.status || null);
+
+            const payloadToPersist = {
+                store_id: params.storeId,
+                tenant_id: store.tenant_id || null,
+                environment: env,
+                model,
+                year: params.year,
+                serie: params.serie,
+                numero_inicial: params.numeroInicial,
+                numero_final: params.numeroFinal,
+                justificativa: params.justificativa.trim(),
+                protocol,
+                external_id: externalId,
+                status,
+                response_json: duplicateAlreadyInutilized
+                    ? { ...result, recovered_from_duplicate_response: true }
+                    : result,
+            };
+
+            const { data: existingInutilization, error: lookupError } = await supabase
+                .from("fiscal_inutilizations")
+                .select("id")
+                .eq("external_id", externalId)
+                .maybeSingle();
+
+            if (lookupError) throw lookupError;
+
+            const persistQuery = existingInutilization
+                ? supabase.from("fiscal_inutilizations").update(payloadToPersist).eq("id", existingInutilization.id)
+                : supabase.from("fiscal_inutilizations").insert(payloadToPersist);
+
+            const { error: persistError } = await persistQuery;
+            if (persistError) throw persistError;
+        } catch (persistErr) {
+            console.warn("[Fiscal] NÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o foi possÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­vel persistir histÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³rico de inutilizaÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o localmente.", persistErr);
+            const persistErrorMessage = persistErr instanceof Error ? persistErr.message : null;
+            persistWarning = persistErrorMessage
+                ? `Inutilizacao confirmada pela SEFAZ, mas nao foi possivel salvar o historico local: ${persistErrorMessage}`
+                : "Inutilizacao confirmada pela SEFAZ, mas nao foi possivel salvar o historico local.";
+        }
+
+        return {
+            success: true,
+            warning: persistWarning,
+            data: duplicateAlreadyInutilized
+                ? { ...result, status: "ja_inutilizado", recovered_from_duplicate_response: true }
+                : result,
+        };
+    } catch (error: any) {
+        console.error(`Erro ao inutilizar numeracao ${model}:`, error);
+        return { success: false, error: error.message || "Erro inesperado na inutilizaÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o." };
+    }
+}
+
+export async function listarInutilizacoesFiscal(params: {
+    storeId: number;
+    year: number;
+    model?: "NFCe" | "NFe";
+    environment?: "production" | "homologation";
+}) {
+    const supabase = createAdminClient() as any;
+    const env = params.environment || "production";
+    const model = params.model === "NFe" ? "NFe" : "NFCe";
+    try {
+        if (!(await isStoreModuleEnabledForStore(params.storeId, "fiscal"))) {
+            return { success: false, error: "Modulo fiscal desativado para esta loja." };
+        }
+
+        const { data, error } = await supabase
+            .from("fiscal_inutilizations")
+            .select("id, environment, year, serie, numero_inicial, numero_final, justificativa, protocol, external_id, status, response_json, created_at")
+            .eq("store_id", params.storeId)
+            .eq("model", model)
+            .eq("environment", env)
+            .eq("year", params.year)
+            .order("created_at", { ascending: false });
+
+        if (error) {
+            return { success: false, error: error.message, data: [] };
+        }
+
+        return { success: true, data: data || [] };
+    } catch (error: any) {
+        return { success: false, error: error.message || "Erro ao listar inutilizaÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âµes.", data: [] };
     }
 }
 
@@ -1353,94 +2047,7 @@ export async function inutilizarNumeracaoNFCe(params: {
     justificativa: string;
     environment?: "production" | "homologation";
 }) {
-    const supabase = createAdminClient() as any;
-    const env = params.environment || "production";
-
-    try {
-        if (!params.justificativa || params.justificativa.trim().length < 15) {
-            return { success: false, error: "Justificativa deve ter ao menos 15 caracteres." };
-        }
-        if (params.numeroInicial <= 0 || params.numeroFinal <= 0 || params.numeroFinal < params.numeroInicial) {
-            return { success: false, error: "Faixa de numeração inválida." };
-        }
-
-        const { data: store, error: storeError } = await supabase
-            .from("stores")
-            .select("cnpj, tenant_id")
-            .eq("id", params.storeId)
-            .single();
-
-        if (storeError || !store?.cnpj) {
-            return { success: false, error: "CNPJ da loja não encontrado." };
-        }
-
-        const cnpj = String(store.cnpj).replace(/\D/g, "");
-        if (!cnpj) {
-            return { success: false, error: "CNPJ inválido na loja." };
-        }
-
-        const token = await getNuvemFiscalToken(env);
-        const baseUrl = env === "production"
-            ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
-            : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
-
-        const payload = {
-            ambiente: env === "production" ? "producao" : "homologacao",
-            cnpj,
-            ano: params.year % 100,
-            serie: params.serie,
-            numero_inicial: params.numeroInicial,
-            numero_final: params.numeroFinal,
-            justificativa: params.justificativa.trim(),
-        };
-
-        const response = await fetch(`${baseUrl}/nfce/inutilizacoes`, {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${token}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
-        });
-
-        const result = await response.json();
-        if (!response.ok) {
-            const apiError = result?.error?.message || "Erro ao solicitar inutilização na Nuvem Fiscal.";
-            return { success: false, error: apiError, details: result };
-        }
-
-        // Persistir histórico local para permitir download posterior de comprovantes
-        try {
-            const protocol = extractProtocolFromInutilization(result);
-            const externalId = result?.id || result?.autorizacao?.id || null;
-            const status = result?.status || result?.autorizacao?.status || null;
-
-            await supabase
-                .from("fiscal_inutilizations")
-                .upsert({
-                    store_id: params.storeId,
-                    tenant_id: store.tenant_id || null,
-                    environment: env,
-                    model: "NFCe",
-                    year: params.year,
-                    serie: params.serie,
-                    numero_inicial: params.numeroInicial,
-                    numero_final: params.numeroFinal,
-                    justificativa: params.justificativa.trim(),
-                    protocol,
-                    external_id: externalId,
-                    status,
-                    response_json: result,
-                }, { onConflict: "external_id" });
-        } catch (persistErr) {
-            console.warn("[Fiscal] Não foi possível persistir histórico de inutilização localmente.", persistErr);
-        }
-
-        return { success: true, data: result };
-    } catch (error: any) {
-        console.error("Erro ao inutilizar numeração NFC-e:", error);
-        return { success: false, error: error.message || "Erro inesperado na inutilização." };
-    }
+    return inutilizarNumeracaoFiscal({ ...params, model: "NFCe" });
 }
 
 export async function listarInutilizacoesNFCe(params: {
@@ -1448,26 +2055,7 @@ export async function listarInutilizacoesNFCe(params: {
     year: number;
     environment?: "production" | "homologation";
 }) {
-    const supabase = createAdminClient() as any;
-    const env = params.environment || "production";
-    try {
-        const { data, error } = await supabase
-            .from("fiscal_inutilizations")
-            .select("id, environment, year, serie, numero_inicial, numero_final, justificativa, protocol, external_id, status, response_json, created_at")
-            .eq("store_id", params.storeId)
-            .eq("model", "NFCe")
-            .eq("environment", env)
-            .eq("year", params.year)
-            .order("created_at", { ascending: false });
-
-        if (error) {
-            return { success: false, error: error.message, data: [] };
-        }
-
-        return { success: true, data: data || [] };
-    } catch (error: any) {
-        return { success: false, error: error.message || "Erro ao listar inutilizações.", data: [] };
-    }
+    return listarInutilizacoesFiscal({ ...params, model: "NFCe" });
 }
 
 export async function consultarNFSe(invoiceId: string) {
@@ -1481,11 +2069,15 @@ export async function consultarNFSe(invoiceId: string) {
             .single();
 
         if (!invoice || !invoice.nuvemfiscal_uuid) {
-            return { success: false, error: "Nota não encontrada ou sem ID da NuvemFiscal." };
+            return { success: false, error: "Nota nao encontrada ou sem ID da Nuvem Local." };
+        }
+
+        if (invoice.store_id && !(await isStoreModuleEnabledForStore(invoice.store_id, "fiscal"))) {
+            return { success: false, error: "Modulo fiscal desativado para esta loja." };
         }
 
         const env = (invoice.environment as 'production' | 'homologation') || 'production';
-        const token = await getNuvemFiscalToken(env);
+        const token = await getNuvemLocalToken(env);
 
         const baseUrl = env === 'production'
             ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
@@ -1512,7 +2104,7 @@ export async function consultarNFSe(invoiceId: string) {
         if (result.status === 'autorizado') novoStatus = 'authorized';
         else if (result.status === 'erro' || result.status === 'rejeitado' || result.status === 'negado') {
             novoStatus = 'error';
-            errorMessage = result.motivo_status || "Erro na autorização";
+            errorMessage = result.motivo_status || "Erro na autorizaÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o";
         }
         else if (result.status === 'cancelado') novoStatus = 'cancelled';
 
@@ -1548,11 +2140,11 @@ export async function updateCompanyCredentials(organizationId: string, environme
             .single();
 
         if (!company || !company.nfse_login || !company.nfse_password) {
-            return { success: false, error: "Credenciais não encontradas no banco." };
+            return { success: false, error: "Credenciais nÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o encontradas no banco." };
         }
 
         const cnpj = (company.cnpj || company.cpf_cnpj).replace(/\D/g, "");
-        const token = await getNuvemFiscalToken(environment);
+        const token = await getNuvemLocalToken(environment);
 
         const payload = {
             ambiente: environment === 'production' ? 'producao' : 'homologacao',
@@ -1600,7 +2192,7 @@ export async function updateCompanyCredentials(organizationId: string, environme
                 if (!responsePost.ok) {
                     return { success: false, error: resultPost.error?.message || "Erro ao criar config NFS-e." };
                 }
-                return { success: true, message: "Configuração NFS-e criada com sucesso!" };
+                return { success: true, message: "ConfiguraÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o NFS-e criada com sucesso!" };
             }
             return { success: false, error: result.error?.message || "Erro ao atualizar config NFS-e." };
         }
@@ -1624,13 +2216,19 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
             .single();
 
         if (!invoice || !invoice.nuvemfiscal_uuid) {
-            return { success: false, error: "Nota não encontrada ou sem ID da NuvemFiscal." };
+            return { success: false, error: "Nota nao encontrada ou sem ID da Nuvem Local." };
+        }
+
+        if (invoice.store_id && !(await isStoreModuleEnabledForStore(invoice.store_id, "fiscal"))) {
+            return { success: false, error: "Modulo fiscal desativado para esta loja." };
         }
 
         const env = (invoice.environment as 'production' | 'homologation') || 'production';
-        const token = await getNuvemFiscalToken(env);
+        const token = await getNuvemLocalToken(env);
 
-        // Verificar prazo de cancelamento para NFC-e (30 minutos)
+        // Verificar prazo de cancelamento por modelo:
+        // - NFC-e: 30 minutos
+        // - NF-e: 24 horas
         if (invoice.tipo_documento === 'NFCe') {
             const emissionTime = new Date(invoice.created_at).getTime();
             const now = Date.now();
@@ -1642,13 +2240,35 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
                     error: "NFC-e não pode ser cancelada: Prazo de 30 minutos expirado."
                 };
             }
+        } else if (invoice.tipo_documento === 'NFe') {
+            const emissionTime = new Date(invoice.created_at).getTime();
+            const now = Date.now();
+            const twentyFourHours = 24 * 60 * 60 * 1000;
+
+            if (now - emissionTime > twentyFourHours) {
+                return {
+                    success: false,
+                    error: "NF-e não pode ser cancelada: Prazo de 24 horas expirado."
+                };
+            }
         }
 
+        const baseUrl = env === 'production'
+            ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
+            : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
+
+        const localFiscal = isNuvemLocalFiscalUrl(baseUrl);
         let endpoint = "";
         let body: any = { justificativa };
 
         if (invoice.tipo_documento === 'NFCe') {
-            endpoint = `/nfce/${invoice.nuvemfiscal_uuid}/cancelar`;
+            endpoint = localFiscal
+                ? `/nfce/${invoice.nuvemfiscal_uuid}/cancelar`
+                : `/nfce/${invoice.nuvemfiscal_uuid}/cancelamento`;
+        } else if (invoice.tipo_documento === 'NFe') {
+            endpoint = localFiscal
+                ? `/nfe/${invoice.nuvemfiscal_uuid}/cancelar`
+                : `/nfe/${invoice.nuvemfiscal_uuid}/cancelamento`;
         } else {
             endpoint = `/nfse/${invoice.nuvemfiscal_uuid}/cancelar`;
             body = {
@@ -1659,10 +2279,6 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
 
         console.log(`[Cancelar] Enviando pedido para ${endpoint}...`);
 
-        const baseUrl = env === 'production'
-            ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
-            : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
-
         const response = await fetch(`${baseUrl}${endpoint}`, {
             method: "POST",
             headers: {
@@ -1672,11 +2288,17 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
             body: JSON.stringify(body)
         });
 
-        const result = await response.json();
+        const responseText = await response.text();
+        let result: any = {};
+        try {
+            result = responseText ? JSON.parse(responseText) : {};
+        } catch {
+            result = { message: responseText };
+        }
         console.log("[Cancelar] Resultado:", JSON.stringify(result, null, 2));
 
         if (!response.ok) {
-            return { success: false, error: result.error?.message || "Erro ao cancelar nota." };
+            return { success: false, error: getFiscalProviderError(result, `Erro ao cancelar nota. Status ${response.status}.`) };
         }
 
         await supabase
@@ -1703,53 +2325,127 @@ export async function syncStoreFiscalData(
     const environments = ['production', 'homologation'] as const;
     const results = [];
 
-    console.log(`[Sync Fiscal] Iniciando sincronização para CNPJ: ${storeData.cnpj}`);
+    console.log(`[Sync Fiscal] Iniciando sincronizaÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o para CNPJ: ${storeData.cnpj}`);
 
     for (const env of environments) {
         try {
             console.log(`[Sync Fiscal] Processando ambiente: ${env.toUpperCase()}`);
 
-            const token = await getNuvemFiscalToken(env);
+            const token = await getNuvemLocalToken(env);
             const cnpj = storeData.cnpj.replace(/\D/g, "");
             const baseUrl = env === 'production'
                 ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
                 : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
+            const isLocalFiscal = isNuvemLocalFiscalUrl(baseUrl);
+            const ambienteFiscal = env === 'production' ? 'producao' : 'homologacao';
 
-            const companyPayload = {
+            const companyPayload = keepFilledOnly({
+                ...(isLocalFiscal ? {
+                    ambiente: ambienteFiscal,
+                    regime_tributario: Number(storeData.regime_tributario || '1'),
+                    inscricao_municipal: normalizeDocument(storeData.inscricao_municipal),
+                } : {}),
                 cpf_cnpj: cnpj,
                 nome_razao_social: storeData.razao_social,
                 nome_fantasia: storeData.name,
+                email: storeData.email,
                 inscricao_estadual: storeData.inscricao_estadual?.replace(/\D/g, ""),
                 endereco: {
                     logradouro: storeData.street,
                     numero: storeData.number,
-                    complemento: null,
+                    complemento: storeData.complement,
                     bairro: storeData.neighborhood,
-                    codigo_municipio: "0000000", // TODO: IBGE real
+                    codigo_municipio: normalizeIbgeCode(storeData.codigo_municipio_ibge) || undefined,
                     cidade: storeData.city,
-                    uf: storeData.state,
+                    uf: normalizeText(storeData.state).toUpperCase() || undefined,
                     cep: storeData.cep?.replace(/\D/g, ""),
                     pais: "BRASIL"
                 }
-            };
+            });
+
+            if (isLocalFiscal) {
+                const environmentPayload = keepFilledOnly({
+                    razaoSocial: storeData.razao_social,
+                    nomeFantasia: storeData.name,
+                    uf: normalizeText(storeData.state).toUpperCase(),
+                    ie: normalizeDocument(storeData.inscricao_estadual),
+                    crt: String(storeData.regime_tributario || '1'),
+                    serieNfe: Number(storeData.nfe_serie || 1),
+                    serieNfce: Number(storeData.nfce_serie || 1),
+                    ativo: true
+                });
+
+                const environmentResponse = await fetch(
+                    `${baseUrl}/admin/api/companies/${cnpj}/environments/${ambienteFiscal}`,
+                    {
+                        method: "POST",
+                        headers: {
+                            "Authorization": buildLocalFiscalBasicAuthHeader(),
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(environmentPayload)
+                    }
+                );
+
+                if (!environmentResponse.ok) {
+                    const errText = await environmentResponse.text();
+                    throw new Error(`Falha ao sincronizar ambiente ${env} na Nuvem Local: ${errText}`);
+                }
+            }
 
             const checkResponse = await fetch(`${baseUrl}/empresas/${cnpj}`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
 
             if (checkResponse.ok) {
-                await fetch(`${baseUrl}/empresas/${cnpj}`, {
+                const updateResponse = await fetch(`${baseUrl}/empresas/${cnpj}`, {
                     method: "PUT",
                     headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
                     body: JSON.stringify(companyPayload)
                 });
+                if (!updateResponse.ok) {
+                    const errText = await updateResponse.text();
+                    throw new Error(`Falha ao atualizar empresa em ${env}: ${errText}`);
+                }
             } else if (checkResponse.status === 404) {
                 const createResponse = await fetch(`${baseUrl}/empresas`, {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
                     body: JSON.stringify(companyPayload)
                 });
-                if (!createResponse.ok) throw new Error(`Falha ao criar empresa em ${env}`);
+                if (!createResponse.ok) {
+                    const errText = await createResponse.text();
+                    throw new Error(`Falha ao criar empresa em ${env}: ${errText}`);
+                }
+            } else {
+                const errText = await checkResponse.text();
+                throw new Error(`Falha ao consultar empresa em ${env}: ${errText}`);
+            }
+            const cscId = env === 'production' ? storeData.csc_id_producao : storeData.csc_id_homologacao;
+            const cscToken = env === 'production' ? storeData.csc_producao : storeData.csc_homologacao;
+            if (cscId && cscToken) {
+                console.log(`[Sync Fiscal] Enviando configuracao NFC-e para ${env}...`);
+                const nfcePayload = keepFilledOnly({
+                    ambiente: ambienteFiscal,
+                    sefaz: {
+                        id_csc: Number(String(cscId).replace(/\D/g, '')),
+                        csc: String(cscToken).trim()
+                    },
+                    serie: Number(storeData.nfce_serie || 1),
+                    CRT: Number(storeData.regime_tributario || '1')
+                });
+
+                const nfceResponse = await fetch(`${baseUrl}/empresas/${cnpj}/nfce`, {
+                    method: "PUT",
+                    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+                    body: JSON.stringify(nfcePayload)
+                });
+
+                if (!nfceResponse.ok) {
+                    const errText = await nfceResponse.text();
+                    throw new Error(`Falha ao sincronizar NFC-e em ${env}: ${errText}`);
+                }
+
             }
 
             let certResult = null;

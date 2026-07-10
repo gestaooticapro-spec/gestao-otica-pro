@@ -1,4 +1,6 @@
 import jsPDF from 'jspdf'
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
 import { Database } from '@/lib/database.types'
 
 type Pagamento = Database['public']['Tables']['pagamentos']['Row']
@@ -80,7 +82,7 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
 
 
   // --- FUNÇÃO CARIMBO (Desenha o conteúdo de uma via) ---
-  const desenharVia = (isSegundaVia: boolean) => {
+  const desenharVia = () => {
     // Fonte Courier, Negrito, Tamanho 12
     doc.setFont('courier', 'bold')
     doc.setFontSize(12)
@@ -152,11 +154,639 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
   // --- EXECUÇÃO (GERA 1 RECIBO UNIFICADO EM 2 VIAS) ---
 
   // 1ª Via
-  desenharVia(false)
+  desenharVia()
 
   // 2ª Via (Restaurada conforme solicitado)
   doc.addPage()
-  desenharVia(true)
+  desenharVia()
+
+  return Buffer.from(doc.output('arraybuffer'))
+}
+
+export interface InstallmentReceiptData {
+  customerName: string
+  installmentNumber: number
+  totalInstallments: number
+  amount: number
+  dueDate: string
+  paymentDate: string
+  isReprint?: boolean
+  receiptTitle?: string
+  referenceLabel?: string
+  referenceValue?: string
+  declarationText?: string
+  footerNote?: string
+  store: {
+    name: string
+    legalName?: string | null
+    phone?: string | null
+    whatsapp?: string | null
+    email?: string | null
+    street?: string | null
+    number?: string | null
+    neighborhood?: string | null
+    city?: string | null
+    state?: string | null
+    cep?: string | null
+    logoFile?: string | null
+  }
+}
+
+export interface CustomerFinancialSummaryPdfData {
+  customerName: string
+  store: InstallmentReceiptData['store']
+  totals: {
+    parcelasPagas: number
+    parcelasPendentes: number
+    totalParcelas: number
+    valorPago: number
+    valorRestante: number
+    valorTotalFinanciado: number
+  }
+  nextDue: {
+    data: string | null
+    valor: number
+    numeroParcela: number
+  } | null
+  financiamentos: Array<{
+    id: number
+    vendaId: number
+    dataVenda: string
+    dependenteNames: string[]
+    totalParcelas: number
+    parcelasPagas: number
+    parcelasPendentes: number
+    valorFinanciado: number
+    parcelas: Array<{
+      numeroParcela: number
+      dataVencimento: string
+      valor: number
+      dataPagamento: string | null
+      valorPago: number
+      status: string
+    }>
+  }>
+}
+
+export interface CustomerPrescriptionSummaryPdfData {
+  customerName: string
+  subjectLabel: string
+  store: InstallmentReceiptData['store']
+  prescriptions: Array<{
+    id: number
+    dataCompra: string
+    longeOdEsf: string | null
+    longeOdCil: string | null
+    longeOdEixo: string | null
+    longeOeEsf: string | null
+    longeOeCil: string | null
+    longeOeEixo: string | null
+    pertoOdEsf: string | null
+    pertoOdCil: string | null
+    pertoOdEixo: string | null
+    pertoOeEsf: string | null
+    pertoOeCil: string | null
+    pertoOeEixo: string | null
+    adicao: string | null
+    medico: string | null
+  }>
+}
+
+function formatDateBR(dateStr: string) {
+  if (!dateStr) return ''
+  if (dateStr.length === 10 && dateStr.includes('-')) {
+    const [year, month, day] = dateStr.split('-')
+    return `${day}/${month}/${year}`
+  }
+
+  return new Date(dateStr).toLocaleDateString('pt-BR', {
+    timeZone: 'UTC',
+  })
+}
+
+function formatMoneyBR(value: number) {
+  return value.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  })
+}
+
+function formatPhoneBR(value?: string | null) {
+  const digits = String(value || '').replace(/\D/g, '')
+  if (digits.length === 11) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
+  }
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`
+  }
+  return String(value || '').trim()
+}
+
+function formatCepBR(value?: string | null) {
+  const digits = String(value || '').replace(/\D/g, '')
+  if (digits.length === 8) {
+    return `${digits.slice(0, 5)}-${digits.slice(5)}`
+  }
+  return String(value || '').trim()
+}
+
+function buildStoreAddress(store: InstallmentReceiptData['store']) {
+  const firstLine = [store.street, store.number].filter(Boolean).join(', ')
+  const secondLine = [
+    store.neighborhood,
+    [store.city, store.state].filter(Boolean).join('/'),
+    formatCepBR(store.cep),
+  ].filter(Boolean).join(' - ')
+
+  return [firstLine, secondLine].filter(Boolean)
+}
+
+async function loadStoreLogoDataUrl(logoFile?: string | null) {
+  const safeLogoFile = String(logoFile || '').trim()
+  if (!safeLogoFile || !/^[a-zA-Z0-9._-]{1,160}$/.test(safeLogoFile)) {
+    return null
+  }
+
+  const extension = path.extname(safeLogoFile).toLowerCase()
+  const mimeType = extension === '.png'
+    ? 'image/png'
+    : extension === '.jpg' || extension === '.jpeg'
+      ? 'image/jpeg'
+      : extension === '.webp'
+        ? 'image/webp'
+        : null
+
+  if (!mimeType) return null
+
+  try {
+    const filePath = path.join(process.cwd(), 'public', 'logos', safeLogoFile)
+    const fileBuffer = await readFile(filePath)
+    return `data:${mimeType};base64,${fileBuffer.toString('base64')}`
+  } catch {
+    return null
+  }
+}
+
+function compactStatusLabel(status: string) {
+  return String(status || '').toLowerCase() === 'pago' ? 'Pago' : 'Pendente'
+}
+
+export async function generateCustomerFinancialSummaryPDF(data: CustomerFinancialSummaryPdfData): Promise<Buffer> {
+  const generatedAt = new Date().toLocaleDateString('pt-BR')
+  const rowHeight = 4.6
+  const blockHeaderHeight = 18
+  const tableHeaderHeight = 6
+  const totalsHeight = 8
+  const blockGap = 3
+  const headerAreaHeight = 34
+  const topPadding = 10
+  const bottomPadding = 8
+  const contentHeight = data.financiamentos.reduce((total, financiamento) => {
+    const blockHeight = blockHeaderHeight + tableHeaderHeight + (financiamento.parcelas.length * rowHeight) + totalsHeight + 4
+    return total + blockHeight + blockGap
+  }, 0)
+  const pageHeight = Math.max(85, topPadding + headerAreaHeight + contentHeight + bottomPadding)
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [pageHeight, 150] })
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const logoDataUrl = await loadStoreLogoDataUrl(data.store.logoFile)
+  const contentLeft = logoDataUrl ? 28 : 10
+
+  doc.setFillColor(15, 23, 42)
+  doc.rect(0, 0, pageWidth, 21, 'F')
+
+  if (logoDataUrl) {
+    doc.setFillColor(255, 255, 255)
+    doc.roundedRect(8, 4.5, 16, 12, 2, 2, 'F')
+    try {
+      const properties = doc.getImageProperties(logoDataUrl)
+      const maxWidth = 12
+      const maxHeight = 8
+      const scale = Math.min(maxWidth / properties.width, maxHeight / properties.height)
+      const drawWidth = properties.width * scale
+      const drawHeight = properties.height * scale
+      const drawX = 8 + ((16 - drawWidth) / 2)
+      const drawY = 4.5 + ((12 - drawHeight) / 2)
+      doc.addImage(logoDataUrl, drawX, drawY, drawWidth, drawHeight, undefined, 'FAST')
+    } catch {
+      doc.addImage(logoDataUrl, 10, 6.5, 11, 7, undefined, 'FAST')
+    }
+  }
+
+  doc.setTextColor(255, 255, 255)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10.2)
+  doc.text(data.store.name || 'Financeiro da Loja', contentLeft, 8)
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(5.2)
+  const storeIdentity = data.store.legalName && data.store.legalName !== data.store.name
+    ? data.store.legalName
+    : null
+  if (storeIdentity) {
+    doc.text(storeIdentity, contentLeft, 11.4)
+  }
+
+  const addressBlock = buildStoreAddress(data.store).join(' | ')
+  if (addressBlock) {
+    const addressLines = doc.splitTextToSize(addressBlock, 58)
+    doc.setFontSize(4.7)
+    doc.text(addressLines.slice(0, 2), contentLeft, 15)
+  }
+
+  const contactParts = [formatPhoneBR(data.store.whatsapp), formatPhoneBR(data.store.phone)].filter(Boolean)
+  let contactLine = contactParts.join(' | ')
+  if (data.store.email) {
+    contactLine = contactLine ? `${contactLine}\n${data.store.email}` : data.store.email
+  }
+  if (contactLine) {
+    const contactLines = doc.splitTextToSize(contactLine, 46)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(4.7)
+    doc.text(contactLines.slice(0, 3), pageWidth - 8, 8, { align: 'right' })
+  }
+
+  doc.setTextColor(17, 24, 39)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8.2)
+  doc.text(`${data.customerName} - emitido em ${generatedAt}`, 10, 29)
+
+  let y = 34
+
+  for (const financiamento of data.financiamentos) {
+    const estimatedHeight = blockHeaderHeight + tableHeaderHeight + (financiamento.parcelas.length * rowHeight) + totalsHeight + 4
+
+    const dependenteText = financiamento.dependenteNames.length > 0
+      ? `Dependente(s): ${financiamento.dependenteNames.join(', ')}`
+      : null
+
+    doc.setFillColor(248, 250, 252)
+    doc.setDrawColor(226, 232, 240)
+    doc.roundedRect(10, y, pageWidth - 20, estimatedHeight - 2, 2.5, 2.5, 'FD')
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(6.5)
+    doc.setTextColor(15, 23, 42)
+    doc.text(`Venda #${financiamento.vendaId}`, 13, y + 4.8)
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(5.8)
+    doc.setTextColor(71, 85, 105)
+    doc.text(
+      `Data da venda: ${formatDateBR(financiamento.dataVenda)}`,
+      13,
+      y + 8.5
+    )
+    if (dependenteText) {
+      doc.text(dependenteText, 13, y + 12.2)
+    }
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(5.5)
+    doc.setTextColor(100, 116, 139)
+    doc.text('N', 13, y + 17.2)
+    doc.text('VENC.', 21, y + 17.2)
+    doc.text('VALOR', 42, y + 17.2)
+    doc.text('DT PGTO', 63, y + 17.2)
+    doc.text('VLR PAGO', 87, y + 17.2)
+    doc.text('STATUS', 114, y + 17.2)
+
+    doc.setLineWidth(0.2)
+    doc.line(12, y + 18.5, pageWidth - 12, y + 18.5)
+
+    let rowY = y + 22
+    let totalPagoVenda = 0
+    let totalPendenteVenda = 0
+
+    for (const parcela of financiamento.parcelas) {
+      const isPago = String(parcela.status || '').toLowerCase() === 'pago'
+      const valorPago = isPago ? (parcela.valorPago || parcela.valor) : 0
+      totalPagoVenda += valorPago
+      totalPendenteVenda += isPago ? 0 : parcela.valor
+
+      doc.setDrawColor(226, 232, 240)
+      doc.line(12, rowY + 2.7, pageWidth - 12, rowY + 2.7)
+
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(5.4)
+      doc.setTextColor(51, 65, 85)
+      doc.text(String(parcela.numeroParcela), 13, rowY)
+      doc.text(formatDateBR(parcela.dataVencimento), 21, rowY)
+      doc.text(formatMoneyBR(parcela.valor), 42, rowY)
+      doc.text(parcela.dataPagamento ? formatDateBR(parcela.dataPagamento) : '-', 63, rowY)
+      doc.text(isPago ? formatMoneyBR(valorPago) : '-', 87, rowY)
+      doc.text(compactStatusLabel(parcela.status), 114, rowY)
+
+      rowY += rowHeight
+    }
+
+    doc.setDrawColor(203, 213, 225)
+    doc.line(12, rowY + 0.5, pageWidth - 12, rowY + 0.5)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(5.6)
+    doc.setTextColor(30, 41, 59)
+    doc.text(`Total da venda: ${formatMoneyBR(financiamento.valorFinanciado)}`, 13, rowY + 4.4)
+    doc.text(`Pago: ${formatMoneyBR(totalPagoVenda)}`, 65, rowY + 4.4)
+    doc.text(`Pendente: ${formatMoneyBR(totalPendenteVenda)}`, pageWidth - 13, rowY + 4.4, { align: 'right' })
+
+    y = rowY + 7
+  }
+
+  return Buffer.from(doc.output('arraybuffer'))
+}
+
+export async function generateCustomerPrescriptionSummaryPDF(data: CustomerPrescriptionSummaryPdfData): Promise<Buffer> {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [85, 150] })
+  const generatedAt = new Date().toLocaleDateString('pt-BR')
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const pageHeight = doc.internal.pageSize.getHeight()
+  const logoDataUrl = await loadStoreLogoDataUrl(data.store.logoFile)
+  const contentLeft = logoDataUrl ? 28 : 10
+
+  doc.setFillColor(15, 23, 42)
+  doc.rect(0, 0, pageWidth, 21, 'F')
+
+  if (logoDataUrl) {
+    doc.setFillColor(255, 255, 255)
+    doc.roundedRect(8, 4.5, 16, 12, 2, 2, 'F')
+    try {
+      const properties = doc.getImageProperties(logoDataUrl)
+      const maxWidth = 12
+      const maxHeight = 8
+      const scale = Math.min(maxWidth / properties.width, maxHeight / properties.height)
+      const drawWidth = properties.width * scale
+      const drawHeight = properties.height * scale
+      const drawX = 8 + ((16 - drawWidth) / 2)
+      const drawY = 4.5 + ((12 - drawHeight) / 2)
+      doc.addImage(logoDataUrl, drawX, drawY, drawWidth, drawHeight, undefined, 'FAST')
+    } catch {
+      doc.addImage(logoDataUrl, 10, 6.5, 11, 7, undefined, 'FAST')
+    }
+  }
+
+  doc.setTextColor(255, 255, 255)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10.2)
+  doc.text(data.store.name || 'Receitas da Loja', contentLeft, 8)
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(5.2)
+  const storeIdentity = data.store.legalName && data.store.legalName !== data.store.name
+    ? data.store.legalName
+    : null
+  if (storeIdentity) {
+    doc.text(storeIdentity, contentLeft, 11.4)
+  }
+
+  const addressBlock = buildStoreAddress(data.store).join(' | ')
+  if (addressBlock) {
+    const addressLines = doc.splitTextToSize(addressBlock, 58)
+    doc.setFontSize(4.7)
+    doc.text(addressLines.slice(0, 2), contentLeft, 15)
+  }
+
+  const contactParts = [formatPhoneBR(data.store.whatsapp), formatPhoneBR(data.store.phone)].filter(Boolean)
+  let contactLine = contactParts.join(' | ')
+  if (data.store.email) {
+    contactLine = contactLine ? `${contactLine}\n${data.store.email}` : data.store.email
+  }
+  if (contactLine) {
+    const contactLines = doc.splitTextToSize(contactLine, 46)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(4.7)
+    doc.text(contactLines.slice(0, 3), pageWidth - 8, 8, { align: 'right' })
+  }
+
+  doc.setTextColor(17, 24, 39)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8.2)
+  doc.text(`${data.customerName} - emitida em ${generatedAt}`, 10, 29)
+
+  let y = 34
+  const bottomLimit = pageHeight - 8
+
+  for (const rx of data.prescriptions) {
+    const hasPerto = Boolean(
+      rx.pertoOdEsf || rx.pertoOdCil || rx.pertoOdEixo || rx.pertoOeEsf || rx.pertoOeCil || rx.pertoOeEixo
+    )
+    const hasAdicao = Boolean(rx.adicao)
+    const cardHeight = hasPerto ? (hasAdicao ? 25 : 22) : (hasAdicao ? 19 : 16)
+
+    if (y + cardHeight > bottomLimit) {
+      doc.addPage()
+      y = 10
+    }
+
+    doc.setFillColor(248, 250, 252)
+    doc.setDrawColor(226, 232, 240)
+    doc.roundedRect(10, y, pageWidth - 20, cardHeight, 3, 3, 'FD')
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(6.2)
+    doc.setTextColor(15, 23, 42)
+    const cardTitle = data.subjectLabel.trim() !== data.customerName.trim()
+      ? `${data.subjectLabel} - ${formatDateBR(rx.dataCompra)}`
+      : formatDateBR(rx.dataCompra)
+    doc.text(cardTitle, 13, y + 4.5)
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(5.4)
+    doc.setTextColor(51, 65, 85)
+    doc.text(
+      `OD: ESF ${rx.longeOdEsf || '-'} | CIL ${rx.longeOdCil || '-'} | EIXO ${rx.longeOdEixo || '-'}`,
+      13,
+      y + 9
+    )
+    doc.text(
+      `OE: ESF ${rx.longeOeEsf || '-'} | CIL ${rx.longeOeCil || '-'} | EIXO ${rx.longeOeEixo || '-'}`,
+      13,
+      y + 13
+    )
+
+    if (hasPerto) {
+      doc.text(
+        `OD: ESF ${rx.pertoOdEsf || '-'} | CIL ${rx.pertoOdCil || '-'} | EIXO ${rx.pertoOdEixo || '-'}`,
+        13,
+        y + 17
+      )
+      doc.text(
+        `OE: ESF ${rx.pertoOeEsf || '-'} | CIL ${rx.pertoOeCil || '-'} | EIXO ${rx.pertoOeEixo || '-'}`,
+        13,
+        y + 21
+      )
+      if (hasAdicao) {
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(30, 41, 59)
+        doc.text(`Adicao: ${rx.adicao}`, 13, y + 25)
+      }
+    } else if (hasAdicao) {
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(30, 41, 59)
+      doc.text(`Adicao: ${rx.adicao}`, 13, y + 17)
+    }
+
+    y += cardHeight + 3
+  }
+
+  return Buffer.from(doc.output('arraybuffer'))
+}
+
+export async function generateInstallmentReceiptPDF(data: InstallmentReceiptData): Promise<Buffer> {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [85, 150] })
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const pageHeight = doc.internal.pageSize.getHeight()
+  const amount = formatMoneyBR(Number(data.amount))
+  const dueDate = formatDateBR(data.dueDate)
+  const paymentDate = formatDateBR(data.paymentDate)
+  const storeAddressLines = buildStoreAddress(data.store)
+  const storePhones = [
+    formatPhoneBR(data.store.whatsapp),
+    formatPhoneBR(data.store.phone),
+  ].filter(Boolean)
+  const receiptGeneratedAt = new Date().toLocaleDateString('pt-BR')
+  const logoDataUrl = await loadStoreLogoDataUrl(data.store.logoFile)
+  const contentLeft = logoDataUrl ? 28 : 10
+  const referenceLabel = data.referenceLabel || 'PARCELA'
+  const referenceValue = data.referenceValue || `${data.installmentNumber} de ${data.totalInstallments}`
+  const receiptTitle = data.receiptTitle || 'RECIBO DE PAGAMENTO'
+  const defaultDeclaration = `Recebemos de ${data.customerName || 'Consumidor Final'} a importancia de ${amount}, referente ao pagamento da parcela ${data.installmentNumber}/${data.totalInstallments}, com vencimento em ${dueDate}.`
+  const declaration = data.declarationText || defaultDeclaration
+  const footerNote = data.footerNote || 'Documento nao fiscal emitido para comprovacao de recebimento desta parcela.'
+
+  doc.setFillColor(15, 23, 42)
+  doc.rect(0, 0, pageWidth, 21, 'F')
+
+  if (logoDataUrl) {
+    doc.setFillColor(255, 255, 255)
+    doc.roundedRect(8, 4.5, 16, 12, 2, 2, 'F')
+    try {
+      const properties = doc.getImageProperties(logoDataUrl)
+      const maxWidth = 12
+      const maxHeight = 8
+      const scale = Math.min(
+        maxWidth / properties.width,
+        maxHeight / properties.height,
+      )
+      const drawWidth = properties.width * scale
+      const drawHeight = properties.height * scale
+      const drawX = 8 + ((16 - drawWidth) / 2)
+      const drawY = 4.5 + ((12 - drawHeight) / 2)
+      doc.addImage(logoDataUrl, drawX, drawY, drawWidth, drawHeight, undefined, 'FAST')
+    } catch {
+      doc.addImage(logoDataUrl, 10, 6.5, 11, 7, undefined, 'FAST')
+    }
+  }
+
+  doc.setTextColor(255, 255, 255)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10.2)
+  doc.text(data.store.name || 'Recibo da Loja', contentLeft, 8)
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(5.8)
+  const storeIdentity = data.store.legalName && data.store.legalName !== data.store.name
+    ? data.store.legalName
+    : null
+  if (storeIdentity) {
+    doc.text(storeIdentity, contentLeft, 11.8)
+  }
+  const addressBlock = storeAddressLines.join(' | ')
+  if (addressBlock) {
+    const addressLines = doc.splitTextToSize(addressBlock, 58)
+    doc.text(addressLines.slice(0, 2), contentLeft, 15)
+  }
+
+  let contactLine = storePhones.join(' | ')
+  if (data.store.email) {
+    contactLine = contactLine ? `${contactLine} | ${data.store.email}` : data.store.email
+  }
+  if (contactLine) {
+    const contactLines = doc.splitTextToSize(contactLine, 42)
+    doc.setFontSize(5.6)
+    doc.text(contactLines.slice(0, 2), pageWidth - 8, 8, { align: 'right' })
+  }
+
+  doc.setTextColor(17, 24, 39)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10.4)
+  doc.text(receiptTitle, 10, 27)
+
+  doc.setFontSize(6.2)
+  doc.setTextColor(100, 116, 139)
+  doc.text(`Emitido em ${receiptGeneratedAt}`, pageWidth - 10, 27, { align: 'right' })
+
+  if (data.isReprint) {
+    doc.setDrawColor(234, 88, 12)
+    doc.setTextColor(234, 88, 12)
+    doc.roundedRect(pageWidth - 39, 29, 29, 5, 2, 2)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(6)
+    doc.text('REIMPRESSAO', pageWidth - 24.5, 32.3, { align: 'center' })
+  }
+
+  doc.setTextColor(17, 24, 39)
+  doc.setDrawColor(226, 232, 240)
+  doc.setFillColor(248, 250, 252)
+  doc.roundedRect(10, 31, 78, 14, 3, 3, 'FD')
+  doc.roundedRect(92, 31, pageWidth - 102, 14, 3, 3, 'FD')
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(6.1)
+  doc.setTextColor(100, 116, 139)
+  doc.text('CLIENTE', 14, 35.8)
+  doc.text(referenceLabel, 14, 41.8)
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8.4)
+  doc.setTextColor(15, 23, 42)
+  const customerLines = doc.splitTextToSize(data.customerName || 'Consumidor Final', 70)
+  doc.text(customerLines.slice(0, 2), 14, 39)
+  doc.setFontSize(7.6)
+  doc.text(referenceValue, 14, 44.2)
+
+  doc.setFontSize(6.1)
+  doc.setTextColor(100, 116, 139)
+  doc.text('VENCIMENTO', 96, 35.8)
+  doc.text('PAGO EM', 96, 41.8)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(7.6)
+  doc.setTextColor(15, 23, 42)
+  doc.text(dueDate, 96, 39)
+  doc.text(paymentDate, 96, 44.2)
+
+  doc.setFillColor(239, 246, 255)
+  doc.setDrawColor(147, 197, 253)
+  doc.roundedRect(10, 48.5, pageWidth - 20, 12.5, 3, 3, 'FD')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(6.1)
+  doc.setTextColor(37, 99, 235)
+  doc.text('VALOR RECEBIDO', 14, 53.5)
+  doc.setFontSize(14)
+  doc.setTextColor(30, 41, 59)
+  doc.text(amount, 14, 58.8)
+
+  doc.setTextColor(51, 65, 85)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(6.3)
+  const declarationLines = doc.splitTextToSize(declaration, pageWidth - 24)
+  doc.text(declarationLines.slice(0, 2), 10, 65.5, {
+    maxWidth: pageWidth - 24,
+    lineHeightFactor: 1,
+  })
+
+  doc.setDrawColor(203, 213, 225)
+  doc.line(10, pageHeight - 12, pageWidth - 10, pageHeight - 12)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(5.8)
+  doc.setTextColor(100, 116, 139)
+  doc.text('Observacoes', 10, pageHeight - 8)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(5.6)
+  doc.setTextColor(51, 65, 85)
+  doc.text(footerNote, 10, pageHeight - 4)
+
+  doc.setFontSize(5.4)
+  doc.setTextColor(148, 163, 184)
+  doc.text('Recibo digital gerado para envio via WhatsApp.', pageWidth - 10, pageHeight - 4, { align: 'right' })
 
   return Buffer.from(doc.output('arraybuffer'))
 }

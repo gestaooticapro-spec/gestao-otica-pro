@@ -2,6 +2,7 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { phonesMatch } from '@/lib/whatsapp/phone'
 
 export type AlertaEntrega = {
     id: number
@@ -31,7 +32,6 @@ export async function getAlertasOperacionais(storeId: number): Promise<Dashboard
     const hoje = new Date()
     const amanha = new Date(hoje)
     amanha.setDate(hoje.getDate() + 1)
-    const ontem = new Date(hoje.getTime() - (24 * 60 * 60 * 1000)).toISOString()
 
     try {
         // 1. Buscas Paralelas para otimizar tempo
@@ -51,7 +51,7 @@ export async function getAlertasOperacionais(storeId: number): Promise<Dashboard
                 .select('id, created_at, venda_id, customers(full_name)')
                 .eq('store_id', storeId)
                 .is('dt_pedido_em', null)
-                .lt('created_at', ontem)
+                .is('dt_entregue_em', null)
                 .order('created_at', { ascending: true }),
 
             // Contagem de Vendas em Aberto há mais de 21 dias (urgência)
@@ -401,6 +401,7 @@ export async function getVencimentosProximos(storeId: number): Promise<Venciment
             `)
             .eq('store_id', storeId)
             .eq('status', 'Pendente')
+            .gt('valor_parcela', 0.01)
             .gte('data_vencimento', inicio)
             .lte('data_vencimento', fim)
             .order('data_vencimento', { ascending: true })
@@ -417,6 +418,131 @@ export async function getVencimentosProximos(storeId: number): Promise<Venciment
         }))
     } catch (e) {
         console.error("Erro ao buscar vencimentos:", e)
+        return []
+    }
+}
+
+// ==============================================================================
+// 03. ACTION: BUSCA PENDÊNCIAS DE WHATSAPP (HANDOFF DA IA)
+// ==============================================================================
+
+export type WhatsAppPendencia = {
+    id: number
+    remote_phone: string
+    state: string
+    updated_at: string
+    internal_note?: string
+    ai_extracted_receipt?: {
+        is_receipt: boolean
+        amount: string
+        payer_name: string
+        payment_date: string
+        receipt_type: string
+    }
+}
+
+export async function getWhatsAppPendencias(storeId: number): Promise<WhatsAppPendencia[]> {
+    const supabaseAdmin = createAdminClient()
+    const now = new Date().toISOString()
+
+    try {
+        const { data, error } = await (supabaseAdmin.from('whatsapp_conversation_states') as any)
+            .select('id, remote_phone, state, updated_at, metadata')
+            .eq('store_id', storeId)
+            .in('state', ['human_pause', 'waiting_human_after_attachment'])
+            .gt('expires_at', now)
+            .order('updated_at', { ascending: false })
+
+        if (error) throw error
+
+        return (data || []).map((item: any) => ({
+            id: item.id,
+            remote_phone: item.remote_phone,
+            state: item.state,
+            updated_at: item.updated_at,
+            internal_note: item.metadata?.handoff_internal_note || null,
+            ai_extracted_receipt: item.metadata?.ai_extracted_receipt || undefined
+        }))
+    } catch (e) {
+        console.error("Erro ao buscar pendências de WhatsApp:", e)
+        return []
+    }
+}
+
+export async function getWhatsAppHumanOverrideCount(storeId: number): Promise<number> {
+    const supabaseAdmin = createAdminClient()
+
+    try {
+        const { count, error } = await (supabaseAdmin.from('whatsapp_customer_control') as any)
+            .select('id', { count: 'exact', head: true })
+            .eq('store_id', storeId)
+            .eq('mode', 'force_human')
+
+        if (error) throw error
+        return Number(count || 0)
+    } catch (e) {
+        console.error("Erro ao contar overrides humanos de WhatsApp:", e)
+        return 0
+    }
+}
+
+export async function findOpenInstallmentsByPhone(storeId: number, phone: string) {
+    if (!phone || phone.length < 8) return []
+
+    const supabaseAdmin = createAdminClient()
+    const last4 = phone.slice(-4)
+
+    try {
+        // Find customers matching the last 4 digits first to avoid full table scan
+        const { data: customers } = await (supabaseAdmin.from('customers') as any)
+            .select('id, full_name, fone_movel, whatsapp')
+            .eq('store_id', storeId)
+            .or(`fone_movel.ilike.%${last4}%,whatsapp.ilike.%${last4}%`)
+
+        if (!customers || customers.length === 0) return []
+
+        const matchedCustomerIds = customers
+            .filter((c: any) => phonesMatch(c.fone_movel, phone) || phonesMatch(c.whatsapp, phone))
+            .map((c: any) => c.id)
+
+        if (matchedCustomerIds.length === 0) return []
+
+        // Now find unpaid installments for these customers
+        const hoje = new Date()
+        const year = hoje.getFullYear()
+        const month = String(hoje.getMonth() + 1).padStart(2, '0')
+        const day = String(hoje.getDate()).padStart(2, '0')
+        const hojeLocalStr = `${year}-${month}-${day}` // YYYY-MM-DD
+
+        const { data: parcelas } = await (supabaseAdmin.from('financiamento_parcelas') as any)
+            .select(`
+                id,
+                data_vencimento,
+                valor_parcela,
+                status,
+                customer_id,
+                financiamento_loja(venda_id)
+            `)
+            .eq('store_id', storeId)
+            .in('customer_id', matchedCustomerIds)
+            .is('data_pagamento', null)
+            .neq('status', 'pago')
+
+        if (!parcelas || parcelas.length === 0) return []
+
+        // Map the results with customer names
+        return parcelas.map((p: any) => {
+            const customer = customers.find((c: any) => c.id === p.customer_id)
+            return {
+                installment_id: p.id,
+                customer_id: p.customer_id,
+                due_date: p.data_vencimento,
+                amount: p.valor_parcela,
+                customer_name: customer?.full_name || 'Desconhecido'
+            }
+        })
+    } catch (e) {
+        console.error("Erro ao buscar parcelas por telefone:", e)
         return []
     }
 }

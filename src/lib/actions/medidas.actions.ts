@@ -1,5 +1,7 @@
 'use server'
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
@@ -17,6 +19,61 @@ export interface MedicaoPayload {
   fotoBase64?: string
 }
 
+export interface MedicaoOSLookup {
+  id: number
+  protocolo_fisico: string | null
+  customer_name: string | null
+  dependente_name: string | null
+  foto_medicao_url?: string | null
+}
+
+export async function findMedicaoOSByNumber(
+  storeId: number,
+  osNumber: string,
+): Promise<{ ok: boolean; os?: MedicaoOSLookup; error?: string }> {
+  const normalized = osNumber.trim()
+  if (!normalized) return { ok: false, error: 'Informe o numero da OS' }
+
+  const supabaseAdmin = createAdminClient()
+  const numericId = /^\d+$/.test(normalized) ? Number(normalized) : null
+
+  let query = (supabaseAdmin
+    .from('service_orders') as any)
+    .select(`
+      id, protocolo_fisico, store_id, foto_medicao_url,
+      customer:customer_id ( full_name ),
+      dependente:dependente_id ( full_name )
+    `)
+    .eq('store_id', storeId)
+    .is('dt_pedido_em', null)
+
+  if (numericId !== null) {
+    query = query.or(`id.eq.${numericId},protocolo_fisico.eq.${normalized}`)
+  } else {
+    query = query.eq('protocolo_fisico', normalized)
+  }
+
+  const { data, error } = await query
+    .order('created_at', { ascending: false })
+    .limit(2)
+
+  if (error) return { ok: false, error: error.message }
+  if (!data?.length) return { ok: false, error: 'OS nao encontrada entre as lentes nao pedidas ao laboratorio' }
+  if (data.length > 1) return { ok: false, error: 'Mais de uma OS encontrada. Use o ID interno da OS.' }
+
+  const row = data[0]
+  return {
+    ok: true,
+    os: {
+      id: row.id,
+      protocolo_fisico: row.protocolo_fisico,
+      customer_name: row.customer?.full_name ?? null,
+      dependente_name: row.dependente?.full_name ?? null,
+      foto_medicao_url: row.foto_medicao_url ?? null,
+    },
+  }
+}
+
 export async function saveMedicaoOS(payload: MedicaoPayload): Promise<{ ok: boolean; error?: string }> {
   const supabase      = createClient()
   const supabaseAdmin = createAdminClient()
@@ -24,17 +81,29 @@ export async function saveMedicaoOS(payload: MedicaoPayload): Promise<{ ok: bool
   const { data: { user } } = await supabase.auth.getUser()
   let allowAnonymousTablet = false
 
+  // Busca a OS para validar se já tem foto gravada e se o tablet avulso tem permissão
+  const { data: currentOS, error: fetchError } = await (supabaseAdmin
+    .from('service_orders') as any)
+    .select('id, store_id, foto_medicao_url, dt_pedido_em')
+    .eq('id', payload.osId)
+    .maybeSingle()
+
+  if (fetchError || !currentOS) {
+    return { ok: false, error: 'OS nao encontrada' }
+  }
+
+  if (currentOS.dt_pedido_em) {
+    return { ok: false, error: 'Esta OS ja teve a lente pedida ao laboratorio. Use apenas OS ainda nao pedidas.' }
+  }
+
+  // Trava de segurança: impede regravar se já existe foto
+  if (currentOS.foto_medicao_url) {
+    return { ok: false, error: 'Esta OS já possui uma medição gravada. Não é possível gravar por cima.' }
+  }
+
   if (!user) {
     if (!payload.storeId) return { ok: false, error: 'Nao autenticado' }
-
-    const { data: osRow, error: osError } = await (supabaseAdmin
-      .from('service_orders') as any)
-      .select('id, store_id')
-      .eq('id', payload.osId)
-      .eq('store_id', payload.storeId)
-      .maybeSingle()
-
-    if (osError || !osRow) return { ok: false, error: 'OS nao encontrada para a loja informada' }
+    if (currentOS.store_id !== payload.storeId) return { ok: false, error: 'OS nao encontrada para a loja informada' }
     allowAnonymousTablet = true
   }
 

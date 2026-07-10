@@ -1,12 +1,13 @@
 'use client'
 
 import React, { useEffect, useId, useMemo, useRef, useState, useTransition } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   AlertTriangle,
   Bot,
   Calendar,
+  ChevronDown,
   Check,
   CircleHelp,
   Copy,
@@ -26,16 +27,18 @@ import {
   Baby,
   UserRound,
   Briefcase,
-  Trash2, ShoppingCart, ArrowLeft
+  Trash2, ShoppingCart, ArrowLeft, Minus
 } from 'lucide-react'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import QuickCustomerModal from '@/components/modals/QuickCustomerModal'
 import AddDependenteModal from '@/components/modals/AddDependenteModal'
 import { getDependentes } from '@/lib/actions/dependents.actions'
-import { searchCustomersByName, createNewVenda, type CustomerSearchResult } from '@/lib/actions/vendas.actions'
+import { searchCustomersByName, type CustomerSearchResult } from '@/lib/actions/vendas.actions'
 import {
   getOpticalEvaluationsForSubject,
+  createSaleAndServiceOrderFromEvaluation,
   upsertOpticalEvaluation,
+  getRecentEvaluationsForStore,
   type OpticalEvaluationListItem
 } from '@/lib/actions/evaluation.actions'
 import {
@@ -44,20 +47,20 @@ import {
 } from '@/lib/actions/lens-recommendation.actions'
 import {
   generateLensSalesAssistAction,
-  generateLensTechnicalTriageAction,
   type LensSalesAssist,
   type LensTechnicalTriage,
-  type LensTechnicalTriageSignal,
   type PatientAuditContext,
 } from '@/lib/actions/gemini-narratives.actions'
 import { Database } from '@/lib/database.types'
 import { EvaluationDashboard } from './EvaluationDashboard'
-import { getRecentEvaluationsForEmployee, getRecentEvaluationsForStore, updateEvaluationPanicReason, updateEvaluationExportedVendaId, updateEvaluationOutcomeStatus } from '@/lib/actions/evaluation.actions'
+import { updateEvaluationPanicReason, updateEvaluationOutcomeStatus } from '@/lib/actions/evaluation.actions'
+import { createTowerHeatmapSession, getCompletedTowerHeatmapResult } from '@/lib/actions/tower-heatmap.actions'
 import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/BackgroundToggle'
 import type {
   RecommendationCaseInput,
   RecommendationConversationState,
-  RecommendationOption
+  RecommendationOption,
+  RecommendationPresentationStrategy
 } from '@/lib/server/lens-recommendation'
 
 type Dependente = Database['public']['Tables']['dependentes']['Row']
@@ -132,107 +135,16 @@ type ActiveCatalogSummary = {
 type LensRecommendationActionPayload = {
   state: RecommendationConversationState
   recommendations: RecommendationOption[]
+  presentationStrategy?: RecommendationPresentationStrategy
 }
 
 const LENS_ENGINE_DIAGNOSTIC_SUITE_NAME = 'Dossie Triplice do Motor'
 const LENS_ENGINE_DIAGNOSTIC_SUITE_RESTORE_KEY = 'dossie_triplice_motor'
 const LENS_DEMO_QUICK_FILL_RESTORE_KEY = 'demo_quick_fill_profiles'
+// Painel de debug usado apenas em testes/calibracao do motor de recomendacao.
+const SHOW_LENS_ENGINE_DIAGNOSTIC_SUITE = false
+// Preserve os perfis demo para calibracao futura, mas mantenha o card fora da UI.
 const SHOW_LENS_DEMO_QUICK_FILL = false
-
-const TRIAGE_SIGNAL_PATCHES: Record<LensTechnicalTriageSignal, Partial<Pick<RecommendationCaseInput, 'rotina_tags' | 'objetivo_tags' | 'desired_benefits' | 'preferred_features'>>> = {
-  risco_espessura_alta: { desired_benefits: ['lente_fina', 'estetica', 'qualidade_optica'] },
-  risco_espessura_moderada: { desired_benefits: ['lente_fina'] },
-  priorizar_indice_alto: { desired_benefits: ['lente_fina', 'estetica'] },
-  evitar_indice_baixo: { desired_benefits: ['lente_fina'] },
-  priorizar_asferica: { desired_benefits: ['qualidade_optica', 'estetica'] },
-  priorizar_resistencia: { desired_benefits: ['resistencia'], rotina_tags: ['risco_quebra'] },
-  priorizar_trivex_policarbonato: {
-    desired_benefits: ['resistencia'],
-    rotina_tags: ['risco_quebra'],
-    objetivo_tags: ['resistencia_impacto_prioritaria'],
-  },
-  controle_miopia_prioritario: {
-    rotina_tags: ['controle_miopia'],
-    objetivo_tags: ['controle_miopia'],
-    desired_benefits: ['controle_miopia'],
-  },
-  fotossensivel_desejado_mas_secundario: {
-    preferred_features: ['transitions'],
-    desired_benefits: ['conforto_luz'],
-    objetivo_tags: ['transitions_secundario'],
-  },
-  blue_uv_desejado_mas_secundario: {
-    preferred_features: ['blue_uv'],
-    desired_benefits: ['conforto_digital'],
-    objetivo_tags: ['blue_uv_secundario'],
-  },
-  risco_adaptacao_multifocal: {
-    rotina_tags: ['adaptacao_critica'],
-    objetivo_tags: ['adaptacao_critica'],
-    desired_benefits: ['adaptacao_rapida', 'conforto_visual'],
-  },
-  priorizar_ar_premium: { desired_benefits: ['ar_premium', 'qualidade_optica', 'conforto_visual'] },
-  evitar_ar_externo: {
-    desired_benefits: ['qualidade_optica', 'conforto_visual'],
-    objetivo_tags: ['evitar_ar_externo'],
-  },
-  priorizar_conforto_digital: { desired_benefits: ['conforto_digital'], rotina_tags: ['computador'] },
-  priorizar_dirigir_noite: { desired_benefits: ['conforto_visual', 'qualidade_optica'], rotina_tags: ['dirigir_noite'] },
-  priorizar_campo_perto: { desired_benefits: ['conforto_visual'], rotina_tags: ['leitura', 'computador'] },
-  orcamento_limita_solucao_ideal: { objetivo_tags: ['orcamento_limita_solucao_ideal'] },
-}
-
-const uniqueList = (items: string[]) => Array.from(new Set(items.filter(Boolean)))
-
-const applyTechnicalTriageToCaseInput = (
-  caseInput: RecommendationCaseInput,
-  triage: LensTechnicalTriage | null,
-): RecommendationCaseInput => {
-  if (!triage) return caseInput
-
-  const next: RecommendationCaseInput = {
-    ...caseInput,
-    rotina_tags: [...(caseInput.rotina_tags || [])],
-    objetivo_tags: [...(caseInput.objetivo_tags || [])],
-    desired_benefits: [...(caseInput.desired_benefits || [])],
-    preferred_features: [...(caseInput.preferred_features || [])],
-  }
-
-  for (const signal of uniqueList([...triage.technicalSignals, ...triage.clinicalPriorities]) as LensTechnicalTriageSignal[]) {
-    const patch = TRIAGE_SIGNAL_PATCHES[signal]
-    if (!patch) continue
-    next.rotina_tags = uniqueList([...(next.rotina_tags || []), ...(patch.rotina_tags || [])])
-    next.objetivo_tags = uniqueList([...(next.objetivo_tags || []), ...(patch.objetivo_tags || [])])
-    next.desired_benefits = uniqueList([...(next.desired_benefits || []), ...(patch.desired_benefits || [])])
-    next.preferred_features = uniqueList([...(next.preferred_features || []), ...(patch.preferred_features || [])])
-  }
-
-  const triageNotes = [
-    triage.parecer ? `Triagem IA: ${triage.parecer}` : null,
-    triage.salesContext.tradeoff ? `Tradeoff IA: ${triage.salesContext.tradeoff}` : null,
-    triage.salesContext.caution ? `Cuidado IA: ${triage.salesContext.caution}` : null,
-  ].filter(Boolean)
-
-  if (triageNotes.length > 0) {
-    next.notes = [caseInput.notes, ...triageNotes].filter(Boolean).join(' | ')
-  }
-
-  if (next.rejected_features?.length) {
-    const rejected = new Set(next.rejected_features)
-    next.preferred_features = (next.preferred_features || []).filter((feature) => !rejected.has(feature))
-  }
-
-  const explicitlyPreferred = new Set(caseInput.preferred_features || [])
-  if (caseInput.budget_mode === 'premium') {
-    next.objetivo_tags = (next.objetivo_tags || []).filter((tag) => {
-      if (tag === 'transitions_secundario' && explicitlyPreferred.has('transitions')) return false
-      if (tag === 'blue_uv_secundario' && explicitlyPreferred.has('blue_uv')) return false
-      return true
-    })
-  }
-
-  return next
-}
 
 type SuggestionGenerationResult =
   | { success: true; suggestion: ManualSuggestion }
@@ -246,7 +158,7 @@ type QuickRetentionIntent =
 
 const labelStyle = 'block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-[0.2em]'
 const inputStyle = 'block w-full rounded-xl border border-white/20 bg-slate-900/60 shadow-inner text-slate-100 h-10 text-sm px-3 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 font-bold placeholder:font-normal placeholder:text-slate-500 disabled:opacity-50 transition-all outline-none'
-const selectStyle = `${inputStyle} appearance-none bg-[url(data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%2394a3b8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22m6%208%204%204%204-4%22%2F%3E%3C%2Fsvg%3E)] bg-[length:1.25rem_1.25rem] bg-[right_0.5rem_center] bg-no-repeat pr-10`
+const selectStyle = 'hidden'
 const cardStyle = 'bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl shadow-xl'
 
 const AI_SEARCH_STEPS = [
@@ -976,7 +888,7 @@ const TEST_PROFILES = {
     usaMultifocalHoje: 'nao',
     dificuldadeAdaptacao: 'nao_informado',
     historicoTrocasRecentes: 'nao_informado',
-    prioridadePrincipal: 'preco',
+    prioridadePrincipal: 'economia',
     principalIncomodoAtual: 'longe',
     objetivoCompra: 'primeiro_oculos',
     faixaOrcamento: 'ate_800',
@@ -1126,7 +1038,7 @@ const TEST_PROFILES = {
     usaMultifocalHoje: 'nao',
     dificuldadeAdaptacao: 'nao_informado',
     historicoTrocasRecentes: 'nao_informado',
-    prioridadePrincipal: 'sol',
+    prioridadePrincipal: 'equilibrio',
     principalIncomodoAtual: 'luz',
     objetivoCompra: 'oculos_sol_grau',
     faixaOrcamento: '800_2000',
@@ -1176,7 +1088,7 @@ const TEST_PROFILES = {
     usaMultifocalHoje: 'nao',
     dificuldadeAdaptacao: 'nao_informado',
     historicoTrocasRecentes: 'uma',
-    prioridadePrincipal: 'preco',
+    prioridadePrincipal: 'economia',
     principalIncomodoAtual: 'longe',
     objetivoCompra: 'resolver_queixa',
     faixaOrcamento: '800_2000',
@@ -1226,7 +1138,7 @@ const TEST_PROFILES = {
     usaMultifocalHoje: 'nao',
     dificuldadeAdaptacao: 'nao_informado',
     historicoTrocasRecentes: 'nao_informado',
-    prioridadePrincipal: 'conforto_digital',
+    prioridadePrincipal: 'adaptacao',
     principalIncomodoAtual: 'perto',
     objetivoCompra: 'oculos_escritorio',
     faixaOrcamento: '800_2000',
@@ -1276,7 +1188,7 @@ const TEST_PROFILES = {
     usaMultifocalHoje: 'nao',
     dificuldadeAdaptacao: 'nao_informado',
     historicoTrocasRecentes: 'nao_informado',
-    prioridadePrincipal: 'sol',
+    prioridadePrincipal: 'equilibrio',
     principalIncomodoAtual: 'luz',
     objetivoCompra: 'resolver_queixa',
     faixaOrcamento: '800_2000',
@@ -1376,7 +1288,7 @@ const TEST_PROFILES = {
     usaMultifocalHoje: 'nao',
     dificuldadeAdaptacao: 'nao_informado',
     historicoTrocasRecentes: 'nao_informado',
-    prioridadePrincipal: 'estetica',
+    prioridadePrincipal: 'premium',
     principalIncomodoAtual: 'longe',
     objetivoCompra: 'resolver_queixa',
     faixaOrcamento: '2000_5000',
@@ -1459,6 +1371,206 @@ const TEST_PROFILES = {
     medidaDnpOe: '31',
     medidaAlturaOd: '20',
     medidaAlturaOe: '20'
+  },
+  solarPlanoSemGrau: {
+    patientNameRaw: 'Nina Sol (Solar Plano Sem Grau)',
+    ageYears: '33',
+    estiloVidaUsoComputadorHoras: '2',
+    estiloVidaDirigirHoras: '2',
+    estiloVidaLeituraHoras: '1',
+    estiloVidaUsoCelularHoras: '3',
+    estiloVidaExposicaoSolHoras: '6',
+    estiloVidaAmbienteInternoHoras: '5',
+    estiloVidaAmbienteExternoHoras: '6',
+    estiloVidaAssistirTvHoras: '1',
+    marcaAtual: 'Nenhuma',
+    tipoLenteAtual: 'visao_simples',
+    usaMultifocalHoje: 'nao',
+    dificuldadeAdaptacao: 'nao_informado',
+    historicoTrocasRecentes: 'nao_informado',
+    prioridadePrincipal: 'equilibrio',
+    principalIncomodoAtual: 'luz',
+    objetivoCompra: 'oculos_sol_grau',
+    faixaOrcamento: 'ate_800',
+    budgetTarget: '450',
+    importanciaEstetica: 'media',
+    importanciaResistencia: 'baixa',
+    prefereTransitions: 'nao',
+    prefereBlueUv: 'nao',
+    aceitaPremium: 'nao',
+    queixaDirigirNoite: 'nao',
+    queixaSensibilidadeLuz: 'sim',
+    queixaQuebraOculos: 'nao',
+    queixaCriancaAtiva: 'nao',
+    queixaProgressaoRapida: 'nao',
+    observacoesConsultor: 'Cliente quer apenas oculos de sol plano, sem grau. Testa se solares planas aparecem somente como 0/0 e se o motor nao inventa disponibilidade com grau.',
+    receitaLongeOdEsferico: '0,00',
+    receitaLongeOdCilindrico: '0,00',
+    receitaLongeOdEixo: '',
+    receitaLongeOeEsferico: '0,00',
+    receitaLongeOeCilindrico: '0,00',
+    receitaLongeOeEixo: '',
+    receitaAdicao: '',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '32',
+    medidaDnpOe: '32',
+    medidaAlturaOd: '18',
+    medidaAlturaOe: '18'
+  },
+  multifocalAcabadaConservadora: {
+    patientNameRaw: 'Irene Paiva (Multifocal Acabada Conservadora)',
+    ageYears: '63',
+    estiloVidaUsoComputadorHoras: '1',
+    estiloVidaDirigirHoras: '1',
+    estiloVidaLeituraHoras: '4',
+    estiloVidaUsoCelularHoras: '2',
+    estiloVidaExposicaoSolHoras: '1',
+    estiloVidaAmbienteInternoHoras: '10',
+    estiloVidaAmbienteExternoHoras: '1',
+    estiloVidaAssistirTvHoras: '3',
+    marcaAtual: 'Oculos pronto antigo',
+    tipoLenteAtual: 'multifocal',
+    usaMultifocalHoje: 'sim',
+    dificuldadeAdaptacao: 'baixa',
+    historicoTrocasRecentes: 'nao_informado',
+    prioridadePrincipal: 'economia',
+    principalIncomodoAtual: 'perto',
+    objetivoCompra: 'resolver_queixa',
+    faixaOrcamento: 'ate_800',
+    budgetTarget: '700',
+    importanciaEstetica: 'baixa',
+    importanciaResistencia: 'baixa',
+    prefereTransitions: 'nao',
+    prefereBlueUv: 'nao',
+    aceitaPremium: 'nao',
+    queixaDirigirNoite: 'nao',
+    queixaSensibilidadeLuz: 'nao',
+    queixaQuebraOculos: 'nao',
+    queixaCriancaAtiva: 'nao',
+    queixaProgressaoRapida: 'nao',
+    observacoesConsultor: 'Multifocal simples, grau dentro da faixa conservadora de acabadas e adicao ate +3.00. Testa se acabadas multifocais entram sem ultrapassar grade.',
+    receitaLongeOdEsferico: '+2,00',
+    receitaLongeOdCilindrico: '-1,00',
+    receitaLongeOdEixo: '90',
+    receitaLongeOeEsferico: '+1,75',
+    receitaLongeOeCilindrico: '-0,75',
+    receitaLongeOeEixo: '85',
+    receitaAdicao: '3,00',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '31',
+    medidaDnpOe: '31',
+    medidaAlturaOd: '18',
+    medidaAlturaOe: '18'
+  },
+  astigmatismoForaConservadora: {
+    patientNameRaw: 'Rafael Torres (Cilindro Alto Limite)',
+    ageYears: '40',
+    estiloVidaUsoComputadorHoras: '6',
+    estiloVidaDirigirHoras: '2',
+    estiloVidaLeituraHoras: '2',
+    estiloVidaUsoCelularHoras: '3',
+    estiloVidaExposicaoSolHoras: '1',
+    estiloVidaAmbienteInternoHoras: '9',
+    estiloVidaAmbienteExternoHoras: '1',
+    estiloVidaAssistirTvHoras: '1',
+    marcaAtual: 'Nenhuma',
+    tipoLenteAtual: 'visao_simples',
+    usaMultifocalHoje: 'nao',
+    dificuldadeAdaptacao: 'nao_informado',
+    historicoTrocasRecentes: 'nao_informado',
+    prioridadePrincipal: 'premium',
+    principalIncomodoAtual: 'longe',
+    objetivoCompra: 'resolver_queixa',
+    faixaOrcamento: '2000_5000',
+    budgetTarget: '2600',
+    importanciaEstetica: 'media',
+    importanciaResistencia: 'baixa',
+    prefereTransitions: 'nao',
+    prefereBlueUv: 'sim',
+    aceitaPremium: 'sim',
+    queixaDirigirNoite: 'sim',
+    queixaSensibilidadeLuz: 'nao',
+    queixaQuebraOculos: 'nao',
+    queixaCriancaAtiva: 'nao',
+    queixaProgressaoRapida: 'nao',
+    observacoesConsultor: 'Cilindro -4.50 deve derrubar lentes acabadas/conservadoras que so aceitam ate -2.00 ou -4.00. Testa se o motor filtra por grade antes de ranquear.',
+    receitaLongeOdEsferico: '-3,00',
+    receitaLongeOdCilindrico: '-4,50',
+    receitaLongeOdEixo: '175',
+    receitaLongeOeEsferico: '-2,75',
+    receitaLongeOeCilindrico: '-4,25',
+    receitaLongeOeEixo: '5',
+    receitaAdicao: '',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '31',
+    medidaDnpOe: '31',
+    medidaAlturaOd: '18',
+    medidaAlturaOe: '18'
+  },
+  visionHaytekPremium: {
+    patientNameRaw: 'Paula Mendes (Vision Haytek Premium)',
+    ageYears: '55',
+    estiloVidaUsoComputadorHoras: '5',
+    estiloVidaDirigirHoras: '3',
+    estiloVidaLeituraHoras: '3',
+    estiloVidaUsoCelularHoras: '2',
+    estiloVidaExposicaoSolHoras: '2',
+    estiloVidaAmbienteInternoHoras: '8',
+    estiloVidaAmbienteExternoHoras: '2',
+    estiloVidaAssistirTvHoras: '2',
+    marcaAtual: 'Multifocal atual',
+    tipoLenteAtual: 'multifocal',
+    usaMultifocalHoje: 'sim',
+    dificuldadeAdaptacao: 'media',
+    historicoTrocasRecentes: 'uma',
+    prioridadePrincipal: 'premium',
+    principalIncomodoAtual: 'longe_perto',
+    objetivoCompra: 'melhorar_conforto',
+    faixaOrcamento: '2000_5000',
+    budgetTarget: '4200',
+    importanciaEstetica: 'media',
+    importanciaResistencia: 'media',
+    prefereTransitions: 'sim',
+    prefereBlueUv: 'sim',
+    aceitaPremium: 'sim',
+    queixaDirigirNoite: 'sim',
+    queixaSensibilidadeLuz: 'sim',
+    queixaQuebraOculos: 'nao',
+    queixaCriancaAtiva: 'nao',
+    queixaProgressaoRapida: 'nao',
+    observacoesConsultor: 'Caso para testar equivalencia Vision/Haytek em multifocal premium: deve favorecer familias superiores quando Vision/Haytek estiverem ativas e semanticamente alinhadas.',
+    receitaLongeOdEsferico: '+1,25',
+    receitaLongeOdCilindrico: '-0,75',
+    receitaLongeOdEixo: '100',
+    receitaLongeOeEsferico: '+1,00',
+    receitaLongeOeCilindrico: '-0,50',
+    receitaLongeOeEixo: '80',
+    receitaAdicao: '2,25',
+    receitaPertoOdEsferico: '',
+    receitaPertoOdCilindrico: '',
+    receitaPertoOdEixo: '',
+    receitaPertoOeEsferico: '',
+    receitaPertoOeCilindrico: '',
+    receitaPertoOeEixo: '',
+    medidaDnpOd: '31',
+    medidaDnpOe: '31',
+    medidaAlturaOd: '18',
+    medidaAlturaOe: '18'
   }
 };
 
@@ -1595,7 +1707,7 @@ const generateManualSuggestion = (form: ReturnType<typeof createEmptyForm>): Man
 
 const buildAiRecommendationLabel = (option: RecommendationOption) => {
   const treatmentPart = option.treatmentName ? ` + ${option.treatmentName}` : ''
-  const sourcePart = option.sourceLaboratorio ? ` Â· ${option.sourceLaboratorio}` : ''
+  const sourcePart = option.sourceLaboratorio ? ` · ${option.sourceLaboratorio}` : ''
   return `${option.familyName} | ${option.offerLabel}${treatmentPart}${sourcePart}`
 }
 
@@ -1700,7 +1812,6 @@ const getSalesAssistOptionText = (
   return [
     argument.headline,
     argument.sellerArgument || argument.whyThisLens,
-    argument.tradeoff ? `Trade-off: ${argument.tradeoff}` : null,
     argument.closingLine,
   ].filter(Boolean).join('\n\n')
 }
@@ -1758,7 +1869,7 @@ const buildAiCommercialSummary = (option: RecommendationOption) => {
   const explanation = option.treatmentExplainWhy || option.commercialSummary || option.recommendationNotes || ''
   const reasons = option.reasons.slice(0, 3).map(humanizeRecommendationReason).join(', ')
   return [
-    `${buildAiRecommendationLabel(option)} â€” ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(option.finalPrice)}`,
+    `${buildAiRecommendationLabel(option)} — ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(option.finalPrice)}`,
     explanation,
     reasons ? `Motivos considerados: ${reasons}.` : ''
   ]
@@ -1812,7 +1923,7 @@ const buildAiOptionDetails = (option: RecommendationOption) => {
 
   return [
     supportText ? `Contexto da configuração:\n${supportText}` : '',
-    reasons.length ? `Critérios considerados:\n${reasons.map((reason) => `â€¢ ${reason}`).join('\n')}` : ''
+    reasons.length ? `Critérios considerados:\n${reasons.map((reason) => `• ${reason}`).join('\n')}` : ''
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -1887,7 +1998,6 @@ const humanizeRecommendationReason = (reason: string) => {
   if (reason === 'tratamento:conforto_telas') return 'Tratamento favorável para telas'
   if (reason === 'tratamento:dirigir_noite') return 'Tratamento favorável para direção noturna'
   if (reason === 'tratamento:outdoor') return 'Tratamento favorável para uso externo'
-  if (reason === 'opcao:alternativa_plausivel') return 'Alternativa plausível para ampliar a conversa'
   if (reason === 'opcao:salto_preco_controlado') return 'Alternativa com salto de preço controlado'
   if (reason === 'material:indice_alto_pouco_ganho') return 'Índice alto com ganho pequeno neste grau'
   if (reason === 'material:indice_baixo_grau_alto') return 'Índice baixo para grau alto'
@@ -2072,8 +2182,13 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>):
     objetivoTags.push('controle_miopia')
   }
 
+  const wantsOfficeLens =
+    form.objetivoCompra === 'oculos_escritorio' ||
+    form.objetivoCompra === 'ocupacional_escritorio'
+
   if (
     parseNullableNumber(form.receitaAdicao) !== null &&
+    !wantsOfficeLens &&
     (form.usaMultifocalHoje === 'nao' || form.objetivoCompra === 'primeira_multifocal')
   ) {
     objetivoTags.push('primeira_multifocal')
@@ -2107,8 +2222,9 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>):
     objetivoTags.push('controle_miopia')
   }
 
-  if (form.objetivoCompra === 'ocupacional_escritorio') {
+  if (wantsOfficeLens) {
     objetivoTags.push('ocupacional')
+    rotinaTags.push('computador')
     desiredBenefits.push('conforto_visual', 'conforto_digital')
   }
 
@@ -2222,6 +2338,225 @@ function DegreeInput({
   )
 }
 
+function AgeStepper({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}) {
+  const rawValue = Number.isFinite(Number(value)) && value !== '' ? Number(value) : 0
+  const numericValue = Math.max(0, Math.min(120, rawValue))
+  const updateAge = (nextValue: number) => {
+    onChange(String(Math.max(0, Math.min(120, nextValue))))
+  }
+
+  return (
+    <div className="flex h-12 overflow-hidden rounded-xl border border-white/20 bg-slate-900/60 shadow-inner">
+      <button
+        type="button"
+        onClick={() => updateAge(numericValue - 1)}
+        className="flex w-12 shrink-0 items-center justify-center border-r border-white/10 text-slate-300 transition-colors hover:bg-white/10 active:bg-white/15"
+        title="Diminuir idade"
+      >
+        <Minus className="h-4 w-4" />
+      </button>
+      <input
+        type="number"
+        min="0"
+        max="120"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-full min-w-0 flex-1 border-0 bg-transparent px-3 text-center text-base font-black text-slate-100 outline-none"
+      />
+      <button
+        type="button"
+        onClick={() => updateAge(numericValue + 1)}
+        className="flex w-12 shrink-0 items-center justify-center border-l border-white/10 text-slate-300 transition-colors hover:bg-white/10 active:bg-white/15"
+        title="Aumentar idade"
+      >
+        <Plus className="h-4 w-4" />
+      </button>
+    </div>
+  )
+}
+
+function HourSlider({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+}) {
+  const rawValue = Number.isFinite(Number(value)) && value !== '' ? Number(value) : 0
+  const numericValue = Math.max(0, Math.min(12, rawValue))
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+          {label}
+        </label>
+        <span className="min-w-12 rounded-lg border border-indigo-400/20 bg-indigo-400/10 px-2 py-1 text-center text-xs font-black text-indigo-100">
+          {numericValue}h
+        </span>
+      </div>
+      <input
+        type="range"
+        min="0"
+        max="12"
+        step="1"
+        value={numericValue}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-12 w-full cursor-pointer accent-indigo-400"
+      />
+      <div className="-mt-1 flex justify-between px-1 text-[9px] font-bold uppercase tracking-[0.12em] text-slate-600">
+        <span>0</span>
+        <span>6</span>
+        <span>12</span>
+      </div>
+    </div>
+  )
+}
+
+type TabletChoiceOption = {
+  value: string
+  label: string
+}
+
+function TabletChoicePicker({
+  id,
+  label,
+  value,
+  options,
+  activePicker,
+  onOpen,
+  onChange,
+}: {
+  id: string
+  label: string
+  value: string
+  options: TabletChoiceOption[]
+  activePicker: string | null
+  onOpen: (id: string | null) => void
+  onChange: (value: string) => void
+}) {
+  const isOpen = activePicker === id
+  const selectedLabel = options.find((option) => option.value === value)?.label || label
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => onOpen(isOpen ? null : id)}
+        className={`flex min-h-12 w-full items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left transition-colors ${
+          isOpen
+            ? 'border-indigo-400/40 bg-indigo-500/15 text-indigo-50'
+            : 'border-white/10 bg-slate-900/60 text-slate-100 hover:bg-white/10'
+        }`}
+        aria-expanded={isOpen}
+      >
+        <span className="min-w-0 truncate text-sm font-black">{selectedLabel}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-indigo-200 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {isOpen && (
+        <div className="mt-3 flex flex-wrap gap-2 rounded-2xl border border-indigo-400/20 bg-indigo-500/5 p-2">
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => {
+                onChange(option.value)
+                onOpen(null)
+              }}
+              className={`min-h-11 rounded-xl border px-3 py-2 text-sm font-bold transition-colors ${
+                option.value === value
+                  ? 'border-indigo-300/50 bg-indigo-500 text-white'
+                  : 'border-white/10 bg-white/5 text-slate-200 hover:bg-white/10'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const LENS_TYPE_OPTIONS: TabletChoiceOption[] = [
+  { value: 'nao_informado', label: 'Nao informado' },
+  { value: 'visao_simples', label: 'Visao simples' },
+  { value: 'multifocal', label: 'Multifocal / progressiva' },
+  { value: 'ocupacional', label: 'Ocupacional' },
+  { value: 'bifocal', label: 'Bifocal' },
+]
+
+const ADAPTATION_OPTIONS: TabletChoiceOption[] = [
+  { value: 'nao_informado', label: 'Nao informado' },
+  { value: 'baixa', label: 'Boa adaptacao' },
+  { value: 'media', label: 'Alguma dificuldade' },
+  { value: 'alta', label: 'Muita dificuldade' },
+]
+
+const CHANGE_HISTORY_OPTIONS: TabletChoiceOption[] = [
+  { value: 'nao_informado', label: 'Nao informado' },
+  { value: 'nenhuma', label: 'Nenhuma recente' },
+  { value: 'uma', label: 'Uma troca recente' },
+  { value: 'mais_de_duas', label: 'Varias trocas / retrabalho' },
+]
+
+const PRIORITY_OPTIONS: TabletChoiceOption[] = [
+  { value: 'equilibrio', label: 'Equilibrio geral' },
+  { value: 'economia', label: 'Melhor custo-beneficio' },
+  { value: 'adaptacao', label: 'Adaptacao mais facil' },
+  { value: 'resistencia', label: 'Mais resistencia' },
+  { value: 'controle_miopia', label: 'Controle de miopia' },
+  { value: 'premium', label: 'Desempenho premium' },
+]
+
+const DISCOMFORT_OPTIONS: TabletChoiceOption[] = [
+  { value: 'nao_informado', label: 'Nao informado' },
+  { value: 'nenhum', label: 'Nenhum especifico' },
+  { value: 'perto', label: 'Perto' },
+  { value: 'longe', label: 'Longe' },
+  { value: 'intermediario', label: 'Intermediario / computador' },
+  { value: 'peso_espessura', label: 'Peso / espessura' },
+  { value: 'reflexo', label: 'Reflexo / brilho' },
+  { value: 'adaptacao', label: 'Dificuldade de adaptacao' },
+  { value: 'preco', label: 'Preco' },
+]
+
+const OBJECTIVE_OPTIONS: TabletChoiceOption[] = [
+  { value: 'nao_informado', label: 'Nao informado' },
+  { value: 'primeira_multifocal', label: 'Primeira multifocal' },
+  { value: 'upgrade', label: 'Upgrade de lente' },
+  { value: 'resolver_queixa', label: 'Resolver queixa' },
+  { value: 'economizar', label: 'Economizar' },
+  { value: 'trocar_marca', label: 'Trocar marca/lab' },
+  { value: 'oculos_escritorio', label: 'Oculos escritorio' },
+]
+
+const UNKNOWN_YES_NO_OPTIONS: TabletChoiceOption[] = [
+  { value: 'nao_informado', label: 'Nao informado' },
+  { value: 'sim', label: 'Sim' },
+  { value: 'nao', label: 'Nao' },
+]
+
+const YES_NO_OPTIONS: TabletChoiceOption[] = [
+  { value: 'nao', label: 'Nao' },
+  { value: 'sim', label: 'Sim' },
+]
+
+const IMPORTANCE_OPTIONS: TabletChoiceOption[] = [
+  { value: 'nao_informado', label: 'Nao informado' },
+  { value: 'baixa', label: 'Baixa' },
+  { value: 'media', label: 'Media' },
+  { value: 'alta', label: 'Alta' },
+]
+
 const createEmptyForm = () => ({
   sourceUrl: '',
   sourceSystem: 'manual' as EvaluationSourceSystem,
@@ -2232,15 +2567,15 @@ const createEmptyForm = () => ({
   sourceExamType: '',
   sourceExamDatetime: '',
   patientNameRaw: '',
-  ageYears: '',
-  estiloVidaUsoComputadorHoras: '',
-  estiloVidaDirigirHoras: '',
-  estiloVidaLeituraHoras: '',
-  estiloVidaUsoCelularHoras: '',
-  estiloVidaExposicaoSolHoras: '',
-  estiloVidaAmbienteInternoHoras: '',
-  estiloVidaAmbienteExternoHoras: '',
-  estiloVidaAssistirTvHoras: '',
+  ageYears: '30',
+  estiloVidaUsoComputadorHoras: '4',
+  estiloVidaDirigirHoras: '1',
+  estiloVidaLeituraHoras: '1',
+  estiloVidaUsoCelularHoras: '3',
+  estiloVidaExposicaoSolHoras: '1',
+  estiloVidaAmbienteInternoHoras: '8',
+  estiloVidaAmbienteExternoHoras: '1',
+  estiloVidaAssistirTvHoras: '2',
   marcaAtual: '',
   dificuldadeAdaptacao: 'nao_informado',
   queixaDirigirNoite: 'nao',
@@ -2287,6 +2622,150 @@ const createEmptyForm = () => ({
   rawPayloadJson: {} as Record<string, unknown>
 })
 
+type RecommendationConsistencyIssue = {
+  severity: 'blocker' | 'warning'
+  message: string
+  suggestion: string
+}
+
+function validateRecommendationFormConsistency(form: ReturnType<typeof createEmptyForm>): RecommendationConsistencyIssue[] {
+  const issues: RecommendationConsistencyIssue[] = []
+  const age = parseNullableInteger(form.ageYears)
+  const isChild = age !== null && age <= 14
+  const sphere = parseNullableNumber(form.receitaLongeOdEsferico) ?? parseNullableNumber(form.receitaLongeOeEsferico)
+  const cylinder = parseNullableNumber(form.receitaLongeOdCilindrico) ?? parseNullableNumber(form.receitaLongeOeCilindrico)
+  const add = parseNullableNumber(form.receitaAdicao)
+  const targetBudget = parseNullableNumber(form.budgetTarget)
+  const wantsFirstMultifocal = form.objetivoCompra === 'primeira_multifocal'
+  const wantsOfficeLens = form.objetivoCompra === 'oculos_escritorio' || form.objetivoCompra === 'ocupacional_escritorio'
+  const wantsSolar = form.objetivoCompra === 'oculos_sol_grau'
+  const hasNearOrIntermediateComplaint =
+    form.principalIncomodoAtual === 'perto' ||
+    form.principalIncomodoAtual === 'intermediario' ||
+    form.principalIncomodoAtual === 'adaptacao'
+  const hasPresbyopicContext =
+    form.usaMultifocalHoje === 'sim' ||
+    form.tipoLenteAtual === 'multifocal' ||
+    form.tipoLenteAtual === 'bifocal' ||
+    wantsFirstMultifocal ||
+    wantsOfficeLens ||
+    hasNearOrIntermediateComplaint
+  const wantsPremium =
+    form.prioridadePrincipal === 'premium' ||
+    form.aceitaPremium === 'sim' ||
+    form.importanciaEstetica === 'alta' ||
+    form.importanciaResistencia === 'alta' ||
+    form.prefereTransitions === 'sim'
+  const wantsManyUpgrades = [
+    form.prioridadePrincipal === 'premium',
+    form.aceitaPremium === 'sim',
+    form.importanciaEstetica === 'alta',
+    form.importanciaResistencia === 'alta',
+    form.prefereTransitions === 'sim',
+    form.prefereBlueUv === 'sim',
+  ].filter(Boolean).length >= 3
+
+  if (isChild && wantsFirstMultifocal) {
+    issues.push({
+      severity: 'blocker',
+      message: 'Paciente infantil não deve ser marcado como primeira multifocal/progressiva.',
+      suggestion: 'Troque o objetivo para resolver queixa, controle de miopia ou outra necessidade coerente com a idade.',
+    })
+  }
+
+  if ((wantsFirstMultifocal || wantsOfficeLens) && add === null) {
+    issues.push({
+      severity: 'blocker',
+      message: wantsOfficeLens
+        ? 'Óculos de escritório/ocupacional precisam de adição informada para o motor avaliar corretamente.'
+        : 'Primeira multifocal precisa de adição informada.',
+      suggestion: 'Preencha a adição ou altere o objetivo da compra.',
+    })
+  }
+
+  if (add !== null && add > 0 && !hasPresbyopicContext) {
+    issues.push({
+      severity: 'warning',
+      message: 'Há adição preenchida, mas o restante do formulário ainda não indica claramente necessidade de multifocal ou ocupacional.',
+      suggestion: 'Confirme se o cliente precisa de lente para perto/intermediário, primeira multifocal ou óculos de escritório.',
+    })
+  }
+
+  if (isChild && add !== null && add > 0) {
+    issues.push({
+      severity: 'warning',
+      message: 'Criança com adição preenchida merece dupla checagem da receita e do objetivo da compra.',
+      suggestion: 'Confirme se a adição está correta e se o caso é realmente multifocal/ocupacional, não apenas controle de miopia ou visão simples.',
+    })
+  }
+
+  if (wantsSolar && add !== null) {
+    issues.push({
+      severity: 'warning',
+      message: 'Objetivo solar com adição preenchida pode misturar necessidades diferentes.',
+      suggestion: 'Confirme se o cliente quer solar plano, solar com grau de longe ou multifocal solar.',
+    })
+  }
+
+  if (targetBudget !== null && targetBudget <= 800 && wantsPremium) {
+    issues.push({
+      severity: 'warning',
+      message: 'Há desejo por recursos premium com orçamento muito baixo.',
+      suggestion: 'Confirme se a prioridade é manter preço baixo ou abrir espaço para uma solução superior.',
+    })
+  }
+
+  if (targetBudget !== null && targetBudget <= 1600 && wantsManyUpgrades) {
+    issues.push({
+      severity: 'warning',
+      message: 'O cliente pediu várias melhorias ao mesmo tempo dentro de um alvo de preço apertado.',
+      suggestion: 'Alinhe uma prioridade principal antes de gerar: preço, estética, resistência, fotossensível ou tratamento.',
+    })
+  }
+
+  if (form.queixaDirigirNoite === 'sim' && targetBudget !== null && targetBudget <= 800) {
+    issues.push({
+      severity: 'warning',
+      message: 'Queixa de dirigir à noite costuma exigir melhor antirreflexo, mas o orçamento está baixo.',
+      suggestion: 'Confirme se o cliente aceita ultrapassar o alvo para priorizar segurança/conforto noturno.',
+    })
+  }
+
+  if (form.queixaProgressaoRapida === 'sim' && isChild && form.prioridadePrincipal !== 'controle_miopia') {
+    issues.push({
+      severity: 'warning',
+      message: 'Criança com progressão rápida deve ter controle de miopia como prioridade clínica.',
+      suggestion: 'Considere mudar a prioridade principal para controle de miopia antes de gerar.',
+    })
+  }
+
+  if (Math.abs(cylinder || 0) >= 4) {
+    issues.push({
+      severity: 'warning',
+      message: 'Cilindro alto restringe disponibilidade e pode derrubar lentes prontas/conservadoras.',
+      suggestion: 'Confira se a receita esta correta; o motor deve priorizar opcoes compativeis com a grade.',
+    })
+  }
+
+  if (add !== null && add >= 3.5) {
+    issues.push({
+      severity: 'warning',
+      message: 'Adição alta restringe disponibilidade de multifocais.',
+      suggestion: 'Mantenha atenção à grade; talvez apareçam menos opções e isso pode estar correto.',
+    })
+  }
+
+  if (sphere !== null && Math.abs(sphere) >= 6 && targetBudget !== null && targetBudget <= 1600) {
+    issues.push({
+      severity: 'warning',
+      message: 'Grau alto com orçamento apertado pode limitar estética, espessura e tratamentos.',
+      suggestion: 'Confirme se o cliente prioriza preço ou melhor resultado estético/visual.',
+    })
+  }
+
+  return issues
+}
+
 export default function EvaluationInterface({
   activeCatalog,
   activeCatalogs = [],
@@ -2300,7 +2779,9 @@ export default function EvaluationInterface({
 }) {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const storeId = parseInt(params.storeId as string, 10)
+  const heatmapSessionId = searchParams.get('heatmapSessionId') || undefined
   const { preference } = useBackgroundPreference()
 
   const [query, setQuery] = useState('')
@@ -2315,6 +2796,8 @@ export default function EvaluationInterface({
   const [form, setForm] = useState(createEmptyForm())
   const [evaluationId, setEvaluationId] = useState<number | null>(null)
   const evaluationIdRef = useRef<number | null>(null)
+  const restoredHeatmapSessionRef = useRef<string | null>(null)
+  const isCreatingSaleRef = useRef(false)
   const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [searchError, setSearchError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
@@ -2328,6 +2811,7 @@ export default function EvaluationInterface({
   const [isSearching, startSearchTransition] = useTransition()
   const [isImporting, startImportTransition] = useTransition()
   const [isSaving, startSaveTransition] = useTransition()
+  const [isStartingHeatmap, startHeatmapTransition] = useTransition()
   const [isCreatingVenda, startCreateVendaTransition] = useTransition()
   const [isLoadingHistory, startHistoryTransition] = useTransition()
   const [isGeneratingAi, startAiGenerationTransition] = useTransition()
@@ -2347,6 +2831,9 @@ export default function EvaluationInterface({
   const [quickRetentionReply, setQuickRetentionReply] = useState<string | null>(null)
   const [ivisionReferenceSuggestion, setIvisionReferenceSuggestion] = useState<string | null>(null)
   const [ivisionReferenceSummary, setIvisionReferenceSummary] = useState<string | null>(null)
+  const [isLifestyleOpen, setIsLifestyleOpen] = useState(false)
+  const [isPrioritiesOpen, setIsPrioritiesOpen] = useState(false)
+  const [activePriorityPicker, setActivePriorityPicker] = useState<string | null>(null)
 
   const selectedDependente = useMemo(
     () => dependentes.find((dep) => dep.id === Number(selectedDependenteId)) || null,
@@ -2406,13 +2893,20 @@ export default function EvaluationInterface({
 
   
   useEffect(() => { // Load Dashboard
-    if (authenticatedEmployee && !selectedCustomer && query.length === 0) {
-      setIsLoadingDashboard(true)
-      getRecentEvaluationsForStore(storeId, 30).then(all => {
-        setAllRecentEvaluations(all)
+    if (!authenticatedEmployee || selectedCustomer || query.length !== 0) {
+      setAllRecentEvaluations([])
+      setIsLoadingDashboard(false)
+      return
+    }
+
+    setIsLoadingDashboard(true)
+    getRecentEvaluationsForStore(storeId, 8, true, 7)
+      .then((recent) => {
+        setAllRecentEvaluations(recent)
+      })
+      .finally(() => {
         setIsLoadingDashboard(false)
       })
-    }
   }, [authenticatedEmployee, selectedCustomer, query.length, storeId])
 
   // Auto-derive usaMultifocalHoje from tipoLenteAtual; reset adaptation fields when not applicable
@@ -2463,7 +2957,6 @@ export default function EvaluationInterface({
     setLensAudit(null)
     setLensAuditPayload(null)
     setLensSalesAssist(null)
-    setIsGeneratingSalesAssist(false)
     setIsGeneratingAudit(false)
     setIsGeneratingSalesAssist(false)
     setIvisionReferenceSuggestion(null)
@@ -2590,6 +3083,27 @@ export default function EvaluationInterface({
   }
 
   const handleFormChange = (field: keyof ReturnType<typeof createEmptyForm>, value: string) => {
+    if (field === 'budgetTarget') {
+      const targetBudget = parseNullableNumber(value)
+      const faixaOrcamento =
+        targetBudget === null
+          ? 'nao_informado'
+          : targetBudget <= 800
+            ? 'ate_800'
+            : targetBudget <= 2000
+              ? '800_2000'
+              : targetBudget <= 5000
+                ? '2000_5000'
+                : 'acima_5000'
+
+      setForm((prev) => ({
+        ...prev,
+        budgetTarget: value,
+        faixaOrcamento,
+      }))
+      return
+    }
+
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
@@ -2660,6 +3174,11 @@ export default function EvaluationInterface({
       return
     }
 
+    if (recommendationBlockingIssues.length > 0) {
+      setFormError(`Corrija antes de gerar sugestao: ${recommendationBlockingIssues[0].message}`)
+      return
+    }
+
     setFormError(null)
     setAiFeedback(null)
     setQuickRetentionReply(null)
@@ -2668,13 +3187,13 @@ export default function EvaluationInterface({
     setLensAudit(null)
     setLensAuditPayload(null)
     setLensSalesAssist(null)
+    setIsGeneratingAudit(false)
     setIsGeneratingSalesAssist(false)
 
     startAiGenerationTransition(async () => {
       const auditPatientContext = buildPatientAuditContext(form, aiCaseInput)
-      const triageResult = await generateLensTechnicalTriageAction(auditPatientContext, aiCaseInput)
-      const technicalTriage = triageResult.success ? triageResult.triage : null
-      const recommendationCaseInput = applyTechnicalTriageToCaseInput(aiCaseInput, technicalTriage)
+      const technicalTriage: LensTechnicalTriage | null = null
+      const recommendationCaseInput = aiCaseInput
 
       setLensTechnicalTriage(technicalTriage)
 
@@ -2686,7 +3205,8 @@ export default function EvaluationInterface({
             : undefined,
         storeId,
         ...recommendationCaseInput,
-        topN: 3
+        topN: 3,
+        heatmapSessionId,
       })
 
       if (!result.success || !result.data) {
@@ -2694,7 +3214,6 @@ export default function EvaluationInterface({
           setAiRecommendations([])
           setAiState(null)
           setAiFeedback(null)
-          setLensTechnicalTriage(null)
           setLensAudit(null)
           setLensAuditPayload(null)
           setLensSalesAssist(null)
@@ -2708,24 +3227,36 @@ export default function EvaluationInterface({
       setAiRecommendations(payload.recommendations)
       setSyncStatus(evaluationIdRef.current ? 'saved' : 'idle')
       setManualSuggestion(null)
-      setAiFeedback(
-        technicalTriage
-          ? 'Triagem e sugestões geradas.'
-          : 'Sugestões geradas.'
-      )
+      setAiFeedback('Sugestões geradas sem triagem IA.')
 
-      // Auditoria Gemini assíncrona (não bloqueia o ranking)
+      // Debug preservado: payload + Sales Assist. A auditoria IA fica comentada para evitar custo/delay nos testes.
       if (payload.recommendations.length > 0) {
         setLensAudit(null)
         setLensSalesAssist(null)
+        setIsGeneratingAudit(false)
         setIsGeneratingSalesAssist(true)
         const auditDebugPayload = {
+          debugProfileName: form.patientNameRaw || selectedSubjectName || null,
           patient: auditPatientContext,
           technicalTriage,
           motorInput: recommendationCaseInput,
+          presentationStrategy: payload.presentationStrategy || null,
           recommendations: payload.recommendations,
         }
         setLensAuditPayload(auditDebugPayload)
+        // Restore key: dossie_triplice_motor / Etapa 3 - Auditoria IA.
+        // Para religar o debug profundo, reimporte `generateLensAuditAction` de
+        // `@/lib/actions/gemini-narratives.actions` e restaure esta chamada:
+        //
+        // setIsGeneratingAudit(true)
+        // generateLensAuditAction(auditPatientContext, payload.recommendations).then((auditResult) => {
+        //   if (auditResult.success && auditResult.audit) {
+        //     setLensAudit(auditResult.audit)
+        //   }
+        //   setIsGeneratingAudit(false)
+        // }).catch(() => {
+        //   setIsGeneratingAudit(false)
+        // })
         generateLensSalesAssistAction({
           patientContext: auditPatientContext,
           technicalTriage,
@@ -2742,6 +3273,7 @@ export default function EvaluationInterface({
       } else {
         setLensAuditPayload(null)
         setLensSalesAssist(null)
+        setIsGeneratingAudit(false)
       }
     })
   }
@@ -2795,23 +3327,279 @@ export default function EvaluationInterface({
 
     if (evaluationId && storeId) {
       updateEvaluationPanicReason(evaluationId, storeId, intent).catch(() => {
-        // silencioso â€” não bloqueia o fluxo do consultor
+        // silencioso — não bloqueia o fluxo do consultor
       })
     }
   }
 
-  const handleApplyAiRecommendation = (option: RecommendationOption) => {
-    setForm((prev) => ({
-      ...prev,
-      recommendedLensName: buildAiRecommendationLabel(option),
-      commercialRecommendationRaw:
-        getSalesAssistOptionText(option, lensSalesAssist) ||
-        buildAiCommercialSummary(option)
-    }))
-    setFeedback('Sugestão da IA aplicada aos campos comerciais. Revise antes de salvar.')
-    setFormError(null)
+  const persistEvaluationForSale = async (recommendation: {
+    displayName: string
+    commercialSummary: string | null
+    recommendedItems: unknown[] | null
+  }) => {
+    if (!selectedCustomer) {
+      setFormError('Selecione o titular antes de criar a venda.')
+      return null
+    }
+    if (!isSubjectChosen) {
+      setFormError('Escolha primeiro o paciente avaliado antes de criar a venda.')
+      return null
+    }
+    if (selectedSubjectType === 'dependente' && !selectedDependente) {
+      setFormError('Selecione o dependente avaliado antes de criar a venda.')
+      return null
+    }
+
+    const derivedStatus: EvaluationStatus = form.sourceSystem === 'ivision' ? 'importada' : 'concluida'
+    const result = await upsertOpticalEvaluation({
+      evaluationId: evaluationIdRef.current || undefined,
+      storeId,
+      evaluatedCustomerId: selectedSubjectType === 'customer' ? selectedCustomer.id : null,
+      evaluatedDependenteId: selectedSubjectType === 'dependente' ? Number(selectedDependenteId) : null,
+      responsibleCustomerId: selectedSubjectType === 'dependente' ? selectedCustomer.id : null,
+      evaluatedNameSnapshot: selectedSubjectType === 'dependente' ? (selectedDependente?.full_name || '') : selectedCustomer.full_name,
+      responsibleNameSnapshot: selectedSubjectType === 'dependente' ? selectedCustomer.full_name : null,
+      relationshipSnapshot: selectedSubjectType === 'dependente' ? (selectedDependente?.parentesco || 'Dependente') : 'Titular',
+      employeeId: authenticatedEmployee?.id ?? undefined,
+      sourceSystem: form.sourceSystem,
+      status: derivedStatus,
+      parseStatus: form.parseStatus,
+      sourceDocumentUrl: form.sourceUrl || null,
+      sourceDocumentHost: form.sourceDocumentHost || null,
+      sourceOsNumber: form.sourceOsNumber || null,
+      sourceExamType: form.sourceExamType || null,
+      sourceExamDatetime: form.sourceExamDatetime || null,
+      patientNameRaw: form.patientNameRaw || null,
+      ageYears: form.ageYears ? Number(form.ageYears) : null,
+      estiloVidaUsoComputadorHoras: form.estiloVidaUsoComputadorHoras ? Number(form.estiloVidaUsoComputadorHoras) : null,
+      estiloVidaDirigirHoras: form.estiloVidaDirigirHoras ? Number(form.estiloVidaDirigirHoras) : null,
+      estiloVidaLeituraHoras: form.estiloVidaLeituraHoras ? Number(form.estiloVidaLeituraHoras) : null,
+      estiloVidaUsoCelularHoras: form.estiloVidaUsoCelularHoras ? Number(form.estiloVidaUsoCelularHoras) : null,
+      estiloVidaExposicaoSolHoras: form.estiloVidaExposicaoSolHoras ? Number(form.estiloVidaExposicaoSolHoras) : null,
+      estiloVidaAmbienteInternoHoras: form.estiloVidaAmbienteInternoHoras ? Number(form.estiloVidaAmbienteInternoHoras) : null,
+      estiloVidaAmbienteExternoHoras: form.estiloVidaAmbienteExternoHoras ? Number(form.estiloVidaAmbienteExternoHoras) : null,
+      estiloVidaAssistirTvHoras: form.estiloVidaAssistirTvHoras ? Number(form.estiloVidaAssistirTvHoras) : null,
+      receitaLongeOdEsferico: form.receitaLongeOdEsferico || null,
+      receitaLongeOdCilindrico: form.receitaLongeOdCilindrico || null,
+      receitaLongeOdEixo: form.receitaLongeOdEixo || null,
+      receitaLongeOeEsferico: form.receitaLongeOeEsferico || null,
+      receitaLongeOeCilindrico: form.receitaLongeOeCilindrico || null,
+      receitaLongeOeEixo: form.receitaLongeOeEixo || null,
+      receitaPertoOdEsferico: form.receitaPertoOdEsferico || null,
+      receitaPertoOdCilindrico: form.receitaPertoOdCilindrico || null,
+      receitaPertoOdEixo: form.receitaPertoOdEixo || null,
+      receitaPertoOeEsferico: form.receitaPertoOeEsferico || null,
+      receitaPertoOeCilindrico: form.receitaPertoOeCilindrico || null,
+      receitaPertoOeEixo: form.receitaPertoOeEixo || null,
+      receitaAdicao: form.receitaAdicao || null,
+      medidaDnpOd: form.medidaDnpOd || null,
+      medidaDnpOe: form.medidaDnpOe || null,
+      medidaAlturaOd: form.medidaAlturaOd || null,
+      medidaAlturaOe: form.medidaAlturaOe || null,
+      recommendedLensName: recommendation.displayName,
+      commercialRecommendationRaw: recommendation.commercialSummary,
+      recommendedItems: recommendation.recommendedItems,
+      extractedText: form.extractedText || null,
+      rawPayloadJson: form.rawPayloadJson,
+      parseWarning: form.parseWarning || null,
+      documentHash: form.documentHash || null
+    })
+
+    if (!result.success || !result.data) {
+      setFormError(result.message || 'Nao foi possivel salvar a avaliacao antes de criar a venda.')
+      return null
+    }
+
+    setCurrentEvaluationId(result.data.id)
+    return result.data.id
   }
 
+  useEffect(() => {
+    if (!heatmapSessionId || selectedCustomer || restoredHeatmapSessionRef.current === heatmapSessionId) return
+    restoredHeatmapSessionRef.current = heatmapSessionId
+
+    startHistoryTransition(async () => {
+      const sessionResult = await getCompletedTowerHeatmapResult({ storeId, sessionId: heatmapSessionId })
+      if (!sessionResult.success || !sessionResult.data) return
+
+      const evaluations = await getOpticalEvaluationsForSubject({
+        storeId,
+        customerId: sessionResult.data.customerId,
+        dependenteId: null,
+      })
+      const linkedEvaluation = evaluations.find((item) => item.id === sessionResult.data?.evaluationId)
+      if (linkedEvaluation) handleSelectEvaluation(linkedEvaluation)
+    })
+  }, [heatmapSessionId, selectedCustomer, storeId])
+
+  const handleStartHeatmap = () => {
+    if (!isHeatmapEligible || !selectedCustomer) {
+      setFormError('O mapa visual exige um titular com receita de longe, adicao e necessidade multifocal confirmada.')
+      return
+    }
+
+    setFormError(null)
+    setFeedback(null)
+
+    startHeatmapTransition(async () => {
+      // A mesma avaliacao e gravada antes de abrir a torre. A sessao persistida
+      // do heatmap sera criada na proxima etapa, pela migration dedicada.
+      const persistedEvaluationId = await persistEvaluationForSale({
+        displayName: form.recommendedLensName || '',
+        commercialSummary: form.commercialRecommendationRaw || null,
+        recommendedItems: aiRecommendations.length > 0 ? aiRecommendations : null,
+      })
+
+      if (!persistedEvaluationId) return
+
+      const sessionResult = await createTowerHeatmapSession({
+        storeId,
+        evaluationId: persistedEvaluationId,
+        customerId: selectedCustomer.id,
+      })
+
+      if (!sessionResult.success || !sessionResult.data) {
+        setFormError(sessionResult.message || 'Nao foi possivel preparar a sessao do mapa visual.')
+        return
+      }
+
+      const query = new URLSearchParams({
+        heatmapSessionId: sessionResult.data.id,
+      })
+      router.push(`/dashboard/loja/${storeId}/lentes/mapa-calor?${query.toString()}`)
+    })
+  }
+
+  const handleCreateSaleFromRecommendation = (recommendation: {
+    source: 'ai' | 'ivision' | 'deferred'
+    displayName: string
+    globalOfferId?: string | null
+    finalPrice?: number | null
+    commercialSummary?: string | null
+    optionSnapshot?: Record<string, unknown> | null
+  }) => {
+    if (isCreatingSaleRef.current || isCreatingVenda) return
+
+    isCreatingSaleRef.current = true
+
+    const isDeferredLens = recommendation.source === 'deferred'
+    const confirmed = window.confirm(
+      isDeferredLens
+        ? `Confirmar criacao da venda?\n\nPaciente: ${selectedSubjectLabel}\n\nA venda sera criada e a OS abrira pre-configurada com grau e medidas. A lente sera escolhida na tela de venda.`
+        : `Confirmar criacao da venda?\n\nPaciente: ${selectedSubjectLabel}\nLente: ${recommendation.displayName}\n\nA venda sera criada e a OS abrira pre-configurada com grau, medidas e lente escolhida.`
+    )
+    if (!confirmed) {
+      isCreatingSaleRef.current = false
+      return
+    }
+
+    setFormError(null)
+    setFeedback(
+      isDeferredLens
+        ? 'Criando venda e OS para escolher a lente depois...'
+        : 'Criando venda e OS com a opcao escolhida...'
+    )
+
+    startCreateVendaTransition(async () => {
+      try {
+        const evaluationIdForSale = await persistEvaluationForSale({
+          displayName: isDeferredLens ? (form.recommendedLensName || recommendation.displayName) : recommendation.displayName,
+          commercialSummary: recommendation.commercialSummary || null,
+          recommendedItems: isDeferredLens ? null : recommendation.optionSnapshot ? [recommendation.optionSnapshot] : null,
+        })
+        if (!evaluationIdForSale) return
+
+        const result = await createSaleAndServiceOrderFromEvaluation({
+          storeId,
+          evaluationId: evaluationIdForSale,
+          employeeId: authenticatedEmployee?.id ?? null,
+          source: recommendation.source,
+          displayName: recommendation.displayName,
+          globalOfferId: recommendation.globalOfferId || null,
+          finalPrice: recommendation.finalPrice ?? null,
+          commercialSummary: recommendation.commercialSummary || null,
+          optionSnapshot: recommendation.optionSnapshot || null,
+        })
+
+        if (!result.success || !result.data) {
+          setFormError(result.message || 'Nao foi possivel criar a venda com esta opcao.')
+          return
+        }
+
+        router.push(`/dashboard/loja/${storeId}/vendas/${result.data.vendaId}/experimental`)
+      } finally {
+        isCreatingSaleRef.current = false
+      }
+    })
+  }
+
+  const handleApplyAiRecommendation = (option: RecommendationOption) => {
+    const displayName = buildAiRecommendationLabel(option)
+    const commercialSummary =
+      getSalesAssistOptionText(option, lensSalesAssist) ||
+      buildAiCommercialSummary(option)
+
+    setForm((prev) => ({
+      ...prev,
+      recommendedLensName: displayName,
+      commercialRecommendationRaw: commercialSummary
+    }))
+    setFeedback('Sugestao da IA aplicada aos campos comerciais.')
+    setFormError(null)
+
+    handleCreateSaleFromRecommendation({
+      source: 'ai',
+      displayName,
+      globalOfferId: option.offerId,
+      finalPrice: option.finalPrice,
+      commercialSummary,
+      optionSnapshot: option as unknown as Record<string, unknown>,
+    })
+  }
+
+  const handleContinueSaleWithoutLens = () => {
+    setFormError(null)
+    setFeedback('Avaliacao mantida como origem da venda.')
+
+    handleCreateSaleFromRecommendation({
+      source: 'deferred',
+      displayName: 'Lente a definir',
+      finalPrice: null,
+      commercialSummary: form.commercialRecommendationRaw || null,
+      optionSnapshot: {
+        source: 'deferred',
+        displayName: 'Lente a definir',
+        reason: 'Funcionario optou por escolher a lente na tela de venda.',
+      },
+    })
+  }
+
+  const handleApplyIvisionRecommendation = () => {
+    if (!ivisionReferenceSuggestion) return
+
+    const commercialSummary = ivisionReferenceSummary || form.commercialRecommendationRaw || null
+    setForm((prev) => ({
+      ...prev,
+      recommendedLensName: ivisionReferenceSuggestion,
+      commercialRecommendationRaw: commercialSummary || ''
+    }))
+    setFeedback('Sugestao do iVision aplicada aos campos comerciais.')
+    setFormError(null)
+
+    handleCreateSaleFromRecommendation({
+      source: 'ivision',
+      displayName: ivisionReferenceSuggestion,
+      finalPrice: null,
+      commercialSummary,
+      optionSnapshot: {
+        source: 'ivision',
+        displayName: ivisionReferenceSuggestion,
+        summary: commercialSummary,
+        sourceOsNumber: form.sourceOsNumber || null,
+        sourceExamType: form.sourceExamType || null,
+      },
+    })
+  }
   const handleQueryChange = (value: string) => {
     setQuery(value)
     if (value.trim().length < 2) {
@@ -2908,33 +3696,6 @@ export default function EvaluationInterface({
         setFeedback(result.message)
       } catch (error) {
         setFormError(error instanceof Error ? error.message : 'Falha inesperada ao importar o PDF do iVision.')
-      }
-    })
-  }
-
-  const handleIrParaVenda = () => {
-    if (!selectedCustomer) {
-      setFormError('Selecione o titular antes de prosseguir para venda.')
-      return
-    }
-    if (!authenticatedEmployee) {
-      setFormError('Consultor não identificado. Impossível criar venda diretamente.')
-      return
-    }
-
-    setFormError(null)
-    setFeedback(null)
-
-    startCreateVendaTransition(async () => {
-      const result = await createNewVenda(selectedCustomer.id, authenticatedEmployee.id)
-      
-      if (result.success && result.data) {
-         if (evaluationId) {
-             await updateEvaluationExportedVendaId(evaluationId, storeId, result.data.id)
-         }
-         router.push(`/dashboard/loja/${storeId}/vendas/${result.data.id}/experimental?evaluation_id=${evaluationId || ''}`)
-      } else {
-         setFormError(result.message || 'Erro ao converter avaliação em Venda.')
       }
     })
   }
@@ -3189,14 +3950,30 @@ export default function EvaluationInterface({
   const isIvisionMode = form.sourceSystem === 'ivision'
   const hasCatalogForAi = activeCatalogs.length > 0 || !!activeCatalog
   const aiCaseInput = inferRecommendationCaseInput(form)
+  const recommendationConsistencyIssues = useMemo(
+    () => validateRecommendationFormConsistency(form),
+    [form]
+  )
+  const recommendationBlockingIssues = recommendationConsistencyIssues.filter((issue) => issue.severity === 'blocker')
   const patientAge = aiCaseInput.idade ?? null
   const isChild = patientAge !== null && patientAge <= 14
   const hasAdicao = aiCaseInput.adicao !== null
   const usedMultifocalBefore = form.tipoLenteAtual === 'multifocal' || form.tipoLenteAtual === 'bifocal'
+  const hasPositiveAdd = (aiCaseInput.adicao ?? 0) > 0
+  const hasExplicitMultifocalNeed =
+    form.tipoLenteAtual === 'multifocal' ||
+    form.objetivoCompra === 'primeira_multifocal'
+  const isHeatmapEligible =
+    selectedSubjectType === 'customer' &&
+    !!selectedCustomer &&
+    hasAnyDegreeData(form) &&
+    hasPositiveAdd &&
+    hasExplicitMultifocalNeed
   const canGenerateAi =
     hasCatalogForAi &&
     isSubjectChosen &&
-    aiCaseInput.esferico !== null
+    aiCaseInput.esferico !== null &&
+    recommendationBlockingIssues.length === 0
   const showManualSuggestionBlock = !hasCatalogForAi
   const aiTopRecommendation = aiRecommendations[0] || null
   const showIvisionReference = isIvisionMode && !!ivisionReferenceSuggestion
@@ -3209,6 +3986,22 @@ export default function EvaluationInterface({
     !!form.sourceUrl &&
     (!!form.documentHash || !!form.extractedText)
   const hasSourceUrl = form.sourceUrl.trim().length > 0
+  const renderPriorityChoice = (
+    id: string,
+    label: string,
+    field: keyof ReturnType<typeof createEmptyForm>,
+    options: TabletChoiceOption[]
+  ) => (
+    <TabletChoicePicker
+      id={id}
+      label={label}
+      value={String(form[field] || '')}
+      options={options}
+      activePicker={activePriorityPicker}
+      onOpen={setActivePriorityPicker}
+      onChange={(value) => handleFormChange(field, value)}
+    />
+  )
 
   if (!authenticatedEmployee) {
     return (
@@ -3355,7 +4148,7 @@ export default function EvaluationInterface({
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300">Responsável</p>
                   <p className="mt-2 text-lg font-black text-white">{selectedCustomer.full_name}</p>
                   <p className="mt-1 text-xs font-bold text-slate-400">
-                    {selectedCustomer.cpf || 'Sem CPF'} ââ‚¬Â¢ {selectedCustomer.fone_movel || 'Sem telefone'}
+                    {selectedCustomer.cpf || 'Sem CPF'} • {selectedCustomer.fone_movel || 'Sem telefone'}
                   </p>
                 </div>
 
@@ -3662,6 +4455,46 @@ export default function EvaluationInterface({
                   <button
                     type="button"
                     onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.solarPlanoSemGrau }))
+                      setFeedback('Perfil da Nina (solar plano sem grau) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <UserRound className="h-3.5 w-3.5" /> Nina (Solar 0/0)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.multifocalAcabadaConservadora }))
+                      setFeedback('Perfil da Irene (multifocal acabada conservadora) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <ShoppingCart className="h-3.5 w-3.5" /> Irene (Acabada)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.astigmatismoForaConservadora }))
+                      setFeedback('Perfil do Rafael (cilindro alto limite) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <CircleHelp className="h-3.5 w-3.5" /> Rafael (Cil Alto)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, ...TEST_PROFILES.visionHaytekPremium }))
+                      setFeedback('Perfil da Paula (Vision/Haytek premium) carregado com sucesso!')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all hover:border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" /> Paula (Vision)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
                       setForm(createEmptyForm())
                       setFormError(null)
                       setFeedback('Formulário limpo com sucesso!')
@@ -3778,61 +4611,122 @@ export default function EvaluationInterface({
                   </div>
                 </div>
 
-                <div className={`${cardStyle} p-5`}>
-                  <h3 className="mb-4 text-sm font-black uppercase tracking-[0.2em] text-indigo-300">
-                    Estilo de Vida
-                  </h3>
-                  <div className="grid grid-cols-12 gap-4">
+                <div className={`${cardStyle} overflow-hidden`}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsLifestyleOpen((current) => !current)
+                      setIsPrioritiesOpen(false)
+                      setActivePriorityPicker(null)
+                    }}
+                    className="flex min-h-16 w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-white/[0.03]"
+                    aria-expanded={isLifestyleOpen}
+                  >
+                    <div>
+                      <h3 className="text-sm font-black uppercase tracking-[0.2em] text-indigo-300">
+                        Estilo de Vida
+                      </h3>
+                      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                        {isLifestyleOpen ? 'Rotina diaria aberta' : 'Rotina diaria recolhida'}
+                      </p>
+                    </div>
+                    <ChevronDown className={`h-5 w-5 shrink-0 text-indigo-200 transition-transform ${isLifestyleOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isLifestyleOpen && (
+                  <div className="grid grid-cols-12 gap-x-4 gap-y-5 border-t border-white/10 px-5 pb-5 pt-4">
                     <div className="col-span-12 md:col-span-3">
                       <label className={labelStyle}>Idade</label>
-                      <input
-                        type="number"
-                        min="0"
+                      <AgeStepper
                         value={form.ageYears}
-                        onChange={(e) => handleFormChange('ageYears', e.target.value)}
-                        className={inputStyle}
+                        onChange={(value) => handleFormChange('ageYears', value)}
                       />
                     </div>
                     <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Computador (h)</label>
-                      <input type="number" min="0" value={form.estiloVidaUsoComputadorHoras} onChange={(e) => handleFormChange('estiloVidaUsoComputadorHoras', e.target.value)} className={inputStyle} />
+                      <HourSlider
+                        label="Computador"
+                        value={form.estiloVidaUsoComputadorHoras}
+                        onChange={(value) => handleFormChange('estiloVidaUsoComputadorHoras', value)}
+                      />
                     </div>
                     <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Dirigir (h)</label>
-                      <input type="number" min="0" value={form.estiloVidaDirigirHoras} onChange={(e) => handleFormChange('estiloVidaDirigirHoras', e.target.value)} className={inputStyle} />
+                      <HourSlider
+                        label="Dirigir"
+                        value={form.estiloVidaDirigirHoras}
+                        onChange={(value) => handleFormChange('estiloVidaDirigirHoras', value)}
+                      />
                     </div>
                     <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Leitura (h)</label>
-                      <input type="number" min="0" value={form.estiloVidaLeituraHoras} onChange={(e) => handleFormChange('estiloVidaLeituraHoras', e.target.value)} className={inputStyle} />
+                      <HourSlider
+                        label="Leitura"
+                        value={form.estiloVidaLeituraHoras}
+                        onChange={(value) => handleFormChange('estiloVidaLeituraHoras', value)}
+                      />
                     </div>
                     <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Celular (h)</label>
-                      <input type="number" min="0" value={form.estiloVidaUsoCelularHoras} onChange={(e) => handleFormChange('estiloVidaUsoCelularHoras', e.target.value)} className={inputStyle} />
+                      <HourSlider
+                        label="Celular"
+                        value={form.estiloVidaUsoCelularHoras}
+                        onChange={(value) => handleFormChange('estiloVidaUsoCelularHoras', value)}
+                      />
                     </div>
                     <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Exposição ao Sol (h)</label>
-                      <input type="number" min="0" value={form.estiloVidaExposicaoSolHoras} onChange={(e) => handleFormChange('estiloVidaExposicaoSolHoras', e.target.value)} className={inputStyle} />
+                      <HourSlider
+                        label="Exposicao ao Sol"
+                        value={form.estiloVidaExposicaoSolHoras}
+                        onChange={(value) => handleFormChange('estiloVidaExposicaoSolHoras', value)}
+                      />
                     </div>
                     <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Ambiente Interno (h)</label>
-                      <input type="number" min="0" value={form.estiloVidaAmbienteInternoHoras} onChange={(e) => handleFormChange('estiloVidaAmbienteInternoHoras', e.target.value)} className={inputStyle} />
+                      <HourSlider
+                        label="Ambiente Interno"
+                        value={form.estiloVidaAmbienteInternoHoras}
+                        onChange={(value) => handleFormChange('estiloVidaAmbienteInternoHoras', value)}
+                      />
                     </div>
                     <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Ambiente Externo (h)</label>
-                      <input type="number" min="0" value={form.estiloVidaAmbienteExternoHoras} onChange={(e) => handleFormChange('estiloVidaAmbienteExternoHoras', e.target.value)} className={inputStyle} />
+                      <HourSlider
+                        label="Ambiente Externo"
+                        value={form.estiloVidaAmbienteExternoHoras}
+                        onChange={(value) => handleFormChange('estiloVidaAmbienteExternoHoras', value)}
+                      />
                     </div>
                     <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>Assistir TV (h)</label>
-                      <input type="number" min="0" value={form.estiloVidaAssistirTvHoras} onChange={(e) => handleFormChange('estiloVidaAssistirTvHoras', e.target.value)} className={inputStyle} />
+                      <HourSlider
+                        label="Assistir TV"
+                        value={form.estiloVidaAssistirTvHoras}
+                        onChange={(value) => handleFormChange('estiloVidaAssistirTvHoras', value)}
+                      />
                     </div>
                   </div>
+                  )}
                 </div>
 
-                <div className={`${cardStyle} p-5`}>
-                  <h3 className="mb-4 text-sm font-black uppercase tracking-[0.2em] text-indigo-300">
-                    Queixas e Prioridades
-                  </h3>
-                  <div className="grid grid-cols-12 gap-4">
+                <div className={`${cardStyle} overflow-hidden`}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextOpen = !isPrioritiesOpen
+                      setIsPrioritiesOpen(nextOpen)
+                      setIsLifestyleOpen(false)
+                      setActivePriorityPicker(null)
+                    }}
+                    className="flex min-h-16 w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-white/[0.03]"
+                    aria-expanded={isPrioritiesOpen}
+                  >
+                    <div>
+                      <h3 className="text-sm font-black uppercase tracking-[0.2em] text-indigo-300">
+                        Queixas e Prioridades
+                      </h3>
+                      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                        {isPrioritiesOpen ? 'Preferencias abertas' : 'Preferencias recolhidas'}
+                      </p>
+                    </div>
+                    <ChevronDown className={`h-5 w-5 shrink-0 text-indigo-200 transition-transform ${isPrioritiesOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isPrioritiesOpen && (
+                  <div className="grid grid-cols-12 gap-4 border-t border-white/10 px-5 pb-5 pt-4">
                     {/* SUBSECTION 1: HISTÓRICO E ÓCULOS ATUAL */}
                     <div className="col-span-12">
                       <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 pb-2 border-b border-white/5">
@@ -3850,6 +4744,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Tipo da lente atual</label>
+                      {renderPriorityChoice('tipoLenteAtual', 'Tipo da lente atual', 'tipoLenteAtual', LENS_TYPE_OPTIONS)}
                       <select
                         value={form.tipoLenteAtual}
                         onChange={(e) => handleFormChange('tipoLenteAtual', e.target.value)}
@@ -3867,6 +4762,7 @@ export default function EvaluationInterface({
                         <label className={labelStyle}>Adaptação com lentes anteriores</label>
                         <select
                           value={form.dificuldadeAdaptacao}
+                          hidden
                           onChange={(e) => handleFormChange('dificuldadeAdaptacao', e.target.value)}
                           className={selectStyle}
                         >
@@ -3875,6 +4771,7 @@ export default function EvaluationInterface({
                           <option value="media">Alguma dificuldade</option>
                           <option value="alta">Muita dificuldade</option>
                         </select>
+                        {renderPriorityChoice('dificuldadeAdaptacao', 'Adaptacao com lentes anteriores', 'dificuldadeAdaptacao', ADAPTATION_OPTIONS)}
                       </div>
                     )}
                     {usedMultifocalBefore && !isChild && (
@@ -3890,6 +4787,7 @@ export default function EvaluationInterface({
                           <option value="uma">Uma troca recente</option>
                           <option value="mais_de_duas">Várias trocas / retrabalho</option>
                         </select>
+                        {renderPriorityChoice('historicoTrocasRecentes', 'Trocas recentes de lente', 'historicoTrocasRecentes', CHANGE_HISTORY_OPTIONS)}
                       </div>
                     )}
 
@@ -3901,6 +4799,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Prioridade principal</label>
+                      {renderPriorityChoice('prioridadePrincipal', 'Prioridade principal', 'prioridadePrincipal', PRIORITY_OPTIONS)}
                       <select
                         value={form.prioridadePrincipal}
                         onChange={(e) => handleFormChange('prioridadePrincipal', e.target.value)}
@@ -3916,6 +4815,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Principal incômodo atual</label>
+                      {renderPriorityChoice('principalIncomodoAtual', 'Principal incomodo atual', 'principalIncomodoAtual', DISCOMFORT_OPTIONS)}
                       <select
                         value={form.principalIncomodoAtual}
                         onChange={(e) => handleFormChange('principalIncomodoAtual', e.target.value)}
@@ -3934,6 +4834,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Objetivo desta compra</label>
+                      {renderPriorityChoice('objetivoCompra', 'Objetivo desta compra', 'objetivoCompra', OBJECTIVE_OPTIONS)}
                       <select
                         value={form.objetivoCompra}
                         onChange={(e) => handleFormChange('objetivoCompra', e.target.value)}
@@ -3945,7 +4846,7 @@ export default function EvaluationInterface({
                         <option value="resolver_queixa">Resolver queixa específica</option>
                         <option value="economizar">Economizar</option>
                         <option value="trocar_marca">Trocar marca/laboratório</option>
-                        <option value="ocupacional_escritorio">Óculos para trabalho/escritório</option>
+                        <option value="oculos_escritorio">Óculos para trabalho/escritório</option>
                       </select>
                     </div>
                     <div className="col-span-12 md:col-span-4">
@@ -3960,7 +4861,21 @@ export default function EvaluationInterface({
                       />
                     </div>
                     <div className="col-span-12 md:col-span-4">
+                      <label className={labelStyle}>Aceita Lentes Premium?</label>
+                      {renderPriorityChoice('aceitaPremium', 'Aceita lentes premium?', 'aceitaPremium', UNKNOWN_YES_NO_OPTIONS)}
+                      <select
+                        value={form.aceitaPremium}
+                        onChange={(e) => handleFormChange('aceitaPremium', e.target.value)}
+                        className={selectStyle}
+                      >
+                        <option value="nao_informado">Nao informado</option>
+                        <option value="sim">Sim</option>
+                        <option value="nao">Nao</option>
+                      </select>
+                    </div>
+                    <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Importância de estética/finura</label>
+                      {renderPriorityChoice('importanciaEstetica', 'Importancia de estetica/finura', 'importanciaEstetica', IMPORTANCE_OPTIONS)}
                       <select
                         value={form.importanciaEstetica}
                         onChange={(e) => handleFormChange('importanciaEstetica', e.target.value)}
@@ -3974,6 +4889,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Importância de resistência</label>
+                      {renderPriorityChoice('importanciaResistencia', 'Importancia de resistencia', 'importanciaResistencia', IMPORTANCE_OPTIONS)}
                       <select
                         value={form.importanciaResistencia}
                         onChange={(e) => handleFormChange('importanciaResistencia', e.target.value)}
@@ -3987,6 +4903,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Prefere Transitions?</label>
+                      {renderPriorityChoice('prefereTransitions', 'Prefere Transitions?', 'prefereTransitions', UNKNOWN_YES_NO_OPTIONS)}
                       <select
                         value={form.prefereTransitions}
                         onChange={(e) => handleFormChange('prefereTransitions', e.target.value)}
@@ -3999,6 +4916,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Prefere Blue/UV?</label>
+                      {renderPriorityChoice('prefereBlueUv', 'Prefere Blue/UV?', 'prefereBlueUv', UNKNOWN_YES_NO_OPTIONS)}
                       <select
                         value={form.prefereBlueUv}
                         onChange={(e) => handleFormChange('prefereBlueUv', e.target.value)}
@@ -4018,6 +4936,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Dificuldade para dirigir à noite</label>
+                      {renderPriorityChoice('queixaDirigirNoite', 'Dificuldade para dirigir a noite', 'queixaDirigirNoite', YES_NO_OPTIONS)}
                       <select
                         value={form.queixaDirigirNoite}
                         onChange={(e) => handleFormChange('queixaDirigirNoite', e.target.value)}
@@ -4029,6 +4948,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Sensibilidade à luz</label>
+                      {renderPriorityChoice('queixaSensibilidadeLuz', 'Sensibilidade a luz', 'queixaSensibilidadeLuz', YES_NO_OPTIONS)}
                       <select
                         value={form.queixaSensibilidadeLuz}
                         onChange={(e) => handleFormChange('queixaSensibilidadeLuz', e.target.value)}
@@ -4040,6 +4960,7 @@ export default function EvaluationInterface({
                     </div>
                     <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Quebra óculos com frequência</label>
+                      {renderPriorityChoice('queixaQuebraOculos', 'Quebra oculos com frequencia', 'queixaQuebraOculos', YES_NO_OPTIONS)}
                       <select
                         value={form.queixaQuebraOculos}
                         onChange={(e) => handleFormChange('queixaQuebraOculos', e.target.value)}
@@ -4052,6 +4973,7 @@ export default function EvaluationInterface({
                     {isChild && (
                       <div className="col-span-12 md:col-span-4">
                         <label className={labelStyle}>Criança muito ativa</label>
+                        {renderPriorityChoice('queixaCriancaAtiva', 'Crianca muito ativa', 'queixaCriancaAtiva', YES_NO_OPTIONS)}
                         <select
                           value={form.queixaCriancaAtiva}
                           onChange={(e) => handleFormChange('queixaCriancaAtiva', e.target.value)}
@@ -4065,6 +4987,7 @@ export default function EvaluationInterface({
                     {isChild && (
                       <div className="col-span-12 md:col-span-4">
                         <label className={labelStyle}>Grau aumentando rápido</label>
+                        {renderPriorityChoice('queixaProgressaoRapida', 'Grau aumentando rapido', 'queixaProgressaoRapida', YES_NO_OPTIONS)}
                         <select
                           value={form.queixaProgressaoRapida}
                           onChange={(e) => handleFormChange('queixaProgressaoRapida', e.target.value)}
@@ -4092,6 +5015,7 @@ export default function EvaluationInterface({
                       />
                     </div>
                   </div>
+                  )}
                 </div>
 
                 {isIvisionMode && (
@@ -4187,6 +5111,33 @@ export default function EvaluationInterface({
                   </div>
                 </div>
 
+                <div className="rounded-2xl border border-cyan-400/25 bg-cyan-500/5 p-5 shadow-[0_0_32px_rgba(34,211,238,0.07)]">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">
+                        Mapeamento visual para multifocais
+                      </p>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+                        Registre o padrao visual antes da indicacao. A avaliacao atual sera preservada e vinculada a proxima sessao de mapa de calor.
+                      </p>
+                      {!isHeatmapEligible && (
+                        <p className="mt-2 text-xs font-bold text-amber-200/90">
+                          Disponivel para titular com receita de longe, adicao positiva e necessidade multifocal confirmada.
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleStartHeatmap}
+                      disabled={isStartingHeatmap || isSaving || !isHeatmapEligible}
+                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-5 py-3 text-xs font-black uppercase tracking-[0.16em] text-cyan-100 transition-colors hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      {isStartingHeatmap ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      {isStartingHeatmap ? 'Preparando mapa...' : 'Mapear padrao visual'}
+                    </button>
+                  </div>
+                </div>
+
                 <div className={`${cardStyle} p-5`}>
                   <h3 className="mb-4 text-sm font-black uppercase tracking-[0.2em] text-indigo-300">
                     Recomendação Comercial
@@ -4194,6 +5145,29 @@ export default function EvaluationInterface({
                   <div className="grid grid-cols-12 gap-4">
                     {activeCatalog && (
                       <div className="col-span-12 rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/5 p-4">
+                        {recommendationConsistencyIssues.length > 0 && (
+                          <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
+                            recommendationBlockingIssues.length > 0
+                              ? 'border-red-500/30 bg-red-500/10 text-red-100'
+                              : 'border-amber-500/30 bg-amber-500/10 text-amber-100'
+                          }`}>
+                            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em]">
+                              <AlertTriangle className="h-4 w-4" />
+                              {recommendationBlockingIssues.length > 0
+                                ? 'Corrija antes de gerar sugestão'
+                                : 'Atenção antes de gerar sugestão'}
+                            </div>
+                            <div className="mt-3 space-y-3">
+                              {recommendationConsistencyIssues.map((issue, index) => (
+                                <div key={`${issue.severity}-${index}`} className="rounded-lg border border-white/10 bg-black/10 p-3">
+                                  <p className="font-bold">{issue.message}</p>
+                                  <p className="mt-1 text-xs opacity-80">{issue.suggestion}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                           <div>
                             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-300">
@@ -4252,7 +5226,11 @@ export default function EvaluationInterface({
                           </div>
                         )}
 
-                        <details className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-3">
+                        {SHOW_LENS_ENGINE_DIAGNOSTIC_SUITE && (
+                        <details
+                          open={Boolean(lensTechnicalTriage || lensAuditPayload || lensAudit || isGeneratingAudit)}
+                          className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-3"
+                        >
                           <summary className="cursor-pointer text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">
                             Dossie Triplice do Motor (debug)
                           </summary>
@@ -4269,7 +5247,7 @@ export default function EvaluationInterface({
                             </p>
                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-400 flex items-center gap-2">
-                                <Sparkles className="h-3 w-3" /> Debug IA â€” Auditoria da Indicação
+                                <Sparkles className="h-3 w-3" /> Debug IA — Auditoria da Indicação
                               </p>
                               <button
                                 type="button"
@@ -4295,7 +5273,7 @@ export default function EvaluationInterface({
                             </p>
                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 flex items-center gap-2">
-                                <FileSearch className="h-3 w-3" /> Debug IA â€” Payload da Auditoria
+                                <FileSearch className="h-3 w-3" /> Debug IA — Payload da Auditoria
                               </p>
                               <button
                                 type="button"
@@ -4359,6 +5337,7 @@ export default function EvaluationInterface({
                         )}
 
                         </details>
+                        )}
 
                         {showIvisionReference && (
                           <div className="mt-4 grid grid-cols-12 gap-4">
@@ -4372,6 +5351,15 @@ export default function EvaluationInterface({
                                   {ivisionReferenceSummary}
                                 </p>
                               )}
+                              <button
+                                type="button"
+                                onClick={handleApplyIvisionRecommendation}
+                                disabled={isCreatingVenda}
+                                className="mt-4 inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-white hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {isCreatingVenda ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                                Aplicar opção iVision
+                              </button>
                             </div>
                             <div className="col-span-12 lg:col-span-6 rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/10 p-4">
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-300">
@@ -4396,8 +5384,10 @@ export default function EvaluationInterface({
                                   <button
                                     type="button"
                                     onClick={() => handleApplyAiRecommendation(aiTopRecommendation)}
-                                    className="mt-auto ml-auto inline-flex items-center gap-2 rounded-xl bg-fuchsia-500 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-white hover:bg-fuchsia-400"
+                                    disabled={isCreatingVenda}
+                                    className="mt-auto ml-auto inline-flex items-center gap-2 rounded-xl bg-fuchsia-500 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-white hover:bg-fuchsia-400 disabled:cursor-not-allowed disabled:opacity-50"
                                   >
+                                    {isCreatingVenda ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                                     Aplicar esta opção
                                   </button>
                                 </div>
@@ -4460,13 +5450,29 @@ export default function EvaluationInterface({
                                     <p className="mt-3 whitespace-pre-line rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-3 text-sm leading-6 text-cyan-100">
                                       {buildSellerVisibleOptionNarrative(option, index, aiRecommendations[0] || option, lensSalesAssist)}
                                     </p>
+                                    {option.heatmapCompatibility && (
+                                      <div className={`mt-3 rounded-xl border px-3 py-3 text-sm leading-6 ${
+                                        option.heatmapCompatibility.status === 'nao_indicada'
+                                          ? 'border-amber-400/30 bg-amber-500/10 text-amber-100'
+                                          : option.heatmapCompatibility.status === 'sem_geometria'
+                                            ? 'border-slate-400/20 bg-slate-500/10 text-slate-200'
+                                            : 'border-emerald-400/20 bg-emerald-500/10 text-emerald-100'
+                                      }`}>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.18em]">
+                                          Mapa visual: {option.heatmapCompatibility.status.replaceAll('_', ' ')}
+                                        </p>
+                                        <p className="mt-1">{option.heatmapCompatibility.message}</p>
+                                      </div>
+                                    )}
                                   </div>
                                   <div className="flex lg:min-w-[220px] lg:max-w-sm lg:flex-col lg:justify-end">
                                     <button
                                       type="button"
                                       onClick={() => handleApplyAiRecommendation(option)}
-                                      className="mt-auto ml-auto inline-flex items-center gap-2 self-end rounded-xl bg-fuchsia-500 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-white hover:bg-fuchsia-400"
+                                      disabled={isCreatingVenda}
+                                      className="mt-auto ml-auto inline-flex items-center gap-2 self-end rounded-xl bg-fuchsia-500 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-white hover:bg-fuchsia-400 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
+                                      {isCreatingVenda ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                                       Aplicar esta opção
                                     </button>
                                   </div>
@@ -4685,6 +5691,16 @@ export default function EvaluationInterface({
                   <div className="flex justify-end gap-3">
                   <button
                     type="button"
+                    onClick={handleContinueSaleWithoutLens}
+                    disabled={isCreatingVenda || isSaving || !selectedCustomer || !isSubjectChosen}
+                    className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-600 px-6 py-3 text-xs font-black uppercase tracking-[0.2em] text-emerald-50 shadow-[0_0_20px_rgba(16,185,129,0.25)] transition-all hover:bg-emerald-500 disabled:opacity-50"
+                  >
+                    {isCreatingVenda ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}
+                    Continuar sem definir lente
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={handleSave}
                     disabled={isSaving}
                     className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-indigo-600 px-6 py-3 text-xs font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 disabled:opacity-50"
@@ -4693,15 +5709,6 @@ export default function EvaluationInterface({
                     Salvar Avaliação
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={handleIrParaVenda}
-                    disabled={isCreatingVenda || isSaving || !selectedCustomer}
-                    className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-600 px-6 py-3 text-xs font-black uppercase tracking-[0.2em] text-emerald-50 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:bg-emerald-500 hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] disabled:opacity-50 transition-all font-sans"
-                  >
-                    {isCreatingVenda ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}
-                    Ir para Venda (Checkout)
-                  </button>
                   </div>
                 </div>
               </div>
@@ -4732,4 +5739,5 @@ export default function EvaluationInterface({
     </div>
   )
 }
+
 

@@ -1,0 +1,18 @@
+services:
+  whatsapp-automation:
+    build: .
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      APP_BASE_URL: "${APP_BASE_URL}"
+      WHATSAPP_INTERNAL_SECRET: "${WHATSAPP_INTERNAL_SECRET}"
+      EVOLUTION_API_URL: "${EVOLUTION_API_URL}"
+      EVOLUTION_API_KEY: "${EVOLUTION_API_KEY}"
+      EVOLUTION_WEBHOOK_SECRET: "${EVOLUTION_WEBHOOK_SECRET}"
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

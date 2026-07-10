@@ -1,5 +1,7 @@
 # Essilor: Próximos Passos Quando as Tabelas Chegarem
 
+> **Nota atual (2026):** documento historico. A Essilor ja foi importada/ativada no catalogo global atual. Para novas importacoes, use `CATALOGO_IMPORTACAO_REGRAS_ATUAIS.md` e `IMPORTACAO_CATALOGOS_E_SEMANTICA.md`.
+
 Este arquivo serve para preservar o contexto. Quando as tabelas da Essilor forem importadas, siga a sequência abaixo para alinhar com o que já fizemos em HOYA, Gamalab e Optilab.
 
 ## 1) Confirmar quais versões Essilor foram importadas

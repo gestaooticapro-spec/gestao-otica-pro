@@ -116,6 +116,18 @@ export async function getCatalogFamilyNames(): Promise<string[]> {
     .in('clinical_category', ['multifocal', 'ocupacional', 'mista', 'bifocal'])
   if (dErr) throw new Error(dErr.message)
 
+  const { data: linkedOffers, error: linkedOffersError } = await sb
+    .from('global_lens_offers')
+    .select('family_id')
+  if (linkedOffersError) throw new Error(linkedOffersError.message)
+
+  const familiesWithOffers = new Set(
+    (linkedOffers as LensOfferRow[] | null ?? []).map((offer) => offer.family_id),
+  )
+  const eligibleDirectFamilies = (directFamilies as LensFamilyRow[] | null ?? []).filter((family) =>
+    familiesWithOffers.has(family.id),
+  )
+
   // 2. Ofertas multifocal/ocupacional (captura famílias com categoria 'indefinida')
   const { data: multifocalOffers, error: oErr } = await sb
     .from('global_lens_offers')
@@ -125,7 +137,7 @@ export async function getCatalogFamilyNames(): Promise<string[]> {
 
   const extraFamilyIds = (multifocalOffers as LensOfferRow[] | null ?? [])
     .map((offer) => offer.family_id)
-    .filter((id) => !(directFamilies as LensFamilyRow[] | null ?? []).some((family) => family.id === id))
+    .filter((id) => !eligibleDirectFamilies.some((family) => family.id === id))
   const uniqueExtraIds = [...new Set(extraFamilyIds)]
 
   // 3. Busca nomes das famílias extras
@@ -141,7 +153,7 @@ export async function getCatalogFamilyNames(): Promise<string[]> {
 
   // 4. Deduplicar por nome normalizado, preferindo mixed-case sobre ALL-CAPS
   const seen = new Map<string, string>()
-  for (const f of [...(directFamilies as LensFamilyRow[] | null ?? []), ...extraFamilies]) {
+  for (const f of [...eligibleDirectFamilies, ...extraFamilies]) {
     const name = (f.nome as string | null)?.trim()
     if (!name) continue
     const key = normalizeLensName(name)

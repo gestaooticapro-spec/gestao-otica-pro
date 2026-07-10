@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { X, Save, AlertTriangle, User, Phone } from 'lucide-react'
 import { updateCustomerCriticalData } from '@/lib/actions/customer.actions'
 import { usePathname } from 'next/navigation'
+import { maskPhone } from '@/lib/phone-mask'
 
 // Helper de Máscaras
 const masks = {
@@ -15,13 +16,7 @@ const masks = {
             .replace(/(\d{3})(\d{1,2})/, '$1-$2')
             .replace(/(-\d{2})\d+?$/, '$1')
     },
-    phone: (value: string) => {
-        return value
-            .replace(/\D/g, '')
-            .replace(/(\d{2})(\d)/, '($1) $2')
-            .replace(/(\d{5})(\d)/, '$1-$2')
-            .replace(/(-\d{4})\d+?$/, '$1')
-    }
+    phone: (value: string, normalize = false) => maskPhone(value, normalize)
 }
 
 interface UpdateCpfModalProps {
@@ -53,7 +48,7 @@ export default function UpdateCpfModal({
     useEffect(() => {
         if (isOpen) {
             setCpf(currentCpf ? masks.cpf(currentCpf) : '')
-            setPhone(currentPhone ? masks.phone(currentPhone) : '')
+            setPhone(currentPhone ? masks.phone(currentPhone, true) : '')
             setError('')
             setLoading(false)
         }
@@ -136,7 +131,8 @@ export default function UpdateCpfModal({
                                     type="text"
                                     value={phone}
                                     onChange={e => setPhone(masks.phone(e.target.value))}
-                                    placeholder="(00) 00000-0000"
+                                    onBlur={e => setPhone(masks.phone(e.target.value, true))}
+                                    placeholder="(99) 99999-9999 ou +595 9XX XXX XXX"
                                     className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-bold text-gray-900 placeholder:font-normal transition-all"
                                     required
                                 />

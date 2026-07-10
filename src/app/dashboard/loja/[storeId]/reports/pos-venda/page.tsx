@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { ArrowLeft, Loader2, PhoneCall, Calendar, MessageCircle, Star, CheckCircle, Clock } from 'lucide-react';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { getPosVendaMetrics } from '@/lib/actions/reports.actions';
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
+import ModuleDisabledState from '@/components/modules/ModuleDisabledState';
 import {
     BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer,
     PieChart, Pie, Cell, LineChart, Line, CartesianGrid
@@ -19,6 +21,7 @@ export default function PosVendaReportPage() {
     const params = useParams();
     const storeId = Number(params.storeId);
     const { preference } = useBackgroundPreference();
+    const modules = useStoreModules();
 
     const [month, setMonth] = useState<string>((new Date().getMonth() + 1).toString().padStart(2, '0'));
     const [year, setYear] = useState<string>(new Date().getFullYear().toString());
@@ -26,7 +29,7 @@ export default function PosVendaReportPage() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!storeId) return;
+        if (!storeId || !modules.postSales) return;
 
         const fetchData = async () => {
             setLoading(true);
@@ -41,7 +44,11 @@ export default function PosVendaReportPage() {
         };
 
         fetchData();
-    }, [storeId, month, year]);
+    }, [storeId, month, year, modules.postSales]);
+
+    if (!modules.postSales) {
+        return <ModuleDisabledState storeId={storeId} moduleLabel="Pos-venda" backHref={`/dashboard/loja/${storeId}/reports`} />;
+    }
 
     return (
         <div className="min-h-full relative flex flex-col p-6 lg:p-10 z-0">
@@ -58,7 +65,7 @@ export default function PosVendaReportPage() {
             {/* Cabeçalho */}
             <div className="mb-8 max-w-7xl mx-auto w-full animate-in slide-in-from-top-5 duration-700">
                 <Link
-                    href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                    href={`/dashboard/loja/${storeId}?menu=gerencia`}
                     className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95 w-fit"
                     title="Voltar para o Painel"
                 >

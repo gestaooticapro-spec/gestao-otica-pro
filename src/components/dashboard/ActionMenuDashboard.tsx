@@ -1,25 +1,33 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
-  ShoppingCart, Zap, DollarSign,
+  Zap, DollarSign,
   HeartHandshake, Megaphone, Search, Printer,
-  ArrowRight, BellRing, AlertCircle, FileText, CheckCircle, Wallet, CheckCircle2,
-  LogOut
+  ArrowRight, BellRing, AlertCircle, FileText, Wallet, CheckCircle2,
+  X,
 } from 'lucide-react'
 import AniversariantesWidget from '@/components/consultas/AniversariantesWidget'
 import { WidgetEntregas, WidgetLaboratorio } from '@/components/consultas/PaineisAlertas'
 import WidgetVencimentos from '@/components/consultas/WidgetVencimentos'
 import RetornosCobrancaWidget from '@/components/consultas/RetornosCobrancaWidget'
-import { AlertaEntrega, AlertaLaboratorio, Aniversariante, VencimentoProximo } from '@/lib/actions/consultas.actions'
+import { AlertaEntrega, AlertaLaboratorio, Aniversariante, VencimentoProximo, WhatsAppPendencia } from '@/lib/actions/consultas.actions'
 import { RetornoCobranca } from '@/lib/actions/collection.actions'
 import ParcelaSearchModal from '@/components/modals/ParcelaSearchModal'
-import { type AppMode } from '@/lib/app-mode'
+import WidgetWhatsAppPendencias from '@/components/consultas/WidgetWhatsAppPendencias'
+import WhatsAppOperatorModal from '@/components/modals/WhatsAppOperatorModal'
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
+import { runDashboardWhatsAppWakePing, type DashboardWhatsAppWakePingResult } from '@/lib/actions/whatsapp.actions'
 
 interface Props {
   storeId: number
   storeName: string
+  deliveryDateEnabled?: boolean
+  isWhatsAppAutomationEnabled: boolean
+  isWhatsAppChannelConfigured: boolean
+  isWhatsAppConnected: boolean
   alerts: {
     entregas: AlertaEntrega[]
     laboratorio: AlertaLaboratorio[]
@@ -28,12 +36,193 @@ interface Props {
   birthdays: Aniversariante[]
   vencimentos: VencimentoProximo[]
   retornos: RetornoCobranca[]
-  appMode?: AppMode
+  whatsAppPendencias: WhatsAppPendencia[]
+  whatsAppHumanOverrides: number
 }
 
-export default function ActionMenuDashboard({ storeId, storeName, alerts, birthdays, vencimentos, retornos, appMode = 'full' }: Props) {
+const WA_WAKE_PING_MAX_PER_DAY = 2
+const WA_WAKE_PING_MIN_INTERVAL_MS = 6 * 60 * 60 * 1000
+
+type WakePingAuditFlag = {
+  status: DashboardWhatsAppWakePingResult['status']
+  message: string
+  success: boolean
+  checkedAt: string
+}
+
+function getWakePingStorageKey(storeId: number) {
+  const today = new Date().toISOString().slice(0, 10)
+  return `wa-vps-wake-ping:${storeId}:${today}`
+}
+
+function getWakePingAuditStorageKey(storeId: number) {
+  return `wa-vps-wake-ping-audit:${storeId}`
+}
+
+function shouldRunWakePing(storeId: number) {
+  if (typeof window === 'undefined') return false
+
+  const key = getWakePingStorageKey(storeId)
+  const raw = window.localStorage.getItem(key)
+  if (!raw) return true
+
+  try {
+    const parsed = JSON.parse(raw) as { attempts?: number; lastAt?: number }
+    const attempts = Number(parsed.attempts || 0)
+    const lastAt = Number(parsed.lastAt || 0)
+    if (attempts >= WA_WAKE_PING_MAX_PER_DAY) return false
+    return Date.now() - lastAt >= WA_WAKE_PING_MIN_INTERVAL_MS
+  } catch {
+    return true
+  }
+}
+
+function recordWakePingAttempt(storeId: number, status: DashboardWhatsAppWakePingResult['status']) {
+  if (typeof window === 'undefined') return
+
+  const key = getWakePingStorageKey(storeId)
+  const raw = window.localStorage.getItem(key)
+  let attempts = 0
+  try {
+    attempts = raw ? Number((JSON.parse(raw) as { attempts?: number }).attempts || 0) : 0
+  } catch {
+    attempts = 0
+  }
+
+  window.localStorage.setItem(key, JSON.stringify({
+    attempts: attempts + 1,
+    lastAt: Date.now(),
+    status,
+  }))
+}
+
+function readWakePingAuditFlag(storeId: number): WakePingAuditFlag | null {
+  if (typeof window === 'undefined' || storeId !== 1) return null
+
+  const raw = window.localStorage.getItem(getWakePingAuditStorageKey(storeId))
+  if (!raw) return null
+
+  try {
+    const parsed = JSON.parse(raw) as WakePingAuditFlag
+    if (!parsed?.status || !parsed?.checkedAt) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function writeWakePingAuditFlag(storeId: number, result: DashboardWhatsAppWakePingResult) {
+  if (typeof window === 'undefined' || storeId !== 1) return null
+
+  const flag: WakePingAuditFlag = {
+    status: result.status,
+    message: result.message,
+    success: result.success,
+    checkedAt: new Date().toISOString(),
+  }
+  window.localStorage.setItem(getWakePingAuditStorageKey(storeId), JSON.stringify(flag))
+  return flag
+}
+
+function clearWakePingAuditFlag(storeId: number) {
+  if (typeof window === 'undefined' || storeId !== 1) return
+  window.localStorage.removeItem(getWakePingAuditStorageKey(storeId))
+}
+
+function wakePingAuditStatusLabel(status: DashboardWhatsAppWakePingResult['status']) {
+  const labels: Record<DashboardWhatsAppWakePingResult['status'], string> = {
+    connected: 'Conectado',
+    connecting: 'Conectando',
+    disconnected: 'Desconectado',
+    automation_disabled: 'Automacao desligada',
+    not_configured: 'Nao configurado',
+    unreachable: 'VPS sem resposta',
+  }
+  return labels[status]
+}
+
+export default function ActionMenuDashboard({
+  storeId,
+  storeName,
+  deliveryDateEnabled = true,
+  isWhatsAppAutomationEnabled,
+  isWhatsAppChannelConfigured,
+  isWhatsAppConnected,
+  alerts,
+  birthdays,
+  vencimentos,
+  retornos,
+  whatsAppPendencias,
+  whatsAppHumanOverrides,
+}: Props) {
   const [isParcelaModalOpen, setIsParcelaModalOpen] = useState(false)
-  const isMvp = appMode === 'mvp'
+  const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false)
+  const [effectiveWhatsAppConnected, setEffectiveWhatsAppConnected] = useState(isWhatsAppConnected)
+  const [whatsAppWakeWarning, setWhatsAppWakeWarning] = useState<string | null>(
+    isWhatsAppAutomationEnabled && isWhatsAppChannelConfigured && !isWhatsAppConnected
+      ? 'WhatsApp da VPS ainda nao respondeu como conectado.'
+      : null
+  )
+  const [wakePingAuditFlag, setWakePingAuditFlag] = useState<WakePingAuditFlag | null>(null)
+  const router = useRouter()
+  const modules = useStoreModules()
+
+  useEffect(() => {
+    if (storeId !== 1) return
+
+    const timer = window.setTimeout(() => {
+      setWakePingAuditFlag(readWakePingAuditFlag(storeId))
+    }, 0)
+
+    return () => window.clearTimeout(timer)
+  }, [storeId])
+
+  useEffect(() => {
+    if (!isWhatsAppAutomationEnabled || !isWhatsAppChannelConfigured) return
+    if (!shouldRunWakePing(storeId)) return
+
+    let cancelled = false
+
+    runDashboardWhatsAppWakePing(storeId).then((result) => {
+      if (cancelled) return
+      recordWakePingAttempt(storeId, result.status)
+      setWakePingAuditFlag(writeWakePingAuditFlag(storeId, result))
+
+      if (result.status === 'automation_disabled' || result.status === 'not_configured') {
+        setWhatsAppWakeWarning(null)
+        return
+      }
+
+      if (result.status === 'connected') {
+        setEffectiveWhatsAppConnected(true)
+        setWhatsAppWakeWarning(null)
+        if (!isWhatsAppConnected) router.refresh()
+        return
+      }
+
+      setEffectiveWhatsAppConnected(false)
+      setWhatsAppWakeWarning(
+        result.status === 'unreachable'
+          ? 'A automacao do WhatsApp esta ligada, mas a VPS nao respondeu agora.'
+          : 'A automacao do WhatsApp esta ligada, mas o canal nao voltou conectado.'
+      )
+    }).catch(() => {
+      if (cancelled) return
+      const result: DashboardWhatsAppWakePingResult = {
+        success: false,
+        status: 'unreachable',
+        message: 'Nao foi possivel consultar a VPS do WhatsApp.',
+      }
+      recordWakePingAttempt(storeId, result.status)
+      setWakePingAuditFlag(writeWakePingAuditFlag(storeId, result))
+      setEffectiveWhatsAppConnected(false)
+      setWhatsAppWakeWarning('A automacao do WhatsApp esta ligada, mas a VPS nao respondeu agora.')
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isWhatsAppAutomationEnabled, isWhatsAppChannelConfigured, isWhatsAppConnected, router, storeId])
 
   // LINHA 1: ATENDIMENTO (Frente de Loja)
   const topRow = [
@@ -74,7 +263,11 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
       border: "border-emerald-400/30",
       image: null
     }
-  ]
+  ].filter((item) => {
+    if (item.href?.includes('/pdv-express')) return modules.quickSale
+    if (item.action) return modules.installments
+    return true
+  })
 
   // LINHA 2: RETAGUARDA (Loja Vazia)
   const bottomRow = [
@@ -108,7 +301,12 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
       href: `/dashboard/loja/${storeId}/estoque/etiquetas`,
       color: "hover:bg-teal-500/20 hover:border-teal-500/50 hover:text-teal-200"
     }
-  ]
+  ].filter((item) => {
+    if (item.href.includes('/cobranca')) return modules.installments
+    if (item.href.includes('/pos-venda')) return modules.postSales
+    if (item.href.includes('/estoque/etiquetas')) return modules.labels
+    return true
+  })
 
   const visibleTopRow = isMvp
     ? topRow.filter(item => item.title !== "Baixa Parcelas")
@@ -256,9 +454,63 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
               </div>
 
               <div className="space-y-6">
+                {storeId === 1 && wakePingAuditFlag && (
+                  <div className="rounded-2xl border border-cyan-300/25 bg-cyan-300/10 p-4 text-cyan-50 shadow-xl shadow-black/10">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200">Auditoria ping WA VPS</p>
+                        <p className="mt-1 text-sm font-bold">
+                          Resultado: {wakePingAuditStatusLabel(wakePingAuditFlag.status)}
+                        </p>
+                        <p className="mt-1 text-xs leading-relaxed text-cyan-100/75">
+                          {wakePingAuditFlag.message} Verificado em {new Date(wakePingAuditFlag.checkedAt).toLocaleString('pt-BR')}.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          clearWakePingAuditFlag(storeId)
+                          setWakePingAuditFlag(null)
+                        }}
+                        aria-label="Fechar auditoria do ping WhatsApp"
+                        className="rounded-lg border border-cyan-100/20 bg-cyan-100/10 p-1.5 text-cyan-100 transition hover:bg-cyan-100/20"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Widget WhatsApp Pendências */}
+                {whatsAppWakeWarning && (
+                  <div className="rounded-2xl border border-amber-400/25 bg-amber-400/10 p-4 text-amber-100 shadow-xl shadow-black/10">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-200">WhatsApp VPS</p>
+                        <p className="mt-1 text-sm font-bold">{whatsAppWakeWarning}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-amber-100/75">
+                          A loja marcou o fluxo geral como ligado. Se o aviso persistir, abra Configuracoes &gt; WhatsApp para conferir a conexao.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {effectiveWhatsAppConnected && (
+                  <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
+                    <WidgetWhatsAppPendencias
+                      pendencias={whatsAppPendencias}
+                      humanOverrides={whatsAppHumanOverrides}
+                      onOpen={() => setIsWhatsAppModalOpen(true)}
+                    />
+                  </div>
+                )}
+                {modules.installments && (
+                  <>
                 {/* Widget Vencimentos */}
                 <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
-                  <WidgetVencimentos dados={vencimentos} storeName={storeName} />
+                  <WidgetVencimentos dados={vencimentos} storeName={storeName} storeId={storeId} />
                 </div>
 
                 {/* Widget Retornos Cobrança */}
@@ -266,15 +518,20 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
                   <RetornosCobrancaWidget retornos={retornos} />
                 </div>
 
+                  </>
+                )}
+
                 {/* Widget Aniversariantes */}
                 <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
-                  <AniversariantesWidget clientes={birthdays} />
+                  <AniversariantesWidget clientes={birthdays} storeId={storeId} />
                 </div>
 
                 {/* Widget Entregas */}
-                <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
-                  <WidgetEntregas data={alerts.entregas} storeId={storeId} />
-                </div>
+                {deliveryDateEnabled && (
+                  <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
+                    <WidgetEntregas data={alerts.entregas} storeId={storeId} />
+                  </div>
+                )}
 
                 {/* Widget Laboratório */}
                 <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
@@ -292,10 +549,16 @@ export default function ActionMenuDashboard({ storeId, storeName, alerts, birthd
         </div>
       </div>
 
-      {!isMvp && (
-        <ParcelaSearchModal
-          isOpen={isParcelaModalOpen}
-          onClose={() => setIsParcelaModalOpen(false)}
+      <ParcelaSearchModal
+        isOpen={isParcelaModalOpen}
+        onClose={() => setIsParcelaModalOpen(false)}
+        storeId={storeId}
+      />
+
+      {effectiveWhatsAppConnected && (
+        <WhatsAppOperatorModal
+          isOpen={isWhatsAppModalOpen}
+          onClose={() => setIsWhatsAppModalOpen(false)}
           storeId={storeId}
         />
       )}

@@ -8,8 +8,9 @@ import { z } from 'zod'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { useCredit } from './wallet.actions'
 import { calcularERegistrarComissao, cancelarComissao, calcularComissaoMedico } from './commission.actions'
-import { checkLensStock, confirmReservations, cancelReservations, getLensReservationForOsSlot, reserveLensByAdmin, type LensReservationSlot } from './stock.actions'
-import { getStoreAppMode, type AppMode } from '@/lib/app-mode'
+import { checkLensStock, confirmReservations, cancelReservations, getLensReservationForOsSlot, releaseReservationsForServiceOrder, reserveLensByAdmin, type LensReservationSlot } from './stock.actions'
+import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
+import { clearNfcTrayLinkForDeliveredOrder } from '@/lib/nfc-tray-cleanup'
 
 // ================================================================
 // --- TIPOS GLOBAIS ---
@@ -28,7 +29,7 @@ type FinanciamentoParcela = Database['public']['Tables']['financiamento_parcelas
 type Employee = Database['public']['Tables']['employees']['Row']
 type StoreSettings = {
   pre_sale_analysis_enabled?: boolean
-  app_mode?: AppMode
+  service_order_mode?: 'single' | 'multiple'
 }
 
 type ServiceOrderWithLinks = ServiceOrder & {
@@ -75,9 +76,13 @@ export type VendaPageData = {
   customer: Customer | null
   employee: Employee | null
   vendaItens: VendaItem[]
-  serviceOrders: ServiceOrder[]
+  serviceOrders: ServiceOrderWithLinks[]
   pagamentos: Pagamento[]
   financiamento: (Financiamento & { financiamento_parcelas: FinanciamentoParcela[] }) | null
+  storeSettings: StoreSettings
+  dependentes: Dependente[]
+  oftalmologistas: Oftalmologista[]
+  employees: Employee[]
   // CORREÃ‡ÃƒO: Agora são listas de Product
   lentes: Product[]
   armacoes: Product[]
@@ -355,6 +360,10 @@ export async function saveServiceOrder(
       if (!payload.protocolo_fisico) await (supabaseAdmin.from('service_orders') as any).update({ protocolo_fisico: savedId.toString() }).eq('id', savedId)
     }
 
+    if (payload.dt_entregue_em) {
+      await clearNfcTrayLinkForDeliveredOrder(savedId, payload.dt_entregue_em)
+    }
+
     // Limpa vínculos antigos
     await supabaseAdmin.from('venda_itens_os_links').delete().eq('service_order_id', savedId)
 
@@ -612,6 +621,43 @@ export async function deleteServiceOrder(id: number, storeId: number, vendaId: n
       if (unlinkError) throw unlinkError
     }
 
+    const { data: linkedPostSale } = await (supabaseAdmin.from('post_sales') as any)
+      .select('id')
+      .eq('service_order_id', id)
+      .limit(1)
+
+    if (linkedPostSale && linkedPostSale.length > 0) {
+      return {
+        success: false,
+        message: 'Esta OS possui registro de pos-venda vinculado e nao pode ser excluida automaticamente.',
+        timestamp: Date.now()
+      }
+    }
+
+    const reservationRelease = await releaseReservationsForServiceOrder(id, vendaId)
+    if (!reservationRelease.success) {
+      return { success: false, message: reservationRelease.message, timestamp: Date.now() }
+    }
+
+    const { error: linksDeleteError } = await (supabaseAdmin.from('venda_itens_os_links') as any)
+      .delete()
+      .eq('service_order_id', id)
+
+    if (linksDeleteError) throw linksDeleteError
+
+    const { data: linkedFiscalInvoice } = await (supabaseAdmin.from('fiscal_invoices') as any)
+      .select('id, status, tipo_documento')
+      .eq('work_order_id', id)
+      .limit(1)
+
+    if (linkedFiscalInvoice && linkedFiscalInvoice.length > 0) {
+      return {
+        success: false,
+        message: 'Esta OS possui documento fiscal vinculado e nao pode ser excluida automaticamente.',
+        timestamp: Date.now()
+      }
+    }
+
     const { error } = await supabaseAdmin.from('service_orders').delete().eq('id', id)
     if (error) throw error
 
@@ -621,6 +667,14 @@ export async function deleteServiceOrder(id: number, storeId: number, vendaId: n
 
     return { success: true, message: 'OS excluída.', timestamp: Date.now() }
   } catch (e: any) {
+    if (e?.code === '23503') {
+      return {
+        success: false,
+        message: 'Nao foi possivel excluir a OS porque ainda existem registros vinculados a ela. Verifique estoque, pos-venda ou documentos fiscais.',
+        timestamp: Date.now()
+      }
+    }
+
     return { success: false, message: e.message, timestamp: Date.now() }
   }
 }
@@ -660,6 +714,7 @@ async function verificarPendenciasEmMassa(clientes: any[], storeId: number) {
     .eq('store_id', storeId)
     .in('customer_id', ids)
     .eq('status', 'Pendente')
+    .gt('valor_parcela', 0.01)
     .lt('data_vencimento', hoje); // Vencimento MENOR que hoje (Atrasado)
 
   // Cria um Set para busca rápida
@@ -767,6 +822,31 @@ export async function createNewVenda(
   const supabaseAdmin = createAdminClient();
 
   try {
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - 7)
+
+    const { data: recentOpenEvaluation, error: recentEvaluationError } = await (supabaseAdmin.from('optical_evaluations') as any)
+      .select('id, updated_at')
+      .eq('store_id', profile.store_id)
+      .is('exported_venda_id', null)
+      .is('outcome_status', null)
+      .gte('updated_at', cutoff.toISOString())
+      .or(`evaluated_customer_id.eq.${customerId},responsible_customer_id.eq.${customerId}`)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (recentEvaluationError) throw recentEvaluationError
+
+    if (recentOpenEvaluation) {
+      return {
+        success: false,
+        message: 'Este cliente possui uma avaliacao aberta nos ultimos 7 dias. Continue pela tela de avaliacao para manter venda, OS e grau vinculados.',
+        blockedEvaluationId: recentOpenEvaluation.id,
+        blockedEvaluationUpdatedAt: recentOpenEvaluation.updated_at,
+      }
+    }
+
     const { data, error } = await (supabaseAdmin.from('vendas') as any)
       .insert(vendaData)
       .select()
@@ -818,6 +898,10 @@ export async function getVendaPageData(
       osRes,
       pagamentosRes,
       financiamentoRes,
+      storeRes,
+      dependentesRes,
+      oftalmosRes,
+      employeesRes,
       // BUSCA AGORA NA TABELA PRODUCTS COM FILTRO
       lentesRes,
       armacoesRes,
@@ -826,10 +910,17 @@ export async function getVendaPageData(
       supabaseAdmin.from('customers').select('*').eq('id', customer_id).single(),
       employee_id ? supabaseAdmin.from('employees').select('*').eq('id', employee_id).single() : Promise.resolve({ data: null }),
       supabaseAdmin.from('venda_itens').select('*').eq('venda_id', vendaId).order('id'),
-      supabaseAdmin.from('service_orders').select('*').eq('venda_id', vendaId),
+      supabaseAdmin.from('service_orders')
+        .select('*, links:venda_itens_os_links(venda_item_id, uso_na_os)')
+        .eq('venda_id', vendaId)
+        .order('created_at'),
       // CORREÇÃO: Cast 'as any' para buscar relacionamento com employees
       (supabaseAdmin.from('pagamentos') as any).select('*, employee:employees(full_name)').eq('venda_id', vendaId).order('data_pagamento'),
       supabaseAdmin.from('financiamento_loja').select('*, financiamento_parcelas(*), employee:employees(full_name)').eq('venda_id', vendaId).maybeSingle(),
+      supabaseAdmin.from('stores').select('settings').eq('id', storeId).single(),
+      supabaseAdmin.from('dependentes').select('*').eq('customer_id', customer_id).order('full_name'),
+      supabaseAdmin.from('oftalmologistas').select('*').eq('store_id', storeId).order('nome_completo'),
+      supabaseAdmin.from('employees').select('*').eq('store_id', storeId).eq('is_active', true).order('full_name'),
 
       // Consultas unificadas
       supabaseAdmin.from('products').select('*').eq('store_id', storeId).eq('tipo_produto', 'Lente'),
@@ -872,6 +963,10 @@ export async function getVendaPageData(
       serviceOrders: osRes.data || [],
       pagamentos: pagamentosRes.data as any || [], // Cast as any para aceitar o campo employee extra
       financiamento: financiamentoData,
+      storeSettings: ((storeRes.data as { settings?: unknown } | null)?.settings || {}) as StoreSettings,
+      dependentes: dependentesRes.data || [],
+      oftalmologistas: oftalmosRes.data || [],
+      employees: employeesRes.data || [],
       lentes: lentesRes.data || [],
       armacoes: armacoesRes.data || [],
       tratamentos: tratamentosRes.data || [],
@@ -992,11 +1087,14 @@ export async function addVendaItem(
 
     if (rpcError) throw new Error(`Erro ao recalcular total: ${rpcError.message}`)
 
+    await calcularERegistrarComissao(data.venda_id)
+
     // CORREÃ‡ÃƒO 3: Cast no profile para o revalidatePath
     revalidatePath(`/dashboard/loja/${(profile as any).store_id
       } / vendas`)
     revalidatePath(`/ dashboard / loja / ${(profile as any).store_id
       } /vendas/${data.venda_id} `)
+    revalidatePath(`/dashboard/loja/${(profile as any).store_id}/financeiro/comissoes`)
 
     return { success: true, message: 'Item adicionado!', data: newItem as any }
   } catch (error: any) {
@@ -1034,8 +1132,11 @@ export async function deleteVendaItem(
 
     if (rpcError) throw new Error(`Erro ao recalcular total: ${rpcError.message} `)
 
+    await calcularERegistrarComissao(vendaId)
+
     revalidatePath(`/ dashboard / loja / ${storeId}/vendas`)
     revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}`)
+    revalidatePath(`/dashboard/loja/${storeId}/financeiro/comissoes`)
 
     return { success: true, message: 'Item removido.' }
   } catch (error: any) {
@@ -1249,8 +1350,11 @@ export async function deletePagamento(
 
     if (rpcError) throw new Error(`Erro ao recalcular total: ${rpcError.message}`)
 
+    await calcularERegistrarComissao(vendaId)
+
     revalidatePath(`/dashboard/loja/${storeId}/vendas`)
     revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}`)
+    revalidatePath(`/dashboard/loja/${storeId}/financeiro/comissoes`)
 
     return { success: true, message: 'Pagamento removido.' }
   } catch (error: any) {
@@ -1352,6 +1456,8 @@ export type CreateVendaResult = {
   success: boolean
   message?: string
   data?: Venda
+  blockedEvaluationId?: number
+  blockedEvaluationUpdatedAt?: string
   timestamp?: number
 }
 
@@ -1746,8 +1852,17 @@ export async function updateVendaDesconto(
 
     if (zeroError) throw zeroError
 
+    const { error: finalRpcError } = await supabase.rpc('update_venda_financeiro', {
+      p_venda_id: venda_id,
+    })
+
+    if (finalRpcError) throw new Error(`Erro RPC: ${finalRpcError.message}`)
+
+    await calcularERegistrarComissao(venda_id)
+
     revalidatePath(`/dashboard/loja/${store_id}/vendas`)
     revalidatePath(`/dashboard/loja/${store_id}/vendas/${venda_id}`)
+    revalidatePath(`/dashboard/loja/${store_id}/financeiro/comissoes`)
 
     return { success: true, message: 'Desconto aplicado e rateado nos itens!' }
   } catch (error: any) {
@@ -1787,6 +1902,10 @@ export async function saveFinanciamentoLoja(...args: any[]) {
     .select('id, tenant_id, store_id, valor_final, valor_total')
     .eq('id', venda_id)
     .single();
+
+  if (vendaReal?.store_id && !(await isStoreModuleEnabledForStore(vendaReal.store_id, 'installments'))) {
+    return { success: false, message: 'Modulo de parcelamento desativado para esta loja.' };
+  }
 
   if (erroVenda || !vendaReal) return { success: false, message: 'Venda não encontrada.' };
 
@@ -1905,7 +2024,11 @@ export async function saveFinanciamentoLoja(...args: any[]) {
 
   if (erroUpdate) return { success: false, message: `Erro ao atualizar venda: ${erroUpdate.message}` };
 
+  await calcularERegistrarComissao(venda_id);
+  await calcularComissaoMedico(venda_id);
+
   revalidatePath(`/vendas/${venda_id}`);
+  revalidatePath(`/dashboard/loja/${vendaReal.store_id}/financeiro/comissoes`);
   return { success: true, message: 'Carnê gerado com sucesso!', data: { id: capaCriada.id } };
 }
 
@@ -2265,6 +2388,23 @@ function parseMoneySeguro(val: string | null) {
   return parseFloat(val)
 }
 
+async function quitarParcelasZeradasPendentes(financiamentoId: number, dataPagamento: string) {
+  const supabaseAdmin = createAdminClient()
+  const dataPagamentoIso = new Date(`${dataPagamento}T12:00:00Z`).toISOString()
+
+  const { error } = await (supabaseAdmin.from('financiamento_parcelas') as any)
+    .update({
+      status: 'Pago',
+      data_pagamento: dataPagamentoIso,
+      valor_parcela: 0
+    })
+    .eq('financiamento_id', financiamentoId)
+    .eq('status', 'Pendente')
+    .lte('valor_parcela', 0.01)
+
+  if (error) throw new Error(`Erro ao quitar parcelas zeradas: ${error.message}`)
+}
+
 export async function receberParcela(prevState: any, formData: FormData) {
   const supabaseAdmin = createAdminClient()
   const { data: { user } } = await createClient().auth.getUser()
@@ -2301,6 +2441,9 @@ export async function receberParcela(prevState: any, formData: FormData) {
 
   // Mantive os nomes originais das suas variáveis aqui para não mudar a lógica abaixo
   const { parcela_id, venda_id, store_id, employee_id, valor_original, valor_pago_total, valor_juros, forma_pagamento, estrategia, data_pagamento } = validated.data
+  if (!(await isStoreModuleEnabledForStore(store_id, 'installments'))) {
+    return { success: false, message: 'Modulo de parcelamento desativado para esta loja.' }
+  }
 
   const principalAbatido = valor_pago_total - valor_juros
   const diferencaDivida = valor_original - principalAbatido
@@ -2376,6 +2519,7 @@ export async function receberParcela(prevState: any, formData: FormData) {
           .eq('financiamento_id', parcelaAtual.financiamento_id)
           .gt('numero_parcela', parcelaAtual.numero_parcela)
           .eq('status', 'Pendente')
+          .gt('valor_parcela', 0.01)
           .order('numero_parcela', { ascending: true })
           .limit(1)
           .maybeSingle()
@@ -2413,6 +2557,7 @@ export async function receberParcela(prevState: any, formData: FormData) {
         .eq('financiamento_id', parcelaAtual.financiamento_id)
         .gt('numero_parcela', parcelaAtual.numero_parcela)
         .eq('status', 'Pendente')
+        .gt('valor_parcela', 0.01)
         .order('numero_parcela', { ascending: true })
 
       if (proximasParcelas) {
@@ -2427,9 +2572,13 @@ export async function receberParcela(prevState: any, formData: FormData) {
             if (errQuita) throw new Error(`Erro ao quitar parcela ${prox.numero_parcela}: ${errQuita.message}`)
             excedente -= prox.valor_parcela
           } else {
-            // Abate parcialmente na parcela atual
+            const saldoRestante = Number((prox.valor_parcela - excedente).toFixed(2))
+            const updateParcela = saldoRestante <= 0.01
+              ? { status: 'Pago', data_pagamento: new Date(`${data_pagamento}T12:00:00Z`).toISOString(), valor_parcela: 0 }
+              : { valor_parcela: saldoRestante }
+
             const { error: errAbate } = await (supabaseAdmin.from('financiamento_parcelas') as any)
-              .update({ valor_parcela: prox.valor_parcela - excedente })
+              .update(updateParcela)
               .eq('id', prox.id)
             if (errAbate) throw new Error(`Erro ao abater parcela ${prox.numero_parcela}: ${errAbate.message}`)
             excedente = 0
@@ -2437,6 +2586,8 @@ export async function receberParcela(prevState: any, formData: FormData) {
         }
       }
     }
+
+    await quitarParcelasZeradasPendentes(parcelaAtual.financiamento_id, data_pagamento)
 
     revalidatePath(`/dashboard/loja/${store_id}/vendas/${venda_id}`)
 
@@ -2459,6 +2610,10 @@ export async function deleteFinanciamentoLoja(vendaId: number, storeId: number) 
   if (!profile) return { success: false, message: 'Perfil não encontrado.' };
 
   // --- TRAVA DE SEGURANÃ‡A ---
+  if (!(await isStoreModuleEnabledForStore(storeId, 'installments'))) {
+    return { success: false, message: 'Modulo de parcelamento desativado para esta loja.' };
+  }
+
   if (profile.role !== 'admin' && profile.store_id !== storeId) {
     return { success: false, message: 'Acesso Negado: Loja inválida.' };
   }
@@ -2542,6 +2697,9 @@ export async function finalizarVendaExpress(formData: FormData) {
   // CORREÃ‡ÃƒO 1: Conversão explícita para Number
   const storeId = parseInt(formData.get('store_id') as string)
   const employeeId = parseInt(formData.get('employee_id') as string)
+  if (!(await isStoreModuleEnabledForStore(storeId, 'quickSale'))) {
+    return { success: false, message: 'Modulo de venda rapida desativado para esta loja.' }
+  }
 
   const data = {
     store_id: storeId,
@@ -2649,6 +2807,9 @@ export async function criarVendaParcialCarnê(formData: FormData) {
   const storeId = parseInt(formData.get('store_id') as string)
   const customerId = parseInt(formData.get('customer_id') as string)
   const employeeId = parseInt(formData.get('employee_id') as string)
+  if (!(await isStoreModuleEnabledForStore(storeId, 'installments'))) {
+    return { success: false, message: 'Modulo de parcelamento desativado para esta loja.' }
+  }
 
   const rawItens = JSON.parse(formData.get('itens') as string)
   const totalVenda = rawItens.reduce((acc: number, item: any) => acc + (item.price * item.quantity), 0)
@@ -2686,6 +2847,10 @@ export async function criarVendaParcialCarnê(formData: FormData) {
 
   // Registra saídas de estoque (itens saem da loja mesmo com pagamento pendente)
   await registrarSaidaVenda(novaVenda.id, storeId, user!.id, (profile as any).tenant_id)
+
+  await calcularERegistrarComissao(novaVenda.id)
+
+  revalidatePath(`/dashboard/loja/${storeId}/financeiro/comissoes`)
 
   return { success: true, vendaId: novaVenda.id }
 }
@@ -2999,106 +3164,103 @@ export async function getCustomerPrescriptionHistory(
 export async function searchPendenciasCliente(storeId: number, termo: string) {
   const supabaseAdmin = createAdminClient()
   const cleanTerm = termo.trim()
+  const normalizeSearch = (value: string) =>
+    value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+  const normalizedTerm = normalizeSearch(cleanTerm)
+  const searchTokens = normalizedTerm.split(/\s+/).filter(Boolean)
+  const firstToken = searchTokens[0] || ''
+  const cpfDigits = cleanTerm.replace(/\D/g, '')
 
-  console.log(`ðŸ” [DEBUG] Iniciando busca para: "${cleanTerm}" na Loja: ${storeId}`)
+  console.log(`[DEBUG] Iniciando busca para: "${cleanTerm}" na Loja: ${storeId}`)
 
   try {
-    // PASSO 1: Busca Clientes
-    const { data: clientes, error: errCli } = await supabaseAdmin
-      .from('customers')
-      .select('id, full_name, cpf')
-      .eq('store_id', storeId)
-      .or(`full_name.ilike.%${cleanTerm}%,cpf.ilike.%${cleanTerm}%`)
-      .limit(50)
-
-    if (errCli) {
-      console.error("âŒ [DEBUG] Erro ao buscar clientes:", errCli.message)
-      return []
-    }
-
-    console.log(`ðŸ‘¤ [DEBUG] Clientes encontrados:`, clientes?.length || 0)
-
-    if (!clientes || clientes.length === 0) return []
-
-    const idsClientes = clientes.map((c: any) => c.id)
-
-    // PASSO 2: Busca Parcelas
-    const { data: parcelas, error: errParc } = await (supabaseAdmin
-      .from('financiamento_parcelas') as any)
-      .select(`
-                id,
-                numero_parcela,
-                valor_parcela,
-                data_vencimento,
-                financiamento_id,
-                customer_id,
-                status,
-                financiamento_loja (
-                    venda_id,
-                    vendas!financiamento_loja_venda_id_fkey (
-                        created_at,
-                        service_orders (
-                            dependente_id,
-                            dependentes ( full_name )
-                        )
+    let parcelasQuery = supabaseAdmin
+        .from('financiamento_parcelas')
+        .select(`
+            id,
+            numero_parcela,
+            valor_parcela,
+            data_vencimento,
+            financiamento_id,
+            customer_id,
+            status,
+            financiamento_loja (
+                venda_id,
+                vendas!financiamento_loja_venda_id_fkey (
+                    created_at,
+                    service_orders (
+                        dependente_id,
+                        dependentes ( full_name )
                     )
                 )
-            `)
-      .in('customer_id', idsClientes)
-      .eq('store_id', storeId)
-      .order('data_vencimento', { ascending: true })
+            ),
+            customers!inner(id, full_name, cpf)
+        `)
+        .eq('store_id', storeId)
+        .gt('valor_parcela', 0.01)
+        .not('status', 'in', '("Pago","Quitado","Cancelado","Cancelada","pago","quitado","cancelado","cancelada")')
+
+    if (cpfDigits.length > 0) {
+        parcelasQuery = parcelasQuery.or(`cpf.ilike.%${cpfDigits}%,full_name.ilike.%${firstToken || cleanTerm}%`, { referencedTable: 'customers' })
+    } else if (firstToken) {
+        parcelasQuery = parcelasQuery.ilike('customers.full_name', `%${firstToken}%`)
+    }
+
+    const { data: parcelasBrutas, error: errParc } = await parcelasQuery.limit(500)
 
     if (errParc) {
-      console.error("âŒ [DEBUG] Erro ao buscar parcelas:", errParc.message)
+      console.error("[DEBUG] Erro ao buscar parcelas:", errParc.message)
       return []
     }
 
-    const parcelasPendentes = parcelas?.filter((p: any) => {
-      const status = String(p.status || '').trim().toLowerCase()
-      // Considera "em aberto" qualquer status que não represente parcela quitada/cancelada.
-      return status !== 'pago' && status !== 'quitado' && status !== 'cancelado' && status !== 'cancelada'
-    }) || []
-    console.log(`ðŸ“¦ [DEBUG] Parcelas pendentes encontradas:`, parcelasPendentes.length)
+    const parcelas = parcelasBrutas || []
 
-    // PASSO 3: Agrupamento
-    const resultado = clientes.map((cli: any) => {
-      const parcs = parcelasPendentes.filter((p: any) => p.customer_id === cli.id)
+    const parcelasFiltradas = parcelas.filter((p: any) => {
+        const clienteName = normalizeSearch(p.customers?.full_name || '')
+        if (searchTokens.length <= 1) return true
+        return searchTokens.every((token: string) => clienteName.includes(token))
+    })
 
-      if (parcs.length === 0) return null
+    console.log(`[DEBUG] Parcelas pendentes encontradas:`, parcelasFiltradas.length)
 
-      const parcsFormatadas = parcs.map((p: any) => {
+    const agrupado = parcelasFiltradas.reduce((acc: any, p: any) => {
+        const cliId = p.customer_id
+        if (!acc[cliId]) {
+            acc[cliId] = {
+                cliente: p.customers,
+                parcelas: []
+            }
+        }
+        
         const venda = p.financiamento_loja?.vendas
         const os = venda?.service_orders?.[0]
-
         const nomeDependente = os?.dependentes?.full_name
-        const nomeTitular = cli.full_name
+        const nomeTitular = p.customers?.full_name
+        const beneficiario = (nomeDependente && nomeDependente !== nomeTitular) ? nomeDependente : null
 
-        const beneficiario = (nomeDependente && nomeDependente !== nomeTitular)
-          ? nomeDependente
-          : null
+        acc[cliId].parcelas.push({
+            id: p.id,
+            numero_parcela: p.numero_parcela,
+            valor_parcela: p.valor_parcela,
+            data_vencimento: p.data_vencimento,
+            venda_id: p.financiamento_loja?.venda_id,
+            data_venda: venda?.created_at,
+            beneficiario: beneficiario
+        })
+        return acc
+    }, {})
 
-        return {
-          id: p.id,
-          numero_parcela: p.numero_parcela,
-          valor_parcela: p.valor_parcela,
-          data_vencimento: p.data_vencimento,
-          venda_id: p.financiamento_loja?.venda_id,
-          data_venda: venda?.created_at,
-          beneficiario: beneficiario
-        }
-      })
+    const resultado = Object.values(agrupado)
 
-      return {
-        cliente: cli,
-        parcelas: parcsFormatadas
-      }
-    }).filter(Boolean)
-
-    console.log(`ðŸš€ [DEBUG] Sucesso! Retornando ${resultado.length} grupos.`)
+    console.log(`[DEBUG] Sucesso! Retornando ${resultado.length} grupos.`)
     return resultado
 
   } catch (e) {
-    console.error("ðŸ”¥ [DEBUG] Exceção crítica:", e)
+    console.error("[DEBUG] Exceção crítica:", e)
     return []
   }
 }

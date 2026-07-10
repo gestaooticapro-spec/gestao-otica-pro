@@ -24,6 +24,7 @@ import MedicoComissaoModal from '@/components/modals/MedicoComissaoModal';
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal';
 import { toast } from 'sonner';
 import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/BackgroundToggle';
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
 
 // --- CONFIGURAÇÃO DE ESTILO (DESIGN SYSTEM) ---
 // --- DESIGN SYSTEM DOCTAS GLASS (Dark Glassmorphism) ---
@@ -37,6 +38,7 @@ type EditorMode = 'empty' | 'create' | 'edit';
 export default function CatalogPage() {
   const params = useParams();
   const storeId = parseInt(params.storeId as string, 10);
+  const modules = useStoreModules();
 
   // --- Estados ---
   const [activeTab, setActiveTab] = useState<CategoryType>('solar'); // Padrão solicitado
@@ -289,7 +291,7 @@ export default function CatalogPage() {
             <div className="flex justify-between items-center text-white">
               <h2 className="font-black text-sm flex items-center gap-2 uppercase tracking-wide text-indigo-300">
                 <Link
-                  href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                  href={`/dashboard/loja/${storeId}?menu=gerencia`}
                   className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-all active:scale-95"
                   title="Voltar para o Painel"
                 >
@@ -298,7 +300,7 @@ export default function CatalogPage() {
                 <ScanBarcode className="h-4 w-4" /> Catálogo
               </h2>
               <div className="flex gap-2">
-                {activeTab === 'lentes' && (
+                {activeTab === 'lentes' && modules.globalTables && (
                   <Link
                     href={`/dashboard/loja/${storeId}/cadastros/importar-lentes`}
                     className="bg-white/10 hover:bg-white/20 text-indigo-300 px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 transition-colors border border-white/10"

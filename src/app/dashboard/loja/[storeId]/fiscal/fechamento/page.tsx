@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { getFechamentoData } from "@/lib/actions/fiscal-db.actions";
-import { recuperarXmlsNFCePeriodo, inutilizarNumeracaoNFCe, listarInutilizacoesNFCe } from "@/lib/actions/fiscal.actions";
+import { recuperarXmlsNFCePeriodo, inutilizarNumeracaoFiscal, listarInutilizacoesFiscal } from "@/lib/actions/fiscal.actions";
 import { getStoreProfile } from "@/lib/actions/store.actions";
 import {
     Download, Loader2, FileArchive, FileText,
@@ -13,6 +13,8 @@ import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
+import ModuleDisabledState from '@/components/modules/ModuleDisabledState';
 
 const MONTHS = [
     "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -37,6 +39,7 @@ type FiscalSummary = {
 
 type InutilizacaoItem = {
     id: number;
+    model?: "NFCe" | "NFe";
     environment: "production" | "homologation";
     year: number;
     serie: number;
@@ -56,6 +59,7 @@ const hasXmlSource = (item: { xml_content: string | null; xml_url: string | null
 
 export default function FechamentoMensalOtica({ params }: { params: { storeId: string } }) {
     const storeId = parseInt(params.storeId);
+    const modules = useStoreModules();
 
     const [month, setMonth] = useState(() => {
         const d = new Date();
@@ -71,8 +75,10 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
     const [loading, setLoading] = useState(false);
     const [summary, setSummary] = useState<FiscalSummary | null>(null);
     const [exporting, setExporting] = useState(false);
+
     const [recovering, setRecovering] = useState(false);
     const [invalidating, setInvalidating] = useState(false);
+    const [invalidateModel, setInvalidateModel] = useState<"NFCe" | "NFe">("NFCe");
     const [invalidateEnvironment, setInvalidateEnvironment] = useState<"production" | "homologation">("production");
     const [invalidateSerie, setInvalidateSerie] = useState(2);
     const [invalidateStart, setInvalidateStart] = useState("");
@@ -92,6 +98,29 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
         }
     }, []);
 
+    useEffect(() => {
+        let active = true;
+
+        const loadInutilizacoes = async () => {
+            const res = await listarInutilizacoesFiscal({
+                storeId,
+                year,
+                model: invalidateModel,
+                environment: invalidateEnvironment,
+            });
+
+            if (active && res.success) {
+                setInutilizacoes((res.data as InutilizacaoItem[]) || []);
+            }
+        };
+
+        void loadInutilizacoes();
+
+        return () => {
+            active = false;
+        };
+    }, [storeId, year, invalidateModel, invalidateEnvironment]);
+
     const fetchSummary = async () => {
         setLoading(true);
         setSummary(null);
@@ -99,7 +128,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
             const [all, profile, inutilRes] = await Promise.all([
                 getFechamentoData(storeId, month, year),
                 getStoreProfile(storeId),
-                listarInutilizacoesNFCe({ storeId, year, environment: invalidateEnvironment }),
+                listarInutilizacoesFiscal({ storeId, year, model: invalidateModel, environment: invalidateEnvironment }),
             ]);
             if (!all) throw new Error("Loja não encontrada.");
             if (profile) {
@@ -137,14 +166,16 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
     };
 
     const downloadJson = (item: InutilizacaoItem) => {
+        const model = item.model || "NFCe";
         const blob = new Blob([JSON.stringify(item.response_json, null, 2)], { type: "application/json;charset=utf-8" });
-        saveAs(blob, `Inutilizacao_NFCe_S${item.serie}_${item.numero_inicial}-${item.numero_final}_${item.year}.json`);
+        saveAs(blob, `Inutilizacao_${model}_S${item.serie}_${item.numero_inicial}-${item.numero_final}_${item.year}.json`);
     };
 
     const downloadPdf = (item: InutilizacaoItem) => {
+        const model = item.model || "NFCe";
         const doc = new jsPDF();
         doc.setFontSize(14);
-        doc.text("Comprovante de Inutilizacao de Numeracao NFC-e", 14, 18);
+        doc.text(`Comprovante de Inutilizacao de Numeracao ${model}`, 14, 18);
         doc.setFontSize(10);
         doc.text(`Loja: ${storeInfo?.name || storeId}`, 14, 28);
         doc.text(`CNPJ: ${storeInfo?.cnpj || "-"}`, 14, 34);
@@ -165,7 +196,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
             styles: { fontSize: 9, cellWidth: "wrap" },
             headStyles: { fillColor: [26, 26, 26] },
         });
-        doc.save(`Comprovante_Inutilizacao_NFCe_S${item.serie}_${item.numero_inicial}-${item.numero_final}_${item.year}.pdf`);
+        doc.save(`Comprovante_Inutilizacao_${model}_S${item.serie}_${item.numero_inicial}-${item.numero_final}_${item.year}.pdf`);
     };
 
     const handleExportZip = async () => {
@@ -173,7 +204,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
         setExporting(true);
 
         try {
-            const inutilRes = await listarInutilizacoesNFCe({ storeId, year, environment: "production" });
+            const inutilRes = await listarInutilizacoesFiscal({ storeId, year, model: "NFCe", environment: "production" });
             const inutilizacoesExport = inutilRes.success ? ((inutilRes.data as InutilizacaoItem[]) || []) : [];
 
             const zip = new JSZip();
@@ -335,19 +366,20 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
             return;
         }
         const envLabel = invalidateEnvironment === "production" ? "produção" : "homologação";
-        if (!confirm(`Confirmar inutilização NFC-e série ${invalidateSerie}, faixa ${start} a ${end}, ano ${year}, em ${envLabel}?`)) {
+        if (!confirm(`Confirmar inutilização ${invalidateModel} série ${invalidateSerie}, faixa ${start} a ${end}, ano ${year}, em ${envLabel}?`)) {
             return;
         }
 
         setInvalidating(true);
         try {
-            const res = await inutilizarNumeracaoNFCe({
+            const res = await inutilizarNumeracaoFiscal({
                 storeId,
                 year,
                 serie: invalidateSerie,
                 numeroInicial: start,
                 numeroFinal: end,
                 justificativa: invalidateReason,
+                model: invalidateModel,
                 environment: invalidateEnvironment,
             });
 
@@ -361,8 +393,8 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                 || String(res.data?.motivo_status || "").match(/nProt:?\s*(\d+)/i)?.[1]
                 || "N/A";
             const status = res.data?.status || res.data?.autorizacao?.status || "solicitado";
-            alert(`Inutilização enviada com sucesso.\nStatus: ${status}\nProtocolo: ${protocolo}`);
-            const updated = await listarInutilizacoesNFCe({ storeId, year, environment: invalidateEnvironment });
+            alert(`${res.warning || "Inutilização enviada com sucesso."}\nStatus: ${status}\nProtocolo: ${protocolo}`);
+            const updated = await listarInutilizacoesFiscal({ storeId, year, model: invalidateModel, environment: invalidateEnvironment });
             if (updated.success) setInutilizacoes((updated.data as InutilizacaoItem[]) || []);
         } catch (err: any) {
             alert("Erro ao inutilizar faixa: " + err.message);
@@ -373,27 +405,31 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
 
     const years = [2024, 2025, 2026, 2027];
 
+    if (!modules.fiscal) {
+        return <ModuleDisabledState storeId={storeId} moduleLabel="Fiscal" backHref={`/dashboard/loja/${storeId}/fiscal`} />;
+    }
+
     return (
         <div className="max-w-3xl mx-auto p-6 pb-16">
             {/* Header */}
             <div className="flex items-center gap-3 mb-6">
-                <Link href={`/dashboard/loja/${storeId}/fiscal`} className="p-2 hover:bg-stone-100 rounded-lg transition">
-                    <ArrowLeft size={20} className="text-stone-500" />
+                <Link href={`/dashboard/loja/${storeId}/fiscal`} className="p-2 hover:bg-white/10 rounded-lg transition">
+                    <ArrowLeft size={20} className="text-slate-400" />
                 </Link>
                 <div>
                     <h1 className="text-2xl font-black text-[#1A1A1A] tracking-tight uppercase">Fechamento para Contador</h1>
-                    <p className="text-stone-500 text-xs font-bold uppercase tracking-widest">Exportar XMLs e resumo mensal</p>
+                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Exportar XMLs e resumo mensal</p>
                 </div>
             </div>
 
             {/* Seletor de período */}
-            <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 mb-6">
-                <h2 className="font-bold text-stone-700 mb-4 text-sm uppercase tracking-wider">Selecione o período</h2>
+            <div className="bg-black/40 rounded-2xl border border-white/10 shadow-sm p-6 mb-6">
+                <h2 className="font-bold text-slate-200 mb-4 text-sm uppercase tracking-wider">Selecione o período</h2>
                 <div className="flex flex-wrap items-center gap-3">
                     <select
                         value={month}
                         onChange={e => setMonth(parseInt(e.target.value))}
-                        className="border border-stone-300 rounded-xl px-4 py-2 text-sm font-medium text-stone-800 outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] bg-white cursor-pointer"
+                        className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] cursor-pointer"
                     >
                         {MONTHS.map((m, i) => (
                             <option key={i} value={i}>{m}</option>
@@ -403,7 +439,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                     <select
                         value={year}
                         onChange={e => setYear(parseInt(e.target.value))}
-                        className="border border-stone-300 rounded-xl px-4 py-2 text-sm font-medium text-stone-800 outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] bg-white cursor-pointer"
+                        className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] cursor-pointer"
                     >
                         {years.map(y => (
                             <option key={y} value={y}>{y}</option>
@@ -420,7 +456,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                     </button>
                 </div>
 
-                <p className="text-xs text-stone-400 mt-3">
+                <p className="text-xs text-slate-500 mt-3">
                     * Considera apenas NFC-e de produção. Homologação é excluída.
                 </p>
             </div>
@@ -429,38 +465,38 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
             {summary && (
                 <>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                        <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5 text-center">
+                        <div className="bg-black/40 rounded-2xl border border-white/10 shadow-sm p-5 text-center">
                             <CheckCircle size={22} className="text-green-500 mx-auto mb-2" />
                             <p className="text-2xl font-black text-[#1A1A1A]">{summary.autorizadas}</p>
-                            <p className="text-xs text-stone-500 font-bold uppercase mt-1">Autorizadas</p>
+                            <p className="text-xs text-slate-400 font-bold uppercase mt-1">Autorizadas</p>
                         </div>
-                        <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5 text-center">
+                        <div className="bg-black/40 rounded-2xl border border-white/10 shadow-sm p-5 text-center">
                             <XCircle size={22} className="text-gray-400 mx-auto mb-2" />
                             <p className="text-2xl font-black text-[#1A1A1A]">{summary.canceladas}</p>
-                            <p className="text-xs text-stone-500 font-bold uppercase mt-1">Canceladas</p>
+                            <p className="text-xs text-slate-400 font-bold uppercase mt-1">Canceladas</p>
                         </div>
-                        <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5 text-center">
+                        <div className="bg-black/40 rounded-2xl border border-white/10 shadow-sm p-5 text-center">
                             <XCircle size={22} className="text-red-400 mx-auto mb-2" />
                             <p className="text-2xl font-black text-[#1A1A1A]">{summary.rejeitadas}</p>
-                            <p className="text-xs text-stone-500 font-bold uppercase mt-1">Rejeitadas</p>
+                            <p className="text-xs text-slate-400 font-bold uppercase mt-1">Rejeitadas</p>
                         </div>
                         <div className="bg-[#1A1A1A] rounded-2xl p-5 text-center col-span-2 md:col-span-1">
                             <Download size={22} className="text-[#FACC15] mx-auto mb-2" />
                             <p className="text-xl font-black text-white">
                                 {summary.valor_total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                             </p>
-                            <p className="text-xs text-stone-400 font-bold uppercase mt-1">Total Autorizado</p>
+                            <p className="text-xs text-slate-500 font-bold uppercase mt-1">Total Autorizado</p>
                         </div>
                     </div>
 
                     {/* Exportar */}
-                    <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    <div className="bg-black/40 rounded-2xl border border-white/10 shadow-sm p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                         <div>
-                            <p className="font-bold text-stone-800">Pacote para Contabilidade</p>
-                            <p className="text-sm text-stone-500 mt-0.5">
+                            <p className="font-bold text-white">Pacote para Contabilidade</p>
+                            <p className="text-sm text-slate-400 mt-0.5">
                                 ZIP contendo XMLs das NFC-e + resumo em PDF e CSV para {MONTHS[month]}/{year}.
                             </p>
-                            <p className="text-xs text-stone-400 mt-1">
+                            <p className="text-xs text-slate-500 mt-1">
                                 {(() => {
                                     const expectedXmlCount = summary.autorizadas + summary.canceladas;
                                     const availableXmlCount = summary.xmls.filter(
@@ -498,16 +534,24 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                         </button>
                     </div>
 
-                    <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 mt-4">
-                        <p className="font-bold text-stone-800">Inutilização de Numeração NFC-e</p>
-                        <p className="text-xs text-stone-500 mt-1">
-                            Automatiza o envio da solicitação para SEFAZ via Nuvem Fiscal no ambiente escolhido. A autorização depende da SEFAZ.
+                    <div className="bg-black/40 rounded-2xl border border-white/10 shadow-sm p-6 mt-4">
+                        <p className="font-bold text-white">Inutilização de numeração</p>
+                        <p className="text-xs text-slate-400 mt-1">
+                            Automatiza o envio da solicitação para SEFAZ via Nuvem Local no modelo e ambiente escolhidos. Antes do envio, validamos o cadastro/contrato da empresa na Nuvem Local.
                         </p>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-4">
                             <select
+                                value={invalidateModel}
+                                onChange={e => setInvalidateModel(e.target.value as "NFCe" | "NFe")}
+                                className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] cursor-pointer"
+                            >
+                                <option value="NFCe">NFC-e</option>
+                                <option value="NFe">NF-e</option>
+                            </select>
+                            <select
                                 value={invalidateEnvironment}
                                 onChange={e => setInvalidateEnvironment(e.target.value as "production" | "homologation")}
-                                className="border border-stone-300 rounded-xl px-4 py-2 text-sm font-medium text-stone-800 outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] bg-white cursor-pointer"
+                                className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] cursor-pointer"
                             >
                                 <option value="production">Produção</option>
                                 <option value="homologation">Homologação</option>
@@ -516,7 +560,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                                 type="number"
                                 value={invalidateSerie}
                                 onChange={e => setInvalidateSerie(parseInt(e.target.value || "0", 10))}
-                                className="border border-stone-300 rounded-xl px-4 py-2 text-sm font-medium text-stone-800 outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15]"
+                                className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] placeholder-slate-400"
                                 placeholder="Série"
                                 min={1}
                             />
@@ -524,7 +568,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                                 type="number"
                                 value={invalidateStart}
                                 onChange={e => setInvalidateStart(e.target.value)}
-                                className="border border-stone-300 rounded-xl px-4 py-2 text-sm font-medium text-stone-800 outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15]"
+                                className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] placeholder-slate-400"
                                 placeholder="Nº inicial"
                                 min={1}
                             />
@@ -532,7 +576,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                                 type="number"
                                 value={invalidateEnd}
                                 onChange={e => setInvalidateEnd(e.target.value)}
-                                className="border border-stone-300 rounded-xl px-4 py-2 text-sm font-medium text-stone-800 outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15]"
+                                className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] placeholder-slate-400"
                                 placeholder="Nº final"
                                 min={1}
                             />
@@ -548,28 +592,28 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                             </button>
                         </div>
                         <p className="text-xs mt-2 font-semibold text-amber-700">
-                            Ambiente atual da inutilização: {invalidateEnvironment === "production" ? "Produção" : "Homologação"}.
+                            Modelo atual: {invalidateModel}. Ambiente atual da inutilização: {invalidateEnvironment === "production" ? "Produção" : "Homologação"}.
                         </p>
                         <textarea
                             value={invalidateReason}
                             onChange={e => setInvalidateReason(e.target.value)}
                             rows={3}
-                            className="mt-3 w-full border border-stone-300 rounded-xl px-4 py-2 text-sm font-medium text-stone-800 outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15]"
+                            className="mt-3 w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-medium text-white outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] placeholder-slate-400"
                             placeholder="Justificativa (mínimo 15 caracteres)"
                         />
                         <div className="mt-5">
-                            <p className="font-semibold text-stone-800 text-sm">Comprovantes salvos</p>
+                            <p className="font-semibold text-white text-sm">Comprovantes salvos</p>
                             {inutilizacoes.length === 0 ? (
-                                <p className="text-xs text-stone-500 mt-1">Nenhuma inutilização salva para {year} neste ambiente.</p>
+                                <p className="text-xs text-slate-400 mt-1">Nenhuma inutilização salva de {invalidateModel} para {year} neste ambiente.</p>
                             ) : (
                                 <div className="mt-2 space-y-2">
                                     {inutilizacoes.map(item => (
-                                        <div key={item.id} className="border border-stone-200 rounded-xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                        <div key={item.id} className="border border-white/10 rounded-xl p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                                             <div>
-                                                <p className="text-sm font-semibold text-stone-800">
-                                                    Série {item.serie} • Faixa {item.numero_inicial} a {item.numero_final}
+                                                <p className="text-sm font-semibold text-white">
+                                                    {(item.model || invalidateModel)} • Série {item.serie} • Faixa {item.numero_inicial} a {item.numero_final}
                                                 </p>
-                                                <p className="text-xs text-stone-500">
+                                                <p className="text-xs text-slate-400">
                                                     Protocolo: {item.protocol || "-"} • Status: {item.status || "-"} • {new Date(item.created_at).toLocaleString("pt-BR")}
                                                 </p>
                                             </div>
@@ -582,7 +626,7 @@ export default function FechamentoMensalOtica({ params }: { params: { storeId: s
                                                 </button>
                                                 <button
                                                     onClick={() => downloadJson(item)}
-                                                    className="bg-stone-200 hover:bg-stone-300 text-stone-800 px-3 py-1.5 rounded-lg text-xs font-bold"
+                                                    className="bg-stone-200 hover:bg-stone-300 text-stone-900 px-3 py-1.5 rounded-lg text-xs font-bold"
                                                 >
                                                     Baixar JSON
                                                 </button>

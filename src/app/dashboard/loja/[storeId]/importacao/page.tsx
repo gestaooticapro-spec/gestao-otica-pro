@@ -1,18 +1,47 @@
 'use client'
 
-import { useState, useTransition, useRef, useMemo } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useState, useTransition, useRef, useMemo, useCallback, useEffect } from 'react'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { UploadCloud, FileText, CheckCircle, AlertTriangle, Loader2, Save, ArrowLeft, Package, Search, Link as LinkIcon, Unlink, AlertCircle, X, Check } from 'lucide-react'
+import { UploadCloud, FileText, CheckCircle, AlertTriangle, Loader2, Save, ArrowLeft, Search, Link as LinkIcon, Unlink, AlertCircle, X, Check, Inbox, RefreshCw, Copy, CloudDownload, Archive, ArchiveRestore } from 'lucide-react'
 import { parseNfeAndPreview, saveImportedData, type XmlPreviewData } from '@/lib/actions/xml.actions'
 import { ProductSearchCombobox } from '@/components/importacao/ProductSearchCombobox'
+import {
+    getNfeQueueXml,
+    listNfeImportQueue,
+    searchNfeByAccessKey,
+    syncNfeFromSefaz,
+    setNfeQueueStatus,
+    listArchivedNfeQueue,
+    type NfeQueueItem,
+} from '@/lib/actions/nfe-import-queue.actions'
+
+type ManualMatchProduct = {
+    id: number
+    nome: string
+    codigo_barras: string
+    estoque_atual: number
+    referencia?: string
+}
 
 // Helper para formatar moeda
+const NFE_PORTAL_CONSULTA_URL = "https://www.nfe.fazenda.gov.br/portal/consultaRecaptcha.aspx?tipoConsulta=resumo&tipoConteudo=7PhJ+gAVw2g="
+
+function buildNFePortalConsultaUrl(chaveAcesso: string) {
+    const url = new URL(NFE_PORTAL_CONSULTA_URL)
+    url.searchParams.set("nfe", chaveAcesso)
+    return url.toString()
+}
+
 const money = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
+const DEFAULT_MARKUP = 2
+const roundCurrency = (value: number) => Math.round(value * 100) / 100
+const getSalePriceFromMarkup = (cost: number, markup: number) => roundCurrency(cost * markup)
 
 export default function ImportacaoPage() {
     const params = useParams()
-    const router = useRouter()
     const storeId = parseInt(params.storeId as string, 10)
 
     // Estados
@@ -22,6 +51,21 @@ export default function ImportacaoPage() {
     const [isSaving, startSaveTransition] = useTransition()
     const [errorMessage, setErrorMessage] = useState<string | null>(null)
     const [successMessage, setSuccessMessage] = useState<string | null>(null)
+    const [sourceMode, setSourceMode] = useState<'local' | 'sefaz'>('local')
+    const [queueItems, setQueueItems] = useState<NfeQueueItem[]>([])
+    const [queueLoading, setQueueLoading] = useState(false)
+    const [syncingSefaz, setSyncingSefaz] = useState(false)
+    const [searchingKey, setSearchingKey] = useState(false)
+    const [accessKeyInput, setAccessKeyInput] = useState('')
+    const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null)
+    const [lastSyncInfo, setLastSyncInfo] = useState<{ type: 'success' | 'error' | 'warning', message: string, details?: string } | null>(null)
+    const [sefazDiagnostic, setSefazDiagnostic] = useState<Record<string, unknown> | null>(null)
+    const [markupMultiplier, setMarkupMultiplier] = useState(DEFAULT_MARKUP)
+    const [markupInput, setMarkupInput] = useState(String(DEFAULT_MARKUP).replace('.', ','))
+
+    const [archivedQueueItems, setArchivedQueueItems] = useState<NfeQueueItem[]>([])
+    const [archivedQueueLoading, setArchivedQueueLoading] = useState(false)
+    const [isArchivedModalOpen, setIsArchivedModalOpen] = useState(false)
 
     // Tabs & Filters
     const [activeTab, setActiveTab] = useState<'found' | 'new'>('new')
@@ -30,6 +74,48 @@ export default function ImportacaoPage() {
     const [isDragging, setIsDragging] = useState(false)
 
     const fileInputRef = useRef<HTMLInputElement>(null)
+
+    const loadQueue = useCallback(async () => {
+        setQueueLoading(true)
+        try {
+            const result = await listNfeImportQueue(storeId)
+            if (!result.success) throw new Error(result.error)
+            setQueueItems(result.data || [])
+        } catch (error: unknown) {
+            setErrorMessage("Erro ao carregar fila da SEFAZ: " + getErrorMessage(error))
+        } finally {
+            setQueueLoading(false)
+        }
+    }, [storeId])
+
+    const loadArchivedQueue = useCallback(async () => {
+        setArchivedQueueLoading(true)
+        try {
+            const result = await listArchivedNfeQueue(storeId)
+            if (!result.success) throw new Error(result.error)
+            setArchivedQueueItems(result.data || [])
+        } catch (error: unknown) {
+            setErrorMessage("Erro ao carregar fila arquivada: " + getErrorMessage(error))
+        } finally {
+            setArchivedQueueLoading(false)
+        }
+    }, [storeId])
+
+    useEffect(() => {
+        if (sourceMode === 'sefaz') {
+            void loadQueue()
+            void loadArchivedQueue()
+        }
+    }, [sourceMode, loadQueue, loadArchivedQueue])
+
+    const buildPreviewWithMarkup = useCallback((data: XmlPreviewData, markup: number): XmlPreviewData => ({
+        ...data,
+        itens: data.itens.map((item) => ({
+            ...item,
+            preco_venda: item.preco_venda ?? getSalePriceFromMarkup(item.valor_unitario, markup),
+            preco_venda_editado: item.preco_venda_editado ?? false,
+        })),
+    }), [])
 
     // Estatísticas (Memoized)
     const stats = useMemo(() => {
@@ -70,6 +156,8 @@ export default function ImportacaoPage() {
             setErrorMessage(null)
             setSuccessMessage(null)
             setPreviewData(null)
+            setMarkupMultiplier(DEFAULT_MARKUP)
+            setMarkupInput(String(DEFAULT_MARKUP).replace('.', ','))
             setActiveTab('new') // Reset tab
         } else {
             setErrorMessage("Arquivo inválido. Por favor, envie um arquivo XML.")
@@ -84,12 +172,155 @@ export default function ImportacaoPage() {
         startTransition(async () => {
             const result = await parseNfeAndPreview(formData)
             if (result.success && result.data) {
-                setPreviewData(result.data)
+                setMarkupMultiplier(DEFAULT_MARKUP)
+                setMarkupInput(String(DEFAULT_MARKUP).replace('.', ','))
+                setPreviewData(buildPreviewWithMarkup(result.data, DEFAULT_MARKUP))
                 // Se detectar que maioria é 'Encontrado', pode mudar a tab se quiser, mas deixamos manual por enquanto
             } else {
                 setErrorMessage(result.message || "Erro desconhecido ao ler XML.")
             }
         })
+    }
+
+    const parseXmlFromSefaz = (xmlText: string, queueId: string) => {
+        const formData = new FormData()
+        formData.append('xml_file', new File([xmlText], `sefaz-${queueId}.xml`, { type: 'text/xml' }))
+
+        startTransition(async () => {
+            const result = await parseNfeAndPreview(formData)
+            if (result.success && result.data) {
+                setMarkupMultiplier(DEFAULT_MARKUP)
+                setMarkupInput(String(DEFAULT_MARKUP).replace('.', ','))
+                setPreviewData(buildPreviewWithMarkup({ ...result.data, source_queue_id: queueId }, DEFAULT_MARKUP))
+                setErrorMessage(null)
+                setSuccessMessage(null)
+                setActiveTab('new')
+            } else {
+                setErrorMessage(result.message || "Erro desconhecido ao ler XML da SEFAZ.")
+            }
+        })
+    }
+
+    const handleSyncSefaz = async () => {
+        setSyncingSefaz(true)
+        setErrorMessage(null)
+        setSefazDiagnostic(null)
+        try {
+            const result = await syncNfeFromSefaz(storeId)
+            if ('diagnostico' in result && result.diagnostico) {
+                setSefazDiagnostic(result.diagnostico as Record<string, unknown>)
+            }
+            if (!result.success) throw new Error(result.error)
+            await loadQueue()
+            if (result.blockedByRateLimit) {
+                const nextAttemptText = result.nextAttemptAt
+                    ? new Date(result.nextAttemptAt).toLocaleString('pt-BR')
+                    : 'cerca de 1 hora apos a ultima consulta'
+                setLastSyncInfo({
+                    type: 'warning',
+                    message: 'A SEFAZ/Nuvem Local recusou a consulta temporariamente com status 656.',
+                    details: `CNPJ: ${result.cpfCnpj || '-'} | Nova tentativa sugerida: ${nextAttemptText}.`,
+                })
+                return
+            }
+            const loteInfo = result.initialSync && !result.initialSyncCompleted
+                ? ' Primeira carga ainda em andamento; clique novamente para continuar o proximo lote.'
+                : ''
+            setLastSyncInfo({
+                type: 'success',
+                message: (result.inserted || 0) > 0
+                    ? `${result.inserted} emissao(oes) nova(s) adicionada(s) na fila.`
+                    : 'Verificacao concluida sem novas emissoes para importar.',
+                details: `CNPJ: ${result.cpfCnpj || '-'} | Recebidas: ${result.received || 0} | Ja importadas: ${result.skippedDuplicated || 0} | Fora dos 60 dias iniciais: ${result.skippedOld || 0}.${loteInfo}`,
+            })
+        } catch (error: unknown) {
+            setLastSyncInfo({ type: 'error', message: 'A verificacao de emissoes falhou.', details: getErrorMessage(error) })
+        } finally {
+            setSyncingSefaz(false)
+        }
+    }
+
+    const handleSearchByKey = async () => {
+        setSearchingKey(true)
+        setErrorMessage(null)
+        try {
+            const result = await searchNfeByAccessKey(accessKeyInput, storeId)
+            if (!result.success) throw new Error(result.error)
+
+            if (result.alreadyImported) {
+                setLastSyncInfo({ type: 'success', message: 'NF-e localizada, mas ja estava importada.', details: `CNPJ: ${result.cpfCnpj || '-'}` })
+            } else if (result.found) {
+                setLastSyncInfo({
+                    type: 'success',
+                    message: result.resumo ? 'NF-e localizada como resumo e adicionada na fila.' : 'NF-e localizada e adicionada na fila.',
+                    details: `CNPJ: ${result.cpfCnpj || '-'} | Status: ${result.codigoStatus || '-'} ${result.motivoStatus || ''}`,
+                })
+            } else {
+                setLastSyncInfo({ type: 'success', message: 'Nenhuma NF-e foi localizada para essa chave.', details: `CNPJ: ${result.cpfCnpj || '-'}` })
+            }
+
+            await loadQueue()
+        } catch (error: unknown) {
+            setLastSyncInfo({ type: 'error', message: 'A busca por chave falhou.', details: getErrorMessage(error) })
+        } finally {
+            setSearchingKey(false)
+        }
+    }
+
+    const handleOpenQueueItem = async (queueItem: NfeQueueItem) => {
+        setSelectedQueueId(queueItem.id)
+        setErrorMessage(null)
+        try {
+            let result = await getNfeQueueXml(queueItem.id, storeId)
+            if ((!result.success || !result.xmlContent) && queueItem.resumo && queueItem.chave_acesso) {
+                const refreshed = await searchNfeByAccessKey(queueItem.chave_acesso, storeId)
+                if (refreshed.success && refreshed.found && refreshed.queueId) {
+                    result = await getNfeQueueXml(refreshed.queueId, storeId)
+                }
+            }
+            if (!result.success || !result.xmlContent) throw new Error(result.error || 'XML nao encontrado.')
+            parseXmlFromSefaz(result.xmlContent, queueItem.id)
+        } catch (error: unknown) {
+            setErrorMessage("Erro ao abrir XML da SEFAZ: " + getErrorMessage(error))
+            await loadQueue()
+        } finally {
+            setSelectedQueueId(null)
+        }
+    }
+
+    const handleCopyAccessKey = async (chaveAcesso: string) => {
+        try {
+            await navigator.clipboard.writeText(chaveAcesso)
+            setLastSyncInfo({ type: 'success', message: 'Chave de acesso copiada.' })
+        } catch {
+            setLastSyncInfo({ type: 'error', message: `Nao foi possivel copiar automaticamente. Chave: ${chaveAcesso}` })
+        }
+    }
+
+    const handleArchiveItem = async (queueId: string) => {
+        setErrorMessage(null)
+        try {
+            const result = await setNfeQueueStatus(queueId, 'ignored', storeId)
+            if (!result.success) throw new Error(result.error)
+            await loadQueue()
+            await loadArchivedQueue()
+            setLastSyncInfo({ type: 'success', message: 'Nota arquivada com sucesso.' })
+        } catch (error: unknown) {
+            setErrorMessage("Erro ao arquivar nota: " + getErrorMessage(error))
+        }
+    }
+
+    const handleUnarchiveItem = async (queueId: string) => {
+        setErrorMessage(null)
+        try {
+            const result = await setNfeQueueStatus(queueId, 'pending', storeId)
+            if (!result.success) throw new Error(result.error)
+            await loadArchivedQueue()
+            await loadQueue()
+            setLastSyncInfo({ type: 'success', message: 'Nota desarquivada com sucesso. Ela voltou para a fila principal.' })
+        } catch (error: unknown) {
+            setErrorMessage("Erro ao desarquivar nota: " + getErrorMessage(error))
+        }
     }
 
     const handleConfirmarImportacao = () => {
@@ -102,6 +333,8 @@ export default function ImportacaoPage() {
                 setSuccessMessage(result.message!)
                 setPreviewData(null)
                 setFile(null)
+                setMarkupMultiplier(DEFAULT_MARKUP)
+                setMarkupInput(String(DEFAULT_MARKUP).replace('.', ','))
             } else {
                 setErrorMessage(result.message || "Erro ao salvar dados.")
             }
@@ -113,12 +346,14 @@ export default function ImportacaoPage() {
         setPreviewData(null)
         setSuccessMessage(null)
         setErrorMessage(null)
+        setMarkupMultiplier(DEFAULT_MARKUP)
+        setMarkupInput(String(DEFAULT_MARKUP).replace('.', ','))
         if (fileInputRef.current) fileInputRef.current.value = ''
     }
 
     // --- Advanced Features Actions ---
 
-    const handleManualLink = (index: number, product: any) => {
+    const handleManualLink = (index: number, product: ManualMatchProduct) => {
         if (!previewData) return
         const newItens = [...previewData.itens]
         newItens[index] = {
@@ -157,6 +392,55 @@ export default function ImportacaoPage() {
         setPreviewData({ ...previewData, itens: newItens })
     }
 
+    const toggleIgnoreItem = (index: number) => {
+        if (!previewData) return
+        const newItens = [...previewData.itens]
+        const currentItem = newItens[index]
+        newItens[index] = {
+            ...currentItem,
+            skip_import: !currentItem.skip_import
+        }
+        setPreviewData({ ...previewData, itens: newItens })
+    }
+
+    const handleMarkupChange = (value: string) => {
+        setMarkupInput(value)
+
+        const normalizedValue = value.replace(',', '.')
+        const nextMarkup = Number(normalizedValue)
+        if (!Number.isFinite(nextMarkup) || nextMarkup <= 0) return
+
+        setMarkupMultiplier(nextMarkup)
+        if (!previewData) return
+
+        setPreviewData({
+            ...previewData,
+            itens: previewData.itens.map((item) => (
+                item.preco_venda_editado
+                    ? item
+                    : {
+                        ...item,
+                        preco_venda: getSalePriceFromMarkup(item.valor_unitario, nextMarkup),
+                    }
+            )),
+        })
+    }
+
+    const handleSalePriceChange = (index: number, value: string) => {
+        if (!previewData) return
+
+        const normalizedValue = value.replace(',', '.')
+        const parsedValue = Number(normalizedValue)
+        const nextValue = Number.isFinite(parsedValue) ? roundCurrency(Math.max(parsedValue, 0)) : 0
+        const newItens = [...previewData.itens]
+        newItens[index] = {
+            ...newItens[index],
+            preco_venda: nextValue,
+            preco_venda_editado: true,
+        }
+        setPreviewData({ ...previewData, itens: newItens })
+    }
+
     // --- Render Lists ---
 
     const filteredItems = previewData?.itens.map((item, originalIndex) => ({ ...item, originalIndex })).filter(item => {
@@ -171,7 +455,7 @@ export default function ImportacaoPage() {
             {/* Header */}
             <div className="mb-6 flex items-center gap-4 flex-shrink-0">
                 <Link
-                    href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                    href={`/dashboard/loja/${storeId}?menu=gerencia`}
                     className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
                     title="Voltar para o Painel"
                 >
@@ -208,13 +492,34 @@ export default function ImportacaoPage() {
 
             {/* Upload Area */}
             {!previewData && !successMessage && (
-                <div
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    className={`flex-1 flex flex-col items-center justify-center border-2 border-dashed rounded-xl transition-all duration-200 p-10 group backdrop-blur-md
+                <>
+                <div className="mb-4 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 flex-shrink-0">
+                    <div className="flex gap-2 rounded-xl border border-white/10 bg-white/5 p-1 w-fit">
+                        <button
+                            type="button"
+                            onClick={() => setSourceMode('local')}
+                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${sourceMode === 'local' ? 'bg-indigo-600/30 text-indigo-100 border border-indigo-500/30' : 'text-slate-400 hover:text-slate-100'}`}
+                        >
+                            Arquivo local
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setSourceMode('sefaz')}
+                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${sourceMode === 'sefaz' ? 'bg-emerald-600/25 text-emerald-100 border border-emerald-500/30' : 'text-slate-400 hover:text-slate-100'}`}
+                        >
+                            Consulta SEFAZ
+                        </button>
+                    </div>
+                </div>
+
+                {sourceMode === 'local' && (
+                    <div
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                        className={`flex-1 flex flex-col items-center justify-center border-2 border-dashed rounded-xl transition-all duration-200 p-10 group backdrop-blur-md
                         ${isDragging ? 'border-indigo-400 bg-indigo-500/10 scale-[1.01]' : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'}`}
-                >
+                    >
                     <div className={`p-4 rounded-full mb-4 transition-transform ${isDragging ? 'bg-indigo-500/20 scale-110' : 'bg-white/10 group-hover:scale-110'}`}>
                         <UploadCloud className={`h-10 w-10 ${isDragging ? 'text-indigo-300' : 'text-slate-400'}`} />
                     </div>
@@ -251,7 +556,134 @@ export default function ImportacaoPage() {
                             {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : "PROCESSAR ARQUIVO"}
                         </button>
                     )}
-                </div>
+                    </div>
+                )}
+
+                {sourceMode === 'sefaz' && (
+                    <div className="flex-1 overflow-hidden rounded-xl border border-white/10 bg-white/5 backdrop-blur-md">
+                        <div className="p-4 border-b border-white/10 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-900/30">
+                            <div>
+                                <h2 className="font-bold text-slate-100 flex items-center gap-2"><Inbox className="h-5 w-5 text-emerald-400" /> Emissoes contra o CNPJ</h2>
+                                <p className="text-xs text-slate-400 mt-1">Consulta NF-e emitida contra o CNPJ fiscal da loja logada e adiciona o XML na importacao.</p>
+                            </div>
+                            <div className="flex flex-col sm:flex-row gap-2">
+                                <div className="flex rounded-lg border border-white/10 bg-slate-950/30 overflow-hidden">
+                                    <input
+                                        value={accessKeyInput}
+                                        onChange={(e) => setAccessKeyInput(e.target.value)}
+                                        placeholder="Chave de acesso"
+                                        className="bg-transparent px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none w-72 max-w-full"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={handleSearchByKey}
+                                        disabled={searchingKey || accessKeyInput.replace(/\D/g, '').length !== 44}
+                                        className="px-3 py-2 text-sm font-bold text-indigo-100 bg-indigo-600/20 border-l border-white/10 disabled:opacity-40"
+                                    >
+                                        {searchingKey ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                                    </button>
+                                </div>
+                                <button
+                                    onClick={handleSyncSefaz}
+                                    disabled={syncingSefaz || queueLoading}
+                                    className="px-4 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-100 rounded-lg font-bold border border-emerald-500/40 flex items-center justify-center gap-2 disabled:opacity-50"
+                                >
+                                    {syncingSefaz ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                                    Verificar novas
+                                </button>
+                                <button
+                                    onClick={() => setIsArchivedModalOpen(true)}
+                                    className="px-4 py-2 bg-slate-800/40 hover:bg-slate-800/60 text-slate-300 rounded-lg font-bold border border-white/10 flex items-center justify-center gap-2"
+                                >
+                                    <Archive className="h-4 w-4" />
+                                    Notas Arquivadas
+                                </button>
+                            </div>
+                        </div>
+
+                        {lastSyncInfo && (
+                            <div className={`m-4 p-3 rounded-lg border text-sm ${lastSyncInfo.type === 'error'
+                                ? 'bg-red-500/10 border-red-500/20 text-red-300'
+                                : lastSyncInfo.type === 'warning'
+                                    ? 'bg-amber-500/10 border-amber-500/20 text-amber-200'
+                                    : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-200'}`}>
+                                <p className="font-bold">{lastSyncInfo.message}</p>
+                                {lastSyncInfo.details && <p className="text-xs opacity-80 mt-1">{lastSyncInfo.details}</p>}
+                            </div>
+                        )}
+
+                        {sefazDiagnostic && (
+                            <details className="mx-4 mb-4 rounded-lg border border-sky-500/20 bg-sky-500/5 text-sky-100">
+                                <summary className="cursor-pointer px-4 py-3 text-sm font-bold">
+                                    Diagnostico da consulta Nuvem Local / SEFAZ
+                                </summary>
+                                <div className="border-t border-sky-500/20 p-4">
+                                    <p className="mb-3 text-xs text-sky-200/70">
+                                        Nao inclui token, senha ou certificado. O campo request mostra exatamente o payload enviado para a Nuvem Local.
+                                    </p>
+                                    <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-slate-950/70 p-3 text-xs text-slate-200">
+                                        {JSON.stringify(sefazDiagnostic, null, 2)}
+                                    </pre>
+                                </div>
+                            </details>
+                        )}
+
+                        <div className="overflow-auto h-[calc(100%-88px)]">
+                            {queueLoading ? (
+                                <div className="py-16 flex flex-col items-center gap-2 text-slate-400">
+                                    <Loader2 className="animate-spin text-emerald-400" />
+                                    <p className="text-sm">Carregando fila...</p>
+                                </div>
+                            ) : queueItems.length === 0 ? (
+                                <div className="py-16 flex flex-col items-center gap-3 text-slate-500">
+                                    <Inbox className="h-10 w-10 text-slate-600" />
+                                    <p className="text-sm">Clique em Verificar novas para consultar a SEFAZ.</p>
+                                </div>
+                            ) : (
+                                <div className="divide-y divide-white/5">
+                                    {queueItems.map((note) => (
+                                        <div key={note.id} className="p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-4 hover:bg-white/5">
+                                            <div className="min-w-0">
+                                                <p className="font-bold text-slate-100 truncate">{note.emitente_nome || 'Fornecedor nao identificado'}</p>
+                                                <p className="text-xs text-slate-500 mt-1">
+                                                    NF {note.numero || '-'} {note.data_emissao ? `- ${new Date(note.data_emissao).toLocaleDateString('pt-BR')}` : ''} - Chave {note.chave_acesso}
+                                                </p>
+                                                {note.resumo && <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2 py-1 mt-2 inline-flex">XML ainda veio como resumo; ao baixar, o sistema envia ciencia da operacao.</p>}
+                                                {note.xml_completo_disponivel && <p className="text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-2 py-1 mt-2 inline-flex">XML completo disponivel.</p>}
+                                            </div>
+                                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 shrink-0">
+                                                <span className="font-bold text-slate-100 text-right">{money(Number(note.valor_total || 0))}</span>
+                                                <button type="button" onClick={() => handleCopyAccessKey(note.chave_acesso)} className="px-3 py-2 rounded-lg text-xs font-bold border border-white/10 text-slate-300 hover:bg-white/10 flex items-center justify-center gap-2">
+                                                    <Copy className="h-4 w-4" /> Copiar
+                                                </button>
+                                                <a
+                                                    href={buildNFePortalConsultaUrl(note.chave_acesso)}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    onClick={() => {
+                                                        void navigator.clipboard?.writeText(note.chave_acesso).catch(() => undefined)
+                                                    }}
+                                                    className="px-3 py-2 rounded-lg text-xs font-bold border border-white/10 text-slate-300 hover:bg-white/10 flex items-center justify-center gap-2"
+                                                    title="Abre o Portal NF-e e copia a chave para consulta manual"
+                                                >
+                                                    <Search className="h-4 w-4" /> Portal NF-e
+                                                </a>
+                                                <button type="button" onClick={() => handleArchiveItem(note.id)} disabled={isProcessing || selectedQueueId === note.id} className="px-3 py-2 rounded-lg text-xs font-bold border border-white/10 text-slate-300 hover:bg-white/10 flex items-center justify-center gap-2 disabled:opacity-50" title="Arquivar sem importar">
+                                                    <Archive className="h-4 w-4" />
+                                                </button>
+                                                <button type="button" onClick={() => handleOpenQueueItem(note)} disabled={isProcessing || selectedQueueId === note.id} className="px-3 py-2 rounded-lg text-xs font-bold border border-emerald-500/40 bg-emerald-600/20 text-emerald-100 hover:bg-emerald-600/30 flex items-center justify-center gap-2 disabled:opacity-50">
+                                                    {selectedQueueId === note.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />}
+                                                    Baixar/importar XML
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+                </>
             )}
 
             {/* Preview Area */}
@@ -259,7 +691,7 @@ export default function ImportacaoPage() {
                 <div className="flex-1 flex flex-col overflow-hidden bg-white/5 rounded-xl border border-white/10 backdrop-blur-md animate-in fade-in slide-in-from-bottom-4">
 
                     {/* Invoice Summary */}
-                    <div className="p-4 border-b border-white/10 bg-slate-900/40 flex justify-between items-center flex-shrink-0">
+                    <div className="p-4 border-b border-white/10 bg-slate-900/40 flex justify-between items-center flex-shrink-0 gap-4">
                         <div className="flex gap-6">
                             <div>
                                 <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Fornecedor</p>
@@ -274,11 +706,36 @@ export default function ImportacaoPage() {
                             </div>
                         </div>
 
-                        <div className="text-right">
+                        <div className="flex items-center gap-6">
+                            <div className="min-w-[180px]">
+                                <label className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-2">
+                                    Markup PadrÃ£o
+                                </label>
+                                <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                                    <span className="text-sm font-bold text-slate-300">x</span>
+                                    <input
+                                        type="number"
+                                        min="0.01"
+                                        step="0.01"
+                                        value={markupInput.replace(',', '.')}
+                                        onChange={(e) => handleMarkupChange(e.target.value)}
+                                        className="w-full bg-transparent text-sm font-bold text-emerald-300 outline-none"
+                                    />
+                                </div>
+                                <p className="mt-1 text-[10px] text-slate-500">
+                                    Atualiza os itens que ainda nÃ£o tiveram venda editada manualmente.
+                                </p>
+                            </div>
+                            <div className="text-right">
                             <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Total dos Produtos</p>
-                            <p className="text-xl font-black text-emerald-400">
-                                {money(previewData.itens.reduce((acc, i) => acc + i.valor_total, 0))}
+                                <p className="text-xl font-black text-slate-300">
+                                    {money(previewData.itens.filter((i) => !i.skip_import).reduce((acc, i) => acc + i.valor_total, 0))}
+                                </p>
+                            <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                {previewData.itens.filter((i) => !i.skip_import).length} item(ns) ativos
+                                {previewData.itens.some((i) => i.skip_import) ? ` • ${previewData.itens.filter((i) => i.skip_import).length} ignorado(s)` : ''}
                             </p>
+                            </div>
                         </div>
                     </div>
 
@@ -327,7 +784,7 @@ export default function ImportacaoPage() {
                                     </tr>
                                 )}
                                 {filteredItems.map((item) => (
-                                    <tr key={item.originalIndex} className="hover:bg-white/5 transition-colors group">
+                                    <tr key={item.originalIndex} className={`transition-colors group ${item.skip_import ? 'bg-rose-500/5' : 'hover:bg-white/5'}`}>
 
                                         {/* Coluna 1: Informações do Produto e Vínculo */}
                                         <td className="px-6 py-4 align-top">
@@ -335,11 +792,14 @@ export default function ImportacaoPage() {
                                                 {/* Nome na Nota */}
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-[10px] font-bold text-slate-500 border border-slate-700 rounded px-1">XML</span>
-                                                    <span className={`font-medium ${item.use_xml_name ? 'text-emerald-400' : 'text-slate-300'}`}>
+                                                    <span className={`font-medium ${item.skip_import ? 'text-slate-500 line-through' : item.use_xml_name ? 'text-emerald-400' : 'text-slate-300'}`}>
                                                         {item.descricao}
                                                     </span>
                                                     {item.status_sistema === 'Novo' && (
                                                         <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 rounded border border-amber-500/30">Novo</span>
+                                                    )}
+                                                    {item.skip_import && (
+                                                        <span className="text-[10px] bg-rose-500/20 text-rose-300 px-1.5 rounded border border-rose-500/30">Ignorado</span>
                                                     )}
                                                 </div>
                                                 <div className="text-xs text-slate-500 font-mono pl-10">
@@ -437,21 +897,48 @@ export default function ImportacaoPage() {
                                         </td>
 
                                         {/* Venda */}
-                                        <td className="px-4 py-4 text-right align-top font-bold text-emerald-400">
-                                            {money(item.valor_unitario * 2)}
+                                        <td className="px-4 py-4 text-right align-top">
+                                            <div className="flex flex-col items-end gap-1">
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    value={(item.preco_venda ?? getSalePriceFromMarkup(item.valor_unitario, markupMultiplier)).toFixed(2)}
+                                                    onChange={(e) => handleSalePriceChange(item.originalIndex, e.target.value)}
+                                                    className="w-28 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-right font-bold text-emerald-300 outline-none"
+                                                />
+                                                {item.preco_venda_editado ? (
+                                                    <span className="text-[10px] uppercase tracking-wider text-amber-300">
+                                                        Editado
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-[10px] uppercase tracking-wider text-slate-500">
+                                                        Markup x{markupMultiplier.toFixed(2)}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
 
                                         {/* Ações (Only for auto-matches in Found tab) */}
                                         <td className="px-4 py-4 text-right align-top">
-                                            {activeTab === 'found' && (
+                                            <div className="flex justify-end gap-1">
                                                 <button
-                                                    onClick={() => handleUnlink(item.originalIndex)}
-                                                    className="p-2 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded transition-colors"
-                                                    title="Desvincular produto"
+                                                    onClick={() => toggleIgnoreItem(item.originalIndex)}
+                                                    className={`p-2 rounded transition-colors ${item.skip_import ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30' : 'hover:bg-rose-500/20 text-slate-400 hover:text-rose-400'}`}
+                                                    title={item.skip_import ? 'Voltar a importar este produto' : 'Ignorar este produto na importação'}
                                                 >
-                                                    <Unlink className="h-4 w-4" />
+                                                    {item.skip_import ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
                                                 </button>
-                                            )}
+                                                {activeTab === 'found' && (
+                                                    <button
+                                                        onClick={() => handleUnlink(item.originalIndex)}
+                                                        className="p-2 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded transition-colors"
+                                                        title="Desvincular produto"
+                                                    >
+                                                        <Unlink className="h-4 w-4" />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -475,6 +962,98 @@ export default function ImportacaoPage() {
                             {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                             CONFIRMAR IMPORTAÇÃO
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Archived Notes Modal */}
+            {isArchivedModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+                        {/* Header */}
+                        <div className="flex items-center justify-between p-6 border-b border-white/10 bg-slate-900/50">
+                            <div>
+                                <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
+                                    <Archive className="h-6 w-6 text-slate-400" />
+                                    Notas Arquivadas
+                                </h2>
+                                <p className="text-sm text-slate-400 mt-1">Notas da SEFAZ que foram ignoradas/arquivadas.</p>
+                            </div>
+                            <button
+                                onClick={() => setIsArchivedModalOpen(false)}
+                                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 overflow-auto p-4 custom-scrollbar">
+                            {archivedQueueLoading ? (
+                                <div className="py-12 flex flex-col items-center justify-center text-slate-400 gap-3">
+                                    <Loader2 className="h-8 w-8 animate-spin text-slate-500" />
+                                    <p>Carregando notas arquivadas...</p>
+                                </div>
+                            ) : archivedQueueItems.length === 0 ? (
+                                <div className="py-12 flex flex-col items-center justify-center text-slate-500 gap-3">
+                                    <Archive className="h-12 w-12 text-slate-600" />
+                                    <p>Nenhuma nota arquivada no momento.</p>
+                                </div>
+                            ) : (
+                                <div className="divide-y divide-white/5 border border-white/5 rounded-xl overflow-hidden bg-slate-950/30">
+                                    {archivedQueueItems.map((note) => (
+                                        <div key={note.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-white/5 transition-colors">
+                                            <div className="min-w-0 flex-1">
+                                                <p className="font-bold text-slate-200 truncate">{note.emitente_nome || 'Fornecedor não identificado'}</p>
+                                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-slate-400">
+                                                    <span>NF {note.numero || '-'}</span>
+                                                    {note.data_emissao && (
+                                                        <span>• {new Date(note.data_emissao).toLocaleDateString('pt-BR')}</span>
+                                                    )}
+                                                    <span className="font-mono text-slate-500" title="Chave de Acesso">• {note.chave_acesso}</span>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
+                                                <span className="font-bold text-slate-300">{money(Number(note.valor_total || 0))}</span>
+                                                <button type="button" onClick={() => handleCopyAccessKey(note.chave_acesso)} className="px-3 py-2 rounded-lg text-xs font-bold border border-white/10 text-slate-300 hover:bg-white/10 flex items-center justify-center gap-2">
+                                                    <Copy className="h-4 w-4" /> Copiar
+                                                </button>
+                                                <a
+                                                    href={buildNFePortalConsultaUrl(note.chave_acesso)}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    onClick={() => {
+                                                        void navigator.clipboard?.writeText(note.chave_acesso).catch(() => undefined)
+                                                    }}
+                                                    className="px-3 py-2 rounded-lg text-xs font-bold border border-white/10 text-slate-300 hover:bg-white/10 flex items-center justify-center gap-2"
+                                                    title="Abre o Portal NF-e e copia a chave para consulta manual"
+                                                >
+                                                    <Search className="h-4 w-4" /> Portal NF-e
+                                                </a>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleUnarchiveItem(note.id)}
+                                                    className="px-3 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 rounded-lg text-xs font-bold border border-indigo-500/20 flex items-center gap-2 transition-colors"
+                                                >
+                                                    <ArchiveRestore className="h-4 w-4" />
+                                                    Desarquivar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 border-t border-white/10 bg-slate-900/50 flex justify-end">
+                            <button
+                                onClick={() => setIsArchivedModalOpen(false)}
+                                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-lg transition-colors border border-white/10"
+                            >
+                                Fechar
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

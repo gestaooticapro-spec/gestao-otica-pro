@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { X, Save, Loader2, UserPlus, Phone } from 'lucide-react'
 import { createQuickCustomer } from '@/lib/actions/customer.actions'
 import { Database } from '@/lib/database.types'
+import { maskPhone } from '@/lib/phone-mask'
 
 type Customer = Database['public']['Tables']['customers']['Row']
 
@@ -21,32 +22,8 @@ export default function QuickCustomerModal({ isOpen, onClose, onSuccess, storeId
     const [isPending, startTransition] = useTransition()
     const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-    // Mascara inteligente: detecta BR ou PY
     const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const raw = e.target.value
-        const hasPlus = raw.trimStart().startsWith('+')
-        let digits = raw.replace(/\D/g, '')
-        if (!digits) { setPhone(''); return }
-
-        const isPY = hasPlus
-            ? digits.startsWith('595')
-            : (digits.startsWith('595') || (digits.startsWith('09') && digits.length <= 10))
-
-        if (isPY) {
-            if (digits.startsWith('0')) digits = '595' + digits.substring(1)
-            if (!digits.startsWith('595')) digits = '595' + digits
-            const masked = ('+' + digits
-                .replace(/^(595)(\d)/, '$1 $2')
-                .replace(/^(595 \d{3})(\d)/, '$1 $2')
-                .replace(/^(595 \d{3} \d{3})(\d)/, '$1 $2')
-            ).substring(0, 16)
-            setPhone(masked)
-        } else {
-            let v = digits
-            v = v.replace(/^(\d{2})(\d)/g, '($1) $2')
-            v = v.replace(/(\d{5})(\d)/, '$1-$2')
-            setPhone(v.substring(0, 15))
-        }
+        setPhone(maskPhone(e.target.value))
     }
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -119,6 +96,7 @@ export default function QuickCustomerModal({ isOpen, onClose, onSuccess, storeId
                             type="text" 
                             value={phone} 
                             onChange={handlePhoneChange} 
+                            onBlur={e => setPhone(maskPhone(e.target.value, true))}
                             placeholder="(00) 90000-0000 ou +595 9XX XXX XXX"
                             className={inputStyle}
                         />

@@ -15,17 +15,28 @@ import {
     ArrowLeft,
     LineChart,
     Stethoscope,
-    PackageSearch
+    PackageSearch,
+    ClipboardCheck
 } from 'lucide-react';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
 
 export default function ReportsHubPage() {
     const router = useRouter();
     const params = useParams();
     const storeId = params.storeId as string;
     const { preference } = useBackgroundPreference();
+    const modules = useStoreModules();
 
     const reportCategories = [
+        {
+            title: 'Avaliação da Equipe',
+            description: 'Conversão por funcionário a partir das avaliações ópticas e vendas vinculadas.',
+            icon: ClipboardCheck,
+            route: `/dashboard/loja/${storeId}/reports/avaliacoes`,
+            tone: 'from-emerald-600/20 via-emerald-900/30 to-slate-900/80 hover:border-emerald-500/50 hover:shadow-emerald-500/20',
+            iconTone: 'text-emerald-400 bg-emerald-500/20 ring-emerald-400/30'
+        },
         {
             title: 'Fluxo Especial (Caixa Diário)',
             description: 'Visão consolidada de entradas, venda garantida vs parcelada e acumulados.',
@@ -44,7 +55,7 @@ export default function ReportsHubPage() {
         },
         {
             title: 'Caixa & Banco',
-            description: 'Entradas totais, PIX, Cartao, pagamentos e despesas lancadas no fluxo.',
+            description: 'Entradas totais, PIX, Cartão, pagamentos e despesas lançadas no fluxo.',
             icon: CreditCard,
             route: `/dashboard/loja/${storeId}/reports/financeiro`,
             tone: 'from-blue-600/20 via-blue-900/30 to-slate-900/80 hover:border-blue-500/50 hover:shadow-blue-500/20',
@@ -114,7 +125,13 @@ export default function ReportsHubPage() {
             tone: 'from-pink-600/20 via-pink-900/30 to-slate-900/80 hover:border-pink-500/50 hover:shadow-pink-500/20',
             iconTone: 'text-pink-400 bg-pink-500/20 ring-pink-400/30'
         }
-    ];
+    ].filter((category) => {
+        if (category.route.includes('/reports/avaliacoes')) return modules.evaluation;
+        if (category.route.includes('/reports/parcelamento')) return modules.installments;
+        if (category.route.includes('/reports/cobranca-acoes')) return modules.installments;
+        if (category.route.includes('/reports/pos-venda')) return modules.postSales;
+        return true;
+    });
 
     return (
         <div className="min-h-full relative flex flex-col p-6 lg:p-10 z-0">
@@ -141,7 +158,7 @@ export default function ReportsHubPage() {
                         </div>
                     </div>
                     <Link
-                        href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                        href={`/dashboard/loja/${storeId}`}
                         className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
                         title="Voltar para o Painel"
                     >

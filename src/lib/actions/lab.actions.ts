@@ -3,6 +3,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { revalidatePath } from "next/cache"
+import { clearNfcTrayLinkForDeliveredOrder } from "@/lib/nfc-tray-cleanup"
 
 export type LabOSResult = {
     id: number
@@ -410,7 +411,17 @@ export async function updateLabTracking(osId: number, storeId: number, formData:
         return { success: false, message: 'Erro ao salvar rastreio.' }
     }
 
+    if (updates.dt_entregue_em) {
+        try {
+            await clearNfcTrayLinkForDeliveredOrder(osId, updates.dt_entregue_em)
+        } catch (cleanupError) {
+            console.error("Erro ao limpar vínculo NFC na entrega:", cleanupError)
+            return { success: false, message: 'Entrega salva, mas falhou ao liberar o envelope.' }
+        }
+    }
+
     revalidatePath(`/dashboard/loja/${storeId}`)
+    revalidatePath(`/nfc/${storeId}`)
     return { success: true }
 }
 

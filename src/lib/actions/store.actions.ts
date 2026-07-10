@@ -6,6 +6,7 @@ import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { Database, Json } from '@/lib/database.types'
 import { createClient } from '@/lib/supabase/server'
 import { syncStoreFiscalData } from './fiscal.actions'
+import { StoreSettings } from '@/lib/store-modules'
 
 const StoreProfileSchema = z.object({
     id: z.coerce.number(),
@@ -30,7 +31,11 @@ const StoreProfileSchema = z.object({
     csc_producao: z.string().optional().nullable(),
     csc_id_producao: z.string().optional().nullable(),
     nfce_serie: z.coerce.number().int().min(1).max(999).optional().nullable(),
-    codigo_municipio_ibge: z.string().optional().nullable(),
+    nfe_serie: z.coerce.number().int().min(1).max(999).optional().nullable(),
+    codigo_municipio_ibge: z.string()
+        .refine(value => !value || /^\d{7}$/.test(value), "Codigo IBGE deve ter 7 digitos")
+        .optional()
+        .nullable(),
     regime_tributario: z.string().optional().nullable(),
 })
 
@@ -44,11 +49,6 @@ type StoreRow = Database['public']['Tables']['stores']['Row']
 type StoreUpdatePayload = Database['public']['Tables']['stores']['Update']
 type StorePublicRow = Pick<StoreRow, 'name' | 'tenant_id' | 'settings'>
 type TenantRow = { name: string | null }
-type StoreSettings = {
-    logo?: string
-    pre_sale_analysis_enabled?: boolean
-    [key: string]: Json | undefined
-}
 type QueryError = { message: string }
 type SingleResult<T> = Promise<{ data: T | null; error: QueryError | null }>
 type StoreSelectBuilder<T> = {
@@ -72,6 +72,15 @@ type TenantTableApi = {
 
 function toErrorMessage(error: unknown, fallback: string) {
     return error instanceof Error ? error.message : fallback
+}
+
+function onlyDigits(value: FormDataEntryValue | null) {
+    return String(value ?? '').replace(/\D/g, '')
+}
+
+function normalizeTextValue(value: FormDataEntryValue | null) {
+    const normalized = String(value ?? '').trim()
+    return normalized || null
 }
 
 export async function getStoreProfile(storeId: number): Promise<StoreRow | null> {
@@ -114,32 +123,31 @@ export async function updateStoreProfile(
 
     const rawData = {
         id: formData.get('id'),
-        name: formData.get('name'),
-        razao_social: formData.get('razao_social'),
-        cnpj: formData.get('cnpj'),
-        inscricao_estadual: formData.get('inscricao_estadual'),
-        whatsapp: formData.get('whatsapp'),
-        phone: formData.get('phone'),
-        email: formData.get('email'),
-        website: formData.get('website'),
-        cep: formData.get('cep'),
-        street: formData.get('street'),
-        number: formData.get('number'),
-        neighborhood: formData.get('neighborhood'),
-        city: formData.get('city'),
-        state: formData.get('state'),
-        pix_key: formData.get('pix_key'),
-        pix_city: formData.get('pix_city'),
-        csc_homologacao: formData.get('csc_homologacao'),
-        csc_id_homologacao: formData.get('csc_id_homologacao'),
-        csc_producao: formData.get('csc_producao'),
-        csc_id_producao: formData.get('csc_id_producao'),
+        name: normalizeTextValue(formData.get('name')),
+        razao_social: normalizeTextValue(formData.get('razao_social')),
+        cnpj: onlyDigits(formData.get('cnpj')),
+        inscricao_estadual: onlyDigits(formData.get('inscricao_estadual')),
+        whatsapp: normalizeTextValue(formData.get('whatsapp')),
+        phone: normalizeTextValue(formData.get('phone')),
+        email: normalizeTextValue(formData.get('email')),
+        website: normalizeTextValue(formData.get('website')),
+        cep: onlyDigits(formData.get('cep')),
+        street: normalizeTextValue(formData.get('street')),
+        number: normalizeTextValue(formData.get('number')),
+        neighborhood: normalizeTextValue(formData.get('neighborhood')),
+        city: normalizeTextValue(formData.get('city')),
+        state: String(formData.get('state') ?? '').trim().toUpperCase(),
+        pix_key: normalizeTextValue(formData.get('pix_key')),
+        pix_city: normalizeTextValue(formData.get('pix_city')),
+        csc_homologacao: normalizeTextValue(formData.get('csc_homologacao')),
+        csc_id_homologacao: normalizeTextValue(formData.get('csc_id_homologacao')),
+        csc_producao: normalizeTextValue(formData.get('csc_producao')),
+        csc_id_producao: normalizeTextValue(formData.get('csc_id_producao')),
         nfce_serie: formData.get('nfce_serie'),
-        codigo_municipio_ibge: formData.get('codigo_municipio_ibge'),
-        regime_tributario: formData.get('regime_tributario'),
+        nfe_serie: formData.get('nfe_serie'),
+        codigo_municipio_ibge: onlyDigits(formData.get('codigo_municipio_ibge')),
+        regime_tributario: normalizeTextValue(formData.get('regime_tributario')),
     }
-    const preSaleAnalysisEnabled = formData.get('pre_sale_analysis_enabled') === 'on'
-
     const validated = StoreProfileSchema.safeParse(rawData)
     if (!validated.success) {
         return { success: false, message: 'Dados inválidos. Verifique os campos.' }
@@ -174,10 +182,7 @@ export async function updateStoreProfile(
             }
         }
 
-        updateData.settings = {
-            ...currentSettings,
-            pre_sale_analysis_enabled: preSaleAnalysisEnabled
-        }
+        updateData.settings = currentSettings
 
         await storesTable
             .update(updateData)
@@ -265,7 +270,7 @@ export async function updateStoreSettings(storeId: number, newSettings: Partial<
 
         revalidatePath(`/dashboard/loja/${storeId}/config`)
         revalidatePath(`/dashboard/loja/${storeId}`)
-        revalidatePath(`/dashboard/loja/${storeId}`, 'layout')
+        revalidatePath(`/dashboard/loja/${storeId}/vendas`, 'layout')
         return { success: true, message: 'Recursos atualizados!' }
     } catch (error: unknown) {
         return { success: false, message: toErrorMessage(error, 'Erro ao atualizar recursos.') }
@@ -273,7 +278,7 @@ export async function updateStoreSettings(storeId: number, newSettings: Partial<
 }
 
 import {
-    AiSuggestionConfig, AiConfigCatalogInfo, AiConfigBrandsByCategory,
+    AiSuggestionConfig, AiConfigCatalogInfo, AiConfigBrandsByCategory, AiLabPreference,
     AI_SUGGESTION_CONFIG_DEFAULTS, CLINICAL_CATEGORY_LABELS, AiStoreProfileLevel, AiStoreInvestmentProfile
 } from '@/lib/types/ai-config.types'
 
@@ -281,12 +286,152 @@ import {
 // AI SUGGESTION CONFIG
 // ================================================================
 
+type ActiveCatalogActivationRow = {
+    global_version_id: string | null
+}
+
+type ActiveCatalogVersionRow = {
+    id: string | null
+    laboratorio: string | null
+}
+
+type AiCatalogActivationRow = {
+    id: number | string
+    global_version_id: string | null
+}
+
+type AiCatalogVersionInfoRow = {
+    id: string
+    laboratorio: string
+    versao: string
+}
+
+type AiTenantOfferRow = {
+    global_offer_id: string | null
+}
+
+type AiLensOfferRow = {
+    family_id: string | null
+    clinical_category: string | null
+    raw_label: string | null
+    canonical_label: string | null
+}
+
+type AiLensFamilyRow = {
+    id: string
+    nome: string
+    clinical_category: string | null
+}
+
+function resolveConfigBrandLabel(family: AiLensFamilyRow, offer: AiLensOfferRow): string {
+    if (family.clinical_category !== 'mista') return family.nome
+
+    const descriptor = `${offer.raw_label || ''} ${offer.canonical_label || ''}`
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+
+    if (descriptor.includes('stellest')) return 'Stellest'
+    if (descriptor.includes('miyosmart')) return 'MiYOSMART'
+    if (descriptor.includes('miokids')) return 'MioKids'
+    if (descriptor.includes('eyezen kids')) return 'Eyezen Kids'
+    if (descriptor.includes('airwear') && descriptor.includes('kids')) return 'Airwear Kids'
+
+    return family.nome
+}
+
+async function getActiveCatalogLabPreferences(storeId: number): Promise<AiLabPreference[]> {
+    const supabaseAdmin = createAdminClient()
+
+    const { data: activations } = await supabaseAdmin
+        .from('tenant_catalog_activations')
+        .select('global_version_id')
+        .eq('store_id', storeId)
+        .eq('status', 'active')
+
+    const activeActivations = (activations || []) as ActiveCatalogActivationRow[]
+    const versionIds = [
+        ...new Set(
+            activeActivations
+                .map((activation) => activation.global_version_id)
+                .filter((versionId): versionId is string => Boolean(versionId)),
+        ),
+    ]
+    if (!versionIds.length) return []
+
+    const { data: versions } = await supabaseAdmin
+        .from('global_catalog_versions')
+        .select('id,laboratorio')
+        .in('id', versionIds)
+
+    const activeVersions = (versions || []) as ActiveCatalogVersionRow[]
+
+    return activeVersions
+        .filter((version): version is { id: string; laboratorio: string } =>
+            Boolean(version.id && version.laboratorio),
+        )
+        .map((version) => ({
+            versionId: version.id,
+            laboratorio: version.laboratorio,
+            weight: 3,
+        }))
+}
+
+function syncLabPreferencesWithActiveCatalogs(
+    savedPreferences: AiLabPreference[] = [],
+    activeCatalogs: AiLabPreference[] = [],
+): AiLabPreference[] {
+    if (!activeCatalogs.length) return savedPreferences
+
+    return activeCatalogs.map((activeCatalog) => {
+        const savedByVersion = savedPreferences.find((pref) => pref.versionId === activeCatalog.versionId)
+        const savedByLab = savedPreferences.find(
+            (pref) => pref.laboratorio?.toLowerCase() === activeCatalog.laboratorio.toLowerCase(),
+        )
+        const saved = savedByVersion || savedByLab
+
+        return {
+            versionId: activeCatalog.versionId,
+            laboratorio: activeCatalog.laboratorio,
+            weight: saved?.weight ?? 3,
+        }
+    })
+}
+
+async function fetchTenantOfferRowsByActivationIds(
+    activationIds: Array<number | string>,
+): Promise<AiTenantOfferRow[]> {
+    if (!activationIds.length) return []
+
+    const supabaseAdmin = createAdminClient()
+    const pageSize = 1000
+    const rows: AiTenantOfferRow[] = []
+
+    for (let from = 0; ; from += pageSize) {
+        const { data, error } = await supabaseAdmin
+            .from('tenant_commercial_offers')
+            .select('global_offer_id')
+            .in('activation_id', activationIds)
+            .range(from, from + pageSize - 1)
+
+        if (error) throw new Error(error.message)
+
+        const page = (data || []) as AiTenantOfferRow[]
+        rows.push(...page)
+
+        if (page.length < pageSize) break
+    }
+
+    return rows
+}
+
 export async function getAiSuggestionConfig(storeId: number): Promise<AiSuggestionConfig> {
     const store = await getStoreProfile(storeId)
     if (!store) return { ...AI_SUGGESTION_CONFIG_DEFAULTS }
 
     const settings = (store.settings || {}) as StoreSettings
     const saved = settings.ai_suggestion_config as AiSuggestionConfig | undefined
+    const activeCatalogPreferences = await getActiveCatalogLabPreferences(storeId)
 
     const legacyProfile = saved?.store_profile as Record<string, unknown> | undefined
     const legacySensitivity = legacyProfile?.price_sensitivity as AiStoreProfileLevel | undefined
@@ -300,7 +445,7 @@ export async function getAiSuggestionConfig(storeId: number): Promise<AiSuggesti
     }
 
     return {
-        lab_preferences: saved?.lab_preferences ?? [],
+        lab_preferences: syncLabPreferencesWithActiveCatalogs(saved?.lab_preferences, activeCatalogPreferences),
         store_profile: {
             investment_profile: (legacyProfile?.investment_profile as AiStoreInvestmentProfile) || investmentProfile,
             tech_adoption: (legacyProfile?.tech_adoption as AiStoreProfileLevel) || 'medio',
@@ -348,7 +493,7 @@ export async function getAiConfigCatalogData(storeId: number): Promise<{
     catalogs: AiConfigCatalogInfo[]
     brandsByCategory: AiConfigBrandsByCategory[]
 }> {
-    const supabaseAdmin = createAdminClient() as any
+    const supabaseAdmin = createAdminClient()
 
     const { data: activations } = await supabaseAdmin
         .from('tenant_catalog_activations')
@@ -356,55 +501,72 @@ export async function getAiConfigCatalogData(storeId: number): Promise<{
         .eq('store_id', storeId)
         .eq('status', 'active')
 
-    if (!activations?.length) return { catalogs: [], brandsByCategory: [] }
+    const activeActivations = (activations || []) as AiCatalogActivationRow[]
+    if (!activeActivations.length) return { catalogs: [], brandsByCategory: [] }
 
-    const versionIds = [...new Set(activations.map((a: any) => a.global_version_id))] as string[]
+    const versionIds = [
+        ...new Set(
+            activeActivations
+                .map((activation) => activation.global_version_id)
+                .filter((versionId): versionId is string => Boolean(versionId)),
+        ),
+    ]
     const { data: versions } = await supabaseAdmin
         .from('global_catalog_versions')
         .select('id,laboratorio,versao')
         .in('id', versionIds)
 
-    const catalogs: AiConfigCatalogInfo[] = (versions || []).map((v: any) => ({
-        versionId: v.id,
-        laboratorio: v.laboratorio,
-        versao: v.versao,
+    const catalogVersions = (versions || []) as AiCatalogVersionInfoRow[]
+    const catalogs: AiConfigCatalogInfo[] = catalogVersions.map((version) => ({
+        versionId: version.id,
+        laboratorio: version.laboratorio,
+        versao: version.versao,
     }))
 
-    const activationIds = activations.map((a: any) => a.id)
-    const { data: tenantOffers } = await supabaseAdmin
-        .from('tenant_commercial_offers')
-        .select('global_offer_id')
-        .in('activation_id', activationIds)
-
-    const globalOfferIds = [...new Set((tenantOffers || []).map((o: any) => o.global_offer_id))] as string[]
+    const activationIds = activeActivations.map((activation) => activation.id)
+    const activeTenantOffers = await fetchTenantOfferRowsByActivationIds(activationIds)
+    const globalOfferIds = [
+        ...new Set(
+            activeTenantOffers
+                .map((offer) => offer.global_offer_id)
+                .filter((offerId): offerId is string => Boolean(offerId)),
+        ),
+    ]
     if (!globalOfferIds.length) return { catalogs, brandsByCategory: [] }
 
     const CHUNK = 150
-    let allOffers: any[] = []
+    const allOffers: AiLensOfferRow[] = []
     for (let i = 0; i < globalOfferIds.length; i += CHUNK) {
         const chunk = globalOfferIds.slice(i, i + CHUNK)
         const { data } = await supabaseAdmin
             .from('global_lens_offers')
-            .select('family_id,clinical_category')
+            .select('family_id,clinical_category,raw_label,canonical_label')
             .in('id', chunk)
-        allOffers.push(...(data || []))
+        allOffers.push(...((data || []) as AiLensOfferRow[]))
     }
 
-    const familyIds = [...new Set(allOffers.map((o: any) => o.family_id))] as string[]
-    let allFamilies: any[] = []
+    const familyIds = [
+        ...new Set(
+            allOffers
+                .map((offer) => offer.family_id)
+                .filter((familyId): familyId is string => Boolean(familyId)),
+        ),
+    ]
+    const allFamilies: AiLensFamilyRow[] = []
     for (let i = 0; i < familyIds.length; i += CHUNK) {
         const chunk = familyIds.slice(i, i + CHUNK)
         const { data } = await supabaseAdmin
             .from('global_lens_families')
             .select('id,nome,clinical_category')
             .in('id', chunk)
-        allFamilies.push(...(data || []))
+        allFamilies.push(...((data || []) as AiLensFamilyRow[]))
     }
 
-    const familyById = new Map(allFamilies.map((f: any) => [f.id, f]))
+    const familyById = new Map(allFamilies.map((family) => [family.id, family]))
     const brandsByCat = new Map<string, Set<string>>()
 
     for (const offer of allOffers) {
+        if (!offer.family_id) continue
         const family = familyById.get(offer.family_id)
         if (!family) continue
 
@@ -419,7 +581,7 @@ export async function getAiConfigCatalogData(storeId: number): Promise<{
         if (!brandsByCat.has(effectiveCategory)) {
             brandsByCat.set(effectiveCategory, new Set())
         }
-        brandsByCat.get(effectiveCategory)!.add(family.nome)
+        brandsByCat.get(effectiveCategory)!.add(resolveConfigBrandLabel(family, offer))
     }
 
     const targetCategories = ['multifocal', 'ocupacional', 'controle_miopia', 'visao_simples', 'bifocal', 'plana_solar']
@@ -432,4 +594,11 @@ export async function getAiConfigCatalogData(storeId: number): Promise<{
         }))
 
     return { catalogs, brandsByCategory }
+}
+
+export async function saveStoreHoursConfig(
+    storeId: number,
+    config: any
+): Promise<StoreActionResult> {
+    return updateStoreSettings(storeId, { store_hours: config })
 }

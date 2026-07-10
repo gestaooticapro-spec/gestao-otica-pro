@@ -2,9 +2,11 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { realizarBuscaUniversal, type ResultadoBusca } from '@/lib/actions/consultas.actions'
 import { Search, Loader2, User, ShoppingCart, FileText, ArrowRight, Tag, Barcode, Package, Wrench } from 'lucide-react'
 import Link from 'next/link'
+import { currentPathWithSearch, withReturnTo } from '@/lib/return-navigation'
 
 const currency = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const date = (d: string) => new Date(d).toLocaleDateString('pt-BR')
@@ -13,6 +15,9 @@ export default function BuscaUniversal({ storeId }: { storeId: number }) {
     const [termo, setTermo] = useState('')
     const [resultados, setResultados] = useState<ResultadoBusca | null>(null)
     const [isSearching, startTransition] = useTransition()
+    const pathname = usePathname()
+    const searchParams = useSearchParams()
+    const currentUrl = currentPathWithSearch(pathname, searchParams)
 
     const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
         const valor = e.target.value
@@ -133,7 +138,7 @@ export default function BuscaUniversal({ storeId }: { storeId: number }) {
                         ) : (
                             <div className="space-y-2">
                                 {resultados.vendas.map(v => (
-                                    <Link key={v.id} href={`/dashboard/loja/${storeId}/vendas/${v.id}/experimental`}>
+                                    <Link key={v.id} href={withReturnTo(`/dashboard/loja/${storeId}/vendas/${v.id}/experimental`, currentUrl)}>
                                         <div className="group bg-white/5 backdrop-blur-sm p-3 rounded-xl shadow-lg border border-white/10 hover:border-emerald-500/40 hover:bg-white/10 transition-all cursor-pointer">
                                             <div className="flex justify-between items-center mb-1">
                                                 <span className="font-black text-white text-sm">#{v.id}</span>
@@ -161,7 +166,13 @@ export default function BuscaUniversal({ storeId }: { storeId: number }) {
                         ) : (
                             <div className="space-y-2">
                                 {resultados.os.map(o => (
-                                    <Link key={o.id} href={`/dashboard/loja/${storeId}/vendas/${o.venda_id}/os?os_id=${o.id}`}>
+                                    <Link
+                                        key={o.id}
+                                        href={withReturnTo(
+                                            `/dashboard/loja/${storeId}/vendas/${o.venda_id}/os?os_id=${o.id}`,
+                                            withReturnTo(`/dashboard/loja/${storeId}/vendas/${o.venda_id}/experimental`, currentUrl)
+                                        )}
+                                    >
                                         <div className="group bg-white/5 backdrop-blur-sm p-3 rounded-xl shadow-lg border border-white/10 hover:border-amber-500/40 hover:bg-white/10 transition-all cursor-pointer">
                                             <div className="flex justify-between items-center mb-1">
                                                 <div className="flex items-center gap-2">

@@ -3,15 +3,35 @@
 import { useState } from 'react'
 import { Gift, ChevronDown, ChevronUp } from 'lucide-react'
 import { Aniversariante } from '@/lib/actions/consultas.actions'
-import { openWhatsApp } from '@/lib/utils/whatsapp'
+import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
 
-export default function AniversariantesWidget({ clientes }: { clientes: Aniversariante[] }) {
+export default function AniversariantesWidget({ clientes, storeId }: { clientes: Aniversariante[], storeId: number }) {
     const [isOpen, setIsOpen] = useState(false)
+    const [sendingWhatsAppId, setSendingWhatsAppId] = useState<number | null>(null)
 
-    const handleZap = (fone: string | null, nome: string) => {
+    const handleZap = async (cliente: Aniversariante) => {
+        if (sendingWhatsAppId) return
+        const fone = cliente.fone
+        const nome = cliente.nome
         if (!fone) return
         const msg = `Oi ${nome.split(' ')[0]}! Sabemos que esse é um dia especial pra você. Te desejamos toda a felicidade do mundo!`
-        openWhatsApp(fone, msg)
+        setSendingWhatsAppId(cliente.id)
+        try {
+            await sendManualWhatsAppFromClient({
+                storeId,
+                remotePhone: fone,
+                messageText: msg,
+                messageType: 'relationship',
+                source: 'birthday_widget.greeting_button',
+                metadata: {
+                    customerId: cliente.id,
+                    customerName: nome,
+                    day: cliente.dia,
+                },
+            })
+        } finally {
+            setSendingWhatsAppId(null)
+        }
     }
 
     return (
@@ -60,9 +80,10 @@ export default function AniversariantesWidget({ clientes }: { clientes: Aniversa
 
                                 {/* BOTÃO WHATSAPP */}
                                 <button
-                                    onClick={() => handleZap(c.fone, c.nome)}
+                                    onClick={() => handleZap(c)}
+                                    disabled={sendingWhatsAppId === c.id}
                                     className="flex items-center justify-center w-8 h-8 rounded-full 
-                                    bg-green-500/20 text-green-400 hover:bg-green-500 hover:text-white transition-all shadow-sm border border-green-500/20"
+                                    bg-green-500/20 text-green-400 hover:bg-green-500 hover:text-white transition-all shadow-sm border border-green-500/20 disabled:opacity-50"
                                     title="Enviar pelo WhatsApp"
                                 >
                                     <svg

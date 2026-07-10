@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/server'
 import { getProfileByAdmin } from '@/lib/supabase/admin'
 import { getStoreGlobalCatalogOverview } from '@/lib/actions/global-catalog.actions'
 import GlobalCatalogActivationInterface from '@/components/catalog/GlobalCatalogActivationInterface'
+import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
+import ModuleDisabledState from '@/components/modules/ModuleDisabledState'
 
 export default async function StoreGlobalCatalogPage({
   params,
@@ -43,6 +45,17 @@ export default async function StoreGlobalCatalogPage({
           </Link>
         </div>
       </div>
+    )
+  }
+
+  const globalTablesEnabled = await isStoreModuleEnabledForStore(storeId, 'globalTables')
+  if (!globalTablesEnabled) {
+    return (
+      <ModuleDisabledState
+        storeId={storeId}
+        moduleLabel="Tabelas Globais"
+        backHref={`/dashboard/loja/${storeId}`}
+      />
     )
   }
 

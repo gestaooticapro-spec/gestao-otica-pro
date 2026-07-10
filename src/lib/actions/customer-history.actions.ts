@@ -1,6 +1,8 @@
 // Caminho: src/lib/actions/customer-history.actions.ts
 'use server'
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { createAdminClient } from '@/lib/supabase/admin'
 
 // =============================================
@@ -41,6 +43,7 @@ export interface FinancialSummary {
         id: number
         vendaId: number
         dataVenda: string
+        dependenteNames: string[]
         entrada: number
         valorFinanciado: number
         totalParcelas: number
@@ -72,6 +75,13 @@ export interface PrescriptionSummary {
     adicao: string | null
     // Médico
     medico: string | null
+}
+
+export interface PrescriptionSummaryGroup {
+    id: string
+    label: string
+    dependenteId: number | null
+    receitas: PrescriptionSummary[]
 }
 
 // =============================================
@@ -141,6 +151,32 @@ export async function getCustomerFinancialSummary(
         }
     }
 
+    const vendaIds = (financiamentos || [])
+        .map((f: any) => Number(f.venda_id))
+        .filter((id: number) => Number.isFinite(id) && id > 0)
+
+    const dependentNamesByVenda = new Map<number, string[]>()
+    if (vendaIds.length > 0) {
+        const { data: serviceOrders } = await (supabaseAdmin
+            .from('service_orders') as any)
+            .select('venda_id, dependente_id, dependentes(full_name)')
+            .eq('store_id', storeId)
+            .in('venda_id', vendaIds)
+
+        for (const row of serviceOrders || []) {
+            const vendaId = Number(row.venda_id)
+            if (!Number.isFinite(vendaId) || vendaId <= 0) continue
+            const dependenteName = String(row.dependentes?.full_name || '').trim()
+            if (!dependenteName) continue
+
+            const current = dependentNamesByVenda.get(vendaId) || []
+            if (!current.includes(dependenteName)) {
+                current.push(dependenteName)
+                dependentNamesByVenda.set(vendaId, current)
+            }
+        }
+    }
+
     let parcelasPagas = 0
     let parcelasPendentes = 0
     let valorPago = 0
@@ -190,6 +226,7 @@ export async function getCustomerFinancialSummary(
             id: f.id,
             vendaId: f.venda_id,
             dataVenda: f.created_at,
+            dependenteNames: dependentNamesByVenda.get(Number(f.venda_id)) || [],
             entrada: 0,
             valorFinanciado: f.valor_total_financiado || 0,
             totalParcelas: f.quantidade_parcelas || 0,
@@ -220,14 +257,30 @@ export async function getCustomerFinancialSummary(
 export async function getCustomerPrescriptionSummary(
     customerId: number,
     storeId: number
-): Promise<PrescriptionSummary[]> {
+): Promise<PrescriptionSummaryGroup[]> {
     const supabaseAdmin = createAdminClient()
+    const prescriptionPresenceFilter = [
+        'receita_longe_od_esferico.not.is.null',
+        'receita_longe_od_cilindrico.not.is.null',
+        'receita_longe_od_eixo.not.is.null',
+        'receita_longe_oe_esferico.not.is.null',
+        'receita_longe_oe_cilindrico.not.is.null',
+        'receita_longe_oe_eixo.not.is.null',
+        'receita_perto_od_esferico.not.is.null',
+        'receita_perto_od_cilindrico.not.is.null',
+        'receita_perto_od_eixo.not.is.null',
+        'receita_perto_oe_esferico.not.is.null',
+        'receita_perto_oe_cilindrico.not.is.null',
+        'receita_perto_oe_eixo.not.is.null',
+        'receita_adicao.not.is.null'
+    ].join(',')
 
     const { data, error } = await (supabaseAdmin
         .from('service_orders') as any)
         .select(`
             id,
             created_at,
+            dependente_id,
             receita_longe_od_esferico,
             receita_longe_od_cilindrico,
             receita_longe_od_eixo,
@@ -241,12 +294,13 @@ export async function getCustomerPrescriptionSummary(
             receita_perto_oe_cilindrico,
             receita_perto_oe_eixo,
             receita_adicao,
-            oftalmologistas (nome_completo)
+            oftalmologistas (nome_completo),
+            dependentes (full_name)
         `)
         .eq('store_id', storeId)
         .eq('customer_id', customerId)
-        // Apenas OSs que tenham algum dado de receita preenchido
-        .not('receita_longe_od_esferico', 'is', null)
+        // Considera qualquer campo de receita preenchido, nao apenas o OD esferico.
+        .or(prescriptionPresenceFilter)
         .order('created_at', { ascending: false })
         .limit(20)
 
@@ -255,22 +309,52 @@ export async function getCustomerPrescriptionSummary(
         return []
     }
 
-    return (data || []).map((os: any) => ({
-        id: os.id,
-        dataCompra: os.created_at,
-        longeOdEsf: os.receita_longe_od_esferico,
-        longeOdCil: os.receita_longe_od_cilindrico,
-        longeOdEixo: os.receita_longe_od_eixo,
-        longeOeEsf: os.receita_longe_oe_esferico,
-        longeOeCil: os.receita_longe_oe_cilindrico,
-        longeOeEixo: os.receita_longe_oe_eixo,
-        pertoOdEsf: os.receita_perto_od_esferico,
-        pertoOdCil: os.receita_perto_od_cilindrico,
-        pertoOdEixo: os.receita_perto_od_eixo,
-        pertoOeEsf: os.receita_perto_oe_esferico,
-        pertoOeCil: os.receita_perto_oe_cilindrico,
-        pertoOeEixo: os.receita_perto_oe_eixo,
-        adicao: os.receita_adicao,
-        medico: os.oftalmologistas?.nome_completo || null
-    }))
+    const groupedMap = new Map<string, PrescriptionSummaryGroup>()
+
+    for (const os of data || []) {
+        const dependenteId = os.dependente_id ?? null
+        const groupId = dependenteId ? `dependente-${dependenteId}` : 'titular'
+        const groupLabel = dependenteId ? os.dependentes?.full_name || 'Dependente' : 'Titular'
+
+        if (!groupedMap.has(groupId)) {
+            groupedMap.set(groupId, {
+                id: groupId,
+                label: groupLabel,
+                dependenteId,
+                receitas: []
+            })
+        }
+
+        groupedMap.get(groupId)?.receitas.push({
+            id: os.id,
+            dataCompra: os.created_at,
+            longeOdEsf: os.receita_longe_od_esferico,
+            longeOdCil: os.receita_longe_od_cilindrico,
+            longeOdEixo: os.receita_longe_od_eixo,
+            longeOeEsf: os.receita_longe_oe_esferico,
+            longeOeCil: os.receita_longe_oe_cilindrico,
+            longeOeEixo: os.receita_longe_oe_eixo,
+            pertoOdEsf: os.receita_perto_od_esferico,
+            pertoOdCil: os.receita_perto_od_cilindrico,
+            pertoOdEixo: os.receita_perto_od_eixo,
+            pertoOeEsf: os.receita_perto_oe_esferico,
+            pertoOeCil: os.receita_perto_oe_cilindrico,
+            pertoOeEixo: os.receita_perto_oe_eixo,
+            adicao: os.receita_adicao,
+            medico: os.oftalmologistas?.nome_completo || null
+        })
+    }
+
+    const titular: PrescriptionSummaryGroup = groupedMap.get('titular') || {
+        id: 'titular',
+        label: 'Titular',
+        dependenteId: null,
+        receitas: []
+    }
+
+    const dependentes = Array.from(groupedMap.values())
+        .filter((group) => group.id !== 'titular')
+        .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'))
+
+    return [titular, ...dependentes]
 }

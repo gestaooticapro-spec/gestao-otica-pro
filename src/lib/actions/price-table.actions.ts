@@ -255,7 +255,7 @@ export async function getStorePriceTableData(
   const tenantOffers = await fetchAllTenantCommercialOffers<TenantOfferRow>(
     supabaseAdmin,
     'id,global_offer_id,display_name',
-    (query) => query.eq('activation_id', activation.id),
+    (query) => query.eq('activation_id', activation.id).eq('is_active', true),
   )
 
   const globalOfferIds: string[] = (tenantOffers || []).map(
@@ -471,7 +471,7 @@ export async function getStorePriceTableAllActiveOffersData(
   const tenantOffers = await fetchAllTenantCommercialOffers<TenantMixedOfferRow>(
     supabaseAdmin,
     'id,activation_id,global_offer_id,display_name',
-    (query) => query.in('activation_id', activationIds),
+    (query) => query.in('activation_id', activationIds).eq('is_active', true),
   )
 
   const globalOfferIds: string[] = [

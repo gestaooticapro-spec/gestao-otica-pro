@@ -2,7 +2,7 @@
 
 import {
     DollarSign, HeartHandshake, Megaphone, Archive, Search,
-    ArrowLeftRight, FileInput, Tag, FileSpreadsheet, ArrowLeft,
+    ArrowLeftRight, FileInput, Tag, FileSpreadsheet, ArrowLeft, Receipt,
     AlertCircle, Gift, Calendar, Package, Clock, ChevronRight
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -49,6 +49,12 @@ export default function DemoLojaVaziaPage() {
                             <button className="group bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex flex-col items-center justify-center gap-1 p-3 shadow-[0_8px_30px_-8px_rgba(239,68,68,0.5)] hover:shadow-[0_12px_40px_-8px_rgba(239,68,68,0.6)] hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 cursor-pointer">
                                 <Megaphone className="w-6 h-6 text-white/90 group-hover:scale-110 transition-transform" strokeWidth={1.5} />
                                 <span className="text-white text-xs font-bold">Cobrança</span>
+                            </button>
+
+                            {/* Nota Fiscal */}
+                            <button className="group bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl flex flex-col items-center justify-center gap-1 p-3 shadow-[0_8px_30px_-8px_rgba(245,158,11,0.5)] hover:shadow-[0_12px_40px_-8px_rgba(245,158,11,0.6)] hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 cursor-pointer">
+                                <Receipt className="w-6 h-6 text-white/90 group-hover:scale-110 transition-transform" strokeWidth={1.5} />
+                                <span className="text-white text-xs font-bold">Nota Fiscal</span>
                             </button>
 
                             {/* Gaveta */}

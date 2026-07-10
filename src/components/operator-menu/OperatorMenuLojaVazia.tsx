@@ -1,16 +1,17 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import {
     DollarSign, HeartHandshake, Megaphone, Archive, Search, Globe, Printer,
     ArrowLeftRight, FileInput, Tag, FileSpreadsheet, ArrowLeft, Clock,
     AlertCircle, Gift, Calendar, Package, ChevronRight, ChevronDown, ChevronUp,
-    MessageCircle, CalendarClock, CalendarCheck, ArrowRight, Send, Users2, UserMinus, Layers3, Receipt
+    MessageCircle, CalendarClock, CalendarCheck, ArrowRight, Send, Users2, UserMinus, Layers3, Receipt,
+    Headset, X
 } from 'lucide-react';
-import { openWhatsApp } from '@/lib/utils/whatsapp';
 import { getWhatsAppLink } from '@/lib/utils';
+import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client';
 import Link from 'next/link';
-import { type AppMode } from '@/lib/app-mode';
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
 
 // Tipos importados (ou definidos localmente se preferir não importar do server action em client component)
 // Para evitar erros de build se o arquivo de actions não exportar tipos para client, definimos aqui compatível.
@@ -63,12 +64,20 @@ interface ClienteInativo {
     ultimaVenda: string;
 }
 
+interface WhatsAppPendencia {
+    id: number;
+    remote_phone: string;
+    state: string;
+    updated_at: string;
+    internal_note?: string;
+}
+
 interface OperatorMenuLojaVaziaProps {
     storeId: number;
     storeName?: string;
     onBack: () => void;
     onNavigate: (route: string) => void;
-    appMode?: AppMode;
+    deliveryDateEnabled?: boolean;
 }
 
 interface RadarData {
@@ -79,24 +88,58 @@ interface RadarData {
     vencimentos: VencimentoProximo[];
     retornos: RetornoCobranca[];
     clientesInativos: ClienteInativo[];
+    whatsAppPendencias: WhatsAppPendencia[];
+    whatsAppHumanOverrides: number;
+    isWhatsAppConnected: boolean;
 }
+
+interface SupportStatus {
+    active: boolean;
+    ticketId?: string;
+    protocol?: string;
+    status?: string;
+    unreadSupportCount: number;
+}
+
+type RadarColor = 'amber' | 'rose' | 'indigo' | 'emerald' | 'pink' | 'orange';
+
+type RadarWidgetProps = {
+    title: string;
+    subtitle: string;
+    icon: React.ComponentType<{ className?: string }>;
+    colorClass: RadarColor;
+    count: number;
+    children: ReactNode;
+    isOpen: boolean;
+    setIsOpen: Dispatch<SetStateAction<boolean>>;
+};
+
+type RadarColorClasses = {
+    bg: string;
+    text: string;
+    border: string;
+};
 
 const formatDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 const formatMoney = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
+import FullscreenToggleButton from '@/components/FullscreenToggleButton';
+import WidgetWhatsAppPendencias from '@/components/consultas/WidgetWhatsAppPendencias';
+import WhatsAppOperatorModal from '@/components/modals/WhatsAppOperatorModal';
 
 export default function OperatorMenuLojaVazia({
     storeId,
     storeName = 'Ótica',
     onBack,
     onNavigate,
-    appMode = 'full'
+    deliveryDateEnabled = true
 }: OperatorMenuLojaVaziaProps) {
     const { preference } = useBackgroundPreference();
-    const isMvp = appMode === 'mvp';
+    const modules = useStoreModules();
 
     const [tooltip, setTooltip] = useState<{ visible: boolean, x: number, y: number, text: string }>({ visible: false, x: 0, y: 0, text: '' });
+    const [sendingWhatsAppKey, setSendingWhatsAppKey] = useState<string | null>(null);
     const hoverTimeout = useRef<NodeJS.Timeout | null>(null);
 
     const handleHover = (e: React.MouseEvent, text: string) => {
@@ -127,9 +170,19 @@ export default function OperatorMenuLojaVazia({
         laboratorio: [],
         vencimentos: [],
         retornos: [],
-        clientesInativos: []
+        clientesInativos: [],
+        whatsAppPendencias: [],
+        whatsAppHumanOverrides: 0,
+        isWhatsAppConnected: false
     });
     const [loading, setLoading] = useState(true);
+    const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
+    const [whatsAppInitialPhone, setWhatsAppInitialPhone] = useState<string | null>(null);
+    const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
+    const [supportIframeUrl, setSupportIframeUrl] = useState<string | null>(null);
+    const [supportLoading, setSupportLoading] = useState(false);
+    const [supportError, setSupportError] = useState<string | null>(null);
+    const [supportStatus, setSupportStatus] = useState<SupportStatus | null>(null);
 
     useEffect(() => {
         if (isMvp) {
@@ -149,7 +202,10 @@ export default function OperatorMenuLojaVazia({
                         laboratorio: data.laboratorio || [],
                         vencimentos: data.vencimentos || [],
                         retornos: data.retornos || [],
-                        clientesInativos: data.clientesInativos || []
+                        clientesInativos: data.clientesInativos || [],
+                        whatsAppPendencias: data.whatsAppPendencias || [],
+                        whatsAppHumanOverrides: data.whatsAppHumanOverrides || 0,
+                        isWhatsAppConnected: data.isWhatsAppConnected === true
                     });
                 }
             } catch (error) {
@@ -161,13 +217,64 @@ export default function OperatorMenuLojaVazia({
         fetchData();
     }, [storeId, isMvp]);
 
-    const handleZapAniversario = (fone: string | null, nome: string) => {
+    useEffect(() => {
+        let cancelled = false;
+
+        async function fetchSupportStatus() {
+            try {
+                const response = await fetch('/api/support/status', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ storeId }),
+                    cache: 'no-store',
+                });
+                const payload = await response.json().catch(() => null);
+
+                if (!cancelled && response.ok && payload) {
+                    setSupportStatus({
+                        active: payload.active === true,
+                        ticketId: typeof payload.ticketId === 'string' ? payload.ticketId : undefined,
+                        protocol: typeof payload.protocol === 'string' ? payload.protocol : undefined,
+                        status: typeof payload.status === 'string' ? payload.status : undefined,
+                        unreadSupportCount: Number(payload.unreadSupportCount || 0),
+                    });
+                }
+            } catch (error) {
+                console.error('[Support] Erro ao buscar status:', error);
+            }
+        }
+
+        fetchSupportStatus();
+        const interval = window.setInterval(fetchSupportStatus, 30000);
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(interval);
+        };
+    }, [storeId, isSupportModalOpen]);
+
+    const handleZapAniversario = async (fone: string | null, nome: string) => {
+        if (sendingWhatsAppKey) return;
         if (!fone) return alert(`${nome.split(' ')[0]} não tem celular cadastrado.`);
         const msg = `Oi ${nome.split(' ')[0]}! Sabemos que esse é um dia especial pra você. Te desejamos toda a felicidade do mundo!`;
-        openWhatsApp(fone, msg);
+        const key = `birthday:${fone}`;
+        setSendingWhatsAppKey(key);
+        try {
+            await sendManualWhatsAppFromClient({
+                storeId,
+                remotePhone: fone,
+                messageText: msg,
+                messageType: 'relationship',
+                source: 'operator_empty_store.birthday_button',
+                metadata: { customerName: nome },
+            });
+        } finally {
+            setSendingWhatsAppKey(null);
+        }
     };
 
-    const handleZapVencimento = (item: VencimentoProximo) => {
+    const handleZapVencimento = async (item: VencimentoProximo) => {
+        if (sendingWhatsAppKey) return;
         if (!item.fone_movel) return alert("Cliente sem celular cadastrado.");
         const primeiroNome = item.customer_name.split(' ')[0];
         const hoje = new Date().toISOString().split('T')[0];
@@ -176,17 +283,97 @@ export default function OperatorMenuLojaVazia({
         const dataFormatada = new Date(item.data_vencimento).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
         const textoDia = venceHoje ? "hoje" : `dia ${dataFormatada}`;
         const msg = `Olá ${primeiroNome}, tudo bem? Aqui é da ${storeName}. Passando apenas para lembrar que sua parcela (${item.numero_parcela}ª) vence ${textoDia}. Se precisar da chave Pix, é só pedir!`;
-        window.open(getWhatsAppLink(item.fone_movel, msg), '_blank');
+        const key = `installment:${item.id}`;
+        setSendingWhatsAppKey(key);
+        try {
+            await sendManualWhatsAppFromClient({
+                storeId,
+                remotePhone: item.fone_movel,
+                messageText: msg,
+                messageType: 'billing_reminder',
+                source: 'operator_empty_store.due_installment_button',
+                metadata: {
+                    installmentId: item.id,
+                    customerName: item.customer_name,
+                    dueDate: item.data_vencimento,
+                    installmentNumber: item.numero_parcela,
+                    amount: item.valor_parcela,
+                },
+            });
+        } finally {
+            setSendingWhatsAppKey(null);
+        }
     };
 
-    const handleZapClienteInativo = (cliente: ClienteInativo) => {
+    const handleZapClienteInativo = async (cliente: ClienteInativo) => {
+        if (sendingWhatsAppKey) return;
         if (!cliente.telefone) return alert(`${cliente.nome.split(' ')[0]} não tem celular cadastrado.`);
         const primeiroNome = cliente.nome.split(' ')[0];
         const msg = `Olá ${primeiroNome}, tudo bem? Aqui é da ${storeName}! Faz um tempinho que não te vemos por aqui. Que tal dar uma passadinha na loja? Temos novidades esperando por você! 😊`;
-        openWhatsApp(cliente.telefone, msg);
+        const key = `inactive:${cliente.telefone}`;
+        setSendingWhatsAppKey(key);
+        try {
+            await sendManualWhatsAppFromClient({
+                storeId,
+                remotePhone: cliente.telefone,
+                messageText: msg,
+                messageType: 'relationship',
+                source: 'operator_empty_store.inactive_customer_button',
+                metadata: {
+                    customerName: cliente.nome,
+                    totalGasto: cliente.totalGasto,
+                    ultimaVenda: cliente.ultimaVenda,
+                },
+            });
+        } finally {
+            setSendingWhatsAppKey(null);
+        }
     };
 
     // --- IDÊNTICO AO COMPONENTE INTERNO REUTILIZÁVEL ---
+    const handleOpenRetornoWhatsApp = (phone: string | null) => {
+        if (!phone) return;
+
+        if (radar.isWhatsAppConnected) {
+            setWhatsAppInitialPhone(phone);
+            setIsWhatsAppModalOpen(true);
+            return;
+        }
+
+        window.open(getWhatsAppLink(phone), '_blank');
+    };
+
+    const handleOpenSupport = async () => {
+        setIsSupportModalOpen(true);
+        setSupportError(null);
+        setSupportStatus((current) => current ? { ...current, unreadSupportCount: 0 } : current);
+        setSupportIframeUrl(null);
+
+        setSupportLoading(true);
+        try {
+            const response = await fetch('/api/support/session', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    storeId,
+                    storeName,
+                    origem: window.location.pathname,
+                }),
+            });
+            const payload = await response.json();
+
+            if (!response.ok || !payload.iframeUrl) {
+                throw new Error(payload.error || 'Nao foi possivel abrir o suporte.');
+            }
+
+            setSupportIframeUrl(payload.iframeUrl);
+        } catch (error) {
+            setSupportError(error instanceof Error ? error.message : 'Nao foi possivel abrir o suporte.');
+        } finally {
+            setSupportLoading(false);
+        }
+    };
+
     const RadarWidget = ({
         title,
         subtitle,
@@ -196,9 +383,9 @@ export default function OperatorMenuLojaVazia({
         children,
         isOpen,
         setIsOpen
-    }: any) => {
+    }: RadarWidgetProps) => {
         // Mapeamento de Cores para Tailwind (evita classes dinâmicas quebradas)
-        const colors: any = {
+        const colors: Record<RadarColor, RadarColorClasses> = {
             amber: { bg: 'bg-amber-500/20', text: 'text-amber-300', border: 'hover:border-amber-500/30' },
             rose: { bg: 'bg-rose-500/20', text: 'text-rose-300', border: 'hover:border-rose-500/30' },
             indigo: { bg: 'bg-indigo-500/20', text: 'text-indigo-300', border: 'hover:border-indigo-500/30' },
@@ -245,90 +432,20 @@ export default function OperatorMenuLojaVazia({
     const [openRetornos, setOpenRetornos] = useState(false);
     const [openLaboratorio, setOpenLaboratorio] = useState(false);
 
-    if (isMvp) {
-        const mvpActions = [
-            {
-                title: 'Caixa',
-                subtitle: 'Movimento Diario',
-                icon: DollarSign,
-                route: `/dashboard/loja/${storeId}/financeiro/caixa`,
-                tone: 'from-amber-600/12 via-orange-900/25 to-slate-900/60 hover:border-amber-400/35',
-            },
-            {
-                title: 'Produtos & Precos',
-                subtitle: 'Cadastros',
-                icon: Tag,
-                route: `/dashboard/loja/${storeId}/cadastros`,
-                tone: 'from-indigo-600/12 via-indigo-900/25 to-slate-900/60 hover:border-indigo-400/35',
-            },
-            {
-                title: 'Historico',
-                subtitle: 'Vendas',
-                icon: FileSpreadsheet,
-                route: `/dashboard/loja/${storeId}/vendas?mode=historico`,
-                tone: 'from-slate-600/12 via-slate-900/25 to-slate-900/60 hover:border-slate-400/35',
-            },
-        ];
-
-        return (
-            <div className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-950 font-sans transition-colors duration-500">
-                <div className="absolute top-6 right-6 z-50">
-                    <BackgroundToggle />
-                </div>
-
-                <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
-                    <div className="absolute inset-0 bg-[url('/lojavazia.png')] bg-cover bg-center" />
-                    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-                </div>
-
-                <div className="relative z-10 w-full max-w-4xl">
-                    <div className="mb-8 text-center animate-in slide-in-from-top-5 duration-700">
-                        <h1 className="text-4xl font-black text-white drop-shadow-lg tracking-tight mb-2">
-                            Gestao & Interno
-                        </h1>
-                        <p className="text-slate-400 text-sm font-medium uppercase tracking-[0.2em] bg-white/5 px-4 py-1 rounded-full border border-white/5 inline-block">
-                            MVP
-                        </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                        {mvpActions.map((item) => {
-                            const Icon = item.icon;
-                            return (
-                                <button
-                                    key={item.title}
-                                    onClick={() => onNavigate(item.route)}
-                                    className={`group bg-gradient-to-br ${item.tone} rounded-xl flex items-center gap-4 px-5 py-5 border border-white/10 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30`}
-                                >
-                                    <div className="p-2.5 rounded-lg bg-white/10 text-slate-200 group-hover:bg-white/20 transition-colors">
-                                        <Icon className="w-6 h-6" strokeWidth={1.5} />
-                                    </div>
-                                    <div className="text-left">
-                                        <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">{item.title}</span>
-                                        <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-slate-300 transition-colors">{item.subtitle}</span>
-                                    </div>
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                <button
-                    onClick={onBack}
-                    className="fixed flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all duration-300 border border-white/5 hover:border-white/20 backdrop-blur-sm z-20 group"
-                    style={{ left: 'max(1rem, env(safe-area-inset-left))', bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
-                >
-                    <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-                    <span className="text-xs font-bold uppercase tracking-wider">Voltar</span>
-                </button>
-            </div>
-        );
-    }
+    const supportUnreadCount = supportStatus?.unreadSupportCount || 0;
+    const supportHasUnread = supportUnreadCount > 0;
+    const supportHasActiveTicket = supportStatus?.active === true;
+    const supportButtonClass = supportHasUnread
+        ? 'fixed flex items-center gap-2 px-4 py-2 rounded-full bg-amber-400/20 hover:bg-amber-400/30 text-amber-100 hover:text-white transition-all duration-300 border border-amber-300/40 backdrop-blur-sm z-20 group shadow-[0_0_24px_rgba(251,191,36,0.25)] animate-pulse'
+        : supportHasActiveTicket
+            ? 'fixed flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-200 hover:text-white transition-all duration-300 border border-emerald-300/25 backdrop-blur-sm z-20 group'
+            : 'fixed flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all duration-300 border border-white/5 hover:border-white/20 backdrop-blur-sm z-20 group';
 
     return (
         <div className="min-h-screen relative flex flex-col items-center p-6 overflow-hidden bg-slate-950 font-sans transition-colors duration-500">
             {/* Toggle de Fundo */}
-            <div className="absolute top-6 right-6 z-50">
+            <div className="absolute top-6 right-6 z-50 flex items-center gap-3">
+                <FullscreenToggleButton className="right-20 top-6" />
                 <BackgroundToggle />
             </div>
 
@@ -382,7 +499,7 @@ export default function OperatorMenuLojaVazia({
                                             </div>
                                         </button>
                                         {/* Cobrança */}
-                                        <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/cobranca`)} onMouseEnter={(e) => handleHover(e, "Acompanhe clientes com parcelas em atraso na loja. Filtre por período, envie mensagens via WhatsApp com um clique e registre promessas de pagamento para acompanhamento futuro.")} onMouseMove={handleMove} onMouseLeave={handleLeave} className="group bg-gradient-to-br from-amber-600/12 via-orange-900/25 to-slate-900/60 hover:from-amber-500/22 hover:via-orange-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-amber-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(245,158,11,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40">
+                                        {modules.installments && <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/cobranca`)} onMouseEnter={(e) => handleHover(e, "Acompanhe clientes com parcelas em atraso na loja. Filtre por período, envie mensagens via WhatsApp com um clique e registre promessas de pagamento para acompanhamento futuro.")} onMouseMove={handleMove} onMouseLeave={handleLeave} className="group bg-gradient-to-br from-amber-600/12 via-orange-900/25 to-slate-900/60 hover:from-amber-500/22 hover:via-orange-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-amber-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(245,158,11,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40">
                                             <div className="p-2.5 rounded-lg bg-amber-500/20 text-amber-300 group-hover:bg-amber-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(245,158,11,0.2)]">
                                                 <Megaphone className="w-6 h-6" strokeWidth={1.5} />
                                             </div>
@@ -390,17 +507,17 @@ export default function OperatorMenuLojaVazia({
                                                 <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Cobrança</span>
                                                 <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-amber-200/70 transition-colors">Inadimplência</span>
                                             </div>
-                                        </button>
-                                        {/* Fiscal */}
-                                        <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/fiscal`)} onMouseEnter={(e) => handleHover(e, "Consulte e gerencie as Notas Fiscais de Consumidor (NFC-e) emitidas pela loja. Visualize autorizadas, canceladas e erros, e exporte o pacote mensal para o contador.")} onMouseMove={handleMove} onMouseLeave={handleLeave} className="group bg-gradient-to-br from-amber-600/12 via-orange-900/25 to-slate-900/60 hover:from-amber-500/22 hover:via-orange-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-amber-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(245,158,11,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40">
+                                        </button>}
+                                        {/* Nota Fiscal */}
+                                        {modules.fiscal && <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/fiscal`)} onMouseEnter={(e) => handleHover(e, "Consulte e gerencie as notas fiscais emitidas pela loja, incluindo NF-e e NFC-e. Visualize autorizadas, canceladas e erros, e exporte o pacote mensal para o contador.")} onMouseMove={handleMove} onMouseLeave={handleLeave} className="group bg-gradient-to-br from-amber-600/12 via-orange-900/25 to-slate-900/60 hover:from-amber-500/22 hover:via-orange-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-amber-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(245,158,11,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40">
                                             <div className="p-2.5 rounded-lg bg-amber-500/20 text-amber-300 group-hover:bg-amber-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(245,158,11,0.2)]">
                                                 <Receipt className="w-6 h-6" strokeWidth={1.5} />
                                             </div>
                                             <div className="text-left">
-                                                <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Fiscal</span>
-                                                <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-amber-200/70 transition-colors">NFC-e</span>
+                                                <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Nota Fiscal</span>
+                                                <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-amber-200/70 transition-colors">NF-e e NFC-e</span>
                                             </div>
-                                        </button>
+                                        </button>}
                                     </div>
                                 </div>
 
@@ -469,7 +586,7 @@ export default function OperatorMenuLojaVazia({
                                         </div>
                                     </button>
                                     {/* Tabelas Globais */}
-                                    <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/catalogo-global`)} onMouseEnter={(e) => handleHover(e, "Ative uma tabela global de laboratório para esta loja. Aqui você escolhe a versão vigente, sincroniza ofertas e tratamentos e prepara a base para recomendação por IA e consulta visual em tabela.")} onMouseMove={handleMove} onMouseLeave={handleLeave} className="group bg-gradient-to-br from-cyan-600/12 via-cyan-900/25 to-slate-900/60 hover:from-cyan-500/22 hover:via-cyan-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-cyan-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(34,211,238,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/40">
+                                    {modules.globalTables && <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/catalogo-global`)} onMouseEnter={(e) => handleHover(e, "Ative uma tabela global de laboratório para esta loja. Aqui você escolhe a versão vigente, sincroniza ofertas e tratamentos e prepara a base para recomendação por IA e consulta visual em tabela.")} onMouseMove={handleMove} onMouseLeave={handleLeave} className="group bg-gradient-to-br from-cyan-600/12 via-cyan-900/25 to-slate-900/60 hover:from-cyan-500/22 hover:via-cyan-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-cyan-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(34,211,238,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/40">
                                         <div className="p-2.5 rounded-lg bg-cyan-500/20 text-cyan-300 group-hover:bg-cyan-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(34,211,238,0.2)]">
                                             <Layers3 className="w-6 h-6" strokeWidth={1.5} />
                                         </div>
@@ -477,7 +594,7 @@ export default function OperatorMenuLojaVazia({
                                             <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Tabelas Globais</span>
                                             <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-cyan-200/70 transition-colors">Laboratórios</span>
                                         </div>
-                                    </button>
+                                    </button>}
                                     {/* Lentes */}
                                     <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/laboratorio`)} onMouseEnter={(e) => handleHover(e, "Acompanhamento passo a passo das ordens de serviço. Veja quais óculos estão aguardando bloco, quais já estão na surfaçagem, na montagem ou prontos para entrega.")} onMouseMove={handleMove} onMouseLeave={handleLeave} className="group bg-gradient-to-br from-blue-600/12 via-blue-900/25 to-slate-900/60 hover:from-blue-500/22 hover:via-blue-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-blue-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(59,130,246,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40">
                                         <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
@@ -499,7 +616,7 @@ export default function OperatorMenuLojaVazia({
                                         </div>
                                     </button>
                                     {/* Etiquetas */}
-                                    <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/estoque/etiquetas`)} onMouseEnter={(e) => handleHover(e, "Impressão em massa de etiquetas de código de barras para as armações. Facilita muito a vida na hora do inventário e na agilidade de passar vendas no balcão.")} onMouseMove={handleMove} onMouseLeave={handleLeave} className="group bg-gradient-to-br from-blue-600/12 via-blue-900/25 to-slate-900/60 hover:from-blue-500/22 hover:via-blue-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-blue-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(59,130,246,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40">
+                                    {modules.labels && <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/estoque/etiquetas`)} onMouseEnter={(e) => handleHover(e, "Impressão em massa de etiquetas de código de barras para as armações. Facilita muito a vida na hora do inventário e na agilidade de passar vendas no balcão.")} onMouseMove={handleMove} onMouseLeave={handleLeave} className="group bg-gradient-to-br from-blue-600/12 via-blue-900/25 to-slate-900/60 hover:from-blue-500/22 hover:via-blue-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-blue-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(59,130,246,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40">
                                         <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(59,130,246,0.2)]">
                                             <Printer className="w-6 h-6" strokeWidth={1.5} />
                                         </div>
@@ -507,7 +624,7 @@ export default function OperatorMenuLojaVazia({
                                             <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Etiquetas</span>
                                             <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-blue-200/70 transition-colors">Código de Barras</span>
                                         </div>
-                                    </button>
+                                    </button>}
                                 </div>
                             </div>
 
@@ -519,7 +636,7 @@ export default function OperatorMenuLojaVazia({
                                 </h2>
                                 <div className="flex flex-col gap-3">
                                     {/* Pós-Venda */}
-                                    <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/pos-venda`)} onMouseEnter={(e) => handleHover(e, "O pós-vendas verifica quem retirou óculos recentemente. Envie mensagens de WhatsApp para acompanhar a adaptação e classifique o atendimento com base no que o cliente disser.")} onMouseMove={handleMove} onMouseLeave={handleLeave} className="group bg-gradient-to-br from-rose-600/12 via-rose-900/25 to-slate-900/60 hover:from-rose-500/22 hover:via-rose-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-rose-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(244,63,94,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40">
+                                    {modules.postSales && <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/pos-venda`)} onMouseEnter={(e) => handleHover(e, "O pós-vendas verifica quem retirou óculos recentemente. Envie mensagens de WhatsApp para acompanhar a adaptação e classifique o atendimento com base no que o cliente disser.")} onMouseMove={handleMove} onMouseLeave={handleLeave} className="group bg-gradient-to-br from-rose-600/12 via-rose-900/25 to-slate-900/60 hover:from-rose-500/22 hover:via-rose-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-rose-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(244,63,94,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40">
                                         <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
                                             <HeartHandshake className="w-6 h-6" strokeWidth={1.5} />
                                         </div>
@@ -527,7 +644,7 @@ export default function OperatorMenuLojaVazia({
                                             <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Pós-Venda</span>
                                             <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">RELACIONAMENTO</span>
                                         </div>
-                                    </button>
+                                    </button>}
                                     {/* Histórico */}
                                     <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/vendas?mode=historico`)} onMouseEnter={(e) => handleHover(e, "Acesse rapidamente todas as vendas já realizadas e faturadas. Re-imprima recibos, consulte antigas receitas, pacotes vendidos e datas de garantia passadas.")} onMouseMove={handleMove} onMouseLeave={handleLeave} className="group bg-gradient-to-br from-rose-600/12 via-rose-900/25 to-slate-900/60 hover:from-rose-500/22 hover:via-rose-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-rose-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(244,63,94,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40">
                                         <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
@@ -568,6 +685,16 @@ export default function OperatorMenuLojaVazia({
                                             <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">Gerenciar</span>
                                         </div>
                                     </button>
+                                    {/* Parcelamentos */}
+                                    {modules.installments && <button onClick={() => onNavigate(`/dashboard/loja/${storeId}/financeiro/parcelas`)} onMouseEnter={(e) => handleHover(e, "Acompanhe e pesquise todas as parcelas e carnês gerados pela loja.")} onMouseMove={handleMove} onMouseLeave={handleLeave} className="group bg-gradient-to-br from-rose-600/12 via-rose-900/25 to-slate-900/60 hover:from-rose-500/22 hover:via-rose-800/35 hover:to-slate-900/70 rounded-xl flex items-center gap-4 px-4 py-4 border border-white/10 hover:border-rose-400/35 transition-all duration-300 cursor-pointer backdrop-blur-md hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(244,63,94,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40">
+                                        <div className="p-2.5 rounded-lg bg-rose-500/20 text-rose-300 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-[0_0_15px_rgba(244,63,94,0.2)]">
+                                            <CalendarCheck className="w-6 h-6" strokeWidth={1.5} />
+                                        </div>
+                                        <div className="text-left">
+                                            <span className="text-slate-200 text-base font-bold block group-hover:text-white transition-colors">Parcelamentos</span>
+                                            <span className="text-slate-500 text-[10px] uppercase font-bold group-hover:text-rose-200/70 transition-colors">Visualizar</span>
+                                        </div>
+                                    </button>}
                                 </div>
                             </div>
                         </div>
@@ -586,8 +713,20 @@ export default function OperatorMenuLojaVazia({
                             </h2>
 
                             <div className="space-y-4">
+                                {/* WHATSAPP PENDÊNCIAS */}
+                                {radar.isWhatsAppConnected && (
+                                    <WidgetWhatsAppPendencias
+                                        pendencias={radar.whatsAppPendencias}
+                                        humanOverrides={radar.whatsAppHumanOverrides}
+                                        onOpen={() => {
+                                            setWhatsAppInitialPhone(null);
+                                            setIsWhatsAppModalOpen(true);
+                                        }}
+                                    />
+                                )}
+                                
                                 {/* VENCIMENTOS */}
-                                <RadarWidget
+                                {modules.installments && <RadarWidget
                                     title="Vencimentos"
                                     subtitle="Próximos 3 Dias"
                                     icon={CalendarClock}
@@ -609,14 +748,15 @@ export default function OperatorMenuLojaVazia({
                                                 </div>
                                                 <button
                                                     onClick={() => handleZapVencimento(item)}
-                                                    className="w-8 h-8 rounded-full bg-green-500/20 text-green-400 hover:bg-green-500 hover:text-white flex items-center justify-center transition-all"
+                                                    disabled={sendingWhatsAppKey === `installment:${item.id}`}
+                                                    className="w-8 h-8 rounded-full bg-green-500/20 text-green-400 hover:bg-green-500 hover:text-white flex items-center justify-center transition-all disabled:opacity-50"
                                                 >
                                                     <MessageCircle className="w-4 h-4" />
                                                 </button>
                                             </div>
                                         ))
                                     )}
-                                </RadarWidget>
+                                </RadarWidget>}
 
                                 {/* ANIVERSARIANTES */}
                                 <RadarWidget
@@ -639,7 +779,8 @@ export default function OperatorMenuLojaVazia({
                                                 </div>
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleZapAniversario(c.fone, c.nome); }}
-                                                    className="w-8 h-8 rounded-full bg-green-500/20 text-green-400 hover:bg-green-500 hover:text-white flex items-center justify-center transition-all"
+                                                    disabled={sendingWhatsAppKey === `birthday:${c.fone}`}
+                                                    className="w-8 h-8 rounded-full bg-green-500/20 text-green-400 hover:bg-green-500 hover:text-white flex items-center justify-center transition-all disabled:opacity-50"
                                                 >
                                                     <MessageCircle className="w-4 h-4" />
                                                 </button>
@@ -650,7 +791,7 @@ export default function OperatorMenuLojaVazia({
 
 
                                 {/* RETORNOS DE COBRANÇA */}
-                                <RadarWidget
+                                {modules.installments && <RadarWidget
                                     title="Retornos Cobrança"
                                     subtitle="Agendados Hoje"
                                     icon={MessageCircle}
@@ -671,7 +812,7 @@ export default function OperatorMenuLojaVazia({
                                                     </p>
                                                 </div>
                                                 <button
-                                                    onClick={() => item.fone_movel && window.open(getWhatsAppLink(item.fone_movel), '_blank')}
+                                                    onClick={() => handleOpenRetornoWhatsApp(item.fone_movel)}
                                                     className="w-8 h-8 shrink-0 rounded-full bg-orange-500/20 text-orange-400 hover:bg-orange-500 hover:text-white flex items-center justify-center transition-all"
                                                 >
                                                     <Send className="w-4 h-4" />
@@ -679,13 +820,13 @@ export default function OperatorMenuLojaVazia({
                                             </div>
                                         ))
                                     )}
-                                </RadarWidget>
+                                </RadarWidget>}
 
 
 
                                 {/* ENTREGAS */}
-                                <RadarWidget
-                                    title="Entregar Hoje"
+                                {deliveryDateEnabled && <RadarWidget
+                                    title="Entregas Próximas"
                                     subtitle="Gaveta"
                                     icon={Package}
                                     colorClass="emerald"
@@ -718,7 +859,7 @@ export default function OperatorMenuLojaVazia({
                                             );
                                         })
                                     )}
-                                </RadarWidget>
+                                </RadarWidget>}
 
                                 {/* LENTES PARADAS */}
                                 <RadarWidget
@@ -769,6 +910,64 @@ export default function OperatorMenuLojaVazia({
                 <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
                 <span className="text-xs font-bold uppercase tracking-wider">Voltar</span>
             </button>
+
+            <button
+                onClick={handleOpenSupport}
+                className={supportButtonClass}
+                style={{ right: 'max(1rem, env(safe-area-inset-right))', bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+                title={supportHasUnread ? 'Suporte respondeu' : supportHasActiveTicket ? `Chamado ${supportStatus?.protocol || 'em andamento'}` : 'Suporte técnico'}
+            >
+                <Headset className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                <span className="text-xs font-bold uppercase tracking-wider">Suporte</span>
+                {supportHasUnread && (
+                    <span className="ml-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-300 px-1.5 text-[10px] font-black text-slate-950 shadow-lg">
+                        {supportUnreadCount > 9 ? '9+' : supportUnreadCount}
+                    </span>
+                )}
+            </button>
+
+            {isSupportModalOpen && (
+                <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+                    <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-[0_24px_80px_rgba(0,0,0,0.65)]">
+                        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                            <div className="flex items-center gap-2 text-slate-200">
+                                <Headset className="h-4 w-4 text-amber-300" />
+                                <span className="text-xs font-black uppercase tracking-wider">Suporte técnico</span>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setIsSupportModalOpen(false);
+                                    setSupportIframeUrl(null);
+                                    setSupportError(null);
+                                }}
+                                className="rounded-full p-2 text-slate-400 transition hover:bg-white/10 hover:text-white"
+                                title="Fechar suporte"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+                        <div className="h-[520px] bg-slate-900">
+                            {supportLoading && (
+                                <div className="flex h-full items-center justify-center text-sm font-bold text-slate-400">
+                                    Abrindo suporte...
+                                </div>
+                            )}
+                            {supportError && (
+                                <div className="flex h-full items-center justify-center px-6 text-center text-sm font-bold text-rose-300">
+                                    {supportError}
+                                </div>
+                            )}
+                            {supportIframeUrl && !supportLoading && !supportError && (
+                                <iframe
+                                    src={supportIframeUrl}
+                                    title="Suporte técnico"
+                                    className="h-full w-full border-0"
+                                />
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
             {/* Tooltip personalizado */}
             {tooltip.visible && (
                 <div
@@ -777,6 +976,17 @@ export default function OperatorMenuLojaVazia({
                 >
                     {tooltip.text}
                 </div>
+            )}
+            {radar.isWhatsAppConnected && (
+                <WhatsAppOperatorModal
+                    isOpen={isWhatsAppModalOpen}
+                    onClose={() => {
+                        setIsWhatsAppModalOpen(false);
+                        setWhatsAppInitialPhone(null);
+                    }}
+                    storeId={storeId}
+                    initialPhone={whatsAppInitialPhone}
+                />
             )}
         </div >
     );

@@ -3,6 +3,204 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { format, parseISO, startOfDay, endOfDay, addDays, getDaysInMonth, startOfMonth, endOfMonth, isSameDay } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
+
+export type EmployeeEvaluationMetric = {
+  employeeId: number | null
+  employeeName: string
+  evaluations: number
+  linkedSales: number
+  closedSales: number
+  openRecent: number
+  research: number
+  lost: number
+  upgrade: number
+  downgrade: number
+  sameRange: number
+  comparedSales: number
+  soldValue: number
+  suggestedValue: number
+  comparedSoldValue: number
+  conversionRate: number
+  linkedRate: number
+  averageSoldTicket: number
+  averageDelta: number
+}
+
+export type EmployeeEvaluationReport = {
+  totals: EmployeeEvaluationMetric
+  employees: EmployeeEvaluationMetric[]
+}
+
+function emptyEmployeeEvaluationMetric(employeeId: number | null, employeeName: string): EmployeeEvaluationMetric {
+  return {
+    employeeId,
+    employeeName,
+    evaluations: 0,
+    linkedSales: 0,
+    closedSales: 0,
+    openRecent: 0,
+    research: 0,
+    lost: 0,
+    upgrade: 0,
+    downgrade: 0,
+    sameRange: 0,
+    comparedSales: 0,
+    soldValue: 0,
+    suggestedValue: 0,
+    comparedSoldValue: 0,
+    conversionRate: 0,
+    linkedRate: 0,
+    averageSoldTicket: 0,
+    averageDelta: 0,
+  }
+}
+
+function extractSuggestedPrice(recommendedItems: unknown): number | null {
+  const items = Array.isArray(recommendedItems) ? recommendedItems : []
+  const first = items[0] as Record<string, unknown> | undefined
+  const price = Number(first?.final_price ?? first?.finalPrice ?? first?.price_sell ?? 0)
+  return Number.isFinite(price) && price > 0 ? price : null
+}
+
+function finishEmployeeEvaluationMetric(metric: EmployeeEvaluationMetric): EmployeeEvaluationMetric {
+  return {
+    ...metric,
+    conversionRate: metric.evaluations > 0 ? (metric.closedSales / metric.evaluations) * 100 : 0,
+    linkedRate: metric.evaluations > 0 ? (metric.linkedSales / metric.evaluations) * 100 : 0,
+    averageSoldTicket: metric.closedSales > 0 ? metric.soldValue / metric.closedSales : 0,
+    averageDelta: metric.comparedSales > 0 ? (metric.comparedSoldValue - metric.suggestedValue) / metric.comparedSales : 0,
+  }
+}
+
+export async function getEmployeeEvaluationReport(
+  storeId: number,
+  dataInicio: string,
+  dataFim: string
+): Promise<EmployeeEvaluationReport> {
+  const supabase = createAdminClient()
+  const inicioIso = `${dataInicio}T03:00:00.000Z`
+  const fimDate = new Date(`${dataFim}T03:00:00.000Z`)
+  fimDate.setUTCDate(fimDate.getUTCDate() + 1)
+  fimDate.setUTCMilliseconds(fimDate.getUTCMilliseconds() - 1)
+  const fimIso = fimDate.toISOString()
+
+  const { data: evaluations, error } = await (supabase.from('optical_evaluations') as any)
+    .select('id, employee_id, updated_at, outcome_status, exported_venda_id, recommended_items, employees(full_name)')
+    .eq('store_id', storeId)
+    .gte('created_at', inicioIso)
+    .lte('created_at', fimIso)
+    .order('created_at', { ascending: false })
+
+  if (error) throw new Error(error.message)
+
+  const rows = (evaluations || []) as any[]
+  const vendaIds = rows
+    .map((row) => Number(row.exported_venda_id || 0))
+    .filter((id) => Number.isFinite(id) && id > 0)
+
+  const [vendasRes, itensRes] = vendaIds.length > 0
+    ? await Promise.all([
+        supabase.from('vendas').select('id, status, valor_final').in('id', vendaIds),
+        supabase.from('venda_itens').select('venda_id, item_tipo, valor_total_item').in('venda_id', vendaIds),
+      ])
+    : [{ data: [], error: null }, { data: [], error: null }]
+
+  if (vendasRes.error) throw new Error(vendasRes.error.message)
+  if (itensRes.error) throw new Error(itensRes.error.message)
+
+  const vendasById = new Map<number, any>()
+  ;(vendasRes.data || []).forEach((venda: any) => vendasById.set(Number(venda.id), venda))
+
+  const lensValueByVenda = new Map<number, number>()
+  ;(itensRes.data || []).forEach((item: any) => {
+    const vendaId = Number(item.venda_id)
+    const tipo = String(item.item_tipo || '').toLowerCase()
+    if (!tipo.includes('lente')) return
+    lensValueByVenda.set(vendaId, (lensValueByVenda.get(vendaId) || 0) + Number(item.valor_total_item || 0))
+  })
+
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - 7)
+
+  const byEmployee = new Map<string, EmployeeEvaluationMetric>()
+  const totals = emptyEmployeeEvaluationMetric(null, 'Total')
+
+  for (const row of rows) {
+    const employeeId = row.employee_id == null ? null : Number(row.employee_id)
+    const key = employeeId == null ? 'none' : String(employeeId)
+    const employeeName = row.employees?.full_name || 'Sem funcionario'
+    const metric = byEmployee.get(key) || emptyEmployeeEvaluationMetric(employeeId, employeeName)
+    const vendaId = Number(row.exported_venda_id || 0)
+    const venda = vendaId > 0 ? vendasById.get(vendaId) : null
+    const isClosed = row.outcome_status === 'venda_fechada' || venda?.status === 'Fechada'
+    const isLost = ['perdido_preco', 'perdido_produto', 'perdido_prazo'].includes(row.outcome_status)
+    const isOpenRecent = !row.exported_venda_id && !row.outcome_status && new Date(row.updated_at) >= cutoff
+
+    metric.evaluations += 1
+    totals.evaluations += 1
+
+    if (vendaId > 0) {
+      metric.linkedSales += 1
+      totals.linkedSales += 1
+    }
+
+    if (isClosed) {
+      const soldValue = Number(venda?.valor_final || 0)
+      metric.closedSales += 1
+      metric.soldValue += soldValue
+      totals.closedSales += 1
+      totals.soldValue += soldValue
+    }
+
+    if (isOpenRecent) {
+      metric.openRecent += 1
+      totals.openRecent += 1
+    }
+
+    if (row.outcome_status === 'cliente_pesquisa') {
+      metric.research += 1
+      totals.research += 1
+    }
+
+    if (isLost) {
+      metric.lost += 1
+      totals.lost += 1
+    }
+
+    const suggestedPrice = extractSuggestedPrice(row.recommended_items)
+    const soldLensValue = vendaId > 0 ? lensValueByVenda.get(vendaId) || 0 : 0
+    if (suggestedPrice && soldLensValue > 0) {
+      const deltaRatio = (soldLensValue - suggestedPrice) / suggestedPrice
+      metric.comparedSales += 1
+      metric.suggestedValue += suggestedPrice
+      metric.comparedSoldValue += soldLensValue
+      totals.comparedSales += 1
+      totals.suggestedValue += suggestedPrice
+      totals.comparedSoldValue += soldLensValue
+
+      if (deltaRatio > 0.05) {
+        metric.upgrade += 1
+        totals.upgrade += 1
+      } else if (deltaRatio < -0.05) {
+        metric.downgrade += 1
+        totals.downgrade += 1
+      } else {
+        metric.sameRange += 1
+        totals.sameRange += 1
+      }
+    }
+
+    byEmployee.set(key, metric)
+  }
+
+  return {
+    totals: finishEmployeeEvaluationMetric(totals),
+    employees: Array.from(byEmployee.values())
+      .map(finishEmployeeEvaluationMetric)
+      .sort((a, b) => b.evaluations - a.evaluations || b.closedSales - a.closedSales),
+  }
+}
 
 export interface VendaRelatorioItem {
   id: number
@@ -121,6 +319,7 @@ export interface DailyFlowRow {
   date: Date;
   diaSemana: string;
   diaMes: string;
+  reportMode?: 'installments' | 'cash';
 
   // Entradas reais (Recibos / Pagamentos realizados no dia)
   entradasTotais: number;
@@ -131,18 +330,146 @@ export interface DailyFlowRow {
   vendaParcelada: number; // Valor Financiado na loja
   vendaTotal: number; // Garantida + Parcelada
   vendaAcumulada: number;
+  valorInicialGaveta?: number;
+  valorFinalGaveta?: number;
+  totalDinheiro?: number;
+  totalMaquina?: number;
+  totalDiario?: number;
+  diarioAcumulado?: number;
 }
 
 export async function getDailyFlowReport(storeId: number, monthStr: string, yearStr: string): Promise<DailyFlowRow[]> {
   const supabase = createAdminClient()
   const month = parseInt(monthStr) - 1; // 0-indexed para date-fns
   const year = parseInt(yearStr);
+  const installmentsEnabled = await isStoreModuleEnabledForStore(storeId, 'installments')
 
   const startDate = startOfMonth(new Date(year, month));
   const endDate = endOfMonth(startDate);
 
   const startDateStr = startOfDay(startDate).toISOString();
   const endDateStr = endOfDay(endDate).toISOString();
+
+  if (!installmentsEnabled) {
+    const { data: caixasRaw, error: caixasError } = await (supabase.from('caixa_diario') as any)
+      .select('id, data_abertura, status, saldo_inicial, saldo_final')
+      .eq('store_id', storeId)
+      .gte('data_abertura', startDateStr)
+      .lte('data_abertura', endDateStr)
+      .order('data_abertura', { ascending: true });
+
+    if (caixasError) throw new Error(caixasError.message);
+
+    const caixas = (caixasRaw || []) as Array<{
+      id: number;
+      data_abertura: string;
+      status: string;
+      saldo_inicial: number | null;
+      saldo_final: number | null;
+    }>;
+
+    const caixaIds = caixas.map((caixa) => caixa.id);
+
+    const [{ data: pagamentosRaw, error: pagError }, { data: movimentosRaw, error: movError }] = await Promise.all([
+      (supabase.from('pagamentos') as any)
+        .select('created_at, valor_pago, forma_pagamento')
+        .eq('store_id', storeId)
+        .gte('created_at', startDateStr)
+        .lte('created_at', endDateStr),
+      caixaIds.length > 0
+        ? (supabase.from('caixa_movimentacoes') as any)
+          .select('caixa_id, tipo, valor')
+          .in('caixa_id', caixaIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    if (pagError) throw new Error(pagError.message);
+    if (movError) throw new Error(movError.message);
+
+    const pagamentos = (pagamentosRaw || []) as Array<{
+      created_at: string;
+      valor_pago: number;
+      forma_pagamento: string | null;
+    }>;
+
+    const movimentos = (movimentosRaw || []) as Array<{
+      caixa_id: number;
+      tipo: 'Entrada' | 'Saida';
+      valor: number;
+    }>;
+
+    const caixaPorDia = new Map<string, typeof caixas[number]>();
+    caixas.forEach((caixa) => {
+      caixaPorDia.set(format(parseISO(caixa.data_abertura), 'yyyy-MM-dd'), caixa);
+    });
+
+    const movimentosPorCaixa = new Map<number, { entradas: number; saidas: number }>();
+    movimentos.forEach((movimento) => {
+      const atual = movimentosPorCaixa.get(movimento.caixa_id) || { entradas: 0, saidas: 0 };
+      const valor = Number(movimento.valor || 0);
+      if (movimento.tipo === 'Entrada') atual.entradas += valor;
+      else atual.saidas += valor;
+      movimentosPorCaixa.set(movimento.caixa_id, atual);
+    });
+
+    const pagamentosPorDia = new Map<string, { dinheiro: number; maquina: number; outros: number }>();
+    pagamentos.forEach((pagamento) => {
+      const dia = format(parseISO(pagamento.created_at), 'yyyy-MM-dd');
+      const atual = pagamentosPorDia.get(dia) || { dinheiro: 0, maquina: 0, outros: 0 };
+      const valor = Number(pagamento.valor_pago || 0);
+      const forma = String(pagamento.forma_pagamento || '').toLowerCase();
+
+      if (forma.includes('dinheiro')) atual.dinheiro += valor;
+      else if (forma.includes('pix') || forma.includes('cart')) atual.maquina += valor;
+      else atual.outros += valor;
+
+      pagamentosPorDia.set(dia, atual);
+    });
+
+    const daysInMonth = getDaysInMonth(startDate);
+    const reportData: DailyFlowRow[] = [];
+    let diarioAcumulado = 0;
+
+    for (let i = 1; i <= daysInMonth; i++) {
+      const currentDate = new Date(year, month, i);
+      const dayString = format(currentDate, 'yyyy-MM-dd');
+      const caixa = caixaPorDia.get(dayString);
+      const pagamentosDoDia = pagamentosPorDia.get(dayString) || { dinheiro: 0, maquina: 0, outros: 0 };
+      const movimentosDoDia = caixa ? (movimentosPorCaixa.get(caixa.id) || { entradas: 0, saidas: 0 }) : { entradas: 0, saidas: 0 };
+
+      const valorInicialGaveta = Number(caixa?.saldo_inicial || 0);
+      const totalDinheiro = pagamentosDoDia.dinheiro;
+      const totalMaquina = pagamentosDoDia.maquina;
+      const totalDiario = totalDinheiro + totalMaquina + pagamentosDoDia.outros;
+      const valorFinalEsperado = valorInicialGaveta + totalDinheiro + movimentosDoDia.entradas - movimentosDoDia.saidas;
+      const valorFinalGaveta = caixa?.status === 'Fechado' && caixa.saldo_final !== null
+        ? Number(caixa.saldo_final)
+        : valorFinalEsperado;
+
+      diarioAcumulado += totalDiario;
+
+      reportData.push({
+        date: currentDate,
+        diaMes: format(currentDate, 'dd/MM'),
+        diaSemana: format(currentDate, 'EEEE', { locale: ptBR }),
+        reportMode: 'cash',
+        entradasTotais: 0,
+        entradasAcumuladas: 0,
+        vendaGarantida: 0,
+        vendaParcelada: 0,
+        vendaTotal: 0,
+        vendaAcumulada: 0,
+        valorInicialGaveta,
+        valorFinalGaveta,
+        totalDinheiro,
+        totalMaquina,
+        totalDiario,
+        diarioAcumulado,
+      });
+    }
+
+    return reportData;
+  }
 
   // 1. Buscar Pagamentos (Entradas reais) no período
   const { data: pagamentosRaw, error: pagError } = await (supabase.from('pagamentos') as any)
@@ -224,6 +551,7 @@ export async function getDailyFlowReport(storeId: number, monthStr: string, year
       date: currentDate,
       diaMes: format(currentDate, 'dd/MM'),
       diaSemana: format(currentDate, 'EEEE', { locale: ptBR }),
+      reportMode: 'installments',
       entradasTotais,
       entradasAcumuladas,
       vendaGarantida,
@@ -237,6 +565,10 @@ export async function getDailyFlowReport(storeId: number, monthStr: string, year
 }
 
 export async function getParcelamentoMetrics(storeId: number) {
+  if (!(await isStoreModuleEnabledForStore(storeId, 'installments'))) {
+    return { vincendasValor: 0, vincendasQtd: 0, atrasadasValor: 0, atrasadasQtd: 0, perdidasValor: 0, perdidasQtd: 0, clientesSpc: 0 }
+  }
+
   const supabase = createAdminClient();
   const todayStr = startOfDay(new Date()).toISOString();
   const ninetyDaysAgoStr = startOfDay(addDays(new Date(), -90)).toISOString();
@@ -246,6 +578,7 @@ export async function getParcelamentoMetrics(storeId: number) {
     .select('valor_parcela')
     .eq('store_id', storeId)
     .eq('status', 'Pendente')
+    .gt('valor_parcela', 0.01)
     .gte('data_vencimento', todayStr);
 
   const vincendas = (vincendasRaw || []) as any[];
@@ -257,6 +590,7 @@ export async function getParcelamentoMetrics(storeId: number) {
     .select('valor_parcela')
     .eq('store_id', storeId)
     .eq('status', 'Pendente')
+    .gt('valor_parcela', 0.01)
     .lt('data_vencimento', todayStr)
     .gte('data_vencimento', ninetyDaysAgoStr);
 
@@ -269,6 +603,7 @@ export async function getParcelamentoMetrics(storeId: number) {
     .select('valor_parcela')
     .eq('store_id', storeId)
     .eq('status', 'Pendente')
+    .gt('valor_parcela', 0.01)
     .lt('data_vencimento', ninetyDaysAgoStr);
 
   const perdidas = (perdidasRaw || []) as any[];
@@ -309,6 +644,8 @@ export interface ParcelaAtrasadaItem {
 }
 
 export async function getParcelasAtrasadas(storeId: number): Promise<ParcelaAtrasadaItem[]> {
+  if (!(await isStoreModuleEnabledForStore(storeId, 'installments'))) return []
+
   const supabase = createAdminClient()
   const today = startOfDay(new Date())
   const todayStr = today.toISOString()
@@ -326,6 +663,7 @@ export async function getParcelasAtrasadas(storeId: number): Promise<ParcelaAtra
     `)
     .eq('store_id', storeId)
     .eq('status', 'Pendente')
+    .gt('valor_parcela', 0.01)
     .lt('data_vencimento', todayStr)
     .gte('data_vencimento', ninetyDaysAgoStr)
     .order('data_vencimento', { ascending: true })
@@ -617,9 +955,12 @@ export async function getClientesMetrics(storeId: number) {
     console.error("Erro consultando clientes", err1);
   }
 
-  const { count: posVendasFeitos, error: err2 } = await supabase
-    .from('post_sales_interactions')
-    .select('*', { count: 'exact', head: true });
+  const postSalesEnabled = await isStoreModuleEnabledForStore(storeId, 'postSales')
+  const { count: posVendasFeitos } = postSalesEnabled
+    ? await supabase
+      .from('post_sales_interactions')
+      .select('*', { count: 'exact', head: true })
+    : { count: 0 }
 
   return {
     rankingVip,
@@ -684,6 +1025,10 @@ export async function getMovimentoMetrics(storeId: number, monthStr: string, yea
 }
 
 export async function getCobrancaMetrics(storeId: number, monthStr: string, yearStr: string) {
+  if (!(await isStoreModuleEnabledForStore(storeId, 'installments'))) {
+    return { totalAcionamentos: 0, cobrancasComSucesso: 0, sucessoRate: 0, rankingOperadores: [], interacoesByType: [], timelineData: [] };
+  }
+
   const supabase = createAdminClient();
   const month = parseInt(monthStr) - 1;
   const year = parseInt(yearStr);
@@ -811,6 +1156,25 @@ export async function getCobrancaMetrics(storeId: number, monthStr: string, year
 // 9. RELATÓRIO: PÓS-VENDA
 // ================================================================
 export async function getPosVendaMetrics(storeId: number, monthStr: string, yearStr: string) {
+  if (!(await isStoreModuleEnabledForStore(storeId, 'postSales'))) {
+    return {
+      totalPosVendas: 0,
+      concluidos: 0,
+      emAcompanhamento: 0,
+      notaMedia: 'N/A',
+      taxaConclusao: 0,
+      interactionsByType: [],
+      avaliacoesDistribuidas: [
+        { name: '5 Estrelas', value: 0 },
+        { name: '4 Estrelas', value: 0 },
+        { name: '3 Estrelas', value: 0 },
+        { name: '2 Estrelas', value: 0 },
+        { name: '1 Estrela', value: 0 },
+      ],
+      timelineData: []
+    }
+  }
+
   const supabase = createAdminClient();
   const month = parseInt(monthStr) - 1;
   const year = parseInt(yearStr);

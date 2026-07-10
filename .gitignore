@@ -48,6 +48,7 @@ next-env.d.ts
 /.agent/
 /.claude/
 /.migracao_nfce/
+/supabase/.temp/
 
 # Heavy Files & Archives
 *.pdf
@@ -62,9 +63,17 @@ next-env.d.ts
 # SQL & Backups (Keep migrations, ignore others)
 *.sql
 !supabase_migration_*.sql
+!supabase/migrations/*.sql
 !src/lib/database/*.sql
 
 # System & Local Logs
 *.log
 PROJETO_COMPLETO_IA.txt
 build.log
+WHATSAPP_VPS_RUNBOOK.local.md
+
+.vercel
+
+supabase/migrations/20260617_whatsapp_ai_logs.sql
+supabase/migrations/20260618_whatsapp_ai_session_state.sql
+supabase/migrations/20260618_whatsapp_customer_control.sql

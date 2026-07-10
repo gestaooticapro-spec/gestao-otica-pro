@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getStoreGlobalCatalogOverview } from '@/lib/actions/global-catalog.actions'
 import { getAllLensGeometries } from '@/lib/actions/lens-geometry.actions'
 import { Database } from '@/lib/database.types'
+import ModuleDisabledState from '@/components/modules/ModuleDisabledState'
 
 type StoreSettings = {
   pre_sale_analysis_enabled?: boolean
@@ -29,7 +30,7 @@ export default async function AvaliacaoPage({
   const store = data as StoreSettingsRow | null
   const settings = (store?.settings || {}) as StoreSettings
   if (settings.pre_sale_analysis_enabled !== true) {
-    return redirect(`/dashboard/loja/${storeId}`)
+    return <ModuleDisabledState storeId={storeId} moduleLabel="Avaliacao" />
   }
 
   const overview = await getStoreGlobalCatalogOverview(storeId)

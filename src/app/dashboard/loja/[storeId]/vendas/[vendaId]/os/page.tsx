@@ -2,7 +2,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef, useTransition } from 'react'
-import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { useFormState, useFormStatus } from 'react-dom'
 import {
     Loader2, Save, Trash2, ChevronLeft, ChevronRight,
@@ -256,10 +256,11 @@ function ServiceOrderFormContent({
     venda
 }: FormProps) {
 
-    const router = useRouter()
-    const isMvp = appMode === 'mvp'
     const searchParams = useSearchParams()
     const targetOsId = searchParams.get('os_id')
+    const returnTo = searchParams.get('returnTo')
+    const vendaUrl = returnTo || `/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`
+    const handleReturnToSale = () => window.location.assign(vendaUrl)
 
     const { pending: isSaving } = useFormStatus()
     const [isDeleting, startDeleteTransition] = useTransition()
@@ -721,7 +722,7 @@ ${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tok
                     <div className="p-3 rounded-xl bg-white/5 backdrop-blur-xl border border-white/10 flex justify-between items-center mb-3 shadow-lg">
                         <div className="flex items-center gap-3">
                             <button
-                                onClick={() => router.push(`/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`)}
+                                onClick={handleReturnToSale}
                                 className="mr-1 p-1.5 bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white rounded-lg transition-colors border border-white/10 shadow-sm"
                                 title="Voltar para a Venda"
                                 type="button"
@@ -790,7 +791,7 @@ ${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tok
                             {/* VER VENDA BUTTON */}
                             <button
                                 type="button"
-                                onClick={() => router.push(`/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`)}
+                                onClick={handleReturnToSale}
                                 className="mr-2 flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-lg border border-white/10 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-wider whitespace-nowrap"
                                 title="Voltar para a Venda que gerou esta OS"
                             >
@@ -995,7 +996,7 @@ ${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tok
                                         )}
                                         <button
                                             type="button"
-                                            onClick={() => { setLongeOdEsf('+0,00'); setLongeOdCil('+0,00'); setLongeOdEixo('0'); setLongeOeEsf('+0,00'); setLongeOeCil('+0,00'); setLongeOeCil('+0,00'); setLongeOeEixo('0'); }}
+                                            onClick={() => { setLongeOdEsf('+0,00'); setLongeOdCil('+0,00'); setLongeOdEixo('0'); setLongeOeEsf('+0,00'); setLongeOeCil('+0,00'); setLongeOeEixo('0'); setAdicao('+0,00'); }}
                                             className="text-[10px] font-bold text-slate-400 border border-white/10 hover:bg-white/5 hover:text-white px-3 py-1 rounded-lg transition-colors uppercase tracking-wide"
                                         >
                                             <FileDown className="h-3 w-3 inline mr-1" /> Zerar
@@ -1183,7 +1184,7 @@ ${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tok
 
                 {/* 3. RODAPÉ FIXO (Pattern from VendaInterfaceExperimental) */}
                 <div className="relative z-30 bg-black/60 backdrop-blur-xl border-t border-white/10 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] shrink-0 px-4 py-3 flex justify-end gap-3">
-                    <button type="button" onClick={() => router.push(`/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`)} className="px-4 py-2 text-xs font-bold rounded-lg border border-white/10 text-slate-400 hover:bg-white/5 transition-all flex items-center gap-2">VOLTAR</button>
+                    <button type="button" onClick={handleReturnToSale} className="px-4 py-2 text-xs font-bold rounded-lg border border-white/10 text-slate-400 hover:bg-white/5 transition-all flex items-center gap-2">VOLTAR</button>
 
                     {/* Botão de Impressão (Matching Theme) */}
                     <button

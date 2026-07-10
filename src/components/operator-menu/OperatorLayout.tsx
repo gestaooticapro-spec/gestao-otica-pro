@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { logoutAndRedirect } from '@/lib/auth/logout';
 import OperatorMenuHome from './OperatorMenuHome';
 import OperatorMenuAtendimento from './OperatorMenuAtendimento';
 import OperatorMenuLojaVazia from './OperatorMenuLojaVazia';
 import { getStoreProfile } from '@/lib/actions/store.actions';
-import { getStoreAppMode, type AppMode } from '@/lib/app-mode';
+import FullscreenToggleButton from '@/components/FullscreenToggleButton';
 
 type MenuState = 'home' | 'atendimento' | 'loja-vazia' | 'page';
 type HomeSelection = 'atendimento' | 'loja-vazia' | null;
@@ -18,7 +18,7 @@ interface OperatorLayoutProps {
     storeName: string;
     logoUrl: string | null;
     preSaleAnalysisEnabled?: boolean;
-    appMode?: AppMode;
+    deliveryDateEnabled?: boolean;
     onBackToHub?: () => void;
     hubLabel?: string;
 }
@@ -29,18 +29,17 @@ export default function OperatorLayout({
     storeName,
     logoUrl,
     preSaleAnalysisEnabled = false,
-    appMode = 'full',
+    deliveryDateEnabled = true,
     onBackToHub,
     hubLabel = 'Voltar'
 }: OperatorLayoutProps) {
     const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
-    const supabase = createClient();
 
     const [homeSelection, setHomeSelection] = useState<HomeSelection>(null);
     const [livePreSaleAnalysisEnabled, setLivePreSaleAnalysisEnabled] = useState(preSaleAnalysisEnabled);
-    const [liveAppMode, setLiveAppMode] = useState<AppMode>(appMode);
+    const [liveDeliveryDateEnabled, setLiveDeliveryDateEnabled] = useState(deliveryDateEnabled);
 
     const storeHomePath = `/dashboard/loja/${storeId}`;
     const menuParam = searchParams.get('menu');
@@ -49,6 +48,10 @@ export default function OperatorLayout({
         setLivePreSaleAnalysisEnabled(preSaleAnalysisEnabled);
         setLiveAppMode(appMode);
     }, [preSaleAnalysisEnabled, appMode]);
+
+    useEffect(() => {
+        setLiveDeliveryDateEnabled(deliveryDateEnabled);
+    }, [deliveryDateEnabled]);
 
     useEffect(() => {
         if (pathname !== storeHomePath) return;
@@ -65,9 +68,15 @@ export default function OperatorLayout({
                 'pre_sale_analysis_enabled' in settings &&
                 (settings as { pre_sale_analysis_enabled?: unknown }).pre_sale_analysis_enabled === true
             );
+            const deliveryEnabled = !(
+                settings &&
+                typeof settings === 'object' &&
+                'delivery_date_enabled' in settings &&
+                (settings as { delivery_date_enabled?: unknown }).delivery_date_enabled === false
+            );
 
             setLivePreSaleAnalysisEnabled(enabled);
-            setLiveAppMode(getStoreAppMode(settings));
+            setLiveDeliveryDateEnabled(deliveryEnabled);
         });
 
         return () => {
@@ -83,12 +92,7 @@ export default function OperatorLayout({
     })();
 
     const handleLogout = async () => {
-        const { error } = await supabase.auth.signOut();
-        if (error) {
-            alert('Erro ao sair');
-            return;
-        }
-        window.location.href = '/login';
+        await logoutAndRedirect();
     };
 
     const handleNavigate = (menu: 'atendimento' | 'loja-vazia') => {
@@ -123,7 +127,7 @@ export default function OperatorLayout({
     }
 
     if (currentMenu === 'loja-vazia') {
-        return <OperatorMenuLojaVazia storeId={storeId} onBack={handleBack} onNavigate={handleRouteNavigate} appMode={liveAppMode} />;
+        return <OperatorMenuLojaVazia storeId={storeId} storeName={storeName} onBack={handleBack} onNavigate={handleRouteNavigate} deliveryDateEnabled={liveDeliveryDateEnabled} />;
     }
 
     return (
@@ -140,6 +144,10 @@ export default function OperatorLayout({
                 </button>
                 <span className="text-slate-500 text-xs font-bold uppercase tracking-widest">{storeName}</span>
                 <div className="flex items-center gap-4">
+                    <FullscreenToggleButton
+                        variant="inline"
+                        className="h-9 w-9 bg-slate-900/80 text-white/65 hover:bg-slate-900"
+                    />
                     {onBackToHub && (
                         <button
                             onClick={onBackToHub}

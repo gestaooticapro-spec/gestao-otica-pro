@@ -9,6 +9,7 @@ import ReturnModal from '@/components/modals/ReturnModal'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import AbandonoModal from '@/components/modals/AbandonoModal'
 import FiscalEmissionModal from '@/components/modals/FiscalEmissionModal'
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 
 type Venda = Database['public']['Tables']['vendas']['Row']
 type VendaWithMeta = Venda & { data_fechamento?: string | null }
@@ -41,6 +42,7 @@ export default function VendaActions({
     onNFCeModalClose,
     hideFiscal = false,
 }: VendaActionsProps) {
+    const modules = useStoreModules()
     const [isReturnModalOpen, setIsReturnModalOpen] = useState(false)
     const [isAuthOpen, setIsAuthOpen] = useState(false)
     const [isAbandonoModalOpen, setIsAbandonoModalOpen] = useState(false)
@@ -206,7 +208,7 @@ export default function VendaActions({
             </button>
 
             {/* BOTÃO NFC-e */}
-            {!hideFiscal && <button
+            {modules.fiscal && <button
                 type="button"
                 onClick={() => setIsFiscalModalOpen(true)}
                 className={`flex items-center gap-2.5 px-3 h-9 text-sm rounded-lg border font-bold transition-all uppercase tracking-wide ${
@@ -258,7 +260,7 @@ export default function VendaActions({
             )}
 
             {/* MODAL FISCAL */}
-            {!hideFiscal && isFiscalModalOpen && (
+            {modules.fiscal && isFiscalModalOpen && (
                 <FiscalEmissionModal
                     isOpen={isFiscalModalOpen}
                     onClose={async () => { setIsFiscalModalOpen(false); await onNFCeModalClose() }}

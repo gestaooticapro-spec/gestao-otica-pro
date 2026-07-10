@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { X, Loader2, AlertTriangle, RefreshCw, Grid3X3 } from 'lucide-react'
+import { X, Loader2, AlertTriangle, RefreshCw, Grid3X3, Printer } from 'lucide-react'
 import { getLensGrid, generateLensGrid, updateLensGridStock } from '@/lib/actions/catalog.actions'
 
 type LensGridEditorProps = {
@@ -17,6 +17,19 @@ type Variant = {
     esferico: number
     cilindrico: number
     estoque_atual: number
+}
+
+function formatSignedDiopter(value: number) {
+    return `${value > 0 ? '+' : ''}${value.toFixed(2)}`
+}
+
+function escapeHtml(value: string) {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
 }
 
 export default function LensGridEditor({ isOpen, onClose, productId, storeId, productName }: LensGridEditorProps) {
@@ -92,6 +105,174 @@ export default function LensGridEditor({ isOpen, onClose, productId, storeId, pr
         }
     }
 
+    const handlePrint = useCallback(() => {
+        if (!sphericals.length || !cylinders.length) return
+
+        const printedAt = new Date().toLocaleString('pt-BR')
+        const tableHeader = cylinders
+            .map((cyl) => `<th>${formatSignedDiopter(cyl)}</th>`)
+            .join('')
+        const tableRows = sphericals
+            .map((esf) => {
+                const cells = cylinders
+                    .map((cyl) => {
+                        const variant = matrix[`${esf}_${cyl}`]
+                        return `<td>${variant ? variant.estoque_atual : '-'}</td>`
+                    })
+                    .join('')
+
+                return `
+                    <tr>
+                        <th>${formatSignedDiopter(esf)}</th>
+                        ${cells}
+                    </tr>
+                `
+            })
+            .join('')
+
+        const html = `
+            <!DOCTYPE html>
+            <html lang="pt-BR">
+            <head>
+                <meta charset="UTF-8" />
+                <title>Grade de Estoque - ${escapeHtml(productName)}</title>
+                <style>
+                    * { box-sizing: border-box; }
+                    body {
+                        margin: 0;
+                        padding: 0;
+                        font-family: Arial, sans-serif;
+                        color: #0f172a;
+                        background: #ffffff;
+                    }
+                    .sheet {
+                        width: 170mm;
+                        margin: 0 auto;
+                        padding-top: 12mm;
+                    }
+                    .header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: flex-start;
+                        gap: 8px;
+                        margin-bottom: 6px;
+                    }
+                    .title {
+                        margin: 0;
+                        font-size: 16px;
+                        font-weight: 700;
+                    }
+                    .subtitle {
+                        margin: 3px 0 0;
+                        font-size: 9px;
+                        color: #475569;
+                    }
+                    .stamp {
+                        text-align: right;
+                        font-size: 8px;
+                        color: #475569;
+                        white-space: nowrap;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        table-layout: fixed;
+                    }
+                    th, td {
+                        border: 1px solid #cbd5e1;
+                        text-align: center;
+                        height: 5mm;
+                        padding: 1px 2px;
+                        font-size: 8px;
+                        line-height: 1;
+                    }
+                    thead th {
+                        background: #e2e8f0;
+                        font-weight: 700;
+                    }
+                    tbody th {
+                        background: #f8fafc;
+                        font-weight: 700;
+                    }
+                    tbody td {
+                        font-weight: 700;
+                    }
+                    .note {
+                        margin-top: 5px;
+                        font-size: 8px;
+                        color: #475569;
+                    }
+                    @page {
+                        size: A4 portrait;
+                        margin: 15mm;
+                    }
+                    @media print {
+                        html, body {
+                            width: 100%;
+                            min-height: 0;
+                        }
+                        tr {
+                            break-inside: avoid;
+                            page-break-inside: avoid;
+                        }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="sheet">
+                    <div class="header">
+                        <div>
+                            <h1 class="title">Grade de Estoque de Lentes</h1>
+                            <p class="subtitle">${escapeHtml(productName)}</p>
+                        </div>
+                        <div class="stamp">
+                            <div>Impresso em ${escapeHtml(printedAt)}</div>
+                            <div>Produto #${productId}</div>
+                        </div>
+                    </div>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ESF \\ CYL</th>
+                                ${tableHeader}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${tableRows}
+                        </tbody>
+                    </table>
+
+                    <p class="note">Use esta matriz para conferir o estoque fisico por esferico e cilindrico.</p>
+                </div>
+            </body>
+            </html>
+        `
+
+        const blob = new Blob([html], { type: 'text/html' })
+        const blobUrl = URL.createObjectURL(blob)
+        const iframe = document.createElement('iframe')
+        iframe.style.display = 'none'
+        iframe.src = blobUrl
+        document.body.appendChild(iframe)
+
+        iframe.onload = () => {
+            setTimeout(() => {
+                iframe.contentWindow?.focus()
+                iframe.contentWindow?.print()
+            }, 150)
+        }
+
+        const cleanup = () => {
+            URL.revokeObjectURL(blobUrl)
+            if (document.body.contains(iframe)) {
+                document.body.removeChild(iframe)
+            }
+        }
+
+        setTimeout(cleanup, 60000)
+    }, [cylinders, matrix, productId, productName, sphericals])
+
     if (!isOpen) return null
 
     return (
@@ -106,9 +287,21 @@ export default function LensGridEditor({ isOpen, onClose, productId, storeId, pr
                         </h3>
                         <p className="text-sm text-slate-500 font-medium">{productName}</p>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
-                        <X className="h-6 w-6 text-slate-400" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {variants.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={handlePrint}
+                                className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors"
+                            >
+                                <Printer className="h-4 w-4 text-blue-600" />
+                                Imprimir matriz
+                            </button>
+                        )}
+                        <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                            <X className="h-6 w-6 text-slate-400" />
+                        </button>
+                    </div>
                 </div>
 
                 {/* CONTENT */}
@@ -185,7 +378,7 @@ export default function LensGridEditor({ isOpen, onClose, productId, storeId, pr
                                                                     type="number"
                                                                     min="0"
                                                                     className={`w-full text-center text-xs font-bold bg-transparent border-none focus:ring-0 p-1 rounded
-                                                                        ${variant.estoque_atual > 0 ? 'text-blue-700' : 'text-slate-300'}
+                                                                        ${variant.estoque_atual > 0 ? 'text-blue-700' : 'text-red-500'}
                                                                     `}
                                                                     value={variant.estoque_atual}
                                                                     onChange={(e) => handleStockChange(variant.id, parseInt(e.target.value) || 0)}

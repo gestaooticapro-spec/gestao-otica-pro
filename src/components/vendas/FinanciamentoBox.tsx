@@ -13,12 +13,15 @@ import {
     deleteFinanciamentoLoja,
     type CreateFinanciamentoResult,
 } from '@/lib/actions/vendas.actions'
+import { sendInstallmentReceiptWhatsApp } from '@/lib/actions/manual-whatsapp.actions'
 
 import { Database } from '@/lib/database.types'
-import { Calendar, ClipboardList, AlertTriangle, CheckCircle2, Wallet, DollarSign, X, RefreshCw, Trash2, Calculator, Loader2, Printer } from 'lucide-react'
+import { Calendar, ClipboardList, AlertTriangle, CheckCircle2, Wallet, DollarSign, X, RefreshCw, Trash2, Calculator, Loader2, MessageCircle, Printer } from 'lucide-react'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import UpdateCpfModal from '@/components/modals/UpdateCpfModal'
 import CollapsibleBox from './CollapsibleBox'
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
+import { toast } from 'sonner'
 
 type Financiamento = Database['public']['Tables']['financiamento_loja']['Row']
 type FinanciamentoParcela = Database['public']['Tables']['financiamento_parcelas']['Row']
@@ -38,6 +41,7 @@ type FinanciamentoBoxProps = {
     disabled: boolean
     isQuitado?: boolean
     isModal?: boolean
+    whatsappReceiptEnabled?: boolean
 }
 
 // Helpers
@@ -188,8 +192,10 @@ export default function FinanciamentoBox({
     disabled,
     isQuitado = false,
     isModal = false,
+    whatsappReceiptEnabled = false,
 }: FinanciamentoBoxProps) {
 
+    const modules = useStoreModules()
     const formRef = useRef<HTMLFormElement>(null)
 
     const [isConfigModalOpen, setIsConfigModalOpen] = useState(false)
@@ -197,6 +203,8 @@ export default function FinanciamentoBox({
     const [authedEmployee, setAuthedEmployee] = useState<Pick<Employee, 'id' | 'full_name'> | null>(null)
     const [selectedParcela, setSelectedParcela] = useState<FinanciamentoParcela | null>(null)
     const [isResetting, startResetTransition] = useState(false)
+    const [sendingReceiptInstallmentId, setSendingReceiptInstallmentId] = useState<number | null>(null)
+    const [sentReceiptInstallmentIds, setSentReceiptInstallmentIds] = useState<number[]>([])
 
     const [isDeletedLocally, setIsDeletedLocally] = useState(false)
 
@@ -322,9 +330,40 @@ export default function FinanciamentoBox({
         });
     }
 
+    const handleSendInstallmentReceipt = async (installmentId: number) => {
+        if (sendingReceiptInstallmentId === installmentId) return
+
+        setSendingReceiptInstallmentId(installmentId)
+        try {
+            const result = await sendInstallmentReceiptWhatsApp({
+                storeId,
+                installmentId,
+            })
+
+            if (!result.success) {
+                toast.error(result.message)
+                return
+            }
+
+            setSentReceiptInstallmentIds((current) =>
+                current.includes(installmentId) ? current : [...current, installmentId]
+            )
+            toast.success('Recibo enviado em PDF pelo WhatsApp da loja.')
+        } catch (error) {
+            console.error('[FinanciamentoBox] Erro ao enviar recibo da parcela:', error)
+            toast.error('Nao foi possivel enviar o recibo por WhatsApp.')
+        } finally {
+            setSendingReceiptInstallmentId(null)
+        }
+    }
+
     // Estilos
     const labelStyle = 'block text-[10px] font-bold text-slate-400 mb-0.5 uppercase tracking-wider';
     const inputStyle = 'block w-full rounded-md border border-white/10 bg-white/5 shadow-sm text-slate-200 h-9 text-xs px-2 focus:ring-1 focus:ring-amber-500/50 focus:outline-none disabled:bg-white/5 disabled:text-slate-500 placeholder:text-slate-600 transition-all';
+
+    if (!modules.installments) {
+        return null
+    }
 
     const renderContent = () => (
         <>
@@ -398,9 +437,26 @@ export default function FinanciamentoBox({
                                     </div>
                                     <div>
                                         {isPago ? (
-                                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-500/20 text-green-400 text-[10px] font-bold border border-green-500/30">
-                                                <CheckCircle2 className="h-3 w-3" /> PAGO
-                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-500/20 text-green-400 text-[10px] font-bold border border-green-500/30">
+                                                    <CheckCircle2 className="h-3 w-3" /> PAGO
+                                                </span>
+                                                {whatsappReceiptEnabled ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void handleSendInstallmentReceipt(p.id)}
+                                                        disabled={sendingReceiptInstallmentId === p.id}
+                                                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-300 text-[10px] font-bold border border-emerald-500/20 hover:bg-emerald-500/20 transition-all disabled:opacity-50"
+                                                    >
+                                                        {sendingReceiptInstallmentId === p.id ? (
+                                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                                        ) : (
+                                                            <MessageCircle className="h-3 w-3" />
+                                                        )}
+                                                        {sentReceiptInstallmentIds.includes(p.id) ? 'ENVIADO' : 'RECIBO'}
+                                                    </button>
+                                                ) : null}
+                                            </div>
                                         ) : (
                                             <button
                                                 type="button"

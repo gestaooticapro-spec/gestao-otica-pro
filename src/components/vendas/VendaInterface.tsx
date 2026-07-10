@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
     ShoppingBag, DollarSign, FileText, User,
@@ -18,6 +18,7 @@ import ListaOS from '@/components/vendas/ListaOS'
 import ReceiptSelectionModal from '@/components/modals/ReceiptSelectionModal'
 import TransferVendaModal from '@/components/modals/TransferVendaModal'
 import CustomerQuickInfoModal from '@/components/modals/CustomerQuickInfoModal'
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 
 import { Database } from '@/lib/database.types'
 
@@ -53,6 +54,7 @@ export default function VendaInterface({
 }: VendaInterfaceProps) {
 
     const router = useRouter()
+    const modules = useStoreModules()
     const [activeTab, setActiveTab] = useState<'produtos' | 'pagamento' | 'carne'>('produtos')
 
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false)
@@ -61,6 +63,12 @@ export default function VendaInterface({
 
     const vendedorNome = employee?.full_name || 'N/A'
     const employeeIdFinanceiro = employee?.id || 0
+
+    useEffect(() => {
+        if (!modules.installments && activeTab === 'carne') {
+            setActiveTab('pagamento')
+        }
+    }, [activeTab, modules.installments])
 
     return (
         <div className="flex flex-col h-[calc(100vh-64px)] bg-gray-100 overflow-hidden">
@@ -136,7 +144,7 @@ export default function VendaInterface({
                         >
                             <DollarSign className="h-4 w-4" /> Pagamento
                         </button>
-                        <button
+                        {modules.installments && <button
                             onClick={() => setActiveTab('carne')}
                             className={`flex-1 text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-1.5 transition-all border-b-2 
                         ${activeTab === 'carne'
@@ -145,7 +153,7 @@ export default function VendaInterface({
                                 }`}
                         >
                             <FileText className="h-4 w-4" /> Carnê
-                        </button>
+                        </button>}
                     </div>
 
                     {/* Conteúdo da Aba */}
@@ -174,9 +182,9 @@ export default function VendaInterface({
                             </div>
                         )}
 
-                        {activeTab === 'carne' && (
+                        {modules.installments && activeTab === 'carne' && (
                             <div className="space-y-3">
-                                <FinanciamentoBox financiamento={financiamento} vendaId={venda.id} customerId={venda.customer_id} customer={customer} storeId={venda.store_id} employeeId={employeeIdFinanceiro} valorRestante={venda.valor_restante ?? 0} onFinanceAdded={onDataReload} disabled={isVendaFechadaOuCancelada} isQuitado={isQuitado} />
+                                <FinanciamentoBox financiamento={financiamento} vendaId={venda.id} customerId={venda.customer_id} customer={customer} storeId={venda.store_id} employeeId={employeeIdFinanceiro} valorRestante={venda.valor_restante ?? 0} onFinanceAdded={onDataReload} disabled={isVendaFechadaOuCancelada} isQuitado={isQuitado} whatsappReceiptEnabled={false} />
                             </div>
                         )}
                     </div>
@@ -202,7 +210,7 @@ export default function VendaInterface({
                                 <span className="text-[10px] font-bold text-gray-500 uppercase">Extrato Financeiro</span>
                             </div>
                             <div className="p-1">
-                                <ListaPagamentos pagamentos={pagamentos} vendaId={venda.id} storeId={venda.store_id} onDelete={onDataReload} disabled={isVendaFechadaOuCancelada} />
+                                <ListaPagamentos pagamentos={pagamentos} vendaId={venda.id} storeId={venda.store_id} onDelete={onDataReload} disabled={isVendaFechadaOuCancelada} whatsappReceiptEnabled={false} />
                             </div>
                         </div>
 

@@ -1,7 +1,7 @@
-// Caminho: src/components/relatorios/TabelaVendas.tsx
 'use client'
 
 import { useState, useMemo } from 'react'
+import { usePathname, useSearchParams } from 'next/navigation'
 import {
   useReactTable,
   getCoreRowModel,
@@ -9,27 +9,28 @@ import {
   getSortedRowModel,
   flexRender,
   createColumnHelper,
-  SortingState
+  SortingState,
+  Column,
 } from '@tanstack/react-table'
 import { VendaRelatorioItem } from '@/lib/actions/reports.actions'
 import { ArrowUp, ArrowDown, ArrowUpDown, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
+import { currentPathWithSearch, withReturnTo } from '@/lib/return-navigation'
 
-// Helpers
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const formatDate = (d: string) => new Date(d).toLocaleDateString('pt-BR')
+const columnHelper = createColumnHelper<VendaRelatorioItem>()
 
-// --- COMPONENTE DE FILTRO DA COLUNA ---
-function Filter({ column }: { column: any }) {
+function Filter({ column }: { column: Column<VendaRelatorioItem, unknown> }) {
   const columnFilterValue = column.getFilterValue()
 
   return (
-    <div className="mt-2" onClick={e => e.stopPropagation()}>
+    <div className="mt-2" onClick={(e) => e.stopPropagation()}>
       <input
         type="text"
         value={(columnFilterValue ?? '') as string}
-        onChange={e => column.setFilterValue(e.target.value)}
-        placeholder={`Buscar...`}
+        onChange={(e) => column.setFilterValue(e.target.value)}
+        placeholder="Buscar..."
         className="w-full border border-white/10 rounded px-2 py-1 text-[10px] text-slate-300 focus:outline-none focus:border-blue-500 font-normal bg-white/5 placeholder:text-slate-500"
       />
     </div>
@@ -38,14 +39,14 @@ function Filter({ column }: { column: any }) {
 
 export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioItem[], storeId: number }) {
   const [sorting, setSorting] = useState<SortingState>([])
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const currentUrl = currentPathWithSearch(pathname, searchParams)
 
-  const columnHelper = createColumnHelper<VendaRelatorioItem>()
-
-  // --- DEFINIÇÃO DAS COLUNAS ---
   const columns = useMemo(() => [
     columnHelper.accessor('id', {
       header: 'ID',
-      cell: info => (
+      cell: (info) => (
         <div className="flex items-center gap-1.5">
           <span className="font-bold text-slate-200">#{info.getValue()}</span>
           {info.row.original.nf_emitida && (
@@ -58,7 +59,7 @@ export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioIt
 
     columnHelper.accessor('data', {
       header: 'Data',
-      cell: info => formatDate(info.getValue()),
+      cell: (info) => formatDate(info.getValue()),
       filterFn: (row, columnId, filterValue) => {
         const dateStr = formatDate(row.getValue(columnId))
         return dateStr.includes(filterValue)
@@ -68,7 +69,7 @@ export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioIt
 
     columnHelper.accessor('data_fechamento', {
       header: 'Fechamento',
-      cell: info => {
+      cell: (info) => {
         const val = info.getValue()
         return val ? <span className="text-emerald-400 font-medium">{formatDate(val)}</span> : <span className="text-slate-600">-</span>
       },
@@ -77,17 +78,19 @@ export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioIt
 
     columnHelper.accessor('cliente', {
       header: 'Cliente',
-      cell: info => <span className="truncate block" title={info.getValue()}>{info.getValue()}</span>,
+      cell: (info) => <span className="truncate block" title={info.getValue()}>{info.getValue()}</span>,
       size: 200,
     }),
+
     columnHelper.accessor('vendedor', {
       header: 'Vendedor',
-      cell: info => <span className="truncate block">{info.getValue()}</span>,
+      cell: (info) => <span className="truncate block">{info.getValue()}</span>,
       size: 120,
     }),
+
     columnHelper.accessor('medico', {
       header: 'Médico',
-      cell: info => {
+      cell: (info) => {
         const val = info.getValue()
         return val === '-'
           ? <span className="text-slate-600">-</span>
@@ -95,9 +98,10 @@ export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioIt
       },
       size: 150,
     }),
+
     columnHelper.accessor('itens_resumo', {
       header: 'Produtos (Resumo)',
-      cell: info => (
+      cell: (info) => (
         <div className="text-[10px] text-slate-500 truncate" title={info.getValue()}>
           {info.getValue()}
         </div>
@@ -105,9 +109,10 @@ export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioIt
       enableSorting: false,
       size: 250,
     }),
+
     columnHelper.accessor('status', {
       header: 'Status',
-      cell: info => {
+      cell: (info) => {
         const val = info.getValue()
         let color = 'bg-slate-500/20 text-slate-400'
         if (val === 'Fechada') color = 'bg-emerald-500/20 text-emerald-400'
@@ -119,15 +124,11 @@ export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioIt
       size: 110,
     }),
 
-    // CORREÇÃO DOS FILTROS DE VALORES:
-    // Removemos R$, espaços e pontos (.) antes de comparar. 
-    // Assim "1.040" vira "1040" e o input "1040" dá match.
     columnHelper.accessor('valor_total', {
       header: 'Total',
-      cell: info => <span className="text-slate-300">{formatCurrency(info.getValue())}</span>,
+      cell: (info) => <span className="text-slate-300">{formatCurrency(info.getValue())}</span>,
       filterFn: (row, columnId, filterValue) => {
         const valStr = formatCurrency(row.getValue(columnId))
-        // Normaliza: remove "R$", espaços e pontos de milhar. Mantém a vírgula.
         const normalizedVal = valStr.replace(/[R$\s.]/g, '')
         const normalizedFilter = filterValue.replace(/[R$\s.]/g, '')
         return normalizedVal.includes(normalizedFilter)
@@ -135,9 +136,10 @@ export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioIt
       meta: { isNumeric: true },
       size: 100,
     }),
+
     columnHelper.accessor('valor_pago', {
       header: 'Pago',
-      cell: info => <span className="text-blue-400 font-bold">{formatCurrency(info.getValue())}</span>,
+      cell: (info) => <span className="text-blue-400 font-bold">{formatCurrency(info.getValue())}</span>,
       filterFn: (row, columnId, filterValue) => {
         const valStr = formatCurrency(row.getValue(columnId))
         const normalizedVal = valStr.replace(/[R$\s.]/g, '')
@@ -147,9 +149,10 @@ export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioIt
       meta: { isNumeric: true },
       size: 100,
     }),
+
     columnHelper.accessor('saldo_devedor', {
       header: 'Devedor',
-      cell: info => {
+      cell: (info) => {
         const val = info.getValue()
         return <span className={`${val > 0.01 ? 'text-red-400 bg-red-500/15 px-1 rounded' : 'text-slate-600'} font-bold`}>{formatCurrency(val)}</span>
       },
@@ -168,7 +171,7 @@ export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioIt
       header: 'Ver',
       cell: (props) => (
         <Link
-          href={`/dashboard/loja/${storeId}/vendas/${props.row.original.id}/experimental`}
+          href={withReturnTo(`/dashboard/loja/${storeId}/vendas/${props.row.original.id}/experimental`, currentUrl)}
           className="flex justify-center items-center text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 w-8 h-8 rounded transition-colors"
           title="Abrir Venda"
         >
@@ -177,8 +180,8 @@ export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioIt
       ),
       size: 50,
       enableResizing: false,
-    })
-  ], [storeId])
+    }),
+  ], [storeId, currentUrl])
 
   const table = useReactTable({
     data,
@@ -191,8 +194,8 @@ export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioIt
     getSortedRowModel: getSortedRowModel(),
   })
 
-  // Dados processados para o rodapé e corpo
   const rows = table.getRowModel().rows
+  const visibleColumns = table.getVisibleLeafColumns()
 
   const totalGeral = rows.reduce((acc, row) => acc + row.original.valor_final, 0)
   const totalPago = rows.reduce((acc, row) => acc + row.original.valor_pago, 0)
@@ -202,11 +205,10 @@ export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioIt
     <div className="flex flex-col h-full bg-white/5 border border-white/10 rounded-xl backdrop-blur-md shadow-2xl shadow-black/20 overflow-hidden text-xs">
       <div className="flex-1 overflow-auto w-full">
         <table className="w-full text-left border-collapse" style={{ width: table.getTotalSize() }}>
-
           <thead className="bg-slate-900 text-slate-300 sticky top-0 z-10">
-            {table.getHeaderGroups().map(headerGroup => (
+            {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
-                {headerGroup.headers.map(header => (
+                {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
                     colSpan={header.colSpan}
@@ -229,15 +231,12 @@ export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioIt
                       )}
                     </div>
 
-                    {header.column.getCanFilter() ? (
-                      <Filter column={header.column} />
-                    ) : null}
+                    {header.column.getCanFilter() ? <Filter column={header.column} /> : null}
 
                     <div
                       onMouseDown={header.getResizeHandler()}
                       onTouchStart={header.getResizeHandler()}
-                      className={`absolute right-0 top-0 h-full w-[4px] cursor-col-resize select-none touch-none hover:bg-blue-400 ${header.column.getIsResizing() ? 'bg-blue-500 opacity-100' : 'opacity-0 group-hover:opacity-100'
-                        }`}
+                      className={`absolute right-0 top-0 h-full w-[4px] cursor-col-resize select-none touch-none hover:bg-blue-400 ${header.column.getIsResizing() ? 'bg-blue-500 opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                     />
                   </th>
                 ))}
@@ -258,10 +257,10 @@ export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioIt
                   key={row.id}
                   className={`hover:bg-white/5 transition-colors ${i % 2 === 0 ? 'bg-transparent' : 'bg-white/[0.02]'}`}
                 >
-                  {row.getVisibleCells().map(cell => (
+                  {row.getVisibleCells().map((cell) => (
                     <td
                       key={cell.id}
-                      className={`p-1.5 border-r border-white/5 last:border-r-0 text-slate-300 whitespace-nowrap overflow-hidden text-ellipsis ${(cell.column.columnDef.meta as any)?.isNumeric ? 'text-right' : ''}`}
+                      className={`p-1.5 border-r border-white/5 last:border-r-0 text-slate-300 whitespace-nowrap overflow-hidden text-ellipsis ${cell.column.columnDef.meta && 'isNumeric' in cell.column.columnDef.meta && cell.column.columnDef.meta.isNumeric ? 'text-right' : ''}`}
                       style={{ width: cell.column.getSize() }}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -274,12 +273,36 @@ export default function TabelaVendas({ data, storeId }: { data: VendaRelatorioIt
 
           <tfoot className="bg-slate-900/80 text-white sticky bottom-0 z-10 font-bold backdrop-blur-xl border-t border-white/10">
             <tr>
-              <td className="p-2 border-r border-white/10">Total: {rows.length}</td>
-              <td colSpan={6} className="p-2 border-r border-white/10 text-right">TOTAIS VISÍVEIS:</td>
-              <td className="p-2 border-r border-white/10 text-right">{formatCurrency(totalGeral)}</td>
-              <td className="p-2 border-r border-white/10 text-right text-emerald-400">{formatCurrency(totalPago)}</td>
-              <td className="p-2 border-r border-white/10 text-right text-red-400">{formatCurrency(totalDevedor)}</td>
-              <td></td>
+              {visibleColumns.map((column) => {
+                let content: string | null = null
+                let className = 'p-2 border-r border-white/10 last:border-r-0'
+
+                if (column.id === 'id') {
+                  content = `Total: ${rows.length}`
+                } else if (column.id === 'status') {
+                  content = 'TOTAIS VISÍVEIS:'
+                  className += ' text-right'
+                } else if (column.id === 'valor_total') {
+                  content = formatCurrency(totalGeral)
+                  className += ' text-right'
+                } else if (column.id === 'valor_pago') {
+                  content = formatCurrency(totalPago)
+                  className += ' text-right text-emerald-400'
+                } else if (column.id === 'saldo_devedor') {
+                  content = formatCurrency(totalDevedor)
+                  className += ' text-right text-red-400'
+                }
+
+                return (
+                  <td
+                    key={column.id}
+                    className={className}
+                    style={{ width: column.getSize() }}
+                  >
+                    {content}
+                  </td>
+                )
+              })}
             </tr>
           </tfoot>
         </table>

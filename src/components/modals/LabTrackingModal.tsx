@@ -3,7 +3,7 @@
 import { useState, useEffect, useTransition } from 'react'
 import { createPortal } from 'react-dom'
 import { Search, X, Loader2, Save, Truck, User, Microscope, MessageCircle } from 'lucide-react'
-import { getWhatsAppLink } from '@/lib/utils'
+import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
 import {
     searchOSForLab,
     updateLabTracking,
@@ -35,6 +35,7 @@ export default function LabTrackingModal({ isOpen, onClose, storeId }: Props) {
     const [newPhone, setNewPhone] = useState('')
     const [updatingPhone, setUpdatingPhone] = useState(false)
     const [tempPhone, setTempPhone] = useState<string | null>(null)
+    const [sendingWhatsApp, setSendingWhatsApp] = useState(false)
 
     // Efeito para garantir que rodamos no cliente (Portal requirement)
     useEffect(() => {
@@ -104,6 +105,28 @@ export default function LabTrackingModal({ isOpen, onClose, storeId }: Props) {
 
     // Telefone atual (do banco ou o que acabou de ser digitado)
     const currentPhone = tempPhone || selectedOS?.customer_phone
+
+    const handleSendReadyWhatsApp = async () => {
+        if (!selectedOS || !currentPhone || sendingWhatsApp) return
+        const message = `Olá ${selectedOS.customer_name.split(' ')[0]}! 👋 Passando para avisar que seus óculos já ficaram prontos! Quando quiser, pode vir fazer a retirada. Ficamos à disposição!`
+
+        setSendingWhatsApp(true)
+        try {
+            await sendManualWhatsAppFromClient({
+                storeId,
+                remotePhone: currentPhone,
+                messageText: message,
+                messageType: 'service_order',
+                source: 'lab_tracking_modal.ready_pickup_button',
+                metadata: {
+                    osId: selectedOS.id,
+                    vendaId: selectedOS.venda_id,
+                },
+            })
+        } finally {
+            setSendingWhatsApp(false)
+        }
+    }
 
     // --- PORTAL APLICADO ---
     return createPortal(
@@ -252,15 +275,15 @@ export default function LabTrackingModal({ isOpen, onClose, storeId }: Props) {
                                             {selectedOS.dt_montado_em && (
                                                 <div className="flex items-center gap-1">
                                                     {currentPhone ? (
-                                                        <a
-                                                            href={getWhatsAppLink(currentPhone, `Olá ${selectedOS.customer_name.split(' ')[0]}! 👋 Passando para avisar que seus óculos já ficaram prontos! Quando quiser, pode vir fazer a retirada. Ficamos à disposição!`)}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="flex items-center gap-1 text-[9px] font-black uppercase text-emerald-400 hover:text-emerald-300 transition-colors bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20"
+                                                        <button
+                                                            type="button"
+                                                            disabled={sendingWhatsApp}
+                                                            onClick={handleSendReadyWhatsApp}
+                                                            className="flex items-center gap-1 text-[9px] font-black uppercase text-emerald-400 hover:text-emerald-300 transition-colors bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 disabled:cursor-wait disabled:opacity-50"
                                                         >
                                                             <MessageCircle className="h-2.5 w-2.5" />
                                                             Avisar Cliente
-                                                        </a>
+                                                        </button>
                                                     ) : isEditingPhone ? (
                                                         <div className="flex items-center gap-1 animate-in slide-in-from-right-2">
                                                             <input

@@ -2,8 +2,10 @@
 
 import { useState, useTransition, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Search, Calendar, Loader2, Wallet, ArrowLeft, ShoppingBag, CheckCircle2, AlertTriangle, ArrowDownCircle, Printer } from 'lucide-react'
+import { X, Search, Calendar, Loader2, Wallet, ArrowLeft, ShoppingBag, CheckCircle2, AlertTriangle, ArrowDownCircle, Printer, MessageCircle } from 'lucide-react'
+import { toast } from 'sonner'
 import { searchPendenciasCliente, receberParcela } from '@/lib/actions/vendas.actions'
+import { sendInstallmentReceiptWhatsApp } from '@/lib/actions/manual-whatsapp.actions'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import { printParcela } from '@/components/financeiro/PrintParcelaButton'
 
@@ -50,7 +52,7 @@ function ParcelaCard({ p, onClick }: { p: any, onClick: () => void }) {
     )
 }
 
-export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpen: boolean, onClose: () => void, storeId: number }) {
+export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQuery }: { isOpen: boolean, onClose: () => void, storeId: number, initialQuery?: string }) {
     const [mounted, setMounted] = useState(false)
 
     const [step, setStep] = useState<'search' | 'details' | 'pay' | 'success'>('search')
@@ -72,6 +74,8 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
     const [isAuthOpen, setIsAuthOpen] = useState(false)
     const [isProcessing, startProcess] = useTransition()
     const [isPrinting, setIsPrinting] = useState(false)
+    const [isSendingReceipt, setIsSendingReceipt] = useState(false)
+    const [receiptSent, setReceiptSent] = useState(false)
     const searchInputRef = useRef<HTMLInputElement>(null)
 
     useEffect(() => {
@@ -81,27 +85,42 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
     useEffect(() => {
         if (isOpen) {
             setStep('search')
-            setQuery('')
+            setQuery(initialQuery || '')
             setResults([])
             setHasSearched(false)
             setPaidParcelaId(null)
+            setIsSendingReceipt(false)
+            setReceiptSent(false)
             setTimeout(() => searchInputRef.current?.focus(), 100)
         }
 
-    }, [isOpen])
+    }, [isOpen, initialQuery])
+
+    useEffect(() => {
+        if (!isOpen) return
+
+        const timer = setTimeout(() => {
+            if (query.trim().length >= 3) {
+                startSearch(async () => {
+                    try {
+                        const res = await searchPendenciasCliente(storeId, query)
+                        setResults(res as any[])
+                        setHasSearched(true)
+                    } catch (error) {
+                        console.error("[DEBUG] Erro na busca:", error)
+                    }
+                })
+            } else {
+                setResults([])
+                setHasSearched(false)
+            }
+        }, 300)
+
+        return () => clearTimeout(timer)
+    }, [query, storeId, isOpen])
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault()
-        if (query.length < 3) return
-        startSearch(async () => {
-            try {
-                const res = await searchPendenciasCliente(storeId, query)
-                setResults(res as any[])
-                setHasSearched(true)
-            } catch (error) {
-                console.error("[DEBUG] Erro na busca:", error)
-            }
-        })
     }
 
     const handleSelectClient = (clientData: any) => {
@@ -207,12 +226,37 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
         })
     }
 
+    const handleSendReceipt = async () => {
+        if (!paidParcelaId || isSendingReceipt) return
+
+        setIsSendingReceipt(true)
+        try {
+            const result = await sendInstallmentReceiptWhatsApp({
+                storeId,
+                installmentId: paidParcelaId,
+            })
+
+            if (!result.success) {
+                toast.error(result.message)
+                return
+            }
+
+            setReceiptSent(true)
+            toast.success('Recibo enviado em PDF pelo WhatsApp da loja.')
+        } catch (error) {
+            console.error('[ParcelaSearchModal] Erro ao enviar recibo:', error)
+            toast.error('Nao foi possivel enviar o recibo por WhatsApp.')
+        } finally {
+            setIsSendingReceipt(false)
+        }
+    }
+
     if (!mounted || !isOpen) return null
 
     return createPortal(
         <>
-            <div className="fixed inset-0 z-[50] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                <div className="bg-slate-950 w-full max-w-lg rounded-2xl shadow-2xl border border-white/10 overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="fixed inset-0 z-[50] flex items-start pt-20 justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                <div className="bg-slate-950 w-full max-w-lg rounded-2xl shadow-2xl border border-white/10 overflow-hidden flex flex-col h-[600px]">
 
                     {/* Header Amber (Financeiro) */}
                     <div className="bg-amber-950/30 border-b border-amber-500/20 px-6 py-4 flex justify-between items-center text-amber-100 shrink-0">
@@ -437,13 +481,27 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId }: { isOpe
                                         Fechar
                                     </button>
                                     {paidParcelaId && (
-                                        <button
-                                            onClick={() => { setIsPrinting(true); printParcela(paidParcelaId).catch(console.error).finally(() => setIsPrinting(false)) }}
-                                            disabled={isPrinting}
-                                            className="w-full py-3 text-slate-500 font-bold hover:bg-white/5 hover:text-slate-300 rounded-xl transition-colors flex items-center justify-center gap-2 text-sm"
-                                        >
-                                            <Printer className="h-4 w-4" /> Reimprimir Recibo
-                                        </button>
+                                        <>
+                                            <button
+                                                onClick={handleSendReceipt}
+                                                disabled={isPrinting || isSendingReceipt || receiptSent}
+                                                className="w-full py-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 font-bold hover:bg-emerald-500/20 rounded-xl transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {isSendingReceipt
+                                                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                                                    : receiptSent
+                                                        ? <CheckCircle2 className="h-4 w-4" />
+                                                        : <MessageCircle className="h-4 w-4" />}
+                                                {isSendingReceipt ? 'Enviando PDF...' : receiptSent ? 'Recibo enviado' : 'Enviar recibo por WhatsApp'}
+                                            </button>
+                                            <button
+                                                onClick={() => { setIsPrinting(true); printParcela(paidParcelaId).catch(console.error).finally(() => setIsPrinting(false)) }}
+                                                disabled={isPrinting || isSendingReceipt}
+                                                className="w-full py-3 text-slate-500 font-bold hover:bg-white/5 hover:text-slate-300 rounded-xl transition-colors flex items-center justify-center gap-2 text-sm"
+                                            >
+                                                <Printer className="h-4 w-4" /> Reimprimir Recibo
+                                            </button>
+                                        </>
                                     )}
                                 </div>
                             </div>

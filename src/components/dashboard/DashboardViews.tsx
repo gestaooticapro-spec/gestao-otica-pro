@@ -1,16 +1,41 @@
 'use client'
 
+import { useState } from 'react'
 import { StoreKPIs, NetworkKPIs } from '@/lib/actions/dashboard.actions'
 import {
     TrendingUp, DollarSign, ShoppingBag, AlertTriangle,
     Store, Calendar, Users, Package, Award
 } from 'lucide-react'
-import { openWhatsApp } from '@/lib/utils/whatsapp'
+import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
 
 const formatMoney = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 // --- COMPONENTE 1: VISÃO DO GERENTE (LOJA) ---
 export function ManagerDashboard({ data }: { data: StoreKPIs }) {
+    const [sendingBirthdayId, setSendingBirthdayId] = useState<number | null>(null)
+
+    const handleBirthdayWhatsApp = async (client: StoreKPIs['aniversariantes'][number]) => {
+        if (!client.fone || sendingBirthdayId) return
+        const message = `Oi ${client.nome.split(' ')[0]}! Sabemos que esse é um dia especial pra você. Te desejamos toda a felicidade do mundo!`
+
+        setSendingBirthdayId(client.id)
+        try {
+            await sendManualWhatsAppFromClient({
+                storeId: data.storeId,
+                remotePhone: client.fone,
+                messageText: message,
+                messageType: 'relationship',
+                source: 'dashboard_views.birthday_button',
+                metadata: {
+                    customerId: client.id,
+                    birthdayDay: client.dia,
+                },
+            })
+        } finally {
+            setSendingBirthdayId(null)
+        }
+    }
+
     return (
         <div className="space-y-6 animate-in fade-in duration-500 font-sans">
 
@@ -94,8 +119,9 @@ export function ManagerDashboard({ data }: { data: StoreKPIs }) {
                                     <div className="flex items-center gap-3">
 
                                         <button
-                                            onClick={() => cli.fone && openWhatsApp(cli.fone, `Oi ${cli.nome.split(' ')[0]}! Sabemos que esse é um dia especial pra você. Te desejamos toda a felicidade do mundo!`)}
-                                            className="p-1.5 bg-emerald-500/20 rounded-lg text-emerald-400 hover:bg-emerald-500 hover:text-white transition-all shadow-lg shadow-emerald-500/20"
+                                            disabled={!cli.fone || sendingBirthdayId === cli.id}
+                                            onClick={() => void handleBirthdayWhatsApp(cli)}
+                                            className="p-1.5 bg-emerald-500/20 rounded-lg text-emerald-400 hover:bg-emerald-500 hover:text-white transition-all shadow-lg shadow-emerald-500/20 disabled:cursor-wait disabled:opacity-50"
                                             title="Enviar felicitações pelo WhatsApp"
                                         >
                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4"

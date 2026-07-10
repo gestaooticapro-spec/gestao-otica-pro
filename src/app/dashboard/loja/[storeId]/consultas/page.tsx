@@ -9,6 +9,7 @@ import RetornosCobrancaWidget from '@/components/consultas/RetornosCobrancaWidge
 import { getRetornosDeHoje } from '@/lib/actions/collection.actions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import ConsultasBackground from '@/components/consultas/ConsultasBackground'
+import { getStoreModulesForStore } from '@/lib/store-modules.server'
 
 export default async function ConsultasPage({ params }: { params: { storeId: string } }) {
   const storeId = parseInt(params.storeId, 10)
@@ -19,13 +20,14 @@ export default async function ConsultasPage({ params }: { params: { storeId: str
     .eq('id', storeId)
     .single()
   const storeName = store?.name || `Loja ${storeId}`
+  const modules = await getStoreModulesForStore(storeId)
 
   // Busca em paralelo para ser rápido
   const [alertas, aniversariantes, vencimentos, retornos] = await Promise.all([
     getAlertasOperacionais(storeId),
     getAniversariantes(storeId),
-    getVencimentosProximos(storeId),
-    getRetornosDeHoje(storeId)
+    modules.installments ? getVencimentosProximos(storeId) : Promise.resolve([]),
+    modules.installments ? getRetornosDeHoje(storeId) : Promise.resolve([])
   ])
 
   return (
@@ -51,18 +53,18 @@ export default async function ConsultasPage({ params }: { params: { storeId: str
         <div className="col-span-12 lg:col-span-4 flex flex-col h-full overflow-y-auto custom-scrollbar pb-20 gap-6">
 
           {/* WIDGET DE VENCIMENTOS */}
-          <div className="shrink-0 rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
-            <WidgetVencimentos dados={vencimentos} storeName={storeName} />
-          </div>
+          {modules.installments && <div className="shrink-0 rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
+            <WidgetVencimentos dados={vencimentos} storeName={storeName} storeId={storeId} />
+          </div>}
 
           {/* RETORNOS DE COBRANÇA */}
-          <div className="shrink-0 rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
+          {modules.installments && <div className="shrink-0 rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
             <RetornosCobrancaWidget retornos={retornos} />
-          </div>
+          </div>}
 
           {/* WIDGET DE ANIVERSARIANTES */}
           <div className="shrink-0 rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
-            <AniversariantesWidget clientes={aniversariantes} />
+            <AniversariantesWidget clientes={aniversariantes} storeId={storeId} />
           </div>
 
           {/* RADAR OPERACIONAL */}

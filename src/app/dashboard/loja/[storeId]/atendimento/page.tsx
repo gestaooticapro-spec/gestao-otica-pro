@@ -5,7 +5,7 @@
 'use client'
 
 import { useState, useTransition, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
     searchCustomersByName,
@@ -24,6 +24,7 @@ import {
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { Database } from '@/lib/database.types'
 import QuickCustomerModal from '@/components/modals/QuickCustomerModal'
+import { currentPathWithSearch, withReturnTo } from '@/lib/return-navigation'
 
 
 type Employee = Database['public']['Tables']['employees']['Row']
@@ -176,9 +177,12 @@ function HistoryCard({ data, customerObs }: { data: CustomerSaleHistory, custome
 // --- PÁGINA PRINCIPAL ---
 export default function AtendimentoPage() {
     const params = useParams()
+    const pathname = usePathname()
+    const searchParams = useSearchParams()
     const { push } = useRouter()
     const { preference } = useBackgroundPreference();
     const storeId = parseInt(params.storeId as string, 10)
+    const currentUrl = currentPathWithSearch(pathname, searchParams)
 
     // UI States
     const [query, setQuery] = useState('')
@@ -267,7 +271,14 @@ export default function AtendimentoPage() {
         startCreateTransition(async () => {
             const result = await createNewVenda(selectedCustomer.id, parseInt(selectedEmployeeId))
             if (result.success && result.data) {
-                push(`/dashboard/loja/${storeId}/vendas/${result.data.id}/experimental`)
+                push(withReturnTo(`/dashboard/loja/${storeId}/vendas/${result.data.id}/experimental`, currentUrl))
+            } else if (result.blockedEvaluationId) {
+                const shouldOpenEvaluation = window.confirm(
+                    `${result.message || 'Este cliente possui uma avaliacao aberta recente.'}\n\nDeseja abrir a tela de avaliacao agora?`
+                )
+                if (shouldOpenEvaluation) {
+                    push(withReturnTo(`/dashboard/loja/${storeId}/avaliacao`, currentUrl))
+                }
             } else {
                 alert(result.message || 'Erro ao criar venda.')
             }
@@ -287,9 +298,9 @@ export default function AtendimentoPage() {
             <div className="relative z-30 bg-white/5 backdrop-blur-xl border-b border-white/10 px-6 py-3 flex items-center shrink-0 shadow-2xl h-14">
                 <div className="flex items-center gap-3">
                     <Link
-                        href={`/dashboard/loja/${storeId}/vendas`}
+                        href={`/dashboard/loja/${storeId}?menu=atendimento`}
                         className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
-                        title="Voltar para Vendas"
+                        title="Voltar para Atendimento"
                     >
                         <ArrowLeft className="h-5 w-5" />
                     </Link>
@@ -316,26 +327,38 @@ export default function AtendimentoPage() {
                 </div>
 
                 <div className="flex-1 w-full max-w-xl relative">
-                    <div className="relative group">
-                        <input
-                            type="text"
-                            value={query}
-                            onChange={(e) => setQuery(e.target.value)}
-                            disabled={!!selectedCustomer}
-                            className={`w-full h-12 rounded-2xl border border-white/10 pl-12 pr-12 shadow-inner focus:outline-none focus:ring-2 focus:ring-cyan-500/50 text-white font-bold transition-all ${selectedCustomer ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'bg-black/40 hover:bg-black/60'}`}
-                            placeholder={selectedCustomer ? '' : "Nome, CPF ou Telefone..."}
-                        />
-                        <Search className={`absolute left-4 top-3.5 h-5 w-5 transition-colors ${selectedCustomer ? 'text-cyan-400' : 'text-slate-500 group-focus-within:text-cyan-400'}`} />
+                    <div className="flex items-center gap-3">
+                        <div className="relative group flex-1">
+                            <input
+                                type="text"
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                                disabled={!!selectedCustomer}
+                                className={`w-full h-12 rounded-2xl border border-white/10 pl-12 pr-12 shadow-inner focus:outline-none focus:ring-2 focus:ring-cyan-500/50 text-white font-bold transition-all ${selectedCustomer ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'bg-black/40 hover:bg-black/60'}`}
+                                placeholder={selectedCustomer ? '' : "Nome, CPF ou Telefone..."}
+                            />
+                            <Search className={`absolute left-4 top-3.5 h-5 w-5 transition-colors ${selectedCustomer ? 'text-cyan-400' : 'text-slate-500 group-focus-within:text-cyan-400'}`} />
 
-                        {selectedCustomer && (
-                            <button onClick={handleClear} className="absolute right-3 top-3 p-1.5 hover:bg-white/10 rounded-xl text-cyan-400 transition-colors">
-                                <X className="h-4 w-4" />
-                            </button>
-                        )}
+                            {selectedCustomer && (
+                                <button onClick={handleClear} className="absolute right-3 top-3 p-1.5 hover:bg-white/10 rounded-xl text-cyan-400 transition-colors">
+                                    <X className="h-4 w-4" />
+                                </button>
+                            )}
 
-                        {isSearching && !selectedCustomer && (
-                            <Loader2 className="absolute right-4 top-3.5 h-5 w-5 text-cyan-500 animate-spin" />
-                        )}
+                            {isSearching && !selectedCustomer && (
+                                <Loader2 className="absolute right-4 top-3.5 h-5 w-5 text-cyan-500 animate-spin" />
+                            )}
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => setIsQuickModalOpen(true)}
+                            className="h-12 w-12 flex items-center justify-center rounded-2xl border border-cyan-500/30 bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25 hover:text-white transition-all shadow-[0_0_20px_rgba(6,182,212,0.14)]"
+                            title="Novo Cadastro"
+                            aria-label="Novo Cadastro"
+                        >
+                            <PlusCircle className="h-5 w-5" />
+                        </button>
                     </div>
 
                     {/* DROPDOWN DE RESULTADOS + BOTÃO NOVO CADASTRO */}

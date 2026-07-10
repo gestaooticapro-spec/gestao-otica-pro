@@ -5,12 +5,15 @@ import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2, Calendar, PhoneCall, CheckCircle2, XCircle, Award } from 'lucide-react';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { getCobrancaMetrics } from '@/lib/actions/reports.actions';
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
+import ModuleDisabledState from '@/components/modules/ModuleDisabledState';
 
 export default function CobrancaReportPage() {
     const router = useRouter();
     const params = useParams();
     const storeId = Number(params.storeId);
     const { preference } = useBackgroundPreference();
+    const modules = useStoreModules();
 
     const [month, setMonth] = useState<string>((new Date().getMonth() + 1).toString().padStart(2, '0'));
     const [year, setYear] = useState<string>(new Date().getFullYear().toString());
@@ -18,7 +21,7 @@ export default function CobrancaReportPage() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!storeId) return;
+        if (!storeId || !modules.installments) return;
 
         const fetchData = async () => {
             setLoading(true);
@@ -33,7 +36,11 @@ export default function CobrancaReportPage() {
         };
 
         fetchData();
-    }, [storeId, month, year]);
+    }, [storeId, month, year, modules.installments]);
+
+    if (!modules.installments) {
+        return <ModuleDisabledState storeId={storeId} moduleLabel="Parcelamento" backHref={`/dashboard/loja/${storeId}/reports`} />;
+    }
 
     return (
         <div className="min-h-full relative flex flex-col p-6 lg:p-10 z-0">

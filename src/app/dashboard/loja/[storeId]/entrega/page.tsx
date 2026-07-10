@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
     AlertTriangle,
@@ -22,8 +22,8 @@ import {
     Wrench
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { getWhatsAppLink } from '@/lib/utils'
 import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/BackgroundToggle'
+import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
 import {
     EmployeeSimple,
     LabOSResult,
@@ -31,6 +31,7 @@ import {
     getReadyOSForDelivery,
     updateLabTracking
 } from '@/lib/actions/lab.actions'
+import { currentPathWithSearch, withReturnTo } from '@/lib/return-navigation'
 
 
 function formatForInput(isoString: string | null) {
@@ -48,15 +49,20 @@ function getDaysWaiting(dateString: string | null) {
 
 export default function EntregaPage() {
     const params = useParams()
+    const pathname = usePathname()
     const router = useRouter()
+    const searchParams = useSearchParams()
     const storeId = parseInt(params.storeId as string, 10)
     const { preference } = useBackgroundPreference()
+    const currentUrl = currentPathWithSearch(pathname, searchParams)
+    const backHref = searchParams.get('returnTo') || `/dashboard/loja/${storeId}?menu=atendimento`
 
     const [items, setItems] = useState<LabOSResult[]>([])
     const [employees, setEmployees] = useState<EmployeeSimple[]>([])
     const [selectedOS, setSelectedOS] = useState<LabOSResult | null>(null)
     const [search, setSearch] = useState('')
     const [loading, setLoading] = useState(true)
+    const [sendingWhatsAppId, setSendingWhatsAppId] = useState<number | null>(null)
     const [isPending, startTransition] = useTransition()
 
     async function loadData() {
@@ -101,7 +107,7 @@ export default function EntregaPage() {
     const handleSelect = (item: LabOSResult) => {
         if (item.status === 'Em Aberto') {
             if (item.venda_id) {
-                router.push(`/dashboard/loja/${storeId}/vendas/${item.venda_id}/experimental`)
+                router.push(withReturnTo(`/dashboard/loja/${storeId}/vendas/${item.venda_id}/experimental`, currentUrl))
             } else {
                 router.push(`/dashboard/loja/${storeId}/vendas`)
             }
@@ -127,6 +133,29 @@ export default function EntregaPage() {
         })
     }
 
+    const handleSendWhatsApp = async (item: LabOSResult, phone: string, message: string, diasEspera: number) => {
+        if (sendingWhatsAppId) return
+        setSendingWhatsAppId(item.id)
+
+        try {
+            await sendManualWhatsAppFromClient({
+                storeId,
+                remotePhone: phone,
+                messageText: message,
+                messageType: 'service_order',
+                source: 'entrega.ready_pickup_button',
+                metadata: {
+                    osId: item.id,
+                    vendaId: item.venda_id,
+                    status: item.status,
+                    diasEspera,
+                },
+            })
+        } finally {
+            setSendingWhatsAppId(null)
+        }
+    }
+
     return (
         <div className="relative min-h-[calc(100vh-64px)] flex flex-col bg-slate-950 overflow-hidden">
             <div className={`absolute inset-0 z-0 transition-opacity duration-1000 pointer-events-none ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
@@ -138,9 +167,9 @@ export default function EntregaPage() {
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                     <div className="flex items-center gap-3">
                         <Link
-                            href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
+                            href={backHref}
                             className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
-                            title="Voltar para o Painel"
+                            title="Voltar para Atendimento"
                         >
                             <ArrowLeft className="h-4 w-4" />
                         </Link>
@@ -212,7 +241,6 @@ export default function EntregaPage() {
                                     const customerName = item.customer_name || 'Cliente'
                                     const phone = item.customer_phone || ''
                                     const whatsappMessage = `Olá ${customerName.split(' ')[0]}! Tudo bem? Aqui é da Ótica. Os óculos de *${patientName}* ficaram prontos e estão aguardando retirada.`
-                                    const whatsappLink = getWhatsAppLink(phone, whatsappMessage)
 
                                     return (
                                         <div
@@ -263,16 +291,18 @@ export default function EntregaPage() {
                                                     </span>
 
                                                     {phone ? (
-                                                        <a
-                                                            href={whatsappLink}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            onClick={(event) => event.stopPropagation()}
-                                                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-600/80 text-white hover:bg-emerald-500 shadow-lg shadow-emerald-900/20 border border-emerald-500/40 transition-all"
+                                                        <button
+                                                            type="button"
+                                                            disabled={sendingWhatsAppId === item.id}
+                                                            onClick={(event) => {
+                                                                event.stopPropagation()
+                                                                void handleSendWhatsApp(item, phone, whatsappMessage, diasEspera)
+                                                            }}
+                                                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-600/80 text-white hover:bg-emerald-500 shadow-lg shadow-emerald-900/20 border border-emerald-500/40 transition-all disabled:cursor-wait disabled:opacity-50"
                                                         >
                                                             <MessageCircle className="h-4 w-4" />
                                                             Avisar
-                                                        </a>
+                                                        </button>
                                                     ) : (
                                                         <span className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold bg-white/5 text-slate-600 border border-white/5 opacity-60">
                                                             <AlertTriangle className="h-4 w-4" />
@@ -422,7 +452,10 @@ export default function EntregaPage() {
                                     <div className="p-4 border-t border-white/10 bg-white/5 flex flex-col sm:flex-row gap-3 sm:justify-between sm:items-center">
                                         <button
                                             type="button"
-                                            onClick={() => selectedOS.venda_id && router.push(`/dashboard/loja/${storeId}/vendas/${selectedOS.venda_id}/os?os_id=${selectedOS.id}`)}
+                                            onClick={() => selectedOS.venda_id && router.push(withReturnTo(
+                                                `/dashboard/loja/${storeId}/vendas/${selectedOS.venda_id}/os?os_id=${selectedOS.id}`,
+                                                withReturnTo(`/dashboard/loja/${storeId}/vendas/${selectedOS.venda_id}/experimental`, currentUrl)
+                                            ))}
                                             className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-white/5 text-slate-300 hover:bg-white/10 border border-white/10 transition-all"
                                         >
                                             <Search className="h-4 w-4" />

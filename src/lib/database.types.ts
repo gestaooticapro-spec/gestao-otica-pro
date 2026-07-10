@@ -13,6 +13,68 @@ export interface Database {
     Tables: {
       // --- TABELAS DE CONFIGURAÇÃO & GESTÃO ---
 
+      nfc_trays: {
+        Row: {
+          id: string
+          store_id: number
+          current_service_order_id: number | null
+          status: 'active' | 'inactive' | 'lost'
+          created_by_user_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          store_id: number
+          current_service_order_id?: number | null
+          status?: 'active' | 'inactive' | 'lost'
+          created_by_user_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          store_id?: number
+          current_service_order_id?: number | null
+          status?: 'active' | 'inactive' | 'lost'
+          created_by_user_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+
+      nfc_tray_events: {
+        Row: {
+          id: number
+          tray_id: string
+          store_id: number
+          service_order_id: number | null
+          action: 'TRAY_CREATED' | 'OS_LINKED' | 'LENS_RECEIVED' | 'ASSEMBLY_COMPLETED' | 'TRAY_UNLINKED'
+          metadata: Json
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          tray_id: string
+          store_id: number
+          service_order_id?: number | null
+          action: 'TRAY_CREATED' | 'OS_LINKED' | 'LENS_RECEIVED' | 'ASSEMBLY_COMPLETED' | 'TRAY_UNLINKED'
+          metadata?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          tray_id?: string
+          store_id?: number
+          service_order_id?: number | null
+          action?: 'TRAY_CREATED' | 'OS_LINKED' | 'LENS_RECEIVED' | 'ASSEMBLY_COMPLETED' | 'TRAY_UNLINKED'
+          metadata?: Json
+          created_at?: string
+        }
+        Relationships: []
+      }
+
       profiles: {
         Row: {
           id: string
@@ -108,8 +170,17 @@ export interface Database {
           city: string | null
           state: string | null
           nfce_serie: number | null
+          nfe_serie: number | null
           codigo_municipio_ibge: string | null
           regime_tributario: string | null
+          rt_cnpj: string | null
+          rt_contato: string | null
+          rt_email: string | null
+          rt_fone: string | null
+          csrt_id_homologation: string | null
+          csrt_token_homologation: string | null
+          csrt_id_production: string | null
+          csrt_token_production: string | null
         }
         Insert: {
           id?: number
@@ -132,8 +203,17 @@ export interface Database {
           city?: string | null
           state?: string | null
           nfce_serie?: number | null
+          nfe_serie?: number | null
           codigo_municipio_ibge?: string | null
           regime_tributario?: string | null
+          rt_cnpj?: string | null
+          rt_contato?: string | null
+          rt_email?: string | null
+          rt_fone?: string | null
+          csrt_id_homologation?: string | null
+          csrt_token_homologation?: string | null
+          csrt_id_production?: string | null
+          csrt_token_production?: string | null
         }
         Update: {
           id?: number
@@ -156,8 +236,179 @@ export interface Database {
           city?: string | null
           state?: string | null
           nfce_serie?: number | null
+          nfe_serie?: number | null
           codigo_municipio_ibge?: string | null
           regime_tributario?: string | null
+          rt_cnpj?: string | null
+          rt_contato?: string | null
+          rt_email?: string | null
+          rt_fone?: string | null
+          csrt_id_homologation?: string | null
+          csrt_token_homologation?: string | null
+          csrt_id_production?: string | null
+          csrt_token_production?: string | null
+        }
+      }
+
+      whatsapp_store_channels: {
+        Row: {
+          id: number
+          tenant_id: string
+          store_id: number
+          provider: 'evolution'
+          instance_key: string
+          phone_number: string
+          is_active: boolean
+          connection_status: 'unknown' | 'connecting' | 'connected' | 'disconnected'
+          last_connection_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          tenant_id: string
+          store_id: number
+          provider?: 'evolution'
+          instance_key: string
+          phone_number: string
+          is_active?: boolean
+          connection_status?: 'unknown' | 'connecting' | 'connected' | 'disconnected'
+          last_connection_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          instance_key?: string
+          phone_number?: string
+          is_active?: boolean
+          connection_status?: 'unknown' | 'connecting' | 'connected' | 'disconnected'
+          last_connection_at?: string | null
+          updated_at?: string
+        }
+      }
+
+      whatsapp_inbound_messages: {
+        Row: {
+          id: number
+          tenant_id: string
+          store_id: number
+          channel_id: number
+          provider_message_id: string
+          remote_phone: string
+          message_text: string | null
+          payload: Json | null
+          status: 'received' | 'ignored' | 'processed' | 'failed'
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          tenant_id: string
+          store_id: number
+          channel_id: number
+          provider_message_id: string
+          remote_phone: string
+          message_text?: string | null
+          payload?: Json | null
+          status?: 'received' | 'ignored' | 'processed' | 'failed'
+          created_at?: string
+        }
+        Update: {
+          status?: 'received' | 'ignored' | 'processed' | 'failed'
+          payload?: Json | null
+        }
+      }
+
+      whatsapp_ai_logs: {
+        Row: {
+          id: string
+          store_id: number
+          tenant_id: string
+          inbound_message_id: number | null
+          provider: string
+          model_name: string
+          latency_ms: number | null
+          intent: string | null
+          confidence: number | null
+          is_success: boolean
+          error_message: string | null
+          raw_request: Json | null
+          raw_response: Json | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          store_id: number
+          tenant_id: string
+          inbound_message_id?: number | null
+          provider: string
+          model_name: string
+          latency_ms?: number | null
+          intent?: string | null
+          confidence?: number | null
+          is_success?: boolean
+          error_message?: string | null
+          raw_request?: Json | null
+          raw_response?: Json | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          store_id?: number
+          tenant_id?: string
+          inbound_message_id?: number | null
+          provider?: string
+          model_name?: string
+          latency_ms?: number | null
+          intent?: string | null
+          confidence?: number | null
+          is_success?: boolean
+          error_message?: string | null
+          raw_request?: Json | null
+          raw_response?: Json | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+
+      whatsapp_outbound_messages: {
+        Row: {
+          id: number
+          tenant_id: string
+          store_id: number
+          channel_id: number
+          inbound_message_id: number | null
+          provider_message_id: string | null
+          remote_phone: string
+          message_text: string
+          message_type: string
+          status: 'pending' | 'sent' | 'failed' | 'cancelled'
+          payload: Json | null
+          error_message: string | null
+          sent_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          tenant_id: string
+          store_id: number
+          channel_id: number
+          inbound_message_id?: number | null
+          provider_message_id?: string | null
+          remote_phone: string
+          message_text: string
+          message_type?: string
+          status?: 'pending' | 'sent' | 'failed' | 'cancelled'
+          payload?: Json | null
+          error_message?: string | null
+          sent_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          provider_message_id?: string | null
+          status?: 'pending' | 'sent' | 'failed' | 'cancelled'
+          payload?: Json | null
+          error_message?: string | null
+          sent_at?: string | null
         }
       }
 
@@ -295,6 +546,11 @@ export interface Database {
           created_by_user_id: string | null
           created_at: string
           updated_at: string
+          // Recorrência e parcelamento
+          is_recurring: boolean | null
+          recurring_group_id: string | null
+          installment_number: number | null
+          installment_total: number | null
         }
         Insert: {
           id?: number
@@ -311,6 +567,10 @@ export interface Database {
           created_by_user_id?: string | null
           created_at?: string
           updated_at?: string
+          is_recurring?: boolean | null
+          recurring_group_id?: string | null
+          installment_number?: number | null
+          installment_total?: number | null
         }
         Update: {
           [key: string]: any
@@ -392,6 +652,8 @@ export interface Database {
           cidade: string | null
           uf: string | null
           cep: string | null
+          codigo_municipio_ibge: string | null
+          inscricao_estadual: string | null
           complemento: string | null
           naturalidade: string | null
           estado_civil: string | null
@@ -425,6 +687,8 @@ export interface Database {
           store_id: number
           full_name: string
           cpf?: string | null
+          codigo_municipio_ibge?: string | null
+          inscricao_estadual?: string | null
           is_spc?: boolean | null
           tenant_id?: string
           [key: string]: any
@@ -464,6 +728,64 @@ export interface Database {
       }
 
       // --- NOVAS TABELAS DE ASSISTÊNCIA ---
+      tower_heatmap_sessions: {
+        Row: {
+          id: string
+          tenant_id: string
+          store_id: number
+          customer_id: number
+          optical_evaluation_id: number
+          created_by_user_id: string | null
+          status: 'created' | 'running' | 'completed' | 'cancelled' | 'failed'
+          algorithm_version: string
+          target_plan_version: string
+          result_summary: Json | null
+          target_samples: Json | null
+          started_at: string | null
+          completed_at: string | null
+          cancelled_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          store_id: number
+          customer_id: number
+          optical_evaluation_id: number
+          created_by_user_id?: string | null
+          status?: 'created' | 'running' | 'completed' | 'cancelled' | 'failed'
+          algorithm_version: string
+          target_plan_version: string
+          result_summary?: Json | null
+          target_samples?: Json | null
+          started_at?: string | null
+          completed_at?: string | null
+          cancelled_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          store_id?: number
+          customer_id?: number
+          optical_evaluation_id?: number
+          created_by_user_id?: string | null
+          status?: 'created' | 'running' | 'completed' | 'cancelled' | 'failed'
+          algorithm_version?: string
+          target_plan_version?: string
+          result_summary?: Json | null
+          target_samples?: Json | null
+          started_at?: string | null
+          completed_at?: string | null
+          cancelled_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+
       optical_evaluations: {
         Row: {
           id: number
@@ -787,10 +1109,12 @@ export interface Database {
           id: number
           tenant_id: string | null
           store_id: number
-          employee_id: number
+          employee_id: number | null
           venda_id: number | null
+          oftalmologista_id: number | null
           type: string
           period_ref: string | null
+          commission_stage: string
           amount: number
           percentage: number | null
           status: string | null
@@ -802,10 +1126,12 @@ export interface Database {
           id?: number
           tenant_id?: string | null
           store_id: number
-          employee_id: number
+          employee_id?: number | null
           venda_id?: number | null
+          oftalmologista_id?: number | null
           type?: string
           period_ref?: string | null
+          commission_stage?: string
           amount: number
           percentage?: number | null
           status?: string | null
@@ -815,8 +1141,11 @@ export interface Database {
         }
         Update: {
           venda_id?: number | null
+          oftalmologista_id?: number | null
+          employee_id?: number | null
           type?: string
           period_ref?: string | null
+          commission_stage?: string
           status?: string | null
           reversal_reason?: string | null
           updated_at?: string
@@ -1128,6 +1457,9 @@ export interface Database {
       service_orders: {
         Row: {
           id: number
+          tenant_id: string
+          store_id: number
+          customer_id: number
           venda_id: number
           created_at: string
           receita_longe_od_esferico: string | null
@@ -1171,6 +1503,8 @@ export interface Database {
           dependente_id: number | null
           oftalmologista_id: number | null
           source_optical_evaluation_id: number | null
+          armacao_com_cliente: boolean
+          os_enviada_ao_lab: boolean
           // NOVA TABELA ASSISTÊNCIA PODE TER RELAÇÃO, MAS NÃO ALTEROU OS AQUI
         }
         Insert: {
@@ -1323,6 +1657,30 @@ export interface Database {
       [_ in never]: never
     }
     Functions: {
+      create_nfc_tray: {
+        Args: {
+          p_tray_id: string
+          p_store_id: number
+          p_created_by_user_id: string
+        }
+        Returns: Json
+      }
+      link_nfc_tray_os: {
+        Args: {
+          p_tray_id: string
+          p_store_id: number
+          p_os_id: number
+        }
+        Returns: Json
+      }
+      advance_nfc_tray: {
+        Args: {
+          p_tray_id: string
+          p_store_id: number
+          p_action: string
+        }
+        Returns: Json
+      }
       update_venda_financeiro: {
         Args: { p_venda_id: number }
         Returns: void
@@ -1332,7 +1690,12 @@ export interface Database {
         Returns: void
       }
       get_next_nfce_number: {
-        Args: { p_org_id: string; p_serie: string | number }
+        Args: {
+          p_environment?: string
+          p_org_id: string
+          p_serie: string | number
+          p_store_id: number
+        }
         Returns: number
       }
     }

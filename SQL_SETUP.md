@@ -1,4 +1,4 @@
-# Setup do Banco de Dados para Nuvem Fiscal
+# Setup do Banco de Dados para Nuvem Local
 
 Execute os comandos abaixo no Editor SQL do Supabase para criar as tabelas necessárias.
 
@@ -41,7 +41,7 @@ Armazena o histórico de notas fiscais emitidas.
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- Opcional: Índice para busca rápida por nuvemfiscal_uuid (usado no webhook)
+-- Opcional: Índice para busca rápida pelo UUID fiscal legado (usado no webhook)
 create index if not exists idx_fiscal_invoices_uuid on fiscal_invoices(nuvemfiscal_uuid);
 ```
 

@@ -10,7 +10,8 @@ import DashboardLayoutWrapper from '@/components/dashboard/DashboardLayoutWrappe
 import ManagerLayout from '@/components/manager-menu/ManagerLayout';
 import { TabletRedirect } from '@/components/tablet/TabletRedirect';
 import { TabletModeButton } from '@/components/tablet/TabletModeButton';
-import { getStoreAppMode, isMvpMode, isMvpRouteAllowed, type AppMode } from '@/lib/app-mode';
+import { StoreModulesProvider } from '@/lib/contexts/StoreModulesContext';
+import { StoreSettings, getStoreModules } from '@/lib/store-modules';
 
 type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor' | 'tecnico';
 type StoreProfile = {
@@ -20,11 +21,6 @@ type StoreProfile = {
 type StoreDataShape = {
   name?: string | null;
   settings?: unknown;
-};
-type StoreSettings = {
-  logo?: string;
-  pre_sale_analysis_enabled?: boolean;
-  app_mode?: AppMode;
 };
 
 export default async function StoreLayout({
@@ -71,9 +67,10 @@ export default async function StoreLayout({
   const storeName = storeData?.name || 'Otica';
   const settings = storeData?.settings;
   const typedSettings = (settings as StoreSettings | null) || null;
-  const appMode = getStoreAppMode(settings);
+  const storeModules = getStoreModules(typedSettings);
   let logoFile: string | null = null;
   const preSaleAnalysisEnabled = typedSettings?.pre_sale_analysis_enabled === true;
+  const deliveryDateEnabled = typedSettings?.delivery_date_enabled !== false;
 
   const pathname = headers().get('x-pathname') || `/dashboard/loja/${storeIdParam}`;
   if (isMvpMode(appMode) && !isMvpRouteAllowed(pathname, storeIdParam)) {
@@ -91,41 +88,47 @@ export default async function StoreLayout({
 
   if (userRole === 'store_operator') {
     return (
-      <ModalsProvider storeId={storeIdParam}>
-        <TabletRedirect storeId={storeIdParam} />
-        <TabletModeButton storeId={storeIdParam} />
-        <OperatorLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl} preSaleAnalysisEnabled={preSaleAnalysisEnabled} appMode={appMode}>
-          {children}
-        </OperatorLayout>
-      </ModalsProvider>
+      <StoreModulesProvider modules={storeModules}>
+        <ModalsProvider storeId={storeIdParam}>
+          <TabletRedirect storeId={storeIdParam} />
+          <TabletModeButton storeId={storeIdParam} />
+          <OperatorLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl} preSaleAnalysisEnabled={preSaleAnalysisEnabled} deliveryDateEnabled={deliveryDateEnabled}>
+            {children}
+          </OperatorLayout>
+        </ModalsProvider>
+      </StoreModulesProvider>
     );
   }
 
   if (userRole === 'manager') {
     return (
-      <ModalsProvider storeId={storeIdParam}>
-        <TabletRedirect storeId={storeIdParam} />
-        <TabletModeButton storeId={storeIdParam} />
-        <ManagerLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl} appMode={appMode}>
-          {children}
-        </ManagerLayout>
-      </ModalsProvider>
+      <StoreModulesProvider modules={storeModules}>
+        <ModalsProvider storeId={storeIdParam}>
+          <TabletRedirect storeId={storeIdParam} />
+          <TabletModeButton storeId={storeIdParam} />
+          <ManagerLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl}>
+            {children}
+          </ManagerLayout>
+        </ModalsProvider>
+      </StoreModulesProvider>
     );
   }
 
   return (
-    <ModalsProvider storeId={storeIdParam}>
-      <TabletRedirect storeId={storeIdParam} />
-      <TabletModeButton storeId={storeIdParam} />
-      <div className="flex w-full h-full overflow-hidden">
-        <DashboardLayoutWrapper>
-          <div className="flex-shrink-0 h-full relative z-20">
-            <SideNav userRole={userRole} storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl} />
-          </div>
+    <StoreModulesProvider modules={storeModules}>
+      <ModalsProvider storeId={storeIdParam}>
+        <TabletRedirect storeId={storeIdParam} />
+        <TabletModeButton storeId={storeIdParam} />
+        <div className="flex w-full h-full overflow-hidden">
+          <DashboardLayoutWrapper>
+            <div className="flex-shrink-0 h-full relative z-20">
+              <SideNav userRole={userRole} storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl} />
+            </div>
 
-          <main className="flex-1 overflow-y-auto relative z-10 w-full">{children}</main>
-        </DashboardLayoutWrapper>
-      </div>
-    </ModalsProvider>
+            <main className="flex-1 overflow-y-auto relative z-10 w-full">{children}</main>
+          </DashboardLayoutWrapper>
+        </div>
+      </ModalsProvider>
+    </StoreModulesProvider>
   );
 }

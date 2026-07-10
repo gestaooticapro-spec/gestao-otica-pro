@@ -9,7 +9,8 @@ import { useModals } from '@/lib/contexts/ModalsContext';
 import { useState, useEffect, useRef } from 'react';
 import { searchCustomersQuick, CustomerSearchResult } from '@/lib/actions/customer-history.actions';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
-import { type AppMode } from '@/lib/app-mode';
+import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
+import FullscreenToggleButton from '@/components/FullscreenToggleButton';
 
 interface OperatorMenuAtendimentoProps {
     storeId: number;
@@ -37,7 +38,7 @@ function SearchRedirectModal({
 
     useEffect(() => {
         const timer = setTimeout(async () => {
-            if (searchTerm.length >= 2) {
+            if (searchTerm.length >= 3) {
                 setLoading(true);
                 const res = await searchCustomersQuick(searchTerm, storeId);
                 setResults(res);
@@ -52,8 +53,8 @@ function SearchRedirectModal({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="w-full max-w-lg bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[600px]">
+        <div className="fixed inset-0 z-[60] flex items-start pt-20 justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="w-full max-w-lg bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[600px]">
                 <div className="p-4 border-b border-white/10 flex justify-between items-center bg-white/5">
                     <h3 className="text-lg font-bold text-white flex items-center gap-2">
                         <FileSearch className="w-5 h-5 text-indigo-400" />
@@ -96,7 +97,7 @@ function SearchRedirectModal({
                                 <ArrowRight className="w-4 h-4 text-slate-600 ml-auto group-hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition-all" />
                             </button>
                         ))
-                    ) : searchTerm.length >= 2 && !loading ? (
+                    ) : searchTerm.length >= 3 && !loading ? (
                         <div className="text-center py-8 text-slate-500">
                             <p>Nenhum cliente encontrado.</p>
                         </div>
@@ -122,7 +123,7 @@ export default function OperatorMenuAtendimento({
     const { openParcelaModal, openCustomerHistoryModal } = useModals();
     const { preference } = useBackgroundPreference();
     const [isSearchOpen, setIsSearchOpen] = useState(false);
-    const isMvp = appMode === 'mvp';
+    const modules = useStoreModules();
 
     const [tooltip, setTooltip] = useState<{ visible: boolean, x: number, y: number, text: string }>({ visible: false, x: 0, y: 0, text: '' });
     const hoverTimeout = useRef<NodeJS.Timeout | null>(null);
@@ -157,7 +158,8 @@ export default function OperatorMenuAtendimento({
             />
 
             {/* Toggle de Fundo */}
-            <div className="absolute top-6 right-6 z-50">
+            <div className="absolute top-6 right-6 z-50 flex items-center gap-3">
+                <FullscreenToggleButton className="right-20 top-6" />
                 <BackgroundToggle />
             </div>
 
@@ -212,7 +214,7 @@ export default function OperatorMenuAtendimento({
                                     </div>
                                 </button>
 
-                                {!isMvp && preSaleAnalysisEnabled && (
+                                {preSaleAnalysisEnabled && modules.evaluation && (
                                     <button
                                         onClick={() => onNavigate(`/dashboard/loja/${storeId}/avaliacao`)}
                                         onMouseEnter={(e) => handleHover(e, "Abra a tela de Avaliação para registrar análises pré-venda, importar o PDF do iVision e manter histórico individual por titular ou dependente.")}
@@ -264,7 +266,7 @@ export default function OperatorMenuAtendimento({
                                 </button>
 
                                 {/* Venda Rápida */}
-                                <button
+                                {modules.quickSale && <button
                                     onClick={() => onNavigate(`/dashboard/loja/${storeId}/pdv-express`)}
                                     onMouseEnter={(e) => handleHover(e, "Venda expressa avulsa. Ideal para óculos de sol, caixa de lentes de contato, líquidos e acessórios diversos de prateleira.")}
                                     onMouseMove={handleMove}
@@ -281,7 +283,7 @@ export default function OperatorMenuAtendimento({
                                     <div className="absolute top-1/2 right-4 -translate-y-1/2 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all duration-300">
                                         <ArrowRight className="w-5 h-5 text-blue-300" />
                                     </div>
-                                </button>
+                                </button>}
                             </div>
                         </div>
                     </div>
@@ -324,7 +326,7 @@ export default function OperatorMenuAtendimento({
                             </button>
 
                             {/* Baixa Parcelas */}
-                            <button
+                            {modules.installments && <button
                                 onClick={() => openParcelaModal()}
                                 onMouseEnter={(e) => handleHover(e, "Use este botão quando o cliente vier pagar uma parcela.")}
                                 onMouseMove={handleMove}
@@ -341,7 +343,7 @@ export default function OperatorMenuAtendimento({
                                 <div className="absolute top-1/2 right-4 -translate-y-1/2 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all duration-300">
                                     <ArrowRight className="w-5 h-5 text-amber-300" />
                                 </div>
-                            </button>
+                            </button>}
 
                             {/* Assistência */}
                             <button
@@ -378,7 +380,13 @@ export default function OperatorMenuAtendimento({
                         Apoio Operacional
                         <span className="w-8 h-px bg-slate-600"></span>
                     </h2>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+                    <div
+                        className={`grid grid-cols-1 sm:grid-cols-2 gap-4 w-full ${
+                            modules.globalTables
+                                ? 'lg:grid-cols-4'
+                                : 'lg:grid-cols-3 max-w-4xl mx-auto'
+                        }`}
+                    >
                         {/* Clientes */}
                         <button
                             onClick={() => onNavigate(`/dashboard/loja/${storeId}/clientes`)}
@@ -431,7 +439,7 @@ export default function OperatorMenuAtendimento({
                         </button>
 
                         {/* Tabela de Preços */}
-                        <button
+                        {modules.globalTables && <button
                             onClick={() => onNavigate(`/dashboard/loja/${storeId}/tabela-precos`)}
                             onMouseEnter={(e) => handleHover(e, "Consulte a tabela de preços do laboratório ativo. Compare ofertas, tratamentos e valores lado a lado.")}
                             onMouseMove={handleMove}
@@ -445,7 +453,7 @@ export default function OperatorMenuAtendimento({
                                 <span className="text-slate-200 text-sm font-bold block group-hover:text-white transition-colors">Tabela de Preços</span>
                                 <span className="text-slate-500 text-[10px] group-hover:text-slate-300 transition-colors">Laboratório</span>
                             </div>
-                        </button>
+                        </button>}
                     </div>
                 </div>
             </div>

@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Plus, ShoppingCart, Calendar, User, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, XCircle, Clock, RefreshCcw } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import VendasFilter from '@/components/vendas/VendasFilter'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
+import { currentPathWithSearch, withReturnTo } from '@/lib/return-navigation'
 
 interface VendasListInterfaceProps {
     vendas: any[]
@@ -19,24 +20,46 @@ interface VendasListInterfaceProps {
 export default function VendasListInterface({ vendas, storeId, mode, startDate, endDate }: VendasListInterfaceProps) {
     const { preference } = useBackgroundPreference()
     const router = useRouter()
+    const pathname = usePathname()
+    const searchParams = useSearchParams()
     const [isRefreshing, setIsRefreshing] = useState(false)
+    const hasRefreshedOnMount = useRef(false)
+    const currentListUrl = currentPathWithSearch(pathname, searchParams)
 
-    // Função de Refresh manual
-    const handleRefresh = () => {
-        setIsRefreshing(true)
+    const refreshList = (showFeedback = true) => {
+        if (showFeedback) {
+            setIsRefreshing(true)
+        }
+
         router.refresh()
-        // Pequeno delay para a animação ser visível e indicar que algo ocorreu
-        setTimeout(() => setIsRefreshing(false), 800)
+
+        if (showFeedback) {
+            window.setTimeout(() => setIsRefreshing(false), 800)
+        }
     }
 
-    // Auto-refresh quando a janela recebe foco (volta para a aba)
+    const handleRefresh = () => {
+        refreshList(true)
+    }
+
+    // Forca um refresh ao abrir a pagina para evitar lista antiga vinda do cache de navegacao.
+    useEffect(() => {
+        if (hasRefreshedOnMount.current) return
+        hasRefreshedOnMount.current = true
+        router.refresh()
+    }, [router])
+
+    // Auto-refresh quando a janela recebe foco (volta para a aba).
     useEffect(() => {
         const onFocus = () => {
-            handleRefresh()
+            setIsRefreshing(true)
+            router.refresh()
+            window.setTimeout(() => setIsRefreshing(false), 800)
         }
+
         window.addEventListener('focus', onFocus)
         return () => window.removeEventListener('focus', onFocus)
-    }, [])
+    }, [router])
 
     const formatDate = (dateString: string) => {
         return new Date(dateString).toLocaleDateString('pt-BR', {
@@ -48,7 +71,6 @@ export default function VendasListInterface({ vendas, storeId, mode, startDate, 
         })
     }
 
-    // Helper de Status Visual
     const getStatusBadge = (status: string) => {
         if (status === 'Fechada') return <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase"><CheckCircle2 className="h-3 w-3" /> Fechada</span>
         if (status === 'Cancelada') return <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-black bg-red-500/10 text-red-400 border border-red-500/20 uppercase"><XCircle className="h-3 w-3" /> Cancelada</span>
@@ -58,14 +80,11 @@ export default function VendasListInterface({ vendas, storeId, mode, startDate, 
 
     return (
         <div className="relative flex flex-col h-[calc(100vh-64px)] bg-slate-950 overflow-hidden font-sans">
-
-            {/* Background Image + Overlay */}
             <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
                 <div className="absolute inset-0 z-0 bg-[url('/dashboard.jpg')] bg-cover bg-center opacity-40 blur-[2px]" />
                 <div className="absolute inset-0 z-0 bg-gradient-to-b from-slate-950/50 via-slate-950/70 to-slate-950/95" />
             </div>
 
-            {/* Header Glass */}
             <div className="relative z-10 bg-white/5 backdrop-blur-xl border-b border-white/10 px-6 py-3 flex items-center gap-3 flex-shrink-0 shadow-2xl h-14">
                 <Link
                     href={`/dashboard/loja/${storeId}?menu=loja-vazia`}
@@ -81,7 +100,7 @@ export default function VendasListInterface({ vendas, storeId, mode, startDate, 
                 <div>
                     <h1 className="text-lg font-black text-white tracking-tight uppercase">Central de Vendas</h1>
                     <p className="text-[10px] text-blue-400 font-black uppercase tracking-[0.2em] opacity-80">
-                        Gerencie fechamentos e histórico
+                        Gerencie fechamentos e historico
                     </p>
                 </div>
 
@@ -99,17 +118,13 @@ export default function VendasListInterface({ vendas, storeId, mode, startDate, 
             </div>
 
             <div className="relative z-10 flex-1 overflow-hidden p-4 lg:p-6 flex flex-col gap-6">
-
-                {/* Wrapper do Filtro para garantir o z-index e o estilo glass se vazar algo */}
                 <VendasFilter />
 
-                {/* Tabela de Resultados Glass */}
                 <div className="bg-white/5 backdrop-blur-md rounded-2xl shadow-xl border border-white/10 overflow-hidden flex flex-col flex-1">
-
                     <div className={`px-4 py-3 border-b border-white/10 flex items-center justify-between flex-shrink-0 ${mode === 'pendencias' ? 'bg-amber-500/5' : 'bg-white/5'}`}>
                         <h2 className={`font-bold text-sm flex items-center gap-2 ${mode === 'pendencias' ? 'text-amber-400' : 'text-slate-200'}`}>
                             {mode === 'pendencias' ? <AlertCircle className="h-4 w-4" /> : <Calendar className="h-4 w-4" />}
-                            {mode === 'pendencias' ? 'Fila de Pendências' : 'Histórico do Período'}
+                            {mode === 'pendencias' ? 'Fila de Pendencias' : 'Historico do Periodo'}
                             <div className="flex items-center gap-2 ml-1">
                                 <span className="opacity-60 text-xs bg-white/10 px-2 py-0.5 rounded-full text-white">
                                     {vendas?.length || 0}
@@ -136,7 +151,7 @@ export default function VendasListInterface({ vendas, storeId, mode, startDate, 
                                     <th className="p-3 text-center bg-slate-900/95 backdrop-blur-xl">Status</th>
                                     <th className="p-3 text-right bg-slate-900/95 backdrop-blur-xl">Total</th>
                                     <th className="p-3 text-right bg-slate-900/95 backdrop-blur-xl">Falta Pagar</th>
-                                    <th className="p-3 text-center w-20 bg-slate-900/95 backdrop-blur-xl">Ação</th>
+                                    <th className="p-3 text-center w-20 bg-slate-900/95 backdrop-blur-xl">Acao</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-white/5">
@@ -205,7 +220,7 @@ export default function VendasListInterface({ vendas, storeId, mode, startDate, 
                                             </td>
                                             <td className="p-3 text-center">
                                                 <Link
-                                                    href={`/dashboard/loja/${storeId}/vendas/${venda.id}/experimental`}
+                                                    href={withReturnTo(`/dashboard/loja/${storeId}/vendas/${venda.id}/experimental`, currentListUrl)}
                                                     className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white/5 text-slate-400 hover:bg-indigo-500/20 hover:text-indigo-300 border border-transparent hover:border-indigo-500/30 transition-all"
                                                     title="Ver Detalhes"
                                                 >

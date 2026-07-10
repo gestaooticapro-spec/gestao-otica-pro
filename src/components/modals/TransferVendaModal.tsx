@@ -27,6 +27,7 @@ export default function TransferVendaModal({ isOpen, onClose, vendaId, storeId, 
   // Fluxo de autenticação por PIN
   const [isAuthOpen, setIsAuthOpen] = useState(false)
   const justificativaRef = useRef<HTMLTextAreaElement>(null)
+  const transferInFlightRef = useRef(false)
 
   if (!isOpen) return null
 
@@ -63,33 +64,40 @@ export default function TransferVendaModal({ isOpen, onClose, vendaId, storeId, 
 
   // Quando o funcionário se autenticar com PIN, executa a transferência
   const handleAuthSuccess = async (employee: { id: number; full_name: string; role: string }) => {
-    if (!selectedCustomer) return
+    if (!selectedCustomer || transferInFlightRef.current) return
+
+    transferInFlightRef.current = true
     setIsTransferring(true)
     setError(null)
+    setIsAuthOpen(false)
 
-    const res = await transferirTitularidadeVenda(
-      vendaId,
-      storeId,
-      selectedCustomer.id,
-      justificativa,
-      employee.id,
-      employee.full_name
-    )
+    try {
+      const res = await transferirTitularidadeVenda(
+        vendaId,
+        storeId,
+        selectedCustomer.id,
+        justificativa,
+        employee.id,
+        employee.full_name
+      )
 
-    if (res.success) {
-      toast.success(res.message)
-      await onSuccess()
-      // Reset state
-      setSearchTerm('')
-      setCustomers([])
-      setSelectedCustomer(null)
-      setJustificativa('')
-      onClose()
-    } else {
-      setError(res.message)
-      toast.error(res.message)
+      if (res.success) {
+        toast.success(res.message)
+        await onSuccess()
+        // Reset state
+        setSearchTerm('')
+        setCustomers([])
+        setSelectedCustomer(null)
+        setJustificativa('')
+        onClose()
+      } else {
+        setError(res.message)
+        toast.error(res.message)
+      }
+    } finally {
+      transferInFlightRef.current = false
+      setIsTransferring(false)
     }
-    setIsTransferring(false)
   }
 
   return (

@@ -1,6 +1,13 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSharedFamilySemanticProfile } from '@/lib/server/shared-lens-semantics'
 import type { AiSuggestionConfig, AiStoreProfileLevel } from '@/lib/types/ai-config.types'
+import type { LensGeometry } from '@/lib/actions/lens-geometry.actions'
+import {
+  evaluateHeatmapGeometryCompatibility,
+  findGeometryForRecommendation,
+  type HeatmapGeometryCompatibility,
+  type PersistedHeatmapSample,
+} from '@/lib/server/heatmap-geometry-compatibility'
 
 export type BudgetMode = 'economico' | 'intermediario' | 'premium'
 export type ClinicalCategory =
@@ -60,6 +67,18 @@ export type RecommendationOption = {
   treatmentSummary: string | null
   treatmentNotes: string | null
   treatmentExplainWhy: string | null
+  originalRank?: number
+  presentationRank?: number
+  commercialRole?: 'anchor' | 'target' | 'alternative'
+  heatmapCompatibility?: HeatmapGeometryCompatibility
+}
+
+export type RecommendationPresentationStrategy = {
+  applied: boolean
+  type: 'target_as_second_option' | 'none'
+  reason: string | null
+  originalOrder: string[]
+  displayOrder: string[]
 }
 
 export type RecommendationConversationState = {
@@ -251,9 +270,7 @@ function withoutAccents(value: string): string {
 }
 
 function rejectsPremiumPreference(input: RecommendationCaseInput): boolean {
-  const budgetMode = normalizeBudgetMode(input.budget_mode)
   const note = withoutAccents(String(input.notes || '').toLowerCase())
-  if (budgetMode !== 'economico') return false
 
   return (
     (input.objetivo_tags || []).includes('premium_recusado') ||
@@ -617,6 +634,10 @@ function getDesiredClinicalCategories(input: RecommendationCaseInput): ClinicalC
   const desiredBenefits = input.desired_benefits || []
   const objetivoTags = input.objetivo_tags || []
 
+  if (objetivoTags.includes('ocupacional') || desiredBenefits.includes('ocupacional')) {
+    return ['ocupacional']
+  }
+
   // Explicit occupational request from UI (e.g. "óculos para trabalho/escritório")
   if (hasPrimaryOccupationalDemand(input)) {
     return input.adicao != null
@@ -637,16 +658,16 @@ function getDesiredClinicalCategories(input: RecommendationCaseInput): ClinicalC
     return ['controle_miopia']
   }
 
+  if (acceptsDedicatedSolarAlternative(input)) {
+    return ['plana_solar']
+  }
+
   if (hasPrimarySunDemand(input)) {
     return ['visao_simples', 'plana_solar']
   }
 
   if (rotinaTags.includes('sol') && rotinaTags.length === 1) {
     return ['plana_solar', 'visao_simples']
-  }
-
-  if (objetivoTags.includes('ocupacional') || desiredBenefits.includes('ocupacional')) {
-    return ['ocupacional', 'visao_simples']
   }
 
   return ['visao_simples']
@@ -893,11 +914,11 @@ const EXPLICIT_EMBEDDED_TREATMENTS: Array<{
       name: 'Antirreflexo Blue Premium',
       type: 'Antirreflexo',
       semantic: {
-        positioning: 'intermediaria',
-        price_tier: 'intermediario',
+        positioning: 'premium',
+        price_tier: 'premium',
         usage_tags: ['uso_diario', 'telas', 'computador', 'celular'],
         benefit_tags: ['antirreflexo', 'conforto_digital', 'conforto_visual', 'protecao_luz_azul'],
-        commercial_summary: 'Tratamento intermediario com antirreflexo e filtro azul para rotina digital.',
+        commercial_summary: 'Tratamento premium com antirreflexo e filtro azul para rotina digital.',
         recommendation_notes: 'Sobe quando telas, Blue/UV e custo-beneficio sao prioridades.',
         explain_why: 'Foi escolhido por combinar conforto digital e filtragem de luz azul.',
       },
@@ -1182,7 +1203,7 @@ function inferMixedCategoryFromSemanticSignals(
     return 'controle_miopia'
   }
 
-  if (/(interview|digitime|office|work|softwear|relax)/.test(descriptor)) {
+  if (/(interview|digitime|office|work|softwear)/.test(descriptor)) {
     return 'ocupacional'
   }
 
@@ -1289,12 +1310,15 @@ function scorePriceTarget(params: {
   if (minPrice != null && price < minPrice) return 0
 
   const ratio = price / targetPrice
-  if (ratio > 1.2) return -6
-  if (ratio > 1.1) return -3
-  if (ratio > 1) return -1
-  if (ratio >= 0.8) return 5   // sweet spot: within ±20% of target
-  if (ratio >= 0.6) return 1   // up to 40% below target: acceptable
-  return -2                    // more than 40% below target
+  if (ratio > 1.6) return -16
+  if (ratio > 1.45) return -13
+  if (ratio > 1.3) return -10
+  if (ratio > 1.2) return -7
+  if (ratio > 1.1) return -4
+  if (ratio > 1.03) return -1.5
+  if (ratio >= 0.8) return 7
+  if (ratio >= 0.6) return 2
+  return -2
 }
 
 function getPrescriptionStrength(input: RecommendationCaseInput): number {
@@ -1594,7 +1618,7 @@ function scoreOffer(params: {
     !hasImpactResistantMaterial
   ) {
     score -= indexValue >= 1.74 ? 2.5 : 1.5
-    reasons.push('material:alto_indice_tradeoff_resistencia')
+    reasons.push('material:alto_indice_menos_resistente')
   }
 
   if (highResistanceChildCase && !hasResistantMaterial) {
@@ -1766,17 +1790,20 @@ function scoreOffer(params: {
     minPrice,
   })
   score += targetScore
-  if (targetScore > 0.5 && targetPrice != null) {
-    reasons.push(`alvo_preco:${targetPrice}`)
+  if (targetPrice != null) {
+    if (targetScore > 0.5) reasons.push(`alvo_preco:${targetPrice}`)
+    if (targetScore < -0.5 && finalPrice > targetPrice) reasons.push('alvo_preco:acima_alvo')
   }
-  if (
-    targetPrice != null &&
-    budgetMode === 'economico' &&
-    finalPrice > targetPrice
-  ) {
+  if (targetPrice != null && finalPrice > targetPrice) {
     const overTargetRatio = finalPrice / targetPrice
-    score -= overTargetRatio > 1.1 ? 4 : 2
-    reasons.push('alvo_preco:acima_alvo')
+    const overTargetPenalty =
+      budgetMode === 'economico'
+        ? overTargetRatio > 1.1 ? 4 : 2
+        : overTargetRatio > 1.5 ? 3 : overTargetRatio > 1.25 ? 1.5 : 0
+    if (overTargetPenalty > 0) {
+      score -= overTargetPenalty
+      reasons.push('alvo_preco:acima_alvo_relevante')
+    }
   }
   if (
     targetPrice != null &&
@@ -2285,6 +2312,8 @@ function selectDiverseTopEntries(
   const selectedLabs = new Set<string>()
   const selectedFamilyNames = new Set<string>() // cross-catalog dedupe by normalized name
   const selectedProductNames = new Set<string>() // cross-catalog dedupe by actual product
+  const primaryCategory = entries[0]?.clinicalCategory
+  const shouldDiversifyLabs = primaryCategory === 'multifocal' || primaryCategory === 'ocupacional'
 
   const trySelect = (entry: RecommendationOption) => {
     if (selected.length >= topN) return
@@ -2298,14 +2327,16 @@ function selectDiverseTopEntries(
     selectedProductNames.add(normalizeProductSemanticName(entry))
   }
 
-  // Pass 1: best entry per unique lab, different product per slot
-  for (const entry of entries) {
-    if (selected.length >= topN) break
-    const lab = entry.sourceLaboratorio
-    const nameNorm = normalizeFamilyName(entry.familyName)
-    const productNorm = normalizeProductSemanticName(entry)
-    if (lab && !selectedLabs.has(lab) && !selectedFamilyNames.has(nameNorm) && !selectedProductNames.has(productNorm)) {
-      trySelect(entry)
+  // Pass 1: best entry per unique lab, only for categories where lab diversity is commercially useful.
+  if (shouldDiversifyLabs) {
+    for (const entry of entries) {
+      if (selected.length >= topN) break
+      const lab = entry.sourceLaboratorio
+      const nameNorm = normalizeFamilyName(entry.familyName)
+      const productNorm = normalizeProductSemanticName(entry)
+      if (lab && !selectedLabs.has(lab) && !selectedFamilyNames.has(nameNorm) && !selectedProductNames.has(productNorm)) {
+        trySelect(entry)
+      }
     }
   }
 
@@ -2344,106 +2375,23 @@ function selectDiverseTopEntries(
     .sort((a, b) => b.score - a.score || a.finalPrice - b.finalPrice)
 }
 
-function appendPrioritizedEntries(
-  selected: RecommendationOption[],
-  pool: RecommendationOption[],
-  topN: number,
+function applyHeatmapCompatibility(
+  entries: RecommendationOption[],
+  samples: PersistedHeatmapSample[],
+  geometries: LensGeometry[],
 ): RecommendationOption[] {
-  if (selected.length >= topN) return selected.slice(0, topN)
-
-  const selectedConfigKeys = new Set(selected.map((entry) => entry.configKey))
-  const selectedFamilies = new Set(selected.map((entry) => entry.familyId))
-  const selectedOffers = new Set(selected.map((entry) => entry.offerId))
-  const selectedLabs = new Set(selected.map((entry) => entry.sourceLaboratorio).filter(Boolean) as string[])
-  const selectedFamilyNames = new Set(selected.map((entry) => normalizeFamilyName(entry.familyName)))
-  const selectedProductNames = new Set(selected.map((entry) => normalizeProductSemanticName(entry)))
-
-  const trySelect = (entry: RecommendationOption) => {
-    if (selected.length >= topN) return
-    if (selectedConfigKeys.has(entry.configKey)) return
-    selected.push(entry)
-    selectedConfigKeys.add(entry.configKey)
-    selectedFamilies.add(entry.familyId)
-    selectedOffers.add(entry.offerId)
-    if (entry.sourceLaboratorio) selectedLabs.add(entry.sourceLaboratorio)
-    selectedFamilyNames.add(normalizeFamilyName(entry.familyName))
-    selectedProductNames.add(normalizeProductSemanticName(entry))
-  }
-
-  // Pass 1: prefer entries from labs not yet represented, different product
-  for (const entry of pool) {
-    if (selected.length >= topN) break
-    const lab = entry.sourceLaboratorio
-    const nameNorm = normalizeFamilyName(entry.familyName)
-    const productNorm = normalizeProductSemanticName(entry)
-    if (lab && !selectedLabs.has(lab) && !selectedFamilyNames.has(nameNorm) && !selectedProductNames.has(productNorm)) {
-      trySelect(entry)
-    }
-  }
-
-  // Pass 2: fill remaining — different product name
-  for (const entry of pool) {
-    if (selected.length >= topN) break
-    if (
-      !selectedFamilyNames.has(normalizeFamilyName(entry.familyName)) &&
-      !selectedProductNames.has(normalizeProductSemanticName(entry))
-    ) {
-      trySelect(entry)
-    }
-  }
-
-  // Pass 3: fill remaining — different family id
-  for (const entry of pool) {
-    if (selected.length >= topN) break
-    if (
-      !selectedFamilies.has(entry.familyId) &&
-      !selectedProductNames.has(normalizeProductSemanticName(entry))
-    ) {
-      trySelect(entry)
-    }
-  }
-
-  // Pass 4: fill any remaining slots
-  for (const entry of pool) {
-    if (selected.length >= topN) break
-    if (!selectedProductNames.has(normalizeProductSemanticName(entry))) {
-      trySelect(entry)
-    }
-  }
-
-  return selected
-    .slice(0, topN)
-    .sort((a, b) => b.score - a.score || a.finalPrice - b.finalPrice)
-}
-
-function applyExploratoryPriceDiscipline(
-  exploratoryEntries: RecommendationOption[],
-  anchorEntries: RecommendationOption[],
-): RecommendationOption[] {
-  if (!anchorEntries.length) return exploratoryEntries
-
-  const anchorPrices = anchorEntries
-    .map((entry) => entry.finalPrice)
-    .filter((value) => Number.isFinite(value) && value > 0)
-
-  if (!anchorPrices.length) return exploratoryEntries
-
-  const maxAnchorPrice = Math.max(...anchorPrices)
-  const softCeiling = maxAnchorPrice * 1.8
-
-  return exploratoryEntries
+  return entries
     .map((entry) => {
-      if (!Number.isFinite(entry.finalPrice) || entry.finalPrice <= softCeiling) {
-        return entry
-      }
-
-      const priceOverflowRatio = Math.min((entry.finalPrice - softCeiling) / softCeiling, 1.5)
-      const penalty = Number((1.25 + priceOverflowRatio * 2.5).toFixed(2))
-
+      if (entry.clinicalCategory !== 'multifocal') return entry
+      const compatibility = evaluateHeatmapGeometryCompatibility(
+        samples,
+        findGeometryForRecommendation(entry.familyName, geometries),
+      )
       return {
         ...entry,
-        score: Number((entry.score - penalty).toFixed(2)),
-        reasons: uniqueStrings([...entry.reasons, 'opcao:salto_preco_controlado']),
+        score: entry.score + compatibility.scoreAdjustment,
+        reasons: [...entry.reasons, `heatmap:${compatibility.status}`],
+        heatmapCompatibility: compatibility,
       }
     })
     .sort((a, b) => b.score - a.score || a.finalPrice - b.finalPrice)
@@ -2490,6 +2438,7 @@ function isUnsafeTopRecommendation(
   }
   if (
     highPrescriptionThinLensNeed &&
+    entry.clinicalCategory !== 'controle_miopia' &&
     (reasons.includes('material:indice_nao_informado_grau_alto') ||
       reasons.includes('design:esferico_limitado_grau_alto') ||
       reasons.includes('material:indice_baixo_grau_alto') ||
@@ -2508,77 +2457,6 @@ function isUnsafeTopRecommendation(
   }
 
   return false
-}
-
-function getExploratoryClinicalCategories(
-  input: RecommendationCaseInput,
-  forcedClinicalCategories?: ClinicalCategory[],
-): ClinicalCategory[] {
-  const strict = forcedClinicalCategories?.length
-    ? forcedClinicalCategories
-    : getDesiredClinicalCategories(input)
-
-  if (strict.includes('controle_miopia')) {
-    return uniqueCategories(['controle_miopia']) || strict
-  }
-
-  if (strict.includes('multifocal')) {
-    const hasDrivingNeeds = (input.rotina_tags || []).some(
-      (tag) => tag === 'dirigir' || tag === 'dirigir_noite',
-    )
-    const wantsFirstMultifocal = (input.objetivo_tags || []).includes('primeira_multifocal')
-    const adicao = input.adicao ?? 0
-
-    // Presbiopia instalada com objetivo explícito de multifocal:
-    // não abrir visao_simples — o paciente precisa de correção progressiva completa
-    if (wantsFirstMultifocal && adicao >= 1.0) {
-      return hasDrivingNeeds
-        ? uniqueCategories(['multifocal']) || strict
-        : uniqueCategories(['multifocal', 'visao_simples']) || strict
-    }
-
-    if (hasDrivingNeeds) {
-      return uniqueCategories(['multifocal', 'visao_simples']) || strict
-    }
-    return uniqueCategories(['multifocal', 'ocupacional', 'visao_simples']) || strict
-  }
-
-  if (strict.includes('ocupacional')) {
-    if (input.adicao != null && input.adicao > MAX_ANTI_FATIGUE_ADDITION) {
-      return uniqueCategories(['ocupacional', 'multifocal']) || strict
-    }
-    return uniqueCategories(['ocupacional', 'visao_simples', 'multifocal']) || strict
-  }
-
-  if (strict.includes('visao_simples')) {
-    if (input.adicao == null && !(input.objetivo_tags || []).includes('ocupacional')) {
-      return uniqueCategories(['visao_simples']) || strict
-    }
-    return uniqueCategories(['visao_simples', 'ocupacional']) || strict
-  }
-
-  return strict
-}
-
-function sameCategories(a: ClinicalCategory[] | undefined, b: ClinicalCategory[] | undefined): boolean {
-  const left = a || []
-  const right = b || []
-  if (left.length !== right.length) return false
-  return left.every((value) => right.includes(value))
-}
-
-function shouldReserveSlotForAntiFadiga(
-  input: RecommendationCaseInput,
-  strictCategories: ClinicalCategory[],
-  exploratoryCategories: ClinicalCategory[],
-): boolean {
-  return (
-    strictCategories.includes('multifocal') &&
-    exploratoryCategories.includes('visao_simples') &&
-    (input.objetivo_tags || []).includes('primeira_multifocal') &&
-    input.adicao != null &&
-    input.adicao <= MAX_ANTI_FATIGUE_ADDITION
-  )
 }
 
 function rankRecommendationOptions(params: {
@@ -2921,6 +2799,38 @@ export async function loadRecommendationCatalog(versionId: string): Promise<Reco
   // The generated Supabase types do not include the global catalog tables yet.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabaseAdmin = createAdminClient() as any
+  type CatalogRangeQuery<T> = {
+    range: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>
+  }
+  const fetchAllCatalogRows = async <T,>(buildQuery: () => CatalogRangeQuery<T>): Promise<T[]> => {
+    const pageSize = 1000
+    const rows: T[] = []
+
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await buildQuery().range(from, from + pageSize - 1)
+      if (error) throw error
+
+      const page = (data || []) as T[]
+      rows.push(...page)
+      if (page.length < pageSize) break
+    }
+
+    return rows
+  }
+  const fetchAllCatalogRowsInChunks = async <T,>(
+    values: string[],
+    buildQuery: (chunk: string[]) => CatalogRangeQuery<T>,
+  ): Promise<T[]> => {
+    const chunkSize = 150
+    const rows: T[] = []
+
+    for (let index = 0; index < values.length; index += chunkSize) {
+      const chunk = values.slice(index, index + chunkSize)
+      rows.push(...await fetchAllCatalogRows<T>(() => buildQuery(chunk)))
+    }
+
+    return rows
+  }
 
   const { data: versionMeta, error: versionMetaError } = await supabaseAdmin
     .from('global_catalog_versions')
@@ -2930,51 +2840,62 @@ export async function loadRecommendationCatalog(versionId: string): Promise<Reco
 
   if (versionMetaError) throw versionMetaError
 
-  const { data: families, error: familiesError } = await supabaseAdmin
-    .from('global_lens_families')
-    .select('id,nome,design,tags_uso,tags_beneficios,clinical_category')
-    .eq('version_id', versionId)
-
-  if (familiesError) throw familiesError
-
-  const familyIds = (families || []).map((family: { id: string }) => family.id)
-
-  const [
-    { data: offers, error: offersError },
-    { data: grids, error: gridsError },
-    { data: usageProfiles, error: profilesError },
-    { data: compatibilities, error: compatError },
-    { data: treatments, error: treatmentsError },
-  ] = await Promise.all([
+  const families = await fetchAllCatalogRows<Record<string, unknown>>(() =>
     supabaseAdmin
+      .from('global_lens_families')
+      .select('id,nome,design,tags_uso,tags_beneficios,clinical_category')
+      .eq('version_id', versionId)
+  )
+
+  const familyIds = families.map((family) => String(family.id))
+
+  const offers = familyIds.length
+    ? await fetchAllCatalogRowsInChunks<Record<string, unknown>>(familyIds, (chunk) =>
+      supabaseAdmin
       .from('global_lens_offers')
       .select('id,family_id,raw_label,canonical_label,material,clinical_category,features,base_price,is_atomic_offer,already_includes_treatment,allows_composition,source_page_reference')
-      .in('family_id', familyIds),
-    supabaseAdmin
-      .from('global_offer_diopter_grids')
-      .select('offer_id,sph_min,sph_max,cyl_min,cyl_max,add_min,add_max'),
-    supabaseAdmin
-      .from('global_usage_profiles')
-      .select('family_id,usage_tags,benefit_tags,commercial_summary,recommendation_notes')
-      .eq('profile_scope', 'family')
-      .in('family_id', familyIds),
-    supabaseAdmin
-      .from('global_offer_treatments_compatibility')
-      .select('offer_id,treatment_id,special_price,price_mode'),
-    supabaseAdmin
-      .from('global_treatments')
-      .select('id,nome,tipo,features')
-      .eq('version_id', versionId),
+      .in('family_id', chunk)
+    )
+    : []
+
+  const offerIds = offers.map((offer) => String(offer.id))
+
+  const [grids, usageProfiles, compatibilities, treatments] = await Promise.all([
+    offerIds.length
+      ? fetchAllCatalogRowsInChunks<Record<string, unknown>>(offerIds, (chunk) =>
+        supabaseAdmin
+          .from('global_offer_diopter_grids')
+          .select('offer_id,sph_min,sph_max,cyl_min,cyl_max,add_min,add_max')
+          .in('offer_id', chunk)
+      )
+      : Promise.resolve([]),
+    familyIds.length
+      ? fetchAllCatalogRowsInChunks<Record<string, unknown>>(familyIds, (chunk) =>
+        supabaseAdmin
+          .from('global_usage_profiles')
+          .select('family_id,usage_tags,benefit_tags,commercial_summary,recommendation_notes')
+          .eq('profile_scope', 'family')
+          .in('family_id', chunk)
+      )
+      : Promise.resolve([]),
+    offerIds.length
+      ? fetchAllCatalogRowsInChunks<Record<string, unknown>>(offerIds, (chunk) =>
+        supabaseAdmin
+          .from('global_offer_treatments_compatibility')
+          .select('offer_id,treatment_id,special_price,price_mode')
+          .in('offer_id', chunk)
+      )
+      : Promise.resolve([]),
+    fetchAllCatalogRows<Record<string, unknown>>(() =>
+      supabaseAdmin
+        .from('global_treatments')
+        .select('id,nome,tipo,features')
+        .eq('version_id', versionId)
+    ),
   ])
 
-  if (offersError) throw offersError
-  if (gridsError) throw gridsError
-  if (profilesError) throw profilesError
-  if (compatError) throw compatError
-  if (treatmentsError) throw treatmentsError
-
   return {
-    families: (families || []).map((family: Record<string, unknown>) => ({
+    families: families.map((family: Record<string, unknown>) => ({
       id: String(family.id),
       nome: String(family.nome || ''),
       design: family.design ? String(family.design) : null,
@@ -2985,7 +2906,7 @@ export async function loadRecommendationCatalog(versionId: string): Promise<Reco
       sourceVersao: versionMeta?.versao ? String(versionMeta.versao) : null,
       sourceVersionId: versionMeta?.id ? String(versionMeta.id) : null,
     })),
-    offers: (offers || []).map((offer: Record<string, unknown>) => ({
+    offers: offers.map((offer: Record<string, unknown>) => ({
       id: String(offer.id),
       family_id: String(offer.family_id),
       raw_label: String(offer.raw_label || ''),
@@ -3002,7 +2923,7 @@ export async function loadRecommendationCatalog(versionId: string): Promise<Reco
       sourceVersao: versionMeta?.versao ? String(versionMeta.versao) : null,
       sourceVersionId: versionMeta?.id ? String(versionMeta.id) : null,
     })),
-    grids: (grids || []).map((grid: Record<string, unknown>) => ({
+    grids: grids.map((grid: Record<string, unknown>) => ({
       offer_id: String(grid.offer_id),
       sph_min: normalizeNumber(grid.sph_min),
       sph_max: normalizeNumber(grid.sph_max),
@@ -3011,20 +2932,20 @@ export async function loadRecommendationCatalog(versionId: string): Promise<Reco
       add_min: normalizeNumber(grid.add_min),
       add_max: normalizeNumber(grid.add_max),
     })),
-    usageProfiles: (usageProfiles || []).map((profile: Record<string, unknown>) => ({
+    usageProfiles: usageProfiles.map((profile: Record<string, unknown>) => ({
       family_id: String(profile.family_id),
       usage_tags: normalizeStringArray(profile.usage_tags),
       benefit_tags: normalizeStringArray(profile.benefit_tags),
       commercial_summary: profile.commercial_summary ? String(profile.commercial_summary) : null,
       recommendation_notes: profile.recommendation_notes ? String(profile.recommendation_notes) : null,
     })),
-    compatibilities: (compatibilities || []).map((compatibility: Record<string, unknown>) => ({
+    compatibilities: compatibilities.map((compatibility: Record<string, unknown>) => ({
       offer_id: String(compatibility.offer_id),
       treatment_id: String(compatibility.treatment_id),
       special_price: normalizeNumber(compatibility.special_price),
       price_mode: compatibility.price_mode === 'surcharge' ? 'surcharge' : 'final',
     })),
-    treatments: (treatments || []).map((treatment: Record<string, unknown>) => ({
+    treatments: treatments.map((treatment: Record<string, unknown>) => ({
       id: String(treatment.id),
       nome: String(treatment.nome || ''),
       tipo: treatment.tipo ? String(treatment.tipo) : null,
@@ -3039,14 +2960,174 @@ async function loadRecommendationCatalogMulti(versionIds: string[]): Promise<Rec
     return loadRecommendationCatalog(uniqueIds[0])
   }
 
-  const catalogs = await Promise.all(uniqueIds.map((id) => loadRecommendationCatalog(id)))
+  // The generated Supabase types do not include the global catalog tables yet.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabaseAdmin = createAdminClient() as any
+  type CatalogRangeQuery<T> = {
+    range: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>
+  }
+  const fetchAllCatalogRows = async <T,>(buildQuery: () => CatalogRangeQuery<T>): Promise<T[]> => {
+    const pageSize = 1000
+    const rows: T[] = []
+
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await buildQuery().range(from, from + pageSize - 1)
+      if (error) throw error
+
+      const page = (data || []) as T[]
+      rows.push(...page)
+      if (page.length < pageSize) break
+    }
+
+    return rows
+  }
+  const fetchAllCatalogRowsInChunks = async <T,>(
+    values: string[],
+    buildQuery: (chunk: string[]) => CatalogRangeQuery<T>,
+  ): Promise<T[]> => {
+    const chunkSize = 150
+    const rows: T[] = []
+
+    for (let index = 0; index < values.length; index += chunkSize) {
+      const chunk = values.slice(index, index + chunkSize)
+      rows.push(...await fetchAllCatalogRows<T>(() => buildQuery(chunk)))
+    }
+
+    return rows
+  }
+
+  const versions = await fetchAllCatalogRows<Record<string, unknown>>(() =>
+    supabaseAdmin
+      .from('global_catalog_versions')
+      .select('id,laboratorio,versao')
+      .in('id', uniqueIds)
+  )
+  const versionById = new Map(versions.map((version) => [String(version.id), version]))
+
+  const families = await fetchAllCatalogRowsInChunks<Record<string, unknown>>(uniqueIds, (chunk) =>
+    supabaseAdmin
+      .from('global_lens_families')
+      .select('id,version_id,nome,design,tags_uso,tags_beneficios,clinical_category')
+      .in('version_id', chunk)
+  )
+
+  const familyIds = families.map((family) => String(family.id))
+  const offers = familyIds.length
+    ? await fetchAllCatalogRowsInChunks<Record<string, unknown>>(familyIds, (chunk) =>
+      supabaseAdmin
+        .from('global_lens_offers')
+        .select('id,family_id,raw_label,canonical_label,material,clinical_category,features,base_price,is_atomic_offer,already_includes_treatment,allows_composition,source_page_reference')
+        .in('family_id', chunk)
+    )
+    : []
+  const offerIds = offers.map((offer) => String(offer.id))
+
+  const [grids, usageProfiles, compatibilities, treatments] = await Promise.all([
+    offerIds.length
+      ? fetchAllCatalogRowsInChunks<Record<string, unknown>>(offerIds, (chunk) =>
+        supabaseAdmin
+          .from('global_offer_diopter_grids')
+          .select('offer_id,sph_min,sph_max,cyl_min,cyl_max,add_min,add_max')
+          .in('offer_id', chunk)
+      )
+      : Promise.resolve([]),
+    familyIds.length
+      ? fetchAllCatalogRowsInChunks<Record<string, unknown>>(familyIds, (chunk) =>
+        supabaseAdmin
+          .from('global_usage_profiles')
+          .select('family_id,usage_tags,benefit_tags,commercial_summary,recommendation_notes')
+          .eq('profile_scope', 'family')
+          .in('family_id', chunk)
+      )
+      : Promise.resolve([]),
+    offerIds.length
+      ? fetchAllCatalogRowsInChunks<Record<string, unknown>>(offerIds, (chunk) =>
+        supabaseAdmin
+          .from('global_offer_treatments_compatibility')
+          .select('offer_id,treatment_id,special_price,price_mode')
+          .in('offer_id', chunk)
+      )
+      : Promise.resolve([]),
+    fetchAllCatalogRowsInChunks<Record<string, unknown>>(uniqueIds, (chunk) =>
+      supabaseAdmin
+        .from('global_treatments')
+        .select('id,version_id,nome,tipo,features')
+        .in('version_id', chunk)
+    ),
+  ])
+
+  const familyById = new Map(families.map((family) => [String(family.id), family]))
+
   return {
-    families: catalogs.flatMap((catalog) => catalog.families),
-    offers: catalogs.flatMap((catalog) => catalog.offers),
-    grids: catalogs.flatMap((catalog) => catalog.grids),
-    usageProfiles: catalogs.flatMap((catalog) => catalog.usageProfiles),
-    compatibilities: catalogs.flatMap((catalog) => catalog.compatibilities),
-    treatments: catalogs.flatMap((catalog) => catalog.treatments),
+    families: families.map((family) => {
+      const versionMeta = versionById.get(String(family.version_id))
+      return {
+        id: String(family.id),
+        nome: String(family.nome || ''),
+        design: family.design ? String(family.design) : null,
+        tags_uso: normalizeStringArray(family.tags_uso),
+        tags_beneficios: normalizeStringArray(family.tags_beneficios),
+        clinical_category: normalizeCategory(family.clinical_category),
+        sourceLaboratorio: versionMeta?.laboratorio ? String(versionMeta.laboratorio) : null,
+        sourceVersao: versionMeta?.versao ? String(versionMeta.versao) : null,
+        sourceVersionId: versionMeta?.id ? String(versionMeta.id) : null,
+      }
+    }),
+    offers: offers.map((offer) => {
+      const family = familyById.get(String(offer.family_id))
+      const versionMeta = family ? versionById.get(String(family.version_id)) : null
+      return {
+        id: String(offer.id),
+        family_id: String(offer.family_id),
+        raw_label: String(offer.raw_label || ''),
+        canonical_label: offer.canonical_label ? String(offer.canonical_label) : null,
+        material: offer.material ? String(offer.material) : null,
+        clinical_category: normalizeCategory(offer.clinical_category),
+        features: toFeatureRecord(offer.features),
+        base_price: normalizeNumber(offer.base_price),
+        is_atomic_offer: Boolean(offer.is_atomic_offer),
+        already_includes_treatment: Boolean(offer.already_includes_treatment),
+        allows_composition: Boolean(offer.allows_composition),
+        source_page_reference: offer.source_page_reference ? String(offer.source_page_reference) : null,
+        sourceLaboratorio: versionMeta?.laboratorio ? String(versionMeta.laboratorio) : null,
+        sourceVersao: versionMeta?.versao ? String(versionMeta.versao) : null,
+        sourceVersionId: versionMeta?.id ? String(versionMeta.id) : null,
+      }
+    }),
+    grids: grids.map((grid) => ({
+      offer_id: String(grid.offer_id),
+      sph_min: normalizeNumber(grid.sph_min),
+      sph_max: normalizeNumber(grid.sph_max),
+      cyl_min: normalizeNumber(grid.cyl_min),
+      cyl_max: normalizeNumber(grid.cyl_max),
+      add_min: normalizeNumber(grid.add_min),
+      add_max: normalizeNumber(grid.add_max),
+    })),
+    usageProfiles: usageProfiles.map((profile) => ({
+      family_id: String(profile.family_id),
+      usage_tags: normalizeStringArray(profile.usage_tags),
+      benefit_tags: normalizeStringArray(profile.benefit_tags),
+      commercial_summary: profile.commercial_summary ? String(profile.commercial_summary) : null,
+      recommendation_notes: profile.recommendation_notes ? String(profile.recommendation_notes) : null,
+    })),
+    compatibilities: compatibilities.map((compatibility) => ({
+      offer_id: String(compatibility.offer_id),
+      treatment_id: String(compatibility.treatment_id),
+      special_price: normalizeNumber(compatibility.special_price),
+      price_mode: compatibility.price_mode === 'surcharge' ? 'surcharge' : 'final',
+    })),
+    treatments: treatments.map((treatment) => {
+      const versionMeta = versionById.get(String(treatment.version_id))
+      return {
+        id: String(treatment.id),
+        nome: String(treatment.nome || ''),
+        tipo: treatment.tipo ? String(treatment.tipo) : null,
+        features: toFeatureRecord(treatment.features),
+        sourceLaboratorio: versionMeta?.laboratorio ? String(versionMeta.laboratorio) : null,
+        sourceVersao: versionMeta?.versao ? String(versionMeta.versao) : null,
+        sourceVersionId: versionMeta?.id ? String(versionMeta.id) : null,
+      }
+    }),
   }
 }
 
@@ -3104,60 +3185,93 @@ export async function recommendLensConfigurations(params: {
     excludedConfigKeys,
   }).filter((entry) => !isUnsafeTopRecommendation(input, entry))
 
-  if (topN <= 2) {
-    return selectDiverseTopEntries(strictRanked, topN)
+  return selectDiverseTopEntries(strictRanked, topN)
+}
+
+function getStorePreferenceSnapshot(option: RecommendationOption): { lab: number; brand: number } {
+  let lab = 3
+  let brand = 3
+
+  for (const reason of option.reasons) {
+    const labMatch = reason.match(/^preferencia_lab:(\d+)$/)
+    if (labMatch) lab = Number(labMatch[1])
+
+    const brandMatch = reason.match(/^preferencia_marca:.+:(\d+)$/)
+    if (brandMatch) brand = Number(brandMatch[1])
   }
 
-  const exploratoryCategories = getExploratoryClinicalCategories(input, strictCategories)
-  const strictQuota = shouldReserveSlotForAntiFadiga(input, strictCategories, exploratoryCategories)
-    ? 1
-    : Math.min(2, topN)
-  const selected = selectDiverseTopEntries(strictRanked, strictQuota)
+  return { lab, brand }
+}
 
-  if (!sameCategories(strictCategories, exploratoryCategories)) {
-    const exploratoryRanked = applyExploratoryPriceDiscipline(
-      rankRecommendationOptions({
-        catalog,
-        input,
-        aiConfig: params.aiConfig,
-        forcedClinicalCategories: exploratoryCategories,
-        requiredFeatures,
-        maxPrice,
-      minPrice,
-      targetPrice,
-      excludedConfigKeys,
-      }).map((entry) => {
-        if (strictCategories.includes(entry.clinicalCategory)) {
-          return entry
-        }
+function getStorePreferencePresentationReason(
+  first: RecommendationOption,
+  second: RecommendationOption,
+): string | null {
+  const firstPreference = getStorePreferenceSnapshot(first)
+  const secondPreference = getStorePreferenceSnapshot(second)
+  const firstHasStrongPreference = firstPreference.lab >= 5 || firstPreference.brand >= 5
+  if (!firstHasStrongPreference) return null
 
-        const isAntiFadiga =
-          entry.clinicalCategory === 'visao_simples' &&
-          input.adicao != null &&
-          input.adicao <= MAX_ANTI_FATIGUE_ADDITION
-
-        return {
-          ...entry,
-          score: Number((entry.score - 0.75).toFixed(2)),
-          reasons: uniqueStrings([
-            ...entry.reasons,
-            isAntiFadiga ? 'opcao:alternativa_anti_fadiga' : 'opcao:alternativa_plausivel',
-          ]),
-        }
-      }).filter((entry) => !isUnsafeTopRecommendation(input, entry)),
-      selected,
-    )
-
-    appendPrioritizedEntries(selected, exploratoryRanked, topN)
+  if (firstPreference.lab > secondPreference.lab) {
+    return `preferencia_lab:${firstPreference.lab}>${secondPreference.lab}`
+  }
+  if (firstPreference.brand > secondPreference.brand) {
+    return `preferencia_marca:${firstPreference.brand}>${secondPreference.brand}`
   }
 
-  if (selected.length < topN) {
-    appendPrioritizedEntries(selected, strictRanked, topN)
+  return null
+}
+
+function applyRecommendationPresentationStrategy(
+  recommendations: RecommendationOption[],
+): {
+  recommendations: RecommendationOption[]
+  presentationStrategy: RecommendationPresentationStrategy
+} {
+  const roleForIndex = (index: number): NonNullable<RecommendationOption['commercialRole']> =>
+    index === 0 ? 'anchor' : index === 1 ? 'target' : 'alternative'
+  const ranked = recommendations.map((option, index) => ({
+    ...option,
+    originalRank: index + 1,
+  }))
+  const originalOrder = ranked.map((option) => option.configKey)
+  const preferenceReason =
+    ranked[0] && ranked[1]
+      ? getStorePreferencePresentationReason(ranked[0], ranked[1])
+      : null
+
+  if (ranked.length < 2 || !preferenceReason) {
+    return {
+      recommendations: ranked.map((option, index) => ({
+        ...option,
+        presentationRank: index + 1,
+      })),
+      presentationStrategy: {
+        applied: false,
+        type: 'none',
+        reason: null,
+        originalOrder,
+        displayOrder: originalOrder,
+      },
+    }
   }
 
-  return selected
-    .slice(0, topN)
-    .sort((a, b) => b.score - a.score || a.finalPrice - b.finalPrice)
+  const display = [ranked[1], ranked[0], ...ranked.slice(2)].map((option, index) => ({
+    ...option,
+    presentationRank: index + 1,
+    commercialRole: roleForIndex(index),
+  }))
+
+  return {
+    recommendations: display,
+    presentationStrategy: {
+      applied: true,
+      type: 'target_as_second_option',
+      reason: preferenceReason,
+      originalOrder,
+      displayOrder: display.map((option) => option.configKey),
+    },
+  }
 }
 
 export function inferConversationIntents(message: string): ConversationIntent[] {
@@ -3338,9 +3452,14 @@ export async function startRecommendationConversation(params: {
   caseInput: RecommendationCaseInput
   topN?: number
   aiConfig?: AiSuggestionConfig
+  heatmap?: {
+    samples: PersistedHeatmapSample[]
+    geometries: LensGeometry[]
+  }
 }): Promise<{
   state: RecommendationConversationState
   recommendations: RecommendationOption[]
+  presentationStrategy: RecommendationPresentationStrategy
 }> {
   const state: RecommendationConversationState = {
     versionId: params.versionId,
@@ -3367,20 +3486,31 @@ export async function startRecommendationConversation(params: {
   const initialMaxPrice = tPrice
     ? tPrice * (childControlMyopia || premiumTechnicalStretch ? 1.7 : 1.2)
     : undefined
-  const recommendations = await recommendLensConfigurations({
+  const requestedTopN = params.topN || 3
+  const rankedRecommendations = await recommendLensConfigurations({
     versionId: params.versionId,
     versionIds: params.versionIds,
     caseInput: state.caseInput,
     aiConfig: params.aiConfig,
-    topN: params.topN || 3,
+    topN: params.heatmap ? Math.max(8, requestedTopN) : requestedTopN,
     targetPrice: tPrice,
     maxPrice: initialMaxPrice,
   })
+  const heatmapAdjusted = params.heatmap
+    ? applyHeatmapCompatibility(rankedRecommendations, params.heatmap.samples, params.heatmap.geometries)
+    : rankedRecommendations
+  const finalRecommendations = params.heatmap
+    ? selectDiverseTopEntries(heatmapAdjusted, requestedTopN)
+    : heatmapAdjusted
+  const { recommendations, presentationStrategy } = applyRecommendationPresentationStrategy(finalRecommendations)
 
   state.lastRecommendations = recommendations
 
   return {
     state,
     recommendations,
+    presentationStrategy,
   }
 }
+
+

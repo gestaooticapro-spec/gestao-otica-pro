@@ -1,11 +1,7 @@
 import { getFinanciamentoById } from '@/lib/actions/vendas.actions'
 import CarnePhantom from '@/components/print/CarnePhantom'
 import { notFound } from 'next/navigation'
-import { getStoreAppMode } from '@/lib/app-mode'
-
-type FinanciamentoPrint = {
-    store?: { settings?: unknown } | null
-}
+import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
 
 export default async function PrintCarnePage({ params }: { params: { id: string } }) {
     const id = parseInt(params.id)
@@ -14,6 +10,12 @@ export default async function PrintCarnePage({ params }: { params: { id: string 
     const financiamento = await getFinanciamentoById(id)
 
     if (!financiamento || getStoreAppMode((financiamento as FinanciamentoPrint).store?.settings) === 'mvp') {
+        return notFound()
+    }
+
+    const storeId = Number((financiamento as { store_id: number }).store_id)
+    const enabled = await isStoreModuleEnabledForStore(storeId, 'installments')
+    if (!enabled) {
         return notFound()
     }
 
