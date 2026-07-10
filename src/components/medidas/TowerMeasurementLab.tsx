@@ -1857,19 +1857,26 @@ function insetClosedContourTextHandles(handles: Handles, pxPerMm: number, imageD
   const width = Math.max(lensRight.x - lensLeft.x, 1)
   const axisY = (lensLeft.y + lensRight.y) / 2
   const lensAxisX = (lensLeft.x + lensRight.x) / 2
-  const geometricTopY = clamp(axisY - width * 0.22, 0, imageData.height - 1)
+  // In this preset the center is noisy (eyebrow and lens text), so keep the
+  // geometric fallback close to the usual inner contour before pixel snapping.
+  const geometricTopY = clamp(axisY - width * 0.28, 0, imageData.height - 1)
   const geometricBottomY = clamp(axisY + width * 0.52, 0, imageData.height - 1)
   const darkTopRimY = findHybridDarkTopRimY(imageData, { ...base, lensLeft, lensRight }, pxPerMm)
   const topPixelIsPlausible =
     darkTopRimY !== null &&
-    darkTopRimY > geometricTopY - 1.5 * pxPerMm &&
-    darkTopRimY < geometricTopY + 3.5 * pxPerMm
+    darkTopRimY > geometricTopY - 3.5 * pxPerMm &&
+    darkTopRimY < geometricTopY + 3 * pxPerMm
   const lensTop = { ...base.lensTop, x: lensAxisX, y: topPixelIsPlausible ? darkTopRimY : geometricTopY }
-  const detectedLowerRimY = findHybridBrightLowerRimY(imageData, { ...base, lensLeft, lensRight, lensTop }, pxPerMm)
+  const detectedLowerRimY = findHybridBrightLowerRimY(
+    imageData,
+    { ...base, lensLeft, lensRight, lensTop },
+    pxPerMm,
+    geometricBottomY,
+  )
   const bottomPixelIsPlausible =
     detectedLowerRimY !== null &&
-    detectedLowerRimY > geometricBottomY - 3 * pxPerMm &&
-    detectedLowerRimY < geometricBottomY + 5 * pxPerMm
+    detectedLowerRimY > geometricBottomY - 4 * pxPerMm &&
+    detectedLowerRimY < geometricBottomY + 4 * pxPerMm
   const lensBottom = { ...base.lensBottom, x: lensAxisX, y: bottomPixelIsPlausible ? detectedLowerRimY : geometricBottomY }
   const mountR = { ...base.mountR, y: lensBottom.y }
   const mountL = { ...base.mountL, y: lensBottom.y }
@@ -1935,9 +1942,10 @@ function findHybridDarkTopRimY(imageData: ImageData, handles: Handles, pxPerMm: 
   if (width < 24) return null
 
   const yStart = Math.round(Math.max(2, handles.lensTop.y - 13 * pxPerMm))
-  const yEnd = Math.round(Math.min(handles.pupilR.y - 7 * pxPerMm, handles.lensTop.y + 2 * pxPerMm))
+  const yEnd = Math.round(Math.min(handles.pupilR.y - 12 * pxPerMm, handles.lensTop.y + 2 * pxPerMm))
   const minTotalHits = Math.max(14, Math.round(width * 0.14))
   const minRun = Math.max(18, Math.round(width * 0.18))
+  const minSideHits = Math.max(5, Math.round(width * 0.035))
   let best: { y: number; score: number } | null = null
 
   for (let y = yStart; y <= yEnd; y += 1) {
@@ -1946,8 +1954,11 @@ function findHybridDarkTopRimY(imageData: ImageData, handles: Handles, pxPerMm: 
     let edgeTotal = 0
     let currentRun = 0
     let longestRun = 0
+    let outerHits = 0
+    let nasalHits = 0
 
     for (let x = left; x <= right; x += 1) {
+      const relative = (x - left) / Math.max(width - 1, 1)
       if (!isDarkRimPixel(imageData, x, y)) {
         currentRun = 0
         continue
@@ -1956,19 +1967,22 @@ function findHybridDarkTopRimY(imageData: ImageData, handles: Handles, pxPerMm: 
       longestRun = Math.max(longestRun, currentRun)
       totalHits += 1
       edgeTotal += localEdgeStrength(imageData, x, y)
+      if (relative < 0.38) outerHits += 1
+      if (relative > 0.62) nasalHits += 1
     }
 
-    if (totalHits < minTotalHits || longestRun < minRun) continue
+    if (totalHits < minTotalHits || longestRun < minRun || outerHits < minSideHits || nasalHits < minSideHits) continue
 
     const runScore = Math.min(longestRun / Math.max(width * 0.3, 1), 1)
     const coverage = Math.min(totalHits / Math.max(width * 0.24, 1), 1)
     const edgeScore = Math.min(edgeTotal / Math.max(totalHits * 80, 1), 1)
     const topBias = 1 - Math.min((y - yStart) / Math.max(yEnd - yStart, 1), 1)
-    const score = runScore * 0.42 + coverage * 0.28 + edgeScore * 0.16 + topBias * 0.14
+    const sideBalance = Math.min(outerHits, nasalHits) / Math.max(Math.max(outerHits, nasalHits), 1)
+    const score = runScore * 0.34 + coverage * 0.23 + edgeScore * 0.16 + sideBalance * 0.17 + topBias * 0.1
     if (!best || score > best.score) best = { y, score }
   }
 
-  return best && best.score > 0.48 ? best.y : null
+  return best && best.score > 0.46 ? best.y + 0.8 * pxPerMm : null
 }
 
 function findHybridDarkDiagB(imageData: ImageData, handles: Handles, pxPerMm: number): Pt | null {
@@ -2031,14 +2045,14 @@ function findHybridBrightLeftRimX(imageData: ImageData, handles: Handles, pxPerM
   return best && best.score > 0.34 ? best.x : null
 }
 
-function findHybridBrightLowerRimY(imageData: ImageData, handles: Handles, pxPerMm: number) {
+function findHybridBrightLowerRimY(imageData: ImageData, handles: Handles, pxPerMm: number, expectedY: number) {
   const left = Math.round(Math.max(2, handles.lensLeft.x + 4 * pxPerMm))
   const right = Math.round(Math.min(imageData.width - 3, handles.lensRight.x - 6 * pxPerMm))
   const width = right - left + 1
   if (width < 24) return null
 
-  const yStart = Math.round(Math.max(handles.pupilR.y + 25 * pxPerMm, handles.lensBottom.y + 11 * pxPerMm))
-  const yEnd = Math.round(Math.min(imageData.height - 3, handles.lensBottom.y + 38 * pxPerMm))
+  const yStart = Math.round(Math.max(handles.pupilR.y + 21 * pxPerMm, expectedY - 5 * pxPerMm))
+  const yEnd = Math.round(Math.min(imageData.height - 3, expectedY + 5 * pxPerMm))
   const minTotalHits = Math.max(10, Math.round(width * 0.075))
   const minRun = Math.max(8, Math.round(width * 0.08))
   let best: { y: number; score: number } | null = null
@@ -2071,12 +2085,51 @@ function findHybridBrightLowerRimY(imageData: ImageData, handles: Handles, pxPer
     const runScore = Math.min(longestRun / Math.max(width * 0.15, 1), 1)
     const coverage = Math.min(totalHits / Math.max(width * 0.14, 1), 1)
     const edgeScore = Math.min(edgeTotal / Math.max(totalHits * 75, 1), 1)
-    const lowerBias = Math.min((y - yStart) / Math.max(yEnd - yStart, 1), 1)
-    const score = runScore * 0.38 + coverage * 0.18 + edgeScore * 0.14 + lowerBias * 0.3
+    const nearExpected = 1 - Math.min(Math.abs(y - expectedY) / Math.max(5 * pxPerMm, 1), 1)
+    const innerEdgeBias = 1 - Math.min((y - yStart) / Math.max(yEnd - yStart, 1), 1)
+    const score = runScore * 0.34 + coverage * 0.18 + edgeScore * 0.17 + nearExpected * 0.21 + innerEdgeBias * 0.1
     if (!best || score > best.score) best = { y, score }
   }
 
-  return best && best.score > 0.4 ? best.y : null
+  if (!best || best.score <= 0.4) return null
+  return findLowerRimInnerEdgeY(imageData, handles, best.y, pxPerMm)
+}
+
+function findLowerRimInnerEdgeY(imageData: ImageData, handles: Handles, rimCenterY: number, pxPerMm: number) {
+  const left = Math.round(Math.max(2, handles.lensLeft.x + 4 * pxPerMm))
+  const right = Math.round(Math.min(imageData.width - 3, handles.lensRight.x - 6 * pxPerMm))
+  const width = right - left + 1
+  const yStart = Math.round(Math.max(2, rimCenterY - 5 * pxPerMm))
+  const yEnd = Math.round(Math.min(imageData.height - 3, rimCenterY + 0.5 * pxPerMm))
+  let best: { y: number; score: number } | null = null
+
+  for (let y = yStart; y <= yEnd; y += 1) {
+    let hits = 0
+    let darkeningTotal = 0
+
+    for (let x = left; x <= right; x += 1) {
+      const relative = (x - left) / Math.max(width - 1, 1)
+      if (relative >= 0.34 && relative <= 0.68) continue
+
+      const lensSide = pixelLuminance(imageData, x, y - 2)
+      const rimSide = pixelLuminance(imageData, x, y + 2)
+      const darkening = lensSide - rimSide
+      if (darkening < 10) continue
+
+      hits += 1
+      darkeningTotal += darkening
+    }
+
+    if (hits < Math.max(6, Math.round(width * 0.045))) continue
+
+    const continuity = Math.min(hits / Math.max(width * 0.13, 1), 1)
+    const contrast = Math.min(darkeningTotal / Math.max(hits * 45, 1), 1)
+    const nearRim = 1 - Math.min(Math.abs(y - rimCenterY) / Math.max(5 * pxPerMm, 1), 1)
+    const score = continuity * 0.42 + contrast * 0.43 + nearRim * 0.15
+    if (!best || score > best.score) best = { y, score }
+  }
+
+  return best?.y ?? rimCenterY - 1.8 * pxPerMm
 }
 
 function stabilizeBridgeHandlesToPupilAxis(handles: Handles, pxPerMm: number): Handles {
