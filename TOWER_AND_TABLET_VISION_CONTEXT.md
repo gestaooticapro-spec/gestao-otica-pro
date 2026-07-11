@@ -454,6 +454,55 @@ um ambiente proprio de operador.
 O sistema de gestao continua sendo o backoffice que consulta ou recebe os
 resultados. Ele nao deve ser a moldura visual da experiencia de Torre.
 
+## Estado atual da implementacao da Torre
+
+Este e o ponto de partida pratico para os proximos passos.
+
+### Entrada e isolamento
+
+- a entrada da Torre no navegador e `/torre/[storeId]`;
+- a Torre nao herda o header, menu ou navegacao do dashboard;
+- a rota antiga dentro de `/dashboard` apenas redireciona para a entrada isolada;
+- a referencia visual inicial foi validada em uma viewport touch de 800 x 800.
+
+### Experiencias ja disponiveis
+
+- **Seu Jeito de Olhar** em `/torre/[storeId]/seu-jeito-de-olhar`;
+- **Visagismo** em `/torre/[storeId]/visagismo`;
+- **Campo Visual** em `/torre/[storeId]/campo-visual`;
+- as experiencias reutilizaveis possuem modo operador e modo cliente/TV pela variante `?client=1`;
+- o retorno das experiencias volta para o menu de experiencias da Torre.
+
+### Sessao persistida
+
+Foi criada a tabela `tower_sessions`, com:
+
+- `store_id` obrigatorio;
+- `customer_id` opcional;
+- `optical_evaluation_id` opcional;
+- experiencia atual;
+- estados `active`, `completed`, `discarded` e `expired`;
+- datas de inicio, conclusao e descarte.
+
+As acoes de servidor para criar, listar, vincular cliente, vincular avaliacao,
+concluir e descartar sessoes ficam em
+`src/lib/actions/tower-session.actions.ts`.
+
+O fluxo inicial de Seu Jeito de Olhar e Visagismo ja cria uma sessao ativa e o
+menu Continuar Atendimento consulta as sessoes abertas. O resultado do
+heatmap ganhou a chave opcional `tower_session_id`. O Campo Visual ja cria ou
+retoma sua sessao de heatmap a partir da `tower_session`, ainda sem exigir
+cliente ou avaliacao.
+
+### O que ainda nao esta pronto
+
+- rota propria de Medidas, com identificacao obrigatoria do cliente;
+- associacao posterior de um Campo Visual concluido ao cliente e a Avaliacao;
+- conclusao da `tower_session` depois do resultado do Campo Visual;
+- refinamento da UI do Campo Visual para a tela touch da Torre;
+- conclusao automatica ou descarte ao sair de uma experiencia;
+- SQLite, sincronizacao offline e empacotamento Electron.
+
 ### Ideia de organizacao conceitual
 
 Separar em camadas:

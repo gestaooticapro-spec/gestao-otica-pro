@@ -733,8 +733,9 @@ export interface Database {
           id: string
           tenant_id: string
           store_id: number
-          customer_id: number
-          optical_evaluation_id: number
+          tower_session_id: string | null
+          customer_id: number | null
+          optical_evaluation_id: number | null
           created_by_user_id: string | null
           status: 'created' | 'running' | 'completed' | 'cancelled' | 'failed'
           algorithm_version: string
@@ -751,8 +752,9 @@ export interface Database {
           id?: string
           tenant_id: string
           store_id: number
-          customer_id: number
-          optical_evaluation_id: number
+          tower_session_id?: string | null
+          customer_id?: number | null
+          optical_evaluation_id?: number | null
           created_by_user_id?: string | null
           status?: 'created' | 'running' | 'completed' | 'cancelled' | 'failed'
           algorithm_version: string
@@ -769,8 +771,9 @@ export interface Database {
           id?: string
           tenant_id?: string
           store_id?: number
-          customer_id?: number
-          optical_evaluation_id?: number
+          tower_session_id?: string | null
+          customer_id?: number | null
+          optical_evaluation_id?: number | null
           created_by_user_id?: string | null
           status?: 'created' | 'running' | 'completed' | 'cancelled' | 'failed'
           algorithm_version?: string
@@ -780,6 +783,55 @@ export interface Database {
           started_at?: string | null
           completed_at?: string | null
           cancelled_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+
+      tower_sessions: {
+        Row: {
+          id: string
+          tenant_id: string
+          store_id: number
+          customer_id: number | null
+          optical_evaluation_id: number | null
+          created_by_user_id: string | null
+          status: 'active' | 'completed' | 'discarded' | 'expired'
+          current_experience: 'look' | 'visagismo' | 'campo_visual' | 'medidas' | null
+          started_at: string
+          completed_at: string | null
+          discarded_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          store_id: number
+          customer_id?: number | null
+          optical_evaluation_id?: number | null
+          created_by_user_id?: string | null
+          status?: 'active' | 'completed' | 'discarded' | 'expired'
+          current_experience?: 'look' | 'visagismo' | 'campo_visual' | 'medidas' | null
+          started_at?: string
+          completed_at?: string | null
+          discarded_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          store_id?: number
+          customer_id?: number | null
+          optical_evaluation_id?: number | null
+          created_by_user_id?: string | null
+          status?: 'active' | 'completed' | 'discarded' | 'expired'
+          current_experience?: 'look' | 'visagismo' | 'campo_visual' | 'medidas' | null
+          started_at?: string
+          completed_at?: string | null
+          discarded_at?: string | null
           created_at?: string
           updated_at?: string
         }

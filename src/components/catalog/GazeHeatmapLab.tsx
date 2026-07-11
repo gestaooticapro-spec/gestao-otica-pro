@@ -1599,6 +1599,7 @@ export default function GazeHeatmapLab({
   geometries = [],
   clientMode = false,
   heatmapSessionId = null,
+  towerMode = false,
 }: {
   storeId: number
   backPath: string
@@ -1606,6 +1607,7 @@ export default function GazeHeatmapLab({
   geometries?: LensGeometry[]
   clientMode?: boolean
   heatmapSessionId?: string | null
+  towerMode?: boolean
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
@@ -3026,15 +3028,19 @@ export default function GazeHeatmapLab({
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className={`${towerMode ? 'min-h-[100dvh]' : 'min-h-screen'} bg-slate-950 text-white`}>
       <div className="border-b border-white/10 bg-slate-900/90 px-5 py-4 backdrop-blur">
         <div className="flex flex-wrap items-center gap-3">
           <Link
             href={backPath}
-            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-slate-800 px-4 py-2 text-sm font-bold text-slate-200 transition hover:bg-slate-700"
+            className={towerMode
+              ? 'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-300 transition-colors hover:bg-white/10 hover:text-white'
+              : 'inline-flex items-center gap-2 rounded-xl border border-white/10 bg-slate-800 px-4 py-2 text-sm font-bold text-slate-200 transition hover:bg-slate-700'}
+            title="Voltar"
+            aria-label="Voltar"
           >
             <ArrowLeft className="h-4 w-4" />
-            Voltar
+            {!towerMode && 'Voltar'}
           </Link>
           <div className="min-w-0">
             <p className="text-xl font-black tracking-tight">Laboratório de mapa de calor ocular</p>

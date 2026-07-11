@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import { createTowerSession, getActiveTowerSessions, type TowerSession } from '@/lib/actions/tower-session.actions'
 import {
   ArrowLeft,
   ArrowRight,
@@ -73,14 +74,74 @@ const experiences = [
 
 export default function TowerWelcomeMock({ storeId, initialExperienceMenu = false }: TowerWelcomeMockProps) {
   const router = useRouter()
+  const [isPending, startTransition] = useTransition()
   const [selectedAction, setSelectedAction] = useState<MockAction>(initialExperienceMenu ? 'new' : null)
   const [selectedExperience, setSelectedExperience] = useState<ExperienceKey>(null)
+  const [activeSessions, setActiveSessions] = useState<TowerSession[] | null>(null)
+  const [resumeMessage, setResumeMessage] = useState<string | null>(null)
   const choosingExperience = selectedAction === 'new'
 
   useEffect(() => {
     setSelectedAction(initialExperienceMenu ? 'new' : null)
     setSelectedExperience(null)
   }, [initialExperienceMenu])
+
+  function startExperience(experience: Exclude<ExperienceKey, null>) {
+    const destination = experience === 'look'
+      ? `/torre/${storeId}/seu-jeito-de-olhar`
+      : experience === 'style'
+        ? `/torre/${storeId}/visagismo`
+        : experience === 'field'
+          ? `/torre/${storeId}/campo-visual`
+        : null
+    const sessionExperience = experience === 'look'
+      ? 'look'
+      : experience === 'style'
+        ? 'visagismo'
+        : experience === 'field'
+          ? 'campo_visual'
+          : null
+
+    if (!destination || !sessionExperience) {
+      setSelectedExperience(experience)
+      return
+    }
+
+    startTransition(async () => {
+      const result = await createTowerSession({ storeId, experience: sessionExperience })
+      if (!result.success || !result.data) {
+        setSelectedExperience(experience)
+        return
+      }
+      router.push(`${destination}?session=${result.data.id}`)
+    })
+  }
+
+  function loadActiveSessions() {
+    setSelectedAction('resume')
+    setResumeMessage(null)
+    setActiveSessions(null)
+    startTransition(async () => {
+      const result = await getActiveTowerSessions(storeId)
+      if (!result.success) {
+        setResumeMessage(result.message)
+        setActiveSessions([])
+        return
+      }
+      setActiveSessions(result.data ?? [])
+    })
+  }
+
+  function resumeSession(session: TowerSession) {
+    const destination = session.current_experience === 'look'
+      ? `/torre/${storeId}/seu-jeito-de-olhar?session=${session.id}`
+      : session.current_experience === 'visagismo'
+        ? `/torre/${storeId}/visagismo?session=${session.id}`
+        : session.current_experience === 'campo_visual'
+          ? `/torre/${storeId}/campo-visual?session=${session.id}`
+        : null
+    if (destination) router.push(destination)
+  }
 
   return (
     <main className="h-[100dvh] overflow-hidden bg-slate-950 text-slate-100">
@@ -116,17 +177,8 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
                 setSelectedAction(null)
                 setSelectedExperience(null)
               }}
-              onSelect={(experience) => {
-                if (experience === 'look') {
-                  router.push(`/torre/${storeId}/seu-jeito-de-olhar`)
-                  return
-                }
-                if (experience === 'style') {
-                  router.push(`/torre/${storeId}/visagismo`)
-                  return
-                }
-                setSelectedExperience(experience)
-              }}
+              isStarting={isPending}
+              onSelect={startExperience}
             />
           ) : (
             <>
@@ -162,7 +214,7 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
 
                 <button
                   type="button"
-                  onClick={() => setSelectedAction('resume')}
+                  onClick={loadActiveSessions}
                   className="group min-h-[185px] rounded-3xl border border-slate-700 bg-slate-900/85 p-5 text-left shadow-xl shadow-black/20 transition hover:-translate-y-1 hover:border-slate-500 hover:bg-slate-800 active:translate-y-0 active:scale-[0.99] sm:p-6"
                 >
                   <div className="flex items-start justify-between gap-4">
@@ -183,8 +235,37 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
           )}
 
           <div className="mt-3 min-h-11 max-w-5xl" aria-live="polite">
-            {selectedAction === 'resume' && (
-              <MockNotice icon={Clock3} title="Nenhum atendimento em andamento" text="Mock visual: a lista de sessões abertas entrará aqui." />
+            {selectedAction === 'resume' && activeSessions === null && (
+              <MockNotice icon={Clock3} title="Carregando" text="Buscando sessões abertas nesta Torre." />
+            )}
+            {selectedAction === 'resume' && activeSessions && activeSessions.length > 0 && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {activeSessions.map((session) => {
+                  const label = session.current_experience === 'look'
+                    ? 'Seu Jeito de Olhar'
+                    : session.current_experience === 'visagismo'
+                      ? 'Visagismo'
+                      : session.current_experience === 'campo_visual'
+                        ? 'Campo Visual'
+                      : 'Experiência da Torre'
+                  const canResume = session.current_experience === 'look' || session.current_experience === 'visagismo' || session.current_experience === 'campo_visual'
+                  return (
+                    <button
+                      key={session.id}
+                      type="button"
+                      onClick={() => resumeSession(session)}
+                      disabled={!canResume}
+                      className="rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-2 text-left text-xs transition hover:border-slate-500 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <span className="font-semibold text-white">{label}</span>
+                      <span className="ml-2 text-slate-400">{canResume ? 'Toque para continuar' : 'Em preparação'}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            {selectedAction === 'resume' && activeSessions?.length === 0 && (
+              <MockNotice icon={Clock3} title="Nenhum atendimento em andamento" text="Nenhuma sessão ativa foi encontrada nesta Torre." />
             )}
           </div>
         </section>
@@ -213,12 +294,14 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
 
 function ExperienceChooser({
   selectedExperience,
+  isStarting,
   onBack,
   onSelect,
 }: {
   selectedExperience: ExperienceKey
+  isStarting: boolean
   onBack: () => void
-  onSelect: (experience: ExperienceKey) => void
+  onSelect: (experience: Exclude<ExperienceKey, null>) => void
 }) {
   const selected = experiences.find((experience) => experience.key === selectedExperience)
 
@@ -243,7 +326,8 @@ function ExperienceChooser({
             key={key}
             type="button"
             onClick={() => onSelect(key)}
-            className={`group min-h-[145px] rounded-2xl border border-slate-700 bg-gradient-to-br ${background} p-4 text-left transition hover:-translate-y-1 hover:border-slate-500 hover:bg-slate-800/70 active:translate-y-0 active:scale-[0.99]`}
+            disabled={isStarting}
+            className={`group min-h-[145px] rounded-2xl border border-slate-700 bg-gradient-to-br ${background} p-4 text-left transition hover:-translate-y-1 hover:border-slate-500 hover:bg-slate-800/70 active:translate-y-0 active:scale-[0.99] disabled:cursor-wait disabled:opacity-60`}
           >
             <div className="flex items-start justify-between gap-4">
               <span className={`flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950/40 ${color} ring-1 ring-white/10`}>

@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
@@ -17,6 +17,7 @@ export function TabletRedirect({ storeId }: { storeId: number }) {
       `/dashboard/loja/${storeId}/tabela-precos`,
       `/dashboard/loja/${storeId}/lentes/mapa-calor`,
       `/dashboard/loja/${storeId}/lentes/visualizar`,
+      `/dashboard/loja/${storeId}/visagismo`,
     ]
     if (allowedTabletDashboardRoutePrefixes.some((routePrefix) => pathname.startsWith(routePrefix))) {
       return

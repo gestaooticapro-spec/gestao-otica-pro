@@ -52,6 +52,11 @@ const CreateSessionSchema = z.object({
   customerId: z.coerce.number().int().positive(),
 })
 
+const CreateTowerSessionHeatmapSchema = z.object({
+  storeId: StoreIdSchema,
+  towerSessionId: SessionIdSchema,
+})
+
 const SessionCommandSchema = z.object({
   storeId: StoreIdSchema,
   sessionId: SessionIdSchema,
@@ -85,6 +90,14 @@ type EvaluationLookup = {
   tenant_id: string
   store_id: number
   evaluated_customer_id: number | null
+}
+type TowerSessionLookup = {
+  id: string
+  tenant_id: string
+  store_id: number
+  customer_id: number | null
+  optical_evaluation_id: number | null
+  status: 'active' | 'completed' | 'discarded' | 'expired'
 }
 type TwoFilterSelect<T> = {
   eq: (column: string, value: string | number) => TwoFilterSelect<T>
@@ -193,6 +206,61 @@ export async function createTowerHeatmapSession(
   return { success: true, message: 'Sessao de mapa visual criada.', data: session }
 }
 
+export async function getOrCreateTowerHeatmapSessionForTowerSession(
+  input: z.input<typeof CreateTowerSessionHeatmapSchema>,
+): Promise<HeatmapActionResult<TowerHeatmapSessionRow>> {
+  const parsed = CreateTowerSessionHeatmapSchema.safeParse(input)
+  if (!parsed.success) return { success: false, message: 'Sessao da Torre invalida para o mapa visual.' }
+
+  const data = parsed.data
+  const auth = await getAuthorizedStoreContext(data.storeId)
+  if (!auth.ok) return { success: false, message: auth.message }
+
+  const towerSessions = createAdminClient().from('tower_sessions') as any
+  const { data: towerSession, error: towerSessionError } = await towerSessions
+    .select('id, tenant_id, store_id, customer_id, optical_evaluation_id, status')
+    .eq('id', data.towerSessionId)
+    .eq('store_id', data.storeId)
+    .maybeSingle() as { data: TowerSessionLookup | null; error: QueryError | null }
+
+  if (towerSessionError || !towerSession) {
+    return { success: false, message: towerSessionError?.message || 'Sessao da Torre nao encontrada.' }
+  }
+  if (towerSession.tenant_id !== auth.tenantId || towerSession.status !== 'active') {
+    return { success: false, message: 'Sessao da Torre nao esta disponivel para o Campo Visual.' }
+  }
+
+  const sessions = createAdminClient().from('tower_heatmap_sessions') as any
+  const { data: existing, error: existingError } = await sessions
+    .select('*')
+    .eq('tower_session_id', data.towerSessionId)
+    .in('status', ['created', 'running', 'completed'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle() as { data: TowerHeatmapSessionRow | null; error: QueryError | null }
+
+  if (existingError) return { success: false, message: existingError.message }
+  if (existing) return { success: true, message: 'Sessao de mapa visual retomada.', data: existing }
+
+  const { data: session, error } = await sessions
+    .insert({
+      tenant_id: auth.tenantId,
+      store_id: data.storeId,
+      tower_session_id: data.towerSessionId,
+      customer_id: towerSession.customer_id,
+      optical_evaluation_id: towerSession.optical_evaluation_id,
+      created_by_user_id: auth.userId,
+      status: 'created',
+      algorithm_version: HEATMAP_ALGORITHM_VERSION,
+      target_plan_version: HEATMAP_TARGET_PLAN_VERSION,
+    })
+    .select('*')
+    .single() as { data: TowerHeatmapSessionRow | null; error: QueryError | null }
+
+  if (error || !session) return { success: false, message: error?.message || 'Nao foi possivel criar o Campo Visual.' }
+  return { success: true, message: 'Campo Visual preparado na sessao da Torre.', data: session }
+}
+
 export async function startTowerHeatmapSession(
   input: z.input<typeof SessionCommandSchema>,
 ): Promise<HeatmapActionResult> {
@@ -294,6 +362,9 @@ export async function getCompletedTowerHeatmapResult(
 
   if (error || !session) return { success: false, message: error?.message || 'Sessao de mapa visual nao encontrada.' }
   if (session.status !== 'completed') return { success: false, message: 'O mapa visual ainda nao foi concluido.' }
+  if (!session.customer_id || !session.optical_evaluation_id) {
+    return { success: false, message: 'O mapa visual ainda nao foi associado a cliente e avaliacao.' }
+  }
 
   const result = CompleteSessionSchema.safeParse({
     storeId: data.storeId,
