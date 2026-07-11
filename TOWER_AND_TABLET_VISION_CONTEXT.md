@@ -492,14 +492,24 @@ O fluxo inicial de Seu Jeito de Olhar e Visagismo ja cria uma sessao ativa e o
 menu Continuar Atendimento consulta as sessoes abertas. O resultado do
 heatmap ganhou a chave opcional `tower_session_id`. O Campo Visual ja cria ou
 retoma sua sessao de heatmap a partir da `tower_session`, ainda sem exigir
-cliente ou avaliacao.
+cliente ou avaliacao. Na Torre, a interface do Campo Visual foi separada do
+laboratorio: mostra somente a abertura da tela do cliente, ativacao da camera,
+inicio/cancelamento da leitura e seu estado. Os controles de calibracao,
+debug, geometria e diagnosticos continuam disponiveis apenas no laboratorio do
+dashboard. Quando o Campo Visual e concluido, seu resultado e salvo e a
+`tower_session` permanece ativa, aguardando a decisao do funcionario: seguir
+para avaliacao, refazer a leitura ou encerrar o atendimento. Caso um cliente
+ou uma avaliacao sejam vinculados depois, esse vinculo tambem e propagado para
+o resultado do heatmap.
+
+A primeira rota de avaliacao da Torre fica em `/torre/[storeId]/avaliacao`.
+Ela inicia pelo cliente titular, traz os campos da receita antes da entrevista,
+oferece templates de perguntas rapidas e usa o resultado salvo do Campo Visual
+ao gerar as sugestoes.
 
 ### O que ainda nao esta pronto
 
 - rota propria de Medidas, com identificacao obrigatoria do cliente;
-- associacao posterior de um Campo Visual concluido ao cliente e a Avaliacao;
-- conclusao da `tower_session` depois do resultado do Campo Visual;
-- refinamento da UI do Campo Visual para a tela touch da Torre;
 - conclusao automatica ou descarte ao sair de uma experiencia;
 - SQLite, sincronizacao offline e empacotamento Electron.
 

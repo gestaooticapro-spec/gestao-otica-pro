@@ -26,6 +26,7 @@ import {
   type VisagismoRecommendationNarrative,
 } from '@/lib/actions/visagismo-ai.actions'
 import { analyzeFaceLandmarks, type FaceAnalysisResult, type FaceShape } from '@/lib/visagismo/face-analysis'
+import { closeTowerClientScreen, openTowerClientScreen } from '@/lib/tower/client-screen'
 import { recommendFramesForFace, type CustomerStyleProfile, type FrameRecommendation } from '@/lib/visagismo/frame-recommendation'
 
 type MediaPipeModule = typeof import('@mediapipe/tasks-vision')
@@ -652,7 +653,7 @@ export default function VirtualTryOn({
     if (typeof window === 'undefined') return
     const url = new URL(window.location.href)
     url.searchParams.set('client', '1')
-    window.open(url.toString(), 'visagismo-client-screen', 'popup=yes,width=1366,height=768')
+    openTowerClientScreen(url.toString())
     window.setTimeout(() => {
       channelRef.current?.postMessage({ type: 'state', state } satisfies TryOnMessage)
       channelRef.current?.postMessage({ type: 'narrative', narrative: aiNarrative } satisfies TryOnMessage)
@@ -1229,14 +1230,19 @@ export default function VirtualTryOn({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={openClientScreen}
-            className="inline-flex items-center gap-2 rounded-lg bg-cyan-500 px-2.5 py-1.5 text-[10px] font-black uppercase text-slate-950 transition-colors hover:bg-cyan-400"
-          >
-            <MonitorUp className="h-4 w-4" />
-            Abrir tela cliente
-          </button>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={closeTowerClientScreen} className="rounded-lg border border-white/10 bg-slate-950/65 px-2.5 py-1.5 text-[10px] font-black uppercase text-slate-300 transition-colors hover:bg-slate-800">
+              Fechar tela
+            </button>
+            <button
+              type="button"
+              onClick={openClientScreen}
+              className="inline-flex items-center gap-2 rounded-lg bg-cyan-500 px-2.5 py-1.5 text-[10px] font-black uppercase text-slate-950 transition-colors hover:bg-cyan-400"
+            >
+              <MonitorUp className="h-4 w-4" />
+              Abrir tela cliente
+            </button>
+          </div>
         </div>
       </div>
 

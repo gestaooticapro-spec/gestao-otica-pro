@@ -84,7 +84,7 @@ type HeatmapActionResult<T = undefined> = {
 }
 type QueryError = { message: string }
 type SingleResult<T> = Promise<{ data: T | null; error: QueryError | null }>
-type SessionLookup = Pick<TowerHeatmapSessionRow, 'id' | 'store_id' | 'status'>
+type SessionLookup = Pick<TowerHeatmapSessionRow, 'id' | 'store_id' | 'status' | 'tower_session_id'>
 type EvaluationLookup = {
   id: number
   tenant_id: string
@@ -303,19 +303,52 @@ export async function completeTowerHeatmapSession(
   if (found.session.status === 'completed') return { success: true, message: 'Mapa visual ja estava salvo.' }
 
   const sessions = createAdminClient().from('tower_heatmap_sessions') as unknown as TowerHeatmapSessionsTableApi
+  const completedAt = new Date().toISOString()
   const { error } = await sessions
     .update({
       status: 'completed',
       result_summary: data.summary,
       target_samples: data.targetSamples,
-      completed_at: new Date().toISOString(),
+      completed_at: completedAt,
       cancelled_at: null,
     })
     .eq('id', data.sessionId)
     .eq('store_id', data.storeId)
 
   if (error) return { success: false, message: error.message }
-  return { success: true, message: 'Mapa visual salvo na avaliacao.' }
+
+  return { success: true, message: 'Mapa visual salvo. A sessao da Torre aguarda a decisao do funcionario.' }
+}
+
+export async function resetTowerHeatmapSession(
+  input: z.input<typeof SessionCommandSchema>,
+): Promise<HeatmapActionResult> {
+  const parsed = SessionCommandSchema.safeParse(input)
+  if (!parsed.success) return { success: false, message: 'Sessao de mapa visual invalida.' }
+
+  const data = parsed.data
+  const auth = await getAuthorizedStoreContext(data.storeId)
+  if (!auth.ok) return { success: false, message: auth.message }
+
+  const found = await getSessionForStore(data.sessionId, data.storeId)
+  if (!found.session) return { success: false, message: found.message || 'Sessao nao encontrada.' }
+  if (found.session.status === 'running') return { success: false, message: 'A leitura atual precisa ser interrompida antes de recomecar.' }
+
+  const sessions = createAdminClient().from('tower_heatmap_sessions') as unknown as TowerHeatmapSessionsTableApi
+  const { error } = await sessions
+    .update({
+      status: 'created',
+      result_summary: null,
+      target_samples: null,
+      started_at: null,
+      completed_at: null,
+      cancelled_at: null,
+    })
+    .eq('id', data.sessionId)
+    .eq('store_id', data.storeId)
+
+  if (error) return { success: false, message: error.message }
+  return { success: true, message: 'Leitura preparada para recomecar.' }
 }
 
 export async function cancelTowerHeatmapSession(

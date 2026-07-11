@@ -60,6 +60,20 @@ async function findSessionForStore(sessionId: string, storeId: number) {
   return { session: data as TowerSession, message: null }
 }
 
+async function syncHeatmapSessionAssociation(
+  sessionId: string,
+  storeId: number,
+  association: { customer_id?: number; optical_evaluation_id?: number },
+) {
+  const heatmapSessions = createAdminClient().from('tower_heatmap_sessions') as any
+  const { error } = await heatmapSessions
+    .update(association)
+    .eq('tower_session_id', sessionId)
+    .eq('store_id', storeId)
+
+  return error as { message: string } | null
+}
+
 export async function createTowerSession(
   input: z.input<typeof CreateTowerSessionSchema>,
 ): Promise<ActionResult<TowerSession>> {
@@ -115,6 +129,14 @@ export async function linkCustomerToTowerSession(
     .single()
 
   if (error || !data) return { success: false, message: error?.message || 'Nao foi possivel vincular o cliente.' }
+
+  const heatmapError = await syncHeatmapSessionAssociation(found.session.id, parsed.data.storeId, {
+    customer_id: customer.id,
+  })
+  if (heatmapError) {
+    return { success: false, message: `Cliente vinculado a sessao, mas nao ao resultado do Campo Visual: ${heatmapError.message}` }
+  }
+
   return { success: true, message: 'Cliente vinculado a sessao da Torre.', data: data as TowerSession }
 }
 
@@ -157,6 +179,15 @@ export async function linkEvaluationToTowerSession(
     .single()
 
   if (error || !data) return { success: false, message: error?.message || 'Nao foi possivel vincular a avaliacao.' }
+
+  const heatmapError = await syncHeatmapSessionAssociation(found.session.id, parsed.data.storeId, {
+    customer_id: evaluation.evaluated_customer_id,
+    optical_evaluation_id: evaluation.id,
+  })
+  if (heatmapError) {
+    return { success: false, message: `Avaliacao vinculada a sessao, mas nao ao resultado do Campo Visual: ${heatmapError.message}` }
+  }
+
   return { success: true, message: 'Avaliacao vinculada a sessao da Torre.', data: data as TowerSession }
 }
 

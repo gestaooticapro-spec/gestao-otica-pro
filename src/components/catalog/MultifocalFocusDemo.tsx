@@ -4,6 +4,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Camera, Maximize2, Minimize2, MonitorUp, Play, Square } from 'lucide-react'
+import { closeTowerClientScreen, openTowerClientScreen } from '@/lib/tower/client-screen'
 
 type Landmark = { x: number; y: number; z?: number }
 type MediaPipeModule = typeof import('@mediapipe/tasks-vision')
@@ -188,7 +189,7 @@ export default function MultifocalFocusDemo({
     if (typeof window === 'undefined') return
     const url = new URL(window.location.href)
     url.searchParams.set('client', '1')
-    window.open(url.toString(), 'multifocal-focus-client', 'popup=yes,width=1080,height=1920')
+    openTowerClientScreen(url.toString(), 'popup=yes,width=1080,height=1920')
   }
 
   async function toggleClientFullscreen() {
@@ -436,14 +437,19 @@ export default function MultifocalFocusDemo({
               <h1 className="mt-1 text-xl font-semibold tracking-tight text-white">Seu Jeito de Olhar</h1>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={openClientScreen}
-            className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-600 bg-slate-900/80 px-3 text-sm font-semibold text-slate-100 backdrop-blur transition hover:bg-slate-800"
-          >
-            <MonitorUp className="h-4 w-4" />
-            <span className="hidden sm:inline">Tela cliente</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={closeTowerClientScreen} className="min-h-10 rounded-xl border border-slate-700 bg-slate-950/80 px-3 text-xs font-bold text-slate-300 transition hover:bg-slate-800">
+              Fechar tela
+            </button>
+            <button
+              type="button"
+              onClick={openClientScreen}
+              className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-600 bg-slate-900/80 px-3 text-sm font-semibold text-slate-100 backdrop-blur transition hover:bg-slate-800"
+            >
+              <MonitorUp className="h-4 w-4" />
+              <span className="hidden sm:inline">Tela cliente</span>
+            </button>
+          </div>
         </header>
 
         <section className="relative mt-4 min-h-0 flex-1 overflow-hidden rounded-3xl border border-white/10 bg-slate-900 shadow-2xl shadow-black/30">

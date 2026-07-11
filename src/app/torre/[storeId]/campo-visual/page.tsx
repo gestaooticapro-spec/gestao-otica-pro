@@ -50,6 +50,7 @@ export default async function TowerVisualFieldPage({
       geometries={geometries}
       clientMode={searchParams?.client === '1'}
       heatmapSessionId={heatmapSession.data.id}
+      towerSessionId={towerSessionId}
       towerMode
     />
   )

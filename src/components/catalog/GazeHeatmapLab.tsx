@@ -7,8 +7,11 @@ import type { LensGeometry, LensPins } from '@/lib/actions/lens-geometry.actions
 import {
   cancelTowerHeatmapSession,
   completeTowerHeatmapSession,
+  resetTowerHeatmapSession,
   startTowerHeatmapSession,
 } from '@/lib/actions/tower-heatmap.actions'
+import { completeTowerSession } from '@/lib/actions/tower-session.actions'
+import { closeTowerClientScreen, openTowerClientScreen } from '@/lib/tower/client-screen'
 
 type NormalizedPoint = { x: number; y: number }
 type FaceMetrics = {
@@ -63,6 +66,17 @@ type SessionSummary = {
   isReliable: boolean
   label: string
   message: string
+}
+type ClientVisualFront = {
+  key: 'distance' | 'intermediate' | 'near'
+  label: string
+  state: 'good' | 'wide' | 'guidance' | 'attention' | 'partial'
+  status: string
+  detail: string
+  recommendation: string
+}
+type ClientVisualAnalysis = {
+  fronts: ClientVisualFront[]
 }
 type SessionSample = {
   eyeX: number
@@ -154,6 +168,7 @@ const TARGET_INTERVAL_MS = 2200
 const TARGET_SETTLE_MS = 1100
 const TARGET_CAPTURE_END_MS = 2100
 const CALIBRATION_DURATION_MS = 3000
+const EYE_TARGETS_MERGE_MS = 760
 const EYE_FOLLOW_INTRO_MS = 10000
 const SANDBOX_CALIBRATION_STEP_MS = 2600
 const SANDBOX_CALIBRATION_SETTLE_MS = 700
@@ -193,8 +208,6 @@ const EYE_FOLLOW_SMOOTHING = 0.92
 const ENVELOPE_BINS = 72
 const CUTOUT = { x: 0.24, y: 0.22, w: 0.52, h: 0.46 }
 const HEATMAP_LAB_BUILD = 'heatmap-v10-geometry-picker-2026-04-30'
-const CLIENT_RESULT_TITLE = 'Encontramos campos de visão que combinam com o seu padrão visual.'
-const CLIENT_RESULT_SUBTITLE = 'Aguarde enquanto encontramos a melhor lente para você.'
 const SANDBOX_CALIBRATION_STEPS: SandboxCalibrationStep[] = [
   { key: 'center', target: { x: 0.5, y: 0.5 }, instruction: '1/9 · centro · cabeça neutra' },
   { key: 'eyeLeft', target: { x: 0.08, y: 0.5 }, instruction: '2/9 · só olhos · esquerda' },
@@ -1106,6 +1119,7 @@ function drawLensHeatmap(
   geometry?: LensGeometry | null,
   samples: SessionSample[] = [],
   mode: 'grid' | 'normalized' | 'contour' | 'continuous' | 'audit' = 'grid',
+  showGuides = true,
 ) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
@@ -1201,23 +1215,25 @@ function drawLensHeatmap(
     }
   }
 
-  if (renderablePins?.lineA.length && renderablePins?.lineB.length) {
-    ctx.strokeStyle = 'rgba(250, 204, 21, 0.95)'
-    ctx.lineWidth = 3
-    ctx.lineCap = 'round'
-    ctx.stroke(buildOpenLinePath(renderablePins.lineA, lensWidth, lensHeight))
-    ctx.stroke(buildOpenLinePath(renderablePins.lineB, lensWidth, lensHeight))
-  } else {
-    const fallbackLines = buildFallbackKodakLinePaths(lensWidth, lensHeight, grid, samples)
-    ctx.strokeStyle = 'rgba(250, 204, 21, 0.92)'
-    ctx.lineWidth = 3.2
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-    ctx.shadowColor = 'rgba(250, 204, 21, 0.32)'
-    ctx.shadowBlur = 8
-    ctx.stroke(fallbackLines.left)
-    ctx.stroke(fallbackLines.right)
-    ctx.shadowBlur = 0
+  if (showGuides) {
+    if (renderablePins?.lineA.length && renderablePins?.lineB.length) {
+      ctx.strokeStyle = 'rgba(250, 204, 21, 0.95)'
+      ctx.lineWidth = 3
+      ctx.lineCap = 'round'
+      ctx.stroke(buildOpenLinePath(renderablePins.lineA, lensWidth, lensHeight))
+      ctx.stroke(buildOpenLinePath(renderablePins.lineB, lensWidth, lensHeight))
+    } else {
+      const fallbackLines = buildFallbackKodakLinePaths(lensWidth, lensHeight, grid, samples)
+      ctx.strokeStyle = 'rgba(250, 204, 21, 0.92)'
+      ctx.lineWidth = 3.2
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+      ctx.shadowColor = 'rgba(250, 204, 21, 0.32)'
+      ctx.shadowBlur = 8
+      ctx.stroke(fallbackLines.left)
+      ctx.stroke(fallbackLines.right)
+      ctx.shadowBlur = 0
+    }
   }
 
   if (mode === 'audit') {
@@ -1419,15 +1435,15 @@ function drawTrackingOverlay(
   canvas: HTMLCanvasElement,
   landmarks: NormalizedPoint[] | null,
   metrics: FaceMetrics,
+  introStartedAt: number | null,
+  mergeStartedAt: number | null,
+  now: number,
 ) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
 
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   if (!landmarks || !metrics.faceDetected) return
-
-  ctx.strokeStyle = 'rgba(56, 189, 248, 0.75)'
-  ctx.lineWidth = 1.5
 
   const leftEyeOuter = getLandmark(landmarks, LANDMARKS.leftEyeOuter)
   const leftEyeInner = getLandmark(landmarks, LANDMARKS.leftEyeInner)
@@ -1437,44 +1453,84 @@ function drawTrackingOverlay(
   const rightEyeInner = getLandmark(landmarks, LANDMARKS.rightEyeInner)
   const rightEyeTop = getLandmark(landmarks, LANDMARKS.rightEyeTop)
   const rightEyeBottom = getLandmark(landmarks, LANDMARKS.rightEyeBottom)
-  const leftIris = getLandmark(landmarks, LANDMARKS.leftIris)
-  const rightIris = getLandmark(landmarks, LANDMARKS.rightIris)
-  const nose = getLandmark(landmarks, LANDMARKS.nose)
+  const leftFace = getLandmark(landmarks, LANDMARKS.leftFace)
+  const rightFace = getLandmark(landmarks, LANDMARKS.rightFace)
+  const elapsed = introStartedAt ? now - introStartedAt : 0
+  const lineProgress = clamp(elapsed / 520, 0, 1)
+  const boxProgress = clamp((elapsed - 360) / 620, 0, 1)
+  const targetsProgress = clamp((elapsed - 880) / 360, 0, 1)
+  const width = canvas.width
+  const height = canvas.height
+  const eyeLineY = ((leftEyeTop.y + leftEyeBottom.y + rightEyeTop.y + rightEyeBottom.y) / 4) * height
+  const templeLeft = leftFace.x * width
+  const templeRight = rightFace.x * width
 
-  const drawEye = (
-    outer: NormalizedPoint,
-    inner: NormalizedPoint,
-    top: NormalizedPoint,
-    bottom: NormalizedPoint,
-    iris: NormalizedPoint,
-  ) => {
-    const width = canvas.width
-    const height = canvas.height
-    ctx.beginPath()
-    ctx.ellipse(
-      ((outer.x + inner.x) / 2) * width,
-      ((top.y + bottom.y) / 2) * height,
-      Math.abs(inner.x - outer.x) * width * 0.52,
-      Math.abs(bottom.y - top.y) * height * 1.4,
-      0,
-      0,
-      Math.PI * 2,
-    )
-    ctx.stroke()
-    ctx.fillStyle = 'rgba(239, 68, 68, 0.95)'
-    ctx.beginPath()
-    ctx.arc(iris.x * width, iris.y * height, 4.5, 0, Math.PI * 2)
-    ctx.fill()
-  }
-
-  drawEye(leftEyeOuter, leftEyeInner, leftEyeTop, leftEyeBottom, leftIris)
-  drawEye(rightEyeOuter, rightEyeInner, rightEyeTop, rightEyeBottom, rightIris)
-
-  ctx.strokeStyle = 'rgba(34, 197, 94, 0.9)'
+  ctx.save()
+  ctx.lineCap = 'round'
+  ctx.shadowColor = 'rgba(103, 232, 249, 0.72)'
+  ctx.shadowBlur = 12
+  ctx.strokeStyle = 'rgba(165, 243, 252, 0.92)'
+  ctx.lineWidth = 2.5
   ctx.beginPath()
-  ctx.moveTo(nose.x * canvas.width, nose.y * canvas.height)
-  ctx.lineTo((nose.x + metrics.headX * 0.06) * canvas.width, (nose.y + metrics.headY * 0.05) * canvas.height)
+  ctx.moveTo(templeLeft, eyeLineY)
+  ctx.lineTo(templeLeft + (templeRight - templeLeft) * lineProgress, eyeLineY)
   ctx.stroke()
+
+  const left = Math.min(leftEyeOuter.x, leftEyeInner.x, rightEyeOuter.x, rightEyeInner.x) * width - 28
+  const right = Math.max(leftEyeOuter.x, leftEyeInner.x, rightEyeOuter.x, rightEyeInner.x) * width + 28
+  const top = Math.min(leftEyeTop.y, rightEyeTop.y) * height - 30
+  const bottom = Math.max(leftEyeBottom.y, rightEyeBottom.y) * height + 30
+  const perimeter = 2 * ((right - left) + (bottom - top))
+  ctx.strokeStyle = 'rgba(103, 232, 249, 0.9)'
+  ctx.lineWidth = 2
+  ctx.setLineDash([perimeter * boxProgress, perimeter])
+  ctx.beginPath()
+  ctx.roundRect(left, top, right - left, bottom - top, 18)
+  ctx.stroke()
+  ctx.setLineDash([])
+
+  if (targetsProgress > 0) {
+    const mergeProgress = mergeStartedAt ? clamp((now - mergeStartedAt) / EYE_TARGETS_MERGE_MS, 0, 1) : 0
+    const centers = [
+      {
+        x: ((leftEyeOuter.x + leftEyeInner.x) / 2) * width,
+        y: ((leftEyeTop.y + leftEyeBottom.y) / 2) * height,
+      },
+      {
+        x: ((rightEyeOuter.x + rightEyeInner.x) / 2) * width,
+        y: ((rightEyeTop.y + rightEyeBottom.y) / 2) * height,
+      },
+    ]
+    const center = { x: width / 2, y: height / 2 }
+
+    for (const eye of centers) {
+      const x = eye.x + (center.x - eye.x) * mergeProgress
+      const y = eye.y + (center.y - eye.y) * mergeProgress
+      const radius = (17 - mergeProgress * 4) * targetsProgress
+      ctx.globalAlpha = mergeProgress === 1 ? 0.5 : 1
+      ctx.strokeStyle = 'rgba(207, 250, 254, 0.98)'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.arc(x, y, radius, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.strokeStyle = 'rgba(103, 232, 249, 0.8)'
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.arc(x, y, radius * 0.56, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(x - radius * 1.4, y)
+      ctx.lineTo(x + radius * 1.4, y)
+      ctx.moveTo(x, y - radius * 1.4)
+      ctx.lineTo(x, y + radius * 1.4)
+      ctx.stroke()
+      ctx.fillStyle = 'rgba(103, 232, 249, 1)'
+      ctx.beginPath()
+      ctx.arc(x, y, Math.max(3, radius * 0.18), 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+  ctx.restore()
 }
 
 function summarizeSession(samples: SessionSample[]): SessionSummary {
@@ -1592,6 +1648,113 @@ function summarizeSession(samples: SessionSample[]): SessionSummary {
   }
 }
 
+function buildClientVisualAnalysis(samples: SessionSample[]): ClientVisualAnalysis {
+  const fronts: ClientVisualFront[] = (['distance', 'intermediate', 'near'] as const).map((key) => {
+    const regionSamples = samples.filter((sample) => getTargetRegion(sample.targetY) === key)
+    const expectedSamples = SESSION_TARGET_REGION_TOTALS[key]
+    const label = key === 'distance' ? 'Longe' : key === 'intermediate' ? 'Intermediário' : 'Perto'
+
+    if (regionSamples.length < expectedSamples * 0.6) {
+      return {
+        key,
+        label,
+        state: 'partial',
+        status: 'Leitura parcial',
+        detail: 'Esta área precisa de mais leitura para ser analisada.',
+        recommendation: 'Repita esta etapa para termos uma análise segura.',
+      }
+    }
+
+    const projections = regionSamples.map((sample) => ({
+      sample,
+      projection: projectSampleToLens(sample),
+      target: normalizeTargetOffset(sample.targetX, sample.targetY),
+    }))
+    const horizontalDemand = projections.reduce((sum, item) => sum + Math.abs(item.target.x), 0)
+    const verticalDemand = projections.reduce((sum, item) => sum + Math.abs(item.target.y), 0)
+    const eyeShareX = projections.reduce((sum, item) => sum + item.projection.eyeShareX * Math.abs(item.target.x), 0) / Math.max(horizontalDemand, 0.0001)
+    const eyeShareY = projections.reduce((sum, item) => sum + item.projection.eyeShareY * Math.abs(item.target.y), 0) / Math.max(verticalDemand, 0.0001)
+    const lateralReach = projections.reduce((sum, item) => sum + Math.abs(item.projection.point.x - 0.5), 0) / projections.length
+    const lowerEyeReach = projections.reduce((sum, item) => sum + Math.max(0, item.projection.point.y - LENS_DISTANCE_REFERENCE_Y), 0) / projections.length
+
+    if (key === 'near' && eyeShareY < 0.46 && lowerEyeReach < 0.13) {
+      return {
+        key,
+        label,
+        state: 'attention',
+        status: 'Atenção à leitura',
+        detail: 'Você acompanhou mais com a cabeça do que com os olhos.',
+        recommendation: 'Uma boa adaptação depende de praticar o uso dos olhos na leitura.',
+      }
+    }
+
+    if (key === 'intermediate' && eyeShareY < 0.48) {
+      return {
+        key,
+        label,
+        state: 'guidance',
+        status: 'Atenção ao uso da cabeça',
+        detail: 'Você acompanhou essa distância mais com a cabeça do que com os olhos.',
+        recommendation: 'Para acessar bem o intermediário, é importante deslocar os olhos pela área correta da lente.',
+      }
+    }
+
+    if (key === 'intermediate' && eyeShareY >= 0.48 && eyeShareX >= 0.56 && lateralReach >= 0.105) {
+      return {
+        key,
+        label,
+        state: 'wide',
+        status: 'Campo mais amplo',
+        detail: 'Seus olhos exploram mais as laterais nesta distância.',
+        recommendation: 'Você precisa de lentes com intermediário amplo para maior conforto.',
+      }
+    }
+
+    if (key === 'distance' && eyeShareX >= 0.6 && lateralReach >= 0.115) {
+      return {
+        key,
+        label,
+        state: 'wide',
+        status: 'Campo lateral ativo',
+        detail: 'Você usa os olhos nas laterais ao olhar longe.',
+        recommendation: 'Você precisa de lentes amplas para longe.',
+      }
+    }
+
+    const lowerLateralReach = projections
+      .filter((item) => item.sample.targetY >= 0.78)
+      .reduce((sum, item, _index, items) => sum + Math.abs(item.projection.point.x - 0.5) / Math.max(items.length, 1), 0)
+
+    if (key === 'near' && eyeShareY >= 0.5 && lowerLateralReach >= 0.075) {
+      return {
+        key,
+        label,
+        state: 'wide',
+        status: 'Olhar ativo',
+        detail: 'Você usou bem os olhos na área de leitura.',
+        recommendation: 'Você terá mais facilidade de adaptação, com campo amplo para perto.',
+      }
+    }
+
+    return {
+      key,
+      label,
+      state: 'good',
+      status: key === 'near' ? 'Olhar ativo' : 'Equilibrado',
+      detail:
+        key === 'near'
+          ? 'Você usou bem os olhos na área de leitura.'
+          : 'Olhos e cabeça trabalharam de forma equilibrada.',
+      recommendation:
+        key === 'near'
+          ? 'Você tende a se adaptar bem às lentes multifocais.'
+          : 'Este padrão ajuda a equilibrar conforto e campo visual.',
+    }
+  })
+
+  return { fronts }
+}
+
 export default function GazeHeatmapLab({
   storeId,
   backPath,
@@ -1599,6 +1762,7 @@ export default function GazeHeatmapLab({
   geometries = [],
   clientMode = false,
   heatmapSessionId = null,
+  towerSessionId = null,
   towerMode = false,
 }: {
   storeId: number
@@ -1607,6 +1771,7 @@ export default function GazeHeatmapLab({
   geometries?: LensGeometry[]
   clientMode?: boolean
   heatmapSessionId?: string | null
+  towerSessionId?: string | null
   towerMode?: boolean
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -1622,11 +1787,15 @@ export default function GazeHeatmapLab({
   const stageRef = useRef<HTMLDivElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const landmarkerRef = useRef<FaceLandmarkerInstance | null>(null)
+  const landmarkerPromiseRef = useRef<Promise<FaceLandmarkerInstance> | null>(null)
   const animationRef = useRef<number | null>(null)
   const targetTimerRef = useRef<number | null>(null)
   const sessionTimerRef = useRef<number | null>(null)
   const calibrationTimerRef = useRef<number | null>(null)
   const prepCountdownTimerRef = useRef<number | null>(null)
+  const eyeTargetsMergeTimerRef = useRef<number | null>(null)
+  const eyeScanStartedAtRef = useRef<number | null>(null)
+  const eyeTargetsMergeStartedAtRef = useRef<number | null>(null)
   const lastTickRef = useRef<number>(0)
   const lastUiTickRef = useRef<number>(0)
   const phaseRef = useRef<SessionPhase>('idle')
@@ -1656,8 +1825,6 @@ export default function GazeHeatmapLab({
   const [phase, setPhase] = useState<SessionPhase>('idle')
   const [clientResultVisible, setClientResultVisible] = useState(false)
   const [clientResultAnimationComplete, setClientResultAnimationComplete] = useState(false)
-  const [typedClientTitle, setTypedClientTitle] = useState('')
-  const [typedClientSubtitle, setTypedClientSubtitle] = useState('')
   const [hasCalibration, setHasCalibration] = useState(false)
   const [status, setStatus] = useState('Abra a câmera frontal e alinhe o rosto ao centro.')
   const [target, setTarget] = useState<NormalizedPoint>({ x: 0.5, y: 0.5 })
@@ -1680,8 +1847,10 @@ export default function GazeHeatmapLab({
   const [verticalHeadDebug, setVerticalHeadDebug] = useState(false)
   const [projectionDebugTrace, setProjectionDebugTrace] = useState<ProjectionDebugTrace[]>([])
   const [sessionPersistenceStatus, setSessionPersistenceStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [towerActionBusy, setTowerActionBusy] = useState(false)
   const isFocusMode = phase === 'calibrating' || phase === 'running'
   const selectedGeometry = geometries.find((item) => item.id === selectedGeometryId) ?? geometry ?? geometries[0] ?? null
+  const clientVisualAnalysis = buildClientVisualAnalysis(targetHeatSamplesRef.current)
 
   const redrawHeatmaps = useCallback(() => {
     if (mainHeatmapRef.current) {
@@ -1689,10 +1858,11 @@ export default function GazeHeatmapLab({
         mainHeatmapRef.current,
         heatmapRef.current,
         undefined,
-        selectedGeometry ? `Mapa de calor sobreposto · ${selectedGeometry.family_name}` : 'Mapa de calor sobreposto',
+        towerMode ? undefined : selectedGeometry ? `Mapa de calor sobreposto · ${selectedGeometry.family_name}` : 'Mapa de calor sobreposto',
         selectedGeometry,
         targetHeatSamplesRef.current,
         'continuous',
+        !towerMode,
       )
     }
     if (auditHeatmapRef.current) {
@@ -1749,7 +1919,7 @@ export default function GazeHeatmapLab({
         clientResultProgressRef.current,
       )
     }
-  }, [selectedGeometry, summary])
+  }, [selectedGeometry, summary, towerMode])
 
   useEffect(() => {
     setSecureContextWarning(typeof window !== 'undefined' && !window.isSecureContext)
@@ -1844,6 +2014,20 @@ export default function GazeHeatmapLab({
   }, [clientMode, cameraReady, clientResultVisible, phase])
 
   useEffect(() => {
+    if (!clientMode || !cameraReady || phase !== 'idle' || landmarkerRef.current) return
+
+    const previewTimer = window.setTimeout(() => {
+      void ensureLandmarker()
+        .then(() => {
+          if (phaseRef.current === 'idle') startTrackingLoop()
+        })
+        .catch((error) => console.warn('Não foi possível iniciar a prévia do avatar.', error))
+    }, 450)
+
+    return () => window.clearTimeout(previewTimer)
+  }, [cameraReady, clientMode, phase])
+
+  useEffect(() => {
     const onFullscreenChange = () => {
       const stage = stageRef.current
       setIsFullscreen(Boolean(stage && document.fullscreenElement === stage))
@@ -1922,42 +2106,6 @@ export default function GazeHeatmapLab({
     }
   }, [clientMode, clientResultVisible, phase, selectedGeometry, summary])
 
-  useEffect(() => {
-    const shouldType = clientMode && (clientResultVisible || phase === 'finished') && clientResultAnimationComplete
-    if (!shouldType) {
-      setTypedClientTitle('')
-      setTypedClientSubtitle('')
-      return
-    }
-
-    setTypedClientTitle('')
-    setTypedClientSubtitle('')
-
-    const pauseBetweenLines = 10
-    const totalSteps = CLIENT_RESULT_TITLE.length + pauseBetweenLines + CLIENT_RESULT_SUBTITLE.length
-    let step = 0
-
-    const timer = window.setInterval(() => {
-      step += 1
-
-      if (step <= CLIENT_RESULT_TITLE.length) {
-        setTypedClientTitle(CLIENT_RESULT_TITLE.slice(0, step))
-        return
-      }
-
-      const subtitleStep = step - CLIENT_RESULT_TITLE.length - pauseBetweenLines
-      if (subtitleStep > 0) {
-        setTypedClientSubtitle(CLIENT_RESULT_SUBTITLE.slice(0, subtitleStep))
-      }
-
-      if (step >= totalSteps) {
-        window.clearInterval(timer)
-      }
-    }, 34)
-
-    return () => window.clearInterval(timer)
-  }, [clientMode, clientResultAnimationComplete, clientResultVisible, phase])
-
   const toggleFullscreen = useCallback(async () => {
     const stage = stageRef.current
     if (!stage) return
@@ -1979,6 +2127,7 @@ export default function GazeHeatmapLab({
       if (sessionTimerRef.current) window.clearTimeout(sessionTimerRef.current)
       if (calibrationTimerRef.current) window.clearTimeout(calibrationTimerRef.current)
       if (prepCountdownTimerRef.current) window.clearInterval(prepCountdownTimerRef.current)
+      if (eyeTargetsMergeTimerRef.current) window.clearTimeout(eyeTargetsMergeTimerRef.current)
       landmarkerRef.current?.close?.()
       streamRef.current?.getTracks().forEach((track) => track.stop())
     }
@@ -1986,35 +2135,42 @@ export default function GazeHeatmapLab({
 
   async function ensureLandmarker() {
     if (landmarkerRef.current) return landmarkerRef.current
+    if (landmarkerPromiseRef.current) return landmarkerPromiseRef.current
 
-    setLoadingModel(true)
-    setStatus('Carregando o modelo facial no navegador...')
+    const loadingPromise = (async () => {
+      setLoadingModel(true)
+      setStatus('Carregando o modelo facial no navegador...')
 
-    try {
-      const vision = (await import('@mediapipe/tasks-vision')) as MediaPipeModule
-      const wasm = await vision.FilesetResolver.forVisionTasks(
-        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm',
-      )
+      try {
+        const vision = (await import('@mediapipe/tasks-vision')) as MediaPipeModule
+        const wasm = await vision.FilesetResolver.forVisionTasks(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm',
+        )
 
-      landmarkerRef.current = await vision.FaceLandmarker.createFromOptions(wasm, {
-        baseOptions: {
-          modelAssetPath:
-            'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
-        },
-        runningMode: 'VIDEO',
-        numFaces: 1,
-        minFaceDetectionConfidence: 0.55,
-        minFacePresenceConfidence: 0.55,
-        minTrackingConfidence: 0.55,
-        outputFaceBlendshapes: false,
-        outputFacialTransformationMatrixes: false,
-      })
+        landmarkerRef.current = await vision.FaceLandmarker.createFromOptions(wasm, {
+          baseOptions: {
+            modelAssetPath:
+              'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+          },
+          runningMode: 'VIDEO',
+          numFaces: 1,
+          minFaceDetectionConfidence: 0.55,
+          minFacePresenceConfidence: 0.55,
+          minTrackingConfidence: 0.55,
+          outputFaceBlendshapes: false,
+          outputFacialTransformationMatrixes: false,
+        })
 
-      setStatus('Modelo pronto. Agora podemos abrir a câmera frontal.')
-      return landmarkerRef.current
-    } finally {
-      setLoadingModel(false)
-    }
+        setStatus('Modelo pronto. Agora podemos abrir a câmera frontal.')
+        return landmarkerRef.current
+      } finally {
+        setLoadingModel(false)
+        landmarkerPromiseRef.current = null
+      }
+    })()
+
+    landmarkerPromiseRef.current = loadingPromise
+    return loadingPromise
   }
 
   async function startCamera() {
@@ -2048,6 +2204,8 @@ export default function GazeHeatmapLab({
         return
       }
       setCameraReady(true)
+      eyeScanStartedAtRef.current = null
+      eyeTargetsMergeStartedAtRef.current = null
       setStatus('Câmera ativa. Deixe o rosto centralizado e inicie a calibração.')
     } catch (error) {
       console.error(error)
@@ -2090,6 +2248,10 @@ export default function GazeHeatmapLab({
       window.clearInterval(prepCountdownTimerRef.current)
       prepCountdownTimerRef.current = null
     }
+    if (eyeTargetsMergeTimerRef.current) {
+      window.clearTimeout(eyeTargetsMergeTimerRef.current)
+      eyeTargetsMergeTimerRef.current = null
+    }
   }
 
   async function applyTrackingCameraProfile() {
@@ -2124,17 +2286,21 @@ export default function GazeHeatmapLab({
     sandboxStepRef.current = null
     sandboxCollectedRef.current = {}
     eyeFollowIntroRef.current = null
+    eyeScanStartedAtRef.current = null
+    eyeTargetsMergeStartedAtRef.current = null
     headOnlyProjectionRef.current = false
     verticalHeadDebugRef.current = false
     projectionDebugTraceRef.current = []
     currentTargetRef.current = { x: 0.5, y: 0.5 }
     targetStartedAtRef.current = 0
     setHasCalibration(false)
+    setLiveMetrics({ faceDetected: false, eyeX: 0, eyeY: 0, headX: 0, headY: 0 })
     setLiveHeadOffset({ headX: 0, headY: 0 })
     setHeadOnlyProjection(false)
     setVerticalHeadDebug(false)
     setProjectionDebugTrace([])
     setTarget({ x: 0.5, y: 0.5 })
+    phaseRef.current = 'idle'
     setPhase('idle')
     setPrepSecondsLeft(0)
     setSummary(null)
@@ -2152,16 +2318,21 @@ export default function GazeHeatmapLab({
     targetIndexRef.current = 0
     currentTargetRef.current = { x: 0.5, y: 0.5 }
     eyeFollowIntroRef.current = null
+    eyeScanStartedAtRef.current = null
+    eyeTargetsMergeStartedAtRef.current = null
     headSandboxCalibrationRef.current = DEFAULT_HEAD_SANDBOX_CALIBRATION
     headOnlyProjectionRef.current = false
     verticalHeadDebugRef.current = false
     projectionDebugTraceRef.current = []
+    baselineRef.current = { eyeX: 0, eyeY: 0, headX: 0, headY: 0 }
     setTarget({ x: 0.5, y: 0.5 })
     setHeadOnlyProjection(false)
     setVerticalHeadDebug(false)
     setProjectionDebugTrace([])
+    setLiveMetrics({ faceDetected: false, eyeX: 0, eyeY: 0, headX: 0, headY: 0 })
     setLiveHeadOffset({ headX: 0, headY: 0 })
     setPrepSecondsLeft(0)
+    phaseRef.current = 'idle'
     setPhase('idle')
     setStatus(cameraReady ? 'Teste parado. A câmera continua pronta para recomeçar.' : 'Teste parado.')
     if (heatmapSessionId) {
@@ -2439,22 +2610,44 @@ export default function GazeHeatmapLab({
     setProjectionDebugTrace([])
     setHasCalibration(false)
     setLiveHeadOffset({ headX: 0, headY: 0 })
-    setPhase('calibrating')
     setSummary(null)
-    moveTarget({ x: 0.5, y: LENS_DISTANCE_REFERENCE_Y })
-    setStatus('Sandbox cabeça: olhe para o ponto de longe por 3 segundos. Depois o mapa usa só a cabeça contra o alvo.')
-    calibrationTimerRef.current = window.setTimeout(() => {
-      const samples = calibrationSamplesRef.current
-      if (!samples.length) {
-        setStatus('Não houve rastreamento suficiente na calibração central da sandbox.')
-        setPhase('idle')
-        return
-      }
-      baselineRef.current = averageFaceMetrics(samples)
-      setHasCalibration(true)
-      setLiveHeadOffset({ headX: 0, headY: 0 })
-      startPreparedSession(false)
-    }, CALIBRATION_DURATION_MS)
+    moveTarget({ x: 0.5, y: 0.5 })
+    setStatus('Centralizando os alvos para iniciar a leitura.')
+    eyeTargetsMergeStartedAtRef.current = performance.now()
+
+    eyeTargetsMergeTimerRef.current = window.setTimeout(() => {
+      eyeTargetsMergeTimerRef.current = null
+      eyeTargetsMergeStartedAtRef.current = null
+      eyeScanStartedAtRef.current = null
+      phaseRef.current = 'calibrating'
+      setPhase('calibrating')
+      setPrepSecondsLeft(3)
+      setStatus('Mantenha o rosto centralizado. O alvo começa em 3 segundos.')
+
+      let secondsLeft = 3
+      prepCountdownTimerRef.current = window.setInterval(() => {
+        secondsLeft -= 1
+        setPrepSecondsLeft(secondsLeft)
+        if (secondsLeft <= 0 && prepCountdownTimerRef.current) {
+          window.clearInterval(prepCountdownTimerRef.current)
+          prepCountdownTimerRef.current = null
+        }
+      }, 1000)
+
+      calibrationTimerRef.current = window.setTimeout(() => {
+        const samples = calibrationSamplesRef.current
+        if (!samples.length) {
+          setStatus('Não houve rastreamento suficiente na calibração central da sandbox.')
+          phaseRef.current = 'idle'
+          setPhase('idle')
+          return
+        }
+        baselineRef.current = averageFaceMetrics(samples)
+        setHasCalibration(true)
+        setLiveHeadOffset({ headX: 0, headY: 0 })
+        startPreparedSession(false)
+      }, CALIBRATION_DURATION_MS)
+    }, EYE_TARGETS_MERGE_MS)
   }
 
   async function startCalibration() {
@@ -2621,13 +2814,41 @@ export default function GazeHeatmapLab({
     if (typeof window === 'undefined') return
     const url = new URL(window.location.href)
     url.searchParams.set('client', '1')
-    window.open(url.toString(), 'heatmap-client-screen', 'popup=yes,width=1366,height=768')
+    openTowerClientScreen(url.toString())
   }
 
   function sendCommand(command: RemoteCommand) {
     const channel = broadcastRef.current
     if (!channel) return
     channel.postMessage({ type: 'command', command } satisfies CommandPayload)
+  }
+
+  async function restartTowerReading() {
+    if (!heatmapSessionId || towerActionBusy) return
+
+    setTowerActionBusy(true)
+    const result = await resetTowerHeatmapSession({ storeId, sessionId: heatmapSessionId })
+    if (result.success) {
+      setSessionPersistenceStatus('idle')
+      resetLab()
+      sendCommand('resetLab')
+    } else {
+      setStatus(result.message)
+    }
+    setTowerActionBusy(false)
+  }
+
+  async function endTowerService() {
+    if (!towerSessionId || towerActionBusy) return
+
+    setTowerActionBusy(true)
+    const result = await completeTowerSession({ storeId, sessionId: towerSessionId })
+    if (result.success) {
+      window.location.assign(`/torre/${storeId}`)
+      return
+    }
+    setStatus(result.message)
+    setTowerActionBusy(false)
   }
 
   function startTrackingLoop() {
@@ -2657,7 +2878,17 @@ export default function GazeHeatmapLab({
       const result = landmarker.detectForVideo(video, now)
       const landmarks = result.faceLandmarks?.[0] as NormalizedPoint[] | undefined
       const metrics = landmarks ? computeFaceMetrics(landmarks) : { faceDetected: false, eyeX: 0, eyeY: 0, headX: 0, headY: 0 }
-      drawTrackingOverlay(overlay, landmarks ?? null, metrics)
+      if (clientMode && phaseRef.current === 'idle' && metrics.faceDetected && !eyeScanStartedAtRef.current) {
+        eyeScanStartedAtRef.current = now
+      }
+      drawTrackingOverlay(
+        overlay,
+        landmarks ?? null,
+        metrics,
+        eyeScanStartedAtRef.current,
+        eyeTargetsMergeStartedAtRef.current,
+        now,
+      )
 
       const eyeFollowIntro = eyeFollowIntroRef.current
       if (eyeFollowIntro && metrics.faceDetected) {
@@ -2714,12 +2945,15 @@ export default function GazeHeatmapLab({
       }
 
       if (now - lastUiTickRef.current > 120) {
-        const nextHeadOffset = phaseRef.current === 'calibrating'
-          ? { headX: 0, headY: 0 }
-          : metrics.faceDetected
+        const phaseAllowsAvatarMotion = phaseRef.current === 'idle' || phaseRef.current === 'running'
+        const nextHeadOffset = metrics.faceDetected && phaseAllowsAvatarMotion
           ? {
-              headX: clamp(metrics.headX - baselineRef.current.headX, -1.2, 1.2),
-              headY: clamp(metrics.headY - baselineRef.current.headY, -1.2, 1.2),
+              headX: phaseRef.current === 'idle'
+                ? clamp(metrics.headX, -1.2, 1.2)
+                : clamp(metrics.headX - baselineRef.current.headX, -1.2, 1.2),
+              headY: phaseRef.current === 'idle'
+                ? clamp(metrics.headY, -1.2, 1.2)
+                : clamp(metrics.headY - baselineRef.current.headY, -1.2, 1.2),
             }
           : { headX: 0, headY: 0 }
         setLiveMetrics(metrics)
@@ -2771,7 +3005,9 @@ export default function GazeHeatmapLab({
       ? 'Calibração'
       : 'Aguardando'
   const stageClassName = clientMode
-    ? 'relative h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_50%_20%,_rgba(59,130,246,0.18),_rgba(2,6,23,0.94)_55%),linear-gradient(180deg,_rgba(15,23,42,0.98),_rgba(2,6,23,1))]'
+    ? phase === 'finished' || clientResultVisible
+      ? 'relative min-h-screen w-screen overflow-visible bg-[radial-gradient(circle_at_50%_20%,_rgba(59,130,246,0.18),_rgba(2,6,23,0.94)_55%),linear-gradient(180deg,_rgba(15,23,42,0.98),_rgba(2,6,23,1))]'
+      : 'relative h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_50%_20%,_rgba(59,130,246,0.18),_rgba(2,6,23,1)_55%),linear-gradient(180deg,_rgba(15,23,42,0.98),_rgba(2,6,23,1))]'
     : isFocusMode
     ? 'relative h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_50%_20%,_rgba(59,130,246,0.18),_rgba(2,6,23,0.94)_55%),linear-gradient(180deg,_rgba(15,23,42,0.98),_rgba(2,6,23,1))]'
     : 'relative h-[56vh] min-h-[420px] max-h-[760px] overflow-hidden rounded-[32px] border border-white/10 bg-[radial-gradient(circle_at_50%_20%,_rgba(59,130,246,0.18),_rgba(2,6,23,0.94)_55%),linear-gradient(180deg,_rgba(15,23,42,0.95),_rgba(2,6,23,1))] lg:h-[64vh]'
@@ -2798,6 +3034,8 @@ export default function GazeHeatmapLab({
   const clientResultMode = clientMode && (clientResultVisible || phase === 'finished')
   const clientVideoVisible = clientMode && !isFocusMode && !clientResultMode
   const showClientTarget = !clientMode || (isFocusMode && !clientResultMode)
+  const clientBackgroundOffsetX = (0.5 - target.x) * 64
+  const clientBackgroundOffsetY = (0.5 - target.y) * 64
 
   const stageNode = (
     <div ref={stageRef} className={stageClassName}>
@@ -2818,69 +3056,88 @@ export default function GazeHeatmapLab({
         width={VIDEO_W}
         height={VIDEO_H}
         className={
-          clientMode
-            ? 'pointer-events-none fixed -left-[200vw] top-0 h-px w-px overflow-hidden opacity-0'
+          clientMode && phase === 'idle'
+            ? 'pointer-events-none absolute inset-0 z-10 h-full w-full scale-x-[-1] opacity-100'
             : 'pointer-events-none fixed -left-[200vw] top-0 h-px w-px overflow-hidden opacity-0'
         }
-        style={{ opacity: 0, pointerEvents: 'none' }}
+        style={clientMode && phase === 'idle' ? undefined : { opacity: 0, pointerEvents: 'none' }}
       />
+      {clientMode && phaseIsRunning && !clientResultMode && (
+        <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden bg-slate-950">
+          <div
+            className="client-parallax-background absolute -inset-[18%] bg-cover bg-center opacity-80 transition-transform duration-700 ease-in-out"
+            style={{
+              backgroundImage: "url('/lens-demo/foto1.png')",
+              transform: `translate3d(${clientBackgroundOffsetX}px, ${clientBackgroundOffsetY}px, 0) scale(1.34)`,
+            }}
+          />
+          <div className="absolute inset-0 bg-slate-950/38" />
+        </div>
+      )}
       {clientResultMode && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center px-8 py-10">
-          <div className="relative flex h-full w-full max-w-[1180px] flex-col items-center justify-center overflow-hidden rounded-[44px] border border-cyan-200/18 bg-[linear-gradient(145deg,_rgba(8,47,73,0.62),_rgba(15,23,42,0.82)_48%,_rgba(2,6,23,0.96))] p-7 shadow-[0_36px_110px_rgba(2,6,23,0.62)]">
+        <div className="relative z-20 flex min-h-screen items-start justify-center px-5 py-8 sm:px-8 sm:py-10">
+          <div className="relative flex w-full max-w-[1180px] flex-col items-center justify-start overflow-visible rounded-[44px] border border-cyan-200/18 bg-[linear-gradient(145deg,_rgba(8,47,73,0.62),_rgba(15,23,42,0.82)_48%,_rgba(2,6,23,0.96))] p-5 shadow-[0_36px_110px_rgba(2,6,23,0.62)] sm:p-7">
             <div className="pointer-events-none absolute -left-20 top-10 h-64 w-64 rounded-full bg-cyan-300/12 blur-3xl" />
             <div className="pointer-events-none absolute -right-16 bottom-4 h-72 w-72 rounded-full bg-emerald-300/12 blur-3xl" />
-            <div className="pointer-events-none absolute inset-x-10 top-8 h-px overflow-hidden rounded-full bg-white/10">
-              <div className="h-full w-1/3 animate-[heatmap-scan_2.6s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-cyan-200 to-transparent shadow-[0_0_22px_rgba(125,211,252,0.9)]" />
-            </div>
             <div className="relative z-10 mb-5 text-center">
               <p className="text-[11px] font-black uppercase tracking-[0.32em] text-cyan-200/90">
                 Analisando padrão visual
               </p>
             </div>
-            <div className="relative z-10 w-full max-w-5xl overflow-hidden rounded-[36px] border border-white/12 bg-slate-950/42 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_28px_80px_rgba(2,6,23,0.45)]">
+            <div className="relative z-10 w-full max-w-4xl overflow-hidden rounded-[36px] border border-white/12 bg-slate-950/42 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_28px_80px_rgba(2,6,23,0.45)]">
               <div className="pointer-events-none absolute inset-y-4 left-0 z-20 w-1/4 animate-[heatmap-sweep_3.2s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-cyan-100/18 to-transparent blur-md" />
               <div className="pointer-events-none absolute inset-x-12 top-1/2 z-20 h-px animate-pulse bg-gradient-to-r from-transparent via-cyan-100/60 to-transparent shadow-[0_0_24px_rgba(125,211,252,0.55)]" />
               <canvas
                 ref={clientResultCanvasRef}
                 width={1100}
                 height={600}
-                className="h-auto w-full rounded-[28px]"
+                className="mx-auto max-h-[38vh] w-auto max-w-full rounded-[28px]"
               />
             </div>
-            <div className="relative z-10 mt-5 min-h-[7.4rem] max-w-4xl text-center">
-              <h1
-                className="text-balance text-3xl font-black leading-tight text-white sm:text-5xl"
-                aria-label={CLIENT_RESULT_TITLE}
-              >
-                {typedClientTitle}
-                {clientResultAnimationComplete && typedClientTitle.length < CLIENT_RESULT_TITLE.length && (
-                  <span className="ml-1 inline-block h-[0.9em] w-[3px] animate-pulse rounded-full bg-cyan-200 align-[-0.08em] shadow-[0_0_16px_rgba(125,211,252,0.9)]" />
-                )}
-              </h1>
-              <p
-                className="mt-3 min-h-[1.8em] text-lg font-semibold text-slate-300 sm:text-2xl"
-                aria-label={CLIENT_RESULT_SUBTITLE}
-              >
-                {typedClientSubtitle}
-                {clientResultAnimationComplete &&
-                  typedClientTitle.length >= CLIENT_RESULT_TITLE.length &&
-                  typedClientSubtitle.length < CLIENT_RESULT_SUBTITLE.length && (
-                    <span className="ml-1 inline-block h-[0.85em] w-[2px] animate-pulse rounded-full bg-emerald-200 align-[-0.05em] shadow-[0_0_14px_rgba(167,243,208,0.75)]" />
-                  )}
-              </p>
-            </div>
+            {clientResultAnimationComplete && (
+              <div className="relative z-10 mt-6 grid w-full max-w-4xl grid-cols-1 gap-4">
+              {clientVisualAnalysis.fronts.map((front, index) => {
+                const tone = front.state === 'good'
+                  ? 'border-emerald-300/25 bg-emerald-400/10 text-emerald-100'
+                  : front.state === 'wide' || front.state === 'guidance'
+                    ? 'border-amber-300/25 bg-amber-400/10 text-amber-100'
+                    : front.state === 'attention'
+                      ? 'border-rose-300/30 bg-rose-400/10 text-rose-100'
+                      : 'border-slate-400/20 bg-slate-400/10 text-slate-200'
+                const dot = front.state === 'good'
+                  ? 'bg-emerald-300'
+                  : front.state === 'wide' || front.state === 'guidance'
+                    ? 'bg-amber-300'
+                    : front.state === 'attention'
+                      ? 'bg-rose-300'
+                      : 'bg-slate-300'
+                return (
+                  <div
+                    key={front.key}
+                    className={`animate-[analysis-card-in_420ms_ease-out_forwards] rounded-3xl border px-7 py-6 text-left opacity-0 ${tone}`}
+                    style={{ animationDelay: `${index * 620}ms` }}
+                  >
+                    <div className="flex items-center gap-3 text-sm font-black uppercase tracking-[0.2em]">
+                      <span className={`h-3 w-3 rounded-full ${dot}`} />
+                      {front.label}
+                    </div>
+                    <p className="mt-3 text-2xl font-black leading-tight text-white sm:text-3xl">{front.status}</p>
+                    <p className="mt-3 text-lg leading-7 text-slate-200 sm:text-xl sm:leading-8">{front.detail}</p>
+                    <p className="mt-4 border-t border-white/10 pt-4 text-lg font-bold leading-7 text-white sm:text-xl sm:leading-8">{front.recommendation}</p>
+                  </div>
+                )
+              })}
+              </div>
+            )}
             <style jsx>{`
-              @keyframes heatmap-scan {
-                0% {
-                  transform: translateX(-120%);
-                  opacity: 0.1;
+              @keyframes analysis-card-in {
+                from {
+                  opacity: 0;
+                  transform: translateY(16px) scale(0.98);
                 }
-                45% {
+                to {
                   opacity: 1;
-                }
-                100% {
-                  transform: translateX(360%);
-                  opacity: 0.15;
+                  transform: translateY(0) scale(1);
                 }
               }
 
@@ -2903,38 +3160,6 @@ export default function GazeHeatmapLab({
       )}
       {showClientTarget && (
         <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.06)_1px,transparent_1px)] bg-[size:32px_32px]" />
-      )}
-      {clientMode && !clientResultMode && (
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-          <div className="relative h-[min(58vh,520px)] w-[min(58vh,520px)] rounded-[32px] border border-white/10 bg-slate-950/26 shadow-[0_30px_90px_rgba(2,6,23,0.38)] backdrop-blur-[2px]">
-            <div className="absolute left-1/2 top-8 h-[calc(100%-64px)] w-px -translate-x-1/2 bg-white/10" />
-            <div className="absolute left-8 top-1/2 h-px w-[calc(100%-64px)] -translate-y-1/2 bg-white/10" />
-            <div
-              className="absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-100 bg-cyan-300 shadow-[0_0_26px_rgba(103,232,249,0.72)]"
-              style={realHeadDotStyle}
-            />
-            <div
-              className="absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-amber-100 bg-amber-300 shadow-[0_0_26px_rgba(252,211,77,0.72)]"
-              style={compensationDotStyle}
-            />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div
-                className="relative h-[54%] w-[44%] rounded-[42%_42%_46%_46%] border-2 border-cyan-100/70 bg-slate-800/92 shadow-[inset_0_0_56px_rgba(34,211,238,0.12),0_28px_68px_rgba(2,6,23,0.58)] transition-transform duration-100"
-                style={{ transform: avatarFaceTransform, transformStyle: 'preserve-3d' }}
-              >
-                <div className="absolute -left-[10%] top-[42%] h-[17%] w-[10%] rounded-full border border-cyan-100/40 bg-slate-700/90" />
-                <div className="absolute -right-[10%] top-[42%] h-[17%] w-[10%] rounded-full border border-cyan-100/40 bg-slate-700/90" />
-                <div className="absolute left-[27%] top-[37%] h-[8%] w-[9%] rounded-full bg-cyan-100 shadow-[0_0_16px_rgba(165,243,252,0.55)]" />
-                <div className="absolute right-[27%] top-[37%] h-[8%] w-[9%] rounded-full bg-cyan-100 shadow-[0_0_16px_rgba(165,243,252,0.55)]" />
-                <div className="absolute left-1/2 top-[38%] h-[30%] w-1 -translate-x-1/2 rounded-full bg-emerald-300/90 shadow-[0_0_16px_rgba(110,231,183,0.5)]" />
-                <div className="absolute bottom-[21%] left-1/2 h-[4%] w-[38%] -translate-x-1/2 rounded-full bg-slate-500" />
-              </div>
-            </div>
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-white/10 bg-slate-950/62 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-emerald-100">
-              Azul cabeça · Âmbar compensação
-            </div>
-          </div>
-        </div>
       )}
       {!clientMode && (
         <>
@@ -2973,17 +3198,11 @@ export default function GazeHeatmapLab({
           <div className={targetDotClassName} />
         </div>
       )}
-      {clientMode && phaseIsCalibrating && showClientTarget && !status.startsWith('Pré-calibração') && (
-        <div
-          className={`absolute z-30 max-w-[min(560px,calc(100vw-32px))] -translate-x-1/2 rounded-2xl border border-white/15 bg-slate-950/78 px-4 py-2.5 text-center text-sm font-black text-slate-100 shadow-[0_18px_42px_rgba(2,6,23,0.34)] backdrop-blur ${
-            target.y > 0.72 ? '-translate-y-[calc(100%+56px)]' : 'translate-y-12'
-          }`}
-          style={{
-            left: `${target.x * 100}%`,
-            top: `${target.y * 100}%`,
-          }}
-        >
-          {status}
+      {clientMode && phaseIsCalibrating && prepSecondsLeft > 0 && (
+        <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center">
+          <div className="text-[clamp(11rem,38vw,27rem)] font-black leading-none text-cyan-100 drop-shadow-[0_0_42px_rgba(103,232,249,0.8)]">
+            {prepSecondsLeft}
+          </div>
         </div>
       )}
       {!clientMode && !isFocusMode && (
@@ -2996,7 +3215,7 @@ export default function GazeHeatmapLab({
 
   if (clientMode) {
     return (
-      <div className="h-screen w-screen overflow-hidden bg-slate-950 text-white">
+      <div className={clientResultMode ? 'min-h-screen w-screen overflow-y-auto bg-slate-950 text-white' : 'h-screen w-screen overflow-hidden bg-slate-950 text-white'}>
         {stageNode}
         <button
           type="button"
@@ -3024,6 +3243,167 @@ export default function GazeHeatmapLab({
           </div>
         )}
       </div>
+    )
+  }
+
+  if (towerMode) {
+    const towerReadingFinished = phase === 'finished' || summary !== null || status.startsWith('Sessão concluída')
+    const towerPhaseLabel = phaseIsRunning
+      ? 'Leitura em andamento'
+      : phaseIsCalibrating
+        ? 'Preparando leitura'
+        : towerReadingFinished
+          ? 'Leitura concluída'
+          : cameraReady
+            ? 'Pronto para iniciar'
+            : 'Aguardando câmera'
+
+    return (
+      <main className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-slate-950 px-5 py-4 text-white sm:px-7 sm:py-5">
+        <header className="flex shrink-0 items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <Link
+              href={backPath}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+              title="Voltar"
+              aria-label="Voltar"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-300">Torre de experiência</p>
+              <h1 className="truncate text-xl font-black tracking-tight text-white">Campo Visual</h1>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button type="button" onClick={closeTowerClientScreen} className="rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-xs font-black text-slate-300 transition hover:bg-slate-800">
+              Fechar tela
+            </button>
+            <button
+              type="button"
+              onClick={openClientScreen}
+              className="rounded-xl border border-cyan-300/25 bg-cyan-400/10 px-3 py-2 text-xs font-black text-cyan-100 transition hover:bg-cyan-400/20"
+            >
+              Abrir tela cliente
+            </button>
+          </div>
+        </header>
+
+        <section className="flex min-h-0 flex-1 items-center justify-center py-5">
+          <div className="w-full max-w-4xl rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.15),_transparent_46%),linear-gradient(180deg,_rgba(15,23,42,0.98),_rgba(2,6,23,0.98))] p-5 shadow-[0_28px_80px_rgba(2,6,23,0.45)] sm:p-6">
+            <div className="flex items-center gap-2">
+              <span className={`h-2.5 w-2.5 rounded-full ${phaseIsBusy ? 'animate-pulse bg-cyan-300' : towerReadingFinished ? 'bg-emerald-300' : cameraReady ? 'bg-emerald-300' : 'bg-slate-500'}`} />
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-200">{towerPhaseLabel}</p>
+            </div>
+            <h2 className="mt-5 text-2xl font-black leading-tight text-white sm:text-3xl">
+              {towerReadingFinished ? 'Campo visual registrado.' : 'Conduza a leitura pela tela do cliente.'}
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-slate-300 sm:text-base">{status}</p>
+            <div className="mt-5 grid gap-4 sm:grid-cols-[minmax(0,1fr)_170px]">
+              <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/55 p-2">
+                <canvas ref={mainHeatmapRef} width={620} height={360} className="h-auto w-full" />
+              </div>
+              <div className="rounded-2xl border border-emerald-400/15 bg-slate-950/60 p-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-200">Compensação cabeça</p>
+                <div className="relative mx-auto mt-3 h-36 w-36 rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_center,_rgba(15,23,42,0.95),_rgba(2,6,23,0.96))]">
+                  <div className="absolute left-1/2 top-3 h-[calc(100%-24px)] w-px -translate-x-1/2 bg-white/10" />
+                  <div className="absolute left-3 top-1/2 h-px w-[calc(100%-24px)] -translate-y-1/2 bg-white/10" />
+                  <div
+                    className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-200 bg-cyan-300 shadow-[0_0_18px_rgba(103,232,249,0.55)]"
+                    style={realHeadDotStyle}
+                  />
+                  <div
+                    className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-amber-200 bg-amber-300 shadow-[0_0_18px_rgba(252,211,77,0.55)]"
+                    style={compensationDotStyle}
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div
+                      className="relative h-20 w-[4.2rem] rounded-[42%_42%_46%_46%] border border-cyan-200/50 bg-slate-800 shadow-[inset_0_0_28px_rgba(34,211,238,0.1),0_18px_38px_rgba(2,6,23,0.45)] transition-transform duration-150"
+                      style={{ transform: avatarFaceTransform, transformStyle: 'preserve-3d' }}
+                    >
+                      <div className="absolute -left-2 top-8 h-5 w-3 rounded-full border border-cyan-200/30 bg-slate-700" />
+                      <div className="absolute -right-2 top-8 h-5 w-3 rounded-full border border-cyan-200/30 bg-slate-700" />
+                      <div className="absolute left-3.5 top-9 h-2.5 w-2.5 rounded-full bg-cyan-200" />
+                      <div className="absolute right-3.5 top-9 h-2.5 w-2.5 rounded-full bg-cyan-200" />
+                      <div className="absolute left-1/2 top-9 h-7 w-px -translate-x-1/2 bg-emerald-300/80" />
+                      <div className="absolute bottom-4 left-1/2 h-1.5 w-7 -translate-x-1/2 rounded-full bg-slate-500" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {summary && towerReadingFinished && (
+              <div className="mt-5 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 px-4 py-3">
+                <p className="text-sm font-black text-emerald-100">{summary.label}</p>
+                <p className="mt-1 text-sm leading-5 text-emerald-50/80">{summary.message}</p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <footer className="shrink-0 border-t border-white/10 pt-4">
+          {towerReadingFinished ? (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Link
+                href={towerSessionId ? `/torre/${storeId}/avaliacao?session=${towerSessionId}&heatmap=${heatmapSessionId ?? ''}` : backPath}
+                className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-cyan-400 px-4 text-center text-sm font-black text-slate-950 transition hover:bg-cyan-300"
+              >
+                Continuar para avaliação
+              </Link>
+              <button
+                type="button"
+                onClick={() => void restartTowerReading()}
+                disabled={towerActionBusy}
+                className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-amber-300/25 bg-amber-400/10 px-4 text-sm font-black text-amber-100 transition hover:bg-amber-400/20 disabled:cursor-wait disabled:opacity-50"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Refazer rastreamento
+              </button>
+              <button
+                type="button"
+                onClick={() => void endTowerService()}
+                disabled={!towerSessionId || towerActionBusy}
+                className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-slate-900 px-4 text-sm font-black text-slate-100 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                <StopCircle className="h-4 w-4" />
+                Encerrar atendimento
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => sendCommand('openCamera')}
+                disabled={loadingModel || cameraReady || phaseIsBusy}
+                className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-slate-900 px-4 text-sm font-black text-slate-100 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                {loadingModel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                {cameraReady ? 'Câmera pronta' : 'Ativar câmera'}
+              </button>
+              {phaseIsBusy ? (
+            <button
+              type="button"
+              onClick={() => sendCommand('cancelRun')}
+              className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-amber-300/25 bg-amber-400/10 px-4 text-sm font-black text-amber-100 transition hover:bg-amber-400/20"
+            >
+              <StopCircle className="h-4 w-4" />
+              Cancelar leitura
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => sendCommand('startHeadOnlySandbox')}
+              disabled={!cameraReady}
+              className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-cyan-400 px-4 text-sm font-black text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+            >
+              <Play className="h-4 w-4" />
+              Iniciar Campo Visual
+            </button>
+          )}
+            </div>
+          )}
+        </footer>
+      </main>
     )
   }
 
