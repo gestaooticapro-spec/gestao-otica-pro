@@ -6,10 +6,15 @@ import { getAlertasOperacionais, getAniversariantes, getVencimentosProximos, get
 import { getRetornosDeHoje } from '@/lib/actions/collection.actions';
 import { getClientesMetrics } from '@/lib/actions/reports.actions';
 import { createAdminClient } from '@/lib/supabase/admin';
+import type { StoreSettings } from '@/lib/store-modules';
 
 type WhatsAppChannelStatusRow = {
     connection_status: 'unknown' | 'connecting' | 'connected' | 'disconnected'
     is_active: boolean
+} | null
+
+type StoreSettingsRow = {
+    settings: StoreSettings | null
 } | null
 
 export async function GET(request: NextRequest) {
@@ -22,12 +27,20 @@ export async function GET(request: NextRequest) {
 
     try {
         const supabaseAdmin = createAdminClient();
-        const { data: whatsAppChannel } = await supabaseAdmin.from('whatsapp_store_channels')
-            .select('connection_status, is_active')
-            .eq('store_id', storeId)
-            .eq('provider', 'evolution')
-            .maybeSingle();
+        const [{ data: whatsAppChannel }, { data: storeRaw }] = await Promise.all([
+            supabaseAdmin.from('whatsapp_store_channels')
+                .select('connection_status, is_active')
+                .eq('store_id', storeId)
+                .eq('provider', 'evolution')
+                .maybeSingle(),
+            supabaseAdmin.from('stores')
+                .select('settings')
+                .eq('id', storeId)
+                .maybeSingle()
+        ]);
         const channel = (whatsAppChannel ?? null) as WhatsAppChannelStatusRow;
+        const store = (storeRaw ?? null) as StoreSettingsRow;
+        const isWhatsAppAutomationEnabled = store?.settings?.whatsapp_automation?.enabled !== false;
 
         const isWhatsAppConnected =
             channel?.connection_status === 'connected' &&
@@ -40,8 +53,8 @@ export async function GET(request: NextRequest) {
             getVencimentosProximos(storeId),
             getRetornosDeHoje(storeId),
             getClientesMetrics(storeId),
-            isWhatsAppConnected ? getWhatsAppPendencias(storeId) : Promise.resolve([]),
-            isWhatsAppConnected ? getWhatsAppHumanOverrideCount(storeId) : Promise.resolve(0)
+            isWhatsAppAutomationEnabled && isWhatsAppConnected ? getWhatsAppPendencias(storeId) : Promise.resolve([]),
+            isWhatsAppAutomationEnabled && isWhatsAppConnected ? getWhatsAppHumanOverrideCount(storeId) : Promise.resolve(0)
         ]);
 
         return NextResponse.json({
@@ -54,6 +67,7 @@ export async function GET(request: NextRequest) {
             clientesInativos: clientesMetrics.clientesInativos,
             whatsAppPendencias: whatsAppPendencias,
             whatsAppHumanOverrides,
+            isWhatsAppAutomationEnabled,
             isWhatsAppConnected
         });
     } catch (error) {

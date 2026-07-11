@@ -438,6 +438,22 @@ Criar um modo de torre com separacao explicita entre:
 4. **Analysis engine**
 - calcula calibracao, heatmap e scores
 
+### Torre como ambiente isolado
+
+A tela da Torre nao e uma tela reduzida do Hub Gerencial nem do dashboard da
+loja. Ela e o ponto de entrada do equipamento dedicado e deve funcionar como
+um ambiente proprio de operador.
+
+- nao exibir header, menu ou navegacao do backoffice;
+- nao oferecer caminhos visuais para Hub Gerencial ou dashboard da loja;
+- manter apenas a navegacao necessaria para a experiencia da Torre;
+- no navegador, a entrada de desenvolvimento deve ficar fora de `/dashboard`
+  (atualmente `/torre/[storeId]`); no Electron, a loja sera resolvida pela
+  configuracao do dispositivo.
+
+O sistema de gestao continua sendo o backoffice que consulta ou recebe os
+resultados. Ele nao deve ser a moldura visual da experiencia de Torre.
+
 ### Ideia de organizacao conceitual
 
 Separar em camadas:

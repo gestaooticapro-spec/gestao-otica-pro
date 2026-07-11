@@ -202,9 +202,17 @@ interface VirtualTryOnProps {
   storeId: number
   templates: GlobalVisagismoFrameTemplate[]
   clientMode?: boolean
+  backHref?: string
+  towerMode?: boolean
 }
 
-export default function VirtualTryOn({ storeId, templates, clientMode = false }: VirtualTryOnProps) {
+export default function VirtualTryOn({
+  storeId,
+  templates,
+  clientMode = false,
+  backHref = `/dashboard/loja/${storeId}/visagismo`,
+  towerMode = false,
+}: VirtualTryOnProps) {
   const channelName = `visagismo-tryon-${storeId}`
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const stageRef = useRef<HTMLElement | null>(null)
@@ -1201,12 +1209,12 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
   }
 
   return (
-    <div className="h-[calc(100vh-64px)] overflow-hidden bg-slate-950 text-slate-100">
+    <div className={`${towerMode ? 'h-[100dvh]' : 'h-[calc(100vh-64px)]'} overflow-hidden bg-slate-950 text-slate-100`}>
       <div className="border-b border-white/10 bg-slate-950/95">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <Link
-              href={`/dashboard/loja/${storeId}/visagismo`}
+              href={backHref}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
               title="Voltar"
             >
@@ -1232,22 +1240,26 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
         </div>
       </div>
 
-      <main className="mx-auto grid h-[calc(100vh-64px-61px)] max-w-7xl gap-3 overflow-hidden px-4 py-3 sm:px-6 lg:grid-cols-[1fr_300px]">
+      <main className={`mx-auto grid ${towerMode ? 'h-[calc(100dvh-61px)]' : 'h-[calc(100vh-64px-61px)]'} max-w-7xl gap-3 overflow-hidden px-4 py-3 sm:px-6 lg:grid-cols-[1fr_300px]`}>
         <section className="overflow-auto rounded-lg border border-white/10 bg-white/[0.04] p-3">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <StatusCard label="Camera" value={cameraOn ? 'ativa' : 'desligada'} tone={cameraOn ? 'good' : 'idle'} />
-            <StatusCard label="Rosto" value={faceDetected ? 'detectado' : 'aguardando'} tone={faceDetected ? 'good' : 'idle'} />
-            <StatusCard
-              label={photoFrozen ? 'Modo' : 'Posicao'}
-              value={photoFrozen ? 'foto' : faceTooTurned ? 'virado' : faceDetected ? 'frontal' : '-'}
-              tone={photoFrozen ? 'good' : faceTooTurned ? 'warn' : 'idle'}
-            />
-          </div>
+          {!towerMode && (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <StatusCard label="Camera" value={cameraOn ? 'ativa' : 'desligada'} tone={cameraOn ? 'good' : 'idle'} />
+              <StatusCard label="Rosto" value={faceDetected ? 'detectado' : 'aguardando'} tone={faceDetected ? 'good' : 'idle'} />
+              <StatusCard
+                label={photoFrozen ? 'Modo' : 'Posicao'}
+                value={photoFrozen ? 'foto' : faceTooTurned ? 'virado' : faceDetected ? 'frontal' : '-'}
+                tone={photoFrozen ? 'good' : faceTooTurned ? 'warn' : 'idle'}
+              />
+            </div>
+          )}
 
-          <div className="mt-3 rounded-lg border border-white/10 bg-slate-950/50 p-2.5">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">Status da tela cliente</p>
-            <p className="mt-1 text-xs font-bold text-slate-200">{status}</p>
-          </div>
+          {!towerMode && (
+            <div className="mt-3 rounded-lg border border-white/10 bg-slate-950/50 p-2.5">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">Status da tela cliente</p>
+              <p className="mt-1 text-xs font-bold text-slate-200">{status}</p>
+            </div>
+          )}
 
           <div className="mt-3 rounded-lg border border-white/10 bg-slate-950/50 p-2.5">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1264,7 +1276,7 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
               </button>
             </div>
 
-            <div className="mt-2 grid gap-2 lg:grid-cols-2">
+            <div className={`mt-2 grid gap-2 ${towerMode ? 'grid-cols-2' : 'lg:grid-cols-2'}`}>
               <ButtonGroup label="Estilo desejado">
                 {CUSTOMER_STYLE_OPTIONS.map((option) => (
                   <ProfileButton
@@ -1344,67 +1356,103 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
           </div>
           )}
 
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            <button
-              type="button"
-              onClick={startTryOnCamera}
-              disabled={templates.length === 0}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-2 text-[11px] font-black uppercase text-slate-950 transition-colors hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Play className="h-3.5 w-3.5" />
-              Iniciar camera
-            </button>
-            <button
-              type="button"
-              onClick={() => sendCommand('stopCamera')}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-black uppercase text-slate-300 transition-colors hover:bg-white/10"
-            >
-              <Square className="h-3.5 w-3.5" />
-              Parar camera
-            </button>
-            <button
-              type="button"
-              onClick={() => sendCommand('fullscreen')}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-black uppercase text-slate-300 transition-colors hover:bg-white/10"
-            >
-              <Maximize2 className="h-3.5 w-3.5" />
-              Tela cheia
-            </button>
-            <button
-              type="button"
-              onClick={runFaceAnalysis}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-[11px] font-black uppercase text-cyan-100 transition-colors hover:bg-cyan-500/20"
-            >
-              <ScanFace className="h-3.5 w-3.5" />
-              Analisar ao vivo
-            </button>
-            <button
-              type="button"
-              onClick={() => sendCommand('freezePhoto')}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-black uppercase text-slate-300 transition-colors hover:bg-white/10"
-            >
-              <Camera className="h-3.5 w-3.5" />
-              Congelar foto
-            </button>
-            <button
-              type="button"
-              onClick={runFrozenPhotoAnalysis}
-              disabled={!photoFrozen}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-[11px] font-black uppercase text-cyan-100 transition-colors hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <ScanFace className="h-3.5 w-3.5" />
-              Analisar foto
-            </button>
-            <button
-              type="button"
-              onClick={() => sendCommand('resumeLive')}
-              disabled={!photoFrozen}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-black uppercase text-slate-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Play className="h-3.5 w-3.5" />
-              Voltar ao vivo
-            </button>
-          </div>
+          {towerMode ? (
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={cameraOn ? () => sendCommand('stopCamera') : startTryOnCamera}
+                disabled={!cameraOn && templates.length === 0}
+                className={`inline-flex min-h-9 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[9px] font-black uppercase transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                  cameraOn
+                    ? 'border border-rose-300/30 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20'
+                    : 'bg-cyan-500 text-slate-950 hover:bg-cyan-400'
+                }`}
+              >
+                {cameraOn ? <Square className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                {cameraOn ? 'Parar câmera' : 'Iniciar câmera'}
+              </button>
+              <button
+                type="button"
+                onClick={() => sendCommand(photoFrozen ? 'resumeLive' : 'freezePhoto')}
+                disabled={!cameraOn && !photoFrozen}
+                className="inline-flex min-h-9 items-center justify-center gap-1 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1.5 text-[9px] font-black uppercase text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {photoFrozen ? <Play className="h-3.5 w-3.5" /> : <Camera className="h-3.5 w-3.5" />}
+                {photoFrozen ? 'Voltar ao vivo' : 'Congelar foto'}
+              </button>
+              <button
+                type="button"
+                onClick={photoFrozen ? runFrozenPhotoAnalysis : runFaceAnalysis}
+                disabled={!cameraOn && !photoFrozen}
+                className="inline-flex min-h-9 items-center justify-center gap-1 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-2 py-1.5 text-[9px] font-black uppercase text-cyan-100 transition-colors hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ScanFace className="h-3.5 w-3.5" />
+                {photoFrozen ? 'Analisar foto' : 'Analisar ao vivo'}
+              </button>
+            </div>
+          ) : (
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <button
+                type="button"
+                onClick={startTryOnCamera}
+                disabled={templates.length === 0}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-2 text-[11px] font-black uppercase text-slate-950 transition-colors hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Play className="h-3.5 w-3.5" />
+                Iniciar camera
+              </button>
+              <button
+                type="button"
+                onClick={() => sendCommand('stopCamera')}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-black uppercase text-slate-300 transition-colors hover:bg-white/10"
+              >
+                <Square className="h-3.5 w-3.5" />
+                Parar camera
+              </button>
+              <button
+                type="button"
+                onClick={() => sendCommand('fullscreen')}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-black uppercase text-slate-300 transition-colors hover:bg-white/10"
+              >
+                <Maximize2 className="h-3.5 w-3.5" />
+                Tela cheia
+              </button>
+              <button
+                type="button"
+                onClick={runFaceAnalysis}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-[11px] font-black uppercase text-cyan-100 transition-colors hover:bg-cyan-500/20"
+              >
+                <ScanFace className="h-3.5 w-3.5" />
+                Analisar ao vivo
+              </button>
+              <button
+                type="button"
+                onClick={() => sendCommand('freezePhoto')}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-black uppercase text-slate-300 transition-colors hover:bg-white/10"
+              >
+                <Camera className="h-3.5 w-3.5" />
+                Congelar foto
+              </button>
+              <button
+                type="button"
+                onClick={runFrozenPhotoAnalysis}
+                disabled={!photoFrozen}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-[11px] font-black uppercase text-cyan-100 transition-colors hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ScanFace className="h-3.5 w-3.5" />
+                Analisar foto
+              </button>
+              <button
+                type="button"
+                onClick={() => sendCommand('resumeLive')}
+                disabled={!photoFrozen}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-black uppercase text-slate-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Play className="h-3.5 w-3.5" />
+                Voltar ao vivo
+              </button>
+            </div>
+          )}
 
           {analysisReport && (
             <div className="mt-6 rounded-lg border border-white/10 bg-slate-950/50 p-4">
@@ -1551,26 +1599,30 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
         </section>
 
         <aside className="space-y-3 overflow-auto">
-          <div className="rounded-lg border border-white/10 bg-white/[0.04] p-2.5">
-            <h2 className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+          <div className={`rounded-lg border border-white/10 bg-white/[0.04] p-2.5 ${towerMode ? 'grid grid-cols-2 gap-x-3 gap-y-0' : ''}`}>
+            <h2 className={`mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 ${towerMode ? 'col-span-2' : ''}`}>
               <SlidersHorizontal className="h-3.5 w-3.5" />
               Ajustes
             </h2>
-            <label className="block text-[10px] font-black uppercase text-slate-500">Formato</label>
-            <select
-              value={state.selectedId}
-              onChange={(event) => setTryOnState({ selectedId: event.target.value })}
-              className="mt-1 h-10 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-xs font-bold text-slate-100 outline-none focus:border-cyan-400/60"
-            >
-              <option value="">Sem armacao</option>
-              {templates.map((template) => (
-                <option key={template.id} value={template.id}>{template.name}</option>
-              ))}
-            </select>
+            <div className={towerMode ? 'col-span-2' : ''}>
+              <label className="block text-[10px] font-black uppercase text-slate-500">Formato</label>
+              <select
+                value={state.selectedId}
+                onChange={(event) => setTryOnState({ selectedId: event.target.value })}
+                className="mt-1 h-10 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-xs font-bold text-slate-100 outline-none focus:border-cyan-400/60"
+              >
+                <option value="">Sem armacao</option>
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>{template.name}</option>
+                ))}
+              </select>
+            </div>
 
-            <Range label="Tamanho" value={state.sizeAdjust} min={0.78} max={1.28} step={0.01} onChange={(value) => setTryOnState({ sizeAdjust: value })} />
-            <Range label="Altura" value={state.heightAdjust} min={-40} max={40} step={1} onChange={(value) => setTryOnState({ heightAdjust: value })} />
-            <Range label="Linha" value={state.strokeScale} min={0.65} max={1.6} step={0.05} onChange={(value) => setTryOnState({ strokeScale: value })} />
+            <div className={towerMode ? 'col-span-2 grid grid-cols-3 gap-2' : ''}>
+              <Range label="Tamanho" value={state.sizeAdjust} min={0.78} max={1.28} step={0.01} onChange={(value) => setTryOnState({ sizeAdjust: value })} />
+              <Range label="Altura" value={state.heightAdjust} min={-40} max={40} step={1} onChange={(value) => setTryOnState({ heightAdjust: value })} />
+              <Range label="Linha" value={state.strokeScale} min={0.65} max={1.6} step={0.05} onChange={(value) => setTryOnState({ strokeScale: value })} />
+            </div>
 
             <div className="mt-4">
               <p className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Lente</p>
@@ -1612,7 +1664,7 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
               </div>
             </div>
 
-            <div className="mt-4">
+            <div className={`mt-4 ${towerMode ? 'col-span-2' : ''}`}>
               <div className="mb-2 flex items-center justify-between gap-2">
                 <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Pele</p>
                 {(cameraDetectedSkinTone || analysisReport?.detectedSkinTone) && (
@@ -1643,14 +1695,16 @@ export default function VirtualTryOn({ storeId, templates, clientMode = false }:
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setTryOnState({ mirror: !state.mirror })}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-bold text-slate-300 transition-colors hover:bg-white/10"
-            >
-              <FlipHorizontal className="h-4 w-4" />
-              {state.mirror ? 'Camera espelhada' : 'Camera normal'}
-            </button>
+            {!towerMode && (
+              <button
+                type="button"
+                onClick={() => setTryOnState({ mirror: !state.mirror })}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-bold text-slate-300 transition-colors hover:bg-white/10"
+              >
+                <FlipHorizontal className="h-4 w-4" />
+                {state.mirror ? 'Camera espelhada' : 'Camera normal'}
+              </button>
+            )}
           </div>
 
           {SHOW_FRAME_LIST && (

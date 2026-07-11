@@ -7,10 +7,12 @@ import { WhatsAppPendencia } from '@/lib/actions/consultas.actions'
 export default function WidgetWhatsAppPendencias({
   pendencias,
   humanOverrides = 0,
+  isConnected = true,
   onOpen,
 }: {
   pendencias: WhatsAppPendencia[]
   humanOverrides?: number
+  isConnected?: boolean
   onOpen: () => void
 }) {
   const [isOpen, setIsOpen] = useState(false)
@@ -40,7 +42,9 @@ export default function WidgetWhatsAppPendencias({
           </div>
           <div>
             <span className="text-slate-200 font-bold text-sm block group-hover:text-white transition-colors">WhatsApp</span>
-            <span className="text-slate-500 text-[10px] uppercase font-bold">Central Operacional</span>
+            <span className={`text-[10px] uppercase font-bold ${isConnected ? 'text-slate-500' : 'text-amber-400'}`}>
+              {isConnected ? 'Central Operacional' : 'Canal desconectado'}
+            </span>
           </div>
         </div>
 
@@ -59,10 +63,16 @@ export default function WidgetWhatsAppPendencias({
           <div className="flex items-start justify-between gap-3 rounded-lg bg-white/5 border border-white/5 p-3">
             <div className="min-w-0 flex-1">
               <p className="text-xs font-bold text-slate-200">
-                {totalActions > 0 ? `${totalActions} acao${totalActions === 1 ? '' : 'oes'} no radar` : 'Sem acoes de WhatsApp agora'}
+                {!isConnected
+                  ? 'WhatsApp indisponivel no momento'
+                  : totalActions > 0
+                    ? `${totalActions} acao${totalActions === 1 ? '' : 'oes'} no radar`
+                    : 'Sem acoes de WhatsApp agora'}
               </p>
               <p className="mt-1 text-[10px] text-slate-400">
-                {handoffCount > 0
+                {!isConnected
+                  ? 'Verifique a conexao do canal nas configuracoes da loja.'
+                  : handoffCount > 0
                   ? `Conversa mais antiga aguardando ha ${waitMinutes} min`
                   : 'Central pronta para busca, historico e debug.'}
               </p>
@@ -97,16 +107,18 @@ export default function WidgetWhatsAppPendencias({
 
           <button
             type="button"
+            disabled={!isConnected}
             onClick={(event) => {
               event.stopPropagation()
+              if (!isConnected) return
               onOpen()
             }}
-            className="w-full rounded-lg bg-green-500/20 text-green-300 hover:bg-green-500 hover:text-white transition-all shadow-sm border border-green-500/20 px-4 py-3 text-[11px] font-black uppercase tracking-wider"
+            className="w-full rounded-lg bg-green-500/20 text-green-300 hover:bg-green-500 hover:text-white transition-all shadow-sm border border-green-500/20 px-4 py-3 text-[11px] font-black uppercase tracking-wider disabled:cursor-not-allowed disabled:border-slate-600/30 disabled:bg-slate-700/30 disabled:text-slate-500"
           >
-            Entrar
+            {isConnected ? 'Entrar' : 'Canal desconectado'}
           </button>
 
-          {totalActions === 0 ? (
+          {isConnected && totalActions === 0 ? (
             <p className="text-center text-xs text-slate-400 py-3 font-medium">
               Nenhuma pendencia de WhatsApp agora.
             </p>

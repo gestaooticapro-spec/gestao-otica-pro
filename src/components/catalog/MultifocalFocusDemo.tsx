@@ -58,9 +58,16 @@ const ZERO_METRICS: FocusMetrics = {
 interface MultifocalFocusDemoProps {
   storeId: number
   clientMode?: boolean
+  backHref?: string
+  towerMode?: boolean
 }
 
-export default function MultifocalFocusDemo({ storeId, clientMode = false }: MultifocalFocusDemoProps) {
+export default function MultifocalFocusDemo({
+  storeId,
+  clientMode = false,
+  backHref = `/dashboard/loja/${storeId}/recomendacao-lentes`,
+  towerMode = false,
+}: MultifocalFocusDemoProps) {
   const channelName = `multifocal-focus-demo-${storeId}`
   const channelRef = useRef<BroadcastChannel | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -411,12 +418,110 @@ export default function MultifocalFocusDemo({ storeId, clientMode = false }: Mul
 
   const isRunning = phase === 'calibrating' || phase === 'running'
 
+  if (towerMode) {
+    return (
+      <main className="flex h-[100dvh] flex-col overflow-hidden bg-slate-950 px-5 py-4 text-white sm:px-7 sm:py-5">
+        <header className="flex shrink-0 items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <Link
+              href={backHref}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+              title="Voltar"
+              aria-label="Voltar"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-300">Torre de experiência</p>
+              <h1 className="mt-1 text-xl font-semibold tracking-tight text-white">Seu Jeito de Olhar</h1>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={openClientScreen}
+            className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-600 bg-slate-900/80 px-3 text-sm font-semibold text-slate-100 backdrop-blur transition hover:bg-slate-800"
+          >
+            <MonitorUp className="h-4 w-4" />
+            <span className="hidden sm:inline">Tela cliente</span>
+          </button>
+        </header>
+
+        <section className="relative mt-4 min-h-0 flex-1 overflow-hidden rounded-3xl border border-white/10 bg-slate-900 shadow-2xl shadow-black/30">
+          <Image
+            src={IMAGE_SRC}
+            alt="Prévia da experiência exibida ao cliente"
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover transition-[filter,transform] duration-150"
+            style={{ filter: `blur(${blurPx.toFixed(2)}px)`, transform: `scale(${1 + blurPx * 0.003})` }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/35 via-transparent to-black/20" />
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent px-5 pb-5 pt-20 sm:px-6 sm:pb-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/70">Prévia da tela cliente</p>
+            <p className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">{clarity}% nítida</p>
+          </div>
+
+          <div className="absolute right-3 top-3 w-[min(310px,calc(100%-1.5rem))] space-y-3 sm:right-5 sm:top-5">
+            <div className="rounded-2xl border border-white/15 bg-slate-950/70 p-4 shadow-xl backdrop-blur-md">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">Controle da Torre</p>
+              <button
+                type="button"
+                onClick={sendToggleCommand}
+                className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-sky-400 px-4 text-base font-bold text-slate-950 transition hover:bg-sky-300 active:scale-[0.98]"
+              >
+                {isRunning ? <Square className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+                {isRunning ? 'Parar experiência' : 'Iniciar experiência'}
+              </button>
+              <p className="mt-3 rounded-lg bg-white/10 px-3 py-2 text-sm font-medium text-slate-100">{status}</p>
+              {phase === 'calibrating' && (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-amber-200">
+                    <span>Calibração</span>
+                    <span>{calibrationLeft}s</span>
+                  </div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/15">
+                    <div
+                      className="h-full rounded-full bg-amber-400 transition-all duration-150"
+                      style={{
+                        width: `${clamp(
+                          ((CALIBRATION_MS / 1000 - calibrationLeft) / (CALIBRATION_MS / 1000)) * 100,
+                          0,
+                          100,
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-white/15 bg-slate-950/70 p-4 shadow-xl backdrop-blur-md">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">Leitura ao vivo</p>
+                <span className={faceDetected ? 'text-xs font-bold text-emerald-300' : 'text-xs font-bold text-rose-300'}>
+                  {faceDetected ? 'Rosto detectado' : 'Buscando rosto'}
+                </span>
+              </div>
+              <MetricBar label="Nitidez" value={clarity} max={100} tone="dark" />
+              <MetricBar label="Blur" value={Math.round(blurPx * 10) / 10} max={14} suffix="px" tone="dark" />
+              <MetricBar label="Olhos horizontal" value={Math.abs(metrics.eyeX).toFixed(2)} max={1.4} tone="dark" />
+              <MetricBar label="Cabeça horizontal" value={Math.abs(metrics.headX).toFixed(2)} max={1.4} tone="dark" />
+              <MetricBar label="Olhos vertical" value={metrics.eyeY.toFixed(2)} max={1.4} tone="dark" />
+              <MetricBar label="Cabeça vertical" value={metrics.headY.toFixed(2)} max={1.4} tone="dark" />
+            </div>
+          </div>
+        </section>
+      </main>
+    )
+  }
+
   return (
     <main className="min-h-screen bg-[#eef2ed] text-zinc-950">
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-5 py-5">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-300 pb-4">
           <Link
-            href={`/dashboard/loja/${storeId}/recomendacao-lentes`}
+            href={backHref}
             className="inline-flex items-center gap-2 text-sm font-bold text-zinc-600 hover:text-zinc-950"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -520,26 +625,29 @@ function MetricBar({
   value,
   max,
   suffix = '',
+  tone = 'light',
 }: {
   label: string
   value: number | string
   max: number
   suffix?: string
+  tone?: 'light' | 'dark'
 }) {
   const numericValue = typeof value === 'number' ? value : Number(value)
   const percent = clamp((Math.abs(numericValue) / max) * 100, 0, 100)
+  const isDark = tone === 'dark'
 
   return (
     <div className="mt-4">
-      <div className="mb-1 flex justify-between text-xs font-black uppercase tracking-wide text-zinc-500">
+      <div className={`mb-1 flex justify-between text-xs font-black uppercase tracking-wide ${isDark ? 'text-slate-300' : 'text-zinc-500'}`}>
         <span>{label}</span>
-        <span className="font-mono text-zinc-700">
+        <span className={`font-mono ${isDark ? 'text-white' : 'text-zinc-700'}`}>
           {value}
           {suffix}
         </span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-zinc-200">
-        <div className="h-full rounded-full bg-emerald-600" style={{ width: `${percent}%` }} />
+      <div className={`h-2 overflow-hidden rounded-full ${isDark ? 'bg-white/15' : 'bg-zinc-200'}`}>
+        <div className={`h-full rounded-full ${isDark ? 'bg-sky-300' : 'bg-emerald-600'}`} style={{ width: `${percent}%` }} />
       </div>
     </div>
   )

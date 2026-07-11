@@ -2,8 +2,8 @@
 import React from 'react';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import Header from '@/components/header';
 import { getProfileByAdmin } from '@/lib/supabase/admin';
+import Header from '@/components/header';
 
 type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor' | 'tecnico';
 type ProfileWithRole = { role?: string | null };
@@ -39,8 +39,9 @@ export default async function DashboardLayout({
     <div className="min-h-screen bg-slate-950">
       <Header />
 
-      {/* Container Principal: Header é compensado por pt-16 */}
       <div className="flex flex-1 pt-16">
+
+      {/* Container Principal: Header é compensado por pt-16 */}
         {children}
       </div>
     </div>

@@ -13,6 +13,12 @@ import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client';
 import Link from 'next/link';
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
 import type { AppMode } from '@/lib/app-mode';
+import {
+    clearOperatorWhatsAppWakePingAudit,
+    OPERATOR_WHATSAPP_WAKE_PING_AUDIT_EVENT,
+    readOperatorWhatsAppWakePingAudit,
+    type OperatorWhatsAppWakePingAuditFlag,
+} from '@/components/whatsapp/OperatorWhatsAppWakePing';
 
 // Tipos importados (ou definidos localmente se preferir não importar do server action em client component)
 // Para evitar erros de build se o arquivo de actions não exportar tipos para client, definimos aqui compatível.
@@ -92,6 +98,7 @@ interface RadarData {
     clientesInativos: ClienteInativo[];
     whatsAppPendencias: WhatsAppPendencia[];
     whatsAppHumanOverrides: number;
+    isWhatsAppAutomationEnabled: boolean;
     isWhatsAppConnected: boolean;
 }
 
@@ -176,17 +183,26 @@ export default function OperatorMenuLojaVazia({
         clientesInativos: [],
         whatsAppPendencias: [],
         whatsAppHumanOverrides: 0,
+        isWhatsAppAutomationEnabled: false,
         isWhatsAppConnected: false
     });
     const [loading, setLoading] = useState(true);
     const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
     const [whatsAppInitialPhone, setWhatsAppInitialPhone] = useState<string | null>(null);
+    const [wakePingAuditFlag, setWakePingAuditFlag] = useState<OperatorWhatsAppWakePingAuditFlag | null>(null);
     const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
     const [supportIframeUrl, setSupportIframeUrl] = useState<string | null>(null);
     const [supportLoading, setSupportLoading] = useState(false);
     const [supportError, setSupportError] = useState<string | null>(null);
     const [supportStatus, setSupportStatus] = useState<SupportStatus | null>(null);
     const isMvp = appMode === 'mvp';
+
+    useEffect(() => {
+        const refreshAudit = () => setWakePingAuditFlag(readOperatorWhatsAppWakePingAudit(storeId));
+        refreshAudit();
+        window.addEventListener(OPERATOR_WHATSAPP_WAKE_PING_AUDIT_EVENT, refreshAudit);
+        return () => window.removeEventListener(OPERATOR_WHATSAPP_WAKE_PING_AUDIT_EVENT, refreshAudit);
+    }, [storeId]);
 
     useEffect(() => {
         if (isMvp) {
@@ -209,6 +225,7 @@ export default function OperatorMenuLojaVazia({
                         clientesInativos: data.clientesInativos || [],
                         whatsAppPendencias: data.whatsAppPendencias || [],
                         whatsAppHumanOverrides: data.whatsAppHumanOverrides || 0,
+                        isWhatsAppAutomationEnabled: data.isWhatsAppAutomationEnabled === true,
                         isWhatsAppConnected: data.isWhatsAppConnected === true
                     });
                 }
@@ -717,11 +734,36 @@ export default function OperatorMenuLojaVazia({
                             </h2>
 
                             <div className="space-y-4">
+                                {radar.isWhatsAppAutomationEnabled && storeId === 1 && wakePingAuditFlag && (
+                                    <div className="rounded-xl border border-cyan-300/25 bg-cyan-300/10 p-4 text-cyan-50 shadow-xl shadow-black/10">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200">Auditoria ping WA VPS</p>
+                                                <p className="mt-1 text-sm font-bold">Resultado: {wakePingAuditFlag.status}</p>
+                                                <p className="mt-1 text-xs leading-relaxed text-cyan-100/75">
+                                                    {wakePingAuditFlag.message} Verificado em {new Date(wakePingAuditFlag.checkedAt).toLocaleString('pt-BR')}.
+                                                </p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    clearOperatorWhatsAppWakePingAudit(storeId);
+                                                    setWakePingAuditFlag(null);
+                                                }}
+                                                aria-label="Fechar auditoria do ping WhatsApp"
+                                                className="rounded-lg border border-cyan-100/20 bg-cyan-100/10 p-1.5 text-cyan-100 transition hover:bg-cyan-100/20"
+                                            >
+                                                <X className="h-4 w-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                                 {/* WHATSAPP PENDÊNCIAS */}
-                                {radar.isWhatsAppConnected && (
+                                {radar.isWhatsAppAutomationEnabled && (
                                     <WidgetWhatsAppPendencias
                                         pendencias={radar.whatsAppPendencias}
                                         humanOverrides={radar.whatsAppHumanOverrides}
+                                        isConnected={radar.isWhatsAppConnected}
                                         onOpen={() => {
                                             setWhatsAppInitialPhone(null);
                                             setIsWhatsAppModalOpen(true);

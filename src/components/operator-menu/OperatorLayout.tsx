@@ -9,6 +9,7 @@ import OperatorMenuLojaVazia from './OperatorMenuLojaVazia';
 import { getStoreProfile } from '@/lib/actions/store.actions';
 import FullscreenToggleButton from '@/components/FullscreenToggleButton';
 import { getStoreAppMode, type AppMode } from '@/lib/app-mode';
+import OperatorWhatsAppWakePing from '@/components/whatsapp/OperatorWhatsAppWakePing';
 
 type MenuState = 'home' | 'atendimento' | 'loja-vazia' | 'page';
 type HomeSelection = 'atendimento' | 'loja-vazia' | null;
@@ -113,8 +114,12 @@ export default function OperatorLayout({
         router.push(route);
     };
 
+    const withStoreOneWakePing = (content: React.ReactNode) => storeId === 1 ? (
+        <><OperatorWhatsAppWakePing storeId={storeId} />{content}</>
+    ) : content;
+
     if (currentMenu === 'home') {
-        return (
+        return withStoreOneWakePing(
             <OperatorMenuHome
                 storeId={storeId}
                 storeName={storeName}
@@ -128,14 +133,14 @@ export default function OperatorLayout({
     }
 
     if (currentMenu === 'atendimento') {
-        return <OperatorMenuAtendimento storeId={storeId} onBack={handleBack} onNavigate={handleRouteNavigate} preSaleAnalysisEnabled={livePreSaleAnalysisEnabled} appMode={liveAppMode} />;
+        return withStoreOneWakePing(<OperatorMenuAtendimento storeId={storeId} onBack={handleBack} onNavigate={handleRouteNavigate} preSaleAnalysisEnabled={livePreSaleAnalysisEnabled} appMode={liveAppMode} />);
     }
 
     if (currentMenu === 'loja-vazia') {
-        return <OperatorMenuLojaVazia storeId={storeId} storeName={storeName} onBack={handleBack} onNavigate={handleRouteNavigate} deliveryDateEnabled={liveDeliveryDateEnabled} appMode={liveAppMode} />;
+        return withStoreOneWakePing(<OperatorMenuLojaVazia storeId={storeId} storeName={storeName} onBack={handleBack} onNavigate={handleRouteNavigate} deliveryDateEnabled={liveDeliveryDateEnabled} appMode={liveAppMode} />);
     }
 
-    return (
+    return withStoreOneWakePing(
         <div className="min-h-screen bg-slate-950">
             <div className="bg-slate-900/80 backdrop-blur-xl border-b border-white/10 px-4 py-3 flex items-center justify-between shadow-xl shadow-black/20">
                 <button
