@@ -67,6 +67,8 @@ const CompleteSessionSchema = SessionCommandSchema.extend({
   targetSamples: z.array(HeatmapTargetSampleSchema).min(1).max(40),
 })
 
+const SaveDemoTemplateSchema = SessionCommandSchema
+
 export type PersistedTowerHeatmapResult = {
   evaluationId: number
   customerId: number
@@ -318,6 +320,56 @@ export async function completeTowerHeatmapSession(
   if (error) return { success: false, message: error.message }
 
   return { success: true, message: 'Mapa visual salvo. A sessao da Torre aguarda a decisao do funcionario.' }
+}
+
+export async function saveTowerHeatmapDemoTemplate(
+  input: z.input<typeof SaveDemoTemplateSchema>,
+): Promise<HeatmapActionResult> {
+  const parsed = SaveDemoTemplateSchema.safeParse(input)
+  if (!parsed.success) return { success: false, message: 'Sessao de mapa visual invalida.' }
+
+  const data = parsed.data
+  const auth = await getAuthorizedStoreContext(data.storeId)
+  if (!auth.ok) return { success: false, message: auth.message }
+
+  const sessions = createAdminClient().from('tower_heatmap_sessions') as any
+  const { data: session, error: sessionError } = await sessions
+    .select('id, tenant_id, store_id, status, algorithm_version, target_plan_version, result_summary, target_samples')
+    .eq('id', data.sessionId)
+    .eq('store_id', data.storeId)
+    .maybeSingle()
+
+  if (sessionError || !session) {
+    return { success: false, message: sessionError?.message || 'Sessao de mapa visual nao encontrada.' }
+  }
+  if (session.tenant_id !== auth.tenantId || session.status !== 'completed') {
+    return { success: false, message: 'Conclua uma leitura valida antes de gravar o mapa demonstrativo.' }
+  }
+
+  const persistedResult = CompleteSessionSchema.safeParse({
+    storeId: data.storeId,
+    sessionId: data.sessionId,
+    summary: session.result_summary,
+    targetSamples: session.target_samples,
+  })
+  if (!persistedResult.success) {
+    return { success: false, message: 'O resultado salvo desta leitura esta incompleto.' }
+  }
+
+  const templates = createAdminClient().from('tower_heatmap_demo_templates') as any
+  const { error } = await templates.upsert({
+    tenant_id: auth.tenantId,
+    store_id: data.storeId,
+    source_heatmap_session_id: session.id,
+    created_by_user_id: auth.userId,
+    algorithm_version: session.algorithm_version,
+    target_plan_version: session.target_plan_version,
+    result_summary: persistedResult.data.summary,
+    target_samples: persistedResult.data.targetSamples,
+  }, { onConflict: 'store_id' })
+
+  if (error) return { success: false, message: error.message }
+  return { success: true, message: 'Mapa demonstrativo gravado para esta loja.' }
 }
 
 export async function resetTowerHeatmapSession(

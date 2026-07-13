@@ -2,12 +2,13 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Camera, CircleDot, Loader2, Maximize2, Minimize2, Play, RotateCcw, ScanFace, StopCircle } from 'lucide-react'
+import { ArrowLeft, Bookmark, Camera, CircleDot, Loader2, Maximize2, Minimize2, Play, RotateCcw, ScanFace, StopCircle } from 'lucide-react'
 import type { LensGeometry, LensPins } from '@/lib/actions/lens-geometry.actions'
 import {
   cancelTowerHeatmapSession,
   completeTowerHeatmapSession,
   resetTowerHeatmapSession,
+  saveTowerHeatmapDemoTemplate,
   startTowerHeatmapSession,
 } from '@/lib/actions/tower-heatmap.actions'
 import { completeTowerSession } from '@/lib/actions/tower-session.actions'
@@ -1848,6 +1849,7 @@ export default function GazeHeatmapLab({
   const [projectionDebugTrace, setProjectionDebugTrace] = useState<ProjectionDebugTrace[]>([])
   const [sessionPersistenceStatus, setSessionPersistenceStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [towerActionBusy, setTowerActionBusy] = useState(false)
+  const [demoTemplateSaved, setDemoTemplateSaved] = useState(false)
   const isFocusMode = phase === 'calibrating' || phase === 'running'
   const selectedGeometry = geometries.find((item) => item.id === selectedGeometryId) ?? geometry ?? geometries[0] ?? null
   const clientVisualAnalysis = buildClientVisualAnalysis(targetHeatSamplesRef.current)
@@ -2838,6 +2840,16 @@ export default function GazeHeatmapLab({
     setTowerActionBusy(false)
   }
 
+  async function saveAsDemoTemplate() {
+    if (!heatmapSessionId || towerActionBusy || sessionPersistenceStatus !== 'saved') return
+
+    setTowerActionBusy(true)
+    const result = await saveTowerHeatmapDemoTemplate({ storeId, sessionId: heatmapSessionId })
+    if (result.success) setDemoTemplateSaved(true)
+    else setStatus(result.message)
+    setTowerActionBusy(false)
+  }
+
   async function endTowerService() {
     if (!towerSessionId || towerActionBusy) return
 
@@ -3343,7 +3355,7 @@ export default function GazeHeatmapLab({
 
         <footer className="shrink-0 border-t border-white/10 pt-4">
           {towerReadingFinished ? (
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <Link
                 href={towerSessionId ? `/torre/${storeId}/avaliacao?session=${towerSessionId}&heatmap=${heatmapSessionId ?? ''}` : backPath}
                 className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-cyan-400 px-4 text-center text-sm font-black text-slate-950 transition hover:bg-cyan-300"
@@ -3358,6 +3370,15 @@ export default function GazeHeatmapLab({
               >
                 <RotateCcw className="h-4 w-4" />
                 Refazer rastreamento
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveAsDemoTemplate()}
+                disabled={towerActionBusy || sessionPersistenceStatus !== 'saved'}
+                className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-violet-300/25 bg-violet-400/10 px-4 text-sm font-black text-violet-100 transition hover:bg-violet-400/20 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                {towerActionBusy && !demoTemplateSaved ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bookmark className="h-4 w-4" />}
+                {demoTemplateSaved ? 'Mapa demonstrativo gravado' : 'Gravar mapa demonstrativo'}
               </button>
               <button
                 type="button"

@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
-import { ArrowLeft, Loader2, Plus, Search, Sparkles, User } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ArrowLeft, ChevronDown, Loader2, Plus, Search, Sparkles, User } from 'lucide-react'
 import { searchCustomersByName } from '@/lib/actions/vendas.actions'
 import { createQuickCustomer } from '@/lib/actions/customer.actions'
 import { upsertOpticalEvaluation } from '@/lib/actions/evaluation.actions'
@@ -28,6 +28,116 @@ const prescriptionFields = [
   ['receitaLongeOeEixo', 'OE Eixo', '0'],
   ['receitaAdicao', 'Adição', '0.00'],
 ] as const
+
+type PrescriptionFieldKey = typeof prescriptionFields[number][0]
+type PrescriptionPickerKind = 'sphere' | 'cylinder' | 'axis' | 'addition'
+type PrescriptionPickerField = { key: PrescriptionFieldKey; label: string; kind: PrescriptionPickerKind }
+
+const prescriptionPickerFields: PrescriptionPickerField[] = [
+  { key: 'receitaLongeOdEsferico', label: 'OD Esf.', kind: 'sphere' },
+  { key: 'receitaLongeOdCilindrico', label: 'OD Cil.', kind: 'cylinder' },
+  { key: 'receitaLongeOdEixo', label: 'OD Eixo', kind: 'axis' },
+  { key: 'receitaLongeOeEsferico', label: 'OE Esf.', kind: 'sphere' },
+  { key: 'receitaLongeOeCilindrico', label: 'OE Cil.', kind: 'cylinder' },
+  { key: 'receitaLongeOeEixo', label: 'OE Eixo', kind: 'axis' },
+  { key: 'receitaAdicao', label: 'Adição', kind: 'addition' },
+]
+
+function formatQuarter(value: number, withPositiveSign = false) {
+  if (Math.abs(value) < 0.001) return '0.00'
+  return `${value > 0 && withPositiveSign ? '+' : ''}${value.toFixed(2)}`
+}
+
+const sphereValues = Array.from({ length: 97 }, (_, index) => formatQuarter((index - 48) * 0.25, true))
+const cylinderValues = Array.from({ length: 25 }, (_, index) => formatQuarter(-index * 0.25))
+const additionValues = Array.from({ length: 17 }, (_, index) => formatQuarter(index * 0.25, true))
+
+function getPickerValues(kind: PrescriptionPickerKind) {
+  if (kind === 'sphere') return sphereValues
+  if (kind === 'cylinder') return cylinderValues
+  if (kind === 'addition') return additionValues
+  return []
+}
+
+function DegreeWheel({
+  values,
+  selectedValue,
+  onSelect,
+}: {
+  values: string[]
+  selectedValue: string
+  onSelect: (value: string) => void
+}) {
+  const selectedRef = useRef<HTMLButtonElement | null>(null)
+
+  useEffect(() => {
+    selectedRef.current?.scrollIntoView({ block: 'center' })
+  }, [selectedValue, values])
+
+  return (
+    <div className="max-h-64 snap-y overflow-y-auto rounded-2xl border border-white/10 bg-slate-950/80 p-2 shadow-2xl shadow-black/30">
+      {values.map((value) => {
+        const selected = value === selectedValue
+        return (
+          <button
+            key={value}
+            ref={selected ? selectedRef : null}
+            type="button"
+            onClick={() => onSelect(value)}
+            className={`flex min-h-11 w-full snap-center items-center justify-center rounded-xl text-lg font-black transition ${selected ? 'bg-cyan-400 text-slate-950' : 'text-slate-200 hover:bg-white/10'}`}
+          >
+            {value}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function AxisProtractor({ value, onSelect }: { value: string; onSelect: (value: string) => void }) {
+  const current = Math.min(180, Math.max(0, Number.parseInt(value || '0', 10) || 0))
+  const centerX = 150
+  const centerY = 145
+  const radius = 112
+  const point = (angle: number, length: number) => {
+    const radians = (angle * Math.PI) / 180
+    return { x: centerX + Math.cos(radians) * length, y: centerY - Math.sin(radians) * length }
+  }
+  const selectedPoint = point(current, radius - 16)
+
+  function chooseAxis(event: React.PointerEvent<SVGSVGElement>) {
+    const rect = event.currentTarget.getBoundingClientRect()
+    const x = ((event.clientX - rect.left) / rect.width) * 300
+    const y = ((event.clientY - rect.top) / rect.height) * 180
+    const angle = (Math.atan2(centerY - Math.min(y, centerY), x - centerX) * 180) / Math.PI
+    onSelect(String(angle < 0 ? 0 : Math.min(180, Math.round(angle))))
+  }
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-slate-950/80 p-3">
+      <div className="mb-1 flex items-center justify-between gap-3 px-1">
+        <p className="text-xs font-bold text-slate-300">Arraste pelo transferidor ou toque no grau.</p>
+        <span className="shrink-0 rounded-lg bg-cyan-400 px-2 py-1 text-sm font-black text-slate-950">{String(current).padStart(3, '0')}°</span>
+      </div>
+      <svg viewBox="0 0 300 180" onPointerDown={chooseAxis} onPointerMove={(event) => event.buttons === 1 && chooseAxis(event)} className="h-auto w-full touch-none select-none" aria-label="Transferidor para selecionar eixo de 0 a 180 graus">
+        <path d="M 38 145 A 112 112 0 0 1 262 145" fill="none" stroke="rgba(148,163,184,0.45)" strokeWidth="2" />
+        <path d="M 54 145 A 96 96 0 0 1 246 145" fill="none" stroke="rgba(34,211,238,0.16)" strokeWidth="22" />
+        {Array.from({ length: 19 }, (_, index) => index * 10).map((angle) => {
+          const outer = point(angle, radius)
+          const inner = point(angle, radius - (angle % 30 === 0 ? 14 : 8))
+          return <line key={angle} x1={outer.x} y1={outer.y} x2={inner.x} y2={inner.y} stroke="rgba(226,232,240,0.8)" strokeWidth={angle % 30 === 0 ? 2 : 1} />
+        })}
+        {[0, 30, 60, 90, 120, 150, 180].map((angle) => {
+          const label = point(angle, radius - 30)
+          return <text key={angle} x={label.x} y={label.y + 4} textAnchor="middle" fill="rgba(226,232,240,0.8)" fontSize="11" fontWeight="800">{angle}</text>
+        })}
+        <line x1={centerX} y1={centerY} x2={selectedPoint.x} y2={selectedPoint.y} stroke="#22d3ee" strokeWidth="4" strokeLinecap="round" />
+        <circle cx={centerX} cy={centerY} r="7" fill="#22d3ee" />
+        <circle cx={selectedPoint.x} cy={selectedPoint.y} r="7" fill="#f8fafc" stroke="#22d3ee" strokeWidth="4" />
+      </svg>
+    </div>
+  )
+}
 
 const templates = [
   { key: 'computador', label: 'Computador' },
@@ -56,6 +166,7 @@ export default function TowerEvaluationIntake({
   const [quickName, setQuickName] = useState('')
   const [quickPhone, setQuickPhone] = useState('')
   const [recipe, setRecipe] = useState<Record<string, string>>({})
+  const [activePrescriptionField, setActivePrescriptionField] = useState<PrescriptionFieldKey | null>(null)
   const [selectedTemplates, setSelectedTemplates] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -168,6 +279,15 @@ export default function TowerEvaluationIntake({
     setBusy(false)
   }
 
+  const activeField = prescriptionPickerFields.find((field) => field.key === activePrescriptionField) ?? null
+  const activeValue = activeField ? recipe[activeField.key] ?? (activeField.kind === 'axis' ? '0' : '0.00') : ''
+
+  function choosePrescriptionValue(value: string) {
+    if (!activeField) return
+    setRecipe((current) => ({ ...current, [activeField.key]: value }))
+    if (activeField.kind !== 'axis') setActivePrescriptionField(null)
+  }
+
   return (
     <main className="min-h-[100dvh] bg-slate-950 px-5 py-4 text-white sm:px-7 sm:py-5">
       <header className="mx-auto flex w-full max-w-5xl items-center gap-3">
@@ -204,11 +324,28 @@ export default function TowerEvaluationIntake({
           )}
         </section>
 
-        <section className={`rounded-[28px] border border-white/10 bg-slate-900/70 p-5 ${selectedCustomer ? '' : 'opacity-50'}`}>
+        <section className="rounded-[28px] border border-white/10 bg-slate-900/70 p-5">
           <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-200">2. Receita e entrevista</p>
           <h2 className="mt-2 text-xl font-black">Campos da receita</h2>
+          <p className="mt-1 text-sm text-slate-400">Toque em um campo para escolher o grau. Esfera usa sinal positivo e negativo; cilindro fica sempre negativo.</p>
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {prescriptionFields.map(([key, label, placeholder]) => <label key={key} className="text-xs font-bold text-slate-300"><span className="mb-1 block">{label}</span><input disabled={!selectedCustomer} value={recipe[key] ?? ''} onChange={(event) => setRecipe((current) => ({ ...current, [key]: event.target.value }))} placeholder={placeholder} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm outline-none focus:border-cyan-300 disabled:cursor-not-allowed" /></label>)}
+            {prescriptionPickerFields.map((field) => {
+              const value = recipe[field.key] ?? (field.kind === 'axis' ? '0' : '0.00')
+              const isActive = activePrescriptionField === field.key
+              return (
+                <div key={field.key} className="text-xs font-bold text-slate-300">
+                  <span className="mb-1 block">{field.label}</span>
+                  <button
+                    type="button"
+                    onClick={() => setActivePrescriptionField(isActive ? null : field.key)}
+                    className={`flex min-h-12 w-full items-center justify-between rounded-xl border px-3 text-left text-base font-black outline-none transition ${isActive ? 'border-cyan-300 bg-cyan-400/10 text-cyan-100' : 'border-white/10 bg-slate-950 text-white hover:border-cyan-300/50'}`}
+                  >
+                    <span>{field.kind === 'axis' ? `${String(Number.parseInt(value || '0', 10) || 0).padStart(3, '0')}°` : value}</span>
+                    <ChevronDown className={`h-4 w-4 text-slate-400 transition ${isActive ? 'rotate-180 text-cyan-200' : ''}`} />
+                  </button>
+                </div>
+              )
+            })}
           </div>
           <h2 className="mt-6 text-xl font-black">Perguntas rápidas</h2>
           <p className="mt-1 text-sm text-slate-400">Use um template como ponto de partida e ajuste a conversa ao cliente.</p>
@@ -220,6 +357,25 @@ export default function TowerEvaluationIntake({
       </div>
 
       {(message || suggestions.length > 0) && <section className="mx-auto mt-5 w-full max-w-5xl rounded-[28px] border border-white/10 bg-slate-900/70 p-5"><p className="text-sm text-cyan-100">{message}</p>{suggestions.length > 0 && <div className="mt-4 grid gap-3 sm:grid-cols-3">{suggestions.map((option) => <article key={option.configKey} className="rounded-2xl border border-white/10 bg-slate-950/70 p-4"><p className="font-black">{option.familyName}</p><p className="mt-1 text-sm text-slate-300">{option.offerLabel}</p><p className="mt-3 text-xs leading-5 text-slate-400">{option.reasons[0] || option.commercialSummary}</p></article>)}</div>}</section>}
+      {activeField && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={`Selecionar ${activeField.label}`}>
+          <button type="button" aria-label="Fechar seletor" onClick={() => setActivePrescriptionField(null)} className="absolute inset-0 cursor-default" />
+          <section className={`relative z-10 w-full rounded-[28px] border border-white/15 bg-slate-900 p-4 shadow-2xl shadow-black/60 ${activeField.kind === 'axis' ? 'max-w-xl' : 'max-w-xs'}`}>
+            <div className="mb-3 flex items-center justify-between px-1">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">Receita</p>
+                <h3 className="mt-1 text-lg font-black text-white">{activeField.label}</h3>
+              </div>
+              <button type="button" onClick={() => setActivePrescriptionField(null)} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black text-slate-300 transition hover:bg-white/10">Fechar</button>
+            </div>
+            {activeField.kind === 'axis' ? (
+              <AxisProtractor value={activeValue} onSelect={choosePrescriptionValue} />
+            ) : (
+              <DegreeWheel values={getPickerValues(activeField.kind)} selectedValue={activeValue} onSelect={choosePrescriptionValue} />
+            )}
+          </section>
+        </div>
+      )}
     </main>
   )
 }
