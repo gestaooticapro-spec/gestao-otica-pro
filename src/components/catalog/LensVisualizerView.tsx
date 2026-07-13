@@ -11,7 +11,7 @@ const VW = 960
 const VH = 540
 const ANIM_DURATION = 650 // ms
 
-type BlurZone = 'distance' | 'corridor' | 'near'
+export type BlurZone = 'distance' | 'corridor' | 'near'
 type Mode = 'normal' | 'eyetrace'
 type RightState = 'lens' | 'animating' | 'photo'
 const LINE_ZONES = ['lineA', 'lineB'] as const
@@ -41,14 +41,14 @@ const ZONE_LINE_DIR: Record<BlurZone, { dx: number; dy: number }> = {
 type PhotoConfig = {
   label: string; src: string; sharpZones: BlurZone[]; hint: string; icon: string
 }
-type LensRenderFx = {
+export type LensRenderFx = {
   lensScale?: number
   lensOffsetX?: number
   lensOffsetY?: number
   imageOffsetX?: number
   imageOffsetY?: number
 }
-const PHOTOS: PhotoConfig[] = [
+export const LENS_VISUALIZER_PHOTOS: PhotoConfig[] = [
   { label: 'Praia',     src: '/lens-demo/foto1.png', sharpZones: ['distance','corridor','near'], hint: 'Todos os campos nítidos', icon: '🏖' },
   { label: 'Escritório',src: '/lens-demo/foto2.png', sharpZones: ['corridor','near'],            hint: 'Longe embaçado',          icon: '💻' },
   { label: 'Livro',     src: '/lens-demo/foto3.png', sharpZones: ['near'],                       hint: 'Só perto nítido',         icon: '📖' },
@@ -71,6 +71,11 @@ function remapPins(pins: LensPins): LensPins {
     lineA: remap(pins.lineA), lineB: remap(pins.lineB), lensRim: remap(pins.lensRim),
     fitting_height: pins.fitting_height,
   }
+}
+
+export function getLensVisualizerFallbackRim(geometries: LensGeometry[]): Array<{ x: number; y: number }> | null {
+  const source = geometries.find((geometry) => geometry.pins?.lensRim && geometry.pins.lensRim.length >= 3)
+  return source ? remapPins(normalizePins(source.pins)).lensRim : null
 }
 
 // ---------------------------------------------------------------------------
@@ -254,7 +259,7 @@ function drawAvatar(canvas: HTMLCanvasElement, rotX: number, rotY: number) {
 // ---------------------------------------------------------------------------
 // Render: lens (used on left + right initial state)
 // ---------------------------------------------------------------------------
-function drawVisualizerLens(
+export function drawVisualizerLens(
   canvas: HTMLCanvasElement, g: LensGeometry, img: HTMLImageElement | null,
   sharpZones: BlurZone[], showZoneLines: boolean,
   tracePoint: { x: number; y: number } | null = null,
@@ -531,12 +536,12 @@ export default function LensVisualizerView({
     if (!canvasRef.current) return
     const fx = mode === 'eyetrace' ? leftFxRef.current : {}
     drawVisualizerLens(canvasRef.current, geometry, imgRefs.current[activePhoto],
-      PHOTOS[activePhoto].sharpZones, showZoneLines, null, null, fx, fallbackLensRim)
+      LENS_VISUALIZER_PHOTOS[activePhoto].sharpZones, showZoneLines, null, null, fx, fallbackLensRim)
   }, [geometry, activePhoto, showZoneLines, mode, fallbackLensRim])
 
   // ── Load photos ───────────────────────────────────────────────────────────
   useEffect(() => {
-    PHOTOS.forEach((photo, i) => {
+    LENS_VISUALIZER_PHOTOS.forEach((photo, i) => {
       const img = new Image()
       img.onload = () => {
         imgRefs.current[i] = img
@@ -562,7 +567,7 @@ export default function LensVisualizerView({
     drawVisualizerLens(
       compareCanvasRef.current, compareGeometry,
       imgRefs.current[activePhoto],
-      PHOTOS[activePhoto].sharpZones,
+      LENS_VISUALIZER_PHOTOS[activePhoto].sharpZones,
       showZoneLines,
       null, null, {}, fallbackLensRim,
     )
@@ -588,7 +593,7 @@ export default function LensVisualizerView({
   const drawRightLens = useCallback(() => {
     if (!rightCanvasRef.current) return
     drawVisualizerLens(rightCanvasRef.current, geometry, imgRefs.current[activePhoto],
-      PHOTOS[activePhoto].sharpZones, showZoneLines, null, null, {}, fallbackLensRim)
+      LENS_VISUALIZER_PHOTOS[activePhoto].sharpZones, showZoneLines, null, null, {}, fallbackLensRim)
   }, [geometry, activePhoto, showZoneLines, fallbackLensRim])
 
   // ── Reset right panel when mode activates or photo changes ────────────────
@@ -639,7 +644,7 @@ export default function LensVisualizerView({
 
     const img = imgRefs.current[activePhoto]
     const blurPx = 5 + ((geometry.lateral_blur ?? 50) / 100) * 14
-    const isSharp = PHOTOS[activePhoto].sharpZones.includes(zone)
+    const isSharp = LENS_VISUALIZER_PHOTOS[activePhoto].sharpZones.includes(zone)
     const finalBlur = isSharp ? 0 : blurPx
 
     // Pre-render photo content once for animation frames
@@ -661,7 +666,7 @@ export default function LensVisualizerView({
       mCtx.fillStyle = 'black'; mCtx.fillRect(0, 0, VW, VH)
       mCtx.globalCompositeOperation = 'destination-out'; mCtx.filter = 'blur(32px)'
       const pins = remapPins(normalizePins(geometry.pins))
-      for (const z of PHOTOS[activePhoto].sharpZones)
+      for (const z of LENS_VISUALIZER_PHOTOS[activePhoto].sharpZones)
         if (pins[z]?.length >= 3) mCtx.fill(buildPinPath(pins[z], VW, VH))
       mCtx.filter = 'none'
       sCtx.globalCompositeOperation = 'destination-out'; sCtx.drawImage(mCanvas, 0, 0)
@@ -689,7 +694,7 @@ export default function LensVisualizerView({
     const tick = (now: number) => {
       const t = Math.min(1, (now - animStartRef.current) / ANIM_DURATION)
       if (rightCanvasRef.current)
-        drawRightAnimFrame(rightCanvasRef.current, geometry, img, PHOTOS[activePhoto].sharpZones,
+        drawRightAnimFrame(rightCanvasRef.current, geometry, img, LENS_VISUALIZER_PHOTOS[activePhoto].sharpZones,
           zone, t, animCacheRef.current, animFinalRef.current, fallbackLensRim)
       if (t < 1) {
         animRafRef.current = requestAnimationFrame(tick)
@@ -712,7 +717,7 @@ export default function LensVisualizerView({
     const pins = remapPins(normalizePins(geometry.pins))
     const zone = detectZone(x, y, pins, VW, VH)
     const blurPx = 5 + ((geometry.lateral_blur ?? 50) / 100) * 14
-    const isSharp = zone !== null && PHOTOS[activePhoto].sharpZones.includes(zone)
+    const isSharp = zone !== null && LENS_VISUALIZER_PHOTOS[activePhoto].sharpZones.includes(zone)
     tracePointRef.current = { x, y }
     traceZoneRef.current = zone
     if (rafRef.current) cancelAnimationFrame(rafRef.current)
@@ -723,7 +728,7 @@ export default function LensVisualizerView({
       const fx = getEyetraceFx(nx, ny)
       leftFxRef.current = fx
       drawVisualizerLens(canvas, geometry, imgRefs.current[activePhoto],
-        PHOTOS[activePhoto].sharpZones, showZoneLines, { x, y }, zone, fx, fallbackLensRim)
+        LENS_VISUALIZER_PHOTOS[activePhoto].sharpZones, showZoneLines, { x, y }, zone, fx, fallbackLensRim)
       // Avatar: mouse y→pitch (bottom=chin up), mouse x→yaw inverse
       if (avatarCanvasRef.current) {
         // ny: -1 = topo (longe, neutro), +1 = base (perto, queixo ergue)
@@ -743,7 +748,7 @@ export default function LensVisualizerView({
     const blurPx = 5 + ((geometry.lateral_blur ?? 50) / 100) * 14
     if (canvasRef.current)
       drawVisualizerLens(canvasRef.current, geometry, imgRefs.current[activePhoto],
-        PHOTOS[activePhoto].sharpZones, showZoneLines, null, null, leftFxRef.current, fallbackLensRim)
+        LENS_VISUALIZER_PHOTOS[activePhoto].sharpZones, showZoneLines, null, null, leftFxRef.current, fallbackLensRim)
     if (rightStateRef.current === 'photo') animateRightBlur(blurPx)
     // Return avatar to center
     if (avatarReturnRafRef.current) cancelAnimationFrame(avatarReturnRafRef.current)
@@ -1066,7 +1071,7 @@ export default function LensVisualizerView({
       {/* ── Photo selector ───────────────────────────────────────────────────── */}
       <div className="shrink-0 border-t border-white/10 bg-slate-900 px-4 py-2">
         <div className="flex gap-2">
-          {PHOTOS.map((photo, i) => (
+          {LENS_VISUALIZER_PHOTOS.map((photo, i) => (
             <button key={i}
               onClick={() => setActivePhoto(i)}
               className={`flex flex-1 items-center gap-3 rounded-xl px-4 py-2 text-left transition ${

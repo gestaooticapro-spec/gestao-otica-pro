@@ -1,12 +1,19 @@
 # Torre - Decisoes de Desenvolvimento e Contexto Obrigatorio
 
+> **Documento canonico para implementacao da Torre.**
+>
+> Este arquivo e a fonte principal de decisoes, contexto e direcionamento para
+> qualquer trabalho futuro da Torre. `TOWER_AND_TABLET_VISION_CONTEXT.md` e um
+> documento complementar de visao; em caso de divergencia, este arquivo deve
+> prevalecer.
+
 ## Como usar este documento
 
 Antes de iniciar ou retomar qualquer trabalho relacionado a torre, visagismo,
 heatmap, medidas ou recomendacao visual, leia nesta ordem:
 
-1. `TOWER_DEVELOPMENT_DECISIONS.md` (este arquivo)
-2. `TOWER_AND_TABLET_VISION_CONTEXT.md`
+1. `TOWER_DEVELOPMENT_DECISIONS.md` (este arquivo, canonico)
+2. `TOWER_AND_TABLET_VISION_CONTEXT.md` (contexto complementar)
 3. `HEATMAP_HEAD_SANDBOX_STATUS.md`
 4. `LENS_CATALOG_ARCHITECTURE.md` quando o trabalho envolver catalogo,
    geometrias ou recomendacao de lentes.
@@ -30,6 +37,14 @@ avaliacoes, catalogo, OS, estoque, financeiro e notas.
 
 A torre nao deve ser apenas um dashboard com menus escondidos. Ela deve ter
 experiencia propria de cliente, operador, camera, tela cheia e hardware.
+
+O tablet e um apoio para lojas que ainda nao terao a Torre. Ele nao deve
+definir a experiencia principal nem misturar suas limitacoes com o produto da
+Torre.
+
+As quatro frentes de hardware da Torre sao futuras. Antes da integracao com
+Electron, a prioridade e organizar e validar as experiencias de operador e
+cliente no navegador, mantendo os contratos de comunicacao substituiveis.
 
 ---
 
@@ -264,6 +279,205 @@ no mini PC.
 O operador usa autenticacao comum da loja. A torre usa uma identidade propria
 de dispositivo pareado. Esse limite protege os dados se o computador fisico
 for perdido, trocado ou sofrer manutencao.
+
+---
+
+## Decisoes recentes da experiencia da Torre
+
+Esta secao registra as decisoes tomadas durante o refinamento da interface da
+Torre. Ela deve ser considerada parte do contrato de produto mesmo enquanto
+algumas telas ainda forem mock ou prototipo.
+
+### Fluxo de entrada e informacoes uteis
+
+O fluxo da Torre deve permanecer simples e orientado pelo operador:
+
+```text
+Tela 1: Novo atendimento | Continuar atendimento
+  -> Tela 2: Visagismo | Campo Visual | Medidas | Informacoes Uteis
+```
+
+`Informacoes Uteis` reune explicacoes didaticas que podem ser usadas fora de
+qualquer roteiro fixo. O operador escolhe a explicacao conforme a duvida do
+cliente. Os temas definidos ate aqui sao:
+
+- Seu jeito de olhar;
+- Tratamento AR;
+- Opti Fog;
+- Lentes polarizadas;
+- Espessura das lentes.
+- Comparativo de campos das lentes.
+
+Quando uma experiencia ainda nao estiver pronta, a entrada e o menu devem
+existir como placeholder funcional, sem fingir que o calculo ou hardware ja
+esta implementado.
+
+As telas abertas a partir de `Informacoes Uteis` devem voltar para esse menu,
+e nao para a tela anterior generica do fluxo. O estado de navegacao precisa
+preservar explicitamente esse contexto.
+
+### Experiencias audiovisuais didaticas
+
+As experiencias AR, polarizada e Opti Fog usam duas telas coordenadas: uma
+tela do operador com controles e uma tela cheia para o cliente.
+
+#### Tratamento AR
+
+- `public/rua-ar.mp4` representa a versao sem AR, com reflexos;
+- `public/rua.mp4` representa a versao com tratamento AR;
+- o operador controla uma divisoria horizontal por um slider;
+- a tela do cliente mostra mais ou menos de cada video conforme a divisoria;
+- a visibilidade da comparacao tambem pode ser ligada ou desligada pelo
+  operador.
+
+#### Lentes polarizadas
+
+- `public/rua-sem-polarizada.mp4` representa a versao sem polarizacao;
+- `public/rua.mp4` representa a versao com polarizacao;
+- a interacao usa a mesma logica de divisoria e sincronizacao dos videos;
+- nao usar uma faixa decorativa fixa no centro para simular a divisao.
+
+#### Opti Fog
+
+- `public/cha.mp4` e a cena base;
+- o efeito de embaçamento e uma camada CSS sobre o video, limitada pela
+  divisoria;
+- na abertura, a area ate a divisoria pode ser preparada de forma invisivel e
+  o fog aparece depois com uma transicao gradual;
+- depois da abertura, ao mover a divisoria, o preenchimento pode ter o atraso
+  natural de renderizacao, desde que a experiencia continue controlavel pelo
+  operador.
+
+Essas experiencias sao demonstrativas. Nao devem ser descritas como medicao,
+diagnostico ou prova fisica de desempenho optico.
+
+### Comparativo de campos das lentes
+
+O comparativo usa exclusivamente as geometrias salvas em
+`global_lens_geometry`. A tela do operador oferece dois seletores
+independentes: `Lente de cima` e `Lente de baixo`. Cada seletor deve mostrar
+uma miniatura da mesma geometria que sera exibida ao cliente.
+
+A tela do cliente apresenta as duas lentes em divisao vertical, uma acima da
+outra, com as zonas de longe, corredor e perto desenhadas a partir dos `pins`
+da geometria selecionada. A finalidade e comparar o desenho optico, nao
+prometer desempenho clinico individual ou substituir a recomendacao baseada em
+avaliacao.
+
+O desenho deve reutilizar o mesmo renderizador do visualizador de lentes do
+dashboard: foto dentro da lente, nitidez/desfoque conforme as zonas calibradas
+e linhas de referencia. As cenas de demonstracao (Praia, Escritorio, Livro e
+Cidade) sao escolhidas somente na tela do funcionario e a selecao e
+sincronizada para o cliente. Nao colocar esses botoes na tela do cliente.
+
+Enquanto o prototipo usar duas janelas, a selecao pode ser sincronizada por
+`BroadcastChannel`; o carregamento dos dados, porem, deve continuar vindo das
+tabelas globais e nao de uma lista mock local.
+
+### Didatica de espessura das lentes
+
+A tela de espessura e uma experiencia didatica, nao uma previsao definitiva da
+lente do cliente. Todos os controles ficam na mesma tela do operador; nao ha
+roteiro obrigatorio. O operador usa somente a explicacao relevante para a
+conversa.
+
+Os controles e relacoes que devem permanecer disponiveis sao:
+
+1. tamanho da lente/armação;
+2. indice de refracao;
+3. eixo do cilindro;
+4. tipo de montagem: aro fechado, fio de nylon ou parafusada;
+5. DNP/centro optico;
+6. altura do centro optico;
+7. templates de receitas didaticas.
+
+O calculo usa uma base frontal positiva fixa como referencia visual. Alterar o
+indice deve modificar a espessura calculada, mas nao deslocar a face frontal
+inteira da lente. O eixo deve alterar a distribuicao aparente da espessura nas
+bordas, sem sugerir que a lente inteira mudou de lugar.
+
+O tamanho da armação deve ampliar a area cortada e revelar mais borda, sem
+mudar o plano optico do corte visual. O mapa frontal deve preencher todo o
+contorno da lente sem falhas de rasterizacao; a malha visual nao pode alterar
+os extremos ou o calculo fisico usado para a didatica.
+
+O componente atual deve continuar separado do `LensThicknessLab` original ate
+que exista uma decisao explicita de unificar os dois. A comunicacao atual por
+`BroadcastChannel` e valida para o prototipo de duas telas, mas segue a regra
+geral deste documento: nao e o contrato definitivo da Torre nem do Electron.
+
+### Modelo didatico de armação com haste - decisão para implementação futura
+
+Para ensinar que uma armação de aro mais grosso pode esconder melhor uma lente
+espessa, criar um modelo derivado de uma armação frontal já existente no
+visagismo/gabarito. A armação original não deve ser alterada.
+
+O novo modelo será salvo separadamente e usado somente na experiência de
+espessura das lentes. Ele deve acrescentar:
+
+- haste;
+- ponto de dobradiça;
+- profundidade/largura física do aro;
+- posição de encaixe da lente;
+- perfil lateral em perspectiva;
+- relação entre o aro e a borda visível da lente.
+
+O editor pode reutilizar a lógica visual do `FrameTemplateEditor`: desenho em
+SVG, pontos editáveis, espelhamento quando aplicável, calibração em milímetros
+e salvamento de um novo registro. Os caminhos frontais existentes (`outer`,
+`inner`, ponte e construção) servem como base, mas não devem ser interpretados
+como se já contivessem a haste ou a profundidade lateral.
+
+Para não exigir o desenho completo de uma haste para cada formato, a primeira
+versão pode usar perfis laterais reutilizáveis, por exemplo:
+
+- acetato/aro grosso;
+- aro médio;
+- metal/aro fino;
+- fio de nylon;
+- parafusada.
+
+O campo estético `visualWeight` do visagismo não substitui uma medida física do
+aro. A experiência de espessura deve possuir um parâmetro próprio para a
+largura/profundidade do aro, pois é esse parâmetro que determina quanto da
+borda da lente fica escondido.
+
+Na tela do cliente, a composição esperada e uma vista fixa em perspectiva
+controlada: frente da armação, lente calculada inserida no aro e haste visível.
+Nao oferecer giro livre ou controles de modelagem 3D. A finalidade e mostrar
+claramente que a mesma espessura pode ficar mais ou menos aparente conforme a
+armação, e não criar um visualizador técnico de produtos.
+
+### Escala física aproximada nos monitores da Torre - trabalho futuro
+
+Quando a Torre precisar mostrar uma lente em escala física aproximada, não
+confiar na unidade `mm` do navegador. A conversão precisa usar um perfil do
+monitor que determine pixels físicos por milímetro.
+
+A estratégia escolhida para escala industrial é homologar no máximo três ou
+quatro modelos de monitor para a Torre. Cada perfil deve registrar pelo menos:
+
+- modelo do monitor;
+- resolução nativa;
+- escala do sistema operacional e orientação usadas na instalação;
+- pixels por milímetro horizontal e vertical.
+
+Na instalação, o técnico seleciona o modelo presente e a Torre aplica o perfil
+automaticamente. Deve existir também uma conferência opcional de cerca de 30
+segundos: uma régua de 50 mm aparece em tela cheia, é medida com régua física
+e pode receber ajuste fino. Esse ajuste fica salvo por dispositivo/tela.
+
+Oferecer dois modos visuais quando a funcionalidade existir:
+
+- **Escala real (1:1):** 1 mm calculado da lente corresponde a 1 mm físico no
+  monitor calibrado;
+- **Escala didática:** a lente pode ser ampliada para facilitar a conversa,
+  sempre indicando a ampliação aplicada.
+
+Comunicar a saída como “representação em escala aproximada, calibrada para o
+monitor da Torre”. Ela serve para comparar tamanho, espessura e quanto o aro
+esconde a lente; o cálculo e a conferência final do laboratório continuam
+sendo a referência de produção.
 
 ---
 

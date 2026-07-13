@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, MonitorUp, RotateCcw, Ruler } from 'lucide-react'
+import { ArrowLeft, HelpCircle, MonitorUp, RotateCcw, Ruler, X } from 'lucide-react'
 import { closeTowerClientScreen, openTowerClientScreen } from '@/lib/tower/client-screen'
 
 type Mount = 'aro' | 'fio' | 'parafusado'
@@ -131,6 +131,8 @@ export default function TowerLensThicknessDemo({ storeId, clientMode = false }: 
   const channelRef = useRef<BroadcastChannel | null>(null)
   const stateRef = useRef(DEFAULT_STATE)
   const [state, setState] = useState<LensState>(DEFAULT_STATE)
+  const [showHelp, setShowHelp] = useState(false)
+  const [clientScreenOpen, setClientScreenOpen] = useState(false)
 
   useEffect(() => {
     stateRef.current = state
@@ -161,11 +163,17 @@ export default function TowerLensThicknessDemo({ storeId, clientMode = false }: 
     patch({ template, ...TEMPLATES[template] })
   }
 
-  function openClient() {
+  function toggleClientScreen() {
+    if (clientScreenOpen) {
+      closeTowerClientScreen()
+      setClientScreenOpen(false)
+      return
+    }
     if (typeof window === 'undefined') return
     const url = new URL(window.location.href)
     url.searchParams.set('client', '1')
-    openTowerClientScreen(url.toString())
+    const clientWindow = openTowerClientScreen(url.toString())
+    if (clientWindow) setClientScreenOpen(true)
   }
 
   if (clientMode) return <ClientLensScreen state={state} />
@@ -173,31 +181,30 @@ export default function TowerLensThicknessDemo({ storeId, clientMode = false }: 
   return (
     <main className="min-h-[100dvh] bg-slate-950 px-5 py-5 text-slate-100 sm:px-8 sm:py-8">
       <div className="mx-auto max-w-6xl">
-        <Link href={`/torre/${storeId}?menu=informacoes`} className="mb-6 flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white" aria-label="Voltar para Informações Úteis"><ArrowLeft size={19} /></Link>
         <div className="rounded-3xl border border-cyan-300/20 bg-gradient-to-br from-cyan-400/15 via-slate-900 to-slate-950 p-6 shadow-2xl shadow-black/30 sm:p-9">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-            <div><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-300 text-slate-950"><Ruler size={25} strokeWidth={2.4} /></div><p className="mt-6 text-xs font-black uppercase tracking-[.2em] text-cyan-300">Informações úteis</p><h1 className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">Espessura das lentes</h1><p className="mt-3 max-w-2xl text-slate-300">Conduza a conversa com os controles que fizerem sentido para a dúvida do cliente.</p></div>
-            <button type="button" onClick={openClient} className="flex items-center justify-center gap-2 rounded-2xl bg-cyan-300 px-5 py-4 text-sm font-bold text-slate-950 transition hover:bg-cyan-200"><MonitorUp size={20} /> Abrir tela cliente</button>
+            <div className="min-w-0 flex-1"><div className="flex items-center gap-3"><Link href={`/torre/${storeId}?menu=informacoes`} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white" aria-label="Voltar para Informações Úteis"><ArrowLeft size={19} /></Link><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-300 text-slate-950"><Ruler size={25} strokeWidth={2.4} /></div></div><p className="mt-6 text-xs font-black uppercase tracking-[.2em] text-cyan-300">Informações úteis</p><h1 className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">Espessura das lentes</h1><p className="mt-3 max-w-2xl text-slate-300">Conduza a conversa com os controles que fizerem sentido para a dúvida do cliente. <button type="button" onClick={() => setShowHelp(true)} className="inline-flex h-6 w-6 translate-y-1 items-center justify-center rounded-full border border-cyan-300/35 bg-cyan-400/10 text-cyan-100 transition hover:bg-cyan-400/20" aria-label="Como usar na conversa" title="Como usar na conversa"><HelpCircle size={14} /></button></p></div>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={toggleClientScreen} className="flex items-center justify-center gap-2 rounded-2xl bg-cyan-300 px-5 py-4 text-sm font-bold text-slate-950 transition hover:bg-cyan-200"><MonitorUp size={20} /> {clientScreenOpen ? 'Fechar tela cliente' : 'Abrir tela cliente'}</button>
+            </div>
           </div>
 
-          <section className="mt-8 grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
+          <section className="mt-8 grid gap-5">
             <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-5">
-              <p className="text-xs font-black uppercase tracking-[.16em] text-slate-400">Grau de demonstração</p>
+              <div className="flex items-center justify-between gap-3"><p className="text-xs font-black uppercase tracking-[.16em] text-slate-400">Grau de demonstração</p><button type="button" onClick={() => setState(DEFAULT_STATE)} className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-400 transition hover:bg-white/5 hover:text-white"><RotateCcw size={14} /> Restaurar</button></div>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">{(Object.keys(TEMPLATES) as TemplateId[]).map((template) => <button key={template} type="button" onClick={() => selectTemplate(template)} className={`rounded-xl border p-3 text-left transition ${state.template === template ? 'border-cyan-300/55 bg-cyan-400/15 text-cyan-100' : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'}`}><span className="block text-sm font-bold">{TEMPLATES[template].label}</span><span className="mt-1 block text-xs opacity-75">{formatDegree(TEMPLATES[template].sphere)} / {formatDegree(TEMPLATES[template].cylinder)} × {TEMPLATES[template].axis}°</span></button>)}</div>
               <div className="mt-6 grid gap-5 sm:grid-cols-2">
                 <Control label="Índice" value={state.index.toFixed(2)}><div className="flex flex-wrap gap-2">{[1.56, 1.60, 1.67, 1.74].map((index) => <Pill key={index} active={state.index === index} onClick={() => patch({ index })}>{index.toFixed(2)}</Pill>)}</div></Control>
-                <Control label="Tipo de armação" value={MOUNTS[state.mount].label}><div className="flex flex-wrap gap-2">{(Object.keys(MOUNTS) as Mount[]).map((mount) => <Pill key={mount} active={state.mount === mount} onClick={() => patch({ mount })}>{MOUNTS[mount].label}</Pill>)}</div></Control>
+                <Control label="Tipo de armação" value={MOUNTS[state.mount].label}><div className="flex flex-nowrap gap-1.5">{(Object.keys(MOUNTS) as Mount[]).map((mount) => <Pill key={mount} compact active={state.mount === mount} onClick={() => patch({ mount })}>{MOUNTS[mount].label}</Pill>)}</div></Control>
                 <Range label="Tamanho da lente" value={state.frameScale} min={80} max={125} suffix="%" onChange={(frameScale) => patch({ frameScale })} />
                 <Range label="Eixo do cilindro" value={state.axis} min={0} max={180} suffix="°" onChange={(axis) => patch({ axis })} />
                 <Range label="DNP / centro óptico" value={state.focalX} min={-8} max={8} suffix=" mm" onChange={(focalX) => patch({ focalX })} />
                 <Range label="Altura do centro" value={state.focalY} min={-8} max={8} suffix=" mm" onChange={(focalY) => patch({ focalY })} />
               </div>
-              <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-white/10 pt-4"><span className="mr-1 text-xs font-bold uppercase tracking-wider text-slate-500">Formato</span>{(['arredondada', 'quadrada'] as Shape[]).map((shape) => <Pill key={shape} active={state.shape === shape} onClick={() => patch({ shape })}>{shape === 'arredondada' ? 'Arredondada' : 'Quadrada'}</Pill>)}<button type="button" onClick={() => setState(DEFAULT_STATE)} className="ml-auto flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-400 transition hover:bg-white/5 hover:text-white"><RotateCcw size={14} /> Restaurar</button></div>
             </div>
-            <div className="rounded-2xl border border-cyan-300/20 bg-cyan-400/5 p-5"><p className="text-xs font-black uppercase tracking-[.16em] text-cyan-200">Como usar na conversa</p><div className="mt-4 space-y-3 text-sm leading-relaxed text-slate-300"><p><strong className="text-white">Armação menor:</strong> aumente ou reduza o tamanho para ver a borda reagir.</p><p><strong className="text-white">Índice:</strong> alterne os índices e compare a redução calculada.</p><p><strong className="text-white">Eixo:</strong> gire o cilindro para mostrar onde a borda aparece mais.</p><p><strong className="text-white">Centro óptico:</strong> desloque DNP e altura para revelar o lado que ganha mais volume.</p></div><p className="mt-5 border-t border-cyan-300/15 pt-4 text-xs leading-5 text-cyan-100/80">Demonstração geométrica. Apoia a conversa, mas não substitui o cálculo final de laboratório.</p></div>
           </section>
         </div>
-        <button type="button" onClick={closeTowerClientScreen} className="mt-4 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-800">Fechar tela do cliente</button>
+        {showHelp && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-5 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowHelp(false) }}><div role="dialog" aria-modal="true" aria-labelledby="lens-thickness-help-title" className="w-full max-w-lg rounded-3xl border border-cyan-300/25 bg-slate-900 p-6 text-slate-100 shadow-2xl shadow-black/50"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[.16em] text-cyan-200">Orientação ao funcionário</p><h2 id="lens-thickness-help-title" className="mt-2 text-2xl font-bold text-white">Como usar na conversa</h2></div><button type="button" onClick={() => setShowHelp(false)} className="rounded-xl border border-white/10 p-2 text-slate-400 transition hover:bg-white/10 hover:text-white" aria-label="Fechar orientações"><X size={18} /></button></div><div className="mt-5 space-y-3 text-sm leading-relaxed text-slate-300"><p><strong className="text-white">Armação menor:</strong> aumente ou reduza o tamanho para ver a borda reagir.</p><p><strong className="text-white">Índice:</strong> alterne os índices e compare a redução calculada.</p><p><strong className="text-white">Eixo:</strong> gire o cilindro para mostrar onde a borda aparece mais.</p><p><strong className="text-white">Centro óptico:</strong> desloque DNP e altura para revelar o lado que ganha mais volume.</p></div><p className="mt-5 border-t border-cyan-300/15 pt-4 text-xs leading-5 text-cyan-100/80">Demonstração geométrica. Apoia a conversa, mas não substitui o cálculo final de laboratório.</p></div></div>}
       </div>
     </main>
   )
@@ -230,6 +237,6 @@ function ClientLensScreen({ state }: { state: LensState }) {
 }
 
 function Control({ label, value, children }: { label: string; value: string; children: React.ReactNode }) { return <div><div className="mb-2 flex items-center justify-between gap-3"><p className="text-xs font-black uppercase tracking-[.14em] text-slate-500">{label}</p><span className="text-xs font-bold text-cyan-100">{value}</span></div>{children}</div> }
-function Pill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) { return <button type="button" onClick={onClick} className={`rounded-lg border px-3 py-2 text-xs font-bold transition ${active ? 'border-cyan-300/45 bg-cyan-400/15 text-cyan-100' : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'}`}>{children}</button> }
+function Pill({ active, compact = false, onClick, children }: { active: boolean; compact?: boolean; onClick: () => void; children: React.ReactNode }) { return <button type="button" onClick={onClick} className={`${compact ? 'whitespace-nowrap px-2 py-1.5 text-[11px]' : 'px-3 py-2 text-xs'} rounded-lg border font-bold transition ${active ? 'border-cyan-300/45 bg-cyan-400/15 text-cyan-100' : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'}`}>{children}</button> }
 function Range({ label, value, min, max, suffix, onChange }: { label: string; value: number; min: number; max: number; suffix: string; onChange: (value: number) => void }) { return <label className="block"><div className="mb-2 flex items-center justify-between gap-3"><span className="text-xs font-black uppercase tracking-[.14em] text-slate-500">{label}</span><span className="text-xs font-bold text-cyan-100">{Math.round(value)}{suffix}</span></div><input type="range" min={min} max={max} value={value} onChange={(event) => onChange(Number(event.target.value))} className="w-full cursor-pointer accent-cyan-300" /></label> }
 function formatDegree(value: number) { return `${value >= 0 ? '+' : ''}${value.toFixed(2)}` }

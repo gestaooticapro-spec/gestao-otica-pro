@@ -10,6 +10,7 @@ import {
   CircleHelp,
   Clock3,
   Eye,
+  GitCompareArrows,
   Glasses,
   Monitor,
   Play,
@@ -24,7 +25,7 @@ import {
 
 type MockAction = 'new' | 'resume' | null
 type ExperienceKey = 'style' | 'field' | 'measurements' | 'information' | null
-type InformationKey = 'look' | 'ar' | 'optifog' | 'polarized' | 'thickness' | null
+type InformationKey = 'look' | 'ar' | 'optifog' | 'polarized' | 'thickness' | 'fieldComparison' | null
 
 interface TowerWelcomeMockProps {
   storeId: number
@@ -122,6 +123,15 @@ const informationItems = [
     color: 'text-cyan-300',
     background: 'from-cyan-400/20 to-blue-500/5',
   },
+  {
+    key: 'fieldComparison' as const,
+    title: 'Comparativo de Campos',
+    description: 'Compare lado a lado as áreas de longe, corredor e perto de duas lentes.',
+    note: 'Demonstração interativa disponível.',
+    icon: GitCompareArrows,
+    color: 'text-emerald-300',
+    background: 'from-emerald-400/20 to-teal-500/5',
+  },
 ]
 
 export default function TowerWelcomeMock({ storeId, initialExperienceMenu = false, initialInformationMenu = false }: TowerWelcomeMockProps) {
@@ -196,6 +206,10 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
       router.push(`/torre/${storeId}/informacoes/espessura-lentes`)
       return
     }
+    if (item === 'fieldComparison') {
+      router.push(`/torre/${storeId}/informacoes/comparativo-campos`)
+      return
+    }
     setSelectedInformation(item)
   }
 
@@ -251,7 +265,7 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
           </button>
         </header>
 
-        <section className="flex min-h-0 flex-1 flex-col justify-center py-4">
+        <section className={`flex min-h-0 flex-1 flex-col ${choosingExperience ? 'justify-start pt-4' : 'justify-center py-4'}`}>
           {choosingExperience ? (
             <ExperienceChooser
               selectedExperience={selectedExperience}
@@ -422,23 +436,22 @@ function ExperienceChooser({
         <h2 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">O que vamos explicar hoje?</h2>
         <p className="mt-2 max-w-2xl text-base leading-relaxed text-slate-300">Escolha um conteúdo para apoiar a conversa com o cliente.</p>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
           {informationItems.map(({ key, title, description, note, icon: Icon, color, background }) => (
             <button
               key={key}
               type="button"
               onClick={() => onSelectInformation(key)}
-              className={`group min-h-[145px] rounded-2xl border border-slate-700 bg-gradient-to-br ${background} p-4 text-left transition hover:-translate-y-1 hover:border-slate-500 hover:bg-slate-800/70 active:translate-y-0 active:scale-[0.99]`}
+              className={`group min-h-[112px] rounded-2xl border border-slate-700 bg-gradient-to-br ${background} p-3 text-left transition hover:-translate-y-1 hover:border-slate-500 hover:bg-slate-800/70 active:translate-y-0 active:scale-[0.99]`}
             >
               <div className="flex items-start justify-between gap-4">
-                <span className={`flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950/40 ${color} ring-1 ring-white/10`}>
-                  <Icon size={22} />
+                <span className={`flex h-9 w-9 items-center justify-center rounded-lg bg-slate-950/40 ${color} ring-1 ring-white/10`}>
+                  <Icon size={20} />
                 </span>
-                <ArrowRight className="text-slate-500 transition group-hover:translate-x-1 group-hover:text-white" size={23} />
+                <ArrowRight className="text-slate-500 transition group-hover:translate-x-1 group-hover:text-white" size={20} />
               </div>
-              <h3 className="mt-3 text-lg font-bold text-white">{title}</h3>
-              <p className="mt-1 text-sm leading-snug text-slate-300">{description}</p>
-              <p className="mt-2 text-xs font-medium text-slate-400">{note}</p>
+              <h3 className="mt-2 text-base font-bold text-white">{title}</h3>
+              <p className="mt-1 text-xs leading-snug text-slate-300">{description}</p>
             </button>
           ))}
         </div>
