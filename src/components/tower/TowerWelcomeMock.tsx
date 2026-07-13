@@ -6,6 +6,8 @@ import { createTowerSession, getActiveTowerSessions, type TowerSession } from '@
 import {
   ArrowLeft,
   ArrowRight,
+  BookOpen,
+  CircleHelp,
   Clock3,
   Eye,
   Glasses,
@@ -21,11 +23,13 @@ import {
 } from 'lucide-react'
 
 type MockAction = 'new' | 'resume' | null
-type ExperienceKey = 'look' | 'style' | 'field' | 'measurements' | null
+type ExperienceKey = 'style' | 'field' | 'measurements' | 'information' | null
+type InformationKey = 'look' | 'ar' | 'optifog' | 'polarized' | 'thickness' | null
 
 interface TowerWelcomeMockProps {
   storeId: number
   initialExperienceMenu?: boolean
+  initialInformationMenu?: boolean
 }
 
 const deviceStatus = [
@@ -34,15 +38,6 @@ const deviceStatus = [
 ]
 
 const experiences = [
-  {
-    key: 'look' as const,
-    title: 'Seu Jeito de Olhar',
-    description: 'Uma demonstração guiada para explorar como a pessoa usa as lentes.',
-    note: 'Pode começar sem identificar o cliente.',
-    icon: Eye,
-    color: 'text-sky-300',
-    background: 'from-sky-400/20 to-blue-500/5',
-  },
   {
     key: 'style' as const,
     title: 'Visagismo',
@@ -65,18 +60,77 @@ const experiences = [
     key: 'measurements' as const,
     title: 'Medidas',
     description: 'Capture medidas técnicas para a armação escolhida.',
-    note: 'Precisa identificar o cliente antes de começar.',
+    note: 'Em preparação para o fluxo com a Torre.',
     icon: Ruler,
     color: 'text-amber-300',
     background: 'from-amber-400/20 to-orange-500/5',
   },
+  {
+    key: 'information' as const,
+    title: 'Informações Úteis',
+    description: 'Conteúdos para explicar lentes, tratamentos e tecnologias ao cliente.',
+    note: 'Demonstrações e materiais didáticos.',
+    icon: BookOpen,
+    color: 'text-rose-300',
+    background: 'from-rose-400/20 to-pink-500/5',
+  },
 ]
 
-export default function TowerWelcomeMock({ storeId, initialExperienceMenu = false }: TowerWelcomeMockProps) {
+const informationItems = [
+  {
+    key: 'look' as const,
+    title: 'Seu Jeito de Olhar',
+    description: 'Uma demonstração guiada sobre como usamos diferentes áreas das lentes.',
+    note: 'Disponível para demonstrar.',
+    icon: Eye,
+    color: 'text-sky-300',
+    background: 'from-sky-400/20 to-blue-500/5',
+  },
+  {
+    key: 'ar' as const,
+    title: 'Tratamento AR',
+    description: 'Entenda como o antirreflexo melhora a transparência e o conforto visual.',
+    note: 'Conteúdo em preparação.',
+    icon: Sparkles,
+    color: 'text-violet-300',
+    background: 'from-violet-400/20 to-fuchsia-500/5',
+  },
+  {
+    key: 'optifog' as const,
+    title: 'Opti Fog',
+    description: 'Conheça a tecnologia que ajuda a reduzir o embaçamento das lentes.',
+    note: 'Conteúdo em preparação.',
+    icon: CircleHelp,
+    color: 'text-teal-300',
+    background: 'from-teal-400/20 to-cyan-500/5',
+  },
+  {
+    key: 'polarized' as const,
+    title: 'Lentes Polarizadas',
+    description: 'Veja como a polarização ajuda a filtrar reflexos incômodos.',
+    note: 'Conteúdo em preparação.',
+    icon: Glasses,
+    color: 'text-amber-300',
+    background: 'from-amber-400/20 to-orange-500/5',
+  },
+  {
+    key: 'thickness' as const,
+    title: 'Espessura das Lentes',
+    description: 'Veja como grau, índice, armação e centro óptico influenciam a aparência da lente.',
+    note: 'Demonstração interativa disponível.',
+    icon: Ruler,
+    color: 'text-cyan-300',
+    background: 'from-cyan-400/20 to-blue-500/5',
+  },
+]
+
+export default function TowerWelcomeMock({ storeId, initialExperienceMenu = false, initialInformationMenu = false }: TowerWelcomeMockProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [selectedAction, setSelectedAction] = useState<MockAction>(initialExperienceMenu ? 'new' : null)
   const [selectedExperience, setSelectedExperience] = useState<ExperienceKey>(null)
+  const [selectedInformation, setSelectedInformation] = useState<InformationKey>(null)
+  const [showingInformation, setShowingInformation] = useState(initialInformationMenu)
   const [activeSessions, setActiveSessions] = useState<TowerSession[] | null>(null)
   const [resumeMessage, setResumeMessage] = useState<string | null>(null)
   const choosingExperience = selectedAction === 'new'
@@ -84,20 +138,24 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
   useEffect(() => {
     setSelectedAction(initialExperienceMenu ? 'new' : null)
     setSelectedExperience(null)
-  }, [initialExperienceMenu])
+    setSelectedInformation(null)
+    setShowingInformation(initialInformationMenu)
+  }, [initialExperienceMenu, initialInformationMenu])
 
   function startExperience(experience: Exclude<ExperienceKey, null>) {
-    const destination = experience === 'look'
-      ? `/torre/${storeId}/seu-jeito-de-olhar`
-      : experience === 'style'
-        ? `/torre/${storeId}/visagismo`
-        : experience === 'field'
+    if (experience === 'information') {
+      setSelectedExperience(null)
+      setShowingInformation(true)
+      return
+    }
+
+    const destination = experience === 'style'
+      ? `/torre/${storeId}/visagismo`
+      : experience === 'field'
           ? `/torre/${storeId}/campo-visual`
         : null
-    const sessionExperience = experience === 'look'
-      ? 'look'
-      : experience === 'style'
-        ? 'visagismo'
+    const sessionExperience = experience === 'style'
+      ? 'visagismo'
         : experience === 'field'
           ? 'campo_visual'
           : null
@@ -115,6 +173,30 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
       }
       router.push(`${destination}?session=${result.data.id}`)
     })
+  }
+
+  function openInformation(item: Exclude<InformationKey, null>) {
+    if (item === 'look') {
+      router.push(`/torre/${storeId}/seu-jeito-de-olhar`)
+      return
+    }
+    if (item === 'ar') {
+      router.push(`/torre/${storeId}/informacoes/tratamento-ar`)
+      return
+    }
+    if (item === 'optifog') {
+      router.push(`/torre/${storeId}/informacoes/opti-fog`)
+      return
+    }
+    if (item === 'polarized') {
+      router.push(`/torre/${storeId}/informacoes/lentes-polarizadas`)
+      return
+    }
+    if (item === 'thickness') {
+      router.push(`/torre/${storeId}/informacoes/espessura-lentes`)
+      return
+    }
+    setSelectedInformation(item)
   }
 
   function loadActiveSessions() {
@@ -173,12 +255,22 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
           {choosingExperience ? (
             <ExperienceChooser
               selectedExperience={selectedExperience}
+              selectedInformation={selectedInformation}
+              showingInformation={showingInformation}
               onBack={() => {
                 setSelectedAction(null)
                 setSelectedExperience(null)
+                setSelectedInformation(null)
+                setShowingInformation(false)
+              }}
+              onBackToExperiences={() => {
+                setSelectedExperience(null)
+                setSelectedInformation(null)
+                setShowingInformation(false)
               }}
               isStarting={isPending}
               onSelect={startExperience}
+              onSelectInformation={openInformation}
             />
           ) : (
             <>
@@ -205,7 +297,7 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
                     <ArrowRight className="mt-2 transition group-hover:translate-x-1" size={27} />
                   </div>
                   <div className="mt-5">
-                    <h3 className="text-xl font-bold">Nova experiência</h3>
+                    <h3 className="text-xl font-bold">Novo atendimento</h3>
                     <p className="mt-1 max-w-sm text-sm leading-relaxed text-sky-950/80">
                       Inicie o atendimento e escolha a primeira atividade junto ao cliente.
                     </p>
@@ -294,16 +386,67 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
 
 function ExperienceChooser({
   selectedExperience,
+  selectedInformation,
+  showingInformation,
   isStarting,
   onBack,
+  onBackToExperiences,
   onSelect,
+  onSelectInformation,
 }: {
   selectedExperience: ExperienceKey
+  selectedInformation: InformationKey
+  showingInformation: boolean
   isStarting: boolean
   onBack: () => void
+  onBackToExperiences: () => void
   onSelect: (experience: Exclude<ExperienceKey, null>) => void
+  onSelectInformation: (item: Exclude<InformationKey, null>) => void
 }) {
   const selected = experiences.find((experience) => experience.key === selectedExperience)
+  const selectedInfo = informationItems.find((item) => item.key === selectedInformation)
+
+  if (showingInformation) {
+    return (
+      <div className="w-full max-w-6xl">
+        <button
+          type="button"
+          onClick={onBackToExperiences}
+          className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-300 transition-colors hover:bg-white/10 hover:text-white active:scale-[0.98]"
+          title="Voltar para experiências"
+          aria-label="Voltar para experiências"
+        >
+          <ArrowLeft size={16} />
+        </button>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-rose-300">Informações úteis</p>
+        <h2 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">O que vamos explicar hoje?</h2>
+        <p className="mt-2 max-w-2xl text-base leading-relaxed text-slate-300">Escolha um conteúdo para apoiar a conversa com o cliente.</p>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          {informationItems.map(({ key, title, description, note, icon: Icon, color, background }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onSelectInformation(key)}
+              className={`group min-h-[145px] rounded-2xl border border-slate-700 bg-gradient-to-br ${background} p-4 text-left transition hover:-translate-y-1 hover:border-slate-500 hover:bg-slate-800/70 active:translate-y-0 active:scale-[0.99]`}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <span className={`flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950/40 ${color} ring-1 ring-white/10`}>
+                  <Icon size={22} />
+                </span>
+                <ArrowRight className="text-slate-500 transition group-hover:translate-x-1 group-hover:text-white" size={23} />
+              </div>
+              <h3 className="mt-3 text-lg font-bold text-white">{title}</h3>
+              <p className="mt-1 text-sm leading-snug text-slate-300">{description}</p>
+              <p className="mt-2 text-xs font-medium text-slate-400">{note}</p>
+            </button>
+          ))}
+        </div>
+
+        {selectedInfo && <MockNotice icon={CircleHelp} title={`${selectedInfo.title} em preparação`} text="Este conteúdo aparecerá aqui quando a demonstração estiver pronta." />}
+      </div>
+    )
+  }
 
   return (
     <div className="w-full max-w-6xl">
@@ -316,7 +459,7 @@ function ExperienceChooser({
       >
         <ArrowLeft size={16} />
       </button>
-      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-sky-300">Nova experiência</p>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-sky-300">Novo atendimento</p>
       <h2 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Por onde vamos começar?</h2>
       <p className="mt-2 max-w-2xl text-base leading-relaxed text-slate-300">Escolha a experiência que faz sentido para este atendimento.</p>
 

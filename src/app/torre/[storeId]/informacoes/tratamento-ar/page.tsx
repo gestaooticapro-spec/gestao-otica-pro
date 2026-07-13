@@ -1,8 +1,8 @@
 import { notFound, redirect } from 'next/navigation'
-import MultifocalFocusDemo from '@/components/catalog/MultifocalFocusDemo'
 import { createClient } from '@/lib/supabase/server'
+import ArTreatmentDemo from '@/components/tower/ArTreatmentDemo'
 
-export default async function TowerFocusDemoPage({
+export default async function TowerArTreatmentPage({
   params,
   searchParams,
 }: {
@@ -19,12 +19,5 @@ export default async function TowerFocusDemoPage({
 
   if (!user) return redirect('/login')
 
-  return (
-    <MultifocalFocusDemo
-      storeId={storeId}
-      clientMode={searchParams?.client === '1'}
-      backHref={`/torre/${storeId}?menu=informacoes`}
-      towerMode
-    />
-  )
+  return <ArTreatmentDemo storeId={storeId} clientMode={searchParams?.client === '1'} />
 }

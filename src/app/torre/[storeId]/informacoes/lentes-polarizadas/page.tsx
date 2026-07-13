@@ -1,8 +1,8 @@
 import { notFound, redirect } from 'next/navigation'
-import MultifocalFocusDemo from '@/components/catalog/MultifocalFocusDemo'
 import { createClient } from '@/lib/supabase/server'
+import PolarizedLensDemo from '@/components/tower/PolarizedLensDemo'
 
-export default async function TowerFocusDemoPage({
+export default async function TowerPolarizedLensPage({
   params,
   searchParams,
 }: {
@@ -19,12 +19,5 @@ export default async function TowerFocusDemoPage({
 
   if (!user) return redirect('/login')
 
-  return (
-    <MultifocalFocusDemo
-      storeId={storeId}
-      clientMode={searchParams?.client === '1'}
-      backHref={`/torre/${storeId}?menu=informacoes`}
-      towerMode
-    />
-  )
+  return <PolarizedLensDemo storeId={storeId} clientMode={searchParams?.client === '1'} />
 }

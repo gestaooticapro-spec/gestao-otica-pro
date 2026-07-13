@@ -1,8 +1,8 @@
 import { notFound, redirect } from 'next/navigation'
-import MultifocalFocusDemo from '@/components/catalog/MultifocalFocusDemo'
 import { createClient } from '@/lib/supabase/server'
+import OptiFogDemo from '@/components/tower/OptiFogDemo'
 
-export default async function TowerFocusDemoPage({
+export default async function TowerOptiFogPage({
   params,
   searchParams,
 }: {
@@ -19,12 +19,5 @@ export default async function TowerFocusDemoPage({
 
   if (!user) return redirect('/login')
 
-  return (
-    <MultifocalFocusDemo
-      storeId={storeId}
-      clientMode={searchParams?.client === '1'}
-      backHref={`/torre/${storeId}?menu=informacoes`}
-      towerMode
-    />
-  )
+  return <OptiFogDemo storeId={storeId} clientMode={searchParams?.client === '1'} />
 }

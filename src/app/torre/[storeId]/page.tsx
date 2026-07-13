@@ -19,5 +19,13 @@ export default async function TowerPage({
 
   if (!user) return redirect('/login')
 
-  return <TowerWelcomeMock storeId={storeId} initialExperienceMenu={searchParams?.menu === 'experiencias'} />
+  const opensInformationMenu = searchParams?.menu === 'informacoes'
+
+  return (
+    <TowerWelcomeMock
+      storeId={storeId}
+      initialExperienceMenu={searchParams?.menu === 'experiencias' || opensInformationMenu}
+      initialInformationMenu={opensInformationMenu}
+    />
+  )
 }
