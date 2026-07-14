@@ -63,6 +63,7 @@ import type {
   RecommendationOption,
   RecommendationPresentationStrategy
 } from '@/lib/server/lens-recommendation'
+import { buildRecommendationCaseInput } from '@/lib/recommendation/evaluation-case-input'
 
 type Dependente = Database['public']['Tables']['dependentes']['Row']
 type Customer = Database['public']['Tables']['customers']['Row']
@@ -2094,7 +2095,7 @@ const buildComparisonText = (
   return `A IA considerou sinais adicionais do caso, como rotina, adaptação, faixa de preço e features desejadas, e por isso priorizou uma combinação diferente da sugerida pelo iVision. ${humanReasons ? `Os critérios mais fortes foram: ${humanReasons}.` : ''}`.trim()
 }
 
-const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>): RecommendationCaseInput => {
+const inferRecommendationCaseInputLegacy = (form: ReturnType<typeof createEmptyForm>): RecommendationCaseInput => {
   const longeOdEsferico = parseNullableNumber(form.receitaLongeOdEsferico)
   const longeOdCilindrico = parseNullableNumber(form.receitaLongeOdCilindrico)
   const longeOeEsferico = parseNullableNumber(form.receitaLongeOeEsferico)
@@ -2280,6 +2281,9 @@ const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>):
     notes: [form.sourceExamType, form.observacoesConsultor.trim()].filter(Boolean).join(' | ') || null
   }
 }
+
+const inferRecommendationCaseInput = (form: ReturnType<typeof createEmptyForm>): RecommendationCaseInput =>
+  buildRecommendationCaseInput(form)
 
 function DegreeInput({
   value,

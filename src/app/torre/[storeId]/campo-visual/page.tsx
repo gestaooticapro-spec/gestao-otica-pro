@@ -45,7 +45,7 @@ export default async function TowerVisualFieldPage({
   return (
     <GazeHeatmapLab
       storeId={storeId}
-      backPath={`/torre/${storeId}?menu=experiencias`}
+      backPath={`/torre/${storeId}?menu=experiencias&session=${towerSessionId}`}
       geometry={geometry}
       geometries={geometries}
       clientMode={searchParams?.client === '1'}

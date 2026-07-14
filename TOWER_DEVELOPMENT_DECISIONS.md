@@ -389,22 +389,84 @@ Os controles e relacoes que devem permanecer disponiveis sao:
 4. tipo de montagem: aro fechado, fio de nylon ou parafusada;
 5. DNP/centro optico;
 6. altura do centro optico;
-7. templates de receitas didaticas.
+7. curva base 0, +2, +4 ou +6;
+8. giro da lente em torno do centro optico;
+9. templates de receitas didaticas.
 
-O calculo usa uma base frontal positiva fixa como referencia visual. Alterar o
-indice deve modificar a espessura calculada, mas nao deslocar a face frontal
-inteira da lente. O eixo deve alterar a distribuicao aparente da espessura nas
-bordas, sem sugerir que a lente inteira mudou de lugar.
+O calculo usa a curva base selecionada como superficie frontal. Alterar o
+indice ou a curva base deve modificar a espessura calculada sem deslocamentos
+arbitrarios da lente. O eixo deve alterar a distribuicao aparente da espessura
+nas bordas, sem sugerir que a lente inteira mudou de lugar.
 
 O tamanho da armação deve ampliar a area cortada e revelar mais borda, sem
 mudar o plano optico do corte visual. O mapa frontal deve preencher todo o
 contorno da lente sem falhas de rasterizacao; a malha visual nao pode alterar
 os extremos ou o calculo fisico usado para a didatica.
 
+O calculo tambem considera um anel periferico amostrado ao redor de todo o
+contorno. O perfil lateral da `Borda externa na direcao observada` mostra as
+duas superficies calculadas da lente vistas de cima, percorrendo a largura A
+de ponta a ponta, sem usar um corte interno que atravesse o centro. A face que
+fecha a borda entre essas superficies deve ser reta; sulco de nylon, saliencia
+de encaixe, bisel e polimento ficam fora desta didatica. Para lentes positivas,
+a borda respeita a espessura minima segura da montagem e o volume cresce em
+direcao ao centro; para lentes negativas, o comportamento principal se
+concentra na periferia.
+
+No modo de receita real, o modal permite escolher uma armacao salva no
+Visagismo/Gabarito. O contorno interno e sua calibracao em milimetros alimentam
+o calculo de A, B e da maior distancia entre o centro optico e a borda. Quando
+o gabarito nao possui pontos internos utilizaveis, a experiencia usa o oval de
+referencia. O giro 2D acontece ao redor do centro optico e atualiza, em tempo
+real, o mapa frontal e o perfil da lateral externa observado naquele angulo.
+A escolha da armacao e visual: um carrossel mostra somente o aro interno de
+cada gabarito para o funcionario comparar o formato da lente. O nome permanece
+como identificacao secundaria e nao como mecanismo principal de busca.
+
 O componente atual deve continuar separado do `LensThicknessLab` original ate
 que exista uma decisao explicita de unificar os dois. A comunicacao atual por
 `BroadcastChannel` e valida para o prototipo de duas telas, mas segue a regra
 geral deste documento: nao e o contrato definitivo da Torre nem do Electron.
+
+#### Receita real dentro da didatica
+
+A tela mantém cinco templates didáticos sempre disponíveis. O sexto cartão,
+`Lente real do cliente`, é opcional: ao ser acionado, usa o cliente e a receita
+já existentes na `tower_session`; se ainda não houver contexto, abre um modal
+para identificar o cliente e informar a receita de longe OD/OE, incluindo a
+adição. A adição não participa do cálculo de espessura, mas é persistida para
+que a Indicação/Avaliação receba a receita completa.
+
+No modo real, esfera, cilindro e eixo são dados da receita e ficam travados na
+demonstração (é permitido alternar OD/OE). Índice, tipo/tamanho da armação e
+posição do centro óptico continuam como controles didáticos. Ao clicar em
+qualquer template, a tela sai do modo real e volta ao modo didático — a receita
+permanece salva na sessão, mas não passa a ser obrigatória.
+
+O contexto compartilhado da Torre inclui `customer_id` e um snapshot de receita
+em `tower_sessions.prescription_snapshot`. Ele deve acompanhar a mesma URL de
+sessão entre Espessura, Campo Visual e Indicação/Avaliação. Quando uma avaliação
+óptica é vinculada, seu grau também atualiza esse snapshot. `BroadcastChannel`
+continua apenas para sincronizar operador e tela do cliente, nunca para
+persistir esse contexto.
+
+#### Estado fechado desta etapa
+
+A experiencia atual esta fechada como didatica de espessura com cinco receitas
+de demonstracao e uma opcao separada de receita real. Nos templates didaticos,
+a barra de tamanho parte do oval de referencia de 52 x 38 mm e o escala
+proporcionalmente. No modo real, ela parte do aro interno e das medidas A x B
+da armacao escolhida no carrossel do Visagismo/Gabarito e escala esse mesmo
+contorno proporcionalmente.
+
+O tipo de montagem nao altera o formato nem o tamanho gerado pela barra: ele
+somente define a espessura minima usada no calculo (borda para aro/nylon e
+centro para parafusada). A calibracao por regua de 50 mm permanece disponivel
+para aproximar a escala fisica na tela do cliente.
+
+Esta conclusao nao substitui nem antecipa o trabalho futuro de desenhar a
+armacao com haste e inserir a lente calculada em uma vista fixa de perspectiva;
+essa implementacao permanece pendente na secao seguinte.
 
 ### Modelo didatico de armação com haste - decisão para implementação futura
 

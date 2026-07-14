@@ -7,11 +7,17 @@ import type { Database } from '@/lib/database.types'
 
 const StoreIdSchema = z.coerce.number().int().positive()
 const SessionIdSchema = z.string().uuid()
-const ExperienceSchema = z.enum(['look', 'visagismo', 'campo_visual', 'medidas'])
+const ExperienceSchema = z.enum(['look', 'visagismo', 'campo_visual', 'medidas', 'thickness'])
 
 const CreateTowerSessionSchema = z.object({
   storeId: StoreIdSchema,
   experience: ExperienceSchema.optional(),
+})
+
+const GetOrCreateTowerSessionSchema = z.object({
+  storeId: StoreIdSchema,
+  experience: ExperienceSchema,
+  sessionId: SessionIdSchema.optional(),
 })
 
 const SessionCommandSchema = z.object({
@@ -27,7 +33,20 @@ const LinkEvaluationSchema = SessionCommandSchema.extend({
   evaluationId: z.coerce.number().int().positive(),
 })
 
+const PrescriptionSnapshotSchema = z.object({
+  od: z.object({ sphere: z.number().min(-30).max(30), cylinder: z.number().min(-15).max(15), axis: z.number().min(0).max(180) }),
+  oe: z.object({ sphere: z.number().min(-30).max(30), cylinder: z.number().min(-15).max(15), axis: z.number().min(0).max(180) }),
+  addition: z.number().min(0).max(8),
+})
+
+const SavePrescriptionSchema = SessionCommandSchema.extend({
+  customerId: z.coerce.number().int().positive(),
+  prescription: PrescriptionSnapshotSchema,
+})
+
 export type TowerSession = Database['public']['Tables']['tower_sessions']['Row']
+export type TowerPrescriptionSnapshot = z.infer<typeof PrescriptionSnapshotSchema>
+export type TowerSessionContext = { session: TowerSession; customer: { id: number; full_name: string; fone_movel: string | null } | null }
 type ActionResult<T = undefined> = { success: boolean; message: string; data?: T }
 
 async function getAuthorizedStoreContext(storeId: number) {
@@ -99,6 +118,98 @@ export async function createTowerSession(
   return { success: true, message: 'Sessao da Torre criada.', data: data as TowerSession }
 }
 
+export async function getOrCreateTowerSession(
+  input: z.input<typeof GetOrCreateTowerSessionSchema>,
+): Promise<ActionResult<TowerSession>> {
+  const parsed = GetOrCreateTowerSessionSchema.safeParse(input)
+  if (!parsed.success) return { success: false, message: 'Dados da sessao invalidos.' }
+
+  const auth = await getAuthorizedStoreContext(parsed.data.storeId)
+  if (!auth.ok) return { success: false, message: auth.message }
+
+  const sessions = createAdminClient().from('tower_sessions') as any
+  if (parsed.data.sessionId) {
+    const found = await findSessionForStore(parsed.data.sessionId, parsed.data.storeId)
+    if (!found.session || found.session.status !== 'active') return { success: false, message: found.message || 'Sessao da Torre nao esta ativa.' }
+    const { data, error } = await sessions
+      .update({ current_experience: parsed.data.experience })
+      .eq('id', found.session.id)
+      .eq('store_id', parsed.data.storeId)
+      .select('*')
+      .single()
+    if (error || !data) return { success: false, message: error?.message || 'Nao foi possivel atualizar a sessao da Torre.' }
+    return { success: true, message: 'Sessao da Torre retomada.', data: data as TowerSession }
+  }
+
+  const { data, error } = await sessions
+    .insert({
+      tenant_id: auth.tenantId,
+      store_id: parsed.data.storeId,
+      created_by_user_id: auth.userId,
+      current_experience: parsed.data.experience,
+      status: 'active',
+    })
+    .select('*')
+    .single()
+  if (error || !data) return { success: false, message: error?.message || 'Nao foi possivel criar a sessao da Torre.' }
+  return { success: true, message: 'Sessao da Torre criada.', data: data as TowerSession }
+}
+
+export async function getTowerSessionContext(
+  input: z.input<typeof SessionCommandSchema>,
+): Promise<ActionResult<TowerSessionContext>> {
+  const parsed = SessionCommandSchema.safeParse(input)
+  if (!parsed.success) return { success: false, message: 'Sessao da Torre invalida.' }
+  const auth = await getAuthorizedStoreContext(parsed.data.storeId)
+  if (!auth.ok) return { success: false, message: auth.message }
+  const found = await findSessionForStore(parsed.data.sessionId, parsed.data.storeId)
+  if (!found.session) return { success: false, message: found.message || 'Sessao nao encontrada.' }
+
+  let customer: TowerSessionContext['customer'] = null
+  if (found.session.customer_id) {
+    const customers = createAdminClient().from('customers') as any
+    const { data } = await customers
+      .select('id, full_name, fone_movel')
+      .eq('id', found.session.customer_id)
+      .eq('store_id', parsed.data.storeId)
+      .maybeSingle()
+    customer = data ?? null
+  }
+  return { success: true, message: 'Contexto da sessao carregado.', data: { session: found.session, customer } }
+}
+
+export async function saveTowerSessionPrescription(
+  input: z.input<typeof SavePrescriptionSchema>,
+): Promise<ActionResult<TowerSession>> {
+  const parsed = SavePrescriptionSchema.safeParse(input)
+  if (!parsed.success) return { success: false, message: 'Receita da demonstracao invalida.' }
+  const auth = await getAuthorizedStoreContext(parsed.data.storeId)
+  if (!auth.ok) return { success: false, message: auth.message }
+  const found = await findSessionForStore(parsed.data.sessionId, parsed.data.storeId)
+  if (!found.session || found.session.status !== 'active') return { success: false, message: found.message || 'Sessao da Torre nao esta ativa.' }
+
+  const customers = createAdminClient().from('customers') as any
+  const { data: customer, error: customerError } = await customers
+    .select('id')
+    .eq('id', parsed.data.customerId)
+    .eq('store_id', parsed.data.storeId)
+    .maybeSingle()
+  if (customerError || !customer) return { success: false, message: customerError?.message || 'Cliente nao encontrado para esta loja.' }
+
+  const sessions = createAdminClient().from('tower_sessions') as any
+  const { data, error } = await sessions
+    .update({ customer_id: customer.id, prescription_snapshot: parsed.data.prescription, current_experience: 'thickness' })
+    .eq('id', found.session.id)
+    .eq('store_id', parsed.data.storeId)
+    .select('*')
+    .single()
+  if (error || !data) return { success: false, message: error?.message || 'Nao foi possivel salvar a receita na sessao.' }
+
+  const heatmapError = await syncHeatmapSessionAssociation(found.session.id, parsed.data.storeId, { customer_id: customer.id })
+  if (heatmapError) return { success: false, message: `Receita salva, mas o Campo Visual nao foi atualizado: ${heatmapError.message}` }
+  return { success: true, message: 'Receita real salva na sessao da Torre.', data: data as TowerSession }
+}
+
 export async function linkCustomerToTowerSession(
   input: z.input<typeof LinkCustomerSchema>,
 ): Promise<ActionResult<TowerSession>> {
@@ -154,7 +265,7 @@ export async function linkEvaluationToTowerSession(
 
   const evaluations = createAdminClient().from('optical_evaluations') as any
   const { data: evaluation, error: evaluationError } = await evaluations
-    .select('id, tenant_id, store_id, evaluated_customer_id')
+    .select('id, tenant_id, store_id, evaluated_customer_id, receita_longe_od_esferico, receita_longe_od_cilindrico, receita_longe_od_eixo, receita_longe_oe_esferico, receita_longe_oe_cilindrico, receita_longe_oe_eixo, receita_adicao')
     .eq('id', parsed.data.evaluationId)
     .eq('store_id', parsed.data.storeId)
     .maybeSingle()
@@ -168,10 +279,28 @@ export async function linkEvaluationToTowerSession(
   }
 
   const sessions = createAdminClient().from('tower_sessions') as any
+  const parsePrescriptionNumber = (value: string | null) => {
+    const parsed = Number.parseFloat((value ?? '').replace(',', '.'))
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+  const evaluationPrescription: TowerPrescriptionSnapshot = {
+    od: {
+      sphere: parsePrescriptionNumber(evaluation.receita_longe_od_esferico),
+      cylinder: parsePrescriptionNumber(evaluation.receita_longe_od_cilindrico),
+      axis: Math.max(0, Math.min(180, Math.round(parsePrescriptionNumber(evaluation.receita_longe_od_eixo)))),
+    },
+    oe: {
+      sphere: parsePrescriptionNumber(evaluation.receita_longe_oe_esferico),
+      cylinder: parsePrescriptionNumber(evaluation.receita_longe_oe_cilindrico),
+      axis: Math.max(0, Math.min(180, Math.round(parsePrescriptionNumber(evaluation.receita_longe_oe_eixo)))),
+    },
+    addition: Math.max(0, Math.min(8, parsePrescriptionNumber(evaluation.receita_adicao))),
+  }
   const { data, error } = await sessions
     .update({
       optical_evaluation_id: evaluation.id,
       customer_id: evaluation.evaluated_customer_id,
+      prescription_snapshot: evaluationPrescription,
     })
     .eq('id', found.session.id)
     .eq('store_id', parsed.data.storeId)

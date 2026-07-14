@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { createTowerSession, getActiveTowerSessions, type TowerSession } from '@/lib/actions/tower-session.actions'
+import { getActiveTowerSessions, getOrCreateTowerSession, type TowerSession } from '@/lib/actions/tower-session.actions'
 import {
   ArrowLeft,
   ArrowRight,
@@ -31,6 +31,7 @@ interface TowerWelcomeMockProps {
   storeId: number
   initialExperienceMenu?: boolean
   initialInformationMenu?: boolean
+  initialSessionId?: string
 }
 
 const deviceStatus = [
@@ -134,7 +135,7 @@ const informationItems = [
   },
 ]
 
-export default function TowerWelcomeMock({ storeId, initialExperienceMenu = false, initialInformationMenu = false }: TowerWelcomeMockProps) {
+export default function TowerWelcomeMock({ storeId, initialExperienceMenu = false, initialInformationMenu = false, initialSessionId }: TowerWelcomeMockProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [selectedAction, setSelectedAction] = useState<MockAction>(initialExperienceMenu ? 'new' : null)
@@ -176,7 +177,7 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
     }
 
     startTransition(async () => {
-      const result = await createTowerSession({ storeId, experience: sessionExperience })
+      const result = await getOrCreateTowerSession({ storeId, experience: sessionExperience, sessionId: initialSessionId })
       if (!result.success || !result.data) {
         setSelectedExperience(experience)
         return
@@ -203,7 +204,11 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
       return
     }
     if (item === 'thickness') {
-      router.push(`/torre/${storeId}/informacoes/espessura-lentes`)
+      startTransition(async () => {
+        const result = await getOrCreateTowerSession({ storeId, experience: 'thickness', sessionId: initialSessionId })
+        if (!result.success || !result.data) return
+        router.push(`/torre/${storeId}/informacoes/espessura-lentes?session=${result.data.id}`)
+      })
       return
     }
     if (item === 'fieldComparison') {

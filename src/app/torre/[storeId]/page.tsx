@@ -7,7 +7,7 @@ export default async function TowerPage({
   searchParams,
 }: {
   params: { storeId: string }
-  searchParams?: { menu?: string }
+  searchParams?: { menu?: string; session?: string }
 }) {
   const storeId = parseInt(params.storeId, 10)
   if (Number.isNaN(storeId)) return notFound()
@@ -26,6 +26,7 @@ export default async function TowerPage({
       storeId={storeId}
       initialExperienceMenu={searchParams?.menu === 'experiencias' || opensInformationMenu}
       initialInformationMenu={opensInformationMenu}
+      initialSessionId={searchParams?.session}
     />
   )
 }

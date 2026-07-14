@@ -796,9 +796,10 @@ export interface Database {
           store_id: number
           customer_id: number | null
           optical_evaluation_id: number | null
+          prescription_snapshot: Json | null
           created_by_user_id: string | null
           status: 'active' | 'completed' | 'discarded' | 'expired'
-          current_experience: 'look' | 'visagismo' | 'campo_visual' | 'medidas' | null
+          current_experience: 'look' | 'visagismo' | 'campo_visual' | 'medidas' | 'thickness' | null
           started_at: string
           completed_at: string | null
           discarded_at: string | null
@@ -811,9 +812,10 @@ export interface Database {
           store_id: number
           customer_id?: number | null
           optical_evaluation_id?: number | null
+          prescription_snapshot?: Json | null
           created_by_user_id?: string | null
           status?: 'active' | 'completed' | 'discarded' | 'expired'
-          current_experience?: 'look' | 'visagismo' | 'campo_visual' | 'medidas' | null
+          current_experience?: 'look' | 'visagismo' | 'campo_visual' | 'medidas' | 'thickness' | null
           started_at?: string
           completed_at?: string | null
           discarded_at?: string | null
@@ -826,9 +828,10 @@ export interface Database {
           store_id?: number
           customer_id?: number | null
           optical_evaluation_id?: number | null
+          prescription_snapshot?: Json | null
           created_by_user_id?: string | null
           status?: 'active' | 'completed' | 'discarded' | 'expired'
-          current_experience?: 'look' | 'visagismo' | 'campo_visual' | 'medidas' | null
+          current_experience?: 'look' | 'visagismo' | 'campo_visual' | 'medidas' | 'thickness' | null
           started_at?: string
           completed_at?: string | null
           discarded_at?: string | null

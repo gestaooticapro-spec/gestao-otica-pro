@@ -2841,12 +2841,12 @@ export default function GazeHeatmapLab({
   }
 
   async function saveAsDemoTemplate() {
-    if (!heatmapSessionId || towerActionBusy || sessionPersistenceStatus !== 'saved') return
+    if (!heatmapSessionId || towerActionBusy) return
 
     setTowerActionBusy(true)
     const result = await saveTowerHeatmapDemoTemplate({ storeId, sessionId: heatmapSessionId })
+    setStatus(result.message)
     if (result.success) setDemoTemplateSaved(true)
-    else setStatus(result.message)
     setTowerActionBusy(false)
   }
 
@@ -3355,7 +3355,7 @@ export default function GazeHeatmapLab({
 
         <footer className="shrink-0 border-t border-white/10 pt-4">
           {towerReadingFinished ? (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-4">
               <Link
                 href={towerSessionId ? `/torre/${storeId}/avaliacao?session=${towerSessionId}&heatmap=${heatmapSessionId ?? ''}` : backPath}
                 className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-cyan-400 px-4 text-center text-sm font-black text-slate-950 transition hover:bg-cyan-300"
@@ -3374,7 +3374,7 @@ export default function GazeHeatmapLab({
               <button
                 type="button"
                 onClick={() => void saveAsDemoTemplate()}
-                disabled={towerActionBusy || sessionPersistenceStatus !== 'saved'}
+                disabled={towerActionBusy}
                 className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-violet-300/25 bg-violet-400/10 px-4 text-sm font-black text-violet-100 transition hover:bg-violet-400/20 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {towerActionBusy && !demoTemplateSaved ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bookmark className="h-4 w-4" />}

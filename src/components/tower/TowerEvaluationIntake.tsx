@@ -2,13 +2,14 @@
 
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, ChevronDown, Loader2, Plus, Search, Sparkles, User } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Loader2, Minus, Plus, Search, Sparkles, User } from 'lucide-react'
 import { searchCustomersByName } from '@/lib/actions/vendas.actions'
 import { createQuickCustomer } from '@/lib/actions/customer.actions'
 import { upsertOpticalEvaluation } from '@/lib/actions/evaluation.actions'
 import { generateLensRecommendationsAction } from '@/lib/actions/lens-recommendation.actions'
-import { linkCustomerToTowerSession, linkEvaluationToTowerSession } from '@/lib/actions/tower-session.actions'
+import { linkCustomerToTowerSession, linkEvaluationToTowerSession, type TowerSessionContext } from '@/lib/actions/tower-session.actions'
 import type { RecommendationOption } from '@/lib/server/lens-recommendation'
+import { buildRecommendationCaseInput } from '@/lib/recommendation/evaluation-case-input'
 
 type CustomerOption = { id: number; full_name: string; fone_movel?: string | null }
 
@@ -17,6 +18,7 @@ type Props = {
   towerSessionId: string
   heatmapSessionId: string
   activeCatalogVersionId: string | null
+  initialSessionContext?: TowerSessionContext
 }
 
 const prescriptionFields = [
@@ -139,18 +141,81 @@ function AxisProtractor({ value, onSelect }: { value: string; onSelect: (value: 
   )
 }
 
-const templates = [
-  { key: 'computador', label: 'Computador' },
-  { key: 'leitura', label: 'Leitura' },
-  { key: 'dirigir', label: 'Dirige' },
-  { key: 'celular', label: 'Celular' },
-  { key: 'sol', label: 'Sol' },
-  { key: 'conforto', label: 'Conforto' },
+type TowerInterview = {
+  ageYears: string
+  estiloVidaUsoComputadorHoras: string
+  estiloVidaDirigirHoras: string
+  estiloVidaLeituraHoras: string
+  estiloVidaUsoCelularHoras: string
+  estiloVidaExposicaoSolHoras: string
+  estiloVidaAmbienteInternoHoras: string
+  estiloVidaAmbienteExternoHoras: string
+  estiloVidaAssistirTvHoras: string
+  marcaAtual: string
+  tipoLenteAtual: string
+  usaMultifocalHoje: string
+  dificuldadeAdaptacao: string
+  historicoTrocasRecentes: string
+  prioridadePrincipal: string
+  principalIncomodoAtual: string
+  objetivoCompra: string
+  budgetTarget: string
+  aceitaPremium: string
+  importanciaEstetica: string
+  importanciaResistencia: string
+  prefereTransitions: string
+  prefereBlueUv: string
+  queixaDirigirNoite: string
+  queixaSensibilidadeLuz: string
+  queixaQuebraOculos: string
+  queixaCriancaAtiva: string
+  queixaProgressaoRapida: string
+  observacoesConsultor: string
+}
+
+const emptyInterview = (): TowerInterview => ({
+  ageYears: '30', estiloVidaUsoComputadorHoras: '0', estiloVidaDirigirHoras: '0', estiloVidaLeituraHoras: '0', estiloVidaUsoCelularHoras: '0', estiloVidaExposicaoSolHoras: '0', estiloVidaAmbienteInternoHoras: '0', estiloVidaAmbienteExternoHoras: '0', estiloVidaAssistirTvHoras: '0',
+  marcaAtual: '', tipoLenteAtual: 'nao_informado', usaMultifocalHoje: 'nao_informado', dificuldadeAdaptacao: 'nao_informado', historicoTrocasRecentes: 'nao_informado', prioridadePrincipal: 'equilibrio', principalIncomodoAtual: 'nao_informado', objetivoCompra: 'nao_informado', budgetTarget: '', aceitaPremium: 'nao_informado', importanciaEstetica: 'nao_informado', importanciaResistencia: 'nao_informado', prefereTransitions: 'nao_informado', prefereBlueUv: 'nao_informado', queixaDirigirNoite: 'nao', queixaSensibilidadeLuz: 'nao', queixaQuebraOculos: 'nao', queixaCriancaAtiva: 'nao', queixaProgressaoRapida: 'nao', observacoesConsultor: '',
+})
+
+const customerProfiles: Array<{ key: string; label: string; description: string; values: Partial<TowerInterview> }> = [
+  { key: 'primeira_multifocal', label: 'Primeira multifocal', description: 'Telas e leitura; prioridade em adaptação.', values: { ageYears: '48', estiloVidaUsoComputadorHoras: '6', estiloVidaLeituraHoras: '2', estiloVidaUsoCelularHoras: '3', estiloVidaAmbienteInternoHoras: '9', tipoLenteAtual: 'visao_simples', usaMultifocalHoje: 'nao', dificuldadeAdaptacao: 'alta', prioridadePrincipal: 'adaptacao', principalIncomodoAtual: 'perto', objetivoCompra: 'primeira_multifocal', budgetTarget: '2500', prefereBlueUv: 'sim' } },
+  { key: 'conforto_progressivo', label: 'Conforto progressivo', description: 'Já usa multifocal e busca mais conforto.', values: { ageYears: '58', estiloVidaUsoComputadorHoras: '4', estiloVidaDirigirHoras: '2', estiloVidaLeituraHoras: '3', estiloVidaUsoCelularHoras: '2', tipoLenteAtual: 'multifocal', usaMultifocalHoje: 'sim', dificuldadeAdaptacao: 'baixa', prioridadePrincipal: 'equilibrio', principalIncomodoAtual: 'intermediario', objetivoCompra: 'upgrade', budgetTarget: '4500', aceitaPremium: 'sim' } },
+  { key: 'telas_intenso', label: 'Uso intenso de telas', description: 'Computador e celular por muitas horas.', values: { ageYears: '45', estiloVidaUsoComputadorHoras: '9', estiloVidaUsoCelularHoras: '4', estiloVidaLeituraHoras: '2', estiloVidaAmbienteInternoHoras: '10', prioridadePrincipal: 'adaptacao', principalIncomodoAtual: 'intermediario', objetivoCompra: 'oculos_escritorio', budgetTarget: '3000', prefereBlueUv: 'sim' } },
+  { key: 'direcao_sol', label: 'Direção e sol', description: 'Rotina externa, direção e conforto à luz.', values: { ageYears: '55', estiloVidaDirigirHoras: '4', estiloVidaExposicaoSolHoras: '3', estiloVidaAmbienteExternoHoras: '4', tipoLenteAtual: 'multifocal', usaMultifocalHoje: 'sim', prioridadePrincipal: 'premium', principalIncomodoAtual: 'reflexo', objetivoCompra: 'upgrade', budgetTarget: '4500', aceitaPremium: 'sim', prefereTransitions: 'sim', queixaDirigirNoite: 'sim', queixaSensibilidadeLuz: 'sim' } },
+  { key: 'economia_equilibrio', label: 'Economia equilibrada', description: 'Prioriza solução adequada com investimento controlado.', values: { ageYears: '52', estiloVidaUsoComputadorHoras: '3', estiloVidaLeituraHoras: '2', tipoLenteAtual: 'visao_simples', prioridadePrincipal: 'economia', principalIncomodoAtual: 'perto', objetivoCompra: 'resolver_queixa', budgetTarget: '1800', aceitaPremium: 'nao' } },
 ]
 
-function parseDegree(value: string) {
-  const parsed = Number.parseFloat(value.replace(',', '.'))
-  return Number.isFinite(parsed) ? parsed : null
+const currentLensBrands = ['Varilux', 'Zeiss', 'Hoya', 'Nikon', 'Kodak', 'Shamir', 'Rodenstock', 'Essilor']
+
+function numberValue(value: string) {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function buildRecommendationInput(recipe: Record<string, string>, interview: TowerInterview) {
+  return buildRecommendationCaseInput({ ...interview, ...recipe })
+}
+
+function ChoiceChips({ label, value, options, onChange }: { label: string; value: string; options: Array<[string, string]>; onChange: (value: string) => void }) {
+  return <div>
+    <p className="text-sm font-black text-slate-100">{label}</p>
+    <div className="mt-2 flex flex-wrap gap-2">
+      {options.map(([optionValue, optionLabel]) => <button key={optionValue} type="button" onClick={() => onChange(optionValue)} className={`rounded-xl border px-3 py-2 text-xs font-black transition ${value === optionValue ? 'border-cyan-300 bg-cyan-400 text-slate-950' : 'border-white/10 bg-slate-950 text-slate-300 hover:border-cyan-300/50'}`}>{optionLabel}</button>)}
+    </div>
+  </div>
+}
+
+function HourControl({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  const amount = Math.max(0, Math.min(16, Math.round(numberValue(value))))
+  return <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-3">
+    <p className="text-sm font-bold text-slate-100">{label}</p>
+    <div className="flex items-center gap-2">
+      <button type="button" aria-label={`Diminuir ${label}`} onClick={() => onChange(String(Math.max(0, amount - 1)))} className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-slate-200"><Minus className="h-4 w-4" /></button>
+      <span className="w-9 text-center text-lg font-black text-cyan-200">{amount}h</span>
+      <button type="button" aria-label={`Aumentar ${label}`} onClick={() => onChange(String(Math.min(16, amount + 1)))} className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-slate-200"><Plus className="h-4 w-4" /></button>
+    </div>
+  </div>
 }
 
 export default function TowerEvaluationIntake({
@@ -158,16 +223,33 @@ export default function TowerEvaluationIntake({
   towerSessionId,
   heatmapSessionId,
   activeCatalogVersionId,
+  initialSessionContext,
 }: Props) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<CustomerOption[]>([])
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerOption | null>(null)
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerOption | null>(initialSessionContext?.customer ?? null)
   const [quickCreateOpen, setQuickCreateOpen] = useState(false)
   const [quickName, setQuickName] = useState('')
   const [quickPhone, setQuickPhone] = useState('')
-  const [recipe, setRecipe] = useState<Record<string, string>>({})
+  const [recipe, setRecipe] = useState<Record<string, string>>(() => {
+    const snapshot = initialSessionContext?.session.prescription_snapshot as { od?: { sphere?: number; cylinder?: number; axis?: number }; oe?: { sphere?: number; cylinder?: number; axis?: number }; addition?: number } | null
+    if (!snapshot) return {} as Record<string, string>
+    return {
+      receitaLongeOdEsferico: formatQuarter(snapshot.od?.sphere ?? 0, true),
+      receitaLongeOdCilindrico: formatQuarter(snapshot.od?.cylinder ?? 0),
+      receitaLongeOdEixo: String(snapshot.od?.axis ?? 0),
+      receitaLongeOeEsferico: formatQuarter(snapshot.oe?.sphere ?? 0, true),
+      receitaLongeOeCilindrico: formatQuarter(snapshot.oe?.cylinder ?? 0),
+      receitaLongeOeEixo: String(snapshot.oe?.axis ?? 0),
+      receitaAdicao: formatQuarter(snapshot.addition ?? 0, true),
+    }
+  })
   const [activePrescriptionField, setActivePrescriptionField] = useState<PrescriptionFieldKey | null>(null)
-  const [selectedTemplates, setSelectedTemplates] = useState<string[]>([])
+  const [interview, setInterview] = useState<TowerInterview>(emptyInterview)
+  const [selectedProfileKey, setSelectedProfileKey] = useState<string | null>(null)
+  const [activeInterviewModal, setActiveInterviewModal] = useState<'lifestyle' | 'priorities' | null>(null)
+  const [brandDropdownOpen, setBrandDropdownOpen] = useState(false)
+  const brandInputRef = useRef<HTMLInputElement | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [suggestions, setSuggestions] = useState<RecommendationOption[]>([])
@@ -221,6 +303,7 @@ export default function TowerEvaluationIntake({
     }
 
     setBusy(true)
+    const recommendationInput = buildRecommendationInput(recipe, interview)
     const saved = await upsertOpticalEvaluation({
       storeId,
       evaluatedCustomerId: selectedCustomer.id,
@@ -239,7 +322,16 @@ export default function TowerEvaluationIntake({
       receitaLongeOeCilindrico: recipe.receitaLongeOeCilindrico || null,
       receitaLongeOeEixo: recipe.receitaLongeOeEixo || null,
       receitaAdicao: recipe.receitaAdicao || null,
-      rawPayloadJson: { tower_session_id: towerSessionId, tower_heatmap_session_id: heatmapSessionId },
+      ageYears: Math.round(numberValue(interview.ageYears)) || null,
+      estiloVidaUsoComputadorHoras: numberValue(interview.estiloVidaUsoComputadorHoras),
+      estiloVidaDirigirHoras: numberValue(interview.estiloVidaDirigirHoras),
+      estiloVidaLeituraHoras: numberValue(interview.estiloVidaLeituraHoras),
+      estiloVidaUsoCelularHoras: numberValue(interview.estiloVidaUsoCelularHoras),
+      estiloVidaExposicaoSolHoras: numberValue(interview.estiloVidaExposicaoSolHoras),
+      estiloVidaAmbienteInternoHoras: numberValue(interview.estiloVidaAmbienteInternoHoras),
+      estiloVidaAmbienteExternoHoras: numberValue(interview.estiloVidaAmbienteExternoHoras),
+      estiloVidaAssistirTvHoras: numberValue(interview.estiloVidaAssistirTvHoras),
+      rawPayloadJson: { tower_session_id: towerSessionId, tower_heatmap_session_id: heatmapSessionId, tower_profile: interview, tower_profile_key: selectedProfileKey },
     })
 
     if (!saved.success || !saved.data) {
@@ -258,12 +350,7 @@ export default function TowerEvaluationIntake({
     const generated = await generateLensRecommendationsAction({
       storeId,
       versionId: activeCatalogVersionId,
-      esferico: parseDegree(recipe.receitaLongeOdEsferico || ''),
-      cilindrico: parseDegree(recipe.receitaLongeOdCilindrico || ''),
-      adicao: parseDegree(recipe.receitaAdicao || ''),
-      rotina_tags: selectedTemplates,
-      objetivo_tags: selectedTemplates.includes('conforto') ? ['conforto'] : [],
-      desired_benefits: selectedTemplates.includes('conforto') ? ['conforto'] : [],
+      ...recommendationInput,
       heatmapSessionId,
     })
 
@@ -287,6 +374,29 @@ export default function TowerEvaluationIntake({
     setRecipe((current) => ({ ...current, [activeField.key]: value }))
     if (activeField.kind !== 'axis') setActivePrescriptionField(null)
   }
+
+  function updateInterview<K extends keyof TowerInterview>(key: K, value: TowerInterview[K]) {
+    setInterview((current) => ({ ...current, [key]: value }))
+  }
+
+  function applyProfile(profile: typeof customerProfiles[number]) {
+    setInterview((current) => ({ ...current, ...profile.values }))
+    setSelectedProfileKey(profile.key)
+    setMessage(`Perfil “${profile.label}” aplicado. Ajuste os detalhes da conversa se necessário.`)
+  }
+
+  function chooseCurrentLensBrand(brand: string) {
+    updateInterview('marcaAtual', `${brand} `)
+    setBrandDropdownOpen(false)
+    window.requestAnimationFrame(() => brandInputRef.current?.focus())
+  }
+
+  const lifestyleSummary = [
+    numberValue(interview.estiloVidaUsoComputadorHoras) > 0 && `Computador ${interview.estiloVidaUsoComputadorHoras}h`,
+    numberValue(interview.estiloVidaDirigirHoras) > 0 && `Direção ${interview.estiloVidaDirigirHoras}h`,
+    numberValue(interview.estiloVidaLeituraHoras) > 0 && `Leitura ${interview.estiloVidaLeituraHoras}h`,
+  ].filter(Boolean).join(' · ') || 'Defina a rotina do cliente'
+  const prioritiesSummary = `${interview.prioridadePrincipal === 'equilibrio' ? 'Equilíbrio' : interview.prioridadePrincipal} · ${interview.principalIncomodoAtual === 'nao_informado' ? 'sem queixa principal' : interview.principalIncomodoAtual}`
 
   return (
     <main className="min-h-[100dvh] bg-slate-950 px-5 py-4 text-white sm:px-7 sm:py-5">
@@ -347,16 +457,96 @@ export default function TowerEvaluationIntake({
               )
             })}
           </div>
-          <h2 className="mt-6 text-xl font-black">Perguntas rápidas</h2>
-          <p className="mt-1 text-sm text-slate-400">Use um template como ponto de partida e ajuste a conversa ao cliente.</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {templates.map((template) => <button key={template.key} type="button" disabled={!selectedCustomer} onClick={() => setSelectedTemplates((current) => current.includes(template.key) ? current.filter((item) => item !== template.key) : [...current, template.key])} className={`rounded-full border px-3 py-2 text-xs font-black transition ${selectedTemplates.includes(template.key) ? 'border-cyan-300 bg-cyan-400 text-slate-950' : 'border-white/10 bg-slate-950 text-slate-300'} disabled:cursor-not-allowed`}>{template.label}</button>)}
+          <h2 className="mt-6 text-xl font-black">Perfil do cliente</h2>
+          <p className="mt-1 text-sm text-slate-400">Comece por um perfil comum. Ele preenche a entrevista, sem alterar o cliente ou a receita.</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {customerProfiles.map((profile) => (
+              <button key={profile.key} type="button" onClick={() => applyProfile(profile)} className={`rounded-2xl border p-3 text-left transition ${selectedProfileKey === profile.key ? 'border-cyan-300 bg-cyan-400/15' : 'border-slate-700/80 bg-slate-950/45 hover:border-slate-500'}`}>
+                <p className="text-sm font-black text-white">{profile.label}</p>
+                <p className="mt-1 text-xs leading-4 text-slate-400">{profile.description}</p>
+              </button>
+            ))}
+          </div>
+          <div className="mt-5 border-t border-cyan-300/15 pt-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">Entrevista do cliente</p>
+            <p className="mt-1 text-sm text-slate-400">Complete os detalhes que dão contexto à indicação.</p>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <button type="button" onClick={() => setActiveInterviewModal('lifestyle')} className="flex min-h-20 items-center justify-between rounded-2xl border border-cyan-300/35 bg-cyan-400/10 p-3 text-left shadow-lg shadow-cyan-950/20 transition hover:border-cyan-200 hover:bg-cyan-400/15">
+              <span><span className="block text-sm font-black text-cyan-50">Estilo de vida</span><span className="mt-1 block text-xs text-cyan-100/65">{lifestyleSummary}</span></span><ChevronDown className="h-4 w-4 text-cyan-200" />
+            </button>
+            <button type="button" onClick={() => setActiveInterviewModal('priorities')} className="flex min-h-20 items-center justify-between rounded-2xl border border-cyan-300/35 bg-cyan-400/10 p-3 text-left shadow-lg shadow-cyan-950/20 transition hover:border-cyan-200 hover:bg-cyan-400/15">
+              <span><span className="block text-sm font-black text-cyan-50">Queixas e prioridades</span><span className="mt-1 block text-xs capitalize text-cyan-100/65">{prioritiesSummary}</span></span><ChevronDown className="h-4 w-4 text-cyan-200" />
+            </button>
           </div>
           <button type="button" onClick={() => void generateSuggestions()} disabled={!selectedCustomer || busy} className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-400 px-4 py-4 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Gerar sugestões</button>
         </section>
       </div>
 
       {(message || suggestions.length > 0) && <section className="mx-auto mt-5 w-full max-w-5xl rounded-[28px] border border-white/10 bg-slate-900/70 p-5"><p className="text-sm text-cyan-100">{message}</p>{suggestions.length > 0 && <div className="mt-4 grid gap-3 sm:grid-cols-3">{suggestions.map((option) => <article key={option.configKey} className="rounded-2xl border border-white/10 bg-slate-950/70 p-4"><p className="font-black">{option.familyName}</p><p className="mt-1 text-sm text-slate-300">{option.offerLabel}</p><p className="mt-3 text-xs leading-5 text-slate-400">{option.reasons[0] || option.commercialSummary}</p></article>)}</div>}</section>}
+      {activeInterviewModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/75 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label={activeInterviewModal === 'lifestyle' ? 'Estilo de vida' : 'Queixas e prioridades'}>
+          <button type="button" aria-label="Fechar entrevista" onClick={() => setActiveInterviewModal(null)} className="absolute inset-0 cursor-default" />
+          <section className="relative z-10 flex max-h-[92dvh] w-full max-w-3xl flex-col rounded-t-[28px] border border-white/15 bg-slate-900 shadow-2xl shadow-black/60 sm:rounded-[28px]">
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 p-5">
+              <div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">Entrevista</p><h3 className="mt-1 text-xl font-black">{activeInterviewModal === 'lifestyle' ? 'Estilo de vida' : 'Queixas e prioridades'}</h3></div>
+              <button type="button" onClick={() => setActiveInterviewModal(null)} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black text-slate-300">Concluir</button>
+            </div>
+            {activeInterviewModal === 'lifestyle' ? (
+              <div className="space-y-5 overflow-y-auto p-5">
+                <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-3"><p className="text-sm font-black">Idade</p><div className="mt-2 flex items-center gap-2"><button type="button" onClick={() => updateInterview('ageYears', String(Math.max(1, numberValue(interview.ageYears) - 1)))} className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10"><Minus className="h-4 w-4" /></button><span className="w-16 text-center text-xl font-black text-cyan-200">{Math.max(1, Math.round(numberValue(interview.ageYears)))}</span><button type="button" onClick={() => updateInterview('ageYears', String(Math.min(110, numberValue(interview.ageYears) + 1)))} className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10"><Plus className="h-4 w-4" /></button><span className="text-sm text-slate-400">anos</span></div></div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <HourControl label="Computador" value={interview.estiloVidaUsoComputadorHoras} onChange={(value) => updateInterview('estiloVidaUsoComputadorHoras', value)} />
+                  <HourControl label="Dirigir" value={interview.estiloVidaDirigirHoras} onChange={(value) => updateInterview('estiloVidaDirigirHoras', value)} />
+                  <HourControl label="Leitura" value={interview.estiloVidaLeituraHoras} onChange={(value) => updateInterview('estiloVidaLeituraHoras', value)} />
+                  <HourControl label="Celular" value={interview.estiloVidaUsoCelularHoras} onChange={(value) => updateInterview('estiloVidaUsoCelularHoras', value)} />
+                  <HourControl label="Exposição ao sol" value={interview.estiloVidaExposicaoSolHoras} onChange={(value) => updateInterview('estiloVidaExposicaoSolHoras', value)} />
+                  <HourControl label="Ambiente interno" value={interview.estiloVidaAmbienteInternoHoras} onChange={(value) => updateInterview('estiloVidaAmbienteInternoHoras', value)} />
+                  <HourControl label="Ambiente externo" value={interview.estiloVidaAmbienteExternoHoras} onChange={(value) => updateInterview('estiloVidaAmbienteExternoHoras', value)} />
+                  <HourControl label="Assistir TV" value={interview.estiloVidaAssistirTvHoras} onChange={(value) => updateInterview('estiloVidaAssistirTvHoras', value)} />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-5 overflow-y-auto p-5">
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <ChoiceChips label="Tipo de lente atual" value={interview.tipoLenteAtual} onChange={(value) => updateInterview('tipoLenteAtual', value)} options={[["nao_informado", "Não informado"], ["visao_simples", "Visão simples"], ["multifocal", "Multifocal"], ["ocupacional", "Ocupacional"], ["bifocal", "Bifocal"]]} />
+                  <ChoiceChips label="Já usa multifocal?" value={interview.usaMultifocalHoje} onChange={(value) => updateInterview('usaMultifocalHoje', value)} options={[["nao_informado", "Não sei"], ["sim", "Sim"], ["nao", "Não"]]} />
+                  <ChoiceChips label="Adaptação anterior" value={interview.dificuldadeAdaptacao} onChange={(value) => updateInterview('dificuldadeAdaptacao', value)} options={[["nao_informado", "Não sei"], ["baixa", "Tranquila"], ["media", "Alguma dificuldade"], ["alta", "Difícil"]]} />
+                  <ChoiceChips label="Trocas recentes" value={interview.historicoTrocasRecentes} onChange={(value) => updateInterview('historicoTrocasRecentes', value)} options={[["nao_informado", "Não sei"], ["nenhuma", "Nenhuma"], ["uma", "Uma"], ["mais_de_duas", "Mais de duas"]]} />
+                </div>
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <ChoiceChips label="Prioridade principal" value={interview.prioridadePrincipal} onChange={(value) => updateInterview('prioridadePrincipal', value)} options={[["equilibrio", "Equilíbrio"], ["economia", "Economia"], ["adaptacao", "Adaptação"], ["resistencia", "Resistência"], ["controle_miopia", "Controle de miopia"], ["premium", "Premium"]]} />
+                  <ChoiceChips label="Incômodo principal" value={interview.principalIncomodoAtual} onChange={(value) => updateInterview('principalIncomodoAtual', value)} options={[["nao_informado", "Nenhum"], ["perto", "Perto"], ["longe", "Longe"], ["intermediario", "Intermediário"], ["peso_espessura", "Peso/espessura"], ["reflexo", "Reflexo"], ["adaptacao", "Adaptação"], ["preco", "Preço"]]} />
+                  <ChoiceChips label="Objetivo da compra" value={interview.objetivoCompra} onChange={(value) => updateInterview('objetivoCompra', value)} options={[["nao_informado", "Não informado"], ["primeira_multifocal", "Primeira multifocal"], ["upgrade", "Melhorar a atual"], ["resolver_queixa", "Resolver queixa"], ["economizar", "Economizar"], ["trocar_marca", "Trocar marca"], ["oculos_escritorio", "Óculos escritório"], ["controle_miopia", "Controle de miopia"]]} />
+                  <ChoiceChips label="Aceita investimento premium?" value={interview.aceitaPremium} onChange={(value) => updateInterview('aceitaPremium', value)} options={[["nao_informado", "Não sei"], ["sim", "Sim"], ["nao", "Não"]]} />
+                  <ChoiceChips label="Importância da estética" value={interview.importanciaEstetica} onChange={(value) => updateInterview('importanciaEstetica', value)} options={[["nao_informado", "Não sei"], ["baixa", "Baixa"], ["media", "Média"], ["alta", "Alta"]]} />
+                  <ChoiceChips label="Importância da resistência" value={interview.importanciaResistencia} onChange={(value) => updateInterview('importanciaResistencia', value)} options={[["nao_informado", "Não sei"], ["baixa", "Baixa"], ["media", "Média"], ["alta", "Alta"]]} />
+                </div>
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <ChoiceChips label="Prefere Transitions?" value={interview.prefereTransitions} onChange={(value) => updateInterview('prefereTransitions', value)} options={[["nao_informado", "Não sei"], ["sim", "Sim"], ["nao", "Não"]]} />
+                  <ChoiceChips label="Prefere proteção azul/UV?" value={interview.prefereBlueUv} onChange={(value) => updateInterview('prefereBlueUv', value)} options={[["nao_informado", "Não sei"], ["sim", "Sim"], ["nao", "Não"]]} />
+                  <ChoiceChips label="Dificuldade ao dirigir à noite?" value={interview.queixaDirigirNoite} onChange={(value) => updateInterview('queixaDirigirNoite', value)} options={[["sim", "Sim"], ["nao", "Não"]]} />
+                  <ChoiceChips label="Sensibilidade à luz?" value={interview.queixaSensibilidadeLuz} onChange={(value) => updateInterview('queixaSensibilidadeLuz', value)} options={[["sim", "Sim"], ["nao", "Não"]]} />
+                  <ChoiceChips label="Quebra óculos com frequência?" value={interview.queixaQuebraOculos} onChange={(value) => updateInterview('queixaQuebraOculos', value)} options={[["sim", "Sim"], ["nao", "Não"]]} />
+                  {numberValue(interview.ageYears) <= 14 && <><ChoiceChips label="Criança muito ativa?" value={interview.queixaCriancaAtiva} onChange={(value) => updateInterview('queixaCriancaAtiva', value)} options={[["sim", "Sim"], ["nao", "Não"]]} /><ChoiceChips label="Progressão rápida da miopia?" value={interview.queixaProgressaoRapida} onChange={(value) => updateInterview('queixaProgressaoRapida', value)} options={[["sim", "Sim"], ["nao", "Não"]]} /></>}
+                </div>
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <label className="text-sm font-black">Lente atual
+                    <span className="relative mt-2 block">
+                      <input ref={brandInputRef} value={interview.marcaAtual} onChange={(event) => updateInterview('marcaAtual', event.target.value)} placeholder="Ex.: Varilux Comfort Max" className="w-full rounded-xl border border-white/10 bg-slate-950 py-3 pl-3 pr-12 text-sm font-normal outline-none focus:border-cyan-300" />
+                      <button type="button" aria-label="Escolher marca da lente" aria-expanded={brandDropdownOpen} onClick={() => setBrandDropdownOpen((current) => !current)} className="absolute inset-y-1 right-1 flex w-10 items-center justify-center rounded-lg text-cyan-200 transition hover:bg-white/10"><ChevronDown className={`h-4 w-4 transition ${brandDropdownOpen ? 'rotate-180' : ''}`} /></button>
+                      {brandDropdownOpen && <span className="absolute z-20 mt-2 grid w-full grid-cols-2 gap-1 rounded-2xl border border-white/15 bg-slate-900 p-2 shadow-2xl shadow-black/50">{currentLensBrands.map((brand) => <button key={brand} type="button" onClick={() => chooseCurrentLensBrand(brand)} className="rounded-xl px-3 py-2 text-left text-xs font-black text-slate-200 transition hover:bg-cyan-400 hover:text-slate-950">{brand}</button>)}</span>}
+                    </span>
+                    <span className="mt-2 block text-xs font-normal leading-4 text-slate-400">Escolha a marca, depois complete livremente o modelo da lente.</span>
+                  </label>
+                  <ChoiceChips label="Faixa de investimento" value={interview.budgetTarget} onChange={(value) => updateInterview('budgetTarget', value)} options={[["", "Ainda não definido"], ["1000", "Até R$ 1.000"], ["2000", "Até R$ 2.000"], ["3000", "Até R$ 3.000"], ["4000", "Até R$ 4.000"], ["5000", "Até R$ 5.000"], ["6000", "R$ 5.000+"]]} />
+                </div>
+                <label className="block text-sm font-black">Observações do consultor<textarea value={interview.observacoesConsultor} onChange={(event) => updateInterview('observacoesConsultor', event.target.value)} rows={3} placeholder="Algo importante que surgiu na conversa?" className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm font-normal outline-none focus:border-cyan-300" /></label>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
       {activeField && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={`Selecionar ${activeField.label}`}>
           <button type="button" aria-label="Fechar seletor" onClick={() => setActivePrescriptionField(null)} className="absolute inset-0 cursor-default" />

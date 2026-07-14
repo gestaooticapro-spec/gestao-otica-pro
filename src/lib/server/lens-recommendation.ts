@@ -2397,6 +2397,100 @@ function applyHeatmapCompatibility(
     .sort((a, b) => b.score - a.score || a.finalPrice - b.finalPrice)
 }
 
+type CurrentLensBenchmark = {
+  name: string
+  tier: CommercialTier
+}
+
+function commercialTierRank(tier: CommercialTier): number {
+  if (tier === 'entrada') return 1
+  if (tier === 'premium') return 3
+  return 2
+}
+
+function resolveCurrentLensBenchmark(
+  input: RecommendationCaseInput,
+  catalog: RecommendationCatalog,
+): CurrentLensBenchmark | null {
+  const raw = input.marca_atual?.trim()
+  if (!raw) return null
+  const normalizedRaw = normalizeIntentText(raw)
+  if (normalizedRaw.length < 5) return null
+
+  const catalogMatch = catalog.families
+    .filter((family) => {
+      const normalizedFamily = normalizeIntentText(family.nome)
+      return normalizedFamily.length >= 5 &&
+        (normalizedRaw.includes(normalizedFamily) || normalizedFamily.includes(normalizedRaw))
+    })
+    .sort((left, right) => right.nome.length - left.nome.length)[0]
+
+  if (catalogMatch) {
+    const offer = catalog.offers.find((item) => item.family_id === catalogMatch.id)
+    return {
+      name: catalogMatch.nome,
+      tier: offer ? resolveLensTier(catalogMatch, offer) : normalizeCommercialTier(getSharedFamilySemanticProfile(catalogMatch.nome)?.positioning),
+    }
+  }
+
+  const semanticMatch = getSharedFamilySemanticProfile(raw)
+  if (!semanticMatch) return null
+  return {
+    name: semanticMatch.entity_name,
+    tier: normalizeCommercialTier(semanticMatch.positioning),
+  }
+}
+
+function applyCurrentLensUpgradePreference(
+  entries: RecommendationOption[],
+  input: RecommendationCaseInput,
+  catalog: RecommendationCatalog,
+): RecommendationOption[] {
+  const benchmark = resolveCurrentLensBenchmark(input, catalog)
+  if (!benchmark) return entries
+
+  const economyRequested =
+    input.budget_mode === 'economico' ||
+    (input.objetivo_tags || []).some((tag) => ['custo_beneficio', 'economia', 'premium_recusado'].includes(tag)) ||
+    (input.rejected_features || []).includes('premium')
+  if (economyRequested) return entries
+
+  const benchmarkRank = commercialTierRank(benchmark.tier)
+  const adjusted = entries.map((entry) => {
+    const tierReason = entry.reasons.find((reason) => reason.startsWith('lens_tier:'))
+    const candidateTier = normalizeCommercialTier(tierReason?.split(':')[1])
+    const candidateRank = commercialTierRank(candidateTier)
+    const sameFamily = normalizeIntentText(entry.familyName) === normalizeIntentText(benchmark.name)
+    const adjustment = candidateRank > benchmarkRank
+      ? (candidateRank - benchmarkRank) * 12
+      : candidateRank < benchmarkRank
+        ? -40
+        : sameFamily ? -4 : 2
+
+    return {
+      ...entry,
+      score: Number((entry.score + adjustment).toFixed(2)),
+      reasons: uniqueStrings([
+        ...entry.reasons,
+        candidateRank > benchmarkRank
+          ? `upgrade_lente_atual:acima:${benchmark.name}`
+          : candidateRank < benchmarkRank
+            ? `upgrade_lente_atual:abaixo:${benchmark.name}`
+            : sameFamily
+              ? `upgrade_lente_atual:mesma_familia:${benchmark.name}`
+              : `upgrade_lente_atual:mesmo_nivel:${benchmark.name}`,
+      ]),
+    }
+  })
+
+  const sameOrHigher = adjusted.filter((entry) => {
+    const tierReason = entry.reasons.find((reason) => reason.startsWith('lens_tier:'))
+    return commercialTierRank(normalizeCommercialTier(tierReason?.split(':')[1])) >= benchmarkRank
+  })
+  const pool = sameOrHigher.length ? sameOrHigher : adjusted
+  return pool.sort((left, right) => right.score - left.score || left.finalPrice - right.finalPrice)
+}
+
 function isUnsafeTopRecommendation(
   input: RecommendationCaseInput,
   entry: RecommendationOption,
@@ -3185,7 +3279,8 @@ export async function recommendLensConfigurations(params: {
     excludedConfigKeys,
   }).filter((entry) => !isUnsafeTopRecommendation(input, entry))
 
-  return selectDiverseTopEntries(strictRanked, topN)
+  const upgradeAwareRanked = applyCurrentLensUpgradePreference(strictRanked, input, catalog)
+  return selectDiverseTopEntries(upgradeAwareRanked, topN)
 }
 
 function getStorePreferenceSnapshot(option: RecommendationOption): { lab: number; brand: number } {
