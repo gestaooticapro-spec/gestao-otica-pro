@@ -1,9 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
-import { ArrowLeft, Bot, Camera, ImageUp, Loader2, Maximize2, MonitorUp, Play, ScanLine, Square, Wand2, ZoomIn, ZoomOut } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react'
+import { AlertTriangle, ArrowLeft, Bot, Camera, CheckCircle2, ImageUp, Loader2, Maximize2, MonitorUp, Play, ScanLine, Square, Wand2, ZoomIn, ZoomOut } from 'lucide-react'
 import { locateTowerMeasurementPointsWithAiAction } from '@/lib/actions/tower-measurement-ai.actions'
+import { saveTowerMeasurementResult } from '@/lib/actions/tower-measurement.actions'
 
 type Landmark = { x: number; y: number; z?: number }
 type MediaPipeModule = typeof import('@mediapipe/tasks-vision')
@@ -42,6 +43,8 @@ type CapturePayload = {
   landmarks?: Landmark[]
   cameraSettings?: CameraSettings
   capturedAt: string
+  source?: 'camera' | 'upload'
+  cropMode?: 'guide' | 'original'
 }
 type LensShape = {
   left: number
@@ -52,14 +55,59 @@ type LensShape = {
   diagB: Pt
 }
 
+type FrontMeasurements = {
+  dp: number
+  dnpOD: number
+  dnpOE: number
+  altOD: number
+  altOE: number
+  ponte: number
+  horizontal: number
+  vertical: number
+  diagonal: number
+  diamOD: number
+  diamOE: number
+  palpebraOD: number
+  palpebraOE: number
+}
+
+type ProfileMeasurements = {
+  vertexDistance: number
+  pantoscopicAngle: number
+}
+
+type MeasurementAttention = {
+  code: 'low_fitting_height' | 'high_vertex_distance' | 'high_pantoscopic_angle' | 'dnp_difference'
+  title: string
+  message: string
+  clientMessage: string
+}
+
+type MeasurementPresentation = {
+  lensMode: 'multifocal' | 'bifocal'
+  front: { capture: CapturePayload; handles: Handles; measurements: FrontMeasurements }
+  profile: { capture: CapturePayload; handles: SideHandles; axisAngle: number; measurements: ProfileMeasurements }
+  attentions: MeasurementAttention[]
+  presentedAt: string
+}
+
 type TowerMessage =
   | { type: 'command'; command: 'startCamera' | 'stopCamera' | 'captureFront' | 'captureRightProfile' | 'prepareFront' | 'prepareRightProfile' | 'fullscreen' }
   | { type: 'capture'; capture: CapturePayload; stage: MeasurementStage }
   | { type: 'report'; cameraOn: boolean; status: string; cameraSettings?: CameraSettings }
+  | { type: 'measurementResult'; result: MeasurementPresentation }
 
 type ImageCaptureCtor = new (track: MediaStreamTrack) => { takePhoto: () => Promise<Blob> }
 
 const CARD_MM = 85.6
+const CAPTURE_GUIDE_ASPECT = 4 / 5
+const CAPTURE_GUIDE_HEIGHT_RATIO = 0.78
+const MEASUREMENT_ATTENTION_LIMITS = {
+  lowFittingHeightMm: 14,
+  highVertexDistanceMm: 20,
+  highPantoscopicAngleDegrees: 20,
+  dnpDifferenceReviewMm: 5,
+} as const
 const BLANKS = [60, 65, 70, 75, 80, 85]
 const RIGHT_IRIS = 468
 const LEFT_IRIS = 473
@@ -122,18 +170,29 @@ const SIDE_MEASURE_GROUPS: Array<{ label: string; keys: SidePointKey[] }> = [
 interface TowerMeasurementLabProps {
   storeId: number
   clientMode?: boolean
+  towerMode?: boolean
+  backHref?: string
+  sessionId?: string
 }
 
-export default function TowerMeasurementLab({ storeId, clientMode = false }: TowerMeasurementLabProps) {
-  const channelName = `tower-measurement-lab-${storeId}`
+export default function TowerMeasurementLab({
+  storeId,
+  clientMode = false,
+  towerMode = false,
+  backHref,
+  sessionId,
+}: TowerMeasurementLabProps) {
+  const channelName = `tower-measurement-lab-${sessionId ?? storeId}`
   const channelRef = useRef<BroadcastChannel | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const clientScreenRef = useRef<Window | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const stageRef = useRef<HTMLElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const landmarkerRef = useRef<FaceLandmarkerInstance | null>(null)
   const svgRef = useRef<SVGSVGElement | null>(null)
   const draggingRef = useRef<PointKey | null>(null)
+  const operatorPanRef = useRef<{ clientX: number; clientY: number; pan: Pt } | null>(null)
   const sideSvgRef = useRef<SVGSVGElement | null>(null)
   const sideDraggingRef = useRef<SidePointKey | null>(null)
   const axisDraggingRef = useRef(false)
@@ -157,8 +216,15 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
   const [cameraSettings, setCameraSettings] = useState<CameraSettings | undefined>()
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [operatorZoom, setOperatorZoom] = useState(1)
+  const [operatorPan, setOperatorPan] = useState<Pt>({ x: 0, y: 0 })
   const [rightProfileZoom, setRightProfileZoom] = useState(1)
+  const [reviewMode, setReviewMode] = useState(false)
+  const [clientScreenOpen, setClientScreenOpen] = useState(false)
+  const [presentedResult, setPresentedResult] = useState<MeasurementPresentation | null>(null)
+  const [resultPresented, setResultPresented] = useState(false)
+  const [measurementSaveMessage, setMeasurementSaveMessage] = useState<string | null>(null)
   const [isAiPending, startAiTransition] = useTransition()
+  const [isPresentingResult, startPresentationTransition] = useTransition()
 
   useEffect(() => {
     statusRef.current = status
@@ -183,6 +249,12 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
         return
       }
 
+      if (clientMode && message.type === 'measurementResult') {
+        stopCamera('Medidas concluídas')
+        setPresentedResult(message.result)
+        return
+      }
+
       if (!clientMode && message.type === 'capture') {
         void applyCapture(message.capture, detectionPreset, message.stage)
       }
@@ -202,7 +274,10 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelName, clientMode])
 
-  useEffect(() => () => stopCamera('Camera desligada'), [])
+  useEffect(() => () => {
+    stopCamera('Camera desligada')
+    clientScreenRef.current?.close()
+  }, [])
 
   useEffect(() => {
     if (!clientMode) return
@@ -214,13 +289,67 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
     if (!handles) return null
     return calculateMeasurements(handles, referenceMm)
   }, [handles, referenceMm])
-  const operatorViewBox = capture ? buildZoomViewBox(capture.width, capture.height, operatorZoom) : ''
+  const operatorViewBox = capture ? buildZoomViewBox(capture.width, capture.height, operatorZoom, operatorPan) : ''
   const rightProfileViewBox = rightProfileCapture ? buildZoomViewBox(rightProfileCapture.width, rightProfileCapture.height, rightProfileZoom) : ''
   const sideMeasurements = useMemo(() => {
     if (!rightProfileHandles) return null
     return calculateRightProfileMeasurements(rightProfileHandles, referenceMm, rightProfileAxisAngle)
   }, [referenceMm, rightProfileAxisAngle, rightProfileHandles])
   const captureWorkflowComplete = Boolean(capture && rightProfileCapture)
+  const clientCaptureComplete = clientCapturedStages.includes('front') && clientCapturedStages.includes('rightProfile')
+  const measurementAttentions = useMemo(
+    () => measurements && sideMeasurements ? buildMeasurementAttentions(measurements, sideMeasurements, lensType) : [],
+    [lensType, measurements, sideMeasurements],
+  )
+  const operatorBackHref = backHref ?? (towerMode ? `/torre/${storeId}?menu=experiencias${sessionId ? `&session=${sessionId}` : ''}` : `/dashboard/loja/${storeId}`)
+
+  function selectMeasurementStage(stage: MeasurementStage) {
+    setReviewMode(false)
+    setMeasurementStage(stage)
+    sendCommand(stage === 'front' ? 'prepareFront' : 'prepareRightProfile')
+  }
+
+  function presentMeasurementResult() {
+    if (!sessionId || !capture || !handles || !measurements || !rightProfileCapture || !rightProfileHandles || !sideMeasurements) return
+
+    if (resultPresented && presentedResult) {
+      channelRef.current?.postMessage({ type: 'measurementResult', result: presentedResult } satisfies TowerMessage)
+      setMeasurementSaveMessage('Resultado apresentado novamente ao cliente.')
+      return
+    }
+
+    const result: MeasurementPresentation = {
+      lensMode: lensType === 'bifocal' ? 'bifocal' : 'multifocal',
+      front: { capture, handles, measurements },
+      profile: { capture: rightProfileCapture, handles: rightProfileHandles, axisAngle: rightProfileAxisAngle, measurements: sideMeasurements },
+      attentions: measurementAttentions,
+      presentedAt: new Date().toISOString(),
+    }
+
+    setMeasurementSaveMessage(null)
+    startPresentationTransition(() => {
+      void (async () => {
+        const saved = await saveTowerMeasurementResult({
+          storeId,
+          towerSessionId: sessionId,
+          lensMode: result.lensMode,
+          referenceMm,
+          frontMeasurements: result.front.measurements,
+          profileMeasurements: result.profile.measurements,
+          attentionCodes: result.attentions.map((attention) => attention.code),
+          algorithmVersion: 'tower-measurement-v1',
+        })
+        if (!saved.success) {
+          setMeasurementSaveMessage(saved.message)
+          return
+        }
+        setPresentedResult(result)
+        channelRef.current?.postMessage({ type: 'measurementResult', result } satisfies TowerMessage)
+        setResultPresented(true)
+        setMeasurementSaveMessage('Medidas salvas e apresentadas ao cliente.')
+      })()
+    })
+  }
 
   function sendCommand(command: TowerMessage extends infer T ? T extends { type: 'command'; command: infer C } ? C : never : never) {
     channelRef.current?.postMessage({ type: 'command', command } satisfies TowerMessage)
@@ -228,10 +357,35 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
 
   function openClientScreen() {
     if (typeof window === 'undefined') return
+    if (clientScreenRef.current && !clientScreenRef.current.closed) {
+      clientScreenRef.current.focus()
+      setClientScreenOpen(true)
+      return
+    }
     const url = new URL(window.location.href)
     url.searchParams.set('client', '1')
-    window.open(url.toString(), 'tower-measurement-client', 'popup=yes,width=1080,height=1920')
+    const clientWindow = window.open(url.toString(), 'tower-measurement-client', 'popup=yes,width=1080,height=1920')
+    if (!clientWindow) return
+    clientScreenRef.current = clientWindow
+    setClientScreenOpen(true)
     window.setTimeout(() => sendCommand(measurementStage === 'front' ? 'prepareFront' : 'prepareRightProfile'), 500)
+    if (presentedResult) {
+      window.setTimeout(() => channelRef.current?.postMessage({ type: 'measurementResult', result: presentedResult } satisfies TowerMessage), 800)
+    }
+  }
+
+  function closeClientScreen() {
+    clientScreenRef.current?.close()
+    clientScreenRef.current = null
+    setClientScreenOpen(false)
+  }
+
+  function toggleClientScreen() {
+    if (clientScreenRef.current && !clientScreenRef.current.closed) {
+      closeClientScreen()
+      return
+    }
+    openClientScreen()
   }
 
   async function ensureLandmarker() {
@@ -303,14 +457,17 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
     const file = await takeCameraPhoto()
     if (!file) return
 
-    await processPhotoFile(file, 'Processando foto', stage === 'front' ? 'Foto frontal enviada' : 'Perfil direito enviado', stage)
+    await processPhotoFile(file, 'Processando foto', stage === 'front' ? 'Foto frontal recortada e enviada' : 'Perfil direito recortado e enviado', stage, true)
     setClientCapturedStages((current) => (current.includes(stage) ? current : [...current, stage]))
+    if (stage === 'rightProfile') stopCamera('Capturas concluídas')
   }
 
-  async function processPhotoFile(file: File, processingStatus: string, successPrefix: string, stage: MeasurementStage) {
+  async function processPhotoFile(file: File, processingStatus: string, successPrefix: string, stage: MeasurementStage, cropToGuide = false) {
     setStatus(processingStatus)
-    const dataUrl = await readFileAsDataUrl(file)
-    const image = await loadImage(dataUrl)
+    const originalDataUrl = await readFileAsDataUrl(file)
+    const originalImage = await loadImage(originalDataUrl)
+    const dataUrl = cropToGuide ? cropImageToMeasurementGuide(originalImage, stage) : originalDataUrl
+    const image = cropToGuide ? await loadImage(dataUrl) : originalImage
     const landmarks = await detectLandmarks(image)
 
     const payload: CapturePayload = {
@@ -320,6 +477,8 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
       landmarks,
       cameraSettings,
       capturedAt: new Date().toISOString(),
+      source: cropToGuide ? 'camera' : 'upload',
+      cropMode: cropToGuide ? 'guide' : 'original',
     }
     channelRef.current?.postMessage({ type: 'capture', capture: payload, stage } satisfies TowerMessage)
     void applyCapture(payload, detectionPreset, stage)
@@ -428,10 +587,34 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
     updateDetectionPreset(nextPreset)
   }
 
+  async function ensureCameraCaptureIsGuided(nextCapture: CapturePayload, stage: MeasurementStage) {
+    const isLegacyCameraCapture = !nextCapture.source
+    const mustCropOnOperator = !clientMode
+      && (nextCapture.source === 'camera' || isLegacyCameraCapture)
+      && nextCapture.cropMode !== 'guide'
+
+    if (!mustCropOnOperator) return nextCapture
+
+    const sourceImage = await loadImage(nextCapture.dataUrl)
+    const croppedDataUrl = cropImageToMeasurementGuide(sourceImage, stage)
+    const croppedImage = await loadImage(croppedDataUrl)
+    const landmarks = await detectLandmarks(croppedImage)
+
+    return {
+      ...nextCapture,
+      dataUrl: croppedDataUrl,
+      width: croppedImage.naturalWidth,
+      height: croppedImage.naturalHeight,
+      landmarks,
+      cropMode: 'guide' as const,
+    }
+  }
+
   async function applyCapture(nextCapture: CapturePayload, preset = detectionPreset, stage: MeasurementStage = 'front') {
+    const captureForStage = await ensureCameraCaptureIsGuided(nextCapture, stage)
     if (stage === 'rightProfile') {
-      setRightProfileCapture(nextCapture)
-      const initialHandles = createInitialRightProfileHandles(nextCapture)
+      setRightProfileCapture(captureForStage)
+      const initialHandles = createInitialRightProfileHandles(captureForStage)
       setRightProfileHandles(initialHandles)
       setRightProfileAxisAngle(0)
       setMeasurementStage('rightProfile')
@@ -441,9 +624,9 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
           ? 'Perfil direito recebido: pupila sugerida; confirme cornea e plano da lente'
           : 'Perfil direito recebido: ajuste a referencia, cornea e plano da lente',
       )
-      setCameraSettings(nextCapture.cameraSettings)
+      setCameraSettings(captureForStage.cameraSettings)
       try {
-        const image = await loadImage(nextCapture.dataUrl)
+        const image = await loadImage(captureForStage.dataUrl)
         const imageData = createImageData(image)
         if (imageData) setRightProfileHandles(refineRightProfileLensPlane(imageData, initialHandles))
       } catch {
@@ -451,18 +634,19 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
       }
       return
     }
-    setCapture(nextCapture)
+    setCapture(captureForStage)
     snapImageDataRef.current = null
-    const fallbackHandles = createInitialHandles(nextCapture, undefined, preset)
+    const fallbackHandles = createInitialHandles(captureForStage, undefined, preset)
     setHandles(fallbackHandles)
     setOperatorZoom(1)
+    setOperatorPan({ x: 0, y: 0 })
     setStatus('Foto recebida')
-    setCameraSettings(nextCapture.cameraSettings)
+    setCameraSettings(captureForStage.cameraSettings)
 
     try {
-      const image = await loadImage(nextCapture.dataUrl)
+      const image = await loadImage(captureForStage.dataUrl)
       snapImageDataRef.current = createImageData(image)
-      const nextHandles = createInitialHandles(nextCapture, image, preset)
+      const nextHandles = createInitialHandles(captureForStage, image, preset)
       setHandles(nextHandles)
     } catch {
       snapImageDataRef.current = null
@@ -513,6 +697,31 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
     return pointFromClient(event.clientX, event.clientY)
   }
 
+  function startOperatorPan(event: React.PointerEvent<SVGSVGElement>) {
+    if (!capture || operatorZoom <= 1) return
+    operatorPanRef.current = { clientX: event.clientX, clientY: event.clientY, pan: operatorPan }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  function updateOperatorPan(event: React.PointerEvent<SVGSVGElement>) {
+    const start = operatorPanRef.current
+    const svg = svgRef.current
+    if (!start || !svg || !capture) return false
+
+    const bounds = svg.getBoundingClientRect()
+    const viewWidth = capture.width / operatorZoom
+    const viewHeight = capture.height / operatorZoom
+    const maxPanX = (capture.width - viewWidth) / 2
+    const maxPanY = (capture.height - viewHeight) / 2
+    const deltaX = ((event.clientX - start.clientX) / Math.max(bounds.width, 1)) * viewWidth
+    const deltaY = ((event.clientY - start.clientY) / Math.max(bounds.height, 1)) * viewHeight
+    setOperatorPan({
+      x: clamp(start.pan.x - deltaX, -maxPanX, maxPanX),
+      y: clamp(start.pan.y - deltaY, -maxPanY, maxPanY),
+    })
+    return true
+  }
+
   function pointFromClient(clientX: number, clientY: number) {
     const svg = svgRef.current
     const matrix = svg?.getScreenCTM()
@@ -541,10 +750,40 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
     }
   }
 
+  if (clientMode && presentedResult) {
+    return <ClientMeasurementResult result={presentedResult} />
+  }
+
+  if (clientMode && clientCaptureComplete && !cameraOn) {
+    return (
+      <main className="grid h-screen w-screen place-items-center overflow-hidden bg-[radial-gradient(circle_at_50%_20%,rgba(34,211,238,0.16),transparent_38%),#020617] p-8 text-white">
+        <div className="max-w-xl text-center">
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl border border-emerald-300/25 bg-emerald-400/10 text-emerald-200">
+            <CheckCircle2 className="h-10 w-10" />
+          </div>
+          <p className="mt-7 text-xs font-black uppercase tracking-[0.24em] text-cyan-200">Capturas concluídas</p>
+          <h1 className="mt-3 text-4xl font-black tracking-tight">Você já pode relaxar.</h1>
+          <p className="mx-auto mt-4 max-w-lg text-lg leading-8 text-slate-300">O funcionário está conferindo as medidas. Quando estiver tudo pronto, o resultado aparecerá nesta tela.</p>
+        </div>
+      </main>
+    )
+  }
+
   if (clientMode) {
     return (
       <main ref={stageRef} className="relative h-screen w-screen overflow-hidden bg-black text-white">
-        <video ref={videoRef} className="h-full w-full object-contain" playsInline muted />
+        <video ref={videoRef} className="h-full w-full -scale-x-100 object-contain" playsInline muted />
+        {cameraOn && (
+          <div className="pointer-events-none absolute inset-0">
+            <div className="absolute left-1/2 top-[47%] w-[min(36vw,64vh)] min-w-[220px] -translate-x-1/2 -translate-y-1/2 aspect-[4/5] rounded-[32px] border-4 border-cyan-200/90 bg-cyan-300/[0.03] shadow-[0_0_0_9999px_rgba(2,6,23,0.48),inset_0_0_40px_rgba(34,211,238,0.12)]">
+              <div className="absolute left-1/2 top-4 bottom-4 w-px -translate-x-1/2 bg-cyan-100/65 shadow-[0_0_8px_rgba(165,243,252,0.45)]" />
+              <div className="absolute left-4 right-4 top-1/2 h-px -translate-y-1/2 bg-cyan-100/65 shadow-[0_0_8px_rgba(165,243,252,0.45)]" />
+              <div className="absolute left-1/2 top-4 -translate-x-1/2 whitespace-nowrap rounded-full border border-cyan-100/30 bg-slate-950/75 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100 backdrop-blur">
+                Encaixe rosto e óculos aqui
+              </div>
+            </div>
+          </div>
+        )}
         {!cameraOn && (
           <div className="absolute inset-0 grid place-items-center bg-neutral-950">
             <div className="text-center">
@@ -565,7 +804,7 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
           <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-200">Captura de medidas</div>
           <div className="mt-2 text-lg font-black">{measurementStage === 'front' ? '1. Olhe de frente para a camera' : '2. Mostre o perfil direito'}</div>
           <div className="mt-1 text-sm text-white/75">
-            {measurementStage === 'front' ? 'Mantenha o rosto reto e os oculos na posicao natural.' : 'Vire o nariz para a direita e mantenha a postura natural.'}
+            {measurementStage === 'front' ? 'Mantenha o rosto reto e os oculos na posicao natural.' : 'Vire o nariz para a sua esquerda e mostre o lado direito do rosto.'}
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-bold uppercase tracking-wide">
             <div className={`rounded-md px-3 py-2 ${measurementStage === 'front' ? 'bg-cyan-400 text-slate-950' : 'bg-white/10 text-white/65'}`}>
@@ -589,16 +828,28 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_20%_0%,rgba(34,211,238,0.14),transparent_28%),linear-gradient(135deg,#020617_0%,#0f172a_48%,#111827_100%)] text-slate-100">
-      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-5 py-5">
+    <main className={`${towerMode ? 'min-h-[100dvh] md:h-[100dvh] md:overflow-hidden' : 'min-h-screen'} bg-[radial-gradient(circle_at_20%_0%,rgba(34,211,238,0.14),transparent_28%),linear-gradient(135deg,#020617_0%,#0f172a_48%,#111827_100%)] text-slate-100`}>
+      <div className={`mx-auto flex w-full max-w-7xl flex-col px-5 py-5 ${towerMode ? 'min-h-[100dvh] md:h-full md:min-h-0' : 'min-h-screen'}`}>
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
-          <Link
-            href={`/dashboard/loja/${storeId}`}
-            className="inline-flex items-center gap-2 text-sm font-bold text-slate-400 transition-colors hover:text-white"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Voltar
-          </Link>
+          <div className="flex min-w-0 items-center gap-3">
+            <Link
+              href={operatorBackHref}
+              className={towerMode
+                ? 'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition-colors hover:bg-white/10 hover:text-white'
+                : 'inline-flex items-center gap-2 text-sm font-bold text-slate-400 transition-colors hover:text-white'}
+              title="Voltar"
+              aria-label="Voltar"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              {!towerMode && 'Voltar'}
+            </Link>
+            {towerMode && (
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-300">Torre de experiência</p>
+                <h1 className="truncate text-xl font-black tracking-tight text-white">Medidas</h1>
+              </div>
+            )}
+          </div>
           <div className="flex flex-wrap gap-2">
             <input
               ref={fileInputRef}
@@ -611,43 +862,40 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
                 event.currentTarget.value = ''
               }}
             />
-            <button type="button" onClick={openClientScreen} className={buttonClass('light')}>
+            <button type="button" onClick={toggleClientScreen} className={towerMode ? 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-cyan-300/25 bg-cyan-400/10 px-4 text-sm font-black text-cyan-100 transition hover:bg-cyan-400/20' : buttonClass('light')}>
               <MonitorUp className="h-4 w-4" />
-              Tela cliente
+              {clientScreenOpen ? 'Fechar tela cliente' : towerMode ? 'Abrir tela cliente' : 'Tela cliente'}
             </button>
-            <button type="button" onClick={() => fileInputRef.current?.click()} className={buttonClass('light')}>
+            {!towerMode && <button type="button" onClick={() => fileInputRef.current?.click()} className={buttonClass('light')}>
               <ImageUp className="h-4 w-4" />
               Carregar foto
-            </button>
-            <button type="button" onClick={() => sendCommand('startCamera')} className={buttonClass('dark')}>
+            </button>}
+            {!towerMode && <button type="button" onClick={() => sendCommand('startCamera')} className={buttonClass('dark')}>
               <Play className="h-4 w-4" />
               Camera
-            </button>
-            <button type="button" onClick={() => sendCommand(measurementStage === 'front' ? 'captureFront' : 'captureRightProfile')} className={buttonClass('dark')}>
+            </button>}
+            {!towerMode && <button type="button" onClick={() => sendCommand(measurementStage === 'front' ? 'captureFront' : 'captureRightProfile')} className={buttonClass('dark')}>
               <ScanLine className="h-4 w-4" />
               Capturar {measurementStage === 'front' ? 'frontal' : 'perfil'}
-            </button>
-            <button type="button" onClick={() => sendCommand('stopCamera')} className={buttonClass('light')}>
+            </button>}
+            {!towerMode && <button type="button" onClick={() => sendCommand('stopCamera')} className={buttonClass('light')}>
               <Square className="h-4 w-4" />
               Parar
-            </button>
+            </button>}
           </div>
         </header>
 
-        <div className="mt-5 grid gap-2 rounded-xl border border-white/10 bg-black/20 p-2 sm:grid-cols-2">
+        <div className={`mt-5 grid gap-2 rounded-2xl border border-white/10 bg-black/20 p-2 ${towerMode ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
           {([
             { stage: 'front' as const, title: '1. Medidas frontais', detail: capture ? 'Foto pronta para validar' : 'Capture ou carregue a foto de frente', complete: Boolean(capture) },
-            { stage: 'rightProfile' as const, title: '2. Perfil direito', detail: rightProfileCapture ? 'Foto pronta para calibrar' : 'Nariz do cliente voltado para a direita', complete: Boolean(rightProfileCapture) },
+            { stage: 'rightProfile' as const, title: '2. Perfil direito', detail: rightProfileCapture ? 'Foto pronta para calibrar' : 'Lado direito voltado para a câmera', complete: Boolean(rightProfileCapture) },
           ]).map(({ stage, title, detail, complete }) => (
             <button
               key={stage}
               type="button"
-              onClick={() => {
-                setMeasurementStage(stage)
-                sendCommand(stage === 'front' ? 'prepareFront' : 'prepareRightProfile')
-              }}
+              onClick={() => selectMeasurementStage(stage)}
               className={`rounded-lg border px-4 py-3 text-left transition-colors ${
-                measurementStage === stage ? 'border-cyan-300/50 bg-cyan-400/15 text-cyan-50' : 'border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/10'
+                !reviewMode && measurementStage === stage ? 'border-cyan-300/50 bg-cyan-400/15 text-cyan-50' : 'border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/10'
               }`}
             >
               <div className="text-sm font-black uppercase tracking-wide">{title}</div>
@@ -657,10 +905,32 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
               </div>
             </button>
           ))}
+          {towerMode && (
+            <button
+              type="button"
+              onClick={() => captureWorkflowComplete && setReviewMode(true)}
+              disabled={!captureWorkflowComplete}
+              className={`rounded-xl border px-4 py-3 text-left transition-colors ${
+                reviewMode
+                  ? 'border-emerald-300/50 bg-emerald-400/15 text-emerald-50'
+                  : captureWorkflowComplete
+                    ? 'border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/10'
+                    : 'cursor-not-allowed border-white/5 bg-white/[0.02] text-slate-600'
+              }`}
+            >
+              <div className="text-sm font-black uppercase tracking-wide">3. Revisão</div>
+              <div className="mt-1 flex items-center justify-between gap-3 text-xs font-semibold">
+                <span>{captureWorkflowComplete ? 'Confira os resultados' : 'Aguarda as duas fotos'}</span>
+                <span className={captureWorkflowComplete ? 'font-black uppercase text-emerald-300' : 'font-black uppercase text-slate-600'}>
+                  {captureWorkflowComplete ? 'Disponível' : 'Pendente'}
+                </span>
+              </div>
+            </button>
+          )}
         </div>
 
-        <section className="grid flex-1 gap-5 py-5 xl:grid-cols-[1fr_380px]">
-          <div className="relative min-h-[560px] overflow-hidden rounded-lg border border-white/10 bg-black/35 shadow-2xl shadow-black/25 backdrop-blur">
+        <section className={`grid min-h-0 flex-1 gap-5 py-5 ${towerMode ? 'md:grid-cols-[minmax(0,1fr)_300px]' : 'xl:grid-cols-[1fr_380px]'}`}>
+          <div className={`relative overflow-hidden rounded-2xl border border-white/10 bg-black/35 shadow-2xl shadow-black/25 backdrop-blur ${towerMode ? 'min-h-[360px]' : 'min-h-[560px]'}`}>
             {measurementStage === 'front' && capture && handles ? (
               <>
                 <div className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-white/10 bg-slate-950/85 p-2 shadow-lg backdrop-blur">
@@ -685,18 +955,32 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
                   </button>
                   <button
                     type="button"
-                    onClick={() => setOperatorZoom(1)}
+                    onClick={() => {
+                      setOperatorZoom(1)
+                      setOperatorPan({ x: 0, y: 0 })
+                    }}
                     className="rounded-md bg-white/10 px-3 py-2 text-xs font-black text-white hover:bg-white/15"
                   >
                     100%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cycleDetectionPreset}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-cyan-400/15 px-3 py-2 text-xs font-black text-cyan-100 transition hover:bg-cyan-400/25"
+                    title="Alternar posicionamento dos pinos"
+                  >
+                    <Wand2 className="h-3.5 w-3.5" />
+                    Pinos
                   </button>
                 </div>
                 <svg
                   ref={svgRef}
                   viewBox={operatorViewBox}
                   preserveAspectRatio="xMidYMid meet"
-                  className="absolute inset-0 h-full w-full touch-none"
+                  className={`absolute inset-0 h-full w-full touch-none ${operatorZoom > 1 ? 'cursor-grab' : ''}`}
+                  onPointerDown={startOperatorPan}
                   onPointerMove={(event) => {
+                    if (updateOperatorPan(event)) return
                     const key = draggingRef.current
                     if (!key) return
                     const point = pointFromPointer(event)
@@ -704,9 +988,11 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
                   }}
                   onPointerUp={() => {
                     draggingRef.current = null
+                    operatorPanRef.current = null
                   }}
                   onPointerLeave={() => {
                     draggingRef.current = null
+                    operatorPanRef.current = null
                   }}
                 >
                   <image href={capture.dataUrl} x={0} y={0} width={capture.width} height={capture.height} preserveAspectRatio="none" />
@@ -720,6 +1006,7 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
                         key={key}
                         transform={`translate(${point.x} ${point.y})`}
                         onPointerDown={(event) => {
+                          event.stopPropagation()
                           draggingRef.current = key
                           event.currentTarget.setPointerCapture(event.pointerId)
                         }}
@@ -826,7 +1113,7 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
                 </svg>
               </>
             ) : (
-              <div className="grid h-full min-h-[560px] place-items-center text-center text-white/65">
+              <div className={`grid h-full place-items-center text-center text-white/65 ${towerMode ? 'min-h-[360px]' : 'min-h-[560px]'}`}>
                 <div>
                   <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-lg border border-cyan-400/30 bg-cyan-400/10">
                     <Camera className="h-8 w-8 text-cyan-100" />
@@ -837,6 +1124,143 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
             )}
           </div>
 
+          {towerMode ? (
+            <aside className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1">
+              <div className="rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.14),_transparent_48%),rgba(15,23,42,0.86)] p-5 shadow-xl shadow-black/20">
+                <div className="flex items-center gap-2">
+                  <span className={`h-2.5 w-2.5 rounded-full ${reviewMode ? 'bg-emerald-300' : cameraOn ? 'bg-emerald-300' : 'bg-slate-500'}`} />
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">
+                    {reviewMode ? 'Revisão das medidas' : measurementStage === 'front' ? 'Etapa 1 de 2' : 'Etapa 2 de 2'}
+                  </p>
+                </div>
+
+                {reviewMode ? (
+                  <>
+                    <h2 className="mt-4 text-2xl font-black leading-tight text-white">As duas capturas estão prontas.</h2>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">Confira os valores e volte a uma foto se precisar ajustar algum ponto.</p>
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <button type="button" onClick={() => selectMeasurementStage('front')} className="rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-left text-xs font-black text-slate-200 transition hover:bg-white/10">
+                        Foto frontal
+                        <span className="mt-1 block text-emerald-300">Revisar pontos</span>
+                      </button>
+                      <button type="button" onClick={() => selectMeasurementStage('rightProfile')} className="rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-left text-xs font-black text-slate-200 transition hover:bg-white/10">
+                        Perfil direito
+                        <span className="mt-1 block text-emerald-300">Revisar pontos</span>
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <h2 className="mt-4 text-2xl font-black leading-tight text-white">
+                      {measurementStage === 'front' ? 'Posicione o cliente de frente.' : 'Agora capture o perfil direito.'}
+                    </h2>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">
+                      {measurementStage === 'front'
+                        ? 'Rosto reto, postura natural e óculos na posição habitual de uso.'
+                        : 'Peça para o cliente virar o nariz para a sua esquerda e mostrar o lado direito do rosto.'}
+                    </p>
+                    <div className="mt-4">
+                      <button
+                        type="button"
+                        onClick={() => cameraOn
+                          ? sendCommand(measurementStage === 'front' ? 'captureFront' : 'captureRightProfile')
+                          : sendCommand('startCamera')}
+                        className={`inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-black transition ${
+                          cameraOn
+                            ? 'bg-cyan-400 text-slate-950 hover:bg-cyan-300'
+                            : 'border border-white/10 bg-slate-900 text-slate-100 hover:bg-slate-800'
+                        }`}
+                      >
+                        {cameraOn ? <ScanLine className="h-4 w-4" /> : <Camera className="h-4 w-4" />}
+                        {cameraOn
+                          ? `Capturar ${measurementStage === 'front' ? 'foto frontal' : 'perfil direito'}`
+                          : 'Ativar Camera'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {measurementStage === 'front' && (
+                <div className="rounded-2xl border border-white/10 bg-slate-900/65 p-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">Tipo de lente</p>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setLensType('surfacada')} className={`rounded-lg px-3 py-2 text-xs font-black transition ${lensType !== 'bifocal' ? 'bg-cyan-400 text-slate-950' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}>
+                      Multifocal
+                    </button>
+                    <button type="button" onClick={() => setLensType('bifocal')} className={`rounded-lg px-3 py-2 text-xs font-black transition ${lensType === 'bifocal' ? 'bg-cyan-400 text-slate-950' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}>
+                      Bifocal
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <Panel title="Medidas desta etapa">
+                {measurementStage === 'rightProfile' ? (
+                  sideMeasurements ? (
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                      <Metric label="Dist. vértice" value={sideMeasurements.vertexDistance} />
+                      <Metric label="Pantoscópico" value={sideMeasurements.pantoscopicAngle} suffix=" graus" />
+                      <Metric label="Eixo 0" value={rightProfileAxisAngle} suffix=" graus" />
+                    </div>
+                  ) : <div className="text-sm font-semibold text-slate-500">Capture o perfil direito para calcular.</div>
+                ) : measurements ? (
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    <Metric label="DP" value={measurements.dp} />
+                    <Metric label="DNP OD" value={measurements.dnpOD} />
+                    <Metric label="DNP OE" value={measurements.dnpOE} />
+                    <Metric label="Alt. OD" value={measurements.altOD} />
+                    <Metric label="Alt. OE" value={measurements.altOE} />
+                    <Metric label="A × B" value={measurements.horizontal} suffix={` × ${measurements.vertical.toFixed(1)} mm`} />
+                    {lensType === 'bifocal' && (
+                      <>
+                        <Metric label="Pálp. OD" value={measurements.palpebraOD} />
+                        <Metric label="Pálp. OE" value={measurements.palpebraOE} />
+                      </>
+                    )}
+                  </div>
+                ) : <div className="text-sm font-semibold text-slate-500">Capture a foto frontal para calcular.</div>}
+              </Panel>
+
+              {!reviewMode && (measurementStage === 'front' ? capture : rightProfileCapture) && (
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-slate-900/65 px-4 py-3">
+                  <label htmlFor="tower-reference-mm" className="text-xs font-black uppercase tracking-[0.13em] text-slate-300">Referência em mm</label>
+                  <input id="tower-reference-mm" value={referenceMm} type="number" step="0.1" onChange={(event) => setReferenceMm(Number(event.target.value) || CARD_MM)} className="h-10 w-24 rounded-lg border border-white/10 bg-black/25 px-3 text-right text-sm font-bold text-slate-100 outline-none focus:border-cyan-400/60" />
+                </div>
+              )}
+
+              {reviewMode && (
+                <div className="grid gap-3">
+                  <div className={`rounded-2xl border p-4 ${measurementAttentions.length ? 'border-amber-300/25 bg-amber-400/10' : 'border-emerald-300/20 bg-emerald-400/10'}`}>
+                    <p className={`text-xs font-black uppercase tracking-[0.14em] ${measurementAttentions.length ? 'text-amber-200' : 'text-emerald-200'}`}>
+                      {measurementAttentions.length ? 'Pontos de atenção' : 'Medidas conferidas'}
+                    </p>
+                    {measurementAttentions.length ? (
+                      <div className="mt-3 grid gap-3">
+                        {measurementAttentions.map((attention) => (
+                          <div key={attention.code}>
+                            <p className="text-sm font-black text-amber-50">{attention.title}</p>
+                            <p className="mt-1 text-xs leading-5 text-amber-50/75">{attention.message}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : <p className="mt-2 text-xs leading-5 text-emerald-50/75">Nenhum ponto de atenção foi identificado nas faixas configuradas.</p>}
+                  </div>
+
+                  <button type="button" onClick={presentMeasurementResult} disabled={isPresentingResult} className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-cyan-400 px-4 text-sm font-black text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60">
+                    {isPresentingResult ? <Loader2 className="h-4 w-4 animate-spin" /> : <MonitorUp className="h-4 w-4" />}
+                    {resultPresented ? 'Apresentar novamente' : 'Salvar e apresentar resultado'}
+                  </button>
+                  {measurementSaveMessage && <p className={`text-center text-xs font-semibold ${resultPresented ? 'text-emerald-300' : 'text-amber-300'}`}>{measurementSaveMessage}</p>}
+                  {resultPresented && (
+                    <Link href={operatorBackHref} className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-white/10 bg-slate-900 px-4 text-sm font-black text-slate-100 transition hover:bg-slate-800">
+                      Continuar atendimento
+                    </Link>
+                  )}
+                </div>
+              )}
+            </aside>
+          ) : (
           <aside className="flex flex-col gap-4">
             <Panel title="Sessao de captura">
               <div className="space-y-2 text-sm font-semibold">
@@ -999,10 +1423,154 @@ export default function TowerMeasurementLab({ storeId, clientMode = false }: Tow
               )}
             </Panel>
           </aside>
+          )}
         </section>
       </div>
     </main>
   )
+}
+
+function ClientMeasurementResult({ result }: { result: MeasurementPresentation }) {
+  return (
+    <main className="flex h-screen w-screen flex-col overflow-hidden bg-slate-950 p-5 text-white sm:p-7">
+      <header className="flex shrink-0 items-end justify-between gap-5 border-b border-white/10 pb-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-300">Torre de experiência</p>
+          <h1 className="mt-1 text-3xl font-black tracking-tight">Resultado das medidas</h1>
+        </div>
+        <p className="max-w-md text-right text-sm leading-6 text-slate-400">Condição atual da armação no rosto. Valores em milímetros.</p>
+      </header>
+
+      <div className="grid min-h-0 flex-1 grid-rows-2 gap-4 pt-4">
+        <section className="grid min-h-0 grid-cols-[minmax(0,1.35fr)_minmax(260px,.65fr)] gap-4 overflow-hidden rounded-3xl border border-white/10 bg-slate-900/70 p-4">
+          <ResultPhoto title="Vista frontal">
+            <svg viewBox={`0 0 ${result.front.capture.width} ${result.front.capture.height}`} preserveAspectRatio="xMidYMid meet" className="h-full w-full">
+              <image href={result.front.capture.dataUrl} x={0} y={0} width={result.front.capture.width} height={result.front.capture.height} preserveAspectRatio="none" />
+              <MeasurementLines handles={result.front.handles} lensType={result.lensMode === 'bifocal' ? 'bifocal' : 'surfacada'} />
+              {(Object.keys(result.front.handles) as PointKey[]).map((key) => {
+                if (result.lensMode !== 'bifocal' && (key === 'palpebraR' || key === 'palpebraL')) return null
+                const point = result.front.handles[key]
+                const style = POINT_STYLE[key]
+                return <circle key={key} cx={point.x} cy={point.y} r={10} fill="rgba(2,6,23,.82)" stroke={style.color} strokeWidth={3} />
+              })}
+            </svg>
+          </ResultPhoto>
+          <div className="min-h-0 overflow-y-auto rounded-2xl border border-white/10 bg-slate-950/55 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.17em] text-cyan-200">Medidas frontais</p>
+            <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-3">
+              <ResultMetric label="DP" value={result.front.measurements.dp} />
+              <ResultMetric label="DNP OD" value={result.front.measurements.dnpOD} />
+              <ResultMetric label="DNP OE" value={result.front.measurements.dnpOE} />
+              <ResultMetric label="Altura OD" value={result.front.measurements.altOD} />
+              <ResultMetric label="Altura OE" value={result.front.measurements.altOE} />
+              <ResultMetric label="A × B" value={result.front.measurements.horizontal} suffix={` × ${result.front.measurements.vertical.toFixed(1)}`} />
+              {result.lensMode === 'bifocal' && (
+                <>
+                  <ResultMetric label="Pálpebra OD" value={result.front.measurements.palpebraOD} />
+                  <ResultMetric label="Pálpebra OE" value={result.front.measurements.palpebraOE} />
+                </>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="grid min-h-0 grid-cols-[minmax(0,1.35fr)_minmax(260px,.65fr)] gap-4 overflow-hidden rounded-3xl border border-white/10 bg-slate-900/70 p-4">
+          <ResultPhoto title="Perfil direito">
+            <svg viewBox={`0 0 ${result.profile.capture.width} ${result.profile.capture.height}`} preserveAspectRatio="xMidYMid meet" className="h-full w-full">
+              <image href={result.profile.capture.dataUrl} x={0} y={0} width={result.profile.capture.width} height={result.profile.capture.height} preserveAspectRatio="none" />
+              <RightProfileLines handles={result.profile.handles} height={result.profile.capture.height} width={result.profile.capture.width} axisAngle={result.profile.axisAngle} onAxisPointerDown={() => undefined} />
+              {(Object.keys(result.profile.handles) as SidePointKey[]).map((key) => {
+                const point = result.profile.handles[key]
+                const style = SIDE_POINT_STYLE[key]
+                return <circle key={key} cx={point.x} cy={point.y} r={10} fill="rgba(2,6,23,.82)" stroke={style.color} strokeWidth={3} />
+              })}
+            </svg>
+          </ResultPhoto>
+          <div className="flex min-h-0 flex-col overflow-y-auto rounded-2xl border border-white/10 bg-slate-950/55 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.17em] text-cyan-200">Posição de uso</p>
+            <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-3">
+              <ResultMetric label="Dist. vértice" value={result.profile.measurements.vertexDistance} />
+              <ResultMetric label="Pantoscópico" value={result.profile.measurements.pantoscopicAngle} suffix="°" />
+            </div>
+            <div className={`mt-5 rounded-2xl border p-4 ${result.attentions.length ? 'border-amber-300/25 bg-amber-400/10' : 'border-emerald-300/20 bg-emerald-400/10'}`}>
+              <div className="flex items-center gap-2">
+                {result.attentions.length ? <AlertTriangle className="h-5 w-5 text-amber-200" /> : <CheckCircle2 className="h-5 w-5 text-emerald-200" />}
+                <p className={`text-sm font-black ${result.attentions.length ? 'text-amber-100' : 'text-emerald-100'}`}>{result.attentions.length ? 'Pontos para considerar' : 'Medidas conferidas'}</p>
+              </div>
+              {result.attentions.length ? (
+                <div className="mt-3 grid gap-3">
+                  {result.attentions.map((attention) => (
+                    <div key={attention.code}>
+                      <p className="text-sm font-black text-amber-50">{attention.title}</p>
+                      <p className="mt-1 text-xs leading-5 text-amber-50/75">{attention.clientMessage}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="mt-2 text-xs leading-5 text-emerald-50/75">A armação está em uma condição de montagem sem pontos de atenção nas faixas configuradas.</p>}
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  )
+}
+
+function ResultPhoto({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="relative min-h-0 overflow-hidden rounded-2xl border border-white/10 bg-black">
+      <div className="absolute left-3 top-3 z-10 rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-white backdrop-blur">{title}</div>
+      {children}
+    </div>
+  )
+}
+
+function ResultMetric({ label, value, suffix = '' }: { label: string; value: number; suffix?: string }) {
+  return (
+    <div className="border-b border-white/10 pb-2">
+      <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-1 font-mono text-lg font-black text-white">{value.toFixed(1)}{suffix}</p>
+    </div>
+  )
+}
+
+function buildMeasurementAttentions(front: FrontMeasurements, profile: ProfileMeasurements, lensType: LensType): MeasurementAttention[] {
+  const attentions: MeasurementAttention[] = []
+  const dnpDifference = Math.abs(front.dnpOD - front.dnpOE)
+  const minimumFittingHeight = Math.min(front.altOD, front.altOE)
+
+  if (lensType !== 'bifocal' && minimumFittingHeight < MEASUREMENT_ATTENTION_LIMITS.lowFittingHeightMm) {
+    attentions.push({
+      code: 'low_fitting_height',
+      title: 'Altura de montagem baixa',
+      message: 'A altura útil está baixa. Leve esta condição em consideração ao escolher o desenho e o corredor da lente.',
+      clientMessage: 'A altura de montagem é baixa. Leve esta medida em consideração ao escolher a lente.',
+    })
+  }
+  if (profile.vertexDistance > MEASUREMENT_ATTENTION_LIMITS.highVertexDistanceMm) {
+    attentions.push({
+      code: 'high_vertex_distance',
+      title: 'Distância de vértice elevada',
+      message: 'A lente está mais afastada dos olhos. Considere ajustar a armação e levar essa posição em conta na escolha da lente.',
+      clientMessage: 'A armação deixa a lente mais afastada dos olhos. Um ajuste pode favorecer o conforto de uso.',
+    })
+  }
+  if (profile.pantoscopicAngle > MEASUREMENT_ATTENTION_LIMITS.highPantoscopicAngleDegrees) {
+    attentions.push({
+      code: 'high_pantoscopic_angle',
+      title: 'Inclinação pantoscópica acentuada',
+      message: 'A inclinação atual merece atenção no ajuste da armação e na escolha posterior da lente.',
+      clientMessage: 'A inclinação da armação está acentuada. Vale considerar um ajuste antes da montagem.',
+    })
+  }
+  if (dnpDifference > MEASUREMENT_ATTENTION_LIMITS.dnpDifferenceReviewMm) {
+    attentions.push({
+      code: 'dnp_difference',
+      title: 'Conferência de centralização recomendada',
+      message: 'A diferença entre as DNPs ficou acima da faixa de conferência. Revise os pinos e, se necessário, refaça a foto frontal antes de apresentar.',
+      clientMessage: 'Uma medida de centralização merece conferência antes de finalizar a montagem.',
+    })
+  }
+  return attentions
 }
 
 function MeasurementLines({ handles, lensType }: { handles: Handles; lensType: LensType }) {
@@ -2215,12 +2783,12 @@ function buttonClass(tone: 'dark' | 'light') {
   }`
 }
 
-function buildZoomViewBox(width: number, height: number, zoom: number) {
+function buildZoomViewBox(width: number, height: number, zoom: number, pan: Pt = { x: 0, y: 0 }) {
   const safeZoom = clamp(zoom, 1, 4)
   const viewWidth = width / safeZoom
   const viewHeight = height / safeZoom
-  const x = (width - viewWidth) / 2
-  const y = (height - viewHeight) / 2
+  const x = clamp((width - viewWidth) / 2 + pan.x, 0, width - viewWidth)
+  const y = clamp((height - viewHeight) / 2 + pan.y, 0, height - viewHeight)
   return `${x} ${y} ${viewWidth} ${viewHeight}`
 }
 
@@ -2240,6 +2808,25 @@ function loadImage(src: string) {
     image.onerror = reject
     image.src = src
   })
+}
+
+function cropImageToMeasurementGuide(image: HTMLImageElement, stage: MeasurementStage) {
+  const sourceWidth = image.naturalWidth
+  const sourceHeight = image.naturalHeight
+  const maxGuideHeight = Math.min(sourceHeight * CAPTURE_GUIDE_HEIGHT_RATIO, sourceWidth / CAPTURE_GUIDE_ASPECT)
+  const cropHeight = Math.max(1, Math.round(maxGuideHeight))
+  const cropWidth = Math.max(1, Math.round(cropHeight * CAPTURE_GUIDE_ASPECT))
+  const centerY = stage === 'front' ? sourceHeight * 0.47 : sourceHeight * 0.5
+  const sourceX = clamp(Math.round((sourceWidth - cropWidth) / 2), 0, Math.max(sourceWidth - cropWidth, 0))
+  const sourceY = clamp(Math.round(centerY - cropHeight / 2), 0, Math.max(sourceHeight - cropHeight, 0))
+
+  const canvas = document.createElement('canvas')
+  canvas.width = cropWidth
+  canvas.height = cropHeight
+  const context = canvas.getContext('2d')
+  if (!context) return image.src
+  context.drawImage(image, sourceX, sourceY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight)
+  return canvas.toDataURL('image/jpeg', 0.96)
 }
 
 function nextBlank(value: number) {

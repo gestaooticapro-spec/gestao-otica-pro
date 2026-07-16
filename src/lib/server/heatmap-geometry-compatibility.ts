@@ -93,26 +93,26 @@ export function evaluateHeatmapGeometryCompatibility(
     near: pins.near.map(remap),
   }
   const zones = ['distance', 'intermediate', 'near'] as const
+  const isCoveredByUsefulField = (sample: PersistedHeatmapSample) =>
+    zones.some((zone) => isInsidePolygon({ x: sample.x, y: sample.y }, polygons[zone]))
   const coverageByZone = Object.fromEntries(zones.map((zone) => {
     const zoneSamples = samples.filter((sample) => targetZone(sample.targetY) === zone)
-    const covered = zoneSamples.filter((sample) => isInsidePolygon({ x: sample.x, y: sample.y }, polygons[zone])).length
+    const covered = zoneSamples.filter(isCoveredByUsefulField).length
     return [zone, zoneSamples.length ? covered / zoneSamples.length : 0]
   })) as Record<(typeof zones)[number], number>
-  const coverage =
-    coverageByZone.distance * 0.45 +
-    coverageByZone.intermediate * 0.3 +
-    coverageByZone.near * 0.25
+  const coveredSamples = samples.filter(isCoveredByUsefulField).length
+  const coverage = samples.length ? coveredSamples / samples.length : 0
 
-  if (coverage >= 0.96 && zones.every((zone) => coverageByZone[zone] >= 0.9)) {
+  if (coverage >= 0.96) {
     return { status: 'compativel_com_sobra', scoreAdjustment: 2, coverage, ...withZones(coverageByZone), message: 'O campo da lente acolhe o mapa com margem confortável.' }
   }
-  if (coverage >= 0.82 && zones.every((zone) => coverageByZone[zone] >= 0.68)) {
+  if (coverage >= 0.82) {
     return { status: 'ideal', scoreAdjustment: 8, coverage, ...withZones(coverageByZone), message: 'A geometria acompanha bem o padrão visual medido.' }
   }
   if (coverage >= 0.6) {
-    return { status: 'compativel_com_adaptacao', scoreAdjustment: -10, coverage, ...withZones(coverageByZone), message: 'A lente pode funcionar, com orientação de adaptação nas zonas menos cobertas.' }
+    return { status: 'compativel_com_adaptacao', scoreAdjustment: -10, coverage, ...withZones(coverageByZone), message: 'Parte do mapa se aproxima dos limites do campo útil desta geometria.' }
   }
-  return { status: 'nao_indicada', scoreAdjustment: -30, coverage, ...withZones(coverageByZone), message: 'A geometria não acolhe parte relevante do mapa; não é a melhor escolha para este padrão.' }
+  return { status: 'nao_indicada', scoreAdjustment: -30, coverage, ...withZones(coverageByZone), message: 'O campo útil da geometria é menor que uma parte relevante do mapa visual medido.' }
 }
 
 function withZones(coverage: Record<'distance' | 'intermediate' | 'near', number>) {

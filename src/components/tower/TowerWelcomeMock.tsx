@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { getActiveTowerSessions, getOrCreateTowerSession, type TowerSession } from '@/lib/actions/tower-session.actions'
 import {
@@ -31,7 +31,6 @@ interface TowerWelcomeMockProps {
   storeId: number
   initialExperienceMenu?: boolean
   initialInformationMenu?: boolean
-  initialSessionId?: string
 }
 
 const deviceStatus = [
@@ -62,7 +61,7 @@ const experiences = [
     key: 'measurements' as const,
     title: 'Medidas',
     description: 'Capture medidas técnicas para a armação escolhida.',
-    note: 'Em preparação para o fluxo com a Torre.',
+    note: 'Captura frontal e perfil direito em fluxo guiado.',
     icon: Ruler,
     color: 'text-amber-300',
     background: 'from-amber-400/20 to-orange-500/5',
@@ -135,7 +134,7 @@ const informationItems = [
   },
 ]
 
-export default function TowerWelcomeMock({ storeId, initialExperienceMenu = false, initialInformationMenu = false, initialSessionId }: TowerWelcomeMockProps) {
+export default function TowerWelcomeMock({ storeId, initialExperienceMenu = false, initialInformationMenu = false }: TowerWelcomeMockProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [selectedAction, setSelectedAction] = useState<MockAction>(initialExperienceMenu ? 'new' : null)
@@ -145,13 +144,6 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
   const [activeSessions, setActiveSessions] = useState<TowerSession[] | null>(null)
   const [resumeMessage, setResumeMessage] = useState<string | null>(null)
   const choosingExperience = selectedAction === 'new'
-
-  useEffect(() => {
-    setSelectedAction(initialExperienceMenu ? 'new' : null)
-    setSelectedExperience(null)
-    setSelectedInformation(null)
-    setShowingInformation(initialInformationMenu)
-  }, [initialExperienceMenu, initialInformationMenu])
 
   function startExperience(experience: Exclude<ExperienceKey, null>) {
     if (experience === 'information') {
@@ -164,11 +156,15 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
       ? `/torre/${storeId}/visagismo`
       : experience === 'field'
           ? `/torre/${storeId}/campo-visual`
+        : experience === 'measurements'
+          ? `/torre/${storeId}/medidas`
         : null
     const sessionExperience = experience === 'style'
       ? 'visagismo'
         : experience === 'field'
           ? 'campo_visual'
+          : experience === 'measurements'
+            ? 'medidas'
           : null
 
     if (!destination || !sessionExperience) {
@@ -177,7 +173,8 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
     }
 
     startTransition(async () => {
-      const result = await getOrCreateTowerSession({ storeId, experience: sessionExperience, sessionId: initialSessionId })
+      // "Novo atendimento" nunca deve reaproveitar a sessao presente na URL.
+      const result = await getOrCreateTowerSession({ storeId, experience: sessionExperience })
       if (!result.success || !result.data) {
         setSelectedExperience(experience)
         return
@@ -205,7 +202,7 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
     }
     if (item === 'thickness') {
       startTransition(async () => {
-        const result = await getOrCreateTowerSession({ storeId, experience: 'thickness', sessionId: initialSessionId })
+        const result = await getOrCreateTowerSession({ storeId, experience: 'thickness' })
         if (!result.success || !result.data) return
         router.push(`/torre/${storeId}/informacoes/espessura-lentes?session=${result.data.id}`)
       })
@@ -240,8 +237,16 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
         ? `/torre/${storeId}/visagismo?session=${session.id}`
         : session.current_experience === 'campo_visual'
           ? `/torre/${storeId}/campo-visual?session=${session.id}`
-        : null
-    if (destination) router.push(destination)
+        : session.current_experience === 'medidas'
+          ? `/torre/${storeId}/medidas?session=${session.id}`
+          : session.current_experience === 'thickness'
+            ? `/torre/${storeId}/informacoes/espessura-lentes?session=${session.id}`
+          : null
+    if (destination) {
+      router.push(destination)
+      return
+    }
+    setResumeMessage('Esta etapa ainda nao possui uma tela de retomada.')
   }
 
   return (
@@ -290,6 +295,18 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
               isStarting={isPending}
               onSelect={startExperience}
               onSelectInformation={openInformation}
+            />
+          ) : selectedAction === 'resume' ? (
+            <ResumeChooser
+              sessions={activeSessions}
+              message={resumeMessage}
+              isLoading={isPending && activeSessions === null}
+              onBack={() => {
+                setSelectedAction(null)
+                setActiveSessions(null)
+                setResumeMessage(null)
+              }}
+              onResume={resumeSession}
             />
           ) : (
             <>
@@ -345,40 +362,6 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
             </>
           )}
 
-          <div className="mt-3 min-h-11 max-w-5xl" aria-live="polite">
-            {selectedAction === 'resume' && activeSessions === null && (
-              <MockNotice icon={Clock3} title="Carregando" text="Buscando sessões abertas nesta Torre." />
-            )}
-            {selectedAction === 'resume' && activeSessions && activeSessions.length > 0 && (
-              <div className="grid gap-2 sm:grid-cols-2">
-                {activeSessions.map((session) => {
-                  const label = session.current_experience === 'look'
-                    ? 'Seu Jeito de Olhar'
-                    : session.current_experience === 'visagismo'
-                      ? 'Visagismo'
-                      : session.current_experience === 'campo_visual'
-                        ? 'Campo Visual'
-                      : 'Experiência da Torre'
-                  const canResume = session.current_experience === 'look' || session.current_experience === 'visagismo' || session.current_experience === 'campo_visual'
-                  return (
-                    <button
-                      key={session.id}
-                      type="button"
-                      onClick={() => resumeSession(session)}
-                      disabled={!canResume}
-                      className="rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-2 text-left text-xs transition hover:border-slate-500 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <span className="font-semibold text-white">{label}</span>
-                      <span className="ml-2 text-slate-400">{canResume ? 'Toque para continuar' : 'Em preparação'}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-            {selectedAction === 'resume' && activeSessions?.length === 0 && (
-              <MockNotice icon={Clock3} title="Nenhum atendimento em andamento" text="Nenhuma sessão ativa foi encontrada nesta Torre." />
-            )}
-          </div>
         </section>
 
         <footer className="flex shrink-0 flex-col gap-3 border-t border-slate-800 pt-3 sm:flex-row sm:items-center sm:justify-between">
@@ -401,6 +384,83 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
       </div>
     </main>
   )
+}
+
+function ResumeChooser({
+  sessions,
+  message,
+  isLoading,
+  onBack,
+  onResume,
+}: {
+  sessions: TowerSession[] | null
+  message: string | null
+  isLoading: boolean
+  onBack: () => void
+  onResume: (session: TowerSession) => void
+}) {
+  return (
+    <div className="w-full max-w-5xl">
+      <button
+        type="button"
+        onClick={onBack}
+        className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-300 transition-colors hover:bg-white/10 hover:text-white active:scale-[0.98]"
+        title="Voltar"
+        aria-label="Voltar"
+      >
+        <ArrowLeft size={16} />
+      </button>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-sky-300">Continuar atendimento</p>
+      <h2 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Qual atendimento deseja retomar?</h2>
+      <p className="mt-2 max-w-2xl text-base leading-relaxed text-slate-300">Escolha uma sessão que ainda está aberta nesta loja.</p>
+
+      {isLoading && <MockNotice icon={Clock3} title="Carregando" text="Buscando sessões abertas nesta Torre." />}
+      {!isLoading && message && <MockNotice icon={CircleHelp} title="Não foi possível retomar" text={message} />}
+      {!isLoading && !message && sessions?.length === 0 && (
+        <MockNotice icon={Clock3} title="Nenhum atendimento em andamento" text="Não há sessões abertas nesta loja." />
+      )}
+      {!isLoading && sessions && sessions.length > 0 && (
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          {sessions.map((session) => {
+            const experience = getResumableExperience(session.current_experience)
+            return (
+              <button
+                key={session.id}
+                type="button"
+                onClick={() => onResume(session)}
+                disabled={!experience}
+                className="group min-h-[132px] rounded-2xl border border-slate-700 bg-slate-900/80 p-4 text-left transition hover:-translate-y-0.5 hover:border-sky-300/45 hover:bg-slate-800 active:translate-y-0 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-400/10 text-sky-200 ring-1 ring-sky-300/20">
+                    <RotateCcw size={21} />
+                  </span>
+                  <ArrowRight className="text-slate-500 transition group-hover:translate-x-1 group-hover:text-sky-200" size={21} />
+                </div>
+                <h3 className="mt-3 text-lg font-bold text-white">{experience?.label ?? 'Atendimento em preparação'}</h3>
+                <p className="mt-1 text-sm text-slate-400">{experience ? `Aberto ${formatSessionStartedAt(session.started_at)}` : 'Esta etapa ainda não possui uma tela de retomada.'}</p>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function getResumableExperience(experience: TowerSession['current_experience']) {
+  if (experience === 'look') return { label: 'Seu Jeito de Olhar' }
+  if (experience === 'visagismo') return { label: 'Visagismo' }
+  if (experience === 'campo_visual') return { label: 'Campo Visual' }
+  if (experience === 'medidas') return { label: 'Medidas' }
+  if (experience === 'thickness') return { label: 'Espessura das lentes' }
+  return null
+}
+
+function formatSessionStartedAt(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'agora'
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(date)
 }
 
 function ExperienceChooser({
@@ -442,7 +502,7 @@ function ExperienceChooser({
         <p className="mt-2 max-w-2xl text-base leading-relaxed text-slate-300">Escolha um conteúdo para apoiar a conversa com o cliente.</p>
 
         <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
-          {informationItems.map(({ key, title, description, note, icon: Icon, color, background }) => (
+          {informationItems.map(({ key, title, description, icon: Icon, color, background }) => (
             <button
               key={key}
               type="button"

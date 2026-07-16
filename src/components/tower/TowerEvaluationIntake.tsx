@@ -7,6 +7,11 @@ import { searchCustomersByName } from '@/lib/actions/vendas.actions'
 import { createQuickCustomer } from '@/lib/actions/customer.actions'
 import { upsertOpticalEvaluation } from '@/lib/actions/evaluation.actions'
 import { generateLensRecommendationsAction } from '@/lib/actions/lens-recommendation.actions'
+import {
+  generateLensSalesAssistAction,
+  type LensSalesAssist,
+  type PatientAuditContext,
+} from '@/lib/actions/gemini-narratives.actions'
 import { linkCustomerToTowerSession, linkEvaluationToTowerSession, type TowerSessionContext } from '@/lib/actions/tower-session.actions'
 import type { RecommendationOption } from '@/lib/server/lens-recommendation'
 import { buildRecommendationCaseInput } from '@/lib/recommendation/evaluation-case-input'
@@ -18,6 +23,7 @@ type Props = {
   towerSessionId: string
   heatmapSessionId: string
   activeCatalogVersionId: string | null
+  activeCatalogVersionIds?: string[]
   initialSessionContext?: TowerSessionContext
 }
 
@@ -178,12 +184,35 @@ const emptyInterview = (): TowerInterview => ({
   marcaAtual: '', tipoLenteAtual: 'nao_informado', usaMultifocalHoje: 'nao_informado', dificuldadeAdaptacao: 'nao_informado', historicoTrocasRecentes: 'nao_informado', prioridadePrincipal: 'equilibrio', principalIncomodoAtual: 'nao_informado', objetivoCompra: 'nao_informado', budgetTarget: '', aceitaPremium: 'nao_informado', importanciaEstetica: 'nao_informado', importanciaResistencia: 'nao_informado', prefereTransitions: 'nao_informado', prefereBlueUv: 'nao_informado', queixaDirigirNoite: 'nao', queixaSensibilidadeLuz: 'nao', queixaQuebraOculos: 'nao', queixaCriancaAtiva: 'nao', queixaProgressaoRapida: 'nao', observacoesConsultor: '',
 })
 
-const customerProfiles: Array<{ key: string; label: string; description: string; values: Partial<TowerInterview> }> = [
-  { key: 'primeira_multifocal', label: 'Primeira multifocal', description: 'Telas e leitura; prioridade em adaptação.', values: { ageYears: '48', estiloVidaUsoComputadorHoras: '6', estiloVidaLeituraHoras: '2', estiloVidaUsoCelularHoras: '3', estiloVidaAmbienteInternoHoras: '9', tipoLenteAtual: 'visao_simples', usaMultifocalHoje: 'nao', dificuldadeAdaptacao: 'alta', prioridadePrincipal: 'adaptacao', principalIncomodoAtual: 'perto', objetivoCompra: 'primeira_multifocal', budgetTarget: '2500', prefereBlueUv: 'sim' } },
-  { key: 'conforto_progressivo', label: 'Conforto progressivo', description: 'Já usa multifocal e busca mais conforto.', values: { ageYears: '58', estiloVidaUsoComputadorHoras: '4', estiloVidaDirigirHoras: '2', estiloVidaLeituraHoras: '3', estiloVidaUsoCelularHoras: '2', tipoLenteAtual: 'multifocal', usaMultifocalHoje: 'sim', dificuldadeAdaptacao: 'baixa', prioridadePrincipal: 'equilibrio', principalIncomodoAtual: 'intermediario', objetivoCompra: 'upgrade', budgetTarget: '4500', aceitaPremium: 'sim' } },
-  { key: 'telas_intenso', label: 'Uso intenso de telas', description: 'Computador e celular por muitas horas.', values: { ageYears: '45', estiloVidaUsoComputadorHoras: '9', estiloVidaUsoCelularHoras: '4', estiloVidaLeituraHoras: '2', estiloVidaAmbienteInternoHoras: '10', prioridadePrincipal: 'adaptacao', principalIncomodoAtual: 'intermediario', objetivoCompra: 'oculos_escritorio', budgetTarget: '3000', prefereBlueUv: 'sim' } },
-  { key: 'direcao_sol', label: 'Direção e sol', description: 'Rotina externa, direção e conforto à luz.', values: { ageYears: '55', estiloVidaDirigirHoras: '4', estiloVidaExposicaoSolHoras: '3', estiloVidaAmbienteExternoHoras: '4', tipoLenteAtual: 'multifocal', usaMultifocalHoje: 'sim', prioridadePrincipal: 'premium', principalIncomodoAtual: 'reflexo', objetivoCompra: 'upgrade', budgetTarget: '4500', aceitaPremium: 'sim', prefereTransitions: 'sim', queixaDirigirNoite: 'sim', queixaSensibilidadeLuz: 'sim' } },
-  { key: 'economia_equilibrio', label: 'Economia equilibrada', description: 'Prioriza solução adequada com investimento controlado.', values: { ageYears: '52', estiloVidaUsoComputadorHoras: '3', estiloVidaLeituraHoras: '2', tipoLenteAtual: 'visao_simples', prioridadePrincipal: 'economia', principalIncomodoAtual: 'perto', objetivoCompra: 'resolver_queixa', budgetTarget: '1800', aceitaPremium: 'nao' } },
+type InitialContext = { key: string; label: string; description: string; values: Pick<TowerInterview, LifestyleField> }
+type LifestyleField =
+  | 'estiloVidaUsoComputadorHoras'
+  | 'estiloVidaDirigirHoras'
+  | 'estiloVidaLeituraHoras'
+  | 'estiloVidaUsoCelularHoras'
+  | 'estiloVidaExposicaoSolHoras'
+  | 'estiloVidaAmbienteInternoHoras'
+  | 'estiloVidaAmbienteExternoHoras'
+  | 'estiloVidaAssistirTvHoras'
+
+const emptyLifestyleContext = (): Pick<TowerInterview, LifestyleField> => ({
+  estiloVidaUsoComputadorHoras: '0',
+  estiloVidaDirigirHoras: '0',
+  estiloVidaLeituraHoras: '0',
+  estiloVidaUsoCelularHoras: '0',
+  estiloVidaExposicaoSolHoras: '0',
+  estiloVidaAmbienteInternoHoras: '0',
+  estiloVidaAmbienteExternoHoras: '0',
+  estiloVidaAssistirTvHoras: '0',
+})
+
+const initialContexts: InitialContext[] = [
+  { key: 'digital', label: 'Rotina digital', description: 'Computador e celular; sem assumir o tipo de lente.', values: { ...emptyLifestyleContext(), estiloVidaUsoComputadorHoras: '4', estiloVidaUsoCelularHoras: '2', estiloVidaAmbienteInternoHoras: '6' } },
+  { key: 'leitura', label: 'Leitura recorrente', description: 'Leitura faz parte da rotina, sem definir uma queixa.', values: { ...emptyLifestyleContext(), estiloVidaLeituraHoras: '2', estiloVidaUsoCelularHoras: '1', estiloVidaAmbienteInternoHoras: '5' } },
+  { key: 'direcao', label: 'Direção frequente', description: 'Algum tempo ao volante, sem assumir direção noturna.', values: { ...emptyLifestyleContext(), estiloVidaDirigirHoras: '2' } },
+  { key: 'externa', label: 'Rotina externa', description: 'Exposição moderada ao sol e ambiente externo.', values: { ...emptyLifestyleContext(), estiloVidaExposicaoSolHoras: '2', estiloVidaAmbienteExternoHoras: '3' } },
+  { key: 'interna', label: 'Rotina interna', description: 'Maior parte do dia em ambientes fechados.', values: { ...emptyLifestyleContext(), estiloVidaAmbienteInternoHoras: '7', estiloVidaAssistirTvHoras: '1' } },
+  { key: 'variada', label: 'Uso variado', description: 'Atividades distribuídas, sem uma demanda dominante.', values: { ...emptyLifestyleContext(), estiloVidaUsoComputadorHoras: '2', estiloVidaDirigirHoras: '1', estiloVidaLeituraHoras: '1', estiloVidaUsoCelularHoras: '1', estiloVidaAmbienteInternoHoras: '4', estiloVidaAmbienteExternoHoras: '1' } },
 ]
 
 const currentLensBrands = ['Varilux', 'Zeiss', 'Hoya', 'Nikon', 'Kodak', 'Shamir', 'Rodenstock', 'Essilor']
@@ -195,6 +224,50 @@ function numberValue(value: string) {
 
 function buildRecommendationInput(recipe: Record<string, string>, interview: TowerInterview) {
   return buildRecommendationCaseInput({ ...interview, ...recipe })
+}
+
+function optionalNumber(value: string) {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function buildTowerPatientContext(
+  interview: TowerInterview,
+  recommendationInput: ReturnType<typeof buildRecommendationInput>,
+): PatientAuditContext {
+  return {
+    age: recommendationInput.idade ?? null,
+    esferico: recommendationInput.esferico,
+    cilindrico: recommendationInput.cilindrico,
+    adicao: recommendationInput.adicao ?? null,
+    horasComputador: optionalNumber(interview.estiloVidaUsoComputadorHoras),
+    horasDirigir: optionalNumber(interview.estiloVidaDirigirHoras),
+    horasLeitura: optionalNumber(interview.estiloVidaLeituraHoras),
+    horasCelular: optionalNumber(interview.estiloVidaUsoCelularHoras),
+    horasSol: optionalNumber(interview.estiloVidaExposicaoSolHoras),
+    horasTv: optionalNumber(interview.estiloVidaAssistirTvHoras),
+    marcaAtual: interview.marcaAtual.trim() || null,
+    tipoLenteAtual: interview.tipoLenteAtual || null,
+    usaMultifocalHoje: interview.usaMultifocalHoje || null,
+    historicoTrocasRecentes: interview.historicoTrocasRecentes || null,
+    dificuldadeAdaptacao: interview.dificuldadeAdaptacao || null,
+    queixaDirigirNoite: interview.queixaDirigirNoite === 'sim',
+    queixaSensibilidadeLuz: interview.queixaSensibilidadeLuz === 'sim',
+    queixaQuebraOculos: interview.queixaQuebraOculos === 'sim',
+    queixaProgressaoRapida: interview.queixaProgressaoRapida === 'sim',
+    queixaCriancaAtiva: interview.queixaCriancaAtiva === 'sim',
+    principalIncomodoAtual: interview.principalIncomodoAtual || null,
+    prioridadePrincipal: interview.prioridadePrincipal || null,
+    objetivoCompra: interview.objetivoCompra || null,
+    faixaOrcamento: null,
+    targetPrice: optionalNumber(interview.budgetTarget),
+    aceitaPremium: interview.aceitaPremium || null,
+    importanciaEstetica: interview.importanciaEstetica || null,
+    importanciaResistencia: interview.importanciaResistencia || null,
+    prefereTransitions: interview.prefereTransitions || null,
+    prefereBlueUv: interview.prefereBlueUv || null,
+    observacoesConsultor: interview.observacoesConsultor.trim() || null,
+  }
 }
 
 function ChoiceChips({ label, value, options, onChange }: { label: string; value: string; options: Array<[string, string]>; onChange: (value: string) => void }) {
@@ -223,6 +296,7 @@ export default function TowerEvaluationIntake({
   towerSessionId,
   heatmapSessionId,
   activeCatalogVersionId,
+  activeCatalogVersionIds,
   initialSessionContext,
 }: Props) {
   const [query, setQuery] = useState('')
@@ -246,13 +320,31 @@ export default function TowerEvaluationIntake({
   })
   const [activePrescriptionField, setActivePrescriptionField] = useState<PrescriptionFieldKey | null>(null)
   const [interview, setInterview] = useState<TowerInterview>(emptyInterview)
-  const [selectedProfileKey, setSelectedProfileKey] = useState<string | null>(null)
+  const [selectedContextKey, setSelectedContextKey] = useState<string | null>(null)
   const [activeInterviewModal, setActiveInterviewModal] = useState<'lifestyle' | 'priorities' | null>(null)
   const [brandDropdownOpen, setBrandDropdownOpen] = useState(false)
   const brandInputRef = useRef<HTMLInputElement | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [suggestions, setSuggestions] = useState<RecommendationOption[]>([])
+  const [salesAssist, setSalesAssist] = useState<LensSalesAssist | null>(null)
+  const recommendationChannelRef = useRef<BroadcastChannel | null>(null)
+  const hasPositiveAddition = numberValue(recipe.receitaAdicao ?? '') > 0
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return
+    const channel = new BroadcastChannel(`heatmap-lab-${storeId}`)
+    recommendationChannelRef.current = channel
+    return () => {
+      channel.postMessage({ type: 'recommendation-search', active: false })
+      channel.close()
+      if (recommendationChannelRef.current === channel) recommendationChannelRef.current = null
+    }
+  }, [storeId])
+
+  function setClientRecommendationSearch(active: boolean, recommendations?: RecommendationOption[], assist?: LensSalesAssist | null) {
+    recommendationChannelRef.current?.postMessage({ type: 'recommendation-search', active, recommendations, salesAssist: assist })
+  }
 
   async function selectCustomer(customer: CustomerOption) {
     setBusy(true)
@@ -301,8 +393,17 @@ export default function TowerEvaluationIntake({
       setMessage('Não existe catálogo ativo para gerar sugestões nesta loja.')
       return
     }
+    const needsPositiveAddition = ['primeira_multifocal', 'oculos_escritorio', 'ocupacional_escritorio'].includes(interview.objetivoCompra)
+    if (needsPositiveAddition && !hasPositiveAddition) {
+      setMessage('Para indicar multifocal ou ocupacional, informe uma adição positiva na receita.')
+      return
+    }
 
     setBusy(true)
+    setSuggestions([])
+    setSalesAssist(null)
+    setClientRecommendationSearch(true)
+    try {
     const recommendationInput = buildRecommendationInput(recipe, interview)
     const saved = await upsertOpticalEvaluation({
       storeId,
@@ -331,11 +432,12 @@ export default function TowerEvaluationIntake({
       estiloVidaAmbienteInternoHoras: numberValue(interview.estiloVidaAmbienteInternoHoras),
       estiloVidaAmbienteExternoHoras: numberValue(interview.estiloVidaAmbienteExternoHoras),
       estiloVidaAssistirTvHoras: numberValue(interview.estiloVidaAssistirTvHoras),
-      rawPayloadJson: { tower_session_id: towerSessionId, tower_heatmap_session_id: heatmapSessionId, tower_profile: interview, tower_profile_key: selectedProfileKey },
+      rawPayloadJson: { tower_session_id: towerSessionId, tower_heatmap_session_id: heatmapSessionId, tower_profile: interview, tower_context_key: selectedContextKey },
     })
 
     if (!saved.success || !saved.data) {
       setMessage(saved.message)
+      setClientRecommendationSearch(false)
       setBusy(false)
       return
     }
@@ -343,6 +445,7 @@ export default function TowerEvaluationIntake({
     const linked = await linkEvaluationToTowerSession({ storeId, sessionId: towerSessionId, evaluationId: saved.data.id })
     if (!linked.success) {
       setMessage(linked.message)
+      setClientRecommendationSearch(false)
       setBusy(false)
       return
     }
@@ -350,20 +453,49 @@ export default function TowerEvaluationIntake({
     const generated = await generateLensRecommendationsAction({
       storeId,
       versionId: activeCatalogVersionId,
+      versionIds: activeCatalogVersionIds?.length ? activeCatalogVersionIds : undefined,
       ...recommendationInput,
       heatmapSessionId,
     })
 
     if (!generated.success) {
       setMessage(generated.message)
+      setClientRecommendationSearch(false)
       setBusy(false)
       return
     }
 
     const data = generated.data as { recommendations?: RecommendationOption[] } | undefined
-    setSuggestions(data?.recommendations ?? [])
-    setMessage('Sugestões geradas a partir da receita, entrevista e Campo Visual.')
+    const recommendations = data?.recommendations ?? []
+    let generatedSalesAssist: LensSalesAssist | null = null
+
+    if (recommendations.length > 0) {
+      const assistResult = await generateLensSalesAssistAction({
+        patientContext: buildTowerPatientContext(interview, recommendationInput),
+        technicalTriage: null,
+        motorInput: recommendationInput,
+        recommendations: recommendations.slice(0, 3),
+      })
+      if (assistResult.success) {
+        generatedSalesAssist = assistResult.assist
+      } else {
+        console.warn('Narrativas das lentes indisponiveis na Torre:', assistResult.error)
+      }
+    }
+
+    setSuggestions(recommendations)
+    setSalesAssist(generatedSalesAssist)
+    setClientRecommendationSearch(false, recommendations.slice(0, 3), generatedSalesAssist)
+    setMessage(recommendations.length > 0
+      ? 'Sugestões geradas a partir da receita, entrevista e Campo Visual.'
+      : 'O motor não encontrou uma opção compatível nos catálogos ativos. Revise a receita, o objetivo e a cobertura de grades do catálogo.')
     setBusy(false)
+    } catch (error) {
+      console.error('Nao foi possivel gerar sugestoes na Torre:', error)
+      setClientRecommendationSearch(false)
+      setMessage('Não foi possível concluir a geração das sugestões.')
+      setBusy(false)
+    }
   }
 
   const activeField = prescriptionPickerFields.find((field) => field.key === activePrescriptionField) ?? null
@@ -379,10 +511,16 @@ export default function TowerEvaluationIntake({
     setInterview((current) => ({ ...current, [key]: value }))
   }
 
-  function applyProfile(profile: typeof customerProfiles[number]) {
-    setInterview((current) => ({ ...current, ...profile.values }))
-    setSelectedProfileKey(profile.key)
-    setMessage(`Perfil “${profile.label}” aplicado. Ajuste os detalhes da conversa se necessário.`)
+  function applyInitialContext(context: InitialContext) {
+    setInterview((current) => ({ ...current, ...emptyLifestyleContext(), ...context.values }))
+    setSelectedContextKey(context.key)
+    setMessage(`Contexto “${context.label}” aplicado. Receita, queixas, objetivo e preferências foram preservados.`)
+  }
+
+  function clearInitialContext() {
+    setInterview((current) => ({ ...current, ...emptyLifestyleContext() }))
+    setSelectedContextKey(null)
+    setMessage('Contexto inicial removido. As demais informações foram preservadas.')
   }
 
   function chooseCurrentLensBrand(brand: string) {
@@ -457,13 +595,16 @@ export default function TowerEvaluationIntake({
               )
             })}
           </div>
-          <h2 className="mt-6 text-xl font-black">Perfil do cliente</h2>
-          <p className="mt-1 text-sm text-slate-400">Comece por um perfil comum. Ele preenche a entrevista, sem alterar o cliente ou a receita.</p>
+          <div className="mt-6 flex items-center justify-between gap-3">
+            <h2 className="text-xl font-black">Contexto inicial <span className="text-slate-500">(opcional)</span></h2>
+            <button type="button" onClick={clearInitialContext} disabled={!selectedContextKey} className="rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-xs font-black text-slate-300 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-40">Limpar contexto</button>
+          </div>
+          <p className="mt-1 text-sm text-slate-400">Escolha apenas a rotina predominante. Não altera receita, queixas, objetivo, orçamento ou preferências.</p>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {customerProfiles.map((profile) => (
-              <button key={profile.key} type="button" onClick={() => applyProfile(profile)} className={`rounded-2xl border p-3 text-left transition ${selectedProfileKey === profile.key ? 'border-cyan-300 bg-cyan-400/15' : 'border-slate-700/80 bg-slate-950/45 hover:border-slate-500'}`}>
-                <p className="text-sm font-black text-white">{profile.label}</p>
-                <p className="mt-1 text-xs leading-4 text-slate-400">{profile.description}</p>
+            {initialContexts.map((context) => (
+              <button key={context.key} type="button" onClick={() => applyInitialContext(context)} className={`rounded-2xl border p-3 text-left transition ${selectedContextKey === context.key ? 'border-cyan-300 bg-cyan-400/15' : 'border-slate-700/80 bg-slate-950/45 hover:border-slate-500'}`}>
+                <p className="text-sm font-black text-white">{context.label}</p>
+                <p className="mt-1 text-xs leading-4 text-slate-400">{context.description}</p>
               </button>
             ))}
           </div>
@@ -483,7 +624,50 @@ export default function TowerEvaluationIntake({
         </section>
       </div>
 
-      {(message || suggestions.length > 0) && <section className="mx-auto mt-5 w-full max-w-5xl rounded-[28px] border border-white/10 bg-slate-900/70 p-5"><p className="text-sm text-cyan-100">{message}</p>{suggestions.length > 0 && <div className="mt-4 grid gap-3 sm:grid-cols-3">{suggestions.map((option) => <article key={option.configKey} className="rounded-2xl border border-white/10 bg-slate-950/70 p-4"><p className="font-black">{option.familyName}</p><p className="mt-1 text-sm text-slate-300">{option.offerLabel}</p><p className="mt-3 text-xs leading-5 text-slate-400">{option.reasons[0] || option.commercialSummary}</p></article>)}</div>}</section>}
+      {(message || suggestions.length > 0) && (
+        <section className="mx-auto mt-5 w-full max-w-5xl rounded-[28px] border border-white/10 bg-slate-900/70 p-5">
+          <p className="text-sm text-cyan-100">{message}</p>
+          {salesAssist?.sellerOpening && (
+            <p className="mt-3 rounded-2xl border border-cyan-300/20 bg-cyan-400/10 p-3 text-sm leading-6 text-cyan-50">
+              {salesAssist.sellerOpening}
+            </p>
+          )}
+          {suggestions.length > 0 && (
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {suggestions.map((option) => {
+                const narrative = salesAssist?.options.find((item) => item.configKey === option.configKey)
+                return (
+                  <article key={option.configKey} className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                    <p className="font-black">{option.familyName}</p>
+                    <p className="mt-1 text-sm text-slate-300">{option.offerLabel}</p>
+                    {narrative && (
+                      <div className="mt-3 border-t border-cyan-300/15 pt-3">
+                        <p className="text-sm font-black text-cyan-100">{narrative.headline}</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-300">
+                          {narrative.sellerArgument || narrative.whyThisLens}
+                        </p>
+                        {narrative.closingLine && (
+                          <p className="mt-2 text-xs font-bold leading-5 text-slate-100">{narrative.closingLine}</p>
+                        )}
+                      </div>
+                    )}
+                    <div className="mt-4 flex items-end justify-between gap-3 border-t border-white/10 pt-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Tabela de origem</p>
+                        <p className="mt-1 text-xs font-bold text-cyan-100">{option.sourceLaboratorio || 'Laboratório não informado'}</p>
+                        {option.sourceVersao && <p className="mt-1 text-[11px] leading-4 text-slate-500">{option.sourceVersao}</p>}
+                      </div>
+                      <p className="shrink-0 text-lg font-black text-emerald-300">
+                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(option.finalPrice)}
+                      </p>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          )}
+        </section>
+      )}
       {activeInterviewModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/75 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label={activeInterviewModal === 'lifestyle' ? 'Estilo de vida' : 'Queixas e prioridades'}>
           <button type="button" aria-label="Fechar entrevista" onClick={() => setActiveInterviewModal(null)} className="absolute inset-0 cursor-default" />

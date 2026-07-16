@@ -68,6 +68,9 @@ const CompleteSessionSchema = SessionCommandSchema.extend({
 })
 
 const SaveDemoTemplateSchema = SessionCommandSchema
+const LoadDemoTemplateSchema = z.object({
+  storeId: StoreIdSchema,
+})
 
 export type PersistedTowerHeatmapResult = {
   evaluationId: number
@@ -370,6 +373,56 @@ export async function saveTowerHeatmapDemoTemplate(
 
   if (error) return { success: false, message: error.message }
   return { success: true, message: 'Mapa demonstrativo gravado para esta loja.' }
+}
+
+export type PersistedTowerHeatmapDemoTemplate = {
+  summary: z.infer<typeof HeatmapSummarySchema>
+  targetSamples: z.infer<typeof HeatmapTargetSampleSchema>[]
+  algorithmVersion: string
+  targetPlanVersion: string
+}
+
+export async function loadTowerHeatmapDemoTemplate(
+  input: z.input<typeof LoadDemoTemplateSchema>,
+): Promise<HeatmapActionResult<PersistedTowerHeatmapDemoTemplate>> {
+  const parsed = LoadDemoTemplateSchema.safeParse(input)
+  if (!parsed.success) return { success: false, message: 'Loja invalida para carregar o mapa demonstrativo.' }
+
+  const data = parsed.data
+  const auth = await getAuthorizedStoreContext(data.storeId)
+  if (!auth.ok) return { success: false, message: auth.message }
+
+  const templates = createAdminClient().from('tower_heatmap_demo_templates') as any
+  const { data: template, error } = await templates
+    .select('tenant_id, store_id, algorithm_version, target_plan_version, result_summary, target_samples')
+    .eq('tenant_id', auth.tenantId)
+    .eq('store_id', data.storeId)
+    .maybeSingle()
+
+  if (error || !template) {
+    return { success: false, message: error?.message || 'Nenhum mapa demonstrativo foi gravado para esta loja.' }
+  }
+
+  const persistedResult = CompleteSessionSchema.safeParse({
+    storeId: data.storeId,
+    sessionId: '00000000-0000-0000-0000-000000000000',
+    summary: template.result_summary,
+    targetSamples: template.target_samples,
+  })
+  if (!persistedResult.success) {
+    return { success: false, message: 'O mapa demonstrativo salvo esta incompleto.' }
+  }
+
+  return {
+    success: true,
+    message: 'Mapa demonstrativo carregado.',
+    data: {
+      summary: persistedResult.data.summary,
+      targetSamples: persistedResult.data.targetSamples,
+      algorithmVersion: template.algorithm_version,
+      targetPlanVersion: template.target_plan_version,
+    },
+  }
 }
 
 export async function resetTowerHeatmapSession(

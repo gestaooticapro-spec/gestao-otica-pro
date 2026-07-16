@@ -12,6 +12,13 @@ const GEMINI_KEYS = [
 ].filter(Boolean) as string[]
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY
 const OPENAI_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || 'gpt-4.1-nano'
+const GLM_API_KEY = process.env.GLM_API_KEY
+const GLM_TEXT_MODEL = process.env.GLM_TEXT_MODEL || 'glm-4.7-flash'
+const GLM_API_BASE_URL = (process.env.GLM_API_BASE_URL || 'https://api.z.ai/api/paas/v4').replace(/\/$/, '')
+
+// Gemini fica preservado para uma eventual reativacao, mas nao participa do
+// fluxo de narrativas enquanto esta chave estiver falsa.
+const ENABLE_GEMINI_NARRATIVES = false
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -365,6 +372,58 @@ async function generateWithOpenAI(prompt: string, logTag: 'Audit' | 'Triage' | '
   throw new Error(`OpenAI sem resposta util. Tentativas: ${errors.slice(0, 8).join(' || ')}`)
 }
 
+async function generateWithGlm(prompt: string, logTag: 'Audit' | 'Triage' | 'Sales Assist'): Promise<string> {
+  if (!GLM_API_KEY) {
+    throw new Error('GLM_API_KEY nao configurada')
+  }
+
+  const errors: string[] = []
+
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const response = await fetch(`${GLM_API_BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${GLM_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: GLM_TEXT_MODEL,
+          messages: [{ role: 'user', content: prompt }],
+          thinking: { type: 'disabled' },
+          response_format: { type: logTag === 'Audit' ? 'text' : 'json_object' },
+          temperature: 0.2,
+          max_tokens: 2200,
+        }),
+      })
+
+      const data = await response.json() as OpenAIChatCompletionLike
+      if (response.ok) {
+        const generatedText = String(data.choices?.[0]?.message?.content || '').trim()
+        if (generatedText) {
+          const usage = extractOpenAIUsage(data)
+          console.log(
+            `[GLM ${logTag}] ok modelo=${GLM_TEXT_MODEL} tentativa=${attempt} | entrada: ${usage.tokensIn} tokens | saida: ${usage.tokensOut} tokens | total: ${usage.tokensTotal} tokens`,
+          )
+          return generatedText
+        }
+        errors.push(`tentativa_${attempt}:resposta_vazia`)
+      } else {
+        const providerError = data.error
+        const errorMessage = [providerError?.message, providerError?.code, providerError?.type].filter(Boolean).join(' | ')
+        errors.push(`tentativa_${attempt}:HTTP_${response.status}:${errorMessage || 'erro_sem_detalhes'}`)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      errors.push(`tentativa_${attempt}:${message}`)
+    }
+
+    await sleep(900 * attempt)
+  }
+
+  throw new Error(`GLM sem resposta util. Tentativas: ${errors.join(' || ')}`)
+}
+
 function extractJsonObject(text: string): Record<string, unknown> | null {
   const cleaned = text
     .replace(/^```json\s*/i, '')
@@ -472,7 +531,11 @@ function normalizeTechnicalTriage(raw: Record<string, unknown>): LensTechnicalTr
   }
 }
 
-function buildAuditPrompt(ctx: PatientAuditContext, recommendations: RecommendationOption[]): string {
+function buildAuditPrompt(
+  ctx: PatientAuditContext,
+  recommendations: RecommendationOption[],
+  auditPayload?: unknown,
+): string {
   const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
   const sig = (n: number) => (n > 0 ? `+${n.toFixed(2)}` : n.toFixed(2))
   const hora = (h: number | null, label: string) => (h && h > 0 ? `${label}: ${h}h/dia` : null)
@@ -560,6 +623,9 @@ ${lines.join('\n')}
 
 INDICACOES DO MOTOR (em ordem de ranking):
 ${optionsText}
+
+PAYLOAD COMPLETO USADO NA AUDITORIA:
+${JSON.stringify(auditPayload ?? { patient: ctx, recommendations }, null, 2)}
 
 Analise:
 1. Para cada opcao: a indicacao faz sentido clinico e comercial para este paciente? O que esta correto? O que parece estranho, desnecessario ou errado?
@@ -813,8 +879,8 @@ export async function generateLensSalesAssistAction(params: {
   motorInput: RecommendationCaseInput
   recommendations: RecommendationOption[]
 }): Promise<LensSalesAssistResult> {
-  if (!GEMINI_KEYS.length && !OPENAI_API_KEY) {
-    return { success: false, assist: null, error: 'Nenhuma chave Gemini/OpenAI configurada' }
+  if (!OPENAI_API_KEY && !GLM_API_KEY && !(ENABLE_GEMINI_NARRATIVES && GEMINI_KEYS.length)) {
+    return { success: false, assist: null, error: 'Nenhuma chave OpenAI/GLM configurada' }
   }
   if (!params.recommendations.length) {
     return { success: false, assist: null, error: 'Sem recomendacoes' }
@@ -823,7 +889,9 @@ export async function generateLensSalesAssistAction(params: {
   const criticalFacts = buildSalesAssistCriticalFacts(params)
   const prompt = buildSalesAssistPrompt({ ...params, criticalFacts })
 
-  for (let i = 0; i < GEMINI_KEYS.length; i++) {
+  // Gemini deliberadamente desligado. Para reativar, altere
+  // ENABLE_GEMINI_NARRATIVES e revise a ordem dos provedores.
+  if (ENABLE_GEMINI_NARRATIVES) for (let i = 0; i < GEMINI_KEYS.length; i++) {
     const key = GEMINI_KEYS[i]
     const keyLabel = `GEMINI_SECRET_KEY_${i + 1}`
     try {
@@ -869,6 +937,9 @@ export async function generateLensSalesAssistAction(params: {
     }
   }
 
+  const providerErrors: string[] = []
+
+  // Ordem ativa: OpenAI primeiro; GLM-4.7-Flash somente se a OpenAI falhar.
   if (OPENAI_API_KEY) {
     try {
       const text = await generateWithOpenAI(prompt, 'Sales Assist')
@@ -880,27 +951,49 @@ export async function generateLensSalesAssistAction(params: {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error(`[OpenAI Sales Assist] erro: ${msg}`)
-      return { success: false, assist: null, error: msg }
+      providerErrors.push(`OpenAI: ${msg}`)
     }
   }
 
-  return { success: false, assist: null, error: 'Nenhuma chave Gemini/OpenAI retornou argumentos uteis' }
+  if (GLM_API_KEY) {
+    try {
+      const text = await generateWithGlm(prompt, 'Sales Assist')
+      const json = extractJsonObject(text)
+      if (json) {
+        return { success: true, assist: normalizeSalesAssist(json, params.recommendations) }
+      }
+      throw new Error('GLM retornou argumentos sem JSON valido')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[GLM Sales Assist] erro: ${msg}`)
+      providerErrors.push(`GLM: ${msg}`)
+    }
+  }
+
+  return {
+    success: false,
+    assist: null,
+    error: providerErrors.length
+      ? `Nenhum provedor retornou argumentos uteis. ${providerErrors.join(' | ')}`
+      : 'Nenhuma chave OpenAI/GLM retornou argumentos uteis',
+  }
 }
 
 export async function generateLensAuditAction(
   patientContext: PatientAuditContext,
   recommendations: RecommendationOption[],
+  auditPayload?: unknown,
 ): Promise<AuditResult> {
-  if (!GEMINI_KEYS.length && !OPENAI_API_KEY) {
-    return { success: false, audit: null, error: 'Nenhuma chave Gemini/OpenAI configurada' }
+  if (!OPENAI_API_KEY && !GLM_API_KEY && !(ENABLE_GEMINI_NARRATIVES && GEMINI_KEYS.length)) {
+    return { success: false, audit: null, error: 'Nenhuma chave OpenAI/GLM configurada' }
   }
   if (!recommendations.length) {
     return { success: false, audit: null, error: 'Sem recomendacoes' }
   }
 
-  const prompt = buildAuditPrompt(patientContext, recommendations)
+  const prompt = buildAuditPrompt(patientContext, recommendations, auditPayload)
 
-  for (let i = 0; i < GEMINI_KEYS.length; i++) {
+  if (ENABLE_GEMINI_NARRATIVES) for (let i = 0; i < GEMINI_KEYS.length; i++) {
     const key = GEMINI_KEYS[i]
     const keyLabel = `GEMINI_SECRET_KEY_${i + 1}`
     try {
@@ -963,21 +1056,31 @@ export async function generateLensAuditAction(
     }
   }
 
-  console.error('[Audit] nenhuma chave retornou texto util.')
-  return { success: false, audit: null, error: 'Nenhuma chave Gemini/OpenAI retornou texto util na auditoria' }
+  if (GLM_API_KEY) {
+    try {
+      const audit = await generateWithGlm(prompt, 'Audit')
+      return { success: true, audit }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[GLM Audit] erro: ${msg}`)
+    }
+  }
+
+  console.error('[Audit] nenhum provedor retornou texto util.')
+  return { success: false, audit: null, error: 'Nenhuma chave OpenAI/GLM retornou texto util na auditoria' }
 }
 
 export async function generateLensTechnicalTriageAction(
   patientContext: PatientAuditContext,
   caseInput: RecommendationCaseInput,
 ): Promise<LensTechnicalTriageResult> {
-  if (!GEMINI_KEYS.length && !OPENAI_API_KEY) {
-    return { success: false, triage: null, error: 'Nenhuma chave Gemini/OpenAI configurada' }
+  if (!OPENAI_API_KEY && !GLM_API_KEY && !(ENABLE_GEMINI_NARRATIVES && GEMINI_KEYS.length)) {
+    return { success: false, triage: null, error: 'Nenhuma chave OpenAI/GLM configurada' }
   }
 
   const prompt = buildTechnicalTriagePrompt(patientContext, caseInput)
 
-  for (let i = 0; i < GEMINI_KEYS.length; i++) {
+  if (ENABLE_GEMINI_NARRATIVES) for (let i = 0; i < GEMINI_KEYS.length; i++) {
     const key = GEMINI_KEYS[i]
     const keyLabel = `GEMINI_SECRET_KEY_${i + 1}`
     try {
@@ -1040,10 +1143,24 @@ export async function generateLensTechnicalTriageAction(
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error(`[OpenAI Triage] erro: ${msg}`)
+    }
+  }
+
+  if (GLM_API_KEY) {
+    try {
+      const text = await generateWithGlm(prompt, 'Triage')
+      const json = extractJsonObject(text)
+      if (json) {
+        return { success: true, triage: normalizeTechnicalTriage(json) }
+      }
+      throw new Error('GLM retornou triagem sem JSON valido')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[GLM Triage] erro: ${msg}`)
       return { success: false, triage: null, error: msg }
     }
   }
 
-  return { success: false, triage: null, error: 'Nenhuma chave Gemini/OpenAI retornou triagem util' }
+  return { success: false, triage: null, error: 'Nenhuma chave OpenAI/GLM retornou triagem util' }
 }
 

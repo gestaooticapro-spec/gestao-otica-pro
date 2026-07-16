@@ -108,7 +108,7 @@ export function buildRecommendationCaseInput(form: EvaluationCaseForm): Recommen
   if (form.queixaCriancaAtiva === 'sim') { rotina.push('crianca_ativa'); beneficios.push('resistencia') }
   if (form.queixaQuebraOculos === 'sim') { rotina.push('risco_quebra'); beneficios.push('resistencia') }
   if (form.queixaProgressaoRapida === 'sim') { rotina.push('controle_miopia'); objetivos.push('controle_miopia'); beneficios.push('controle_miopia') }
-  if (wantsOfficeLens) { objetivos.push('ocupacional'); rotina.push('computador'); beneficios.push('conforto_visual', 'conforto_digital', 'campo_intermediario') }
+  if (wantsOfficeLens && hasAddition) { objetivos.push('ocupacional'); rotina.push('computador'); beneficios.push('conforto_visual', 'conforto_digital', 'campo_intermediario') }
   const alreadyUsesMultifocal = form.usaMultifocalHoje === 'sim' || form.tipoLenteAtual === 'multifocal'
   if (hasAddition && !wantsOfficeLens && (!alreadyUsesMultifocal || form.objetivoCompra === 'primeira_multifocal')) {
     objetivos.push('primeira_multifocal')

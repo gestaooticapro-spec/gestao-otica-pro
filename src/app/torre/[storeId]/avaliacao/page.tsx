@@ -30,5 +30,12 @@ export default async function TowerEvaluationPage({
   const activeCatalogVersionId = catalog.currentActivation?.id ?? null
   const context = await getTowerSessionContext({ storeId, sessionId: towerSessionId })
 
-  return <TowerEvaluationIntake storeId={storeId} towerSessionId={towerSessionId} heatmapSessionId={heatmapSessionId} activeCatalogVersionId={activeCatalogVersionId} initialSessionContext={context.success ? context.data : undefined} />
+  return <TowerEvaluationIntake
+    storeId={storeId}
+    towerSessionId={towerSessionId}
+    heatmapSessionId={heatmapSessionId}
+    activeCatalogVersionId={activeCatalogVersionId}
+    activeCatalogVersionIds={catalog.activeActivations.map((activation) => activation.id)}
+    initialSessionContext={context.success ? context.data : undefined}
+  />
 }

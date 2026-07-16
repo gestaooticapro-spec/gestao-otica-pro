@@ -23,10 +23,10 @@ export default async function TowerPage({
 
   return (
     <TowerWelcomeMock
+      key={`${searchParams?.menu ?? 'inicio'}-${opensInformationMenu ? 'informacoes' : 'experiencias'}`}
       storeId={storeId}
       initialExperienceMenu={searchParams?.menu === 'experiencias' || opensInformationMenu}
       initialInformationMenu={opensInformationMenu}
-      initialSessionId={searchParams?.session}
     />
   )
 }

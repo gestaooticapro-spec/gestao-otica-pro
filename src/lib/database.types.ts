@@ -789,6 +789,61 @@ export interface Database {
         Relationships: []
       }
 
+      tower_measurement_results: {
+        Row: {
+          id: string
+          tenant_id: string
+          store_id: number
+          tower_session_id: string
+          customer_id: number | null
+          optical_evaluation_id: number | null
+          created_by_user_id: string | null
+          version: number
+          lens_mode: 'multifocal' | 'bifocal'
+          reference_mm: number
+          front_measurements: Json
+          profile_measurements: Json
+          attention_codes: Json
+          algorithm_version: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          store_id: number
+          tower_session_id: string
+          customer_id?: number | null
+          optical_evaluation_id?: number | null
+          created_by_user_id?: string | null
+          version: number
+          lens_mode: 'multifocal' | 'bifocal'
+          reference_mm: number
+          front_measurements: Json
+          profile_measurements: Json
+          attention_codes?: Json
+          algorithm_version: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          store_id?: number
+          tower_session_id?: string
+          customer_id?: number | null
+          optical_evaluation_id?: number | null
+          created_by_user_id?: string | null
+          version?: number
+          lens_mode?: 'multifocal' | 'bifocal'
+          reference_mm?: number
+          front_measurements?: Json
+          profile_measurements?: Json
+          attention_codes?: Json
+          algorithm_version?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+
       tower_sessions: {
         Row: {
           id: string

@@ -607,15 +607,19 @@ function hasPrimaryOccupationalDemand(input: RecommendationCaseInput): boolean {
   const desiredBenefits = input.desired_benefits || []
   const objectiveTags = input.objetivo_tags || []
   const notes = withoutAccents((input.notes || '').toLowerCase())
+  const hasExplicitOccupationalObjective =
+    objectiveTags.includes('ocupacional') || desiredBenefits.includes('ocupacional')
+  const hasExplicitFirstMultifocalObjective = objectiveTags.includes('primeira_multifocal')
   const hasNearIntermediateFocus =
     rotinaTags.includes('computador') &&
     rotinaTags.includes('leitura') &&
     !rotinaTags.includes('dirigir') &&
     !rotinaTags.includes('dirigir_noite')
 
+  if (hasExplicitOccupationalObjective) return true
+  if (hasExplicitFirstMultifocalObjective) return false
+
   return (
-    objectiveTags.includes('ocupacional') ||
-    desiredBenefits.includes('ocupacional') ||
     desiredBenefits.includes('campo_intermediario') ||
     notes.includes('oculos_escritorio') ||
     notes.includes('oculos de escritorio') ||
@@ -633,19 +637,20 @@ function getDesiredClinicalCategories(input: RecommendationCaseInput): ClinicalC
   const rotinaTags = input.rotina_tags || []
   const desiredBenefits = input.desired_benefits || []
   const objetivoTags = input.objetivo_tags || []
+  const hasPositiveAddition = input.adicao != null && input.adicao > 0
 
   if (objetivoTags.includes('ocupacional') || desiredBenefits.includes('ocupacional')) {
-    return ['ocupacional']
+    return hasPositiveAddition ? ['ocupacional'] : ['visao_simples']
   }
 
   // Explicit occupational request from UI (e.g. "óculos para trabalho/escritório")
   if (hasPrimaryOccupationalDemand(input)) {
-    return input.adicao != null
+    return hasPositiveAddition
       ? ['ocupacional', 'multifocal', 'bifocal']
       : ['ocupacional', 'visao_simples']
   }
 
-  if (input.adicao != null) {
+  if (hasPositiveAddition) {
     return ['multifocal', 'bifocal']
   }
 
@@ -768,7 +773,7 @@ function matchesGrid(
 ): boolean {
   if (!grids.length) return true
   const requiresAddRange =
-    input.adicao != null &&
+    input.adicao != null && input.adicao > 0 &&
     (effectiveCategory === 'multifocal' ||
       effectiveCategory === 'bifocal' ||
       effectiveCategory === 'ocupacional')
@@ -1234,7 +1239,7 @@ function evaluateClinicalEligibility(
     : getDesiredClinicalCategories(input)
   const effectiveCategory = resolveOfferClinicalCategory(family, offer)
   const wantsPresbyopia =
-    input.adicao != null || desiredCategories.includes('multifocal') || desiredCategories.includes('bifocal')
+    (input.adicao != null && input.adicao > 0) || desiredCategories.includes('multifocal') || desiredCategories.includes('bifocal')
 
   if (effectiveCategory !== 'indefinida') {
     return {
@@ -1447,7 +1452,7 @@ function scoreOffer(params: {
   const surfacingDemandLevel =
     surfacingDemandSignals.reduce((acc, signal) => acc + (desiredBenefits.includes(signal) ? 0.25 : 0), 0) +
     (prescriptionStrength >= 6 ? 0.7 : prescriptionStrength >= 4 ? 0.45 : 0) +
-    (input.adicao != null && input.adicao <= MAX_ANTI_FATIGUE_ADDITION ? 0.4 : 0)
+    (input.adicao != null && input.adicao > 0 && input.adicao <= MAX_ANTI_FATIGUE_ADDITION ? 0.4 : 0)
 
   if (clinicalEvaluation.effectiveCategory !== 'indefinida') {
     score += 5
@@ -1457,7 +1462,7 @@ function scoreOffer(params: {
     reasons.push('categoria:mista_sem_oferta_definida')
   }
 
-  if (input.adicao != null) {
+  if (input.adicao != null && input.adicao > 0) {
     if (['multifocal', 'bifocal'].includes(clinicalEvaluation.effectiveCategory)) {
       score += 3
       reasons.push('beneficio:adicao_presente')

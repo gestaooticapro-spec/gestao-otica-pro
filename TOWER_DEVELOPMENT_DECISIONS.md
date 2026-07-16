@@ -137,6 +137,71 @@ no mini PC. O dispositivo usa credencial limitada e pareada, armazenada de
 forma segura no sistema operacional, com acesso apenas aos dados do seu
 `store_id` e as operacoes estritamente necessarias.
 
+### Configuracao inicial remota e manutencao continua da loja
+
+A configuracao inicial de uma Torre standalone acontece remotamente antes do
+equipamento chegar a loja. Um usuario autorizado cadastra a empresa, a loja,
+as preferencias iniciais de catalogo, as ofertas, a estrategia comercial e os
+modulos liberados em uma URL administrativa da Torre. Essa configuracao gera
+uma ativacao por QR Code e tambem um codigo alternativo para uso no fallback.
+
+Depois da ativacao, a empresa nao deve depender do tecnico de TI para alterar
+suas decisoes comerciais. A Torre deve oferecer uma URL administrativa propria
+daquela loja, acessivel por computador ou celular, para que um usuario
+autorizado possa alterar continuamente:
+
+- pesos e prioridades de tabelas do catalogo;
+- tabelas que participam ou deixam de participar das ofertas;
+- estrategia comercial de indicacao;
+- modulos e botoes disponiveis na Torre;
+- demais preferencias de apresentacao comercial.
+
+O endereco pode ser curto e vinculado a loja, por exemplo
+`torre.app/loja/AB7K2`, mas o link nao concede acesso por si so. A pessoa deve
+autenticar-se com a conta autorizada da loja. Quando o Gestao Otica completo
+for contratado, essa mesma configuracao deve continuar disponivel no sistema
+completo, usando os mesmos dados, usuarios e permissoes, sem duplicar ou
+migrar o cadastro.
+
+As configuracoes locais do equipamento ficam separadas das configuracoes
+comerciais. Na primeira tela da Torre, o operador usa a tela touch para:
+
+- conectar a rede;
+- ler o QR Code de ativacao;
+- digitar o codigo alternativo se a leitura falhar.
+
+Depois de ativada, a UI do funcionario oferece um botao discreto de
+Configuracoes protegido por PIN local. Esse menu e reservado a manutencao do
+equipamento, incluindo camera, telas, brilho, orientacao, diagnostico e
+calibracao do monitor. Ele tambem deve mostrar o endereco curto e, quando
+conveniente, um QR Code para abrir a configuracao remota em outro dispositivo.
+
+A tela do cliente nao exibe configuracoes administrativas. O catalogo e a
+estrategia comercial podem ser consultados e ajustados pela URL remota; a
+Torre apenas baixa, aplica e sincroniza esses dados. A tela touch pode mostrar
+o estado da sincronizacao, mas nao deve ser o local principal para editar
+essas regras.
+
+O fluxo de ativacao deve permanecer separado do fluxo de manutencao:
+
+```text
+Torre sem vinculo
+-> conectar a internet
+-> ler QR Code ou digitar codigo de ativacao
+-> vincular dispositivo ao tenant/store_id
+-> executar testes e calibracao locais
+-> liberar a operacao normal
+
+Torre ja vinculada
+-> PIN local para manutencao do equipamento
+-> URL autenticada para catalogo e estrategia comercial
+```
+
+O fallback de digitacao deve existir antes do vinculo com qualquer empresa.
+Ele valida um codigo temporario no servidor e nao permite cadastrar livremente
+uma empresa nem acessar dados de outra loja. Uma ativacao completamente offline
+por pacote assinado fica fora do primeiro escopo e pode ser decidida depois.
+
 ---
 
 ## Decisoes que precisam orientar o codigo agora

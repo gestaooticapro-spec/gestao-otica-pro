@@ -7,12 +7,17 @@ import type { LensGeometry, LensPins } from '@/lib/actions/lens-geometry.actions
 import {
   cancelTowerHeatmapSession,
   completeTowerHeatmapSession,
+  loadTowerHeatmapDemoTemplate,
   resetTowerHeatmapSession,
   saveTowerHeatmapDemoTemplate,
   startTowerHeatmapSession,
 } from '@/lib/actions/tower-heatmap.actions'
 import { completeTowerSession } from '@/lib/actions/tower-session.actions'
 import { closeTowerClientScreen, openTowerClientScreen } from '@/lib/tower/client-screen'
+import LensRecommendationSearchAnimation from '@/components/evaluation/LensRecommendationSearchAnimation'
+import type { RecommendationOption } from '@/lib/server/lens-recommendation'
+import type { LensSalesAssist } from '@/lib/actions/gemini-narratives.actions'
+import { findGeometryForRecommendation } from '@/lib/server/heatmap-geometry-compatibility'
 
 type NormalizedPoint = { x: number; y: number }
 type FaceMetrics = {
@@ -89,6 +94,8 @@ type SessionSample = {
   headOnlyProjection?: boolean
   verticalHeadDebug?: boolean
   headCalibration?: HeadSandboxCalibration
+  persistedLensX?: number
+  persistedLensY?: number
 }
 type ProjectionDebugTrace = {
   mode: 'headSandbox' | 'vertical'
@@ -134,6 +141,30 @@ type RemoteCommand =
 type CommandPayload = {
   type: 'command'
   command: RemoteCommand
+}
+type RecommendationSearchPayload = {
+  type: 'recommendation-search'
+  active: boolean
+  recommendations?: RecommendationOption[]
+  salesAssist?: LensSalesAssist | null
+}
+type RecommendationVisualPhase = 'idle' | 'dismantling' | 'search' | 'results'
+type DemoTemplateSamplePayload = {
+  eyeX: number
+  eyeY: number
+  headX: number
+  headY: number
+  targetX: number
+  targetY: number
+  lensX: number
+  lensY: number
+  headOnlyProjection?: boolean
+  verticalHeadDebug?: boolean
+}
+type DemoTemplatePayload = {
+  type: 'demo-template'
+  summary: SessionSummary
+  targetSamples: DemoTemplateSamplePayload[]
 }
 type ReportPayload = {
   type: 'report'
@@ -677,6 +708,22 @@ function buildVerticalDebugTargetSequence() {
 }
 
 function projectSampleToLens(sample: SessionSample) {
+  if (sample.persistedLensX !== undefined && sample.persistedLensY !== undefined) {
+    return {
+      point: { x: sample.persistedLensX, y: sample.persistedLensY },
+      heatPoint: { x: sample.persistedLensX, y: sample.persistedLensY },
+      radius: 1.9,
+      spreadX: 0.018,
+      spreadY: 0.018,
+      weight: 1,
+      eyeDominance: 0.5,
+      headDominance: 0.5,
+      eyeShareX: 0.5,
+      eyeShareY: 0.5,
+      demandWeight: 1,
+    }
+  }
+
   const target = normalizeTargetOffset(sample.targetX, sample.targetY)
   const demandX = Math.abs(target.x)
   const demandY = Math.abs(target.y)
@@ -1756,6 +1803,112 @@ function buildClientVisualAnalysis(samples: SessionSample[]): ClientVisualAnalys
   return { fronts }
 }
 
+function ClientLensRecommendationResults({
+  recommendations,
+  salesAssist,
+  geometries,
+  heatmap,
+  samples,
+}: {
+  recommendations: RecommendationOption[]
+  salesAssist: LensSalesAssist | null
+  geometries: LensGeometry[]
+  heatmap: Float32Array
+  samples: SessionSample[]
+}) {
+  const canvasRefs = useRef<Array<HTMLCanvasElement | null>>([])
+
+  useEffect(() => {
+    recommendations.slice(0, 3).forEach((recommendation, index) => {
+      const canvas = canvasRefs.current[index]
+      const geometry = findGeometryForRecommendation(recommendation.familyName, geometries)
+      if (!canvas || !geometry) return
+      drawLensHeatmap(canvas, heatmap, undefined, undefined, geometry, samples, 'continuous', true)
+    })
+  }, [geometries, heatmap, recommendations, samples])
+
+  return (
+    <section className="client-recommendation-results fixed inset-0 z-[90] overflow-y-auto bg-slate-950 px-5 py-8 text-white sm:px-8 sm:py-10">
+      <div className="mx-auto w-full max-w-[1180px]">
+        <header className="text-center">
+          <p className="text-xs font-black uppercase tracking-[0.32em] text-cyan-200">Seu jeito de olhar</p>
+          <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-5xl">Encontramos três lentes para você conhecer.</h1>
+          <p className="mx-auto mt-4 max-w-3xl text-base leading-7 text-slate-300 sm:text-xl">
+            Veja como o seu mapa visual se comporta dentro da geometria de cada opção.
+          </p>
+        </header>
+
+        <div className="mt-8 grid gap-6">
+          {recommendations.slice(0, 3).map((recommendation, index) => {
+            const geometry = findGeometryForRecommendation(recommendation.familyName, geometries)
+            const narrative = salesAssist?.options.find((item) => item.configKey === recommendation.configKey)
+
+            return (
+              <article
+                key={recommendation.configKey}
+                className="client-recommendation-card grid gap-5 rounded-[34px] border border-white/12 bg-[linear-gradient(135deg,_rgba(8,47,73,0.58),_rgba(15,23,42,0.92)_48%,_rgba(2,6,23,0.98))] p-5 shadow-[0_28px_90px_rgba(2,6,23,0.48)] md:grid-cols-[minmax(0,0.9fr)_minmax(360px,1.1fr)] md:items-center sm:p-7"
+                style={{ animationDelay: `${index * 180}ms` }}
+              >
+                <div>
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-full border border-cyan-200/25 bg-cyan-300/10 text-lg font-black text-cyan-100">{index + 1}</span>
+                    <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200">Opção selecionada</p>
+                  </div>
+                  <h2 className="mt-5 text-3xl font-black leading-tight sm:text-4xl">{recommendation.familyName}</h2>
+                  <p className="mt-3 text-lg font-bold leading-7 text-slate-100 sm:text-xl">{recommendation.offerLabel}</p>
+                  {recommendation.treatmentName && <p className="mt-2 text-base text-cyan-100">{recommendation.treatmentName}</p>}
+                  {narrative && (
+                    <div className="mt-6 border-t border-cyan-200/15 pt-5">
+                      <h3 className="text-xl font-black leading-tight text-cyan-100 sm:text-2xl">{narrative.headline}</h3>
+                      <p className="mt-3 text-base leading-7 text-slate-200 sm:text-lg">
+                        {narrative.whyThisLens || narrative.sellerArgument}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="overflow-hidden rounded-[28px] border border-white/10 bg-slate-950/70 p-4">
+                  {geometry ? (
+                    <>
+                      <canvas
+                        ref={(canvas) => { canvasRefs.current[index] = canvas }}
+                        width={760}
+                        height={390}
+                        className="mx-auto h-auto w-full"
+                      />
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3 text-sm text-slate-400">
+                        <span>Geometria: {geometry.family_name}</span>
+                        <span>{geometry.visual_design_type}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex min-h-[260px] items-center justify-center px-6 text-center">
+                      <div>
+                        <p className="text-lg font-black text-slate-200">Geometria ainda não cadastrada</p>
+                        <p className="mt-2 text-sm leading-6 text-slate-400">A indicação permanece válida, mas esta comparação visual ainda não está disponível.</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      </div>
+
+      <style jsx>{`
+        .client-recommendation-results { animation: recommendation-results-in 620ms cubic-bezier(.16,1,.3,1) both; }
+        .client-recommendation-card { opacity: 0; animation: recommendation-card-in 620ms cubic-bezier(.16,1,.3,1) forwards; }
+        @keyframes recommendation-results-in { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes recommendation-card-in {
+          from { opacity: 0; transform: translateY(28px) scale(.985); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+      `}</style>
+    </section>
+  )
+}
+
 export default function GazeHeatmapLab({
   storeId,
   backPath,
@@ -1819,6 +1972,8 @@ export default function GazeHeatmapLab({
   const targetSequenceRef = useRef<NormalizedPoint[]>([])
   const targetIndexRef = useRef<number>(0)
   const broadcastRef = useRef<BroadcastChannel | null>(null)
+  const recommendationTransitionTimerRef = useRef<number | null>(null)
+  const applyDemoTemplateRef = useRef<((summary: SessionSummary, targetSamples: DemoTemplateSamplePayload[]) => void) | null>(null)
 
   const [cameraReady, setCameraReady] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -1850,6 +2005,10 @@ export default function GazeHeatmapLab({
   const [sessionPersistenceStatus, setSessionPersistenceStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [towerActionBusy, setTowerActionBusy] = useState(false)
   const [demoTemplateSaved, setDemoTemplateSaved] = useState(false)
+  const [recommendationSearchActive, setRecommendationSearchActive] = useState(false)
+  const [recommendationVisualPhase, setRecommendationVisualPhase] = useState<RecommendationVisualPhase>('idle')
+  const [clientRecommendations, setClientRecommendations] = useState<RecommendationOption[]>([])
+  const [clientSalesAssist, setClientSalesAssist] = useState<LensSalesAssist | null>(null)
   const isFocusMode = phase === 'calibrating' || phase === 'running'
   const selectedGeometry = geometries.find((item) => item.id === selectedGeometryId) ?? geometry ?? geometries[0] ?? null
   const clientVisualAnalysis = buildClientVisualAnalysis(targetHeatSamplesRef.current)
@@ -1932,9 +2091,46 @@ export default function GazeHeatmapLab({
     const channel = new BroadcastChannel(`heatmap-lab-${storeId}`)
     broadcastRef.current = channel
 
-    channel.onmessage = (event: MessageEvent<CommandPayload | ReportPayload>) => {
+    channel.onmessage = (event: MessageEvent<CommandPayload | ReportPayload | RecommendationSearchPayload | DemoTemplatePayload>) => {
       const data = event.data
       if (!data) return
+
+      if (data.type === 'recommendation-search') {
+        if (clientMode) {
+          if (recommendationTransitionTimerRef.current !== null) {
+            window.clearTimeout(recommendationTransitionTimerRef.current)
+            recommendationTransitionTimerRef.current = null
+          }
+
+          if (data.active) {
+            setClientRecommendations([])
+            setClientSalesAssist(null)
+            setRecommendationSearchActive(false)
+            setRecommendationVisualPhase('dismantling')
+            recommendationTransitionTimerRef.current = window.setTimeout(() => {
+              setRecommendationSearchActive(true)
+              setRecommendationVisualPhase('search')
+              recommendationTransitionTimerRef.current = null
+            }, 1150)
+          } else if (data.recommendations?.length) {
+            setClientRecommendations(data.recommendations.slice(0, 3))
+            setClientSalesAssist(data.salesAssist ?? null)
+            setRecommendationSearchActive(false)
+            setRecommendationVisualPhase('results')
+          } else {
+            setClientRecommendations([])
+            setClientSalesAssist(null)
+            setRecommendationSearchActive(false)
+            setRecommendationVisualPhase('idle')
+          }
+        }
+        return
+      }
+
+      if (data.type === 'demo-template') {
+        if (clientMode) applyDemoTemplateRef.current?.(data.summary, data.targetSamples)
+        return
+      }
 
       if (clientMode) {
         if (data.type === 'command') {
@@ -1964,6 +2160,10 @@ export default function GazeHeatmapLab({
     }
 
     return () => {
+      if (recommendationTransitionTimerRef.current !== null) {
+        window.clearTimeout(recommendationTransitionTimerRef.current)
+        recommendationTransitionTimerRef.current = null
+      }
       channel.close()
       broadcastRef.current = null
     }
@@ -2850,6 +3050,65 @@ export default function GazeHeatmapLab({
     setTowerActionBusy(false)
   }
 
+  function applyDemoTemplate(summary: SessionSummary, targetSamples: DemoTemplateSamplePayload[]) {
+    stopSessionTimers()
+    stopCamera()
+    const loadedSamples = targetSamples.map((sample) => ({
+      eyeX: sample.eyeX,
+      eyeY: sample.eyeY,
+      headX: sample.headX,
+      headY: sample.headY,
+      targetX: sample.targetX,
+      targetY: sample.targetY,
+      headOnlyProjection: sample.headOnlyProjection,
+      verticalHeadDebug: sample.verticalHeadDebug,
+      persistedLensX: sample.lensX,
+      persistedLensY: sample.lensY,
+    })) satisfies SessionSample[]
+
+    const loadedHeatmap = makeHeatmap()
+    loadedSamples.forEach((sample) => stampHeatSample(loadedHeatmap, sample))
+    heatmapRef.current = loadedHeatmap
+    samplesRef.current = loadedSamples
+    targetHeatSamplesRef.current = loadedSamples
+    targetSamplesRef.current = []
+    phaseRef.current = 'finished'
+    clientResultVisibleRef.current = true
+    setClientResultVisible(true)
+    setPhase('finished')
+    setSummary(summary)
+    setHasCalibration(true)
+    setHeadOnlyProjection(loadedSamples.some((sample) => sample.headOnlyProjection))
+    setVerticalHeadDebug(loadedSamples.some((sample) => sample.verticalHeadDebug))
+    setSessionPersistenceStatus('idle')
+    requestAnimationFrame(() => redrawHeatmaps())
+  }
+
+  applyDemoTemplateRef.current = applyDemoTemplate
+
+  async function loadDemoTemplate() {
+    if (towerActionBusy) return
+
+    setTowerActionBusy(true)
+    const result = await loadTowerHeatmapDemoTemplate({ storeId })
+    if (!result.success || !result.data) {
+      setStatus(result.message)
+      setTowerActionBusy(false)
+      return
+    }
+
+    applyDemoTemplate(result.data.summary, result.data.targetSamples)
+    broadcastRef.current?.postMessage({
+      type: 'demo-template',
+      summary: result.data.summary,
+      targetSamples: result.data.targetSamples,
+    } satisfies DemoTemplatePayload)
+    setStatus(`${result.message} Use-o como base para testar a avaliação.`)
+    setSessionPersistenceStatus('idle')
+    setTowerActionBusy(false)
+    requestAnimationFrame(() => redrawHeatmaps())
+  }
+
   async function endTowerService() {
     if (!towerSessionId || towerActionBusy) return
 
@@ -3050,7 +3309,10 @@ export default function GazeHeatmapLab({
   const clientBackgroundOffsetY = (0.5 - target.y) * 64
 
   const stageNode = (
-    <div ref={stageRef} className={stageClassName}>
+    <div
+      ref={stageRef}
+      className={`${stageClassName} ${recommendationVisualPhase === 'dismantling' ? 'client-result-dismantling' : ''}`}
+    >
       <video
         ref={videoRef}
         className={
@@ -3086,17 +3348,17 @@ export default function GazeHeatmapLab({
           <div className="absolute inset-0 bg-slate-950/38" />
         </div>
       )}
-      {clientResultMode && (
+      {clientResultMode && recommendationVisualPhase !== 'search' && recommendationVisualPhase !== 'results' && (
         <div className="relative z-20 flex min-h-screen items-start justify-center px-5 py-8 sm:px-8 sm:py-10">
-          <div className="relative flex w-full max-w-[1180px] flex-col items-center justify-start overflow-visible rounded-[44px] border border-cyan-200/18 bg-[linear-gradient(145deg,_rgba(8,47,73,0.62),_rgba(15,23,42,0.82)_48%,_rgba(2,6,23,0.96))] p-5 shadow-[0_36px_110px_rgba(2,6,23,0.62)] sm:p-7">
+          <div className="client-result-shell relative flex w-full max-w-[1180px] flex-col items-center justify-start overflow-visible rounded-[44px] border border-cyan-200/18 bg-[linear-gradient(145deg,_rgba(8,47,73,0.62),_rgba(15,23,42,0.82)_48%,_rgba(2,6,23,0.96))] p-5 shadow-[0_36px_110px_rgba(2,6,23,0.62)] sm:p-7">
             <div className="pointer-events-none absolute -left-20 top-10 h-64 w-64 rounded-full bg-cyan-300/12 blur-3xl" />
             <div className="pointer-events-none absolute -right-16 bottom-4 h-72 w-72 rounded-full bg-emerald-300/12 blur-3xl" />
-            <div className="relative z-10 mb-5 text-center">
+            <div className="client-result-heading relative z-10 mb-5 text-center">
               <p className="text-[11px] font-black uppercase tracking-[0.32em] text-cyan-200/90">
                 Analisando padrão visual
               </p>
             </div>
-            <div className="relative z-10 w-full max-w-4xl overflow-hidden rounded-[36px] border border-white/12 bg-slate-950/42 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_28px_80px_rgba(2,6,23,0.45)]">
+            <div className="client-result-lens relative z-10 w-full max-w-4xl overflow-hidden rounded-[36px] border border-white/12 bg-slate-950/42 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_28px_80px_rgba(2,6,23,0.45)]">
               <div className="pointer-events-none absolute inset-y-4 left-0 z-20 w-1/4 animate-[heatmap-sweep_3.2s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-cyan-100/18 to-transparent blur-md" />
               <div className="pointer-events-none absolute inset-x-12 top-1/2 z-20 h-px animate-pulse bg-gradient-to-r from-transparent via-cyan-100/60 to-transparent shadow-[0_0_24px_rgba(125,211,252,0.55)]" />
               <canvas
@@ -3107,7 +3369,7 @@ export default function GazeHeatmapLab({
               />
             </div>
             {clientResultAnimationComplete && (
-              <div className="relative z-10 mt-6 grid w-full max-w-4xl grid-cols-1 gap-4">
+              <div className="client-result-cards relative z-10 mt-6 grid w-full max-w-4xl grid-cols-1 gap-4">
               {clientVisualAnalysis.fronts.map((front, index) => {
                 const tone = front.state === 'good'
                   ? 'border-emerald-300/25 bg-emerald-400/10 text-emerald-100'
@@ -3126,7 +3388,7 @@ export default function GazeHeatmapLab({
                 return (
                   <div
                     key={front.key}
-                    className={`animate-[analysis-card-in_420ms_ease-out_forwards] rounded-3xl border px-7 py-6 text-left opacity-0 ${tone}`}
+                    className={`client-analysis-card animate-[analysis-card-in_420ms_ease-out_forwards] rounded-3xl border px-7 py-6 text-left opacity-0 ${tone}`}
                     style={{ animationDelay: `${index * 620}ms` }}
                   >
                     <div className="flex items-center gap-3 text-sm font-black uppercase tracking-[0.2em]">
@@ -3164,6 +3426,75 @@ export default function GazeHeatmapLab({
                 100% {
                   transform: translateX(520%);
                   opacity: 0;
+                }
+              }
+
+              .client-result-dismantling .client-result-heading {
+                animation: client-heading-out 320ms ease-in forwards;
+              }
+
+              .client-result-dismantling .client-analysis-card {
+                animation: client-card-out 460ms ease-in forwards;
+              }
+
+              .client-result-dismantling .client-analysis-card:nth-child(3) {
+                animation-delay: 60ms;
+              }
+
+              .client-result-dismantling .client-analysis-card:nth-child(2) {
+                animation-delay: 150ms;
+              }
+
+              .client-result-dismantling .client-analysis-card:nth-child(1) {
+                animation-delay: 240ms;
+              }
+
+              .client-result-dismantling .client-result-lens {
+                animation: client-lens-out 650ms cubic-bezier(0.4, 0, 0.8, 0.2) 330ms forwards;
+              }
+
+              .client-result-dismantling .client-result-shell {
+                animation: client-shell-out 980ms ease-in 120ms forwards;
+              }
+
+              @keyframes client-heading-out {
+                to {
+                  opacity: 0;
+                  transform: translateY(-18px);
+                }
+              }
+
+              @keyframes client-card-out {
+                to {
+                  opacity: 0;
+                  transform: translateY(30px) scale(0.96);
+                  filter: blur(5px);
+                }
+              }
+
+              @keyframes client-lens-out {
+                45% {
+                  opacity: 0.8;
+                  transform: scale(0.9);
+                }
+                to {
+                  opacity: 0;
+                  transform: translateY(-18px) scale(0.7);
+                  filter: blur(12px);
+                }
+              }
+
+              @keyframes client-shell-out {
+                65% {
+                  border-color: rgba(103, 232, 249, 0.08);
+                  background: rgba(2, 6, 23, 0.62);
+                }
+                to {
+                  opacity: 0;
+                  transform: scale(0.985);
+                  border-color: transparent;
+                  background: rgba(2, 6, 23, 0);
+                  box-shadow: none;
                 }
               }
             `}</style>
@@ -3229,6 +3560,16 @@ export default function GazeHeatmapLab({
     return (
       <div className={clientResultMode ? 'min-h-screen w-screen overflow-y-auto bg-slate-950 text-white' : 'h-screen w-screen overflow-hidden bg-slate-950 text-white'}>
         {stageNode}
+        {recommendationSearchActive && <LensRecommendationSearchAnimation geometries={geometries} />}
+        {recommendationVisualPhase === 'results' && clientRecommendations.length > 0 && (
+          <ClientLensRecommendationResults
+            recommendations={clientRecommendations}
+            salesAssist={clientSalesAssist}
+            geometries={geometries}
+            heatmap={heatmapRef.current}
+            samples={targetHeatSamplesRef.current}
+          />
+        )}
         <button
           type="button"
           onClick={toggleFullscreen}
@@ -3355,7 +3696,7 @@ export default function GazeHeatmapLab({
 
         <footer className="shrink-0 border-t border-white/10 pt-4">
           {towerReadingFinished ? (
-            <div className="grid gap-3 sm:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
               <Link
                 href={towerSessionId ? `/torre/${storeId}/avaliacao?session=${towerSessionId}&heatmap=${heatmapSessionId ?? ''}` : backPath}
                 className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-cyan-400 px-4 text-center text-sm font-black text-slate-950 transition hover:bg-cyan-300"
@@ -3382,6 +3723,15 @@ export default function GazeHeatmapLab({
               </button>
               <button
                 type="button"
+                onClick={() => void loadDemoTemplate()}
+                disabled={towerActionBusy}
+                className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-cyan-300/25 bg-cyan-400/10 px-4 text-sm font-black text-cyan-100 transition hover:bg-cyan-400/20 disabled:cursor-wait disabled:opacity-45"
+              >
+                {towerActionBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bookmark className="h-4 w-4" />}
+                Carregar mapa salvo
+              </button>
+              <button
+                type="button"
                 onClick={() => void endTowerService()}
                 disabled={!towerSessionId || towerActionBusy}
                 className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-slate-900 px-4 text-sm font-black text-slate-100 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-45"
@@ -3391,7 +3741,7 @@ export default function GazeHeatmapLab({
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-3 sm:grid-cols-3">
               <button
                 type="button"
                 onClick={() => sendCommand('openCamera')}
@@ -3421,6 +3771,15 @@ export default function GazeHeatmapLab({
               Iniciar Campo Visual
             </button>
           )}
+              <button
+                type="button"
+                onClick={() => void loadDemoTemplate()}
+                disabled={towerActionBusy}
+                className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-cyan-300/25 bg-cyan-400/10 px-4 text-sm font-black text-cyan-100 transition hover:bg-cyan-400/20 disabled:cursor-wait disabled:opacity-45"
+              >
+                {towerActionBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bookmark className="h-4 w-4" />}
+                Carregar mapa salvo
+              </button>
             </div>
           )}
         </footer>

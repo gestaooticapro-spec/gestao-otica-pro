@@ -1,13 +1,13 @@
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import TowerMeasurementLab from '@/components/medidas/TowerMeasurementLab'
+import { getOrCreateTowerSession } from '@/lib/actions/tower-session.actions'
 
 export default async function StoreTowerMeasurementPage({
   params,
   searchParams,
 }: {
   params: { storeId: string }
-  searchParams?: { client?: string }
+  searchParams?: { client?: string; session?: string }
 }) {
   const storeId = parseInt(params.storeId, 10)
   if (Number.isNaN(storeId)) return notFound()
@@ -19,5 +19,13 @@ export default async function StoreTowerMeasurementPage({
 
   if (!user) return redirect('/login')
 
-  return <TowerMeasurementLab storeId={storeId} clientMode={searchParams?.client === '1'} />
+  const session = await getOrCreateTowerSession({
+    storeId,
+    experience: 'medidas',
+    sessionId: searchParams?.session,
+  })
+  if (!session.success || !session.data) return redirect(`/torre/${storeId}?menu=experiencias`)
+
+  const clientQuery = searchParams?.client === '1' ? '&client=1' : ''
+  return redirect(`/torre/${storeId}/medidas?session=${session.data.id}${clientQuery}`)
 }

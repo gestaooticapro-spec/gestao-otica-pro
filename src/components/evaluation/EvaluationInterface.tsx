@@ -46,6 +46,7 @@ import {
   generateLensRecommendationsAction
 } from '@/lib/actions/lens-recommendation.actions'
 import {
+  generateLensAuditAction,
   generateLensSalesAssistAction,
   type LensSalesAssist,
   type LensTechnicalTriage,
@@ -144,7 +145,8 @@ const LENS_ENGINE_DIAGNOSTIC_SUITE_NAME = 'Dossie Triplice do Motor'
 const LENS_ENGINE_DIAGNOSTIC_SUITE_RESTORE_KEY = 'dossie_triplice_motor'
 const LENS_DEMO_QUICK_FILL_RESTORE_KEY = 'demo_quick_fill_profiles'
 // Painel de debug usado apenas em testes/calibracao do motor de recomendacao.
-const SHOW_LENS_ENGINE_DIAGNOSTIC_SUITE = false
+// Durante a calibração do motor, deixe o dossiê e os payloads copiáveis na UI.
+const SHOW_LENS_ENGINE_DIAGNOSTIC_SUITE = true
 // Preserve os perfis demo para calibracao futura, mas mantenha o card fora da UI.
 const SHOW_LENS_DEMO_QUICK_FILL = false
 
@@ -2678,13 +2680,13 @@ function validateRecommendationFormConsistency(form: ReturnType<typeof createEmp
     })
   }
 
-  if ((wantsFirstMultifocal || wantsOfficeLens) && add === null) {
+  if ((wantsFirstMultifocal || wantsOfficeLens) && (add === null || add <= 0)) {
     issues.push({
       severity: 'blocker',
       message: wantsOfficeLens
-        ? 'Óculos de escritório/ocupacional precisam de adição informada para o motor avaliar corretamente.'
-        : 'Primeira multifocal precisa de adição informada.',
-      suggestion: 'Preencha a adição ou altere o objetivo da compra.',
+        ? 'Óculos de escritório/ocupacional precisam de adição positiva para o motor avaliar corretamente.'
+        : 'Primeira multifocal precisa de adição positiva.',
+      suggestion: 'Preencha uma adição acima de zero ou altere o objetivo da compra.',
     })
   }
 
@@ -3234,8 +3236,8 @@ export default function EvaluationInterface({
       setManualSuggestion(null)
       setAiFeedback('Sugestões geradas sem triagem IA.')
 
-      // Debug preservado: payload + Sales Assist. A auditoria IA fica comentada para evitar custo/delay nos testes.
-      if (payload.recommendations.length > 0) {
+        // Debug preservado: payload + Auditoria IA + Sales Assist.
+        if (payload.recommendations.length > 0) {
         setLensAudit(null)
         setLensSalesAssist(null)
         setIsGeneratingAudit(false)
@@ -3249,19 +3251,15 @@ export default function EvaluationInterface({
           recommendations: payload.recommendations,
         }
         setLensAuditPayload(auditDebugPayload)
-        // Restore key: dossie_triplice_motor / Etapa 3 - Auditoria IA.
-        // Para religar o debug profundo, reimporte `generateLensAuditAction` de
-        // `@/lib/actions/gemini-narratives.actions` e restaure esta chamada:
-        //
-        // setIsGeneratingAudit(true)
-        // generateLensAuditAction(auditPatientContext, payload.recommendations).then((auditResult) => {
-        //   if (auditResult.success && auditResult.audit) {
-        //     setLensAudit(auditResult.audit)
-        //   }
-        //   setIsGeneratingAudit(false)
-        // }).catch(() => {
-        //   setIsGeneratingAudit(false)
-        // })
+        setIsGeneratingAudit(true)
+        generateLensAuditAction(auditPatientContext, payload.recommendations, auditDebugPayload).then((auditResult) => {
+          if (auditResult.success && auditResult.audit) {
+            setLensAudit(auditResult.audit)
+          }
+          setIsGeneratingAudit(false)
+        }).catch(() => {
+          setIsGeneratingAudit(false)
+        })
         generateLensSalesAssistAction({
           patientContext: auditPatientContext,
           technicalTriage,
