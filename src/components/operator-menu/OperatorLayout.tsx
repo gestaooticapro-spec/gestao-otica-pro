@@ -8,7 +8,6 @@ import OperatorMenuAtendimento from './OperatorMenuAtendimento';
 import OperatorMenuLojaVazia from './OperatorMenuLojaVazia';
 import { getStoreProfile } from '@/lib/actions/store.actions';
 import FullscreenToggleButton from '@/components/FullscreenToggleButton';
-import { getStoreAppMode, type AppMode } from '@/lib/app-mode';
 import OperatorWhatsAppWakePing from '@/components/whatsapp/OperatorWhatsAppWakePing';
 
 type MenuState = 'home' | 'atendimento' | 'loja-vazia' | 'page';
@@ -21,7 +20,6 @@ interface OperatorLayoutProps {
     logoUrl: string | null;
     preSaleAnalysisEnabled?: boolean;
     deliveryDateEnabled?: boolean;
-    appMode?: AppMode;
     onBackToHub?: () => void;
     hubLabel?: string;
 }
@@ -33,7 +31,6 @@ export default function OperatorLayout({
     logoUrl,
     preSaleAnalysisEnabled = false,
     deliveryDateEnabled = true,
-    appMode = 'full',
     onBackToHub,
     hubLabel = 'Voltar'
 }: OperatorLayoutProps) {
@@ -44,15 +41,13 @@ export default function OperatorLayout({
     const [homeSelection, setHomeSelection] = useState<HomeSelection>(null);
     const [livePreSaleAnalysisEnabled, setLivePreSaleAnalysisEnabled] = useState(preSaleAnalysisEnabled);
     const [liveDeliveryDateEnabled, setLiveDeliveryDateEnabled] = useState(deliveryDateEnabled);
-    const [liveAppMode, setLiveAppMode] = useState<AppMode>(appMode);
 
     const storeHomePath = `/dashboard/loja/${storeId}`;
     const menuParam = searchParams.get('menu');
 
     useEffect(() => {
         setLivePreSaleAnalysisEnabled(preSaleAnalysisEnabled);
-        setLiveAppMode(appMode);
-    }, [preSaleAnalysisEnabled, appMode]);
+    }, [preSaleAnalysisEnabled]);
 
     useEffect(() => {
         setLiveDeliveryDateEnabled(deliveryDateEnabled);
@@ -82,7 +77,6 @@ export default function OperatorLayout({
 
             setLivePreSaleAnalysisEnabled(enabled);
             setLiveDeliveryDateEnabled(deliveryEnabled);
-            setLiveAppMode(getStoreAppMode(settings));
         });
 
         return () => {
@@ -133,11 +127,11 @@ export default function OperatorLayout({
     }
 
     if (currentMenu === 'atendimento') {
-        return withStoreOneWakePing(<OperatorMenuAtendimento storeId={storeId} onBack={handleBack} onNavigate={handleRouteNavigate} preSaleAnalysisEnabled={livePreSaleAnalysisEnabled} appMode={liveAppMode} />);
+        return withStoreOneWakePing(<OperatorMenuAtendimento storeId={storeId} onBack={handleBack} onNavigate={handleRouteNavigate} preSaleAnalysisEnabled={livePreSaleAnalysisEnabled} />);
     }
 
     if (currentMenu === 'loja-vazia') {
-        return withStoreOneWakePing(<OperatorMenuLojaVazia storeId={storeId} storeName={storeName} onBack={handleBack} onNavigate={handleRouteNavigate} deliveryDateEnabled={liveDeliveryDateEnabled} appMode={liveAppMode} />);
+        return withStoreOneWakePing(<OperatorMenuLojaVazia storeId={storeId} storeName={storeName} onBack={handleBack} onNavigate={handleRouteNavigate} deliveryDateEnabled={liveDeliveryDateEnabled} />);
     }
 
     return withStoreOneWakePing(

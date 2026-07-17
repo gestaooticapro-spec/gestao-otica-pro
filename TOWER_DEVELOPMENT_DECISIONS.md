@@ -204,6 +204,123 @@ por pacote assinado fica fora do primeiro escopo e pode ser decidida depois.
 
 ---
 
+## Implementacoes concluídas nesta etapa
+
+Esta etapa preparou o ciclo completo de administracao remota da Torre antes da
+existencia do aplicativo Electron.
+
+### Administrador da plataforma
+
+- Foi criado o papel `platform_admin`.
+- Esse papel nao pertence a nenhum `tenant` nem a nenhuma loja.
+- A atribuicao do papel e protegida no banco.
+- O administrador acessa a area `/admin/torres`.
+
+### Cadastro e manutencao da Torre
+
+O backoffice permite:
+
+- criar uma rede nova ou selecionar uma rede existente;
+- cadastrar a loja que recebera a Torre;
+- gerar ativacao por QR Code;
+- gerar codigo alternativo para fallback;
+- gerar PIN administrativo provisório da Torre;
+- enviar o link de ativacao pelo WhatsApp sem fixar um numero de destino;
+- listar lojas com Torre;
+- editar dados cadastrais da loja;
+- reemitir QR Code, codigo alternativo e PIN quando as credenciais forem
+  perdidas ou o equipamento for substituido.
+
+A reemissao nao cria outra rede nem outra loja. Ela revoga ativacoes pendentes
+anteriores e cria uma nova ativacao para o mesmo `store_id`.
+
+### Protecoes de cadastro
+
+O banco impede redes duplicadas por nome normalizado e lojas duplicadas pelo
+nome dentro da mesma rede. A interface tambem bloqueia cliques concorrentes e
+apresenta uma mensagem orientando a abrir a loja existente.
+
+Os codigos, tokens e PINs nunca sao armazenados em texto puro. O banco guarda
+somente seus hashes; por isso, uma credencial perdida deve ser reemitida.
+
+### Liberacao da Gestao Otica completa
+
+A Torre pode funcionar inicialmente sem usuario humano. Quando a loja comprar
+o programa completo, o administrador da plataforma informa o nome e o e-mail
+do representante e usa a acao **Liberar Gestao Otica e enviar convite**.
+
+Essa acao:
+
+1. preserva o mesmo `tenant_id` e `store_id`;
+2. registra a liberacao comercial da loja;
+3. cria o convite no Supabase Auth;
+4. cria o perfil humano com papel `admin` vinculado a rede e loja;
+5. envia ao representante o link para definir a propria senha;
+6. direciona o usuario, depois do login, ao dashboard completo da loja;
+7. mantem a credencial da Torre e o PIN local independentes desse usuario.
+
+No momento, a tabela de liberacao aceita um responsavel principal por loja.
+Nao existem bloqueios de modulos: a Gestao Otica e liberada completa, conforme
+a decisao atual do produto.
+
+## Plano de execucao do aplicativo Electron da Torre
+
+Este e o roteiro oficial para levar a aplicacao ao PC da Torre. Os sete passos
+devem ser executados nesta ordem; cada passo precisa ser validado antes do
+proximo. Nao vamos tentar transportar todo o dashboard de uma vez.
+
+### Passo 1 - Criar o shell Electron
+
+Criar o aplicativo desktop que abre em tela cheia no PC da Torre, inicia com o
+sistema operacional quando necessario e possui uma janela controlada para a
+experiencia da Torre. Nesta fase, a meta e somente provar que o Electron abre,
+fecha e consegue carregar a aplicacao local/remota.
+
+### Passo 2 - Montar a tela inicial da Torre
+
+Criar a tela de equipamento ainda nao pareado, com instrucoes para conectar a
+internet e ler o QR Code ou informar o codigo alternativo. Essa tela nao deve
+exibir dados de outra loja nem permitir cadastro livre de empresa.
+
+### Passo 3 - Implementar a leitura do QR Code e do codigo alternativo
+
+O Electron deve ler o payload de ativacao e enviar a tentativa ao backend por
+um contrato proprio de ativacao. O servidor valida o token ou o fallback,
+confirma que a ativacao esta pendente e ainda dentro da validade, e vincula o
+dispositivo ao `tenant_id` e `store_id` corretos.
+
+### Passo 4 - Parear o dispositivo com a loja
+
+Depois da validacao, o backend deve emitir uma credencial limitada e propria
+daquele dispositivo. A credencial deve permitir somente as operacoes da Torre
+daquela loja. Ela nao pode ser `service_role`, senha de usuario ou chave ampla
+do Supabase.
+
+### Passo 5 - Armazenar a credencial localmente
+
+O Electron deve salvar a credencial usando o armazenamento seguro do sistema
+operacional, com SQLite local apenas para configuracao, cache, sessoes,
+resultados e fila de sincronizacao. O banco local nao sera um clone completo
+do Supabase.
+
+### Passo 6 - Criar a tela de PIN e manutencao
+
+O primeiro acesso ao menu administrativo local usa o PIN provisório criado no
+backoffice. Depois de validado, o operador deve trocar esse PIN. O menu fica
+reservado para rede, camera, telas, brilho, orientacao, diagnostico,
+calibracao e estado da sincronizacao.
+
+### Passo 7 - Levar as experiencias da Torre para o Electron
+
+Somente depois do pareamento, armazenamento seguro e manutencao estarem
+validados, transportar para o Electron as experiencias de visagismo, heatmap,
+medidas e mapa educativo. Cada experiencia deve continuar usando sessoes,
+resultados e sincronizacao ligados ao mesmo `store_id`.
+
+Durante todos os sete passos, o Supabase permanece a fonte canonica. O SQLite
+local e uma camada de continuidade e sincronizacao, e nao uma nova identidade
+para a loja.
+
 ## Decisoes que precisam orientar o codigo agora
 
 ### 1. A avaliacao inicia a leitura visual

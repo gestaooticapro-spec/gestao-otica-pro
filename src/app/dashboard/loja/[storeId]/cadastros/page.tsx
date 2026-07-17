@@ -17,11 +17,8 @@ import {
   type CatalogItemResult,
   type CatalogActionResult
 } from '@/lib/actions/catalog.actions';
-import { getStoreProfile } from '@/lib/actions/store.actions';
-import { getStoreAppMode, type AppMode } from '@/lib/app-mode';
 import LensGridEditor from '@/components/cadastros/LensGridEditor';
 import MedicoComissaoModal from '@/components/modals/MedicoComissaoModal';
-import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal';
 import { toast } from 'sonner';
 import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/BackgroundToggle';
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
@@ -42,7 +39,6 @@ export default function CatalogPage() {
 
   // --- Estados ---
   const [activeTab, setActiveTab] = useState<CategoryType>('solar'); // Padrão solicitado
-  const [appMode, setAppMode] = useState<AppMode>('full');
   const [items, setItems] = useState<CatalogItemResult[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editorMode, setEditorMode] = useState<EditorMode>('empty');
@@ -67,26 +63,8 @@ export default function CatalogPage() {
   const [showComissaoModal, setShowComissaoModal] = useState(false);
   // --- Estado compartilhado do campo comissão (secreto) ---
   const [showComissao, setShowComissao] = useState(false);
-  const [isStockAuthOpen, setIsStockAuthOpen] = useState(false);
-  const [authorizedEmployeeId, setAuthorizedEmployeeId] = useState<number | null>(null);
   const [originalStockValue, setOriginalStockValue] = useState<number>(0);
   const catalogFormRef = useRef<HTMLFormElement | null>(null);
-  const isMvp = appMode === 'mvp';
-
-  useEffect(() => {
-    getStoreProfile(storeId).then(store => setAppMode(getStoreAppMode(store?.settings)));
-  }, [storeId]);
-
-  useEffect(() => {
-    if (isMvp && (activeTab === 'oftalmologistas' || activeTab === 'fornecedores')) {
-      setActiveTab('solar');
-      setSearch('');
-      setSelectedId(null);
-      setFormData({});
-      setEditorMode('empty');
-    }
-  }, [isMvp, activeTab]);
-
   // --- Carregar Lista ---
   useEffect(() => {
     const loadItems = async () => {
@@ -124,7 +102,6 @@ export default function CatalogPage() {
     } else {
       setOriginalStockValue(0);
     }
-    setAuthorizedEmployeeId(null);
     setEditorMode('edit');
   };
 
@@ -132,7 +109,6 @@ export default function CatalogPage() {
     setSelectedId(null);
     setFormData({});
     setOriginalStockValue(0);
-    setAuthorizedEmployeeId(null);
     setEditorMode('create');
   };
 
@@ -140,14 +116,12 @@ export default function CatalogPage() {
     setSelectedId(null);
     setFormData({});
     setOriginalStockValue(0);
-    setAuthorizedEmployeeId(null);
     setEditorMode('empty');
   };
 
   const handleInputChange = (field: string, value: any) => {
     setFormData((prev: any) => ({ ...prev, [field]: value }));
     if (field === 'estoque_atual' || field === 'quantidade_estoque') {
-      setAuthorizedEmployeeId(null);
     }
   };
 
@@ -164,14 +138,8 @@ export default function CatalogPage() {
     const isEditing = editorMode === 'edit' && !!selectedId;
     const stockChanged = isEditing && isStockEditableTab && getCurrentStockValue() !== originalStockValue;
 
-    if (isMvp && stockChanged && !authorizedEmployeeId) {
-      setIsStockAuthOpen(true);
-      return;
-    }
-
     const formPayload = new FormData();
     if (selectedId) formPayload.append('id', selectedId.toString());
-    if (authorizedEmployeeId) formPayload.append('employee_auth_id', String(authorizedEmployeeId));
 
     Object.keys(formData).forEach(key => {
       if (formData[key] !== null && formData[key] !== undefined) {
@@ -391,14 +359,14 @@ export default function CatalogPage() {
               label="Varejo / Outros" icon={ShoppingBag}
               active={activeTab === 'produtos_gerais'} onClick={() => handleTabChange('produtos_gerais')}
             />
-            {!isMvp && <TabButton
+            <TabButton
               label="Fornecedores" icon={Truck}
               active={activeTab === 'fornecedores'} onClick={() => handleTabChange('fornecedores')}
-            />}
-            {!isMvp && <TabButton
+            />
+            <TabButton
               label="Oftalmologistas" icon={Stethoscope}
               active={activeTab === 'oftalmologistas'} onClick={() => handleTabChange('oftalmologistas')}
-            />}
+            />
           </div>
 
           {/* Formulário */}
@@ -434,7 +402,7 @@ export default function CatalogPage() {
                     />
                   )}
                   {(activeTab === 'solar' || activeTab === 'receituario') && (
-                    <FormArmacoes data={formData} onChange={handleInputChange} disabled={isSaving} storeId={storeId} isMvp={isMvp} />
+                    <FormArmacoes data={formData} onChange={handleInputChange} disabled={isSaving} storeId={storeId} />
                   )}
                   {activeTab === 'produtos_gerais' && (
                     <FormProdutosGerais
@@ -443,7 +411,6 @@ export default function CatalogPage() {
                       disabled={isSaving}
                       sugestoes={sugestoesCategorias}
                       storeId={storeId}
-                      isMvp={isMvp}
                     />
                   )}
                   {activeTab === 'tratamentos' && (
@@ -545,20 +512,6 @@ export default function CatalogPage() {
           storeId={storeId}
         />
 
-        <EmployeeAuthModal
-          storeId={storeId}
-          isOpen={isStockAuthOpen}
-          onClose={() => setIsStockAuthOpen(false)}
-          onSuccess={(employee) => {
-            setAuthorizedEmployeeId(employee.id);
-            setIsStockAuthOpen(false);
-            setTimeout(() => {
-              catalogFormRef.current?.requestSubmit();
-            }, 0);
-          }}
-          title="Autorizar ajuste de estoque"
-          description="Confirme com PIN para salvar o novo estoque no modo MVP."
-        />
       </div>
     </div>
   );
@@ -622,7 +575,7 @@ function EstoqueInput({ value, onChange, disabled, isEditing, storeId, productId
 
 // --- FORMULÁRIOS ESPECÍFICOS ---
 
-function FormProdutosGerais({ data, onChange, disabled, sugestoes, storeId, isMvp = false }: any) {
+function FormProdutosGerais({ data, onChange, disabled, sugestoes, storeId }: any) {
   const isEditing = !!data.id;
   return (
     <div className="grid grid-cols-12 gap-3 gap-y-4">
@@ -664,7 +617,7 @@ function FormProdutosGerais({ data, onChange, disabled, sugestoes, storeId, isMv
           storeId={storeId}
           productId={data.id}
           productName={data.descricao}
-          allowDirectEdit={isMvp}
+          allowDirectEdit
         />
       </div>
       <div className="col-span-3">
@@ -675,7 +628,7 @@ function FormProdutosGerais({ data, onChange, disabled, sugestoes, storeId, isMv
   );
 }
 
-function FormArmacoes({ data, onChange, disabled, storeId, isMvp = false }: any) {
+function FormArmacoes({ data, onChange, disabled, storeId }: any) {
   const isEditing = !!data.id;
 
   return (
@@ -715,7 +668,7 @@ function FormArmacoes({ data, onChange, disabled, storeId, isMvp = false }: any)
           storeId={storeId}
           productId={data.id}
           productName={`${data.marca || ''} ${data.modelo || ''}`.trim()}
-          allowDirectEdit={isMvp}
+          allowDirectEdit
         />
       </div>
 

@@ -20,7 +20,6 @@ import WidgetWhatsAppPendencias from '@/components/consultas/WidgetWhatsAppPende
 import WhatsAppOperatorModal from '@/components/modals/WhatsAppOperatorModal'
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 import { runDashboardWhatsAppWakePing, type DashboardWhatsAppWakePingResult } from '@/lib/actions/whatsapp.actions'
-import type { AppMode } from '@/lib/app-mode'
 
 interface Props {
   storeId: number
@@ -39,7 +38,6 @@ interface Props {
   retornos: RetornoCobranca[]
   whatsAppPendencias: WhatsAppPendencia[]
   whatsAppHumanOverrides: number
-  appMode?: AppMode
 }
 
 const WA_WAKE_PING_MAX_PER_DAY = 2
@@ -156,7 +154,6 @@ export default function ActionMenuDashboard({
   retornos,
   whatsAppPendencias,
   whatsAppHumanOverrides,
-  appMode = 'full',
 }: Props) {
   const [isParcelaModalOpen, setIsParcelaModalOpen] = useState(false)
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false)
@@ -169,7 +166,6 @@ export default function ActionMenuDashboard({
   const [wakePingAuditFlag, setWakePingAuditFlag] = useState<WakePingAuditFlag | null>(null)
   const router = useRouter()
   const modules = useStoreModules()
-  const isMvp = appMode === 'mvp'
 
   useEffect(() => {
     if (storeId !== 1) return
@@ -312,21 +308,8 @@ export default function ActionMenuDashboard({
     return true
   })
 
-  const visibleTopRow = isMvp
-    ? topRow.filter(item => item.title !== "Baixa Parcelas")
-    : topRow
-
-  const visibleBottomRow = isMvp
-    ? [
-        bottomRow.find(item => item.title === "Livro Caixa"),
-        {
-          title: "HistÃ³rico",
-          icon: Search,
-          href: `/dashboard/loja/${storeId}/vendas?mode=historico`,
-          color: "hover:bg-slate-500/20 hover:border-slate-500/50 hover:text-slate-200"
-        }
-      ].filter(Boolean) as NonNullable<typeof bottomRow[number]>[]
-    : bottomRow
+  const visibleTopRow = topRow
+  const visibleBottomRow = bottomRow
 
   return (
     <div className="h-full overflow-hidden relative font-sans">

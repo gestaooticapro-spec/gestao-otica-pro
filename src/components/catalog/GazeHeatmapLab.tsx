@@ -3805,7 +3805,7 @@ export default function GazeHeatmapLab({
           <div className="min-w-0">
             <p className="text-xl font-black tracking-tight">Laboratório de mapa de calor ocular</p>
             <p className="text-sm text-slate-400">
-              Loja {storeId} · MVP para Chrome em tablet usando câmera frontal e alvo guiado.
+              Loja {storeId} · Experiência da Torre para Chrome em tablet usando câmera frontal e alvo guiado.
             </p>
           </div>
           <div className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-3 py-1 text-xs font-black tracking-[0.18em] text-cyan-200">

@@ -4,22 +4,10 @@ import { notFound } from 'next/navigation'
 import { revalidatePath, unstable_noStore as noStore } from 'next/cache'
 import { getVendaPageData } from '@/lib/actions/vendas.actions'
 import VendaInterfaceExperimental from '@/components/vendas/VendaInterfaceExperimental'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { getStoreAppMode } from '@/lib/app-mode'
 
 type Props = {
     params: { storeId: string; vendaId: string }
     searchParams: { employee_id?: string; employee_name?: string; open_payment?: string }
-}
-type StoreSettingsRow = {
-    settings?: unknown
-}
-type StoreSettingsTable = {
-    select: (columns: string) => {
-        eq: (column: string, value: number) => {
-            single: () => Promise<{ data: StoreSettingsRow | null }>
-        }
-    }
 }
 
 export default async function VendaPageExperimental({ params }: Props) {
@@ -31,12 +19,6 @@ export default async function VendaPageExperimental({ params }: Props) {
     if (isNaN(storeId) || isNaN(vendaId)) return notFound()
 
     const { success, data, message } = await getVendaPageData(vendaId, storeId)
-    const storesTable = createAdminClient().from('stores') as unknown as StoreSettingsTable
-    const { data: store } = await storesTable
-        .select('settings')
-        .eq('id', storeId)
-        .single()
-    const appMode = getStoreAppMode(store?.settings)
 
     if (!success || !data || !data.venda) {
         console.error('Erro venda:', message)
@@ -90,7 +72,6 @@ export default async function VendaPageExperimental({ params }: Props) {
             isQuitado={isQuitado}
             isVendaFechadaOuCancelada={isVendaFechadaOuCancelada}
             onDataReload={handleDataReload}
-            appMode={appMode}
         />
     )
 }

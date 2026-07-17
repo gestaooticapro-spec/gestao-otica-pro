@@ -5,7 +5,6 @@ import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { type AppMode } from '@/lib/app-mode'
 
 // --- DEFINIÇÃO DO FORMATO DAS CONFIGURAÇÕES ---
 export type StoreSettings = {
@@ -14,7 +13,6 @@ export type StoreSettings = {
     print_show_logo: boolean
     print_show_price_os: boolean
     custom_message_receipt?: string
-    app_mode?: AppMode
 }
 
 // Valores padrão

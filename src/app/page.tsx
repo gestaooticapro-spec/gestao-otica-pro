@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 // Importa o helper do admin, que usa o Service Role Client
 import { getProfileByAdmin } from '@/lib/supabase/admin' 
 import { getStoreModulesForStore } from '@/lib/store-modules.server'
+import { isPlatformAdminProfile } from '@/lib/auth/platform-admin'
 
 export default async function HomePage() {
   const supabase = createClient()
@@ -16,7 +17,10 @@ export default async function HomePage() {
     // CORREÇÃO: Cast 'as any' para garantir acesso às propriedades role e store_id
     const profile = await getProfileByAdmin(user.id) as any;
 
-    if (profile?.role === 'admin') {
+    if (isPlatformAdminProfile(profile)) {
+      redirect('/admin/torres')
+
+    } else if (profile?.role === 'admin') {
       const adminStoreId = profile.store_id || 1; 
       redirect(`/dashboard/loja/${adminStoreId}`) 
 

@@ -11,7 +11,6 @@ import { calcularERegistrarComissao, cancelarComissao, calcularComissaoMedico } 
 import { checkLensStock, confirmReservations, cancelReservations, getLensReservationForOsSlot, releaseReservationsForServiceOrder, reserveLensByAdmin, type LensReservationSlot } from './stock.actions'
 import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
 import { clearNfcTrayLinkForDeliveredOrder } from '@/lib/nfc-tray-cleanup'
-import { getStoreAppMode, type AppMode } from '@/lib/app-mode'
 
 // ================================================================
 // --- TIPOS GLOBAIS ---
@@ -51,7 +50,6 @@ export type OSPageData = {
   vendaItens: VendaItem[]
   existingOrders: ServiceOrderWithLinks[]
   preSaleAnalysisEnabled: boolean
-  appMode?: AppMode
 }
 
 export type GetOSPageDataResult = {
@@ -133,7 +131,6 @@ export async function getOSPageData(
     if (customerRes.error) throw new Error(`Cliente: ${customerRes.error.message}`)
     const storeSettings = (storeRes.data as { settings?: unknown } | null)?.settings
     const preSaleAnalysisEnabled = ((storeSettings || {}) as StoreSettings).pre_sale_analysis_enabled === true
-    const appMode = getStoreAppMode(storeSettings)
 
     const data: OSPageData = {
       customer: customerRes.data,
@@ -144,7 +141,6 @@ export async function getOSPageData(
       vendaItens: itensRes.data || [],
       existingOrders: osRes.data || [],
       preSaleAnalysisEnabled,
-      appMode,
     }
 
     return { success: true, data }

@@ -33,7 +33,6 @@ import { DegreeInput } from '@/components/ui/DegreeInput'
 import { StoreSettings } from '@/lib/store-modules'
 
 import { Database } from '@/lib/database.types'
-import { type AppMode } from '@/lib/app-mode'
 
 type Venda = Database['public']['Tables']['vendas']['Row']
 type VendaItem = Database['public']['Tables']['venda_itens']['Row']
@@ -67,7 +66,6 @@ interface VendaInterfaceProps {
     isQuitado: boolean
     isVendaFechadaOuCancelada: boolean
     onDataReload: () => Promise<void>
-    appMode?: AppMode
 }
 
 // Componente de Modal Simples Local
@@ -715,14 +713,13 @@ function SingleServiceOrderCard({
 
 export default function VendaInterfaceExperimental({
     venda, customer, employee, vendaItens, serviceOrders,
-    pagamentos, financiamento, storeSettings, dependentes, oftalmologistas, employees, isQuitado, isVendaFechadaOuCancelada, onDataReload, appMode = 'full'
+    pagamentos, financiamento, storeSettings, dependentes, oftalmologistas, employees, isQuitado, isVendaFechadaOuCancelada, onDataReload
 }: VendaInterfaceProps) {
 
     const router = useRouter()
     const pathname = usePathname()
     const searchParams = useSearchParams()
     const modules = useStoreModules()
-    const isMvp = appMode === 'mvp'
     const { preference } = useBackgroundPreference();
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false)
 
@@ -1111,7 +1108,6 @@ export default function VendaInterfaceExperimental({
                         nfEmitida={nfEmitida}
                         onNFCeSuccess={handleNFCeSuccess}
                         onNFCeModalClose={handleNFCeModalClose}
-                        hideFiscal={isMvp}
                     />
                 </div>
             </div>

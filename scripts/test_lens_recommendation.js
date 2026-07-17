@@ -19,7 +19,9 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   },
 });
 
-const VERSION_ID = 'a4886a73-bc92-4b14-9c47-152ef0c78078';
+const VERSION_ID = process.argv.includes('--version')
+  ? process.argv[process.argv.indexOf('--version') + 1]
+  : 'a4886a73-bc92-4b14-9c47-152ef0c78078';
 
 const TEST_PROFILES = {
   progressiva_telas_noite: {

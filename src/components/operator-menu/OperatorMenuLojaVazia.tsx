@@ -12,7 +12,6 @@ import { getWhatsAppLink } from '@/lib/utils';
 import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client';
 import Link from 'next/link';
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
-import type { AppMode } from '@/lib/app-mode';
 import {
     clearOperatorWhatsAppWakePingAudit,
     OPERATOR_WHATSAPP_WAKE_PING_AUDIT_EVENT,
@@ -87,7 +86,6 @@ interface OperatorMenuLojaVaziaProps {
     onBack: () => void;
     onNavigate: (route: string) => void;
     deliveryDateEnabled?: boolean;
-    appMode?: AppMode;
 }
 
 interface RadarData {
@@ -144,8 +142,7 @@ export default function OperatorMenuLojaVazia({
     storeName = 'Ótica',
     onBack,
     onNavigate,
-    deliveryDateEnabled = true,
-    appMode = 'full'
+    deliveryDateEnabled = true
 }: OperatorMenuLojaVaziaProps) {
     const { preference } = useBackgroundPreference();
     const modules = useStoreModules();
@@ -197,7 +194,6 @@ export default function OperatorMenuLojaVazia({
     const [supportLoading, setSupportLoading] = useState(false);
     const [supportError, setSupportError] = useState<string | null>(null);
     const [supportStatus, setSupportStatus] = useState<SupportStatus | null>(null);
-    const isMvp = appMode === 'mvp';
 
     useEffect(() => {
         const refreshAudit = () => setWakePingAuditFlag(readOperatorWhatsAppWakePingAudit(storeId));
@@ -207,11 +203,6 @@ export default function OperatorMenuLojaVazia({
     }, [storeId]);
 
     useEffect(() => {
-        if (isMvp) {
-            setLoading(false);
-            return;
-        }
-
         async function fetchData() {
             try {
                 const response = await fetch(`/api/alertas-operacionais?storeId=${storeId}`);
@@ -238,7 +229,7 @@ export default function OperatorMenuLojaVazia({
             }
         }
         fetchData();
-    }, [storeId, isMvp]);
+    }, [storeId]);
 
     useEffect(() => {
         let cancelled = false;

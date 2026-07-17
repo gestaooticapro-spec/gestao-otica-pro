@@ -23,7 +23,6 @@ import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/Backg
 import { OperatorLayout } from '@/components/operator-menu';
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
 import FullscreenToggleButton from '@/components/FullscreenToggleButton';
-import type { AppMode } from '@/lib/app-mode';
 
 type ManualManagerState = 'home' | 'gerencia' | 'operator';
 type ManagerState = ManualManagerState | 'page';
@@ -33,7 +32,6 @@ interface ManagerLayoutProps {
     storeId: number;
     storeName: string;
     logoUrl: string | null;
-    appMode?: AppMode;
 }
 
 const GERENCIA_LINKS = [
@@ -93,7 +91,7 @@ const GERENCIA_LINKS = [
     }
 ] as const;
 
-export default function ManagerLayout({ children, storeId, storeName, logoUrl, appMode = 'full' }: ManagerLayoutProps) {
+export default function ManagerLayout({ children, storeId, storeName, logoUrl }: ManagerLayoutProps) {
     const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
@@ -119,7 +117,6 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl, a
                 storeId={storeId}
                 storeName={storeName}
                 logoUrl={logoUrl}
-                appMode={appMode}
                 onBackToHub={() => {
                     router.replace(`/dashboard/loja/${storeId}`);
                     setManualState('home');

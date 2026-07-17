@@ -99,6 +99,123 @@ export interface Database {
         }
       }
 
+      tower_device_activations: {
+        Row: {
+          id: string
+          tenant_id: string
+          store_id: number
+          token_hash: string
+          fallback_code_hash: string
+          status: 'pending' | 'consumed' | 'revoked'
+          expires_at: string
+          created_by: string | null
+          consumed_at: string | null
+          revoked_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          store_id: number
+          token_hash: string
+          fallback_code_hash: string
+          status?: 'pending' | 'consumed' | 'revoked'
+          expires_at: string
+          created_by?: string | null
+          consumed_at?: string | null
+          revoked_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          store_id?: number
+          token_hash?: string
+          fallback_code_hash?: string
+          status?: 'pending' | 'consumed' | 'revoked'
+          expires_at?: string
+          created_by?: string | null
+          consumed_at?: string | null
+          revoked_at?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+
+      tower_store_admin_pins: {
+        Row: {
+          store_id: number
+          pin_hash: string
+          must_change: boolean
+          failed_attempts: number
+          locked_until: string | null
+          last_verified_at: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          store_id: number
+          pin_hash: string
+          must_change?: boolean
+          failed_attempts?: number
+          locked_until?: string | null
+          last_verified_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          store_id?: number
+          pin_hash?: string
+          must_change?: boolean
+          failed_attempts?: number
+          locked_until?: string | null
+          last_verified_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+
+      tower_store_full_access: {
+        Row: {
+          store_id: number
+          admin_user_id: string | null
+          admin_name: string
+          admin_email: string
+          status: 'pending' | 'active'
+          granted_by: string | null
+          granted_at: string
+          invitation_sent_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          store_id: number
+          admin_user_id?: string | null
+          admin_name: string
+          admin_email: string
+          status?: 'pending' | 'active'
+          granted_by?: string | null
+          granted_at?: string
+          invitation_sent_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          store_id?: number
+          admin_user_id?: string | null
+          admin_name?: string
+          admin_email?: string
+          status?: 'pending' | 'active'
+          granted_by?: string | null
+          granted_at?: string
+          invitation_sent_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+
       employees: {
         Row: {
           id: number
@@ -1767,6 +1884,43 @@ export interface Database {
       [_ in never]: never
     }
     Functions: {
+      create_tower_store_onboarding: {
+        Args: {
+          p_existing_tenant_id: string | null
+          p_new_tenant_name: string | null
+          p_store_name: string
+          p_store_city: string | null
+          p_store_state: string | null
+          p_store_address: string | null
+          p_store_phone: string | null
+          p_store_settings: Json
+          p_token_hash: string
+          p_fallback_code_hash: string
+          p_admin_pin_hash: string
+          p_expires_at: string
+          p_created_by: string
+        }
+        Returns: {
+          tenant_id: string
+          store_id: number
+          activation_id: string
+        }[]
+      }
+      reissue_tower_store_activation: {
+        Args: {
+          p_store_id: number
+          p_token_hash: string
+          p_fallback_code_hash: string
+          p_admin_pin_hash: string
+          p_expires_at: string
+          p_created_by: string
+        }
+        Returns: {
+          tenant_id: string
+          store_id: number
+          activation_id: string
+        }[]
+      }
       create_nfc_tray: {
         Args: {
           p_tray_id: string

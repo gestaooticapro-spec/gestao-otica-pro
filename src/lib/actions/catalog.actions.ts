@@ -5,7 +5,6 @@ import { Database, Json } from '@/lib/database.types'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
-import { getStoreAppMode, isMvpMode } from '@/lib/app-mode'
 
 export type CatalogActionResult = {
   success: boolean
@@ -35,15 +34,6 @@ async function getContext() {
   const profile: any = await getProfileByAdmin(user.id)
 
   return { user, profile, supabaseAdmin: createAdminClient() }
-}
-
-async function getStoreMode(supabaseAdmin: ReturnType<typeof createAdminClient>, storeId: number) {
-  const { data: store } = await (supabaseAdmin.from('stores') as any)
-    .select('settings')
-    .eq('id', storeId)
-    .single()
-
-  return getStoreAppMode(store?.settings)
 }
 
 // --- HELPER: BARCODE INTELIGENTE ---
@@ -295,13 +285,8 @@ export async function saveArmacao(prevState: CatalogActionResult, formData: Form
       const diff = nextStock - currentStock
 
       if (diff !== 0) {
-        const appMode = await getStoreMode(supabaseAdmin, profile.store_id)
         const employeeAuthIdRaw = formData.get('employee_auth_id')
         const employeeAuthId = employeeAuthIdRaw ? Number(employeeAuthIdRaw) : null
-
-        if (isMvpMode(appMode) && !employeeAuthId) {
-          return { success: false, message: 'PIN obrigatório para alterar estoque no modo MVP.' }
-        }
 
         await (supabaseAdmin.from('stock_movements') as any).insert({
           tenant_id: profile.tenant_id,
@@ -309,7 +294,7 @@ export async function saveArmacao(prevState: CatalogActionResult, formData: Form
           product_id: id,
           tipo: 'Ajuste',
           quantidade: Math.abs(diff),
-          motivo: 'Ajuste rápido MVP (cadastro)',
+          motivo: 'Ajuste de estoque pelo cadastro',
           custo_unitario_momento: existing?.preco_custo ?? data.preco_custo ?? null,
           registrado_por_id: user.id,
           employee_id: employeeAuthId,
@@ -399,13 +384,8 @@ export async function saveProdutoGeral(prevState: CatalogActionResult, formData:
       const diff = nextStock - currentStock
 
       if (diff !== 0) {
-        const appMode = await getStoreMode(supabaseAdmin, profile.store_id)
         const employeeAuthIdRaw = formData.get('employee_auth_id')
         const employeeAuthId = employeeAuthIdRaw ? Number(employeeAuthIdRaw) : null
-
-        if (isMvpMode(appMode) && !employeeAuthId) {
-          return { success: false, message: 'PIN obrigatório para alterar estoque no modo MVP.' }
-        }
 
         await (supabaseAdmin.from('stock_movements') as any).insert({
           tenant_id: profile.tenant_id,
@@ -413,7 +393,7 @@ export async function saveProdutoGeral(prevState: CatalogActionResult, formData:
           product_id: id,
           tipo: 'Ajuste',
           quantidade: Math.abs(diff),
-          motivo: 'Ajuste rápido MVP (cadastro)',
+          motivo: 'Ajuste de estoque pelo cadastro',
           custo_unitario_momento: existing?.preco_custo ?? data.preco_custo ?? null,
           registrado_por_id: user.id,
           employee_id: employeeAuthId,

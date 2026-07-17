@@ -11,14 +11,12 @@ import { searchCustomersQuick, CustomerSearchResult } from '@/lib/actions/custom
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
 import FullscreenToggleButton from '@/components/FullscreenToggleButton';
-import type { AppMode } from '@/lib/app-mode';
 
 interface OperatorMenuAtendimentoProps {
     storeId: number;
     onBack: () => void;
     onNavigate: (route: string) => void;
     preSaleAnalysisEnabled?: boolean;
-    appMode?: AppMode;
 }
 
 // --- SUB-COMPONENTE: MODAL DE BUSCA PARA HISTÓRICO ---
@@ -118,14 +116,12 @@ export default function OperatorMenuAtendimento({
     storeId,
     onBack,
     onNavigate,
-    preSaleAnalysisEnabled = false,
-    appMode = 'full'
+    preSaleAnalysisEnabled = false
 }: OperatorMenuAtendimentoProps) {
     const { openParcelaModal, openCustomerHistoryModal } = useModals();
     const { preference } = useBackgroundPreference();
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const modules = useStoreModules();
-    const isMvp = appMode === 'mvp';
 
     const [tooltip, setTooltip] = useState<{ visible: boolean, x: number, y: number, text: string }>({ visible: false, x: 0, y: 0, text: '' });
     const hoverTimeout = useRef<NodeJS.Timeout | null>(null);
@@ -313,7 +309,7 @@ export default function OperatorMenuAtendimento({
                                 onMouseEnter={(e) => handleHover(e, "Use este botão quando o cliente vier buscar o óculos pronto.")}
                                 onMouseMove={handleMove}
                                 onMouseLeave={handleLeave}
-                                className={`${isMvp ? 'hidden' : 'group'} w-full bg-gradient-to-br from-amber-600/20 via-orange-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-4 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-amber-500/20 hover:border-amber-500/30`}
+                                className="group w-full bg-gradient-to-br from-amber-600/20 via-orange-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-4 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-amber-500/20 hover:border-amber-500/30"
                             >
                                 <div className="p-2.5 rounded-full bg-amber-500/20 ring-1 ring-amber-400/30 group-hover:bg-amber-500/40 transition-colors shadow-[0_0_15px_rgba(245,158,11,0.3)]">
                                     <CheckCircle2 className="w-7 h-7 text-amber-200 group-hover:text-white transition-colors shrink-0" strokeWidth={1.5} />
@@ -333,7 +329,7 @@ export default function OperatorMenuAtendimento({
                                 onMouseEnter={(e) => handleHover(e, "Use este botão quando o cliente vier pagar uma parcela.")}
                                 onMouseMove={handleMove}
                                 onMouseLeave={handleLeave}
-                                className={`${isMvp ? 'hidden' : 'group'} w-full bg-gradient-to-br from-amber-600/20 via-orange-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-4 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-amber-500/20 hover:border-amber-500/30`}
+                                className="group w-full bg-gradient-to-br from-amber-600/20 via-orange-900/40 to-slate-900/60 rounded-2xl flex items-center gap-5 px-6 py-4 shadow-lg border border-white/10 backdrop-blur-md relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-amber-500/20 hover:border-amber-500/30"
                             >
                                 <div className="p-2.5 rounded-full bg-amber-500/20 ring-1 ring-amber-400/30 group-hover:bg-amber-500/40 transition-colors shadow-[0_0_15px_rgba(245,158,11,0.3)]">
                                     <Wallet className="w-7 h-7 text-amber-200 group-hover:text-white transition-colors shrink-0" strokeWidth={1.5} />
@@ -412,7 +408,7 @@ export default function OperatorMenuAtendimento({
                             onMouseEnter={(e) => handleHover(e, "O olho de Thundera. Pesquisa central para localizar instantaneamente qualquer cliente por Nome, CPF, Telefone ou número de OS.")}
                             onMouseMove={handleMove}
                             onMouseLeave={handleLeave}
-                            className={`${isMvp ? 'hidden' : 'group'} bg-white/5 hover:bg-slate-700/30 rounded-xl flex items-center gap-4 px-4 py-3 border border-white/5 hover:border-slate-500/30 transition-all duration-300 cursor-pointer`}
+                            className="group bg-white/5 hover:bg-slate-700/30 rounded-xl flex items-center gap-4 px-4 py-3 border border-white/5 hover:border-slate-500/30 transition-all duration-300 cursor-pointer"
                         >
                             <div className="p-2 rounded-lg bg-slate-500/20 text-slate-300 group-hover:bg-slate-500 group-hover:text-white transition-colors">
                                 <Globe className="w-5 h-5" strokeWidth={2} />
@@ -429,7 +425,7 @@ export default function OperatorMenuAtendimento({
                             onMouseEnter={(e) => handleHover(e, "Envie ao cliente via WhatsApp o último grau registrado ou detalhes financeiros de parcelas em aberto.")}
                             onMouseMove={handleMove}
                             onMouseLeave={handleLeave}
-                            className={`${isMvp ? 'hidden' : 'group'} bg-white/5 hover:bg-slate-700/30 rounded-xl flex items-center gap-4 px-4 py-3 border border-white/5 hover:border-slate-500/30 transition-all duration-300 cursor-pointer`}
+                            className="group bg-white/5 hover:bg-slate-700/30 rounded-xl flex items-center gap-4 px-4 py-3 border border-white/5 hover:border-slate-500/30 transition-all duration-300 cursor-pointer"
                         >
                             <div className="p-2 rounded-lg bg-slate-500/20 text-slate-300 group-hover:bg-slate-500 group-hover:text-white transition-colors">
                                 <MessageCircle className="w-5 h-5" strokeWidth={2} />
@@ -446,7 +442,7 @@ export default function OperatorMenuAtendimento({
                             onMouseEnter={(e) => handleHover(e, "Consulte a tabela de preços do laboratório ativo. Compare ofertas, tratamentos e valores lado a lado.")}
                             onMouseMove={handleMove}
                             onMouseLeave={handleLeave}
-                            className={`${isMvp ? 'hidden' : 'group'} bg-white/5 hover:bg-slate-700/30 rounded-xl flex items-center gap-4 px-4 py-3 border border-white/5 hover:border-slate-500/30 transition-all duration-300 cursor-pointer`}
+                            className="group bg-white/5 hover:bg-slate-700/30 rounded-xl flex items-center gap-4 px-4 py-3 border border-white/5 hover:border-slate-500/30 transition-all duration-300 cursor-pointer"
                         >
                             <div className="p-2 rounded-lg bg-slate-500/20 text-slate-300 group-hover:bg-slate-500 group-hover:text-white transition-colors">
                                 <Tag className="w-5 h-5" strokeWidth={2} />

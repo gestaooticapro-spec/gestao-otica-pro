@@ -4,6 +4,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { Database } from '@/lib/database.types'
+import { isPlatformAdminProfile } from '@/lib/auth/platform-admin'
 import { createAdminClient } from '@/lib/supabase/admin' // <-- IMPORTAÇÃO CORRIGIDA
 
 type Profile = Database['public']['Tables']['profiles']['Row']
@@ -61,7 +62,18 @@ export async function getLoginRoute() {
     }
 
     // 3. Lógica de Roteamento (COMPLETA)
-    if (profile.role === 'admin') {
+    if (isPlatformAdminProfile(profile)) {
+      return {
+        success: true,
+        route: '/admin/torres',
+      }
+    } else if (profile.role === 'platform_admin') {
+      return {
+        success: false,
+        route: '/login?error=invalid_platform_admin_scope',
+        message: 'Administrador de plataforma vinculado indevidamente a uma loja.',
+      }
+    } else if (profile.role === 'admin') {
       const adminStoreId = profile.store_id || 1
       return {
         success: true,

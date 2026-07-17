@@ -75,7 +75,7 @@ export default function LoginPage() {
 
       const { route, message } = await getLoginRoute();
 
-      if (route.startsWith('/dashboard')) {
+      if (route.startsWith('/dashboard') || route.startsWith('/admin')) {
         window.location.href = route;
       } else {
         await supabase.auth.signOut();

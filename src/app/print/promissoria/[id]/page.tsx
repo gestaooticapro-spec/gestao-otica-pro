@@ -2,7 +2,6 @@ import { getFinanciamentoById } from '@/lib/actions/vendas.actions'
 import PromissoriaPhantom from '@/components/print/PromissoriaPhantom'
 import { notFound } from 'next/navigation'
 import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
-import { getStoreAppMode } from '@/lib/app-mode'
 
 type FinanciamentoPrint = {
     store?: { settings?: unknown } | null
@@ -14,7 +13,7 @@ export default async function PrintPromissoriaPage({ params }: { params: { id: s
 
     const financiamento = await getFinanciamentoById(id)
 
-    if (!financiamento || getStoreAppMode((financiamento as FinanciamentoPrint).store?.settings) === 'mvp') {
+    if (!financiamento) {
         return notFound()
     }
 
