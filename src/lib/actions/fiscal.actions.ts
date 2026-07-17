@@ -102,19 +102,6 @@ function keepFilledOnly<T>(value: T): T | undefined {
     return value;
 }
 
-function buildLocalFiscalBasicAuthHeader() {
-    const username =
-        process.env.NUVEMLOCALFISCAL_ADMIN_USERNAME ||
-        process.env.ADMIN_USERNAME ||
-        "admin";
-    const password =
-        process.env.NUVEMLOCALFISCAL_ADMIN_PASSWORD ||
-        process.env.ADMIN_PASSWORD ||
-        "admin";
-
-    return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
-}
-
 const IBGE_UF_CODES: Record<string, string> = {
     RO: "11", AC: "12", AM: "13", RR: "14", PA: "15", AP: "16", TO: "17",
     MA: "21", PI: "22", CE: "23", RN: "24", PB: "25", PE: "26", AL: "27", SE: "28", BA: "29",
@@ -2372,37 +2359,7 @@ export async function syncStoreFiscalData(
                 }
             });
 
-            if (isLocalFiscal) {
-                const environmentPayload = keepFilledOnly({
-                    razaoSocial: storeData.razao_social,
-                    nomeFantasia: storeData.name,
-                    uf: normalizeText(storeData.state).toUpperCase(),
-                    ie: normalizeDocument(storeData.inscricao_estadual),
-                    crt: String(storeData.regime_tributario || '1'),
-                    serieNfe: Number(storeData.nfe_serie || 1),
-                    serieNfce: Number(storeData.nfce_serie || 1),
-                    ativo: true
-                });
-
-                const environmentResponse = await fetch(
-                    `${baseUrl}/admin/api/companies/${cnpj}/environments/${ambienteFiscal}`,
-                    {
-                        method: "POST",
-                        headers: {
-                            "Authorization": buildLocalFiscalBasicAuthHeader(),
-                            "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify(environmentPayload)
-                    }
-                );
-
-                if (!environmentResponse.ok) {
-                    const errText = await environmentResponse.text();
-                    throw new Error(`Falha ao sincronizar ambiente ${env} na Nuvem Local: ${errText}`);
-                }
-            }
-
-            const checkResponse = await fetch(`${baseUrl}/empresas/${cnpj}`, {
+            const checkResponse = await fetch(`${baseUrl}/empresas/${cnpj}?ambiente=${ambienteFiscal}`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
 
@@ -2440,7 +2397,6 @@ export async function syncStoreFiscalData(
                         id_csc: Number(String(cscId).replace(/\D/g, '')),
                         csc: String(cscToken).trim()
                     },
-                    serie: Number(storeData.nfce_serie || 1),
                     CRT: Number(storeData.regime_tributario || '1')
                 });
 
@@ -2466,15 +2422,52 @@ export async function syncStoreFiscalData(
                 const certResponse = await fetch(`${baseUrl}/empresas/${cnpj}/certificado`, {
                     method: "PUT",
                     headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ certificado: certBase64, senha: certificatePassword })
+                    body: JSON.stringify({
+                        fileName: certificateFile.name,
+                        pfxBase64: certBase64,
+                        password: certificatePassword
+                    })
                 });
 
                 if (!certResponse.ok) {
-                    const err = await certResponse.json();
-                    console.error(`[Sync Fiscal] Erro certificado ${env}:`, err);
+                    const errText = await certResponse.text();
+                    throw new Error(`Falha ao sincronizar certificado em ${env}: ${errText}`);
                 } else {
                     certResult = await certResponse.json();
                 }
+            }
+
+            const verifyResponse = await fetch(`${baseUrl}/empresas/${cnpj}?ambiente=${ambienteFiscal}`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (!verifyResponse.ok) {
+                throw new Error(`Falha ao confirmar empresa em ${env}: ${await verifyResponse.text()}`);
+            }
+
+            const savedCompany = await verifyResponse.json();
+            const expected = {
+                cnpj,
+                razaoSocial: normalizeText(storeData.razao_social),
+                nomeFantasia: normalizeText(storeData.name),
+                uf: normalizeText(storeData.state).toUpperCase(),
+                ie: normalizeDocument(storeData.inscricao_estadual),
+                crt: String(storeData.regime_tributario || "1"),
+                codigoMunicipioIbge: normalizeIbgeCode(storeData.codigo_municipio_ibge)
+            };
+            const saved = {
+                cnpj: normalizeDocument(savedCompany.cpf_cnpj),
+                razaoSocial: normalizeText(savedCompany.nome_razao_social),
+                nomeFantasia: normalizeText(savedCompany.nome_fantasia),
+                uf: normalizeText(savedCompany.endereco?.uf).toUpperCase(),
+                ie: normalizeDocument(savedCompany.inscricao_estadual),
+                crt: String(savedCompany.regime_tributario ?? ""),
+                codigoMunicipioIbge: normalizeIbgeCode(savedCompany.endereco?.codigo_municipio)
+            };
+            const mismatches = Object.entries(expected)
+                .filter(([field, value]) => value && saved[field as keyof typeof saved] !== value)
+                .map(([field]) => field);
+            if (mismatches.length) {
+                throw new Error(`A Nuvem Local confirmou dados divergentes em ${env}: ${mismatches.join(", ")}.`);
             }
 
             results.push({ env, success: true, cert: certResult });
@@ -2488,7 +2481,7 @@ export async function syncStoreFiscalData(
     const prodResult = results.find(r => r.env === 'production');
 
     return {
-        success: true,
+        success: results.every(result => result.success),
         results,
         thumbprint: prodResult?.cert?.thumbprint,
         valid_until: prodResult?.cert?.data_validade

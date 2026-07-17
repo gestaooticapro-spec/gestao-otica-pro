@@ -2,11 +2,12 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, HelpCircle, MonitorUp, RotateCcw, Ruler, Search, SlidersHorizontal, UserRound, X } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, HelpCircle, Maximize2, Minimize2, MonitorUp, RotateCcw, Ruler, Search, SlidersHorizontal, UserRound, X } from 'lucide-react'
 import { closeTowerClientScreen, openTowerClientScreen } from '@/lib/tower/client-screen'
 import { searchCustomersByName } from '@/lib/actions/vendas.actions'
 import { saveTowerSessionPrescription, type TowerPrescriptionSnapshot, type TowerSessionContext } from '@/lib/actions/tower-session.actions'
 import type { GlobalVisagismoFrameTemplate } from '@/lib/actions/visagismo.actions'
+import { LensPhysicalView } from '@/components/tower/LensPhysicalView'
 
 type Mount = 'aro' | 'fio' | 'parafusado'
 type Shape = 'arredondada' | 'quadrada'
@@ -34,6 +35,7 @@ type LensState = {
   focalX: number
   focalY: number
   calibrationScale: number
+  displayScale: 1 | 1.8
   showCalibrator: boolean
 }
 
@@ -79,6 +81,7 @@ const DEFAULT_STATE: LensState = {
   focalX: 0,
   focalY: 0,
   calibrationScale: 100,
+  displayScale: 1,
   showCalibrator: false,
 }
 
@@ -149,8 +152,8 @@ function resampleContour(points: Array<{ x: number; y: number }>, count = 96) {
   })
 }
 
-function framePath(points: Array<{ x: number; y: number }>, pxPerMm = PX_PER_MM) {
-  const rendered = points.map((point) => ({ x: 180 + point.x * pxPerMm, y: 112 + point.y * pxPerMm }))
+function framePath(points: Array<{ x: number; y: number }>, pxPerMm = PX_PER_MM, centerX = 180, centerY = 112) {
+  const rendered = points.map((point) => ({ x: centerX + point.x * pxPerMm, y: centerY + point.y * pxPerMm }))
   if (!rendered.length) return ''
   return `M ${rendered.map((point) => `${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' L ')} Z`
 }
@@ -409,6 +412,7 @@ export default function TowerLensThicknessDemo({
             <div className="min-w-0 flex-1"><div className="flex items-center gap-3"><Link href={`/torre/${storeId}?menu=informacoes&session=${sessionId}`} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white" aria-label="Voltar para Informações Úteis"><ArrowLeft size={19} /></Link><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-300 text-slate-950"><Ruler size={25} strokeWidth={2.4} /></div></div><p className="mt-6 text-xs font-black uppercase tracking-[.2em] text-cyan-300">Informações úteis</p><h1 className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">Espessura das lentes</h1><p className="mt-3 max-w-2xl text-slate-300">Conduza a conversa com os controles que fizerem sentido para a dúvida do cliente. <button type="button" onClick={() => setShowHelp(true)} className="inline-flex h-6 w-6 translate-y-1 items-center justify-center rounded-full border border-cyan-300/35 bg-cyan-400/10 text-cyan-100 transition hover:bg-cyan-400/20" aria-label="Como usar na conversa" title="Como usar na conversa"><HelpCircle size={14} /></button></p></div>
             <div className="flex items-center gap-2">
               <button type="button" onClick={() => setShowCalibratorControls(true)} className={`flex items-center justify-center gap-2 rounded-2xl border px-4 py-4 text-sm font-bold transition ${state.showCalibrator ? 'border-amber-200/50 bg-amber-300/15 text-amber-100' : 'border-white/10 bg-white/5 text-slate-200 hover:bg-white/10'}`} title="Calibrar tamanho real"><SlidersHorizontal size={18} /> Calibrar</button>
+              <button type="button" onClick={() => patch({ displayScale: state.displayScale === 1 ? 1.8 : 1 })} className={`flex items-center justify-center gap-2 rounded-2xl border px-4 py-4 text-sm font-bold transition ${state.displayScale === 1 ? 'border-white/10 bg-white/5 text-slate-200 hover:bg-white/10' : 'border-cyan-300/50 bg-cyan-400/15 text-cyan-100'}`} title={state.displayScale === 1 ? 'Ampliar a demonstração para conversa à distância' : 'Voltar ao tamanho real calibrado'}>{state.displayScale === 1 ? <Maximize2 size={18} /> : <Minimize2 size={18} />}{state.displayScale === 1 ? 'Ampliar' : 'Tamanho real'}</button>
               <button type="button" onClick={toggleClientScreen} className="flex items-center justify-center gap-2 rounded-2xl bg-cyan-300 px-5 py-4 text-sm font-bold text-slate-950 transition hover:bg-cyan-200"><MonitorUp size={20} /> {clientScreenOpen ? 'Fechar tela cliente' : 'Abrir tela cliente'}</button>
             </div>
           </div>
@@ -590,13 +594,21 @@ function LegacyClientLensScreen({ state }: { state: LensState }) {
 
 function ClientLensScreen({ state }: { state: LensState }) {
   const result = useMemo(() => calculate(state), [state])
+  const presentationScale = state.displayScale
   const pxPerMm = 4.1 * state.calibrationScale / 100
-  const path = framePath(result.contour, pxPerMm)
+  const frontCanvasWidth = 480
+  const frontCanvasHeight = 340
+  const frontCenterX = frontCanvasWidth / 2
+  const frontCenterY = frontCanvasHeight / 2
+  const frontCanvasStyle = { width: `${frontCanvasWidth * presentationScale}px`, height: `${frontCanvasHeight * presentationScale}px` }
+  const edgePhysicalStyle = { width: `${360 * presentationScale}px`, height: `${142 * presentationScale}px` }
+  const edgeProfileStyle = { width: `${360 * presentationScale}px`, height: `${110 * presentationScale}px` }
+  const path = framePath(result.contour, pxPerMm, frontCenterX, frontCenterY)
   const colorFor = (thickness: number) => {
     const progress = (thickness - result.minimum.thickness) / Math.max(.05, result.maximum.thickness - result.minimum.thickness)
     return `hsl(${205 - progress * 190} 88% ${43 + progress * 14}%)`
   }
-  const profilePxPerMm = pxPerMm * 1.5
+  const profilePxPerMm = pxPerMm
   const profile = result.topEdge.map((sample) => ({
     x: 180 + sample.x * profilePxPerMm,
     front: 58 + sample.displayFrontSag * profilePxPerMm,
@@ -610,11 +622,12 @@ function ClientLensScreen({ state }: { state: LensState }) {
       return `M ${first.x} ${first.front} ${profile.slice(1).map((point) => `L ${point.x} ${point.front}`).join(' ')} L ${last.x} ${last.back} ${back.slice(1).map((point) => `L ${point.x} ${point.back}`).join(' ')} L ${first.x} ${first.front} Z`
     })()
     : ''
-  const cellWidth = result.width / 30 * pxPerMm
-  const cellHeight = result.height / 30 * pxPerMm
   const rimMinimum = result.rim.reduce((minimum, sample) => Math.min(minimum, sample.thickness), Number.POSITIVE_INFINITY)
   const rimMaximum = result.rim.reduce((maximum, sample) => Math.max(maximum, sample.thickness), 0)
-  const observationY = 112 + state.focalY * pxPerMm
+  const cellWidth = result.width / 30 * pxPerMm
+  const cellHeight = result.height / 30 * pxPerMm
+  const observationY = frontCenterY + state.focalY * pxPerMm
+  const rulerStart = frontCenterX - 25 * pxPerMm
 
   return <main className="h-[100dvh] overflow-hidden bg-slate-950 p-7 text-white sm:p-10">
     <div className="flex h-full flex-col">
@@ -623,21 +636,23 @@ function ClientLensScreen({ state }: { state: LensState }) {
         <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-right text-sm"><p className="font-bold text-cyan-100">{formatDegree(state.sphere)} / {formatDegree(state.cylinder)} × {Math.round(state.axis)}°</p><p className="mt-1 text-slate-400">Índice {state.index.toFixed(2)} · curva base {state.baseCurve === 0 ? '0' : `+${state.baseCurve}`}</p></div>
       </header>
       <section className="mt-7 grid min-h-0 flex-1 gap-5 lg:grid-cols-[1.25fr_.95fr]">
-        <div className="rounded-3xl border border-cyan-300/25 bg-cyan-400/5 p-5">
+        <div className="flex min-h-0 flex-col rounded-3xl border border-cyan-300/25 bg-cyan-400/5 p-5">
           <div className="flex items-center justify-between gap-4"><p className="text-xs font-black uppercase tracking-[.16em] text-cyan-200">Lente vista de frente</p><span className="text-xs font-bold text-slate-400">linha de observação fixa</span></div>
-          <svg viewBox="0 0 360 224" className="mt-3 h-[min(54vh,520px)] w-full" role="img" aria-label={`Lente girada em ${Math.round(state.rotationAngle)} graus com espessura calculada ao longo da borda`}>
+          <div className="flex min-h-0 flex-1 items-center justify-center">
+          <svg viewBox={`0 0 ${frontCanvasWidth} ${frontCanvasHeight}`} style={frontCanvasStyle} className="block" role="img" aria-label={`Lente girada em ${Math.round(state.rotationAngle)} graus com espessura calculada ao longo da borda`}>
             <defs><clipPath id="tower-lens-rotation-frame"><path d={path} /></clipPath></defs>
             <path d={path} fill="rgba(15,23,42,.8)" stroke="rgba(103,232,249,.85)" strokeWidth="2" />
-            <g clipPath="url(#tower-lens-rotation-frame)">{result.samples.map((sample, index) => <rect key={index} x={180 + sample.x * pxPerMm - cellWidth / 2 - 1} y={112 + sample.y * pxPerMm - cellHeight / 2 - 1} width={cellWidth + 2} height={cellHeight + 2} fill={colorFor(sample.thickness)} opacity=".9" />)}</g>
-            {result.rim.map((sample, index) => { const next = result.rim[(index + 1) % result.rim.length]; return <line key={index} x1={180 + sample.x * pxPerMm} y1={112 + sample.y * pxPerMm} x2={180 + next.x * pxPerMm} y2={112 + next.y * pxPerMm} stroke={colorFor(sample.thickness)} strokeWidth="6" strokeLinecap="round" /> })}
-            <line x1="30" y1={observationY} x2="330" y2={observationY} stroke="rgba(253,224,71,.8)" strokeWidth="1.5" strokeDasharray="6 5" />
-            <circle cx={180 + state.focalX * pxPerMm} cy={observationY} r="5" fill="white" stroke="#0891b2" strokeWidth="2" />
+            <g clipPath="url(#tower-lens-rotation-frame)">{result.samples.map((sample, index) => <rect key={index} x={frontCenterX + sample.x * pxPerMm - cellWidth / 2 - 1} y={frontCenterY + sample.y * pxPerMm - cellHeight / 2 - 1} width={cellWidth + 2} height={cellHeight + 2} fill={colorFor(sample.thickness)} opacity=".9" />)}</g>
+            {result.rim.map((sample, index) => { const next = result.rim[(index + 1) % result.rim.length]; return <line key={index} x1={frontCenterX + sample.x * pxPerMm} y1={frontCenterY + sample.y * pxPerMm} x2={frontCenterX + next.x * pxPerMm} y2={frontCenterY + next.y * pxPerMm} stroke={colorFor(sample.thickness)} strokeWidth="6" strokeLinecap="round" /> })}
+            <line x1="45" y1={observationY} x2={frontCanvasWidth - 45} y2={observationY} stroke="rgba(253,224,71,.8)" strokeWidth="1.5" strokeDasharray="6 5" />
+            <circle cx={frontCenterX + state.focalX * pxPerMm} cy={observationY} r="5" fill="white" stroke="#0891b2" strokeWidth="2" />
             <path d={path} fill="none" stroke="rgba(255,255,255,.72)" strokeWidth="1" />
-            {state.showCalibrator && <g transform="translate(75 205)"><line x1="0" y1="0" x2={50 * pxPerMm} y2="0" stroke="#fcd34d" strokeWidth="3" /><line x1="0" y1="-7" x2="0" y2="7" stroke="#fcd34d" strokeWidth="3" /><line x1={50 * pxPerMm} y1="-7" x2={50 * pxPerMm} y2="7" stroke="#fcd34d" strokeWidth="3" /><text x={25 * pxPerMm} y="-10" textAnchor="middle" fill="#fde68a" fontSize="11" fontWeight="800">50 mm · calibre com régua</text></g>}
+            {state.showCalibrator && presentationScale === 1 && <g transform={`translate(${rulerStart} ${frontCanvasHeight - 19})`}><line x1="0" y1="0" x2={50 * pxPerMm} y2="0" stroke="#fcd34d" strokeWidth="3" /><line x1="0" y1="-7" x2="0" y2="7" stroke="#fcd34d" strokeWidth="3" /><line x1={50 * pxPerMm} y1="-7" x2={50 * pxPerMm} y2="7" stroke="#fcd34d" strokeWidth="3" /><text x={25 * pxPerMm} y="-10" textAnchor="middle" fill="#fde68a" fontSize="11" fontWeight="800">50 mm · calibre com régua</text></g>}
           </svg>
+          </div>
         </div>
         <div className="grid min-h-0 gap-5 grid-rows-[1fr_auto]">
-          <div className="rounded-3xl border border-white/10 bg-slate-900/75 p-5"><div className="flex items-center justify-between gap-4"><p className="text-xs font-black uppercase tracking-[.16em] text-slate-400">Borda externa na direção observada</p><span className="text-sm font-black text-cyan-100">{Math.round(state.rotationAngle)}°</span></div><svg viewBox="0 0 360 120" className="mt-3 h-[min(28vh,250px)] w-full" role="img" aria-label="Perfil externo espelhado da borda no ângulo selecionado"><path d={profilePath} transform="translate(360 0) scale(-1 1)" fill="rgba(34,211,238,.62)" stroke="rgba(165,243,252,.95)" strokeWidth=".6" /></svg><p className="text-sm leading-6 text-slate-300">O perfil é mostrado de forma espelhada para facilitar a comparação direta com a lente real.</p></div>
+          <div className="rounded-3xl border border-white/10 bg-slate-900/75 p-5"><div className="flex items-center justify-between gap-4"><p className="text-xs font-black uppercase tracking-[.16em] text-slate-400">Borda externa na direção observada</p><span className="text-sm font-black text-cyan-100">{Math.round(state.rotationAngle)}°</span></div><div className="mt-3"><p className="mb-1 text-[10px] font-black uppercase tracking-[.14em] text-cyan-200">Vista física</p><div style={edgePhysicalStyle} className="mx-auto"><LensPhysicalView rim={result.rim} samples={result.samples} widthMm={result.width} heightMm={result.height} focalX={state.focalX} focalY={state.focalY} index={state.index} calibrationScale={state.calibrationScale * presentationScale} showCalibrator={false} view="edge" /></div></div><div className="mt-3"><p className="mb-1 text-[10px] font-black uppercase tracking-[.14em] text-slate-500">Perfil calculado</p><svg viewBox="0 0 360 110" style={edgeProfileStyle} className="mx-auto block" role="img" aria-label="Perfil calculado e espelhado da borda no ângulo selecionado"><path d={profilePath} transform="translate(360 0) scale(-1 1)" fill="rgba(34,211,238,.62)" stroke="rgba(165,243,252,.95)" strokeWidth=".6" /></svg></div><p className="mt-2 text-sm leading-6 text-slate-300">{presentationScale === 1 ? 'Escala física calibrada.' : 'Representação ampliada para conversa à distância.'}</p></div>
           <div className="grid grid-cols-2 gap-3"><div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-xs font-black uppercase tracking-[.14em] text-slate-500">Borda mais fina</p><p className="mt-2 text-2xl font-black text-cyan-100">{rimMinimum.toFixed(2)} mm</p></div><div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-xs font-black uppercase tracking-[.14em] text-slate-500">Borda mais grossa</p><p className="mt-2 text-2xl font-black text-amber-200">{rimMaximum.toFixed(2)} mm</p></div></div>
         </div>
       </section>

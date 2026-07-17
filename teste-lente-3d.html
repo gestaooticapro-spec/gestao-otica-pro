@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Teste de lente 3D em tempo real</title>
+
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #eef2f7;
+      color: #0f172a;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 15% 10%, rgba(255,255,255,.95), transparent 30%),
+        linear-gradient(135deg, #edf2f7, #f8fafc 55%, #e2e8f0);
+    }
+
+    .app {
+      width: min(1400px, 100%);
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .header {
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: clamp(26px, 4vw, 42px);
+      letter-spacing: -0.03em;
+    }
+
+    .subtitle {
+      margin: 0;
+      color: #64748b;
+      line-height: 1.5;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 330px;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .viewer-card,
+    .panel {
+      border: 1px solid rgba(148, 163, 184, .26);
+      border-radius: 24px;
+      background: rgba(255,255,255,.74);
+      box-shadow: 0 20px 60px rgba(15,23,42,.10);
+      backdrop-filter: blur(18px);
+    }
+
+    .viewer-card {
+      position: relative;
+      min-height: 680px;
+      overflow: hidden;
+    }
+
+    #viewer {
+      position: absolute;
+      inset: 0;
+    }
+
+    .viewer-note {
+      position: absolute;
+      left: 18px;
+      top: 18px;
+      z-index: 3;
+      padding: 10px 13px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.76);
+      border: 1px solid rgba(255,255,255,.9);
+      box-shadow: 0 10px 30px rgba(15,23,42,.10);
+      color: #334155;
+      font-size: 13px;
+      font-weight: 700;
+      pointer-events: none;
+    }
+
+    .angle-badge {
+      position: absolute;
+      right: 18px;
+      top: 18px;
+      z-index: 3;
+      min-width: 110px;
+      padding: 10px 14px;
+      border-radius: 16px;
+      background: rgba(15,23,42,.78);
+      color: white;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(15,23,42,.16);
+      pointer-events: none;
+    }
+
+    .angle-badge small {
+      display: block;
+      opacity: .7;
+      margin-bottom: 2px;
+      font-size: 11px;
+    }
+
+    .angle-badge strong {
+      font-size: 22px;
+    }
+
+    .panel {
+      padding: 20px;
+    }
+
+    .panel h2 {
+      margin: 0 0 18px;
+      font-size: 18px;
+    }
+
+    .control {
+      margin-bottom: 20px;
+    }
+
+    .control-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    label {
+      font-size: 13px;
+      font-weight: 700;
+      color: #334155;
+    }
+
+    output {
+      font-variant-numeric: tabular-nums;
+      color: #0f4fc5;
+      font-weight: 800;
+      font-size: 13px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: #2563eb;
+    }
+
+    select, button {
+      width: 100%;
+      min-height: 42px;
+      border-radius: 12px;
+      border: 1px solid #cbd5e1;
+      background: white;
+      color: #0f172a;
+      padding: 0 12px;
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+      border: 0;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: white;
+      font-weight: 800;
+      box-shadow: 0 10px 20px rgba(37,99,235,.22);
+    }
+
+    button.secondary {
+      margin-top: 10px;
+      background: white;
+      color: #334155;
+      border: 1px solid #cbd5e1;
+      box-shadow: none;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 20px 0;
+    }
+
+    .stat {
+      padding: 12px;
+      border-radius: 14px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+    }
+
+    .stat span {
+      display: block;
+      font-size: 11px;
+      color: #64748b;
+      margin-bottom: 4px;
+    }
+
+    .stat strong {
+      font-size: 16px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .tip {
+      margin: 16px 0 0;
+      padding: 13px;
+      border-radius: 14px;
+      background: #eff6ff;
+      color: #1e3a8a;
+      font-size: 12px;
+      line-height: 1.5;
+      border: 1px solid #bfdbfe;
+    }
+
+    .footer-note {
+      margin-top: 14px;
+      text-align: center;
+      color: #64748b;
+      font-size: 12px;
+    }
+
+    @media (max-width: 900px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .viewer-card {
+        min-height: 520px;
+      }
+    }
+  </style>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <h1>Lente 3D gerada em tempo real</h1>
+      <p class="subtitle">
+        A malha é recalculada no navegador. Arraste para girar, use o scroll para aproximar
+        e altere os controles para observar a borda e a curvatura.
+      </p>
+    </header>
+
+    <section class="layout">
+      <div class="viewer-card">
+        <div class="viewer-note">Arraste com o mouse para girar</div>
+        <div class="angle-badge">
+          <small>Ângulo da borda</small>
+          <strong id="angleBadge">45°</strong>
+        </div>
+        <div id="viewer"></div>
+      </div>
+
+      <aside class="panel">
+        <h2>Parâmetros da lente</h2>
+
+        <div class="control">
+          <div class="control-head">
+            <label for="centerThickness">Espessura central</label>
+            <output id="centerOut">1.6 mm</output>
+          </div>
+          <input id="centerThickness" type="range" min="0.8" max="5" step="0.1" value="1.6" />
+        </div>
+
+        <div class="control">
+          <div class="control-head">
+            <label for="edgeThickness">Espessura máxima da borda</label>
+            <output id="edgeOut">5.2 mm</output>
+          </div>
+          <input id="edgeThickness" type="range" min="1.2" max="10" step="0.1" value="5.2" />
+        </div>
+
+        <div class="control">
+          <div class="control-head">
+            <label for="frontCurve">Curvatura frontal</label>
+            <output id="curveOut">2.2</output>
+          </div>
+          <input id="frontCurve" type="range" min="0" max="7" step="0.1" value="2.2" />
+        </div>
+
+        <div class="control">
+          <div class="control-head">
+            <label for="angle">Ângulo destacado</label>
+            <output id="angleOut">45°</output>
+          </div>
+          <input id="angle" type="range" min="0" max="359" step="1" value="45" />
+        </div>
+
+        <div class="control">
+          <div class="control-head">
+            <label for="ior">Índice de refração</label>
+            <output id="iorOut">1.50</output>
+          </div>
+          <input id="ior" type="range" min="1.49" max="1.74" step="0.01" value="1.50" />
+        </div>
+
+        <div class="control">
+          <label for="shape">Formato da lente</label>
+          <select id="shape">
+            <option value="rounded">Retangular arredondada</option>
+            <option value="oval">Oval</option>
+            <option value="round">Redonda</option>
+          </select>
+        </div>
+
+        <div class="stats">
+          <div class="stat">
+            <span>Espessura no ângulo</span>
+            <strong id="selectedThickness">4.5 mm</strong>
+          </div>
+          <div class="stat">
+            <span>Material simulado</span>
+            <strong id="materialName">CR-39</strong>
+          </div>
+        </div>
+
+        <button id="sideView">Ver de lado</button>
+        <button id="frontView" class="secondary">Voltar à vista frontal</button>
+
+        <p class="tip">
+          O brilho e o contorno dependem das luzes do ambiente 3D. Em produção,
+          você pode substituir os cálculos demonstrativos pelos valores reais
+          gerados pelo seu mecanismo de espessura.
+        </p>
+      </aside>
+    </section>
+
+    <div class="footer-note">
+      Demonstração técnica em Three.js. É necessário estar conectado à internet para carregar a biblioteca.
+    </div>
+  </main>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+    const viewer = document.getElementById("viewer");
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf5f7fa);
+
+    const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 1000);
+    camera.position.set(0, -58, 38);
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: false,
+      powerPreference: "high-performance"
+    });
+
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.18;
+    viewer.appendChild(renderer.domElement);
+
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const environment = new RoomEnvironment();
+    scene.environment = pmrem.fromScene(environment, 0.04).texture;
+    environment.dispose();
+    pmrem.dispose();
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.055;
+    controls.enablePan = false;
+    controls.minDistance = 28;
+    controls.maxDistance = 105;
+    controls.target.set(0, 0, 0);
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa7b8, 2.3));
+
+    const key = new THREE.DirectionalLight(0xffffff, 4.2);
+    key.position.set(-12, -14, 28);
+    scene.add(key);
+
+    const rim = new THREE.DirectionalLight(0xc7e4ff, 3.4);
+    rim.position.set(20, 10, 10);
+    scene.add(rim);
+
+    const fill = new THREE.DirectionalLight(0xffffff, 2.2);
+    fill.position.set(0, 22, -5);
+    scene.add(fill);
+
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(180, 180),
+      new THREE.MeshStandardMaterial({
+        color: 0xe8edf3,
+        roughness: 0.92,
+        metalness: 0
+      })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.z = -8;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    const shadow = new THREE.Mesh(
+      new THREE.CircleGeometry(24, 96),
+      new THREE.MeshBasicMaterial({
+        color: 0x64748b,
+        transparent: true,
+        opacity: 0.12,
+        depthWrite: false
+      })
+    );
+    shadow.scale.set(1.5, 0.38, 1);
+    shadow.position.set(0, 2, -7.8);
+    scene.add(shadow);
+
+    const material = new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(0xf7fbff),
+      metalness: 0,
+      roughness: 0.035,
+      transmission: 1,
+      thickness: 3.2,
+      ior: 1.5,
+      clearcoat: 1,
+      clearcoatRoughness: 0.025,
+      attenuationColor: new THREE.Color(0xeaf7ff),
+      attenuationDistance: 80,
+      specularIntensity: 1,
+      specularColor: new THREE.Color(0xffffff),
+      iridescence: 0.12,
+      iridescenceIOR: 1.2,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 1
+    });
+
+    let lens = null;
+    let edgeMarker = null;
+
+    const state = {
+      centerThickness: 1.6,
+      edgeThickness: 5.2,
+      frontCurve: 2.2,
+      angle: 45,
+      ior: 1.50,
+      shape: "rounded"
+    };
+
+    function superellipseRadius(theta, a, b, n) {
+      const c = Math.cos(theta);
+      const s = Math.sin(theta);
+      return 1 / Math.pow(
+        Math.pow(Math.abs(c) / a, n) +
+        Math.pow(Math.abs(s) / b, n),
+        1 / n
+      );
+    }
+
+    function shapePoint(theta, radial, shape) {
+      if (shape === "round") {
+        const r = 25 * radial;
+        return [Math.cos(theta) * r, Math.sin(theta) * r];
+      }
+
+      if (shape === "oval") {
+        return [
+          Math.cos(theta) * 31 * radial,
+          Math.sin(theta) * 21 * radial
+        ];
+      }
+
+      const r = superellipseRadius(theta, 31, 21, 4.4) * radial;
+      return [Math.cos(theta) * r, Math.sin(theta) * r];
+    }
+
+    function angularEdgeThickness(theta) {
+      const horizontalBias = 0.5 + 0.5 * Math.abs(Math.cos(theta));
+      const diagonalVariation = 0.18 * Math.sin(theta * 2);
+      const factor = THREE.MathUtils.clamp(horizontalBias + diagonalVariation, 0, 1);
+
+      return THREE.MathUtils.lerp(
+        Math.max(state.centerThickness + 0.4, state.edgeThickness * 0.58),
+        state.edgeThickness,
+        factor
+      );
+    }
+
+    function buildLensGeometry() {
+      const segments = 160;
+      const rings = 30;
+      const positions = [];
+      const uvs = [];
+      const indices = [];
+
+      const verticesPerSurface = (rings + 1) * segments;
+
+      for (let surface = 0; surface < 2; surface++) {
+        const isFront = surface === 0;
+
+        for (let ring = 0; ring <= rings; ring++) {
+          const radial = ring / rings;
+
+          for (let segment = 0; segment < segments; segment++) {
+            const theta = segment / segments * Math.PI * 2;
+            const [x, y] = shapePoint(theta, radial, state.shape);
+
+            const edgeT = angularEdgeThickness(theta);
+            const thickness = THREE.MathUtils.lerp(
+              state.centerThickness,
+              edgeT,
+              Math.pow(radial, 2.25)
+            );
+
+            const frontBulge = state.frontCurve * (1 - Math.pow(radial, 2));
+            const subtleAstigmatism =
+              0.18 * Math.cos(theta * 2) * Math.pow(radial, 1.6);
+
+            let z;
+            if (isFront) {
+              z = frontBulge + subtleAstigmatism;
+            } else {
+              z = frontBulge + subtleAstigmatism - thickness;
+            }
+
+            positions.push(x, y, z);
+            uvs.push(
+              (x / 64) + 0.5,
+              (y / 44) + 0.5
+            );
+          }
+        }
+      }
+
+      for (let ring = 0; ring < rings; ring++) {
+        for (let segment = 0; segment < segments; segment++) {
+          const next = (segment + 1) % segments;
+
+          const a = ring * segments + segment;
+          const b = ring * segments + next;
+          const c = (ring + 1) * segments + segment;
+          const d = (ring + 1) * segments + next;
+
+          indices.push(a, c, b, b, c, d);
+
+          const ba = verticesPerSurface + a;
+          const bb = verticesPerSurface + b;
+          const bc = verticesPerSurface + c;
+          const bd = verticesPerSurface + d;
+
+          indices.push(ba, bb, bc, bb, bd, bc);
+        }
+      }
+
+      const outer = rings * segments;
+
+      for (let segment = 0; segment < segments; segment++) {
+        const next = (segment + 1) % segments;
+
+        const fa = outer + segment;
+        const fb = outer + next;
+        const ba = verticesPerSurface + outer + segment;
+        const bb = verticesPerSurface + outer + next;
+
+        indices.push(fa, ba, fb, fb, ba, bb);
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(positions, 3)
+      );
+      geometry.setAttribute(
+        "uv",
+        new THREE.Float32BufferAttribute(uvs, 2)
+      );
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      geometry.computeBoundingSphere();
+
+      return geometry;
+    }
+
+    function rebuildLens() {
+      if (lens) {
+        scene.remove(lens);
+        lens.geometry.dispose();
+      }
+
+      const geometry = buildLensGeometry();
+      lens = new THREE.Mesh(geometry, material);
+      lens.rotation.x = THREE.MathUtils.degToRad(6);
+      lens.rotation.z = THREE.MathUtils.degToRad(-4);
+      scene.add(lens);
+
+      updateMarker();
+      updateStats();
+    }
+
+    function updateMarker() {
+      if (edgeMarker) {
+        scene.remove(edgeMarker);
+        edgeMarker.geometry.dispose();
+        edgeMarker.material.dispose();
+      }
+
+      const theta = THREE.MathUtils.degToRad(state.angle);
+      const [x, y] = shapePoint(theta, 1.01, state.shape);
+      const edgeT = angularEdgeThickness(theta);
+
+      edgeMarker = new THREE.Mesh(
+        new THREE.SphereGeometry(0.62, 24, 24),
+        new THREE.MeshStandardMaterial({
+          color: 0x2563eb,
+          emissive: 0x0b3da0,
+          emissiveIntensity: 0.75,
+          roughness: 0.25,
+          metalness: 0.1
+        })
+      );
+
+      edgeMarker.position.set(x, y, -edgeT * 0.48);
+      lens.add(edgeMarker);
+    }
+
+    function updateStats() {
+      const theta = THREE.MathUtils.degToRad(state.angle);
+      const selected = angularEdgeThickness(theta);
+
+      document.getElementById("selectedThickness").textContent =
+        `${selected.toFixed(1)} mm`;
+
+      document.getElementById("materialName").textContent =
+        state.ior < 1.53 ? "CR-39" :
+        state.ior < 1.61 ? "Índice 1.56" :
+        state.ior < 1.68 ? "Índice 1.67" :
+        "Índice 1.74";
+    }
+
+    function bindRange(id, key, outputId, formatter, rebuild = true) {
+      const input = document.getElementById(id);
+      const output = document.getElementById(outputId);
+
+      input.addEventListener("input", () => {
+        state[key] = Number(input.value);
+        output.textContent = formatter(state[key]);
+
+        if (key === "ior") {
+          material.ior = state.ior;
+          material.needsUpdate = true;
+          updateStats();
+          return;
+        }
+
+        if (key === "angle") {
+          document.getElementById("angleBadge").textContent = `${state.angle}°`;
+          updateMarker();
+          updateStats();
+          return;
+        }
+
+        if (rebuild) rebuildLens();
+      });
+    }
+
+    bindRange("centerThickness", "centerThickness", "centerOut", v => `${v.toFixed(1)} mm`);
+    bindRange("edgeThickness", "edgeThickness", "edgeOut", v => `${v.toFixed(1)} mm`);
+    bindRange("frontCurve", "frontCurve", "curveOut", v => v.toFixed(1));
+    bindRange("angle", "angle", "angleOut", v => `${Math.round(v)}°`, false);
+    bindRange("ior", "ior", "iorOut", v => v.toFixed(2), false);
+
+    document.getElementById("shape").addEventListener("change", event => {
+      state.shape = event.target.value;
+      rebuildLens();
+    });
+
+    function animateCamera(toPosition, toTarget, duration = 850) {
+      const fromPosition = camera.position.clone();
+      const fromTarget = controls.target.clone();
+      const started = performance.now();
+
+      function frame(now) {
+        const progress = Math.min((now - started) / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+
+        camera.position.lerpVectors(fromPosition, toPosition, eased);
+        controls.target.lerpVectors(fromTarget, toTarget, eased);
+        controls.update();
+
+        if (progress < 1) requestAnimationFrame(frame);
+      }
+
+      requestAnimationFrame(frame);
+    }
+
+    document.getElementById("sideView").addEventListener("click", () => {
+      const theta = THREE.MathUtils.degToRad(state.angle);
+      const distance = 62;
+
+      animateCamera(
+        new THREE.Vector3(
+          Math.cos(theta) * distance,
+          Math.sin(theta) * distance,
+          7
+        ),
+        new THREE.Vector3(0, 0, -1.5)
+      );
+    });
+
+    document.getElementById("frontView").addEventListener("click", () => {
+      animateCamera(
+        new THREE.Vector3(0, -58, 38),
+        new THREE.Vector3(0, 0, 0)
+      );
+    });
+
+    function resize() {
+      const { clientWidth, clientHeight } = viewer;
+      renderer.setSize(clientWidth, clientHeight, false);
+      camera.aspect = clientWidth / clientHeight;
+      camera.updateProjectionMatrix();
+    }
+
+    window.addEventListener("resize", resize);
+    resize();
+    rebuildLens();
+
+    function render() {
+      controls.update();
+      renderer.render(scene, camera);
+      requestAnimationFrame(render);
+    }
+
+    render();
+  </script>
+</body>
+</html>

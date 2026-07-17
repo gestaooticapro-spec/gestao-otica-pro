@@ -16,13 +16,12 @@ export default function WidgetWhatsAppPendencias({
   onOpen: () => void
 }) {
   const [isOpen, setIsOpen] = useState(false)
-  const waitingHumanCount = pendencias.filter((item) => item.state === 'human_pause').length
-  const attachmentPendingCount = pendencias.filter((item) => item.state === 'waiting_human_after_attachment').length
-  const handoffCount = pendencias.length
-  const totalActions = waitingHumanCount + attachmentPendingCount + humanOverrides
+  const attachmentPendingCount = pendencias.filter((item) => item.origin === 'attachment').length
+  const pendingCount = pendencias.length
+  const totalActions = pendingCount + humanOverrides
   const [renderNow] = useState(() => Date.now())
   const oldestUpdate = pendencias
-    .map((item) => new Date(item.updated_at).getTime())
+    .map((item) => new Date(item.handoff_at).getTime())
     .filter((value) => Number.isFinite(value))
     .sort((a, b) => a - b)[0]
 
@@ -72,18 +71,18 @@ export default function WidgetWhatsAppPendencias({
               <p className="mt-1 text-[10px] text-slate-400">
                 {!isConnected
                   ? 'Verifique a conexao do canal nas configuracoes da loja.'
-                  : handoffCount > 0
+                  : pendingCount > 0
                   ? `Conversa mais antiga aguardando ha ${waitMinutes} min`
                   : 'Central pronta para busca, historico e debug.'}
               </p>
             </div>
 
             {totalActions > 0 ? (
-              <div className={`shrink-0 rounded-lg px-3 py-2 ${handoffCount > 0 ? 'border border-amber-500/30 bg-amber-500/10 text-amber-200' : 'border border-cyan-500/30 bg-cyan-500/10 text-cyan-200'}`}>
+              <div className={`shrink-0 rounded-lg px-3 py-2 ${pendingCount > 0 ? 'border border-amber-500/30 bg-amber-500/10 text-amber-200' : 'border border-cyan-500/30 bg-cyan-500/10 text-cyan-200'}`}>
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4" />
                   <span className="text-[10px] font-black uppercase tracking-wider">
-                    {handoffCount > 0 ? 'Atencao' : 'Revisar'}
+                    {pendingCount > 0 ? 'Atencao' : 'Revisar'}
                   </span>
                 </div>
               </div>
@@ -92,12 +91,12 @@ export default function WidgetWhatsAppPendencias({
 
           <div className="space-y-2">
             <div className="flex items-center justify-between rounded-lg bg-white/5 border border-white/5 px-3 py-3 text-[11px]">
-              <span className="text-slate-300">PDF/imagens</span>
-              <span className="font-bold text-white">{attachmentPendingCount}</span>
+              <span className="text-slate-300">Pendencias</span>
+              <span className="font-bold text-white">{pendingCount}</span>
             </div>
             <div className="flex items-center justify-between rounded-lg bg-white/5 border border-white/5 px-3 py-3 text-[11px]">
-              <span className="text-slate-300">Aguardando resposta humana</span>
-              <span className="font-bold text-white">{waitingHumanCount}</span>
+              <span className="text-slate-300">Dessas, por PDF/imagem</span>
+              <span className="font-bold text-slate-300">{attachmentPendingCount}</span>
             </div>
             <div className="flex items-center justify-between rounded-lg bg-white/5 border border-white/5 px-3 py-3 text-[11px]">
               <span className="text-slate-300">Em humano</span>

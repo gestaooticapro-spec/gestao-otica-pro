@@ -76,7 +76,9 @@ interface WhatsAppPendencia {
     remote_phone: string;
     state: string;
     updated_at: string;
-    internal_note?: string;
+    handoff_at: string;
+    origin: 'attachment' | 'general';
+    internal_note?: string | null;
 }
 
 interface OperatorMenuLojaVaziaProps {

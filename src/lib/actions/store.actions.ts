@@ -159,6 +159,9 @@ export async function updateStoreProfile(
 
     try {
         const currentStore = await getStoreProfile(id)
+        if (!currentStore) {
+            return { success: false, message: 'Loja nao encontrada.' }
+        }
         const currentSettings = ((currentStore?.settings || {}) as StoreSettings | Json) as StoreSettings
         const certFile = formData.get('certificate_file')
         const certificateFile = certFile instanceof File && certFile.size > 0 ? certFile : null
@@ -169,12 +172,25 @@ export async function updateStoreProfile(
 
         if (updateData.cnpj) {
             const syncResult = await syncStoreFiscalData(
-                { ...updateData, cnpj: updateData.cnpj },
+                { ...currentStore, ...updateData, cnpj: updateData.cnpj },
                 certificateFile,
                 certificatePassword
             )
 
-            if (syncResult.success && syncResult.thumbprint) {
+            if (!syncResult.success) {
+                const errors = syncResult.results
+                    .filter((result: { success: boolean }) => !result.success)
+                    .map((result: { env?: string, error?: string }) =>
+                        `${result.env ? `${result.env}: ` : ''}${result.error || 'falha desconhecida'}`
+                    )
+                console.error('Erro na sincronizacao fiscal:', syncResult.results)
+                return {
+                    success: false,
+                    message: `A loja nao foi salva porque a sincronizacao fiscal falhou. ${errors.join(' | ')}`
+                }
+            }
+
+            if (syncResult.thumbprint) {
                 updateData.certificate_thumbprint = syncResult.thumbprint
                 updateData.certificate_valid_until = syncResult.valid_until
             } else if (!syncResult.success) {
@@ -184,9 +200,12 @@ export async function updateStoreProfile(
 
         updateData.settings = currentSettings
 
-        await storesTable
+        const { error: updateError } = await storesTable
             .update(updateData)
             .eq('id', id)
+        if (updateError) {
+            throw new Error(updateError.message)
+        }
 
         revalidatePath(`/dashboard/loja/${id}/config`)
         revalidatePath(`/dashboard/loja/${id}`)

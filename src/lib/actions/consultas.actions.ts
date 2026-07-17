@@ -3,6 +3,12 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { phonesMatch } from '@/lib/whatsapp/phone'
+import {
+    findPendingHandoffResolution,
+    loadPendingHandoffResolutions,
+    type PendingHandoffOrigin,
+    type PendingHandoffStateRow,
+} from '@/lib/whatsapp/pending-handoff'
 
 export type AlertaEntrega = {
     id: number
@@ -431,7 +437,9 @@ export type WhatsAppPendencia = {
     remote_phone: string
     state: string
     updated_at: string
-    internal_note?: string
+    handoff_at: string
+    origin: PendingHandoffOrigin
+    internal_note?: string | null
     ai_extracted_receipt?: {
         is_receipt: boolean
         amount: string
@@ -455,14 +463,31 @@ export async function getWhatsAppPendencias(storeId: number): Promise<WhatsAppPe
 
         if (error) throw error
 
-        return (data || []).map((item: any) => ({
-            id: item.id,
-            remote_phone: item.remote_phone,
-            state: item.state,
-            updated_at: item.updated_at,
-            internal_note: item.metadata?.handoff_internal_note || null,
-            ai_extracted_receipt: item.metadata?.ai_extracted_receipt || undefined
-        }))
+        const stateRows = (data || []) as Array<PendingHandoffStateRow & { id: number }>
+        const resolutions = await loadPendingHandoffResolutions(supabaseAdmin, storeId, stateRows)
+
+        return stateRows.flatMap((item) => {
+            const resolution = findPendingHandoffResolution(resolutions, item.remote_phone)
+            if (!resolution?.isPending || !resolution.origin || !resolution.handoffAt) return []
+
+            const metadata = item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata)
+                ? item.metadata as {
+                    handoff_internal_note?: string
+                    ai_extracted_receipt?: WhatsAppPendencia['ai_extracted_receipt']
+                }
+                : {}
+
+            return [{
+                id: item.id,
+                remote_phone: item.remote_phone,
+                state: item.state,
+                updated_at: item.updated_at,
+                handoff_at: resolution.handoffAt,
+                origin: resolution.origin,
+                internal_note: metadata.handoff_internal_note || null,
+                ai_extracted_receipt: metadata.ai_extracted_receipt || undefined
+            }]
+        })
     } catch (e) {
         console.error("Erro ao buscar pendências de WhatsApp:", e)
         return []

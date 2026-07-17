@@ -83,10 +83,24 @@ function formatRelativeMinutes(value: string | null) {
 }
 
 function ThreadStateBadge({ thread }: { thread: WhatsAppOperatorThreadListItem }) {
-  if (thread.hasPendingHandoff) {
+  if (thread.hasPendingHandoff || thread.overrideMode === 'force_human') {
     return (
-      <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-200">
-        Pendente
+      <span className="flex flex-wrap justify-end gap-1">
+        {thread.hasPendingHandoff ? (
+          <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-200">
+            Pendente
+          </span>
+        ) : null}
+        {thread.hasPendingHandoff && thread.pendingHandoffOrigin === 'attachment' ? (
+          <span className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-cyan-200">
+            Anexo
+          </span>
+        ) : null}
+        {thread.overrideMode === 'force_human' ? (
+          <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-orange-200">
+            Em humano
+          </span>
+        ) : null}
       </span>
     )
   }

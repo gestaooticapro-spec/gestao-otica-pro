@@ -6,6 +6,11 @@ import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import type { Json } from '@/lib/database.types'
 import { digitsOnly, phonesMatch, phonesMatchLast8, toEvolutionNumber } from '@/lib/whatsapp/phone'
+import {
+  findPendingHandoffResolution,
+  loadPendingHandoffResolutions,
+  type PendingHandoffOrigin,
+} from '@/lib/whatsapp/pending-handoff'
 import { markStoreInitiatedConversation } from '@/lib/whatsapp/customer-status'
 import { simulateCustomerStatus, type CustomerStatusSimulationResponse } from '@/lib/whatsapp/customer-status'
 
@@ -97,6 +102,7 @@ export type WhatsAppOperatorThreadListItem = {
   stateExpiresAt: string | null
   stateUpdatedAt: string | null
   hasPendingHandoff: boolean
+  pendingHandoffOrigin: PendingHandoffOrigin | null
   hasRecentAttachment: boolean
   lastMessageAt: string | null
   lastMessagePreview: string | null
@@ -613,12 +619,6 @@ function findCustomerById(customerId: number | null, customers: StoreCustomerRow
   return customers.find((customer) => customer.id === customerId) || null
 }
 
-function isPendingState(state: string | null | undefined, expiresAt: string | null | undefined) {
-  if (!state || !expiresAt) return false
-  if (!['human_pause', 'waiting_human_after_attachment'].includes(state)) return false
-  return new Date(expiresAt).getTime() > Date.now()
-}
-
 function inferOutboundActor(messageType: string | null | undefined, payload: Json | null | undefined) {
   const normalizedType = String(messageType || '').trim().toLowerCase()
   const record = asRecord(payload)
@@ -745,6 +745,8 @@ function createThreadAccumulator(remotePhone: string) {
     currentState: null as string | null,
     stateExpiresAt: null as string | null,
     stateUpdatedAt: null as string | null,
+    hasPendingHandoff: false,
+    pendingHandoffOrigin: null as PendingHandoffOrigin | null,
     internalNote: null as string | null,
     extractedReceipt: null as Json | null,
     latestIntent: null as string | null,
@@ -774,7 +776,8 @@ function buildThreadListItem(
     currentState: accumulator.currentState,
     stateExpiresAt: accumulator.stateExpiresAt,
     stateUpdatedAt: accumulator.stateUpdatedAt,
-    hasPendingHandoff: isPendingState(accumulator.currentState, accumulator.stateExpiresAt),
+    hasPendingHandoff: accumulator.hasPendingHandoff,
+    pendingHandoffOrigin: accumulator.pendingHandoffOrigin,
     hasRecentAttachment: accumulator.hasRecentAttachment,
     lastMessageAt: accumulator.lastMessageAt,
     lastMessagePreview: accumulator.lastMessagePreview,
@@ -907,6 +910,13 @@ export async function getWhatsAppOperatorThreads(input: {
     if (outboundError) throw outboundError
     if (stateError) throw stateError
 
+    const typedStateRows = (stateRows || []) as ConversationStateRow[]
+    const pendingHandoffResolutions = await loadPendingHandoffResolutions(
+      supabaseAdmin,
+      storeId,
+      typedStateRows
+    )
+
     const threadMap = new Map<string, ReturnType<typeof createThreadAccumulator>>()
     const ensureThread = (remotePhone: string) => {
       for (const [existingKey, existingThread] of threadMap.entries()) {
@@ -928,13 +938,16 @@ export async function getWhatsAppOperatorThreads(input: {
       return threadMap.get(normalized)!
     }
 
-    for (const stateRow of (stateRows || []) as ConversationStateRow[]) {
+    for (const stateRow of typedStateRows) {
       const thread = ensureThread(stateRow.remote_phone)
       const metadata = asRecord(stateRow.metadata)
+      const pendingHandoff = findPendingHandoffResolution(pendingHandoffResolutions, stateRow.remote_phone)
 
       thread.currentState = stateRow.state
       thread.stateExpiresAt = stateRow.expires_at
       thread.stateUpdatedAt = stateRow.updated_at
+      thread.hasPendingHandoff = pendingHandoff?.isPending === true
+      thread.pendingHandoffOrigin = pendingHandoff?.origin ?? null
       thread.internalNote = asString(metadata.handoff_internal_note)
       thread.extractedReceipt = (metadata.ai_extracted_receipt as Json | undefined) ?? null
       thread.latestIntent = asString(metadata.lastIntent) || asString(metadata.aiIntent)
@@ -980,6 +993,10 @@ export async function getWhatsAppOperatorThreads(input: {
       loadCustomerControlMap(storeId, phones),
       loadCustomerLinkMap(storeId, phones),
     ])
+    for (const [phone, mode] of controlMap.entries()) {
+      if (mode === 'force_human') ensureThread(phone)
+    }
+    const allPhones = [...threadMap.values()].map((thread) => thread.remotePhone)
     const linkedCustomerIds = [...customerLinkMap.values()]
     const knownCustomerIds = [...threadMap.values()]
       .map((thread) => thread.lastKnownCustomerId)
@@ -987,7 +1004,7 @@ export async function getWhatsAppOperatorThreads(input: {
     const resolvedCustomers = mergeCustomers(
       customers,
       await loadCustomersByIds(storeId, [...linkedCustomerIds, ...knownCustomerIds]),
-      await loadCustomersByPhoneHints(storeId, phones)
+      await loadCustomersByPhoneHints(storeId, allPhones)
     )
 
     let threads = [...threadMap.values()].map((accumulator) => {
@@ -1011,8 +1028,10 @@ export async function getWhatsAppOperatorThreads(input: {
     }
 
     threads.sort((left, right) => {
-      if (left.hasPendingHandoff !== right.hasPendingHandoff) {
-        return left.hasPendingHandoff ? -1 : 1
+      const leftPriority = left.hasPendingHandoff ? 2 : left.overrideMode === 'force_human' ? 1 : 0
+      const rightPriority = right.hasPendingHandoff ? 2 : right.overrideMode === 'force_human' ? 1 : 0
+      if (leftPriority !== rightPriority) {
+        return rightPriority - leftPriority
       }
 
       const leftTime = left.lastMessageAt ? new Date(left.lastMessageAt).getTime() : 0
@@ -1099,6 +1118,12 @@ export async function getWhatsAppOperatorThreadDetail(input: {
       .slice(0, limit)
     const matchedStateRow = ((stateRow || []) as ConversationStateRow[])
       .find((row) => phonesBelongToSameThread(row.remote_phone, remotePhone)) || null
+    const pendingHandoffResolutions = await loadPendingHandoffResolutions(
+      supabaseAdmin,
+      storeId,
+      matchedStateRow ? [matchedStateRow] : []
+    )
+    const pendingHandoff = findPendingHandoffResolution(pendingHandoffResolutions, remotePhone)
 
     const inboundIds = filteredInboundRows.map((row) => row.id)
     let aiLogs: AiLogRow[] = []
@@ -1194,6 +1219,8 @@ export async function getWhatsAppOperatorThreadDetail(input: {
         currentState: matchedStateRow?.state ?? null,
         stateExpiresAt: matchedStateRow?.expires_at ?? null,
         stateUpdatedAt: matchedStateRow?.updated_at ?? null,
+        hasPendingHandoff: pendingHandoff?.isPending === true,
+        pendingHandoffOrigin: pendingHandoff?.origin ?? null,
         internalNote: asString(stateMetadata.handoff_internal_note),
         extractedReceipt: (stateMetadata.ai_extracted_receipt as Json | undefined) ?? null,
         latestIntent: asString(stateMetadata.lastIntent) || asString(stateMetadata.aiIntent),
