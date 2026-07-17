@@ -12,6 +12,7 @@ const config = {
 const INBOUND_AGGREGATION_WINDOW_MS = Number(process.env.WHATSAPP_INBOUND_AGGREGATION_WINDOW_MS || 10000)
 const MAX_ADMIN_BODY_BYTES = 15 * 1024 * 1024
 const MAX_MEDIA_BYTES = 10 * 1024 * 1024
+const MAX_INBOUND_VISION_BYTES = 3 * 1024 * 1024
 const inboundBuffers = new Map()
 
 function requiredEnv(name) {
@@ -94,6 +95,37 @@ function detectAttachmentKind(message = {}) {
   if (message.videoMessage || unwrappedMessage.videoMessage) return 'video'
   if (message.stickerMessage || unwrappedMessage.stickerMessage) return 'sticker'
   return null
+}
+
+function decodedBase64Bytes(value) {
+  const base64 = String(value || '').replace(/^data:[^;]+;base64,/, '').trim()
+  if (!base64 || base64.length % 4 !== 0 || !/^[a-zA-Z0-9+/]+={0,2}$/.test(base64)) return 0
+  const paddingBytes = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
+  return Math.floor((base64.length * 3) / 4) - paddingBytes
+}
+
+function prepareInboundPayloadForApp(payload, attachmentKind) {
+  const canForwardMedia = attachmentKind === 'image' || attachmentKind === 'document'
+  let keptBase64 = false
+
+  function walk(value) {
+    if (Array.isArray(value)) return value.map(walk)
+    if (!value || typeof value !== 'object') return value
+
+    return Object.fromEntries(Object.entries(value).flatMap(([key, nestedValue]) => {
+      if (key.toLowerCase() !== 'base64') return [[key, walk(nestedValue)]]
+
+      const decodedBytes = decodedBase64Bytes(nestedValue)
+      if (!canForwardMedia || keptBase64 || decodedBytes <= 0 || decodedBytes > MAX_INBOUND_VISION_BYTES) {
+        return []
+      }
+
+      keptBase64 = true
+      return [[key, String(nestedValue).replace(/^data:[^;]+;base64,/, '').trim()]]
+    }))
+  }
+
+  return walk(payload)
 }
 
 function extractInbound(payload) {
@@ -402,8 +434,8 @@ async function configureEvolutionWebhook(instanceKey) {
       webhook: {
         enabled: true,
         url: webhookUrl,
-        webhookByEvents: false,
-        webhookBase64: false,
+        byEvents: false,
+        base64: true,
         events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
       },
     }),
@@ -507,7 +539,7 @@ async function processInbound(instanceKey, inbound, payload) {
   const status = await appRequest('/api/whatsapp/customer-status', {
     instanceKey,
     ...inbound,
-    payload,
+    payload: prepareInboundPayloadForApp(payload, inbound.attachmentKind),
   })
   logAiDiagnostics(status)
 

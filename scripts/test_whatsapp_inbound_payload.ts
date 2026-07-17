@@ -3,9 +3,31 @@ import assert from 'node:assert/strict'
 import {
   extractWhatsAppInboundPayloadMeta,
   isWhatsAppInboundPayloadFromMe,
+  stripWhatsAppInboundMediaContent,
 } from '@/lib/whatsapp/inbound-payload'
 
 const cases = [
+  {
+    name: 'image with webhook base64',
+    payload: {
+      event: 'messages.upsert',
+      data: {
+        message: {
+          imageMessage: {
+            mimetype: 'image/jpeg',
+            base64: 'aGVsbG8=',
+          },
+        },
+      },
+    },
+    expected: {
+      text: null,
+      hasAttachment: true,
+      attachmentKind: 'image',
+      mimeType: 'image/jpeg',
+      base64: 'aGVsbG8=',
+    },
+  },
   {
     name: 'conversation text',
     payload: {
@@ -105,7 +127,28 @@ for (const testCase of cases) {
   if ('fileName' in testCase.expected) {
     assert.equal(result.fileName, testCase.expected.fileName, `${testCase.name}: fileName`)
   }
+
+  if ('base64' in testCase.expected) {
+    assert.equal(result.base64, testCase.expected.base64, `${testCase.name}: base64`)
+  }
 }
+
+const payloadWithMedia = {
+  data: {
+    message: {
+      imageMessage: {
+        mimetype: 'image/jpeg',
+        caption: 'Comprovante',
+        base64: 'aGVsbG8=',
+      },
+    },
+  },
+}
+const payloadWithoutMedia = stripWhatsAppInboundMediaContent(payloadWithMedia as never) as {
+  data: { message: { imageMessage: { mimetype: string; caption: string; base64?: string } } }
+}
+assert.equal(payloadWithoutMedia.data.message.imageMessage.base64, undefined, 'strips base64 before persistence')
+assert.equal(payloadWithoutMedia.data.message.imageMessage.caption, 'Comprovante', 'preserves attachment metadata')
 
 assert.equal(isWhatsAppInboundPayloadFromMe({
   event: 'messages.upsert',

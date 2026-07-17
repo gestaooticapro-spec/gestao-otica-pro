@@ -18,6 +18,14 @@ export type WhatsAppInboundPayloadMeta = {
   base64: string | null
 }
 
+const MAX_INBOUND_MEDIA_BYTES = 3 * 1024 * 1024
+const SUPPORTED_VISION_MIME_TYPES = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+])
+
 const NON_CONTENT_KEYS = new Set([
   'event',
   'type',
@@ -49,6 +57,17 @@ function firstString(...values: unknown[]) {
   }
 
   return null
+}
+
+function normalizeInboundMediaBase64(value: string | null, mimeType: string | null) {
+  if (!value || !mimeType || !SUPPORTED_VISION_MIME_TYPES.has(mimeType.toLowerCase())) return null
+
+  const base64 = value.replace(/^data:[^;]+;base64,/, '').trim()
+  if (!base64 || base64.length % 4 !== 0 || !/^[a-zA-Z0-9+/]+={0,2}$/.test(base64)) return null
+
+  const paddingBytes = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
+  const decodedBytes = Math.floor((base64.length * 3) / 4) - paddingBytes
+  return decodedBytes > 0 && decodedBytes <= MAX_INBOUND_MEDIA_BYTES ? base64 : null
 }
 
 function detectAttachmentKind(node: Record<string, Json | undefined>): WhatsAppInboundAttachmentKind | null {
@@ -106,20 +125,29 @@ function extractAttachmentDetails(node: Record<string, Json | undefined>) {
   const nestedAudio = asRecord(asRecord(unwrappedMessage)?.audioMessage)
   const nestedSticker = asRecord(asRecord(unwrappedMessage)?.stickerMessage)
 
+  const mimeType = firstString(
+    image?.mimetype,
+    document?.mimetype,
+    video?.mimetype,
+    audio?.mimetype,
+    sticker?.mimetype,
+    nestedImage?.mimetype,
+    nestedDocument?.mimetype,
+    nestedVideo?.mimetype,
+    nestedAudio?.mimetype,
+    nestedSticker?.mimetype,
+    node.mimetype
+  )
+  const rawBase64 = firstString(
+    image?.base64,
+    document?.base64,
+    nestedImage?.base64,
+    nestedDocument?.base64,
+    node.base64
+  )
+
   return {
-    mimeType: firstString(
-      image?.mimetype,
-      document?.mimetype,
-      video?.mimetype,
-      audio?.mimetype,
-      sticker?.mimetype,
-      nestedImage?.mimetype,
-      nestedDocument?.mimetype,
-      nestedVideo?.mimetype,
-      nestedAudio?.mimetype,
-      nestedSticker?.mimetype,
-      node.mimetype
-    ),
+    mimeType,
     fileName: firstString(
       document?.fileName,
       document?.title,
@@ -141,13 +169,7 @@ function extractAttachmentDetails(node: Record<string, Json | undefined>) {
       nestedVideo?.caption,
       node.caption
     ),
-    base64: firstString(
-      image?.base64,
-      document?.base64,
-      nestedImage?.base64,
-      nestedDocument?.base64,
-      node.base64
-    ),
+    base64: normalizeInboundMediaBase64(rawBase64, mimeType),
   }
 }
 
@@ -301,4 +323,18 @@ export function isWhatsAppInboundPayloadFromMe(payload: Json | null | undefined)
   ]
 
   return candidates.some((value) => value === true || value === 'true')
+}
+
+export function stripWhatsAppInboundMediaContent(payload: Json | null | undefined): Json | null {
+  if (payload == null) return null
+  if (Array.isArray(payload)) {
+    return payload.map((item) => stripWhatsAppInboundMediaContent(item) as Json)
+  }
+  if (typeof payload !== 'object') return payload
+
+  return Object.fromEntries(
+    Object.entries(payload)
+      .filter(([key]) => key.toLowerCase() !== 'base64')
+      .map(([key, value]) => [key, stripWhatsAppInboundMediaContent(value)])
+  ) as Json
 }

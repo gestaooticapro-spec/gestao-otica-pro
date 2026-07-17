@@ -19,6 +19,7 @@ import {
 import {
   extractWhatsAppInboundPayloadMeta,
   isWhatsAppInboundPayloadFromMe,
+  stripWhatsAppInboundMediaContent,
 } from './inbound-payload'
 import {
   buildWhatsAppCanonicalPayload,
@@ -2042,7 +2043,7 @@ export async function resolveCustomerStatus(
       provider_message_id: input.providerMessageId,
       remote_phone: normalizedPhone,
       message_text: effectiveMessageText,
-      payload: input.payload ?? null,
+      payload: stripWhatsAppInboundMediaContent(input.payload),
       status: 'received',
     })
     .select('id')

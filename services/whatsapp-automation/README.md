@@ -28,6 +28,11 @@ Eventos esperados:
 
 O proxy reverso da VPS deve encaminhar essa URL para `127.0.0.1:8080`.
 
+O setup administrativo configura `webhookBase64: true` para que imagens e PDFs
+recebidos possam ser analisados pelo app. O serviÃ§o aceita corpos de webhook de
+atÃ© 15 MB, mas encaminha ao app somente imagem/PDF de atÃ© 3 MB. O app valida
+novamente esse limite e remove o base64 antes de persistir o payload da mensagem.
+
 ## Execução local com Docker
 
 ```bash
