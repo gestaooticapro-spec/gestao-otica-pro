@@ -24,6 +24,14 @@ type ConcludePostSaleFromWhatsAppInput = {
   finalObservation?: string | null
 }
 
+type ConcludePostSaleAutomaticallyInput = {
+  tenantId: string
+  storeId: number
+  postSalesId: number
+  rating: 3 | 4
+  finalObservation: string
+}
+
 type RecordPostSaleInteractionInput = {
   tenantId: string
   storeId: number
@@ -165,4 +173,47 @@ export async function concludePostSaleFromWhatsApp(input: ConcludePostSaleFromWh
       dedupe: true,
     })
   }
+}
+
+export async function concludePostSaleAutomatically(input: ConcludePostSaleAutomaticallyInput) {
+  const supabase = createAdminClient()
+  const nowIso = new Date().toISOString()
+
+  const { data: target, error: targetError } = await (supabase.from('post_sales') as any)
+    .select('id, status')
+    .eq('id', input.postSalesId)
+    .eq('store_id', input.storeId)
+    .eq('tenant_id', input.tenantId)
+    .maybeSingle()
+  if (targetError) throw targetError
+  if (!target?.id) throw new Error('Pos-venda nao encontrado para esta loja.')
+  if (target.status !== 'Em Acompanhamento') return false
+
+  const { data: updated, error: updateError } = await (supabase.from('post_sales') as any)
+    .update({
+      status: 'Concluido',
+      avaliacao_cliente: input.rating,
+      observacoes_finais: input.finalObservation,
+      updated_at: nowIso,
+    })
+    .eq('id', input.postSalesId)
+    .eq('store_id', input.storeId)
+    .eq('tenant_id', input.tenantId)
+    .eq('status', 'Em Acompanhamento')
+    .select('id')
+    .maybeSingle()
+
+  if (updateError) throw updateError
+  if (!updated?.id) return false
+
+  await recordPostSaleInteraction({
+    tenantId: input.tenantId,
+    storeId: input.storeId,
+    postSalesId: input.postSalesId,
+    summary: input.finalObservation,
+    interactionType: 'WhatsApp Automatico',
+    dedupe: true,
+  })
+
+  return true
 }

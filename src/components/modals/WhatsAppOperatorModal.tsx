@@ -57,15 +57,15 @@ function formatCurrency(value: number | null) {
 }
 
 function controlModeLabel(mode: WhatsAppCustomerControlMode) {
-  if (mode === 'force_ai') return 'IA proxima'
+  if (mode === 'force_ai') return 'IA próxima'
   if (mode === 'force_human') return 'Humano'
-  return 'Automatico'
+  return 'Automático'
 }
 
 function controlModeTitle(mode: WhatsAppCustomerControlMode) {
-  if (mode === 'force_ai') return 'IA atende a proxima mensagem real e depois volta para automatico.'
-  if (mode === 'force_human') return 'Atendimento humano persistente ate alguem voltar para automatico.'
-  return 'Motor automatico segue as regras normais.'
+  if (mode === 'force_ai') return 'IA atende a próxima mensagem real e depois volta para automático.'
+  if (mode === 'force_human') return 'Atendimento humano persistente até alguém voltar para automático.'
+  return 'Motor automático segue as regras normais.'
 }
 
 function readableDecisionValue(value: string | null) {
@@ -108,7 +108,7 @@ function ThreadStateBadge({ thread }: { thread: WhatsAppOperatorThreadListItem }
   if (thread.currentState === 'silent') {
     return (
       <span className="rounded-full border border-slate-600/40 bg-slate-700/30 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-slate-300">
-        Silencio
+        Silêncio
       </span>
     )
   }
@@ -210,18 +210,18 @@ function SimulationBubble({ entry }: { entry: SimulationEntry }) {
     <div className="flex justify-end">
       <div className="max-w-[88%] rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-amber-50 shadow-lg">
         <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-amber-200/80">
-          <span>Simulacao</span>
+          <span>Simulação</span>
           <span>{formatDateTime(entry.createdAt)}</span>
         </div>
         <p className="text-sm leading-relaxed text-white/90">{entry.messageText}</p>
         <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-[11px] text-slate-200">
           <div className="flex flex-wrap gap-3">
-            <span>acao: {entry.result.debug.action}</span>
+            <span>ação: {entry.result.debug.action}</span>
             <span>route: {entry.result.debug.postClassificationRoute || entry.result.debug.preAiRoute || '-'}</span>
             <span>override: {entry.result.debug.overrideMode}</span>
           </div>
           <div className="mt-2 text-slate-300">
-            resposta: <span className="text-white">{entry.result.replyText || '[sem resposta automatica]'}</span>
+            resposta: <span className="text-white">{entry.result.replyText || '[sem resposta automática]'}</span>
           </div>
         </div>
       </div>
@@ -239,7 +239,7 @@ function TechnicalPanel({
   if (!summary) {
     return (
       <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
-        Selecione uma thread para ver o contexto tecnico.
+        Selecione uma thread para ver o contexto técnico.
       </div>
     )
   }
@@ -250,10 +250,10 @@ function TechnicalPanel({
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Ultima decisao</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Última decisão</p>
         <div className="mt-3 grid gap-2 text-sm text-slate-300">
           <div>rota: <span className="font-bold text-white">{readableDecisionValue(operationalDecision.route)}</span></div>
-          <div>acao: <span className="font-bold text-white">{readableDecisionValue(summary.latestAction)}</span></div>
+          <div>ação: <span className="font-bold text-white">{readableDecisionValue(summary.latestAction)}</span></div>
           <div>motivo: <span className="font-bold text-white">{readableDecisionValue(operationalDecision.reason)}</span></div>
           <div>state: <span className="font-bold text-white">{readableDecisionValue(summary.conversationState)}</span></div>
           <div>outbound: <span className="font-bold text-white">{readableDecisionValue(summary.latestOutboundType)}</span></div>
@@ -263,7 +263,7 @@ function TechnicalPanel({
           <div className="mt-3 grid gap-2">
             {operationalDecision.silenceReason ? (
               <div className="rounded-xl border border-slate-500/20 bg-slate-500/10 p-3 text-xs text-slate-200">
-                <span className="font-black uppercase tracking-wider text-slate-400">Silencio</span>
+                <span className="font-black uppercase tracking-wider text-slate-400">Silêncio</span>
                 <p className="mt-1">{readableDecisionValue(operationalDecision.silenceReason)}</p>
               </div>
             ) : null}
@@ -279,7 +279,7 @@ function TechnicalPanel({
         <div className="mt-3 rounded-xl border border-white/5 bg-white/[0.03] p-3 text-xs text-slate-300">
           <div>intent: <span className="font-bold text-white">{readableDecisionValue(summary.latestIntent)}</span></div>
           <div className="mt-1">confidence: <span className="font-bold text-white">{summary.latestConfidence?.toFixed(2) || '-'}</span></div>
-          <div className="mt-1">attachment: <span className="font-bold text-white">{summary.latestInboundHasAttachment ? summary.latestInboundAttachmentKind || 'sim' : 'nao'}</span></div>
+          <div className="mt-1">attachment: <span className="font-bold text-white">{summary.latestInboundHasAttachment ? summary.latestInboundAttachmentKind || 'sim' : 'não'}</span></div>
         </div>
       </div>
 
@@ -318,10 +318,10 @@ function TechnicalPanel({
       ) : null}
 
       <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300/80">Memoria da sessao IA</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300/80">Memória da sessão IA</p>
         <div className="mt-3 grid gap-2 text-sm text-cyan-50">
           <div>itens: <span className="font-bold">{summary.aiSessionHistory.length}</span></div>
-          <div>ultima atualizacao: <span className="font-bold">{formatDateTime(summary.aiSessionUpdatedAt)}</span></div>
+          <div>última atualização: <span className="font-bold">{formatDateTime(summary.aiSessionUpdatedAt)}</span></div>
           <div>encerrada em: <span className="font-bold">{formatDateTime(summary.aiSessionEndedAt)}</span></div>
         </div>
 
@@ -342,7 +342,7 @@ function TechnicalPanel({
           </div>
         ) : (
           <p className="mt-3 text-sm leading-relaxed text-cyan-100/80">
-            Sem memoria automatica ativa no momento. Quando a conversa entra em handoff humano, esse contexto e encerrado.
+            Sem memória automática ativa no momento. Quando a conversa entra em handoff humano, esse contexto é encerrado.
           </p>
         )}
       </div>
@@ -733,7 +733,7 @@ export default function WhatsAppOperatorModal({
             <div>
               <h2 className="text-lg font-black text-white">WhatsApp Operacional</h2>
               <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">
-                Historico real, pendencias e contexto tecnico
+                Histórico real, pendências e contexto técnico
               </p>
             </div>
           </div>
@@ -871,11 +871,11 @@ export default function WhatsAppOperatorModal({
                     </div>
                     {selectedThread.overrideMode === 'force_ai' ? (
                       <p className="mt-2 text-[11px] font-semibold text-cyan-200/80">
-                        IA armada para a proxima mensagem real. Depois disso, volta para automatico.
+                        IA armada para a próxima mensagem real. Depois disso, volta para automático.
                       </p>
                     ) : selectedThread.overrideMode === 'force_human' ? (
                       <p className="mt-2 text-[11px] font-semibold text-amber-200/80">
-                        Atendimento humano persistente ate alguem devolver para automatico.
+                        Atendimento humano persistente até alguém devolver para automático.
                       </p>
                     ) : null}
                   </div>
@@ -938,7 +938,7 @@ export default function WhatsAppOperatorModal({
                   ) : (
                     <>
                       <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-sm text-slate-400">
-                        Nenhuma mensagem encontrada para este numero.
+                        Nenhuma mensagem encontrada para este número.
                       </div>
                       {simulationEntries.map((entry) => (
                         <SimulationBubble key={entry.id} entry={entry} />
@@ -973,11 +973,11 @@ export default function WhatsAppOperatorModal({
                         : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
                     }`}
                   >
-                    Simulacao
+                    Simulação
                   </button>
                 </div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  {composerMode === 'real' ? 'Envia ao cliente e pausa IA' : 'Entrara na Fase 4'}
+                  {composerMode === 'real' ? 'Envia ao cliente e pausa IA' : 'Entrará na Fase 4'}
                 </p>
               </div>
 
@@ -1002,8 +1002,8 @@ export default function WhatsAppOperatorModal({
                   placeholder={
                     selectedThread
                       ? composerMode === 'real'
-                        ? 'Digite a mensagem que sera enviada ao cliente real...'
-                        : 'A simulacao entra na proxima fase.'
+                        ? 'Digite a mensagem que será enviada ao cliente real...'
+                        : 'A simulação entra na próxima fase.'
                       : 'Selecione uma thread para responder.'
                   }
                   disabled={!selectedThread || isSending}
@@ -1027,7 +1027,7 @@ export default function WhatsAppOperatorModal({
           <aside className="custom-scrollbar min-h-0 overflow-y-auto p-4 pr-3">
             <div className="mb-4 flex items-center gap-2">
               <Bot className="h-4 w-4 text-cyan-300" />
-              <h4 className="text-sm font-black text-white">Painel Tecnico</h4>
+              <h4 className="text-sm font-black text-white">Painel Técnico</h4>
             </div>
 
             {selectedThread ? (
@@ -1039,7 +1039,7 @@ export default function WhatsAppOperatorModal({
                 <div className="mt-3 grid gap-2 text-sm text-slate-300">
                   <div>cliente: <span className="font-bold text-white">{selectedThread.customer?.name || '-'}</span></div>
                   <div>telefone: <span className="font-bold text-white">{formatPhone(selectedThread.remotePhone)}</span></div>
-                  <div>ultima msg: <span className="font-bold text-white">{formatDateTime(selectedThread.lastMessageAt)}</span></div>
+                  <div>última msg: <span className="font-bold text-white">{formatDateTime(selectedThread.lastMessageAt)}</span></div>
                   <div>estado: <span className="font-bold text-white">{selectedThread.currentState || '-'}</span></div>
                 </div>
 
@@ -1064,13 +1064,13 @@ export default function WhatsAppOperatorModal({
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <Database className="h-4 w-4 text-slate-300" />
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Retencao</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Retenção</p>
                 </div>
                 <button
                   type="button"
                   onClick={loadRetentionPreview}
                   disabled={isLoadingRetention}
-                  title="Atualizar previa de retencao"
+                  title="Atualizar prévia de retenção"
                   className="rounded-xl border border-white/10 bg-white/5 p-2 text-slate-300 transition hover:bg-white/10 disabled:opacity-50"
                 >
                   {isLoadingRetention ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -1111,7 +1111,7 @@ export default function WhatsAppOperatorModal({
                   </div>
 
                   <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3 text-xs text-cyan-50">
-                    <div className="font-bold">Previa: {retentionPreview.candidates.total} registro(s) candidato(s)</div>
+                    <div className="font-bold">Prévia: {retentionPreview.candidates.total} registro(s) candidato(s)</div>
                     <div className="mt-1 text-cyan-100/75">
                       Protegidos: {retentionPreview.protectedThreads.totalUnique} thread(s), incluindo humano persistente e handoff ativo.
                     </div>
@@ -1128,17 +1128,17 @@ export default function WhatsAppOperatorModal({
                   </button>
                 </div>
               ) : !retentionError ? (
-                <p className="mt-3 text-sm text-slate-400">Carregando previa de retencao...</p>
+                <p className="mt-3 text-sm text-slate-400">Carregando prévia de retenção...</p>
               ) : null}
             </div>
 
             {simulationEntries.length > 0 ? (
               <div className="mt-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300/80">Ultima simulacao</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300/80">Última simulação</p>
                 <div className="mt-3 space-y-2 text-sm text-amber-50">
-                  <div>acao: <span className="font-bold">{simulationEntries[simulationEntries.length - 1].result.debug.action}</span></div>
+                  <div>ação: <span className="font-bold">{simulationEntries[simulationEntries.length - 1].result.debug.action}</span></div>
                   <div>override: <span className="font-bold">{simulationEntries[simulationEntries.length - 1].result.debug.overrideMode}</span></div>
-                  <div>resposta: <span className="font-bold">{simulationEntries[simulationEntries.length - 1].result.replyText || '[sem resposta automatica]'}</span></div>
+                  <div>resposta: <span className="font-bold">{simulationEntries[simulationEntries.length - 1].result.replyText || '[sem resposta automática]'}</span></div>
                 </div>
               </div>
             ) : null}

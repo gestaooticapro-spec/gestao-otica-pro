@@ -38,6 +38,29 @@ export type StalePostSaleFollowupRecovery =
   | 'mark_failed'
   | 'manual_review'
 
+export type PostSaleDeadlineOutcome = 'auto_score_3' | 'auto_score_4' | 'keep_human'
+
+export function decidePostSaleDeadlineOutcome(interactionSummaries: Array<string | null | undefined>): PostSaleDeadlineOutcome {
+  const summaries = interactionSummaries
+    .map((summary) => String(summary || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase())
+
+  if (summaries.some((summary) => (
+    summary.includes('handoff')
+    || summary.includes('reclamacao')
+    || summary.includes('adaptacao ruim')
+    || summary.includes('atendimento humano')
+  ))) {
+    return 'keep_human'
+  }
+
+  return summaries.some((summary) => summary.includes('respondeu positivamente'))
+    ? 'auto_score_4'
+    : 'auto_score_3'
+}
+
 export function buildPostSaleFollowupSettings(
   saved: WhatsAppPostSaleFollowupSettings | undefined
 ): PostSaleFollowupSettings {

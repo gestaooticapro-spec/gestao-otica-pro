@@ -9,10 +9,11 @@ import { evaluateStoreHours } from '@/lib/whatsapp/store-hours-logic'
 import {
   buildPostSaleFollowupMessage,
   buildPostSaleFollowupSettings,
+  decidePostSaleDeadlineOutcome,
   decideStalePostSaleFollowupRecovery,
   DEFAULT_POST_SALE_FOLLOWUP_DAYS,
 } from '@/lib/whatsapp/post-sale-followup'
-import { ensurePostSaleTracking } from '@/lib/whatsapp/post-sales'
+import { concludePostSaleAutomatically, ensurePostSaleTracking } from '@/lib/whatsapp/post-sales'
 
 const SAO_PAULO_TIME_ZONE = 'America/Sao_Paulo'
 const BUSINESS_START_HOUR = 9
@@ -71,6 +72,7 @@ type FollowupRow = {
   remote_phone: string
   delivered_at: string
   scheduled_for: string
+  sent_at: string | null
   status: 'scheduled' | 'sending' | 'sent' | 'failed' | 'cancelled'
   message_text: string
   outbound_message_id: number | null
@@ -325,6 +327,73 @@ async function hasActiveHumanBlock(channelId: number, phone: string) {
   if (controlResult.error) throw controlResult.error
 
   return Boolean(stateResult.data?.id || controlResult.data?.id)
+}
+
+async function closeExpiredPostSaleFollowups(now: Date) {
+  const supabase = createAdminClient()
+  const deadlineIso = new Date(now.getTime() - POST_SALE_CONTEXT_MS).toISOString()
+  const { data: followups, error } = await (supabase.from('whatsapp_post_sale_followups') as any)
+    .select('id, tenant_id, store_id, channel_id, remote_phone, post_sales_id, sent_at')
+    .eq('status', 'sent')
+    .not('post_sales_id', 'is', null)
+    .not('sent_at', 'is', null)
+    .lte('sent_at', deadlineIso)
+
+  if (error) throw error
+
+  let closedWith3 = 0
+  let closedWith4 = 0
+  let keptHuman = 0
+
+  for (const followup of (followups ?? []) as Array<Pick<FollowupRow, 'id' | 'tenant_id' | 'store_id' | 'channel_id' | 'remote_phone' | 'post_sales_id' | 'sent_at'>>) {
+    const postSalesId = Number(followup.post_sales_id || 0)
+    if (!postSalesId) continue
+
+    if (await hasActiveHumanBlock(followup.channel_id, followup.remote_phone)) {
+      keptHuman += 1
+      continue
+    }
+
+    const [{ data: postSale, error: postSaleError }, { data: interactions, error: interactionsError }] = await Promise.all([
+      (supabase.from('post_sales') as any)
+        .select('id, status')
+        .eq('id', postSalesId)
+        .eq('tenant_id', followup.tenant_id)
+        .eq('store_id', followup.store_id)
+        .maybeSingle(),
+      (supabase.from('post_sales_interactions') as any)
+        .select('resumo')
+        .eq('post_sales_id', postSalesId),
+    ])
+    if (postSaleError) throw postSaleError
+    if (interactionsError) throw interactionsError
+    if (!postSale?.id || postSale.status !== 'Em Acompanhamento') continue
+
+    const outcome = decidePostSaleDeadlineOutcome((interactions ?? []).map((interaction: { resumo?: string | null }) => interaction.resumo))
+    if (outcome === 'keep_human') {
+      keptHuman += 1
+      continue
+    }
+
+    const rating = outcome === 'auto_score_4' ? 4 : 3
+    const finalObservation = rating === 4
+      ? 'Nota 4 atribuída automaticamente: cliente respondeu positivamente ao pós-venda via WhatsApp, mas não informou uma nota numérica em 7 dias.'
+      : 'Sem resposta ao pós-venda via WhatsApp.'
+
+    const closed = await concludePostSaleAutomatically({
+      tenantId: followup.tenant_id,
+      storeId: followup.store_id,
+      postSalesId,
+      rating,
+      finalObservation,
+    })
+    if (closed) {
+      if (rating === 4) closedWith4 += 1
+      else closedWith3 += 1
+    }
+  }
+
+  return { closedWith3, closedWith4, keptHuman }
 }
 
 async function markPostSaleConversationContext(input: {
@@ -990,12 +1059,18 @@ export type PostSaleFollowupJobResult = {
     sent: number
     failed: number
   }
+  deadlineClosures: {
+    closedWith3: number
+    closedWith4: number
+    keptHuman: number
+  }
 }
 
 export async function runPostSaleFollowupJob(): Promise<PostSaleFollowupJobResult> {
   const now = new Date()
   await recoverStaleSendingFollowups(now)
   await recoverFailedSentFollowups(now)
+  const deadlineClosures = await closeExpiredPostSaleFollowups(now)
   const scheduleResult = await scheduleFollowups(now)
   const dispatchResult = await dispatchScheduledFollowups(now)
 
@@ -1004,5 +1079,6 @@ export async function runPostSaleFollowupJob(): Promise<PostSaleFollowupJobResul
     scheduled: scheduleResult.scheduled,
     alreadyScheduled: scheduleResult.alreadyScheduled,
     dispatch: dispatchResult,
+    deadlineClosures,
   }
 }

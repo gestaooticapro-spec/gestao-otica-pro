@@ -63,17 +63,17 @@ export default function WidgetWhatsAppPendencias({
             <div className="min-w-0 flex-1">
               <p className="text-xs font-bold text-slate-200">
                 {!isConnected
-                  ? 'WhatsApp indisponivel no momento'
+                  ? 'WhatsApp indisponível no momento'
                   : totalActions > 0
-                    ? `${totalActions} acao${totalActions === 1 ? '' : 'oes'} no radar`
-                    : 'Sem acoes de WhatsApp agora'}
+                    ? `${totalActions} ${totalActions === 1 ? 'ação' : 'ações'} no radar`
+                    : 'Sem ações de WhatsApp agora'}
               </p>
               <p className="mt-1 text-[10px] text-slate-400">
                 {!isConnected
-                  ? 'Verifique a conexao do canal nas configuracoes da loja.'
+                  ? 'Verifique a conexão do canal nas configurações da loja.'
                   : pendingCount > 0
-                  ? `Conversa mais antiga aguardando ha ${waitMinutes} min`
-                  : 'Central pronta para busca, historico e debug.'}
+                  ? `Conversa mais antiga aguardando há ${waitMinutes} min`
+                  : 'Central pronta para busca, histórico e debug.'}
               </p>
             </div>
 
@@ -82,7 +82,7 @@ export default function WidgetWhatsAppPendencias({
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4" />
                   <span className="text-[10px] font-black uppercase tracking-wider">
-                    {pendingCount > 0 ? 'Atencao' : 'Revisar'}
+                    {pendingCount > 0 ? 'Atenção' : 'Revisar'}
                   </span>
                 </div>
               </div>
@@ -91,7 +91,7 @@ export default function WidgetWhatsAppPendencias({
 
           <div className="space-y-2">
             <div className="flex items-center justify-between rounded-lg bg-white/5 border border-white/5 px-3 py-3 text-[11px]">
-              <span className="text-slate-300">Pendencias</span>
+              <span className="text-slate-300">Pendências</span>
               <span className="font-bold text-white">{pendingCount}</span>
             </div>
             <div className="flex items-center justify-between rounded-lg bg-white/5 border border-white/5 px-3 py-3 text-[11px]">
@@ -119,7 +119,7 @@ export default function WidgetWhatsAppPendencias({
 
           {isConnected && totalActions === 0 ? (
             <p className="text-center text-xs text-slate-400 py-3 font-medium">
-              Nenhuma pendencia de WhatsApp agora.
+              Nenhuma pendência de WhatsApp agora.
             </p>
           ) : null}
         </div>

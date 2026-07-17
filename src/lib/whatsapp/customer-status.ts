@@ -635,6 +635,38 @@ function buildInstallmentLabel(context: PaymentReminderContext) {
   return null
 }
 
+function isPaymentReminderAcknowledgement(message: string | null | undefined) {
+  const normalized = normalizeMessage(message || undefined)
+  if (!normalized) return false
+
+  const reactionOnly = /^[\s\u2764\u2665\uFE0F\u{1F44D}\u{1F44F}\u{1F64F}\u{1F60A}\u{1F60D}\u{1F970}]+$/u
+  if (reactionOnly.test(normalized)) return true
+
+  const textWithoutReactionEmoji = normalized
+    .replace(/[\u2764\u2665\uFE0F\u{1F44D}\u{1F44F}\u{1F64F}\u{1F60A}\u{1F60D}\u{1F970}]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return [
+    'ok',
+    'okay',
+    'certo',
+    'ta bom',
+    'tudo certo',
+    'entendi',
+    'recebi',
+    'obrigada',
+    'obrigado',
+    'valeu',
+    'beleza',
+    'combinado',
+  ].includes(textWithoutReactionEmoji)
+}
+
+function paymentReminderAcknowledgementText() {
+  return 'Que bom que recebeu. Se precisar de alguma coisa, é só chamar.'
+}
+
 function looksLikePixRequest(message: string | null | undefined) {
   const normalized = normalizeMessage(message || undefined)
   if (!normalized) return false
@@ -2442,9 +2474,38 @@ export async function resolveCustomerStatus(
   }
 
   const paymentReminderContext = readPaymentReminderContext(state?.metadata)
+  const paymentReminderAcknowledgement = paymentReminderContext && isPaymentReminderAcknowledgement(effectiveMessageText)
   const reminderFinancialHandoff = paymentReminderContext && (looksLikePixRequest(effectiveMessageText) || looksLikeAmountRequest(effectiveMessageText))
     ? paymentMatchedHandoffText()
     : null
+
+  if (paymentReminderAcknowledgement && paymentReminderContext) {
+    await consumeForceAiOverrideIfNeeded()
+    const text = paymentReminderAcknowledgementText()
+    await setCurrentConversationState('ai_session', AI_SESSION_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
+      reason: 'payment_reminder_acknowledged',
+      lastKnownCustomerId: paymentReminderContext.customerId ?? null,
+      ...buildPaymentInstallmentMetadataFromReminderContext(paymentReminderContext, normalizedPhone),
+      ...buildDecisionMetadata({
+        intent: 'payment_info',
+        action: 'payment_reminder_acknowledged',
+        outboundType: 'payment_reminder_acknowledgement',
+      }),
+    }), 'assistant', text))
+    return createCurrentOutbound(text, 'payment_reminder_acknowledgement', {
+      ...buildWhatsAppCanonicalPayload({
+        intent: 'payment_info',
+        action: 'payment_reminder_acknowledged',
+        outboundType: 'payment_reminder_acknowledgement',
+        canonicalReply: text,
+        facts: {
+          reminderId: paymentReminderContext.reminderId ?? null,
+          installmentId: paymentReminderContext.installmentId ?? null,
+        },
+      }),
+      paymentReminderContext,
+    })
+  }
 
   if (reminderFinancialHandoff && paymentReminderContext) {
     await consumeForceAiOverrideIfNeeded()
