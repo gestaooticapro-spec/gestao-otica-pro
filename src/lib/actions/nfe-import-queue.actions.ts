@@ -6,6 +6,7 @@ import { XMLParser } from 'fast-xml-parser'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { getNuvemLocalToken } from '@/lib/nuvem-local'
+import { assertSafeFiscalXml } from '@/lib/xml-security'
 
 type QueueStatus = 'pending' | 'imported' | 'ignored' | 'error' | 'duplicated'
 
@@ -283,6 +284,7 @@ async function getTenantAndCompany(storeId?: number) {
 }
 
 function parseNfeXml(xmlText: string) {
+    assertSafeFiscalXml(xmlText)
     const parser = new XMLParser({
         ignoreAttributes: false,
         attributeNamePrefix: '@_',

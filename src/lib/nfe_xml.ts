@@ -1,5 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 import type { ParsedNFeItem } from "@/types/nfe";
+import { assertSafeFiscalXml } from "@/lib/xml-security";
 
 function firstTaxGroup(group: any) {
     if (!group || typeof group !== "object") return {};
@@ -66,6 +67,7 @@ export function extractItemsFromInfNFe(infNFe: any): ParsedNFeItem[] {
 }
 
 export async function extractItemsFromXmlContent(xmlContent: string) {
+    assertSafeFiscalXml(xmlContent);
     const parser = new XMLParser({
         ignoreAttributes: false,
         attributeNamePrefix: "@_",

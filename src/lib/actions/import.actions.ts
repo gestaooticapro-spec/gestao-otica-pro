@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { XMLParser } from 'fast-xml-parser'
 import { revalidatePath } from 'next/cache'
+import { assertSafeFiscalXml, MAX_FISCAL_XML_BYTES } from '@/lib/xml-security'
 
 // Tipos para o Preview
 export type XmlPreviewItem = {
@@ -131,9 +132,11 @@ export async function parseNfeAndPreview(formData: FormData): Promise<{ success:
 
     const file = formData.get('xml_file') as File
     if (!file) return { success: false, message: 'Arquivo não enviado.' }
+    if (file.size > MAX_FISCAL_XML_BYTES) return { success: false, message: 'O XML excede o limite de 10 MB.' }
 
     try {
         const text = await file.text()
+        assertSafeFiscalXml(text)
         const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" })
         const xmlObj = parser.parse(text)
 

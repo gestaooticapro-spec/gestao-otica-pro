@@ -2,8 +2,12 @@
   "name": "gestao-otica-pro",
   "version": "0.1.0",
   "private": true,
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "next dev",
+    "dev:electron": "concurrently --kill-others-on-fail --names next,electron \"npm:dev\" \"npm:electron:wait\"",
+    "electron": "electron .",
+    "electron:wait": "wait-on http-get://localhost:3000 && electron .",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
@@ -15,6 +19,8 @@
     "@supabase/supabase-js": "^2.81.1",
     "@tanstack/react-table": "^8.21.3",
     "@types/file-saver": "^2.0.7",
+    "@zxing/browser": "0.1.5",
+    "@zxing/library": "0.21.3",
     "crc": "^4.3.2",
     "date-fns": "^4.4.0",
     "date-fns-tz": "^3.2.0",
@@ -25,8 +31,7 @@
     "jspdf-autotable": "^5.0.7",
     "jszip": "^3.10.1",
     "lucide-react": "^0.554.0",
-    "next": "^14.2.0",
-    "nodemailer": "^7.0.11",
+    "next": "14.2.35",
     "pdf-parse": "^2.4.5",
     "qrcode": "^1.5.4",
     "qrcode.react": "^4.2.0",
@@ -39,16 +44,18 @@
   },
   "devDependencies": {
     "@types/node": "^20",
-    "@types/nodemailer": "^7.0.4",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/three": "^0.185.1",
     "autoprefixer": "^10.4.22",
+    "concurrently": "^10.0.3",
+    "electron": "^43.1.1",
     "eslint": "^9",
     "eslint-config-next": "16.0.3",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.18",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wait-on": "^9.0.10"
   }
 }

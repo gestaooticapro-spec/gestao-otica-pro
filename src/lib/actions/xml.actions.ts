@@ -8,6 +8,7 @@ import { XMLParser } from 'fast-xml-parser'
 import { revalidatePath } from 'next/cache'
 import { generateSmartBarcode } from '@/lib/actions/catalog.actions'
 import { markNfeQueueImported } from '@/lib/actions/nfe-import-queue.actions'
+import { assertSafeFiscalXml, MAX_FISCAL_XML_BYTES } from '@/lib/xml-security'
 
 export type XmlPreviewItem = {
     codigo_fornecedor: string
@@ -135,9 +136,11 @@ export async function parseNfeAndPreview(formData: FormData): Promise<{ success:
 
     const file = formData.get('xml_file') as File
     if (!file) return { success: false, message: 'Arquivo nao enviado.' }
+    if (file.size > MAX_FISCAL_XML_BYTES) return { success: false, message: 'O XML excede o limite de 10 MB.' }
 
     try {
         const text = await file.text()
+        assertSafeFiscalXml(text)
         const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' })
         const xmlObj = parser.parse(text)
 

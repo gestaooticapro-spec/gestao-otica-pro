@@ -321,6 +321,110 @@ Durante todos os sete passos, o Supabase permanece a fonte canonica. O SQLite
 local e uma camada de continuidade e sincronizacao, e nao uma nova identidade
 para a loja.
 
+### Detalhamento operacional do roteiro
+
+O roteiro acima sera executado com as seguintes validacoes praticas:
+
+1. **Shell Electron:** criar o aplicativo desktop em uma pasta propria,
+   carregar o Next.js local durante o desenvolvimento, testar abertura e
+   fechamento e preparar tela cheia e modo kiosk. Nesta fase nao implementar
+   pareamento, SQLite ou QR Code.
+2. **Tela inicial `UNPAIRED`:** mostrar status da internet, `Conectar a
+   internet`, `Ler QR Code`, `Nao consigo ler o QR Code` e o codigo alternativo.
+   O botao de internet abre a configuracao nativa de redes do Windows; ao
+   retornar, o Electron verifica novamente a conectividade. Ethernet deve ser
+   detectada automaticamente.
+3. **Ativacao:** ler o QR Code pela camera ou aceitar o codigo alternativo e
+   enviar a tentativa ao backend. O servidor valida existencia, validade,
+   pendencia e pertencimento ao `tenant_id` e `store_id` corretos. Nao permitir
+   cadastro livre ou escolha de outra loja.
+4. **Pareamento `PAIRING`:** associar o equipamento ao dispositivo, tenant e
+   loja corretos e emitir uma credencial limitada. Nenhum dado da loja deve ser
+   liberado antes da confirmacao. Nunca usar `service_role`, senha administrativa
+   ou chave ampla do Supabase.
+5. **Continuidade offline:** armazenar a credencial com protecao do Windows e
+   usar SQLite somente para configuracao, cache, sessoes, resultados, recorte
+   de catalogo/geometrias e `outbox`. Operacoes pendentes devem sincronizar de
+   forma idempotente quando a internet voltar.
+6. **`PAIRED_SETUP` e manutencao:** testar camera, captura, duas telas, tela
+   principal, tela do cliente, orientacao, brilho quando possivel, rede,
+   diagnostico, calibracao e sincronizacao. Criar ou trocar o PIN provisorio.
+7. **`READY`:** liberar a operacao diaria. A tela do cliente fica restrita as
+   experiencias visuais e o menu administrativo continua fora dela.
+8. **Configuracao remota:** permitir que o responsavel autenticado altere
+   catalogo, ofertas, estrategia comercial, modulos e botoes por computador ou
+   celular. A Torre baixa e aplica os dados do mesmo `store_id`.
+9. **Experiencias:** somente depois da base estar validada, levar ao Electron
+   visagismo, campo visual/heatmap, medidas, mapa educativo e coordenacao das
+   duas telas. Os calculos reutilizaveis nao dependem de rota Next ou browser.
+10. **Empacotamento e homologacao:** gerar o instalador `.exe`, configurar
+    inicializacao automatica e modo kiosk e testar no mini PC real com Wi-Fi,
+    Ethernet, touch, segunda tela, camera, queda de internet, sincronizacao,
+    desligamento e reinicializacao.
+
+Os estados principais do Electron devem permanecer explicitos:
+
+```text
+UNPAIRED -> PAIRING -> PAIRED_SETUP -> READY -> MAINTENANCE
+```
+
+`UNPAIRED` exige internet e mostra ativacao; `PAIRING` valida o QR Code ou
+codigo alternativo sem liberar dados; `PAIRED_SETUP` executa testes locais e
+configura o PIN; `READY` libera a rotina diaria; `MAINTENANCE` permite somente
+manutencao local protegida por PIN.
+
+### Seguranca e alertas de dependencias
+
+Os alertas do `npm audit` devem ser tratados como uma fila de risco, e nao
+ignorados nem usados automaticamente como motivo para interromper todo o
+desenvolvimento. A regra e separar o que ja possui mitigacao, o que exige
+revisao antes da homologacao e o que bloqueia a publicacao.
+
+Medidas ja aplicadas nesta etapa:
+
+- o shell Electron usa `contextIsolation`, `sandbox`, `nodeIntegration: false`,
+  bloqueio de navegacao fora da origem esperada, bloqueio de novas janelas,
+  bloqueio de `webview` e negacao de permissoes nao necessarias;
+- o Electron nao recebe `service_role`, senha administrativa nem chave ampla do
+  Supabase;
+- o Next.js foi atualizado dentro da serie atual e o `ws` foi atualizado sem
+  alterar a versao do Supabase;
+- o processamento de XML fiscal limita o tamanho do arquivo, rejeita
+  `DOCTYPE`, `ENTITY`, referencias de entidades nao permitidas e caracteres
+  invalidos, preservando as entidades XML padrao;
+- foram adicionados headers basicos de seguranca (`nosniff` e politica de
+  referenciador) e removida a identificacao desnecessaria do framework;
+- o uso atual de jsPDF nao utiliza recursos conhecidos de incorporacao de
+  JavaScript, formularios PDF ou HTML arbitrario. Isso reduz a superficie, mas
+  nao substitui a atualizacao da dependencia.
+
+Durante o desenvolvimento da Torre, os alertas restantes podem coexistir com
+o trabalho do Electron desde que nao sejam introduzidas novas superficies de
+risco. O build, o typecheck, o lint quando aplicavel e o teste do shell devem
+continuar passando. Toda dependencia nova deve ser auditada antes de ser
+adotada.
+
+Antes da homologacao com o mini PC, e obrigatorio:
+
+1. revisar os alertas ainda presentes de `fast-xml-parser`, `jsPDF/DOMPurify`,
+   `postcss` e Next.js e atualizar ou substituir as dependencias quando houver
+   correcao compativel;
+2. confirmar que o parser XML continua rejeitando DTD, entidades externas,
+   arquivos acima do limite e entradas malformadas sem quebrar XML fiscal
+   valido;
+3. revisar as permissoes e navegacoes do Electron depois que camera, QR Code,
+   configuracoes do Windows e segunda tela forem adicionados;
+4. executar novamente `npm audit --omit=dev --audit-level=high`, registrar os
+   riscos sem correcao disponivel e testar os fluxos principais.
+
+Antes da publicacao para clientes, nenhum alerta critico ou alto pode ser
+aceito apenas porque o aplicativo funciona. Ele precisa estar corrigido,
+substituido ou documentado com uma mitigacao demonstravel e aprovada. A
+migracao para uma versao major mais nova do Next.js deve ser planejada antes
+da producao, em uma etapa propria, porque pode exigir ajustes de React,
+Server Actions e configuracao; nao deve ser feita no meio do primeiro shell
+Electron sem testes de regressao.
+
 ## Decisoes que precisam orientar o codigo agora
 
 ### 1. A avaliacao inicia a leitura visual
