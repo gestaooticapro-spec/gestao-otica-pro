@@ -2,13 +2,14 @@ import { notFound, redirect } from 'next/navigation'
 import MultifocalFocusDemo from '@/components/catalog/MultifocalFocusDemo'
 import { createClient } from '@/lib/supabase/server'
 
-export default async function TowerFocusDemoPage({
-  params,
-  searchParams,
-}: {
-  params: { storeId: string }
-  searchParams?: { client?: string }
-}) {
+export default async function TowerFocusDemoPage(
+  props: {
+    params: Promise<{ storeId: string }>
+    searchParams?: Promise<{ client?: string }>
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
   if (Number.isNaN(storeId)) return notFound()
 

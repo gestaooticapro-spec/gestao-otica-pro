@@ -5,13 +5,14 @@ import { getOrCreateTowerSession } from '@/lib/actions/tower-session.actions'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
-export default async function TowerMeasurementsPage({
-  params,
-  searchParams,
-}: {
-  params: { storeId: string }
-  searchParams?: { client?: string; session?: string }
-}) {
+export default async function TowerMeasurementsPage(
+  props: {
+    params: Promise<{ storeId: string }>
+    searchParams?: Promise<{ client?: string; session?: string }>
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
   if (Number.isNaN(storeId)) return notFound()
 

@@ -11,7 +11,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import ConsultasBackground from '@/components/consultas/ConsultasBackground'
 import { getStoreModulesForStore } from '@/lib/store-modules.server'
 
-export default async function ConsultasPage({ params }: { params: { storeId: string } }) {
+export default async function ConsultasPage(props: { params: Promise<{ storeId: string }> }) {
+  const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
 
   const supabaseAdmin = createAdminClient()

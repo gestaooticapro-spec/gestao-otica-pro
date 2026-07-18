@@ -9,11 +9,11 @@ import { verifyTowerAdminPin } from '@/lib/tower-admin-pin'
 export const dynamic = 'force-dynamic'
 
 type PageProps = {
-  searchParams: {
+  searchParams: Promise<{
     token?: string
     code?: string
     pin?: string
-  }
+  }>
 }
 
 type ActivationAccessRow = {
@@ -47,7 +47,8 @@ function InvalidActivation() {
   )
 }
 
-export default async function TowerActivationPage({ searchParams }: PageProps) {
+export default async function TowerActivationPage(props: PageProps) {
+  const searchParams = await props.searchParams;
   const token = searchParams.token?.trim() || ''
   const fallbackCode = searchParams.code?.trim().toUpperCase() || ''
   const adminPin = searchParams.pin?.trim() || ''

@@ -6,13 +6,14 @@ import TowerEvaluationIntake from '@/components/tower/TowerEvaluationIntake'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
-export default async function TowerEvaluationPage({
-  params,
-  searchParams,
-}: {
-  params: { storeId: string }
-  searchParams?: { session?: string; heatmap?: string }
-}) {
+export default async function TowerEvaluationPage(
+  props: {
+    params: Promise<{ storeId: string }>
+    searchParams?: Promise<{ session?: string; heatmap?: string }>
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const storeId = Number.parseInt(params.storeId, 10)
   if (Number.isNaN(storeId)) return notFound()
 

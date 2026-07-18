@@ -1,11 +1,12 @@
 import { getTrayContext } from '@/lib/actions/nfc.actions'
 import { NfcTrayClient } from './NfcTrayClient'
 
-export default async function NfcTrayPage({
-  params
-}: {
-  params: { storeId: string; trayId: string }
-}) {
+export default async function NfcTrayPage(
+  props: {
+    params: Promise<{ storeId: string; trayId: string }>
+  }
+) {
+  const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
   const { trayId } = params
 

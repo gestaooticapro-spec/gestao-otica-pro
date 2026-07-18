@@ -47,7 +47,8 @@ type DashboardProfile = {
     store_id?: number | null
 }
 
-export default async function StoreHomePage({ params }: { params: { storeId: string } }) {
+export default async function StoreHomePage(props: { params: Promise<{ storeId: string }> }) {
+    const params = await props.params;
     const storeId = parseInt(params.storeId, 10)
     if (isNaN(storeId)) return notFound()
 

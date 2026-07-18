@@ -16,7 +16,8 @@ const STATUS_MAP: Record<string, number> = {
   'Concluido': 4,          // Finalizado
 }
 
-export default async function RastreioPage({ params }: { params: { token: string } }) {
+export default async function RastreioPage(props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   const ticket = await getPublicTicket(params.token)
 
   if (!ticket) return notFound()
@@ -28,8 +29,8 @@ export default async function RastreioPage({ params }: { params: { token: string
   // Lógica do Link do WhatsApp Dinâmico
   const whatsappLoja = ticket.stores?.whatsapp 
       ? `55${ticket.stores.whatsapp.replace(/\D/g, '')}` 
-      : '' 
-  
+      : ''
+
   const linkFalar = whatsappLoja 
       ? `https://wa.me/${whatsappLoja}?text=${encodeURIComponent(`Olá, estou vendo o rastreio da minha garantia (Produto: ${ticket.product_descricao}) e gostaria de uma informação.`)}`
       : '#'

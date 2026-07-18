@@ -15,13 +15,14 @@ function resolveBackPath(storeId: number, rawReturnTo?: string): string {
   return decoded
 }
 
-export default async function LensVisualizerPage({
-  params,
-  searchParams,
-}: {
-  params: { storeId: string; familySlug: string }
-  searchParams?: { returnTo?: string }
-}) {
+export default async function LensVisualizerPage(
+  props: {
+    params: Promise<{ storeId: string; familySlug: string }>
+    searchParams?: Promise<{ returnTo?: string }>
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const familyName = decodeURIComponent(params.familySlug)
   const storeId = parseInt(params.storeId, 10)
 

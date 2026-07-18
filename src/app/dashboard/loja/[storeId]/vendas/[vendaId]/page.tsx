@@ -6,19 +6,20 @@ import { getVendaPageData, type VendaPageData } from '@/lib/actions/vendas.actio
 import VendaInterface from '@/components/vendas/VendaInterface'
 
 type Props = {
-  params: { storeId: string; vendaId: string }
-  searchParams: { employee_id?: string; employee_name?: string; open_payment?: string }
+  params: Promise<{ storeId: string; vendaId: string }>
+  searchParams: Promise<{ employee_id?: string; employee_name?: string; open_payment?: string }>
 }
 
-export default async function VendaPage({ params, searchParams }: Props) {
+export default async function VendaPage(props: Props) {
+  const params = await props.params;
   const storeId = parseInt(params.storeId)
   const vendaId = parseInt(params.vendaId)
-  
+
   if (isNaN(storeId) || isNaN(vendaId)) return notFound()
 
   // CORREÇÃO: Usamos 'success' e 'message' em vez de 'error' [cite: 1483]
   const { success, data, message } = await getVendaPageData(vendaId, storeId)
-  
+
   // Verifica se a busca falhou ou se os dados essenciais não vieram
   if (!success || !data || !data.venda) {
     console.error('Erro venda:', message)

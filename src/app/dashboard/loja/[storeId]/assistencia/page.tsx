@@ -4,7 +4,8 @@ import AssistanceKanban from '@/components/assistencia/AssistanceKanban'
 import Link from 'next/link'
 import { LifeBuoy, ArrowLeft } from 'lucide-react'
 
-export default async function AssistenciaPage({ params }: { params: { storeId: string } }) {
+export default async function AssistenciaPage(props: { params: Promise<{ storeId: string }> }) {
+  const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
   const tickets = await getAssistanceTickets(storeId)
 

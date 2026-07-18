@@ -6,11 +6,12 @@ import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-export default async function EtiquetasPage({
-    params
-}: {
-    params: { storeId: string }
-}) {
+export default async function EtiquetasPage(
+    props: {
+        params: Promise<{ storeId: string }>
+    }
+) {
+    const params = await props.params;
     const storeId = parseInt(params.storeId, 10)
     const enabled = await isStoreModuleEnabledForStore(storeId, 'labels')
 

@@ -9,7 +9,11 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 export const fetchCache = 'force-no-store'
 
-export default async function PrintReciboPage({ params, searchParams }: { params: { id: string }, searchParams: { reprint?: string } }) {
+export default async function PrintReciboPage(
+    props: { params: Promise<{ id: string }>, searchParams: Promise<{ reprint?: string }> }
+) {
+    const searchParams = await props.searchParams;
+    const params = await props.params;
     const idsString = params.id
     const ids = idsString.split('-').map(id => parseInt(id)).filter(n => !isNaN(n))
 
@@ -59,7 +63,7 @@ export default async function PrintReciboPage({ params, searchParams }: { params
         .select('*')
         .eq('id', venda.store_id)
         .single()
-        
+
     const store = storeRaw as any
     const receiptType = store?.settings?.receipt_type || 'pre_printed'
 
@@ -85,7 +89,6 @@ export default async function PrintReciboPage({ params, searchParams }: { params
                     padding: 0px;
                 }
             `}</style>
-
             {receiptType === 'half_a4' ? (
                 <ReceiptBlankHalfA4 data={receiptData as any} />
             ) : (
@@ -93,7 +96,7 @@ export default async function PrintReciboPage({ params, searchParams }: { params
             )}
             <PrintTrigger />
         </div>
-    )
+    );
 }
 
 function PrintTrigger() {

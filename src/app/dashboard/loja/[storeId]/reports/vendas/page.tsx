@@ -3,13 +3,14 @@ import TabelaVendas from '@/components/relatorios/TabelaVendas'
 import { Calendar, Filter, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 
-export default async function RelatorioVendasPage({
-  params,
-  searchParams,
-}: {
-  params: { storeId: string }
-  searchParams: { inicio?: string; fim?: string }
-}) {
+export default async function RelatorioVendasPage(
+  props: {
+    params: Promise<{ storeId: string }>
+    searchParams: Promise<{ inicio?: string; fim?: string }>
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
 
   // Datas Padrão: Mês Atual

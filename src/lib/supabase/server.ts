@@ -1,10 +1,15 @@
 // Caminho: src/lib/supabase/server.ts (CORRIGIDO PARA CONSISTÊNCIA)
 
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { cookies, type UnsafeUnwrappedCookies } from 'next/headers';
 
 export function createClient() {
-  const cookieStore = cookies()
+  // Next 15 ainda preserva o acesso sincrono por compatibilidade. O cast
+  // concentra essa transicao sem transformar todas as actions em Promises de cliente.
+  const cookieStore = (cookies() as unknown as UnsafeUnwrappedCookies) as unknown as {
+    get: (name: string) => { value?: string } | undefined
+    set: (cookie: { name: string; value: string } & CookieOptions) => void
+  }
 
   return createServerClient(
     // USAR CHAVES PÚBLICAS PARA CONSISTÊNCIA E ACESSO NO SSR

@@ -9,11 +9,12 @@ import { headers } from 'next/headers'
 // FORCE DYNAMIC
 export const dynamic = 'force-dynamic'
 
-export default async function Page({
-    params
-}: {
-    params: { storeId: string, customerId: string }
-}) {
+export default async function Page(
+    props: {
+        params: Promise<{ storeId: string, customerId: string }>
+    }
+) {
+    const params = await props.params;
     const storeId = parseInt(params.storeId)
     const customerId = parseInt(params.customerId)
 

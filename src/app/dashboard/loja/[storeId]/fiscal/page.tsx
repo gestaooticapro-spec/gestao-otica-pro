@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, use } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getFiscalInvoices } from "@/lib/actions/fiscal-db.actions";
@@ -56,7 +56,8 @@ function formatFiscalStatusMessage(message?: string | null) {
     return normalized || "Erro desconhecido";
 }
 
-export default function FiscalDashboard({ params }: { params: { storeId: string } }) {
+export default function FiscalDashboard(props: { params: Promise<{ storeId: string }> }) {
+    const params = use(props.params);
     const storeId = parseInt(params.storeId);
     const router = useRouter();
     const modules = useStoreModules();

@@ -4,13 +4,14 @@ import { getTowerSessionContext } from '@/lib/actions/tower-session.actions'
 import { getGlobalVisagismoFrameTemplates } from '@/lib/actions/visagismo.actions'
 import TowerLensThicknessDemo from '@/components/tower/TowerLensThicknessDemo'
 
-export default async function TowerLensThicknessPage({
-  params,
-  searchParams,
-}: {
-  params: { storeId: string }
-  searchParams?: { client?: string; session?: string }
-}) {
+export default async function TowerLensThicknessPage(
+  props: {
+    params: Promise<{ storeId: string }>
+    searchParams?: Promise<{ client?: string; session?: string }>
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
   if (Number.isNaN(storeId)) return notFound()
 

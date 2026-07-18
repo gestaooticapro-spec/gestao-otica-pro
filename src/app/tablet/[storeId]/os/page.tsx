@@ -8,7 +8,8 @@ import FullscreenToggleButton from '@/components/FullscreenToggleButton'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-export default async function TabletOSPage({ params }: { params: { storeId: string } }) {
+export default async function TabletOSPage(props: { params: Promise<{ storeId: string }> }) {
+  const params = await props.params;
   noStore()
   const storeId = parseInt(params.storeId, 10)
   const lista   = await listOSPendentesLab(storeId)

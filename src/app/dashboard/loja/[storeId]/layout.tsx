@@ -22,13 +22,18 @@ type StoreDataShape = {
   settings?: unknown;
 };
 
-export default async function StoreLayout({
-  children,
-  params,
-}: {
-  children: React.ReactNode;
-  params: { storeId: string };
-}) {
+export default async function StoreLayout(
+  props: {
+    children: React.ReactNode;
+    params: Promise<{ storeId: string }>;
+  }
+) {
+  const params = await props.params;
+
+  const {
+    children
+  } = props;
+
   const supabase = createClient();
   const storeIdParam = parseInt(params.storeId as string, 10);
 

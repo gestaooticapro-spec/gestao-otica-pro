@@ -22,13 +22,14 @@ function hasConfiguredPins(geometry: Awaited<ReturnType<typeof getAllLensGeometr
   )
 }
 
-export default async function OpenLensVisualizerPage({
-  params,
-  searchParams,
-}: {
-  params: { storeId: string }
-  searchParams?: { returnTo?: string }
-}) {
+export default async function OpenLensVisualizerPage(
+  props: {
+    params: Promise<{ storeId: string }>
+    searchParams?: Promise<{ returnTo?: string }>
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
 
   const supabase = createClient()

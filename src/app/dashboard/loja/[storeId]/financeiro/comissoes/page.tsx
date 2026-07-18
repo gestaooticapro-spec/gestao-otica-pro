@@ -7,13 +7,14 @@ import Link from 'next/link'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-export default async function ComissoesPage({
-    params,
-    searchParams
-}: {
-    params: { storeId: string },
-    searchParams: { inicio?: string, fim?: string }
-}) {
+export default async function ComissoesPage(
+    props: {
+        params: Promise<{ storeId: string }>,
+        searchParams: Promise<{ inicio?: string, fim?: string }>
+    }
+) {
+    const searchParams = await props.searchParams;
+    const params = await props.params;
     const storeId = parseInt(params.storeId, 10)
 
 

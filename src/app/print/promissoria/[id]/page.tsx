@@ -7,7 +7,8 @@ type FinanciamentoPrint = {
     store?: { settings?: unknown } | null
 }
 
-export default async function PrintPromissoriaPage({ params }: { params: { id: string } }) {
+export default async function PrintPromissoriaPage(props: { params: Promise<{ id: string }> }) {
+    const params = await props.params;
     const id = parseInt(params.id)
     if (isNaN(id)) return notFound()
 

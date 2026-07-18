@@ -4,7 +4,8 @@ import { notFound } from 'next/navigation'
 import TowerStoreAdminPanel from '@/components/admin/TowerStoreAdminPanel'
 import { getTowerStoreAdminData } from '@/lib/actions/tower-admin.actions'
 
-export default async function TowerStoreAdminPage({ params }: { params: { storeId: string } }) {
+export default async function TowerStoreAdminPage(props: { params: Promise<{ storeId: string }> }) {
+  const params = await props.params;
   const storeId = Number(params.storeId)
   if (!Number.isInteger(storeId) || storeId <= 0) notFound()
   const data = await getTowerStoreAdminData(storeId)

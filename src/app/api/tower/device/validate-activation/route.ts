@@ -38,7 +38,7 @@ function json(
 }
 
 export async function POST(request: NextRequest) {
-  const rateLimit = registerTowerActivationAttempt(request)
+  const rateLimit = await registerTowerActivationAttempt(request)
   if (!rateLimit.allowed) {
     return json(
       {
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
       }, 404)
     }
 
-    clearTowerActivationAttempts(rateLimit.key)
+    await clearTowerActivationAttempts(rateLimit.key, rateLimit.scope)
     return json({
       success: true,
       status: 'validated',

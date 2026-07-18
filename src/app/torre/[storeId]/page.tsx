@@ -2,13 +2,14 @@ import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import TowerWelcomeMock from '@/components/tower/TowerWelcomeMock'
 
-export default async function TowerPage({
-  params,
-  searchParams,
-}: {
-  params: { storeId: string }
-  searchParams?: { menu?: string; session?: string }
-}) {
+export default async function TowerPage(
+  props: {
+    params: Promise<{ storeId: string }>
+    searchParams?: Promise<{ menu?: string; session?: string }>
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
   if (Number.isNaN(storeId)) return notFound()
 

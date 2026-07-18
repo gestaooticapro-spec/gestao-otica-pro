@@ -29,7 +29,8 @@ function buildDownloadName(invoice: any, extension: "pdf" | "xml") {
     return `${prefix}-${invoice.numero || "documento"}.${extension}`;
 }
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+    const params = await props.params;
     const invoiceId = parseInt(params.id, 10);
     if (isNaN(invoiceId)) {
         return NextResponse.json({ error: "ID invalido" }, { status: 400 });

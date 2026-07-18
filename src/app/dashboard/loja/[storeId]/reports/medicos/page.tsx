@@ -3,13 +3,14 @@ import RankingMedicosClient from './RankingMedicosClient'
 import { Calendar, Filter, ArrowLeft, Stethoscope } from 'lucide-react'
 import Link from 'next/link'
 
-export default async function RankingMedicosPage({
-    params,
-    searchParams,
-}: {
-    params: { storeId: string }
-    searchParams: { inicio?: string; fim?: string }
-}) {
+export default async function RankingMedicosPage(
+    props: {
+        params: Promise<{ storeId: string }>
+        searchParams: Promise<{ inicio?: string; fim?: string }>
+    }
+) {
+    const searchParams = await props.searchParams;
+    const params = await props.params;
     const storeId = parseInt(params.storeId, 10)
 
     const hoje = new Date()

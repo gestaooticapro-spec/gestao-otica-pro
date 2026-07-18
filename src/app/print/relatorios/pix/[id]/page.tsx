@@ -7,13 +7,14 @@ import { redirect } from 'next/navigation'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-export default async function RelatorioPixPage({
-    params,
-    searchParams
-}: {
-    params: { id: string },
-    searchParams: { mes: string, ano: string }
-}) {
+export default async function RelatorioPixPage(
+    props: {
+        params: Promise<{ id: string }>,
+        searchParams: Promise<{ mes: string, ano: string }>
+    }
+) {
+    const searchParams = await props.searchParams;
+    const params = await props.params;
     const storeId = Number(params.id)
     const mes = searchParams.mes ? Number(searchParams.mes) : new Date().getMonth() + 1
     const ano = searchParams.ano ? Number(searchParams.ano) : new Date().getFullYear()

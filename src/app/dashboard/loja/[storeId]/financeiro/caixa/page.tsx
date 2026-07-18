@@ -8,7 +8,8 @@ import CaixaBackground from '@/components/financeiro/CaixaBackground'
 import { DollarSign, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 
-export default async function CaixaPage({ params }: { params: { storeId: string } }) {
+export default async function CaixaPage(props: { params: Promise<{ storeId: string }> }) {
+  const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
   const resumo = await getResumoCaixa(storeId)
 

@@ -4,13 +4,14 @@ import FiltroMarcaEstoque from '@/components/relatorios/FiltroMarcaEstoque'
 import { ArrowLeft, PackageSearch } from 'lucide-react'
 import Link from 'next/link'
 
-export default async function EstoqueDetalhadoPage({
-    params,
-    searchParams,
-}: {
-    params: { storeId: string }
-    searchParams: { marca?: string }
-}) {
+export default async function EstoqueDetalhadoPage(
+    props: {
+        params: Promise<{ storeId: string }>
+        searchParams: Promise<{ marca?: string }>
+    }
+) {
+    const searchParams = await props.searchParams;
+    const params = await props.params;
     const storeId = parseInt(params.storeId, 10)
 
     // 1. Busca lista de marcas disponíveis

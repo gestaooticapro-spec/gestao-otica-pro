@@ -104,6 +104,7 @@ export interface Database {
           id: string
           tenant_id: string
           store_id: number
+          target_asset_id: string | null
           token_hash: string
           fallback_code_hash: string
           status: 'pending' | 'consumed' | 'revoked'
@@ -117,6 +118,7 @@ export interface Database {
           id?: string
           tenant_id: string
           store_id: number
+          target_asset_id?: string | null
           token_hash: string
           fallback_code_hash: string
           status?: 'pending' | 'consumed' | 'revoked'
@@ -130,6 +132,7 @@ export interface Database {
           id?: string
           tenant_id?: string
           store_id?: number
+          target_asset_id?: string | null
           token_hash?: string
           fallback_code_hash?: string
           status?: 'pending' | 'consumed' | 'revoked'
@@ -139,6 +142,185 @@ export interface Database {
           revoked_at?: string | null
           created_at?: string
         }
+        Relationships: []
+      }
+
+      tower_devices: {
+        Row: {
+          id: string
+          asset_id: string | null
+          tenant_id: string
+          store_id: number
+          activation_id: string
+          credential_hash: string
+          device_label: string
+          app_version: string | null
+          status: 'active' | 'revoked'
+          paired_at: string
+          revoked_at: string | null
+          last_seen_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          asset_id?: string | null
+          tenant_id: string
+          store_id: number
+          activation_id: string
+          credential_hash: string
+          device_label?: string
+          app_version?: string | null
+          status?: 'active' | 'revoked'
+          paired_at?: string
+          revoked_at?: string | null
+          last_seen_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          asset_id?: string | null
+          tenant_id?: string
+          store_id?: number
+          activation_id?: string
+          credential_hash?: string
+          device_label?: string
+          app_version?: string | null
+          status?: 'active' | 'revoked'
+          paired_at?: string
+          revoked_at?: string | null
+          last_seen_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+
+      tower_asset_sequences: {
+        Row: { sequence_year: number; last_value: number; updated_at: string }
+        Insert: { sequence_year: number; last_value?: number; updated_at?: string }
+        Update: { sequence_year?: number; last_value?: number; updated_at?: string }
+        Relationships: []
+      }
+
+      tower_activation_rate_limits: {
+        Row: {
+          key_hash: string
+          scope: string
+          attempt_count: number
+          reset_at: string
+          updated_at: string
+        }
+        Insert: {
+          key_hash: string
+          scope: string
+          attempt_count?: number
+          reset_at: string
+          updated_at?: string
+        }
+        Update: {
+          key_hash?: string
+          scope?: string
+          attempt_count?: number
+          reset_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+
+      tower_asset_batches: {
+        Row: {
+          id: string
+          batch_code: string
+          batch_name: string
+          sequence_year: number
+          quantity: number
+          status: 'generated' | 'printed' | 'closed'
+          created_by: string | null
+          printed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          batch_code: string
+          batch_name: string
+          sequence_year: number
+          quantity: number
+          status?: 'generated' | 'printed' | 'closed'
+          created_by?: string | null
+          printed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['tower_asset_batches']['Insert']>
+        Relationships: []
+      }
+
+      tower_assets: {
+        Row: {
+          id: string
+          public_code: string
+          batch_id: string
+          serial_number: string | null
+          status: 'generated' | 'printed' | 'prepared' | 'in_stock' | 'assigned' | 'maintenance' | 'retired'
+          enrollment_credential_hash: string | null
+          enrolled_device_label: string | null
+          enrolled_app_version: string | null
+          enrolled_at: string | null
+          current_store_id: number | null
+          label_applied_at: string | null
+          retired_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          public_code: string
+          batch_id: string
+          serial_number?: string | null
+          status?: 'generated' | 'printed' | 'prepared' | 'in_stock' | 'assigned' | 'maintenance' | 'retired'
+          enrollment_credential_hash?: string | null
+          enrolled_device_label?: string | null
+          enrolled_app_version?: string | null
+          enrolled_at?: string | null
+          current_store_id?: number | null
+          label_applied_at?: string | null
+          retired_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['tower_assets']['Insert']>
+        Relationships: []
+      }
+
+      tower_asset_enrollments: {
+        Row: {
+          id: string
+          asset_id: string
+          token_hash: string
+          fallback_code_hash: string
+          status: 'pending' | 'consumed' | 'revoked'
+          expires_at: string
+          created_by: string | null
+          consumed_at: string | null
+          revoked_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          asset_id: string
+          token_hash: string
+          fallback_code_hash: string
+          status?: 'pending' | 'consumed' | 'revoked'
+          expires_at: string
+          created_by?: string | null
+          consumed_at?: string | null
+          revoked_at?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['tower_asset_enrollments']['Insert']>
         Relationships: []
       }
 
@@ -1919,6 +2101,116 @@ export interface Database {
           tenant_id: string
           store_id: number
           activation_id: string
+        }[]
+      }
+      pair_tower_device: {
+        Args: {
+          p_activation_method: string
+          p_activation_secret_hash: string
+          p_device_credential_hash: string
+          p_device_label: string
+          p_app_version: string | null
+        }
+        Returns: {
+          paired_device_id: string
+          paired_tenant_id: string
+          paired_store_id: number
+          device_paired_at: string
+        }[]
+      }
+      create_tower_asset_batch: {
+        Args: {
+          p_batch_name: string
+          p_quantity: number
+          p_sequence_year: number
+          p_created_by: string
+        }
+        Returns: { created_batch_id: string; created_batch_code: string; first_public_code: string; last_public_code: string }[]
+      }
+      issue_tower_asset_enrollment: {
+        Args: {
+          p_asset_id: string
+          p_token_hash: string
+          p_fallback_code_hash: string
+          p_expires_at: string
+          p_created_by: string
+        }
+        Returns: { enrollment_id: string; asset_public_code: string }[]
+      }
+      enroll_tower_asset: {
+        Args: {
+          p_method: string
+          p_public_code: string
+          p_secret_hash: string
+          p_asset_credential_hash: string
+          p_device_label: string
+          p_app_version: string | null
+        }
+        Returns: { enrolled_asset_id: string; enrolled_public_code: string; asset_enrolled_at: string }[]
+      }
+      pair_tower_asset_device: {
+        Args: {
+          p_asset_credential_hash: string
+          p_activation_method: string
+          p_activation_secret_hash: string
+          p_device_credential_hash: string
+          p_device_label: string
+          p_app_version: string | null
+        }
+        Returns: {
+          paired_device_id: string
+          paired_asset_id: string
+          paired_asset_public_code: string
+          paired_tenant_id: string
+          paired_store_id: number
+          device_paired_at: string
+        }[]
+      }
+      reissue_tower_asset_activation: {
+        Args: {
+          p_asset_id: string
+          p_store_id: number
+          p_token_hash: string
+          p_fallback_code_hash: string
+          p_admin_pin_hash: string
+          p_expires_at: string
+          p_created_by: string
+        }
+        Returns: { tenant_id: string; store_id: number; activation_id: string }[]
+      }
+      set_tower_asset_lifecycle_status: {
+        Args: { p_asset_id: string; p_status: string }
+        Returns: undefined
+      }
+      mark_tower_asset_batch_printed: {
+        Args: { p_batch_id: string }
+        Returns: undefined
+      }
+      consume_tower_activation_rate_limit: {
+        Args: {
+          p_key_hash: string
+          p_scope: string
+          p_max_attempts?: number
+          p_window_seconds?: number
+        }
+        Returns: { allowed: boolean; retry_after_seconds: number }[]
+      }
+      clear_tower_activation_rate_limit: {
+        Args: { p_key_hash: string; p_scope: string }
+        Returns: undefined
+      }
+      record_tower_admin_pin_attempt: {
+        Args: {
+          p_store_id: number
+          p_expected_pin_hash: string
+          p_verified: boolean
+          p_new_pin_hash: string | null
+        }
+        Returns: {
+          pin_verified: boolean
+          pin_must_change: boolean
+          pin_failed_attempts: number
+          pin_locked_until: string | null
         }[]
       }
       create_nfc_tray: {

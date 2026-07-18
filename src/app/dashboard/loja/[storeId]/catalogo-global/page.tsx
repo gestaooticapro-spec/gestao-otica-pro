@@ -8,11 +8,12 @@ import GlobalCatalogActivationInterface from '@/components/catalog/GlobalCatalog
 import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
 import ModuleDisabledState from '@/components/modules/ModuleDisabledState'
 
-export default async function StoreGlobalCatalogPage({
-  params,
-}: {
-  params: { storeId: string }
-}) {
+export default async function StoreGlobalCatalogPage(
+  props: {
+    params: Promise<{ storeId: string }>
+  }
+) {
+  const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
   const supabase = createClient()
   const {

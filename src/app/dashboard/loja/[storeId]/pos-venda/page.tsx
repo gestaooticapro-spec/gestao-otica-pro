@@ -4,7 +4,8 @@ import PostSalesInterface from '@/components/pos-venda/PostSalesInterface'
 import ModuleDisabledState from '@/components/modules/ModuleDisabledState'
 import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
 
-export default async function PosVendaPage({ params }: { params: { storeId: string } }) {
+export default async function PosVendaPage(props: { params: Promise<{ storeId: string }> }) {
+  const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
   const enabled = await isStoreModuleEnabledForStore(storeId, 'postSales')
 

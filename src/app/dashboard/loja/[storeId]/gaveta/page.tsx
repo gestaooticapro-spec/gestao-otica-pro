@@ -4,14 +4,15 @@ import { getGavetaItems } from '@/lib/actions/gaveta.actions'
 import Link from 'next/link'
 import { Archive, User, DollarSign, MessageCircle, Clock, AlertTriangle, ArrowLeft } from 'lucide-react'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, use } from 'react';
 import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
 
-export default function GavetaPage({
-  params
-}: {
-  params: { storeId: string }
-}) {
+export default function GavetaPage(
+  props: {
+    params: Promise<{ storeId: string }>
+  }
+) {
+  const params = use(props.params);
   const storeId = parseInt(params.storeId)
   const [itens, setItens] = useState<any[]>([])
   const [loading, setLoading] = useState(true)

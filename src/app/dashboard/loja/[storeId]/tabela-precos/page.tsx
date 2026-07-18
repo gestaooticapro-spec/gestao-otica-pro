@@ -17,22 +17,23 @@ import ModuleDisabledState from '@/components/modules/ModuleDisabledState'
 
 export const dynamic = 'force-dynamic'
 
-export default async function StorePriceTablePage({
-  params,
-  searchParams,
-}: {
-  params: { storeId: string }
-  searchParams?: {
-    versionId?: string
-    scope?: string
-    q?: string
-    clinical?: string
-    material?: string
-    indice?: string
-    feature?: string
-    section?: string
+export default async function StorePriceTablePage(
+  props: {
+    params: Promise<{ storeId: string }>
+    searchParams?: Promise<{
+      versionId?: string
+      scope?: string
+      q?: string
+      clinical?: string
+      material?: string
+      indice?: string
+      feature?: string
+      section?: string
+    }>
   }
-}) {
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
   const supabase = createClient()
   const {

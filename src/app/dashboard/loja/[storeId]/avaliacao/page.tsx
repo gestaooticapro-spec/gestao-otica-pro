@@ -12,11 +12,12 @@ type StoreSettings = {
 
 type StoreSettingsRow = Pick<Database['public']['Tables']['stores']['Row'], 'settings'>
 
-export default async function AvaliacaoPage({
-  params
-}: {
-  params: { storeId: string }
-}) {
+export default async function AvaliacaoPage(
+  props: {
+    params: Promise<{ storeId: string }>
+  }
+) {
+  const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
   if (Number.isNaN(storeId)) return notFound()
 

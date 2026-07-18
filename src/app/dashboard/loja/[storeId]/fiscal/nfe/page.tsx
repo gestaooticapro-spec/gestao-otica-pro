@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, use } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -518,7 +518,8 @@ function customerFormFromParticipant(participant: ParticipantResult): CustomerFo
     };
 }
 
-export default function EmitirNFePage({ params }: { params: { storeId: string } }) {
+export default function EmitirNFePage(props: { params: Promise<{ storeId: string }> }) {
+    const params = use(props.params);
     const storeId = Number(params.storeId);
     const modules = useStoreModules();
     const router = useRouter();
@@ -1737,11 +1738,8 @@ export default function EmitirNFePage({ params }: { params: { storeId: string } 
         .filter((sale) => {
             const term = saleSearch.trim().toLowerCase();
             if (!term) return true;
-            return (
-                String(sale.id).includes(term) ||
-                (sale.clients?.nome || "").toLowerCase().includes(term) ||
-                (sale.clients?.cpf_cnpj || "").replace(/\D/g, "").includes(term.replace(/\D/g, ""))
-            );
+            return (String(sale.id).includes(term) ||
+            (sale.clients?.nome || "").toLowerCase().includes(term) || (sale.clients?.cpf_cnpj || "").replace(/\D/g, "").includes(term.replace(/\D/g, "")));
         })
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 

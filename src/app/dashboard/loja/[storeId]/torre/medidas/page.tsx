@@ -2,13 +2,14 @@ import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getOrCreateTowerSession } from '@/lib/actions/tower-session.actions'
 
-export default async function StoreTowerMeasurementPage({
-  params,
-  searchParams,
-}: {
-  params: { storeId: string }
-  searchParams?: { client?: string; session?: string }
-}) {
+export default async function StoreTowerMeasurementPage(
+  props: {
+    params: Promise<{ storeId: string }>
+    searchParams?: Promise<{ client?: string; session?: string }>
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
   if (Number.isNaN(storeId)) return notFound()
 

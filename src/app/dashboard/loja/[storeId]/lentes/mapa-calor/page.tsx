@@ -3,13 +3,14 @@ import { createClient } from '@/lib/supabase/server'
 import { getAllLensGeometries } from '@/lib/actions/lens-geometry.actions'
 import GazeHeatmapLab from '@/components/catalog/GazeHeatmapLab'
 
-export default async function StoreLensHeatmapLabPage({
-  params,
-  searchParams,
-}: {
-  params: { storeId: string }
-  searchParams?: { client?: string; family?: string; heatmapSessionId?: string }
-}) {
+export default async function StoreLensHeatmapLabPage(
+  props: {
+    params: Promise<{ storeId: string }>
+    searchParams?: Promise<{ client?: string; family?: string; heatmapSessionId?: string }>
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
   const supabase = createClient()
   const {

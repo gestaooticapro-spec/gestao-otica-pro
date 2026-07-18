@@ -67,13 +67,14 @@ function KpiCard({
   )
 }
 
-export default async function AvaliacoesFuncionariosPage({
-  params,
-  searchParams,
-}: {
-  params: { storeId: string }
-  searchParams: { inicio?: string; fim?: string; employeeId?: string }
-}) {
+export default async function AvaliacoesFuncionariosPage(
+  props: {
+    params: Promise<{ storeId: string }>
+    searchParams: Promise<{ inicio?: string; fim?: string; employeeId?: string }>
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const storeId = Number(params.storeId)
   const evaluationEnabled = await isStoreModuleEnabledForStore(storeId, 'evaluation')
   if (!evaluationEnabled) {

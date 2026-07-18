@@ -11,13 +11,14 @@ import MovementHistoryList from './_components/MovementHistoryList'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-export default async function MovimentacoesPage({
-    params,
-    searchParams
-}: {
-    params: { storeId: string },
-    searchParams: { inicio?: string, fim?: string, tipo?: string, busca?: string }
-}) {
+export default async function MovimentacoesPage(
+    props: {
+        params: Promise<{ storeId: string }>,
+        searchParams: Promise<{ inicio?: string, fim?: string, tipo?: string, busca?: string }>
+    }
+) {
+    const searchParams = await props.searchParams;
+    const params = await props.params;
     const storeId = parseInt(params.storeId, 10)
 
     const hoje = new Date().toISOString().split('T')[0]

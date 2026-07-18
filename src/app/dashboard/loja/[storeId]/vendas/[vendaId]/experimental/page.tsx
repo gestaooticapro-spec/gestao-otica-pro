@@ -6,11 +6,12 @@ import { getVendaPageData } from '@/lib/actions/vendas.actions'
 import VendaInterfaceExperimental from '@/components/vendas/VendaInterfaceExperimental'
 
 type Props = {
-    params: { storeId: string; vendaId: string }
-    searchParams: { employee_id?: string; employee_name?: string; open_payment?: string }
+    params: Promise<{ storeId: string; vendaId: string }>
+    searchParams: Promise<{ employee_id?: string; employee_name?: string; open_payment?: string }>
 }
 
-export default async function VendaPageExperimental({ params }: Props) {
+export default async function VendaPageExperimental(props: Props) {
+    const params = await props.params;
     noStore()
 
     const storeId = parseInt(params.storeId)

@@ -4,7 +4,8 @@ import { DesktopModeButton } from '@/components/tablet/DesktopModeButton'
 import FullscreenToggleButton from '@/components/FullscreenToggleButton'
 import { getStoreModulesForStore } from '@/lib/store-modules.server'
 
-export default async function TabletMenuPage({ params }: { params: { storeId: string } }) {
+export default async function TabletMenuPage(props: { params: Promise<{ storeId: string }> }) {
+  const params = await props.params;
   const { storeId } = params
   const modules = await getStoreModulesForStore(parseInt(storeId, 10))
 

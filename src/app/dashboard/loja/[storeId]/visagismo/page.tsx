@@ -3,11 +3,12 @@ import { createClient } from '@/lib/supabase/server'
 import VisagismoShapeStudio from '@/components/visagismo/VisagismoShapeStudio'
 import { getGlobalVisagismoFrameTemplates } from '@/lib/actions/visagismo.actions'
 
-export default async function StoreVisagismoPage({
-  params,
-}: {
-  params: { storeId: string }
-}) {
+export default async function StoreVisagismoPage(
+  props: {
+    params: Promise<{ storeId: string }>
+  }
+) {
+  const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
   if (Number.isNaN(storeId)) return notFound()
 

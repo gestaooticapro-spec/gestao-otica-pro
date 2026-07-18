@@ -14,7 +14,8 @@ function Row({ label, value }: { label: string; value: string | null | undefined
   )
 }
 
-export default async function LabTokenPage({ params }: { params: { token: string } }) {
+export default async function LabTokenPage(props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   const os = await getOSByLabToken(params.token)
   if (!os) return notFound()
 

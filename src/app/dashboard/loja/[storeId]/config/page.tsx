@@ -6,7 +6,8 @@ import { redirect } from 'next/navigation'
 import ConfigInterface from '@/components/config/ConfigInterface'
 import { ShieldAlert } from 'lucide-react'
 
-export default async function ConfigPage({ params }: { params: { storeId: string } }) {
+export default async function ConfigPage(props: { params: Promise<{ storeId: string }> }) {
+    const params = await props.params;
     const supabase = createClient()
     const storeId = parseInt(params.storeId, 10)
 

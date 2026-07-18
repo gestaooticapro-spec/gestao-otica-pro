@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Building2, ChevronRight, Clock3, Plus, Store, TowerControl } from 'lucide-react'
+import { Boxes, Building2, ChevronRight, Clock3, Plus, Store, TowerControl } from 'lucide-react'
 import type { TowerDirectoryData } from '@/lib/actions/tower-admin.actions'
 
 type Props = { data: TowerDirectoryData }
@@ -15,7 +15,7 @@ export default function TowerDirectoryAdmin({ data }: Props) {
           <h2 className="mt-2 text-2xl font-black text-white">Lojas e instalações</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">Entre em uma loja para alterar os dados, consultar o histórico e reemitir a instalação se o equipamento precisar ser configurado novamente.</p>
         </div>
-        <Link href="/admin/torres/nova" className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-amber-300 px-5 text-sm font-black text-slate-950 transition hover:bg-amber-200"><Plus className="h-5 w-5" />Nova loja com Torre</Link>
+        <div className="flex flex-wrap gap-3"><Link href="/admin/torres/equipamentos" className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl border border-white/10 px-5 text-sm font-black text-white transition hover:bg-white/5"><Boxes className="h-5 w-5" />Equipamentos físicos</Link><Link href="/admin/torres/nova" className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-amber-300 px-5 text-sm font-black text-slate-950 transition hover:bg-amber-200"><Plus className="h-5 w-5" />Nova loja com Torre</Link></div>
       </section>
 
       {!data.stores.length ? (

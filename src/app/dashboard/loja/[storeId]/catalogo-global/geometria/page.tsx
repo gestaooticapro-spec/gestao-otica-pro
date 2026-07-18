@@ -6,11 +6,12 @@ import { getProfileByAdmin } from '@/lib/supabase/admin'
 import { getAllLensGeometries, getCatalogFamilyNames } from '@/lib/actions/lens-geometry.actions'
 import LensGeometryCalibrationInterface from '@/components/catalog/LensGeometryCalibrationInterface'
 
-export default async function LensGeometryPage({
-  params,
-}: {
-  params: { storeId: string }
-}) {
+export default async function LensGeometryPage(
+  props: {
+    params: Promise<{ storeId: string }>
+  }
+) {
+  const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
   const supabase = createClient()
   const {

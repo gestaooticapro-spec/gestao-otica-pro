@@ -3,13 +3,14 @@ import { createClient } from '@/lib/supabase/server'
 import { getGlobalVisagismoFrameTemplates } from '@/lib/actions/visagismo.actions'
 import VirtualTryOn from '@/components/visagismo/VirtualTryOn'
 
-export default async function TowerVisagismoPage({
-  params,
-  searchParams,
-}: {
-  params: { storeId: string }
-  searchParams?: { client?: string }
-}) {
+export default async function TowerVisagismoPage(
+  props: {
+    params: Promise<{ storeId: string }>
+    searchParams?: Promise<{ client?: string }>
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
   if (Number.isNaN(storeId)) return notFound()
 

@@ -1,9 +1,172 @@
 'use strict'
 
 const path = require('path')
-const { app, BrowserWindow, ipcMain, net, shell } = require('electron')
+const os = require('os')
+const fs = require('fs/promises')
+const { app, BrowserWindow, ipcMain, net, safeStorage, screen, shell } = require('electron')
 
 const DEFAULT_RENDERER_URL = 'http://localhost:3000/torre/inicial'
+const DEVICE_CREDENTIAL_PATTERN = /^tower_device_v1_[A-Za-z0-9_-]{43}$/
+const ASSET_CREDENTIAL_PATTERN = /^tower_asset_v1_[A-Za-z0-9_-]{43}$/
+const ASSET_PUBLIC_CODE_PATTERN = /^MBT-[0-9]{4}-[0-9]{6}$/
+const DEVICE_SESSION_FILE = 'tower-device-session.v1.json'
+const ASSET_IDENTITY_FILE = 'tower-asset-identity.v1.json'
+
+let inMemoryDeviceSession = null
+let inMemoryAssetIdentity = null
+let customerDisplayWindow = null
+let primaryWindow = null
+
+function isValidDeviceSession(session) {
+  return Boolean(
+    session
+    && typeof session === 'object'
+    && typeof session.deviceId === 'string'
+    && /^[0-9a-f-]{36}$/i.test(session.deviceId)
+    && typeof session.assetId === 'string'
+    && /^[0-9a-f-]{36}$/i.test(session.assetId)
+    && typeof session.publicCode === 'string'
+    && ASSET_PUBLIC_CODE_PATTERN.test(session.publicCode)
+    && typeof session.tenantId === 'string'
+    && /^[0-9a-f-]{36}$/i.test(session.tenantId)
+    && Number.isSafeInteger(session.storeId)
+    && session.storeId > 0
+    && typeof session.deviceCredential === 'string'
+    && DEVICE_CREDENTIAL_PATTERN.test(session.deviceCredential)
+    && typeof session.deviceLabel === 'string'
+    && session.deviceLabel.trim().length >= 2
+    && session.deviceLabel.trim().length <= 120
+    && typeof session.pairedAt === 'string'
+    && !Number.isNaN(Date.parse(session.pairedAt)),
+  )
+}
+
+function isValidAssetIdentity(identity) {
+  return Boolean(
+    identity
+    && typeof identity === 'object'
+    && typeof identity.assetId === 'string'
+    && /^[0-9a-f-]{36}$/i.test(identity.assetId)
+    && typeof identity.publicCode === 'string'
+    && ASSET_PUBLIC_CODE_PATTERN.test(identity.publicCode)
+    && typeof identity.assetCredential === 'string'
+    && ASSET_CREDENTIAL_PATTERN.test(identity.assetCredential)
+    && typeof identity.enrolledAt === 'string'
+    && !Number.isNaN(Date.parse(identity.enrolledAt)),
+  )
+}
+
+function getDeviceSessionPath() {
+  return path.join(app.getPath('userData'), DEVICE_SESSION_FILE)
+}
+
+function getAssetIdentityPath() {
+  return path.join(app.getPath('userData'), ASSET_IDENTITY_FILE)
+}
+
+async function persistAssetIdentity(identity) {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('A protecao segura do sistema operacional nao esta disponivel.')
+  }
+  const encrypted = safeStorage.encryptString(JSON.stringify(identity))
+  await writeProtectedFile(getAssetIdentityPath(), JSON.stringify({
+    version: 1,
+    encryptedIdentity: encrypted.toString('base64'),
+  }))
+}
+
+async function restoreAssetIdentity() {
+  if (inMemoryAssetIdentity) return inMemoryAssetIdentity
+  if (!safeStorage.isEncryptionAvailable()) return null
+  try {
+    const envelope = JSON.parse(await fs.readFile(getAssetIdentityPath(), 'utf8'))
+    if (envelope?.version !== 1 || typeof envelope.encryptedIdentity !== 'string') return null
+    const identity = JSON.parse(safeStorage.decryptString(Buffer.from(envelope.encryptedIdentity, 'base64')))
+    if (!isValidAssetIdentity(identity)) return null
+    inMemoryAssetIdentity = Object.freeze(identity)
+    return inMemoryAssetIdentity
+  } catch (error) {
+    if (error?.code !== 'ENOENT') console.error('[Torre Electron] Falha ao restaurar identidade fisica:', error)
+    return null
+  }
+}
+
+async function persistDeviceSession(session) {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('A protecao segura do sistema operacional nao esta disponivel.')
+  }
+
+  const encrypted = safeStorage.encryptString(JSON.stringify(session))
+  const envelope = JSON.stringify({
+    version: 1,
+    encryptedSession: encrypted.toString('base64'),
+  })
+
+  await writeProtectedFile(getDeviceSessionPath(), envelope)
+}
+
+async function writeProtectedFile(targetPath, contents) {
+  const temporaryPath = `${targetPath}.${process.pid}.tmp`
+  try {
+    await fs.writeFile(temporaryPath, contents, { encoding: 'utf8', mode: 0o600 })
+    await fs.rename(temporaryPath, targetPath)
+  } catch (error) {
+    try {
+      await fs.unlink(temporaryPath)
+    } catch (cleanupError) {
+      if (cleanupError?.code !== 'ENOENT') {
+        console.error('[Torre Electron] Falha ao limpar arquivo temporario:', cleanupError)
+      }
+    }
+    throw error
+  }
+}
+
+async function clearAssetIdentity() {
+  try {
+    await fs.unlink(getAssetIdentityPath())
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+  }
+  inMemoryAssetIdentity = null
+}
+
+async function clearDeviceSession() {
+  try {
+    await fs.unlink(getDeviceSessionPath())
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+  }
+  inMemoryDeviceSession = null
+}
+
+async function restoreDeviceSession() {
+  if (inMemoryDeviceSession) return inMemoryDeviceSession
+  if (!safeStorage.isEncryptionAvailable()) return null
+
+  try {
+    const envelope = JSON.parse(await fs.readFile(getDeviceSessionPath(), 'utf8'))
+    if (envelope?.version !== 1 || typeof envelope.encryptedSession !== 'string') {
+      throw new Error('Formato de sessao local desconhecido.')
+    }
+
+    const decrypted = safeStorage.decryptString(
+      Buffer.from(envelope.encryptedSession, 'base64'),
+    )
+    const restoredSession = JSON.parse(decrypted)
+    if (!isValidDeviceSession(restoredSession)) {
+      throw new Error('Sessao local invalida.')
+    }
+
+    inMemoryDeviceSession = Object.freeze(restoredSession)
+    return inMemoryDeviceSession
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      console.error('[Torre Electron] Falha ao restaurar a sessao protegida:', error)
+    }
+    return null
+  }
+}
 
 function isEnabled(value) {
   return value === '1' || value === 'true'
@@ -30,10 +193,76 @@ function getRendererUrl() {
 
 function isAllowedNavigation(navigationUrl, rendererUrl) {
   try {
-    return new URL(navigationUrl).origin === rendererUrl.origin
+    const target = new URL(navigationUrl)
+    return target.origin === rendererUrl.origin
+      && (target.pathname === '/torre' || target.pathname.startsWith('/torre/'))
   } catch {
     return false
   }
+}
+
+function isTrustedIpcSender(event, allowedPaths) {
+  if (!primaryWindow || primaryWindow.isDestroyed()) return false
+  if (event.sender.id !== primaryWindow.webContents.id) return false
+
+  try {
+    const rendererUrl = getRendererUrl()
+    const senderUrl = new URL(event.senderFrame.url)
+    return senderUrl.origin === rendererUrl.origin
+      && allowedPaths.includes(senderUrl.pathname)
+  } catch {
+    return false
+  }
+}
+
+function secureHandle(channel, allowedPaths, handler) {
+  ipcMain.handle(channel, async (event, ...args) => {
+    if (!isTrustedIpcSender(event, allowedPaths)) {
+      console.warn(`[Torre Electron] IPC rejeitado: ${channel}`)
+      return { success: false, message: 'Operacao local nao autorizada.' }
+    }
+    return handler(...args)
+  })
+}
+
+async function requestTowerApi(pathname, options = {}) {
+  const endpoint = new URL(pathname, getRendererUrl())
+  const response = await net.fetch(endpoint.toString(), {
+    ...options,
+    headers: {
+      Accept: 'application/json',
+      ...options.headers,
+    },
+  })
+  const raw = await response.text()
+  if (raw.length > 64 * 1024) throw new Error('Resposta da Torre excedeu o limite seguro.')
+  let data
+  try {
+    data = JSON.parse(raw)
+  } catch {
+    throw new Error('Resposta invalida do servidor da Torre.')
+  }
+  return { status: response.status, ok: response.ok, data }
+}
+
+function publicAssetIdentity(identity) {
+  return identity ? {
+    assetId: identity.assetId,
+    publicCode: identity.publicCode,
+    enrolledAt: identity.enrolledAt,
+  } : null
+}
+
+function publicDeviceSession(session) {
+  return session ? {
+    deviceId: session.deviceId,
+    assetId: session.assetId,
+    publicCode: session.publicCode,
+    tenantId: session.tenantId,
+    storeId: session.storeId,
+    deviceLabel: session.deviceLabel,
+    pairedAt: session.pairedAt,
+  } : null
 }
 
 function isAllowedOrigin(requestingOrigin, rendererUrl) {
@@ -141,16 +370,92 @@ function createMainWindow() {
   )
 
   mainWindow.loadURL(rendererUrl.toString())
+  mainWindow.on('closed', () => {
+    if (primaryWindow === mainWindow) primaryWindow = null
+  })
 
   return mainWindow
 }
 
+function serializeDisplay(display) {
+  return {
+    id: String(display.id),
+    label: display.label || `Monitor ${display.id}`,
+    primary: display.id === screen.getPrimaryDisplay().id,
+    internal: Boolean(display.internal),
+    rotation: display.rotation,
+    scaleFactor: display.scaleFactor,
+    bounds: { ...display.bounds },
+    workArea: { ...display.workArea },
+    orientation: display.bounds.height > display.bounds.width ? 'portrait' : 'landscape',
+  }
+}
+
+async function openCustomerDisplayTest() {
+  const displays = screen.getAllDisplays()
+  const primaryDisplay = screen.getPrimaryDisplay()
+  const customerDisplay = displays.find((display) => display.id !== primaryDisplay.id)
+
+  if (!customerDisplay) {
+    return {
+      success: false,
+      message: 'Conecte a segunda tela para iniciar o teste do cliente.',
+    }
+  }
+
+  if (customerDisplayWindow && !customerDisplayWindow.isDestroyed()) {
+    customerDisplayWindow.focus()
+    return { success: true, display: serializeDisplay(customerDisplay) }
+  }
+
+  const rendererUrl = getRendererUrl()
+  const customerUrl = new URL('/torre/cliente/diagnostico', rendererUrl)
+  const kioskEnabled = isEnabled(process.env.TOWER_KIOSK)
+  customerDisplayWindow = new BrowserWindow({
+    ...customerDisplay.bounds,
+    show: false,
+    frame: !kioskEnabled,
+    fullscreen: kioskEnabled,
+    autoHideMenuBar: true,
+    alwaysOnTop: kioskEnabled,
+    backgroundColor: '#020617',
+    title: 'Torre - Tela do Cliente',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webviewTag: false,
+      devTools: !app.isPackaged || isEnabled(process.env.TOWER_DEVTOOLS),
+    },
+  })
+
+  customerDisplayWindow.removeMenu()
+  customerDisplayWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  customerDisplayWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    if (!isAllowedNavigation(navigationUrl, rendererUrl)) event.preventDefault()
+  })
+  customerDisplayWindow.webContents.on('will-redirect', (event, navigationUrl) => {
+    if (!isAllowedNavigation(navigationUrl, rendererUrl)) event.preventDefault()
+  })
+  customerDisplayWindow.once('ready-to-show', () => customerDisplayWindow?.show())
+  customerDisplayWindow.on('closed', () => {
+    customerDisplayWindow = null
+  })
+  await customerDisplayWindow.loadURL(customerUrl.toString())
+
+  return { success: true, display: serializeDisplay(customerDisplay) }
+}
+
 function registerDesktopHandlers() {
-  ipcMain.handle('tower:get-network-status', () => ({
+  const initialOnly = ['/torre/inicial']
+  const configurationOnly = ['/torre/configuracao']
+  const towerPages = [...initialOnly, ...configurationOnly]
+
+  secureHandle('tower:get-network-status', towerPages, () => ({
     online: net.isOnline(),
   }))
 
-  ipcMain.handle('tower:open-network-settings', async () => {
+  secureHandle('tower:open-network-settings', towerPages, async () => {
     if (process.platform !== 'win32') {
       return {
         success: false,
@@ -169,6 +474,234 @@ function registerDesktopHandlers() {
       }
     }
   })
+
+  secureHandle('tower:get-device-identity', initialOnly, () => ({
+    deviceLabel: `Torre ${os.hostname()}`.slice(0, 120),
+    appVersion: app.getVersion(),
+  }))
+
+  secureHandle('tower:enroll-asset', initialOnly, async (request) => {
+    if (!request || !['qr', 'code'].includes(request.method)
+        || typeof request.publicCode !== 'string'
+        || typeof request.credential !== 'string') {
+      return { success: false, message: 'Dados de fabrica invalidos.' }
+    }
+
+    try {
+      const result = await requestTowerApi('/api/tower/asset/enroll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: request.method,
+          publicCode: request.publicCode,
+          credential: request.credential,
+          deviceLabel: `Torre ${os.hostname()}`.slice(0, 120),
+          appVersion: app.getVersion(),
+        }),
+      })
+      if (!result.data?.success) return result.data
+
+      const protectedIdentity = Object.freeze({
+        assetId: result.data.assetId,
+        publicCode: result.data.publicCode,
+        assetCredential: result.data.assetCredential,
+        enrolledAt: result.data.enrolledAt,
+      })
+      if (!isValidAssetIdentity(protectedIdentity)) {
+        return { success: false, message: 'O servidor retornou uma identidade fisica invalida.' }
+      }
+      await persistAssetIdentity(protectedIdentity)
+      inMemoryAssetIdentity = protectedIdentity
+      return {
+        success: true,
+        status: 'enrolled',
+        identity: publicAssetIdentity(protectedIdentity),
+        protectedByOs: true,
+      }
+    } catch (error) {
+      console.error('[Torre Electron] Falha ao proteger identidade fisica:', error)
+      return { success: false, message: 'Nao foi possivel registrar e proteger a identidade fisica.' }
+    }
+  })
+
+  secureHandle('tower:get-asset-identity-status', initialOnly, async () => {
+    const identity = await restoreAssetIdentity()
+    try {
+      if (!identity) return { success: true, enrolled: false }
+      const result = await requestTowerApi('/api/tower/asset/status', {
+        headers: { Authorization: `Bearer ${identity.assetCredential}` },
+      })
+      if (result.status === 401) {
+        await clearAssetIdentity()
+        return {
+          success: false,
+          enrolled: false,
+          revoked: true,
+          message: 'A identidade fisica foi aposentada ou revogada.',
+        }
+      }
+      return {
+        success: true,
+        enrolled: true,
+        identity: publicAssetIdentity(identity),
+        credentialVerified: Boolean(result.data?.success),
+      }
+    } catch (error) {
+      console.error('[Torre Electron] Falha ao consultar identidade fisica:', error)
+      return {
+        success: true,
+        enrolled: Boolean(identity),
+        identity: publicAssetIdentity(identity),
+        credentialVerified: false,
+      }
+    }
+  })
+
+  secureHandle('tower:get-device-session-status', towerPages, async () => {
+    const session = await restoreDeviceSession()
+    if (!session) return { success: true, paired: false, protectedByOs: false }
+
+    try {
+      const result = await requestTowerApi('/api/tower/device/status', {
+        headers: { Authorization: `Bearer ${session.deviceCredential}` },
+      })
+      if (result.status === 401) {
+        await clearDeviceSession()
+        return { success: true, paired: false, revoked: true, protectedByOs: false }
+      }
+      return {
+        success: true,
+        paired: true,
+        session: publicDeviceSession(session),
+        credentialVerified: Boolean(result.data?.success),
+        protectedByOs: true,
+      }
+    } catch (error) {
+      console.error('[Torre Electron] Falha ao consultar sessao:', error)
+      return {
+        success: true,
+        paired: true,
+        session: publicDeviceSession(session),
+        credentialVerified: false,
+        protectedByOs: true,
+      }
+    }
+  })
+
+  secureHandle('tower:pair-device', initialOnly, async (request) => {
+    const identity = await restoreAssetIdentity()
+    if (!identity) return { success: false, message: 'Identidade fisica local nao encontrada.' }
+    if (!request || !['qr', 'code'].includes(request.method)
+        || typeof request.credential !== 'string') {
+      return { success: false, message: 'Dados de pareamento invalidos.' }
+    }
+
+    try {
+      const deviceLabel = `Torre ${os.hostname()}`.slice(0, 120)
+      const result = await requestTowerApi('/api/tower/device/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: request.method,
+          credential: request.credential,
+          assetCredential: identity.assetCredential,
+          deviceLabel,
+          appVersion: app.getVersion(),
+        }),
+      })
+      if (!result.data?.success) return result.data
+
+      const protectedSession = Object.freeze({
+        deviceId: result.data.deviceId,
+        assetId: result.data.assetId,
+        publicCode: result.data.publicCode,
+        tenantId: result.data.tenantId,
+        storeId: result.data.storeId,
+        deviceCredential: result.data.deviceCredential,
+        deviceLabel,
+        pairedAt: result.data.pairedAt,
+      })
+      if (!isValidDeviceSession(protectedSession)
+          || protectedSession.assetId !== identity.assetId
+          || protectedSession.publicCode !== identity.publicCode) {
+        return { success: false, message: 'O pareamento nao corresponde a identidade desta Torre.' }
+      }
+      await persistDeviceSession(protectedSession)
+      inMemoryDeviceSession = protectedSession
+      return {
+        success: true,
+        status: 'paired',
+        session: publicDeviceSession(protectedSession),
+        protectedByOs: true,
+      }
+    } catch (error) {
+      console.error('[Torre Electron] Falha no pareamento protegido:', error)
+      return { success: false, message: 'Nao foi possivel parear e proteger a sessao local.' }
+    }
+  })
+
+  secureHandle('tower:get-admin-pin-status', configurationOnly, async () => {
+    const session = await restoreDeviceSession()
+    if (!session) return { success: false, message: 'Torre nao pareada.' }
+    try {
+      const result = await requestTowerApi('/api/tower/device/admin-pin', {
+        headers: { Authorization: `Bearer ${session.deviceCredential}` },
+      })
+      if (result.status === 401) await clearDeviceSession()
+      return result.data
+    } catch (error) {
+      console.error('[Torre Electron] Falha ao consultar PIN:', error)
+      return { success: false, message: 'PIN administrativo indisponivel.' }
+    }
+  })
+
+  secureHandle('tower:submit-admin-pin', configurationOnly, async (request) => {
+    const session = await restoreDeviceSession()
+    if (!session) return { success: false, message: 'Torre nao pareada.' }
+    try {
+      const result = await requestTowerApi('/api/tower/device/admin-pin', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.deviceCredential}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+      })
+      if (result.status === 401 && result.data?.message === 'Credencial de dispositivo invalida.') {
+        await clearDeviceSession()
+      }
+      return result.data
+    } catch (error) {
+      console.error('[Torre Electron] Falha ao validar PIN:', error)
+      return { success: false, message: 'Sem comunicacao com o servidor para validar o PIN.' }
+    }
+  })
+
+  secureHandle('tower:get-device-session-summary', towerPages, async () => {
+    const session = await restoreDeviceSession()
+    return {
+      success: true,
+      paired: Boolean(session),
+      session: publicDeviceSession(session),
+      protectedByOs: Boolean(session),
+    }
+  })
+
+  secureHandle('tower:get-hardware-diagnostics', configurationOnly, () => ({
+    platform: process.platform,
+    hostname: os.hostname(),
+    online: net.isOnline(),
+    displays: screen.getAllDisplays().map(serializeDisplay),
+  }))
+
+  secureHandle('tower:open-customer-display-test', configurationOnly, () => openCustomerDisplayTest())
+
+  secureHandle('tower:close-customer-display-test', configurationOnly, () => {
+    if (customerDisplayWindow && !customerDisplayWindow.isDestroyed()) {
+      customerDisplayWindow.close()
+    }
+    return { success: true }
+  })
 }
 
 app.enableSandbox()
@@ -186,11 +719,11 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     registerDesktopHandlers()
-    createMainWindow()
+    primaryWindow = createMainWindow()
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
-        createMainWindow()
+        primaryWindow = createMainWindow()
       }
     })
   })

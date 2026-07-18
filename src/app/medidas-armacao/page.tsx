@@ -2,11 +2,12 @@ import FrameMeasurementTool from '@/components/medidas/FrameMeasurementTool'
 
 export const metadata = { title: 'Medidor de Armação' }
 
-export default function MedidasArmacaoPage({
-  searchParams,
-}: {
-  searchParams: { osId?: string; storeId?: string }
-}) {
+export default async function MedidasArmacaoPage(
+  props: {
+    searchParams: Promise<{ osId?: string; storeId?: string }>
+  }
+) {
+  const searchParams = await props.searchParams;
   const osId    = searchParams.osId    ? parseInt(searchParams.osId,    10) : undefined
   const storeId = searchParams.storeId ? parseInt(searchParams.storeId, 10) : undefined
 

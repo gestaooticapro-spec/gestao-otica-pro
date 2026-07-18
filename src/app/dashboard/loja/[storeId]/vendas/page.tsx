@@ -4,13 +4,14 @@ import VendasListInterface from '@/components/vendas/VendasListInterface'
 
 export const dynamic = 'force-dynamic'
 
-export default async function VendasListPage({
-  params,
-  searchParams
-}: {
-  params: { storeId: string }
-  searchParams: { mode?: string, inicio?: string, fim?: string, search?: string }
-}) {
+export default async function VendasListPage(
+  props: {
+    params: Promise<{ storeId: string }>
+    searchParams: Promise<{ mode?: string, inicio?: string, fim?: string, search?: string }>
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const storeId = parseInt(params.storeId)
 
   // Recupera filtros da URL

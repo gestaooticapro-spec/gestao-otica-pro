@@ -6,11 +6,12 @@ import { getProfileByAdmin } from '@/lib/supabase/admin'
 import { getStoreGlobalCatalogOverview } from '@/lib/actions/global-catalog.actions'
 import LensRecommendationInterface from '@/components/catalog/LensRecommendationInterface'
 
-export default async function StoreLensRecommendationPage({
-  params,
-}: {
-  params: { storeId: string }
-}) {
+export default async function StoreLensRecommendationPage(
+  props: {
+    params: Promise<{ storeId: string }>
+  }
+) {
+  const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
   const supabase = createClient()
   const {

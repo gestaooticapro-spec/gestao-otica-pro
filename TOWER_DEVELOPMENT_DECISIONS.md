@@ -296,6 +296,23 @@ daquele dispositivo. A credencial deve permitir somente as operacoes da Torre
 daquela loja. Ela nao pode ser `service_role`, senha de usuario ou chave ampla
 do Supabase.
 
+O contrato adotado para este passo usa uma credencial opaca de dispositivo,
+gerada com alta entropia e entregue uma unica vez. O banco guarda somente o
+hash. A credencial nao acessa o Supabase diretamente: ela autentica o
+dispositivo nos endpoints proprios da Torre, que resolvem no servidor o
+`tenant_id` e o `store_id` permitidos.
+
+O pareamento deve ser atomico: validar e bloquear a ativacao, bloquear a loja,
+revogar o dispositivo ativo anterior quando houver substituicao, criar o novo
+dispositivo e consumir a ativacao acontecem na mesma transacao. Se qualquer
+parte falhar, nenhuma dessas alteracoes permanece. A decisao atual permite uma
+Torre ativa por loja; multiplas Torres na mesma loja exigirao uma decisao de
+produto e outra regra de identidade antes de serem implementadas.
+
+Ao final do Passo 4, a credencial pode permanecer apenas na memoria do processo
+para validar o contrato. Isso ainda nao e continuidade operacional: gravacao
+persistente e protegida pelo Windows pertence obrigatoriamente ao Passo 5.
+
 ### Passo 5 - Armazenar a credencial localmente
 
 O Electron deve salvar a credencial usando o armazenamento seguro do sistema
@@ -303,12 +320,185 @@ operacional, com SQLite local apenas para configuracao, cache, sessoes,
 resultados e fila de sincronizacao. O banco local nao sera um clone completo
 do Supabase.
 
+Implementacao adotada: a credencial opaca e os identificadores imutaveis do
+pareamento sao criptografados pelo `safeStorage` do Electron. No Windows, essa
+protecao usa os recursos da conta do sistema operacional. O arquivo local
+contem somente um envelope versionado e o conteudo cifrado; a credencial em
+texto existe apenas na memoria do processo durante a execucao. Ao reiniciar, o
+Electron descriptografa a sessao, valida seu formato e consulta o endpoint de
+status quando houver internet. Falha de leitura ou descriptografia nunca deve
+liberar dados de outra loja nem retornar silenciosamente ao cadastro livre.
+
+SQLite permanece reservado para os proximos recortes de configuracao, cache,
+sessoes operacionais, resultados e `outbox`. Ele nao recebe a credencial de
+dispositivo em texto puro.
+
 ### Passo 6 - Criar a tela de PIN e manutencao
 
 O primeiro acesso ao menu administrativo local usa o PIN provisório criado no
 backoffice. Depois de validado, o operador deve trocar esse PIN. O menu fica
 reservado para rede, camera, telas, brilho, orientacao, diagnostico,
 calibracao e estado da sincronizacao.
+
+Implementacao de software preparada neste passo:
+
+- a rota local `PAIRED_SETUP` exige uma identidade de dispositivo restaurada
+  pelo Electron antes de exibir manutencao;
+- o PIN e validado apenas no backend, com comparacao `scrypt`, cinco tentativas
+  antes de bloqueio por quinze minutos e troca obrigatoria do PIN provisorio;
+- camera e captura usam permissao restrita a janela principal e exigem uma
+  confirmacao visual do enquadramento;
+- o Electron enumera monitores, resolucao, escala, rotacao e orientacao;
+- a janela de teste do cliente abre somente na segunda tela, sem preload,
+  Node.js ou acesso ao menu administrativo;
+- touch, brilho e calibracao permanecem validacoes do equipamento fisico.
+
+#### Testes reais pendentes em 18 de julho de 2026
+
+O desenvolvimento deste passo foi feito remotamente, sem acesso a camera,
+tela touch, mini PC ou monitor retrato da Torre. Portanto, os itens abaixo nao
+estao homologados e nao podem ser considerados aprovados apenas porque o build
+passou:
+
+- aplicar a migracao corretiva `20260718103000_harden_tower_asset_operations.sql` no Supabase;
+- consumir uma ativacao real e confirmar que ela nao pode ser reutilizada;
+- fechar e reabrir o Electron e confirmar a restauracao da credencial pelo
+  Windows;
+- validar o PIN provisorio real, a troca obrigatoria, tentativas incorretas e o
+  bloqueio temporario;
+- abrir a camera real, conferir driver, permissao, resolucao, foco e captura;
+- validar toque, alvos de toque e calibracao na tela principal;
+- conectar a segunda tela, defini-la em retrato e confirmar que a janela do
+  cliente abre no monitor correto, sem menus administrativos;
+- conferir escala do Windows, brilho, cores, cortes, reinicializacao, kiosk,
+  Wi-Fi, Ethernet e queda/retorno da internet.
+
+Enquanto esses testes estiverem pendentes, a Torre permanece em
+`PAIRED_SETUP`. A mudanca para `READY` depende de homologacao presencial e nao
+sera feita automaticamente pelo software de diagnostico.
+
+#### Identidade fisica permanente da Torre
+
+Foi decidido que cada Torre devera possuir uma identidade fisica permanente,
+independente da loja em que estiver instalada. Essa identidade ajudara em
+garantia, manutencao, recolhimento, substituicao, historico tecnico e controle
+do ciclo de vida do equipamento.
+
+Essa funcionalidade foi incorporada antes do Passo 7. O campo
+`tower_devices.id` continua identificando apenas o pareamento atual e nao deve
+ser usado como identificador definitivo do equipamento fisico.
+
+A entidade `tower_assets` representa o ativo permanente. Seu codigo publico
+segue o formato `MBT-AAAA-NNNNNN`, por exemplo `MBT-2026-000001`.
+`tower_devices` continua representando a instalacao, credencial e loja atual.
+Assim, a mesma Torre pode ser retirada para manutencao e pareada novamente sem
+perder sua identidade, enquanto uma substituta recebe outro codigo fisico.
+
+O codigo impresso e deliberadamente publico e nao autentica o equipamento. A
+autenticacao usa uma credencial aleatoria criada durante a preparacao do
+Electron, armazenada somente como hash no servidor e protegida localmente pelo
+`safeStorage` do Windows. Copiar a etiqueta nao permite clonar uma Torre.
+
+Essa identidade nao implica geolocalizacao ou rastreamento. A decisao de
+descartar o rastreamento de localizacao permanece valida.
+
+#### Fluxo operacional no chao de fabrica
+
+1. O administrador abre `/admin/torres/equipamentos` e gera um lote com a
+   quantidade desejada. O servidor reserva uma faixa sequencial sem permitir
+   codigos repetidos.
+2. A pagina do lote monta etiquetas A4 com codigo legivel e QR publico. Ela
+   pode ser impressa diretamente ou salva em PDF para envio a uma grafica. O
+   QR permanente contem apenas a identificacao publica.
+3. A etiqueta e colada na Torre correspondente. Nesse momento o ativo esta em
+   `generated` ou `printed`, mas o Electron ainda nao possui a identidade.
+4. Depois de instalar o aplicativo, o operador seleciona essa Torre na UI
+   administrativa e usa `Preparar Electron`. A plataforma gera um QR e um
+   codigo alternativo temporarios, validos por 24 horas.
+5. Na primeira abertura, o Electron permanece em `FACTORY_SETUP`. O operador
+   le o QR temporario ou informa `tower_id` e codigo alternativo. O backend
+   confere se ambos pertencem ao mesmo ativo e consome a autorizacao uma unica
+   vez.
+6. O Electron recebe uma credencial fisica opaca, persiste-a com protecao do
+   Windows e passa a mostrar o codigo publico da propria Torre. O ativo muda
+   para `prepared` e pode ser marcado como `in_stock`.
+7. Para enviar a Torre a uma loja, o administrador escolhe Torre X e loja Y na
+   mesma UI. A plataforma gera uma ativacao direcionada, o codigo alternativo
+   e o PIN provisorio de manutencao. Se ela estava associada a outra loja, a UI
+   exige confirmacao e o vinculo anterior e revogado imediatamente, preservando
+   apenas a identidade fisica.
+8. Na loja, o Electron ja identificado entra em `READY_FOR_STORE`. O usuario
+   le o QR da loja ou informa o codigo alternativo. O pareamento so e aceito se
+   a identidade fisica for valida e, quando a ativacao for direcionada, se ela
+   pertencer exatamente aquela Torre.
+9. O pareamento cria um novo `tower_devices`, vincula ativo, tenant e loja e
+   muda o ativo para `assigned`. Reinstalacoes geram novo pareamento sem trocar
+   o codigo fisico.
+10. Ao recolher o equipamento, o administrador marca `maintenance`; a
+    credencial de loja ativa e revogada, mas a identidade fisica permanece. Em
+    `retired`, tambem se revoga a identidade fisica e o ativo nao pode voltar a
+    operar sem uma decisao administrativa futura explicita.
+
+Estados do fluxo:
+
+`generated -> printed -> FACTORY_SETUP -> prepared -> in_stock -> READY_FOR_STORE -> assigned -> maintenance`
+
+O estado `retired` e terminal. O status do ativo e o estado de tela do Electron
+sao conceitos relacionados, mas diferentes; os nomes em maiusculas acima sao
+estados da aplicacao local.
+
+#### Superficies entregues e validacao ainda pendente
+
+- `/admin/torres/equipamentos`: lotes, status, preparacao do Electron,
+  manutencao, aposentadoria e associacao Torre/loja;
+- `/admin/torres/equipamentos/lotes/[batchId]/etiquetas`: impressao/PDF;
+- `/torre/inicial`: registro fisico antes da ativacao da loja;
+- APIs publicas limitadas para registro fisico, consulta da identidade e
+  pareamento; todas recebem somente credenciais estreitas e nunca
+  `service_role` no Electron;
+- migrations ate `20260718102000_tower_physical_assets.sql` aplicadas no Supabase;
+- migracao corretiva `20260718103000_harden_tower_asset_operations.sql`
+  criada e ainda pendente de aplicacao.
+
+A migracao corretiva ainda precisa ser aplicada no Supabase e o fluxo completo
+ainda precisa ser testado em uma instalacao Windows real: gerar uma unidade de teste,
+imprimir sua etiqueta, registrar o Electron, reiniciar o computador, associar
+a uma loja, recolher para manutencao e parear novamente. Ate essa homologacao,
+o recurso nao deve ser tratado como pronto para producao.
+
+#### Auditoria de seguranca concluida antes do Passo 7
+
+Em 18 de julho de 2026, a auditoria dos Passos 1 a 6 e da identidade fisica
+resultou nas seguintes correcoes:
+
+- `assetCredential` e `deviceCredential` nao atravessam mais o preload nem sao
+  entregues ao renderer. Registro fisico, pareamento, status e PIN passam por
+  operacoes IPC estreitas; somente o processo principal descriptografa e usa
+  as credenciais;
+- todo IPC valida a janela principal, a origem e a rota exata do remetente;
+- navegacao do shell fica restrita a `/torre/*`, e as rotas da Torre recebem
+  Content Security Policy e Permissions Policy proprias;
+- os envelopes protegidos pelo `safeStorage` sao gravados por arquivo
+  temporario e troca atomica, reduzindo risco de corrupcao por desligamento;
+- o rate limit saiu da memoria da instancia Next e passou a ser compartilhado
+  no PostgreSQL, separado por IP e endpoint;
+- impressao de lote passa a atualizar lote e ativos na mesma transacao;
+- pareamento e reassociacao usam advisory locks na mesma ordem, identidade
+  fisica e depois loja, para evitar ciclos de bloqueio concorrentes;
+- apagar uma loja com Torre ainda associada passa a ser impedido por
+  `ON DELETE RESTRICT`, em vez de produzir estado inconsistente;
+- foram criados testes automatizados de contratos, PIN, fronteira do preload,
+  IPC, CSP e invariantes da migracao;
+- `fast-xml-parser`, `jsPDF`, `jspdf-autotable` e Next.js foram atualizados. O
+  `npm audit --omit=dev` nao apresenta mais alertas criticos ou altos; restam
+  apenas alertas moderados/baixos sem correcao disponivel na arvore atual;
+- a migracao para Next.js 15.5.20 exigiu e recebeu a adaptacao mecanica das
+  props dinamicas de paginas e rotas. `typecheck`, testes da Torre, lint do
+  recorte da Torre e build de producao devem permanecer como gates.
+
+Essas correcoes fecham os bloqueios de software encontrados pela auditoria,
+mas nao promovem a Torre para `READY`. A migracao `20260718103000` e todos os
+testes presenciais listados acima continuam obrigatorios.
 
 ### Passo 7 - Levar as experiencias da Torre para o Electron
 
@@ -387,13 +577,13 @@ Medidas ja aplicadas nesta etapa:
   bloqueio de `webview` e negacao de permissoes nao necessarias;
 - o Electron nao recebe `service_role`, senha administrativa nem chave ampla do
   Supabase;
-- o Next.js foi atualizado dentro da serie atual e o `ws` foi atualizado sem
-  alterar a versao do Supabase;
+- o Next.js foi atualizado para `15.5.20`; paginas e rotas dinamicas foram
+  adaptadas ao contrato assincrono dessa versao;
 - o processamento de XML fiscal limita o tamanho do arquivo, rejeita
   `DOCTYPE`, `ENTITY`, referencias de entidades nao permitidas e caracteres
   invalidos, preservando as entidades XML padrao;
-- foram adicionados headers basicos de seguranca (`nosniff` e politica de
-  referenciador) e removida a identificacao desnecessaria do framework;
+- foram adicionados headers basicos e uma CSP especifica para `/torre/*`;
+  a identificacao desnecessaria do framework permanece removida;
 - o uso atual de jsPDF nao utiliza recursos conhecidos de incorporacao de
   JavaScript, formularios PDF ou HTML arbitrario. Isso reduz a superficie, mas
   nao substitui a atualizacao da dependencia.
@@ -406,9 +596,8 @@ adotada.
 
 Antes da homologacao com o mini PC, e obrigatorio:
 
-1. revisar os alertas ainda presentes de `fast-xml-parser`, `jsPDF/DOMPurify`,
-   `postcss` e Next.js e atualizar ou substituir as dependencias quando houver
-   correcao compativel;
+1. revisar os alertas moderados/baixos ainda presentes em dependencias
+   transitivas e atualizar ou substituir quando houver correcao compativel;
 2. confirmar que o parser XML continua rejeitando DTD, entidades externas,
    arquivos acima do limite e entradas malformadas sem quebrar XML fiscal
    valido;
@@ -420,10 +609,8 @@ Antes da homologacao com o mini PC, e obrigatorio:
 Antes da publicacao para clientes, nenhum alerta critico ou alto pode ser
 aceito apenas porque o aplicativo funciona. Ele precisa estar corrigido,
 substituido ou documentado com uma mitigacao demonstravel e aprovada. A
-migracao para uma versao major mais nova do Next.js deve ser planejada antes
-da producao, em uma etapa propria, porque pode exigir ajustes de React,
-Server Actions e configuracao; nao deve ser feita no meio do primeiro shell
-Electron sem testes de regressao.
+migracao para Next.js 15 ja foi executada como parte do endurecimento. Uma
+nova atualizacao major exige novamente etapa propria e testes de regressao.
 
 ## Decisoes que precisam orientar o codigo agora
 

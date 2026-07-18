@@ -21,13 +21,14 @@ function getReferenceDateParts(dateStr?: string) {
     return { year: parsed.getUTCFullYear(), monthIndex: parsed.getUTCMonth() }
 }
 
-export default async function ContasPage({
-    params,
-    searchParams
-}: {
-    params: { storeId: string },
-    searchParams: { mes?: string }
-}) {
+export default async function ContasPage(
+    props: {
+        params: Promise<{ storeId: string }>,
+        searchParams: Promise<{ mes?: string }>
+    }
+) {
+    const searchParams = await props.searchParams;
+    const params = await props.params;
     const storeId = parseInt(params.storeId, 10)
 
     // Padrão: Mês Atual se não vier na URL

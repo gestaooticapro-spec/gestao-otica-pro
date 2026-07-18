@@ -15,6 +15,42 @@ export type TowerActivationValidationResponse =
       message: string
     }
 
+export const TOWER_DEVICE_CREDENTIAL_PATTERN = /^tower_device_v1_[A-Za-z0-9_-]{43}$/
+
+export type TowerDevicePairingResponse =
+  | {
+      success: true
+      status: 'paired'
+      deviceId: string
+      assetId: string
+      publicCode: string
+      tenantId: string
+      storeId: number
+      deviceCredential: string
+      pairedAt: string
+    }
+  | {
+      success: false
+      message: string
+    }
+
+export type TowerDeviceStatusResponse =
+  | {
+      success: true
+      status: 'active'
+      deviceId: string
+      assetId: string
+      publicCode: string
+      tenantId: string
+      storeId: number
+      deviceLabel: string
+      pairedAt: string
+    }
+  | {
+      success: false
+      message: string
+    }
+
 export function normalizeTowerFallbackCode(value: string) {
   const normalized = value
     .toUpperCase()
