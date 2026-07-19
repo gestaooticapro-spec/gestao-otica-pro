@@ -6,6 +6,7 @@ import {
   KeyRound,
   Loader2,
   Monitor,
+  PlayCircle,
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { FormEvent, useEffect, useRef, useState } from 'react'
+import TowerCommercialAccessPanel from '@/components/tower/TowerCommercialAccessPanel'
 
 type DeviceSession = {
   deviceId: string
@@ -277,8 +279,13 @@ export default function TowerSetupPage() {
             <h1 className="mt-2 text-3xl font-black sm:text-4xl">Preparação e manutenção da Torre</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">Execute os diagnósticos no equipamento real. O sistema não marca câmera, touch ou segunda tela como aprovados sem evidência local.</p>
           </div>
-          <button type="button" onClick={() => void refreshHardware()} className="inline-flex min-h-12 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-black hover:bg-white/10"><RefreshCw className="h-4 w-4" />Atualizar hardware</button>
+          <div className="flex flex-wrap gap-3">
+            <Link href={`/torre/${session.storeId}`} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-cyan-300 px-4 text-sm font-black text-slate-950 hover:bg-cyan-200"><PlayCircle className="h-4 w-4" />Testar experiências</Link>
+            <button type="button" onClick={() => void refreshHardware()} className="inline-flex min-h-12 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-black hover:bg-white/10"><RefreshCw className="h-4 w-4" />Atualizar hardware</button>
+          </div>
         </header>
+
+        <TowerCommercialAccessPanel />
 
         <section className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <article className="rounded-2xl border border-white/10 bg-white/[0.045] p-5"><div className="flex items-center justify-between"><Wifi className="h-6 w-6 text-cyan-300" /><StatusBadge state={networkState} /></div><h2 className="mt-4 font-black">Rede</h2><p className="mt-2 text-sm text-slate-400">{diagnostics?.online ? 'Conexão detectada pelo Electron.' : 'Sem conexão detectada.'}</p></article>
@@ -305,7 +312,7 @@ export default function TowerSetupPage() {
           </article>
         </section>
 
-        <section className="mt-6 rounded-2xl border border-amber-300/20 bg-amber-300/[0.06] p-5 text-sm leading-6 text-amber-100"><div className="flex items-start gap-3"><XCircle className="mt-0.5 h-5 w-5 shrink-0" /><p><strong>Homologação ainda pendente:</strong> brilho, calibração dimensional, câmera real, toque, reinicialização e comportamento das duas telas precisam ser confirmados presencialmente antes do estado READY.</p></div></section>
+        <section className="mt-6 rounded-2xl border border-amber-300/20 bg-amber-300/[0.06] p-5 text-sm leading-6 text-amber-100"><div className="flex items-start gap-3"><XCircle className="mt-0.5 h-5 w-5 shrink-0" /><p><strong>Homologação ainda pendente:</strong> brilho, calibração dimensional, câmera real, toque, reinicialização e comportamento das duas telas precisam ser confirmados presencialmente antes do estado READY. O botão “Testar experiências” libera somente a validação de software em PAIRED_SETUP.</p></div></section>
       </div>
     </main>
   )

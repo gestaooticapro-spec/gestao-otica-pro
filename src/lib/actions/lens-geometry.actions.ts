@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizeLensName } from '@/lib/utils/lens'
 import type { PostgrestError } from '@supabase/supabase-js'
+import { authorizeTowerStoreAccess } from '@/lib/server/tower-device-web-session'
 
 export type LensPins = {
   distance: Array<{ x: number; y: number }>
@@ -78,8 +79,13 @@ const LENS_GEOMETRY_COLUMNS = [
 
 const LENS_GEOMETRY_COLUMNS_WITH_CORRIDOR = LENS_GEOMETRY_COLUMNS + ', corridor_opening'
 
-export async function getAllLensGeometries(): Promise<LensGeometry[]> {
-  const sb = createClient()
+export async function getAllLensGeometries(towerStoreId?: number): Promise<LensGeometry[]> {
+  let sb = createClient() as unknown as ReturnType<typeof createAdminClient>
+  if (towerStoreId) {
+    const access = await authorizeTowerStoreAccess(towerStoreId)
+    if (!access.ok) return []
+    sb = createAdminClient()
+  }
 
   // Try with corridor_opening first; fall back to without if schema cache lags
   let { data, error } = await sb

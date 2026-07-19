@@ -1,9 +1,11 @@
 'use server'
 
+/* eslint-disable @typescript-eslint/no-explicit-any -- tabelas da Torre ainda nao constam integralmente nos tipos gerados do Supabase */
+
 import { z } from 'zod'
-import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import type { Database } from '@/lib/database.types'
+import { authorizeTowerStoreAccess } from '@/lib/server/tower-device-web-session'
 
 const HEATMAP_ALGORITHM_VERSION = 'head-only-v1'
 const HEATMAP_TARGET_PLAN_VERSION = 'balanced-19-v1'
@@ -129,33 +131,6 @@ type CompletedSessionTableApi = {
   select: (columns: string) => TwoFilterSelect<CompletedSessionLookup>
 }
 
-async function getAuthorizedStoreContext(storeId: number) {
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) return { ok: false as const, message: 'Usuario nao autenticado.' }
-
-  const profile = (await getProfileByAdmin(user.id)) as
-    | Database['public']['Tables']['profiles']['Row']
-    | null
-
-  if (!profile?.tenant_id) {
-    return { ok: false as const, message: 'Perfil do usuario sem tenant.' }
-  }
-
-  if (profile.role !== 'admin' && profile.store_id !== storeId) {
-    return { ok: false as const, message: 'Acesso negado para esta loja.' }
-  }
-
-  return {
-    ok: true as const,
-    userId: user.id,
-    tenantId: profile.tenant_id,
-  }
-}
-
 async function getSessionForStore(sessionId: string, storeId: number) {
   const sessions = createAdminClient().from('tower_heatmap_sessions') as unknown as TowerHeatmapSessionsTableApi
   const { data, error } = await sessions
@@ -176,7 +151,7 @@ export async function createTowerHeatmapSession(
   if (!parsed.success) return { success: false, message: parsed.error.issues[0]?.message || 'Dados da sessao invalidos.' }
 
   const data = parsed.data
-  const auth = await getAuthorizedStoreContext(data.storeId)
+  const auth = await authorizeTowerStoreAccess(data.storeId)
   if (!auth.ok) return { success: false, message: auth.message }
 
   const evaluations = createAdminClient().from('optical_evaluations') as unknown as OpticalEvaluationsLookupTableApi
@@ -218,7 +193,7 @@ export async function getOrCreateTowerHeatmapSessionForTowerSession(
   if (!parsed.success) return { success: false, message: 'Sessao da Torre invalida para o mapa visual.' }
 
   const data = parsed.data
-  const auth = await getAuthorizedStoreContext(data.storeId)
+  const auth = await authorizeTowerStoreAccess(data.storeId)
   if (!auth.ok) return { success: false, message: auth.message }
 
   const towerSessions = createAdminClient().from('tower_sessions') as any
@@ -273,7 +248,7 @@ export async function startTowerHeatmapSession(
   if (!parsed.success) return { success: false, message: 'Sessao de mapa visual invalida.' }
 
   const data = parsed.data
-  const auth = await getAuthorizedStoreContext(data.storeId)
+  const auth = await authorizeTowerStoreAccess(data.storeId)
   if (!auth.ok) return { success: false, message: auth.message }
 
   const found = await getSessionForStore(data.sessionId, data.storeId)
@@ -299,7 +274,7 @@ export async function completeTowerHeatmapSession(
   if (!parsed.success) return { success: false, message: parsed.error.issues[0]?.message || 'Resultado do mapa visual invalido.' }
 
   const data = parsed.data
-  const auth = await getAuthorizedStoreContext(data.storeId)
+  const auth = await authorizeTowerStoreAccess(data.storeId)
   if (!auth.ok) return { success: false, message: auth.message }
 
   const found = await getSessionForStore(data.sessionId, data.storeId)
@@ -332,7 +307,7 @@ export async function saveTowerHeatmapDemoTemplate(
   if (!parsed.success) return { success: false, message: 'Sessao de mapa visual invalida.' }
 
   const data = parsed.data
-  const auth = await getAuthorizedStoreContext(data.storeId)
+  const auth = await authorizeTowerStoreAccess(data.storeId)
   if (!auth.ok) return { success: false, message: auth.message }
 
   const sessions = createAdminClient().from('tower_heatmap_sessions') as any
@@ -389,7 +364,7 @@ export async function loadTowerHeatmapDemoTemplate(
   if (!parsed.success) return { success: false, message: 'Loja invalida para carregar o mapa demonstrativo.' }
 
   const data = parsed.data
-  const auth = await getAuthorizedStoreContext(data.storeId)
+  const auth = await authorizeTowerStoreAccess(data.storeId)
   if (!auth.ok) return { success: false, message: auth.message }
 
   const templates = createAdminClient().from('tower_heatmap_demo_templates') as any
@@ -432,7 +407,7 @@ export async function resetTowerHeatmapSession(
   if (!parsed.success) return { success: false, message: 'Sessao de mapa visual invalida.' }
 
   const data = parsed.data
-  const auth = await getAuthorizedStoreContext(data.storeId)
+  const auth = await authorizeTowerStoreAccess(data.storeId)
   if (!auth.ok) return { success: false, message: auth.message }
 
   const found = await getSessionForStore(data.sessionId, data.storeId)
@@ -463,7 +438,7 @@ export async function cancelTowerHeatmapSession(
   if (!parsed.success) return { success: false, message: 'Sessao de mapa visual invalida.' }
 
   const data = parsed.data
-  const auth = await getAuthorizedStoreContext(data.storeId)
+  const auth = await authorizeTowerStoreAccess(data.storeId)
   if (!auth.ok) return { success: false, message: auth.message }
 
   const found = await getSessionForStore(data.sessionId, data.storeId)
@@ -488,7 +463,7 @@ export async function getCompletedTowerHeatmapResult(
   if (!parsed.success) return { success: false, message: 'Sessao de mapa visual invalida.' }
 
   const data = parsed.data
-  const auth = await getAuthorizedStoreContext(data.storeId)
+  const auth = await authorizeTowerStoreAccess(data.storeId)
   if (!auth.ok) return { success: false, message: auth.message }
 
   const sessions = createAdminClient().from('tower_heatmap_sessions') as unknown as CompletedSessionTableApi

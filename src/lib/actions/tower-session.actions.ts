@@ -1,9 +1,11 @@
 'use server'
 
+/* eslint-disable @typescript-eslint/no-explicit-any -- tabelas da Torre ainda nao constam integralmente nos tipos gerados do Supabase */
+
 import { z } from 'zod'
-import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import type { Database } from '@/lib/database.types'
+import { authorizeTowerStoreAccess } from '@/lib/server/tower-device-web-session'
 
 const StoreIdSchema = z.coerce.number().int().positive()
 const SessionIdSchema = z.string().uuid()
@@ -49,23 +51,6 @@ export type TowerPrescriptionSnapshot = z.infer<typeof PrescriptionSnapshotSchem
 export type TowerSessionContext = { session: TowerSession; customer: { id: number; full_name: string; fone_movel: string | null } | null }
 type ActionResult<T = undefined> = { success: boolean; message: string; data?: T }
 
-async function getAuthorizedStoreContext(storeId: number) {
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) return { ok: false as const, message: 'Usuario nao autenticado.' }
-
-  const profile = (await getProfileByAdmin(user.id)) as Database['public']['Tables']['profiles']['Row'] | null
-  if (!profile?.tenant_id) return { ok: false as const, message: 'Perfil do usuario sem tenant.' }
-  if (profile.role !== 'admin' && profile.store_id !== storeId) {
-    return { ok: false as const, message: 'Acesso negado para esta loja.' }
-  }
-
-  return { ok: true as const, tenantId: profile.tenant_id, userId: user.id }
-}
-
 async function findSessionForStore(sessionId: string, storeId: number) {
   const sessions = createAdminClient().from('tower_sessions') as any
   const { data, error } = await sessions
@@ -99,7 +84,7 @@ export async function createTowerSession(
   const parsed = CreateTowerSessionSchema.safeParse(input)
   if (!parsed.success) return { success: false, message: 'Dados da sessao invalidos.' }
 
-  const auth = await getAuthorizedStoreContext(parsed.data.storeId)
+  const auth = await authorizeTowerStoreAccess(parsed.data.storeId)
   if (!auth.ok) return { success: false, message: auth.message }
 
   const sessions = createAdminClient().from('tower_sessions') as any
@@ -124,7 +109,7 @@ export async function getOrCreateTowerSession(
   const parsed = GetOrCreateTowerSessionSchema.safeParse(input)
   if (!parsed.success) return { success: false, message: 'Dados da sessao invalidos.' }
 
-  const auth = await getAuthorizedStoreContext(parsed.data.storeId)
+  const auth = await authorizeTowerStoreAccess(parsed.data.storeId)
   if (!auth.ok) return { success: false, message: auth.message }
 
   const sessions = createAdminClient().from('tower_sessions') as any
@@ -160,7 +145,7 @@ export async function getTowerSessionContext(
 ): Promise<ActionResult<TowerSessionContext>> {
   const parsed = SessionCommandSchema.safeParse(input)
   if (!parsed.success) return { success: false, message: 'Sessao da Torre invalida.' }
-  const auth = await getAuthorizedStoreContext(parsed.data.storeId)
+  const auth = await authorizeTowerStoreAccess(parsed.data.storeId)
   if (!auth.ok) return { success: false, message: auth.message }
   const found = await findSessionForStore(parsed.data.sessionId, parsed.data.storeId)
   if (!found.session) return { success: false, message: found.message || 'Sessao nao encontrada.' }
@@ -183,7 +168,7 @@ export async function saveTowerSessionPrescription(
 ): Promise<ActionResult<TowerSession>> {
   const parsed = SavePrescriptionSchema.safeParse(input)
   if (!parsed.success) return { success: false, message: 'Receita da demonstracao invalida.' }
-  const auth = await getAuthorizedStoreContext(parsed.data.storeId)
+  const auth = await authorizeTowerStoreAccess(parsed.data.storeId)
   if (!auth.ok) return { success: false, message: auth.message }
   const found = await findSessionForStore(parsed.data.sessionId, parsed.data.storeId)
   if (!found.session || found.session.status !== 'active') return { success: false, message: found.message || 'Sessao da Torre nao esta ativa.' }
@@ -216,7 +201,7 @@ export async function linkCustomerToTowerSession(
   const parsed = LinkCustomerSchema.safeParse(input)
   if (!parsed.success) return { success: false, message: 'Vinculo de cliente invalido.' }
 
-  const auth = await getAuthorizedStoreContext(parsed.data.storeId)
+  const auth = await authorizeTowerStoreAccess(parsed.data.storeId)
   if (!auth.ok) return { success: false, message: auth.message }
 
   const found = await findSessionForStore(parsed.data.sessionId, parsed.data.storeId)
@@ -257,7 +242,7 @@ export async function linkEvaluationToTowerSession(
   const parsed = LinkEvaluationSchema.safeParse(input)
   if (!parsed.success) return { success: false, message: 'Vinculo de avaliacao invalido.' }
 
-  const auth = await getAuthorizedStoreContext(parsed.data.storeId)
+  const auth = await authorizeTowerStoreAccess(parsed.data.storeId)
   if (!auth.ok) return { success: false, message: auth.message }
 
   const found = await findSessionForStore(parsed.data.sessionId, parsed.data.storeId)
@@ -339,7 +324,7 @@ async function closeTowerSession(
   const parsed = SessionCommandSchema.safeParse(input)
   if (!parsed.success) return { success: false, message: 'Sessao da Torre invalida.' }
 
-  const auth = await getAuthorizedStoreContext(parsed.data.storeId)
+  const auth = await authorizeTowerStoreAccess(parsed.data.storeId)
   if (!auth.ok) return { success: false, message: auth.message }
 
   const found = await findSessionForStore(parsed.data.sessionId, parsed.data.storeId)
@@ -368,7 +353,7 @@ export async function getActiveTowerSessions(
   const parsed = StoreIdSchema.safeParse(storeIdInput)
   if (!parsed.success) return { success: false, message: 'Loja invalida.' }
 
-  const auth = await getAuthorizedStoreContext(parsed.data)
+  const auth = await authorizeTowerStoreAccess(parsed.data)
   if (!auth.ok) return { success: false, message: auth.message }
 
   const sessions = createAdminClient().from('tower_sessions') as any

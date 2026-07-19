@@ -107,7 +107,7 @@ type TowerStoreRow = {
   phone: string | null
   is_active: boolean
   created_at: string
-  settings: { tower_enabled?: unknown } | null
+  settings: ({ tower_enabled?: unknown } & Record<string, unknown>) | null
 }
 type ActivationRow = {
   id: string

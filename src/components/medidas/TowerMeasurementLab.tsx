@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } f
 import { AlertTriangle, ArrowLeft, Bot, Camera, CheckCircle2, ImageUp, Loader2, Maximize2, MonitorUp, Play, ScanLine, Square, Wand2, ZoomIn, ZoomOut } from 'lucide-react'
 import { locateTowerMeasurementPointsWithAiAction } from '@/lib/actions/tower-measurement-ai.actions'
 import { saveTowerMeasurementResult } from '@/lib/actions/tower-measurement.actions'
+import { closeTowerClientScreen, openTowerClientScreen } from '@/lib/tower/client-screen'
 
 type Landmark = { x: number; y: number; z?: number }
 type MediaPipeModule = typeof import('@mediapipe/tasks-vision')
@@ -276,7 +277,7 @@ export default function TowerMeasurementLab({
 
   useEffect(() => () => {
     stopCamera('Camera desligada')
-    clientScreenRef.current?.close()
+    closeTowerClientScreen()
   }, [])
 
   useEffect(() => {
@@ -364,7 +365,7 @@ export default function TowerMeasurementLab({
     }
     const url = new URL(window.location.href)
     url.searchParams.set('client', '1')
-    const clientWindow = window.open(url.toString(), 'tower-measurement-client', 'popup=yes,width=1080,height=1920')
+    const clientWindow = openTowerClientScreen(url.toString(), 'popup=yes,width=1080,height=1920')
     if (!clientWindow) return
     clientScreenRef.current = clientWindow
     setClientScreenOpen(true)
@@ -375,7 +376,7 @@ export default function TowerMeasurementLab({
   }
 
   function closeClientScreen() {
-    clientScreenRef.current?.close()
+    closeTowerClientScreen()
     clientScreenRef.current = null
     setClientScreenOpen(false)
   }

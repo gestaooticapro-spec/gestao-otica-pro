@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { createAsyncClient } from '@/lib/supabase/server'
 import { getProfileByAdmin } from '@/lib/supabase/admin'
 
 export const PLATFORM_ADMIN_ROLE = 'platform_admin' as const
@@ -27,7 +27,7 @@ export function isPlatformAdminProfile(
 }
 
 export async function getPlatformAdminContext() {
-  const supabase = createClient()
+  const supabase = await createAsyncClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) return null

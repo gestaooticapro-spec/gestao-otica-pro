@@ -10,6 +10,7 @@ import {
   normalizeTowerFallbackCode,
 } from '../src/lib/tower/device-activation-contract'
 import { hashTowerAdminPin, verifyTowerAdminPin } from '../src/lib/tower-admin-pin'
+import { normalizeTowerRemoteConfig } from '../src/lib/tower/remote-config'
 
 const token = 'A'.repeat(43)
 
@@ -46,4 +47,40 @@ test('PIN administrativo usa hash com salt e rejeita PIN incorreto', () => {
   assert.match(hash, /^scrypt\$/)
   assert.equal(verifyTowerAdminPin('123456', hash), true)
   assert.equal(verifyTowerAdminPin('654321', hash), false)
+})
+
+test('configuracao remota herda experiencias antigas e aplica defaults versionados', () => {
+  const config = normalizeTowerRemoteConfig({
+    tower_experiences: {
+      visagismo: false,
+      campo_visual: true,
+      medidas: false,
+      informacoes_uteis: true,
+    },
+  })
+
+  assert.equal(config.version, 1)
+  assert.equal(config.experiences.visagismo, false)
+  assert.equal(config.experiences.medidas, false)
+  assert.equal(config.information.comparativoCampos, true)
+  assert.equal(config.commercial.mode, 'consultive')
+})
+
+test('configuracao remota limita textos e ignora tipos invalidos', () => {
+  const config = normalizeTowerRemoteConfig({
+    tower_remote_config: {
+      commercial: {
+        mode: 'campaign',
+        headline: '  Campanha da loja  ',
+        supportingText: 123,
+        offerText: 'x'.repeat(300),
+      },
+      interface: { mostrarConfiguracoes: false },
+    },
+  })
+
+  assert.equal(config.commercial.headline, 'Campanha da loja')
+  assert.equal(config.commercial.offerText.length, 240)
+  assert.equal(config.interface.mostrarConfiguracoes, false)
+  assert.match(config.commercial.supportingText, /Escolha como deseja/)
 })

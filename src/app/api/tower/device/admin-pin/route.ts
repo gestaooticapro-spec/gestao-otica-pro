@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { authenticateTowerDevice } from '@/lib/server/tower-device-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { hashTowerAdminPin, verifyTowerAdminPin } from '@/lib/tower-admin-pin'
+import { issueTowerMaintenanceGrant } from '@/lib/server/tower-maintenance-grant'
 
 export const dynamic = 'force-dynamic'
 
@@ -162,6 +163,7 @@ export async function POST(request: NextRequest) {
   return json({
     success: true,
     mustChange: result.pin_must_change,
+    maintenanceGrant: issueTowerMaintenanceGrant(authentication.device),
     message: parsed.data.action === 'change'
       ? 'PIN alterado com seguranca.'
       : 'PIN confirmado.',

@@ -16,6 +16,8 @@ let inMemoryDeviceSession = null
 let inMemoryAssetIdentity = null
 let customerDisplayWindow = null
 let primaryWindow = null
+let webSessionRefreshTimer = null
+let inMemoryMaintenanceGrant = null
 
 function isValidDeviceSession(session) {
   return Boolean(
@@ -138,6 +140,7 @@ async function clearDeviceSession() {
     if (error?.code !== 'ENOENT') throw error
   }
   inMemoryDeviceSession = null
+  inMemoryMaintenanceGrant = null
 }
 
 async function restoreDeviceSession() {
@@ -208,8 +211,12 @@ function isTrustedIpcSender(event, allowedPaths) {
   try {
     const rendererUrl = getRendererUrl()
     const senderUrl = new URL(event.senderFrame.url)
-    return senderUrl.origin === rendererUrl.origin
-      && allowedPaths.includes(senderUrl.pathname)
+    const exactPath = allowedPaths.includes(senderUrl.pathname)
+    const prefixPath = allowedPaths.some((allowedPath) => (
+      allowedPath.endsWith('*')
+      && senderUrl.pathname.startsWith(allowedPath.slice(0, -1))
+    ))
+    return senderUrl.origin === rendererUrl.origin && (exactPath || prefixPath)
   } catch {
     return false
   }
@@ -245,6 +252,45 @@ async function requestTowerApi(pathname, options = {}) {
   return { status: response.status, ok: response.ok, data }
 }
 
+async function bootstrapTowerWebSession(browserSession, deviceSession) {
+  const result = await requestTowerApi('/api/tower/device/web-session', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${deviceSession.deviceCredential}` },
+  })
+  if (!result.ok || !result.data?.success
+      || typeof result.data.token !== 'string'
+      || !Number.isSafeInteger(result.data.expiresAt)
+      || result.data.storeId !== deviceSession.storeId) {
+    throw new Error('O servidor nao emitiu uma sessao web valida para a Torre.')
+  }
+
+  const rendererUrl = getRendererUrl()
+  await browserSession.cookies.set({
+    url: rendererUrl.origin,
+    name: 'tower_device_web_session_v1',
+    value: result.data.token,
+    path: '/',
+    httpOnly: true,
+    secure: rendererUrl.protocol === 'https:',
+    sameSite: 'strict',
+    expirationDate: result.data.expiresAt,
+  })
+}
+
+function scheduleTowerWebSessionRefresh(browserSession) {
+  if (webSessionRefreshTimer) clearInterval(webSessionRefreshTimer)
+  webSessionRefreshTimer = setInterval(async () => {
+    const deviceSession = await restoreDeviceSession()
+    if (!deviceSession) return
+    try {
+      await bootstrapTowerWebSession(browserSession, deviceSession)
+    } catch (error) {
+      console.error('[Torre Electron] Falha ao renovar sessao web:', error)
+    }
+  }, 10 * 60 * 1000)
+  webSessionRefreshTimer.unref?.()
+}
+
 function publicAssetIdentity(identity) {
   return identity ? {
     assetId: identity.assetId,
@@ -276,8 +322,23 @@ function isAllowedOrigin(requestingOrigin, rendererUrl) {
 function isAllowedCameraRequest(webContents, permission, details, mainWindow, rendererUrl) {
   const securityOrigin = details.securityOrigin || details.requestingUrl || ''
   const mediaTypes = details.mediaTypes || (details.mediaType ? [details.mediaType] : [])
+  const isMainWindow = webContents?.id === mainWindow.webContents.id
+  const isCustomerWindow = Boolean(
+    customerDisplayWindow
+    && !customerDisplayWindow.isDestroyed()
+    && webContents?.id === customerDisplayWindow.webContents.id
+    && (() => {
+      try {
+        const currentUrl = new URL(customerDisplayWindow.webContents.getURL())
+        return isAllowedNavigation(currentUrl.toString(), rendererUrl)
+          && currentUrl.searchParams.get('client') === '1'
+      } catch {
+        return false
+      }
+    })(),
+  )
 
-  return webContents?.id === mainWindow.webContents.id
+  return (isMainWindow || isCustomerWindow)
     && permission === 'media'
     && details.isMainFrame !== false
     && isAllowedOrigin(securityOrigin, rendererUrl)
@@ -285,7 +346,7 @@ function isAllowedCameraRequest(webContents, permission, details, mainWindow, re
     && mediaTypes[0] === 'video'
 }
 
-function createMainWindow() {
+async function createMainWindow() {
   const rendererUrl = getRendererUrl()
   const kioskEnabled = isEnabled(process.env.TOWER_KIOSK)
   const devToolsEnabled = !app.isPackaged || isEnabled(process.env.TOWER_DEVTOOLS)
@@ -369,7 +430,22 @@ function createMainWindow() {
     },
   )
 
-  mainWindow.loadURL(rendererUrl.toString())
+  let initialUrl = rendererUrl
+  const restoredSession = await restoreDeviceSession()
+  if (restoredSession) {
+    try {
+      await bootstrapTowerWebSession(mainWindow.webContents.session, restoredSession)
+      scheduleTowerWebSessionRefresh(mainWindow.webContents.session)
+      if (!process.env.TOWER_ELECTRON_URL?.trim()
+          || rendererUrl.pathname === '/torre/inicial') {
+        initialUrl = new URL('/torre/configuracao', rendererUrl)
+      }
+    } catch (error) {
+      console.error('[Torre Electron] Falha ao preparar sessao web:', error)
+    }
+  }
+
+  await mainWindow.loadURL(initialUrl.toString())
   mainWindow.on('closed', () => {
     if (primaryWindow === mainWindow) primaryWindow = null
   })
@@ -446,10 +522,89 @@ async function openCustomerDisplayTest() {
   return { success: true, display: serializeDisplay(customerDisplay) }
 }
 
+async function openCustomerExperience(requestedUrl, deviceSession) {
+  const rendererUrl = getRendererUrl()
+  let customerUrl
+  try {
+    customerUrl = new URL(requestedUrl, rendererUrl)
+  } catch {
+    return { success: false, message: 'Endereco da experiencia invalido.' }
+  }
+
+  const storePrefix = `/torre/${deviceSession.storeId}/`
+  if (customerUrl.origin !== rendererUrl.origin
+      || !customerUrl.pathname.startsWith(storePrefix)
+      || customerUrl.searchParams.get('client') !== '1'
+      || customerUrl.pathname.includes('/configuracao')
+      || customerUrl.pathname.includes('/admin')) {
+    return { success: false, message: 'Experiencia do cliente nao autorizada para esta Torre.' }
+  }
+
+  const displays = screen.getAllDisplays()
+  const primaryDisplay = screen.getPrimaryDisplay()
+  const customerDisplay = displays.find((display) => display.id !== primaryDisplay.id)
+  const simulated = !customerDisplay
+  const targetBounds = customerDisplay?.bounds || {
+    width: Math.min(540, primaryDisplay.workArea.width),
+    height: Math.min(900, primaryDisplay.workArea.height),
+    x: primaryDisplay.workArea.x + Math.max(0, primaryDisplay.workArea.width - Math.min(540, primaryDisplay.workArea.width)),
+    y: primaryDisplay.workArea.y,
+  }
+
+  if (customerDisplayWindow && !customerDisplayWindow.isDestroyed()) {
+    await customerDisplayWindow.loadURL(customerUrl.toString())
+    customerDisplayWindow.focus()
+    return {
+      success: true,
+      simulated,
+      display: serializeDisplay(customerDisplay || primaryDisplay),
+    }
+  }
+
+  const kioskEnabled = isEnabled(process.env.TOWER_KIOSK) && !simulated
+  customerDisplayWindow = new BrowserWindow({
+    ...targetBounds,
+    show: false,
+    frame: !kioskEnabled,
+    fullscreen: kioskEnabled,
+    autoHideMenuBar: true,
+    alwaysOnTop: kioskEnabled,
+    backgroundColor: '#020617',
+    title: simulated ? 'Torre - Simulacao da Tela do Cliente' : 'Torre - Tela do Cliente',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webviewTag: false,
+      devTools: !app.isPackaged || isEnabled(process.env.TOWER_DEVTOOLS),
+    },
+  })
+  customerDisplayWindow.removeMenu()
+  customerDisplayWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  customerDisplayWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    if (!isAllowedNavigation(navigationUrl, rendererUrl)) event.preventDefault()
+  })
+  customerDisplayWindow.webContents.on('will-redirect', (event, navigationUrl) => {
+    if (!isAllowedNavigation(navigationUrl, rendererUrl)) event.preventDefault()
+  })
+  customerDisplayWindow.once('ready-to-show', () => customerDisplayWindow?.show())
+  customerDisplayWindow.on('closed', () => {
+    customerDisplayWindow = null
+  })
+  await customerDisplayWindow.loadURL(customerUrl.toString())
+
+  return {
+    success: true,
+    simulated,
+    display: serializeDisplay(customerDisplay || primaryDisplay),
+  }
+}
+
 function registerDesktopHandlers() {
   const initialOnly = ['/torre/inicial']
   const configurationOnly = ['/torre/configuracao']
   const towerPages = [...initialOnly, ...configurationOnly]
+  const experiencePages = ['/torre/*']
 
   secureHandle('tower:get-network-status', towerPages, () => ({
     online: net.isOnline(),
@@ -628,6 +783,10 @@ function registerDesktopHandlers() {
       }
       await persistDeviceSession(protectedSession)
       inMemoryDeviceSession = protectedSession
+      if (primaryWindow && !primaryWindow.isDestroyed()) {
+        await bootstrapTowerWebSession(primaryWindow.webContents.session, protectedSession)
+        scheduleTowerWebSessionRefresh(primaryWindow.webContents.session)
+      }
       return {
         success: true,
         status: 'paired',
@@ -670,10 +829,54 @@ function registerDesktopHandlers() {
       if (result.status === 401 && result.data?.message === 'Credencial de dispositivo invalida.') {
         await clearDeviceSession()
       }
-      return result.data
+      if (result.ok && result.data?.success && typeof result.data.maintenanceGrant === 'string') {
+        inMemoryMaintenanceGrant = result.data.maintenanceGrant
+      }
+      const publicResult = { ...(result.data || {}) }
+      delete publicResult.maintenanceGrant
+      return publicResult
     } catch (error) {
       console.error('[Torre Electron] Falha ao validar PIN:', error)
       return { success: false, message: 'Sem comunicacao com o servidor para validar o PIN.' }
+    }
+  })
+
+  secureHandle('tower:get-remote-config-access', configurationOnly, async () => {
+    const session = await restoreDeviceSession()
+    if (!session) return { success: false, message: 'Torre nao pareada.' }
+    if (!inMemoryMaintenanceGrant) return { success: false, message: 'Confirme novamente o PIN administrativo.' }
+    try {
+      const result = await requestTowerApi('/api/tower/device/remote-config-access', {
+        headers: {
+          Authorization: `Bearer ${session.deviceCredential}`,
+          'X-Tower-Maintenance-Grant': inMemoryMaintenanceGrant,
+        },
+      })
+      if (result.status === 403) inMemoryMaintenanceGrant = null
+      return result.data
+    } catch (error) {
+      console.error('[Torre Electron] Falha ao consultar acesso comercial:', error)
+      return { success: false, message: 'Acesso comercial indisponivel.' }
+    }
+  })
+
+  secureHandle('tower:rotate-remote-config-access', configurationOnly, async () => {
+    const session = await restoreDeviceSession()
+    if (!session) return { success: false, message: 'Torre nao pareada.' }
+    if (!inMemoryMaintenanceGrant) return { success: false, message: 'Confirme novamente o PIN administrativo.' }
+    try {
+      const result = await requestTowerApi('/api/tower/device/remote-config-access', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.deviceCredential}`,
+          'X-Tower-Maintenance-Grant': inMemoryMaintenanceGrant,
+        },
+      })
+      if (result.status === 403) inMemoryMaintenanceGrant = null
+      return result.data
+    } catch (error) {
+      console.error('[Torre Electron] Falha ao criar acesso comercial:', error)
+      return { success: false, message: 'Nao foi possivel criar o acesso comercial.' }
     }
   })
 
@@ -702,6 +905,19 @@ function registerDesktopHandlers() {
     }
     return { success: true }
   })
+
+  secureHandle('tower:open-customer-experience', experiencePages, async (requestedUrl) => {
+    const session = await restoreDeviceSession()
+    if (!session) return { success: false, message: 'Torre nao pareada.' }
+    return openCustomerExperience(requestedUrl, session)
+  })
+
+  secureHandle('tower:close-customer-experience', experiencePages, () => {
+    if (customerDisplayWindow && !customerDisplayWindow.isDestroyed()) {
+      customerDisplayWindow.close()
+    }
+    return { success: true }
+  })
 }
 
 app.enableSandbox()
@@ -717,19 +933,20 @@ if (!app.requestSingleInstanceLock()) {
     mainWindow.focus()
   })
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     registerDesktopHandlers()
-    primaryWindow = createMainWindow()
+    primaryWindow = await createMainWindow()
 
-    app.on('activate', () => {
+    app.on('activate', async () => {
       if (BrowserWindow.getAllWindows().length === 0) {
-        primaryWindow = createMainWindow()
+        primaryWindow = await createMainWindow()
       }
     })
   })
 }
 
 app.on('window-all-closed', () => {
+  if (webSessionRefreshTimer) clearInterval(webSessionRefreshTimer)
   if (process.platform !== 'darwin') {
     app.quit()
   }

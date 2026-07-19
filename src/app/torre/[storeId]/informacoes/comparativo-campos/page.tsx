@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
 import { getAllLensGeometries } from '@/lib/actions/lens-geometry.actions'
 import TowerLensFieldComparison from '@/components/tower/TowerLensFieldComparison'
+import { authorizeTowerStoreAccess } from '@/lib/server/tower-device-web-session'
 
 export default async function TowerLensFieldComparisonPage(
   props: {
@@ -14,10 +14,9 @@ export default async function TowerLensFieldComparisonPage(
   const storeId = parseInt(params.storeId, 10)
   if (Number.isNaN(storeId)) return notFound()
 
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return redirect('/login')
+  const access = await authorizeTowerStoreAccess(storeId)
+  if (!access.ok) return redirect('/login')
 
-  const geometries = await getAllLensGeometries()
+  const geometries = await getAllLensGeometries(storeId)
   return <TowerLensFieldComparison storeId={storeId} geometries={geometries} clientMode={searchParams?.client === '1'} />
 }

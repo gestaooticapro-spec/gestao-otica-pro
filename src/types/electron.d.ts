@@ -106,6 +106,20 @@ declare global {
         failedAttempts?: number
         lockedUntil?: string | null
       }>
+      getRemoteConfigAccess: () => Promise<{
+        success: boolean
+        configured?: boolean
+        url?: string
+        updatedAt?: string
+        message?: string
+      }>
+      rotateRemoteConfigAccess: () => Promise<{
+        success: boolean
+        configured?: boolean
+        url?: string
+        commercialPin?: string
+        message?: string
+      }>
       getHardwareDiagnostics: () => Promise<{
         platform: string
         hostname: string
@@ -138,6 +152,23 @@ declare global {
         }
       }>
       closeCustomerDisplayTest: () => Promise<{ success: boolean }>
+      openCustomerExperience: (url: string) => Promise<{
+        success: boolean
+        message?: string
+        simulated?: boolean
+        display?: {
+          id: string
+          label: string
+          primary: boolean
+          internal: boolean
+          rotation: number
+          scaleFactor: number
+          bounds: { x: number; y: number; width: number; height: number }
+          workArea: { x: number; y: number; width: number; height: number }
+          orientation: 'portrait' | 'landscape'
+        }
+      }>
+      closeCustomerExperience: () => Promise<{ success: boolean }>
     }
   }
 }

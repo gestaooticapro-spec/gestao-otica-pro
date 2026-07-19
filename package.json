@@ -11,7 +11,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "lint:tower": "eslint electron/main.cjs electron/preload.cjs src/app/torre/inicial/page.tsx src/app/torre/configuracao/page.tsx src/app/api/tower/asset/enroll/route.ts src/app/api/tower/device/pair/route.ts src/app/api/tower/device/validate-activation/route.ts src/lib/server/tower-activation-rate-limit.ts src/lib/actions/tower-assets.actions.ts tests",
+    "lint:tower": "eslint electron/main.cjs electron/preload.cjs src/app/torre src/app/api/tower src/components/tower src/lib/server/tower-activation-rate-limit.ts src/lib/server/tower-device-web-session.ts src/lib/server/tower-maintenance-grant.ts src/lib/server/tower-remote-config.ts src/lib/server/tower-remote-config-session.ts src/lib/tower src/lib/actions/tower-assets.actions.ts src/lib/actions/tower-session.actions.ts src/lib/actions/tower-heatmap.actions.ts src/lib/actions/tower-measurement.actions.ts tests",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/tower-contracts.test.ts && node --test tests/electron-security.test.mjs tests/tower-migration.test.mjs"
   },

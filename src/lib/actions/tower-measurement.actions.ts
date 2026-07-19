@@ -1,9 +1,8 @@
 'use server'
 
 import { z } from 'zod'
-import type { Database } from '@/lib/database.types'
-import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { authorizeTowerStoreAccess } from '@/lib/server/tower-device-web-session'
 
 const FiniteMeasurementSchema = z.number().finite().min(-1000).max(1000)
 
@@ -54,17 +53,8 @@ export async function saveTowerMeasurementResult(
   const parsed = SaveTowerMeasurementResultSchema.safeParse(input)
   if (!parsed.success) return { success: false, message: 'As medidas informadas nao sao validas.' }
 
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return { success: false, message: 'Usuario nao autenticado.' }
-
-  const profile = (await getProfileByAdmin(user.id)) as Database['public']['Tables']['profiles']['Row'] | null
-  if (!profile?.tenant_id) return { success: false, message: 'Perfil do usuario sem tenant.' }
-  if (profile.role !== 'admin' && profile.store_id !== parsed.data.storeId) {
-    return { success: false, message: 'Acesso negado para esta loja.' }
-  }
+  const access = await authorizeTowerStoreAccess(parsed.data.storeId)
+  if (!access.ok) return { success: false, message: access.message }
 
   const admin = createAdminClient()
   // O client administrativo deste projeto ainda nao infere corretamente as tabelas locais adicionadas por migration.
@@ -74,7 +64,7 @@ export async function saveTowerMeasurementResult(
     .select('id, tenant_id, store_id, customer_id, optical_evaluation_id, status')
     .eq('id', parsed.data.towerSessionId)
     .eq('store_id', parsed.data.storeId)
-    .eq('tenant_id', profile.tenant_id)
+    .eq('tenant_id', access.tenantId)
     .maybeSingle()
 
   if (sessionError || !session) {
@@ -95,12 +85,12 @@ export async function saveTowerMeasurementResult(
   const version = (previous?.version ?? 0) + 1
   const { data: saved, error: saveError } = await results
     .insert({
-      tenant_id: profile.tenant_id,
+      tenant_id: access.tenantId,
       store_id: parsed.data.storeId,
       tower_session_id: session.id,
       customer_id: session.customer_id,
       optical_evaluation_id: session.optical_evaluation_id,
-      created_by_user_id: user.id,
+      created_by_user_id: access.userId,
       version,
       lens_mode: parsed.data.lensMode,
       reference_mm: parsed.data.referenceMm,

@@ -430,7 +430,10 @@ export default function TowerInitialPage() {
                 </div>
                 {pairingMessage && <p className="mt-4 text-sm font-bold leading-6 text-amber-200">{pairingMessage}</p>}
                 <p className="mt-5 text-xs font-bold text-emerald-200">Credencial persistente pronta. Próxima etapa: verificações locais e preparação para operação.</p>
-                <Link href="/torre/configuracao" className="mt-5 inline-flex min-h-12 items-center justify-center rounded-xl bg-cyan-300 px-5 text-sm font-black text-slate-950 transition hover:bg-cyan-200">Abrir configuração local</Link>
+                <div className="mt-5 flex flex-wrap justify-center gap-3">
+                  <Link href="/torre/configuracao" className="inline-flex min-h-12 items-center justify-center rounded-xl bg-cyan-300 px-5 text-sm font-black text-slate-950 transition hover:bg-cyan-200">Abrir configuração local</Link>
+                  <Link href={`/torre/${pairedDevice.storeId}`} className="inline-flex min-h-12 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-black text-white transition hover:bg-white/10">Testar experiências</Link>
+                </div>
               </div>
             )}
 

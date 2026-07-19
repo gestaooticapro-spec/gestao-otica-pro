@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { authorizeTowerStoreAccess } from '@/lib/server/tower-device-web-session'
 
 type Point = { x: number; y: number }
 
@@ -133,13 +135,22 @@ type VisagismoTemplateRow = {
   profile_effects?: string[] | null
 }
 
-export async function getGlobalVisagismoFrameTemplates(): Promise<GlobalVisagismoFrameTemplate[]> {
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+export async function getGlobalVisagismoFrameTemplates(
+  towerStoreId?: number,
+): Promise<GlobalVisagismoFrameTemplate[]> {
+  const browserClient = createClient()
+  let supabase = browserClient as unknown as ReturnType<typeof createAdminClient>
 
-  if (!user) return []
+  if (towerStoreId) {
+    const access = await authorizeTowerStoreAccess(towerStoreId)
+    if (!access.ok) return []
+    supabase = createAdminClient()
+  } else {
+    const {
+      data: { user },
+    } = await browserClient.auth.getUser()
+    if (!user) return []
+  }
 
   const baseColumns = [
     'id',
@@ -194,7 +205,7 @@ export async function getGlobalVisagismoFrameTemplates(): Promise<GlobalVisagism
 }
 
 async function selectActiveTemplates(
-  supabase: ReturnType<typeof createClient>,
+  supabase: ReturnType<typeof createAdminClient>,
   columns: string[],
 ) {
   const templateTable = supabase

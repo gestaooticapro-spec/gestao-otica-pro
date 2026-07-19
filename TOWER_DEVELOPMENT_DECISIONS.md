@@ -360,7 +360,6 @@ tela touch, mini PC ou monitor retrato da Torre. Portanto, os itens abaixo nao
 estao homologados e nao podem ser considerados aprovados apenas porque o build
 passou:
 
-- aplicar a migracao corretiva `20260718103000_harden_tower_asset_operations.sql` no Supabase;
 - consumir uma ativacao real e confirmar que ela nao pode ser reutilizada;
 - fechar e reabrir o Electron e confirmar a restauracao da credencial pelo
   Windows;
@@ -458,10 +457,10 @@ estados da aplicacao local.
   `service_role` no Electron;
 - migrations ate `20260718102000_tower_physical_assets.sql` aplicadas no Supabase;
 - migracao corretiva `20260718103000_harden_tower_asset_operations.sql`
-  criada e ainda pendente de aplicacao.
+  aplicada no Supabase em 18 de julho de 2026.
 
-A migracao corretiva ainda precisa ser aplicada no Supabase e o fluxo completo
-ainda precisa ser testado em uma instalacao Windows real: gerar uma unidade de teste,
+O fluxo completo ainda precisa ser testado em uma instalacao Windows real:
+gerar uma unidade de teste,
 imprimir sua etiqueta, registrar o Electron, reiniciar o computador, associar
 a uma loja, recolher para manutencao e parear novamente. Ate essa homologacao,
 o recurso nao deve ser tratado como pronto para producao.
@@ -497,8 +496,9 @@ resultou nas seguintes correcoes:
   recorte da Torre e build de producao devem permanecer como gates.
 
 Essas correcoes fecham os bloqueios de software encontrados pela auditoria,
-mas nao promovem a Torre para `READY`. A migracao `20260718103000` e todos os
-testes presenciais listados acima continuam obrigatorios.
+mas nao promovem a Torre para `READY`. A migracao `20260718103000` foi aplicada
+em 18 de julho de 2026; todos os testes presenciais listados acima continuam
+obrigatorios.
 
 ### Passo 7 - Levar as experiencias da Torre para o Electron
 
@@ -507,9 +507,101 @@ validados, transportar para o Electron as experiencias de visagismo, heatmap,
 medidas e mapa educativo. Cada experiencia deve continuar usando sessoes,
 resultados e sincronizacao ligados ao mesmo `store_id`.
 
+#### Recorte de software implementado em 18 de julho de 2026
+
+O Electron agora consegue entrar nas rotas operacionais usando a propria
+credencial do dispositivo, sem login humano e sem entregar essa credencial ao
+renderer. O processo principal troca a credencial por uma sessao web assinada,
+`HttpOnly`, com validade de quinze minutos e renovacao automatica. Cada acao de
+sessao, heatmap ou medidas volta a conferir no servidor se o dispositivo ainda
+esta ativo e se o `store_id`, `tenant_id`, ativo fisico e pareamento coincidem.
+Antes da publicacao, o ambiente deve receber um
+`TOWER_DEVICE_WEB_SESSION_SECRET` aleatorio e exclusivo. Durante o
+desenvolvimento, o servidor aceita derivar a assinatura da chave de servico ja
+existente, sem nunca envia-la ao Electron.
+
+Foram liberadas para validacao de software em `PAIRED_SETUP`:
+
+- menu isolado da Torre ligado ao `store_id` pareado;
+- Visagismo, Campo Visual/heatmap e Medidas com suas sessoes e resultados;
+- conteudos educativos ja existentes no menu de informacoes;
+- abertura coordenada da tela do cliente pelo Electron;
+- janela vertical simulada no monitor principal quando nao existe uma segunda
+  tela, exclusivamente para desenvolvimento remoto;
+- uso automatico do segundo monitor quando ele estiver conectado.
+
+A URL da tela do cliente e validada pelo processo principal: deve pertencer a
+mesma origem, a mesma loja pareada, estar dentro de `/torre/*` e conter
+`client=1`. A janela do cliente continua sem preload, Node.js ou acesso ao menu
+administrativo. A permissao de camera e aceita somente na janela principal ou
+na janela cliente reconhecida pelo Electron.
+
+Esse recorte nao altera o estado para `READY`. A janela simulada prova apenas
+navegacao, sessao, comunicacao e composicao das telas. Camera real, touch,
+orientacao, escala, desempenho, enquadramento e comportamento no segundo
+monitor permanecem pendentes de homologacao presencial.
+
 Durante todos os sete passos, o Supabase permanece a fonte canonica. O SQLite
 local e uma camada de continuidade e sincronizacao, e nao uma nova identidade
 para a loja.
+
+### Passo 8 - Configuracao remota por loja
+
+O primeiro contrato versionado de configuracao remota foi implementado em 18
+de julho de 2026. A fonte canonica e
+`stores.settings.tower_remote_config`, sempre vinculada ao mesmo `store_id` do
+dispositivo. Nao foi criada uma tabela paralela de produtos, ofertas ou lojas.
+
+A configuracao comercial nao exige conta, e-mail ou senha do MBoptical. O
+fluxo aprovado separa os dois papeis:
+
+1. na Torre, o responsavel abre `Configuracoes` e confirma o PIN administrativo
+   local;
+2. o Electron guarda em memoria uma autorizacao de manutencao valida por cinco
+   minutos, sem expo-la ao renderer;
+3. dentro da manutencao, o responsavel gera um QR/link persistente e um PIN
+   comercial separado, exibido somente nessa geracao;
+4. no celular ou computador, o QR abre `/torre/remota/[publicCode]`, onde apenas
+   o PIN comercial e solicitado;
+5. o PIN correto emite uma sessao HttpOnly de oito horas, limitada a uma unica
+   loja; salvar publica a configuracao canonica dessa loja.
+
+O link permanece valido e pode ser favoritado. Nao e preciso buscar um novo QR
+a cada alteracao. `Regenerar acesso` troca simultaneamente o link e o PIN,
+invalida o endereco anterior e deve ser usado somente em caso de perda,
+revogacao ou troca de responsavel. O QR identifica o acesso, mas nunca contem o
+PIN.
+
+O contrato de versao 1 permite publicar:
+
+- experiencias principais e conteudos do menu `Informacoes uteis`;
+- visibilidade dos botoes de continuar atendimento e configuracoes locais;
+- estrategia consultiva ou campanha, titulo, texto de apoio, chamada principal
+  e oferta em destaque;
+- permissao para uso do catalogo global ja liberado para a loja.
+
+A Torre le essa configuracao somente depois de validar sua sessao curta e o
+`store_id` pareado. Os menus e textos sao aplicados no Electron, e o botao
+`Atualizar` busca a versao publicada sem reinstalar, reativar ou parear o
+equipamento novamente. Se a consulta falhar, a interface informa a
+indisponibilidade e usa a configuracao inicial segura, sem trocar a identidade
+local.
+
+A migracao `20260718104000_tower_remote_configuration.sql` cria a tabela
+protegida `tower_remote_config_access` e as funcoes atomicas de rotacao,
+tentativas de PIN e publicacao. Ela guarda somente o hash scrypt do PIN, aplica
+bloqueio de quinze minutos depois de cinco erros, preserva os outros campos de
+`stores.settings`, mantem compatibilidade com `tower_experiences` e restringe
+tabelas e funcoes ao `service_role`. O rate limit compartilhado por origem
+tambem se aplica antes da verificacao do PIN.
+
+O login completo da Gestao Otica continua existindo apenas para lojas que
+contratarem esse produto. Ele nao concede nem substitui o acesso comercial
+remoto da Torre.
+
+Esse passo nao promove o equipamento para `READY`. Touch, camera, escala,
+desempenho, reinicializacao e comportamento final no hardware homologado
+continuam dependendo dos testes presenciais ja descritos.
 
 ### Detalhamento operacional do roteiro
 

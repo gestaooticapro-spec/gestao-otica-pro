@@ -1,18 +1,13 @@
-// Caminho: src/lib/supabase/server.ts (CORRIGIDO PARA CONSISTÊNCIA)
-
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
-import { cookies, type UnsafeUnwrappedCookies } from 'next/headers';
+import { cookies, type UnsafeUnwrappedCookies } from 'next/headers'
 
-export function createClient() {
-  // Next 15 ainda preserva o acesso sincrono por compatibilidade. O cast
-  // concentra essa transicao sem transformar todas as actions em Promises de cliente.
-  const cookieStore = (cookies() as unknown as UnsafeUnwrappedCookies) as unknown as {
-    get: (name: string) => { value?: string } | undefined
-    set: (cookie: { name: string; value: string } & CookieOptions) => void
-  }
+type ServerCookieStore = {
+  get: (name: string) => { value?: string } | undefined
+  set: (cookie: { name: string; value: string } & CookieOptions) => void
+}
 
+function createClientWithCookieStore(cookieStore: ServerCookieStore) {
   return createServerClient(
-    // USAR CHAVES PÚBLICAS PARA CONSISTÊNCIA E ACESSO NO SSR
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -23,18 +18,33 @@ export function createClient() {
         set(name: string, value: string, options: CookieOptions) {
           try {
             cookieStore.set({ name, value, ...options })
-          } catch (error) {
-            // Ocorre em Server Actions, o que é esperado
+          } catch {
+            // Server Components nao podem alterar cookies durante a renderizacao.
           }
         },
         remove(name: string, options: CookieOptions) {
           try {
             cookieStore.set({ name, value: '', ...options, maxAge: 0, expires: new Date(0) })
-          } catch (error) {
-            // Ocorre em Server Actions, o que é esperado
+          } catch {
+            // Server Components nao podem alterar cookies durante a renderizacao.
           }
         },
       },
     }
   )
+}
+
+/** Prefer this factory in Next 15 Server Components and async server code. */
+export async function createAsyncClient() {
+  const cookieStore = await cookies()
+  return createClientWithCookieStore(cookieStore)
+}
+
+/**
+ * Legacy synchronous factory kept while older actions are migrated gradually.
+ * New code must use createAsyncClient().
+ */
+export function createClient() {
+  const cookieStore = (cookies() as unknown as UnsafeUnwrappedCookies) as unknown as ServerCookieStore
+  return createClientWithCookieStore(cookieStore)
 }

@@ -1,6 +1,6 @@
 // Caminho: src/app/dashboard/loja/[storeId]/config/page.tsx
 
-import { createClient } from '@/lib/supabase/server'
+import { createAsyncClient } from '@/lib/supabase/server'
 import { getProfileByAdmin } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import ConfigInterface from '@/components/config/ConfigInterface'
@@ -8,7 +8,7 @@ import { ShieldAlert } from 'lucide-react'
 
 export default async function ConfigPage(props: { params: Promise<{ storeId: string }> }) {
     const params = await props.params;
-    const supabase = createClient()
+    const supabase = await createAsyncClient()
     const storeId = parseInt(params.storeId, 10)
 
     // 1. Quem é o usuário?

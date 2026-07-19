@@ -14,6 +14,7 @@ import {
   Glasses,
   Monitor,
   Play,
+  RefreshCw,
   RotateCcw,
   Ruler,
   ScanEye,
@@ -22,6 +23,7 @@ import {
   UserRoundPlus,
   Video,
 } from 'lucide-react'
+import type { TowerRemoteConfig } from '@/lib/tower/remote-config'
 
 type MockAction = 'new' | 'resume' | null
 type ExperienceKey = 'style' | 'field' | 'measurements' | 'information' | null
@@ -29,6 +31,8 @@ type InformationKey = 'look' | 'ar' | 'optifog' | 'polarized' | 'thickness' | 'f
 
 interface TowerWelcomeMockProps {
   storeId: number
+  remoteConfig: TowerRemoteConfig
+  remoteConfigUnavailable?: boolean
   initialExperienceMenu?: boolean
   initialInformationMenu?: boolean
 }
@@ -134,7 +138,7 @@ const informationItems = [
   },
 ]
 
-export default function TowerWelcomeMock({ storeId, initialExperienceMenu = false, initialInformationMenu = false }: TowerWelcomeMockProps) {
+export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUnavailable = false, initialExperienceMenu = false, initialInformationMenu = false }: TowerWelcomeMockProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [selectedAction, setSelectedAction] = useState<MockAction>(initialExperienceMenu ? 'new' : null)
@@ -144,6 +148,20 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
   const [activeSessions, setActiveSessions] = useState<TowerSession[] | null>(null)
   const [resumeMessage, setResumeMessage] = useState<string | null>(null)
   const choosingExperience = selectedAction === 'new'
+  const enabledExperiences = experiences.filter((experience) => {
+    if (experience.key === 'style') return remoteConfig.experiences.visagismo
+    if (experience.key === 'field') return remoteConfig.experiences.campoVisual
+    if (experience.key === 'measurements') return remoteConfig.experiences.medidas
+    return remoteConfig.experiences.informacoesUteis
+  })
+  const enabledInformationItems = informationItems.filter((item) => {
+    if (item.key === 'look') return remoteConfig.information.seuJeitoDeOlhar
+    if (item.key === 'ar') return remoteConfig.information.tratamentoAr
+    if (item.key === 'optifog') return remoteConfig.information.optiFog
+    if (item.key === 'polarized') return remoteConfig.information.lentesPolarizadas
+    if (item.key === 'thickness') return remoteConfig.information.espessuraLentes
+    return remoteConfig.information.comparativoCampos
+  })
 
   function startExperience(experience: Exclude<ExperienceKey, null>) {
     if (experience === 'information') {
@@ -265,14 +283,14 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
             </div>
           </div>
 
-          <button
+          {remoteConfig.interface.mostrarConfiguracoes && <button
             type="button"
-            onClick={() => setSelectedAction(null)}
+            onClick={() => router.push('/torre/configuracao')}
             className="flex min-h-10 items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/70 px-3 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800 active:scale-[0.98]"
           >
             <Settings2 size={20} />
             <span className="hidden sm:inline">Configurações</span>
-          </button>
+          </button>}
         </header>
 
         <section className={`flex min-h-0 flex-1 flex-col ${choosingExperience ? 'justify-start pt-4' : 'justify-center py-4'}`}>
@@ -295,6 +313,8 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
               isStarting={isPending}
               onSelect={startExperience}
               onSelectInformation={openInformation}
+              enabledExperiences={enabledExperiences}
+              enabledInformationItems={enabledInformationItems}
             />
           ) : selectedAction === 'resume' ? (
             <ResumeChooser
@@ -312,12 +332,9 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
             <>
               <div className="max-w-3xl">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-sky-300">Pronta para atender</p>
-                <h2 className="max-w-3xl text-3xl font-semibold leading-[1.08] tracking-tight text-white sm:text-4xl lg:text-5xl">
-                  Vamos iniciar uma nova experiência?
-                </h2>
-                <p className="mt-3 max-w-2xl text-base leading-relaxed text-slate-300 sm:text-lg">
-                  Escolha como deseja começar. A identificação do cliente pode ficar para depois.
-                </p>
+                <h2 className="max-w-3xl text-3xl font-semibold leading-[1.08] tracking-tight text-white sm:text-4xl lg:text-5xl">{remoteConfig.commercial.headline}</h2>
+                <p className="mt-3 max-w-2xl text-base leading-relaxed text-slate-300 sm:text-lg">{remoteConfig.commercial.supportingText}</p>
+                {remoteConfig.commercial.mode === 'campaign' && remoteConfig.commercial.offerText && <p className="mt-4 inline-flex rounded-xl border border-amber-300/30 bg-amber-300/10 px-4 py-2 text-sm font-bold text-amber-100">{remoteConfig.commercial.offerText}</p>}
               </div>
 
               <div className="mt-6 grid max-w-5xl gap-4 lg:grid-cols-2">
@@ -333,14 +350,14 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
                     <ArrowRight className="mt-2 transition group-hover:translate-x-1" size={27} />
                   </div>
                   <div className="mt-5">
-                    <h3 className="text-xl font-bold">Novo atendimento</h3>
+                    <h3 className="text-xl font-bold">{remoteConfig.commercial.callToAction}</h3>
                     <p className="mt-1 max-w-sm text-sm leading-relaxed text-sky-950/80">
                       Inicie o atendimento e escolha a primeira atividade junto ao cliente.
                     </p>
                   </div>
                 </button>
 
-                <button
+                {remoteConfig.interface.mostrarContinuarAtendimento && <button
                   type="button"
                   onClick={loadActiveSessions}
                   className="group min-h-[185px] rounded-3xl border border-slate-700 bg-slate-900/85 p-5 text-left shadow-xl shadow-black/20 transition hover:-translate-y-1 hover:border-slate-500 hover:bg-slate-800 active:translate-y-0 active:scale-[0.99] sm:p-6"
@@ -357,12 +374,14 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
                       Retome uma experiência que ficou aberta nesta Torre.
                     </p>
                   </div>
-                </button>
+                </button>}
               </div>
             </>
           )}
 
         </section>
+
+        {remoteConfigUnavailable && <div className="mb-3 rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-100">Não foi possível consultar a configuração remota. A Torre está usando a configuração segura inicial.</div>}
 
         <footer className="flex shrink-0 flex-col gap-3 border-t border-slate-800 pt-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-2">
@@ -377,6 +396,7 @@ export default function TowerWelcomeMock({ storeId, initialExperienceMenu = fals
           </div>
 
           <div className="flex items-center gap-3 text-xs text-slate-400">
+            <button type="button" onClick={() => router.refresh()} disabled={isPending} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 font-semibold text-slate-300 transition hover:border-slate-500 hover:text-white disabled:opacity-50"><RefreshCw size={14} className={isPending ? 'animate-spin' : ''} />Atualizar</button>
             <span>Loja {storeId}</span>
             <span className="font-medium text-slate-500">Modo Torre</span>
           </div>
@@ -472,6 +492,8 @@ function ExperienceChooser({
   onBackToExperiences,
   onSelect,
   onSelectInformation,
+  enabledExperiences,
+  enabledInformationItems,
 }: {
   selectedExperience: ExperienceKey
   selectedInformation: InformationKey
@@ -481,9 +503,11 @@ function ExperienceChooser({
   onBackToExperiences: () => void
   onSelect: (experience: Exclude<ExperienceKey, null>) => void
   onSelectInformation: (item: Exclude<InformationKey, null>) => void
+  enabledExperiences: typeof experiences
+  enabledInformationItems: typeof informationItems
 }) {
-  const selected = experiences.find((experience) => experience.key === selectedExperience)
-  const selectedInfo = informationItems.find((item) => item.key === selectedInformation)
+  const selected = enabledExperiences.find((experience) => experience.key === selectedExperience)
+  const selectedInfo = enabledInformationItems.find((item) => item.key === selectedInformation)
 
   if (showingInformation) {
     return (
@@ -502,7 +526,7 @@ function ExperienceChooser({
         <p className="mt-2 max-w-2xl text-base leading-relaxed text-slate-300">Escolha um conteúdo para apoiar a conversa com o cliente.</p>
 
         <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
-          {informationItems.map(({ key, title, description, icon: Icon, color, background }) => (
+          {enabledInformationItems.map(({ key, title, description, icon: Icon, color, background }) => (
             <button
               key={key}
               type="button"
@@ -519,6 +543,7 @@ function ExperienceChooser({
               <p className="mt-1 text-xs leading-snug text-slate-300">{description}</p>
             </button>
           ))}
+          {!enabledInformationItems.length && <p className="rounded-xl border border-slate-700 bg-slate-900/70 p-4 text-sm text-slate-400 sm:col-span-2">Nenhum conteúdo informativo está liberado para esta loja.</p>}
         </div>
 
         {selectedInfo && <MockNotice icon={CircleHelp} title={`${selectedInfo.title} em preparação`} text="Este conteúdo aparecerá aqui quando a demonstração estiver pronta." />}
@@ -542,7 +567,7 @@ function ExperienceChooser({
       <p className="mt-2 max-w-2xl text-base leading-relaxed text-slate-300">Escolha a experiência que faz sentido para este atendimento.</p>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        {experiences.map(({ key, title, description, note, icon: Icon, color, background }) => (
+        {enabledExperiences.map(({ key, title, description, note, icon: Icon, color, background }) => (
           <button
             key={key}
             type="button"
@@ -561,6 +586,7 @@ function ExperienceChooser({
             <p className="mt-2 text-xs font-medium text-slate-400">{note}</p>
           </button>
         ))}
+        {!enabledExperiences.length && <p className="rounded-xl border border-slate-700 bg-slate-900/70 p-4 text-sm text-slate-400 sm:col-span-2">Nenhuma experiência está liberada para esta loja. Atualize a configuração remota.</p>}
       </div>
 
       {selected && <MockNotice icon={Play} title={`${selected.title} selecionado`} text="Mock visual: a próxima etapa será definida depois." />}

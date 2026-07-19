@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
 import { getGlobalVisagismoFrameTemplates } from '@/lib/actions/visagismo.actions'
 import VirtualTryOn from '@/components/visagismo/VirtualTryOn'
+import { authorizeTowerStoreAccess } from '@/lib/server/tower-device-web-session'
 
 export default async function TowerVisagismoPage(
   props: {
@@ -14,14 +14,10 @@ export default async function TowerVisagismoPage(
   const storeId = parseInt(params.storeId, 10)
   if (Number.isNaN(storeId)) return notFound()
 
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const access = await authorizeTowerStoreAccess(storeId)
+  if (!access.ok) return redirect('/login')
 
-  if (!user) return redirect('/login')
-
-  const templates = await getGlobalVisagismoFrameTemplates()
+  const templates = await getGlobalVisagismoFrameTemplates(storeId)
 
   return (
     <VirtualTryOn

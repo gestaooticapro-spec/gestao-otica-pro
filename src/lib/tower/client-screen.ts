@@ -8,6 +8,11 @@ type TowerWindow = Window & {
 export function openTowerClientScreen(url: string, features = 'popup=yes,width=1366,height=768') {
   if (typeof window === 'undefined') return null
 
+  if (window.towerDesktop?.openCustomerExperience) {
+    void window.towerDesktop.openCustomerExperience(url)
+    return window
+  }
+
   const clientWindow = window.open(url, TOWER_CLIENT_SCREEN_NAME, features)
   ;(window as TowerWindow)[TOWER_CLIENT_WINDOW_KEY] = clientWindow
   clientWindow?.focus()
@@ -16,6 +21,11 @@ export function openTowerClientScreen(url: string, features = 'popup=yes,width=1
 
 export function closeTowerClientScreen() {
   if (typeof window === 'undefined') return
+
+  if (window.towerDesktop?.closeCustomerExperience) {
+    void window.towerDesktop.closeCustomerExperience()
+    return
+  }
 
   const towerWindow = window as TowerWindow
   const clientWindow = towerWindow[TOWER_CLIENT_WINDOW_KEY]
