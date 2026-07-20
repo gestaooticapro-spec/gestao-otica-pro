@@ -112,3 +112,14 @@ Antes de considerar um deploy completo de WhatsApp, normalmente precisamos valid
 ## Observacao final
 
 O `README.md` foi intencionalmente mantido sem IP, usuario, segredo, cron real ou passo a passo sensivel de infraestrutura. Esse tipo de detalhe deve ficar em runbook local ignorado pelo Git.
+
+## Diario de desenvolvimento
+
+Ao final de cada alteracao relevante, atualize o arquivo `..\brain\gestao-otica-pro.md` usando o conhecimento disponivel no contexto da alteracao. O diario deve ter uma unica entrada por dia: alteracoes feitas no mesmo dia devem atualizar ou sobrescrever a secao daquele dia; quando mudar a data, crie uma nova secao e preserve integralmente o historico dos dias anteriores. O diario deve registrar:
+
+- o que foi feito;
+- problemas encontrados ou pendencias;
+- proximos passos;
+- ideias futuras.
+
+O arquivo pertence ao repositorio `brain`, nao a este projeto. Depois de atualizar o diario, faca commit e push para o GitHub no repositorio `brain`.
