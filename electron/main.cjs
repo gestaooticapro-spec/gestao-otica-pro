@@ -4,6 +4,7 @@ const path = require('path')
 const os = require('os')
 const fs = require('fs/promises')
 const { app, BrowserWindow, ipcMain, net, safeStorage, screen, shell } = require('electron')
+const { TowerLocalDatabase } = require('./tower-local-database.cjs')
 
 const DEFAULT_RENDERER_URL = 'http://localhost:3000/torre/inicial'
 const DEVICE_CREDENTIAL_PATTERN = /^tower_device_v1_[A-Za-z0-9_-]{43}$/
@@ -11,6 +12,7 @@ const ASSET_CREDENTIAL_PATTERN = /^tower_asset_v1_[A-Za-z0-9_-]{43}$/
 const ASSET_PUBLIC_CODE_PATTERN = /^MBT-[0-9]{4}-[0-9]{6}$/
 const DEVICE_SESSION_FILE = 'tower-device-session.v1.json'
 const ASSET_IDENTITY_FILE = 'tower-asset-identity.v1.json'
+const LOCAL_DATABASE_FILE = 'tower-local.v1.sqlite3'
 
 let inMemoryDeviceSession = null
 let inMemoryAssetIdentity = null
@@ -18,6 +20,9 @@ let customerDisplayWindow = null
 let primaryWindow = null
 let webSessionRefreshTimer = null
 let inMemoryMaintenanceGrant = null
+let towerLocalDatabase = null
+let towerSyncTimer = null
+let towerSyncPromise = null
 
 function isValidDeviceSession(session) {
   return Boolean(
@@ -64,6 +69,41 @@ function getDeviceSessionPath() {
 
 function getAssetIdentityPath() {
   return path.join(app.getPath('userData'), ASSET_IDENTITY_FILE)
+}
+
+function getLocalDatabasePath() {
+  return path.join(app.getPath('userData'), LOCAL_DATABASE_FILE)
+}
+
+function getLocalScope(session) {
+  return {
+    tenantId: session.tenantId,
+    storeId: session.storeId,
+    deviceId: session.deviceId,
+  }
+}
+
+function protectLocalPayload(payload) {
+  if (!safeStorage.isEncryptionAvailable()) return { payload, encoding: 'json' }
+  return {
+    payload: safeStorage.encryptString(payload).toString('base64'),
+    encoding: 'safe_storage_v1',
+  }
+}
+
+function unprotectLocalPayload(payload, encoding) {
+  if (encoding === 'json') return payload
+  if (encoding !== 'safe_storage_v1' || !safeStorage.isEncryptionAvailable()) {
+    throw new Error('Nao foi possivel abrir a fila local protegida.')
+  }
+  return safeStorage.decryptString(Buffer.from(payload, 'base64'))
+}
+
+function encryptLocalCustomerPayload(payload) {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('A protecao segura do Windows nao esta disponivel.')
+  }
+  return safeStorage.encryptString(JSON.stringify(payload)).toString('base64')
 }
 
 async function persistAssetIdentity(identity) {
@@ -250,6 +290,70 @@ async function requestTowerApi(pathname, options = {}) {
     throw new Error('Resposta invalida do servidor da Torre.')
   }
   return { status: response.status, ok: response.ok, data }
+}
+
+async function syncTowerOutbox() {
+  if (!towerLocalDatabase || !net.isOnline()) {
+    return towerLocalDatabase?.getSyncStatus() || { pending: 0, synced: 0, lastSyncedAt: null }
+  }
+  if (towerSyncPromise) return towerSyncPromise
+
+  towerSyncPromise = performTowerOutboxSync()
+  try {
+    return await towerSyncPromise
+  } finally {
+    towerSyncPromise = null
+  }
+}
+
+async function performTowerOutboxSync() {
+  const deviceSession = await restoreDeviceSession()
+  if (!deviceSession) return towerLocalDatabase.getSyncStatus()
+  const events = towerLocalDatabase.getPendingEvents(20)
+  if (events.length === 0) return towerLocalDatabase.getSyncStatus()
+
+  try {
+    const result = await requestTowerApi('/api/tower/device/sync', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${deviceSession.deviceCredential}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ events }),
+    })
+    const acknowledged = Array.isArray(result.data?.acknowledgedEventIds)
+      ? result.data.acknowledgedEventIds
+      : []
+    towerLocalDatabase.applySyncResults(result.data?.eventResults)
+    towerLocalDatabase.markEventsSynced(acknowledged)
+
+    const acknowledgedSet = new Set(acknowledged)
+    const failedIds = events
+      .map((event) => event.eventId)
+      .filter((eventId) => !acknowledgedSet.has(eventId))
+    if (!result.ok || !result.data?.success) {
+      towerLocalDatabase.markEventsFailed(failedIds, result.data?.message)
+    }
+  } catch (error) {
+    towerLocalDatabase.markEventsFailed(
+      events.map((event) => event.eventId),
+      error instanceof Error ? error.message : 'Falha de comunicacao.',
+    )
+  }
+  return towerLocalDatabase.getSyncStatus()
+}
+
+function scheduleTowerOutboxSync() {
+  if (towerSyncTimer) clearInterval(towerSyncTimer)
+  towerSyncTimer = setInterval(() => {
+    void syncTowerOutbox()
+  }, 30 * 1000)
+}
+
+function requestTowerOutboxSync() {
+  setTimeout(() => {
+    void syncTowerOutbox()
+  }, 0)
 }
 
 async function bootstrapTowerWebSession(browserSession, deviceSession) {
@@ -897,6 +1001,147 @@ function registerDesktopHandlers() {
     displays: screen.getAllDisplays().map(serializeDisplay),
   }))
 
+  secureHandle('tower:create-local-session', experiencePages, async (request) => {
+    const session = await restoreDeviceSession()
+    if (!session || !towerLocalDatabase) {
+      return { success: false, message: 'Persistencia local da Torre indisponivel.' }
+    }
+    try {
+      const data = towerLocalDatabase.createOrResumeSession(getLocalScope(session), request)
+      requestTowerOutboxSync()
+      return { success: true, message: request?.sessionId ? 'Sessao local retomada.' : 'Sessao local criada.', data }
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : 'Nao foi possivel salvar a sessao local.' }
+    }
+  })
+
+  secureHandle('tower:list-local-sessions', experiencePages, async () => {
+    const session = await restoreDeviceSession()
+    if (!session || !towerLocalDatabase) {
+      return { success: false, message: 'Persistencia local da Torre indisponivel.' }
+    }
+    try {
+      const data = towerLocalDatabase.listActiveSessions(getLocalScope(session))
+      return { success: true, message: 'Sessoes locais carregadas.', data }
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : 'Nao foi possivel ler as sessoes locais.' }
+    }
+  })
+
+  secureHandle('tower:create-local-customer', experiencePages, async (request) => {
+    const session = await restoreDeviceSession()
+    if (!session || !towerLocalDatabase) {
+      return { success: false, message: 'Persistencia local da Torre indisponivel.' }
+    }
+    try {
+      const protectedPayload = encryptLocalCustomerPayload({
+        fullName: request?.fullName,
+        mobilePhone: request?.mobilePhone,
+      })
+      const draft = towerLocalDatabase.createCustomerDraft(
+        getLocalScope(session), request, protectedPayload,
+      )
+      towerLocalDatabase.linkCustomerDraftToSession(getLocalScope(session), {
+        sessionId: request?.sessionId,
+        localCustomerId: draft.localId,
+      })
+      await syncTowerOutbox()
+      const resolved = towerLocalDatabase.getCustomerDraft(getLocalScope(session), draft.localId)
+      return {
+        success: true,
+        message: resolved.remoteCustomerId
+          ? 'Cliente cadastrado e sincronizado.'
+          : 'Cliente salvo neste equipamento. Aguardando sincronizacao.',
+        data: {
+          id: resolved.remoteCustomerId || draft.localId,
+          localId: draft.localId,
+          fullName: draft.fullName,
+          mobilePhone: draft.mobilePhone,
+          provisional: !resolved.remoteCustomerId,
+        },
+      }
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : 'Nao foi possivel salvar o cliente local.' }
+    }
+  })
+
+  secureHandle('tower:link-local-customer', experiencePages, async (request) => {
+    const session = await restoreDeviceSession()
+    if (!session || !towerLocalDatabase) {
+      return { success: false, message: 'Persistencia local da Torre indisponivel.' }
+    }
+    try {
+      towerLocalDatabase.linkCustomerDraftToSession(getLocalScope(session), request)
+      await syncTowerOutbox()
+      const resolved = towerLocalDatabase.getCustomerDraft(
+        getLocalScope(session), request?.localCustomerId,
+      )
+      return {
+        success: true,
+        message: resolved.remoteCustomerId
+          ? 'Cliente vinculado e sincronizado.'
+          : 'Cliente vinculado localmente. Aguardando sincronizacao.',
+        remoteCustomerId: resolved.remoteCustomerId,
+      }
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : 'Nao foi possivel vincular o cliente local.' }
+    }
+  })
+
+  secureHandle('tower:get-local-customer-status', experiencePages, async (localCustomerId) => {
+    const session = await restoreDeviceSession()
+    if (!session || !towerLocalDatabase) {
+      return { success: false, message: 'Persistencia local da Torre indisponivel.' }
+    }
+    try {
+      await syncTowerOutbox()
+      return {
+        success: true,
+        ...towerLocalDatabase.getCustomerDraft(getLocalScope(session), localCustomerId),
+      }
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : 'Cliente provisório indisponivel.' }
+    }
+  })
+
+  secureHandle('tower:close-local-session', experiencePages, async (request) => {
+    const session = await restoreDeviceSession()
+    if (!session || !towerLocalDatabase) {
+      return { success: false, message: 'Persistencia local da Torre indisponivel.' }
+    }
+    try {
+      towerLocalDatabase.closeSession(getLocalScope(session), request)
+      requestTowerOutboxSync()
+      return { success: true, message: request?.status === 'discarded' ? 'Sessao descartada localmente.' : 'Sessao concluida localmente.' }
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : 'Nao foi possivel encerrar a sessao local.' }
+    }
+  })
+
+  secureHandle('tower:save-local-measurement', experiencePages, async (request) => {
+    const session = await restoreDeviceSession()
+    if (!session || !towerLocalDatabase) {
+      return { success: false, message: 'Persistencia local da Torre indisponivel.' }
+    }
+    try {
+      const data = towerLocalDatabase.saveMeasurement(getLocalScope(session), request)
+      requestTowerOutboxSync()
+      return { success: true, message: 'Medidas salvas localmente.', data }
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : 'Nao foi possivel salvar as medidas localmente.' }
+    }
+  })
+
+  secureHandle('tower:get-local-sync-status', experiencePages, async () => ({
+    success: true,
+    ...(towerLocalDatabase?.getSyncStatus() || { pending: 0, synced: 0, lastSyncedAt: null }),
+  }))
+
+  secureHandle('tower:sync-local-now', experiencePages, async () => ({
+    success: true,
+    ...(await syncTowerOutbox()),
+  }))
+
   secureHandle('tower:open-customer-display-test', configurationOnly, () => openCustomerDisplayTest())
 
   secureHandle('tower:close-customer-display-test', configurationOnly, () => {
@@ -934,8 +1179,14 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.whenReady().then(async () => {
+    towerLocalDatabase = new TowerLocalDatabase(getLocalDatabasePath(), {
+      protect: protectLocalPayload,
+      unprotect: unprotectLocalPayload,
+    })
     registerDesktopHandlers()
     primaryWindow = await createMainWindow()
+    scheduleTowerOutboxSync()
+    requestTowerOutboxSync()
 
     app.on('activate', async () => {
       if (BrowserWindow.getAllWindows().length === 0) {
@@ -947,7 +1198,15 @@ if (!app.requestSingleInstanceLock()) {
 
 app.on('window-all-closed', () => {
   if (webSessionRefreshTimer) clearInterval(webSessionRefreshTimer)
+  if (towerSyncTimer) clearInterval(towerSyncTimer)
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  if (towerSyncTimer) clearInterval(towerSyncTimer)
+  towerSyncTimer = null
+  towerLocalDatabase?.close()
+  towerLocalDatabase = null
 })

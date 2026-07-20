@@ -1132,8 +1132,6 @@ projecao de cabeca, eixos ou significado clinico/comercial do resultado.
 Nao bloquear o desenvolvimento atual por estas decisoes:
 
 - Electron versus outra tecnologia de desktop;
-- detalhes de implementacao do SQLite e da outbox;
-- protocolo tecnico de sincronizacao e politica de conflitos por entidade;
 - modelo final de camera e PC;
 - formato de instalacao e atualizacao da torre;
 - desenho final das telas da torre;
@@ -1142,6 +1140,63 @@ Nao bloquear o desenvolvimento atual por estas decisoes:
 Quando essas decisoes chegarem, elas devem respeitar o Supabase como fonte
 canonico, o `store_id` imutavel, as sessoes persistidas, as camadas separadas e
 os contratos definidos neste documento.
+
+---
+
+## Passo 9 - persistencia local e sincronizacao
+
+O Passo 9 foi concluido em 20/07/2026 com a primeira fatia operacional. O
+Electron cria automaticamente `tower-local.v1.sqlite3` dentro de
+`app.getPath('userData')`; nao existe preparacao manual de banco por mini PC.
+O schema e versionado no proprio arquivo e usa WAL, chaves estrangeiras e
+transacoes `BEGIN IMMEDIATE`.
+
+O contrato implementado e local-first:
+
+1. uma sessao, cliente provisório ou medicao e gravado primeiro no SQLite;
+2. na mesma transacao, a operacao cria um evento em `tower_outbox`;
+3. o processo principal do Electron tenta sincronizar imediatamente e a cada
+   30 segundos;
+4. falhas usam retry com espera exponencial e nao apagam o dado local;
+5. o servidor autentica a credencial protegida do dispositivo e deriva
+   `tenant_id` e `store_id` do pareamento ativo;
+6. `apply_tower_device_sync_event_v2` aplica o dado e registra o recibo do evento
+   atomicamente, tornando reenvios idempotentes.
+
+A credencial permanente do dispositivo continua no arquivo cifrado por
+`safeStorage`. Ela nao entra no SQLite, no preload ou no renderer. Dados
+pessoais do cliente e payloads da outbox tambem ficam protegidos pelo
+`safeStorage` quando persistidos no equipamento. O preload expoe somente
+operacoes delimitadas de sessao, cliente, medicao e estado da fila.
+
+A integracao cobre criacao/retomada de `tower_sessions`, cliente provisório e
+salvamento de `tower_measurement_results`. O cliente nasce com UUID local e,
+quando sincronizado, `tower_device_customer_mappings` registra sua relacao com
+o BIGINT canonico de `customers`. Eventos posteriores da sessao usam esse mapa,
+sem aceitar `tenant_id`, `store_id` ou `customer_id` arbitrarios do renderer.
+Nome e telefone iguais podem reutilizar o cliente da mesma loja; conflito de
+nome ou telefone nao e unido silenciosamente.
+
+As migracoes `20260720100000_tower_offline_sync.sql` e
+`20260720101000_tower_offline_customer_fallback.sql` foram aplicadas no
+Supabase. A primeira cria o contrato geral de sincronizacao; a segunda cria a
+reconciliacao segura do cliente provisório com `customers.id`.
+
+A tentativa de sincronizacao acontece logo apos a gravacao. Os 30 segundos sao
+somente o ciclo de repeticao quando a tentativa imediata nao conclui. Enquanto
+o cliente permanece provisório, a sessao pode continuar localmente, mas a
+avaliacao e as recomendacoes que dependem de ID remoto aguardam a reconciliacao.
+
+Os testes automatizados, o typecheck e o build de producao foram executados com
+sucesso. O proximo passo e a validacao funcional no Electron, primeiro online e
+depois simulando uma queda de internet durante o cadastro de cliente e o
+salvamento de medidas.
+
+Esta etapa tambem nao promete partida completamente offline depois de reiniciar
+o Windows. O Electron atual ainda carrega a interface Next por URL. Empacotar a
+interface para inicializacao sem rede, instalar no mini PC e homologar o ciclo
+completo pertencem ao Passo 10. Com a interface ja carregada, sessoes e medidas
+integradas podem ser preservadas localmente durante uma queda de comunicacao.
 
 ---
 

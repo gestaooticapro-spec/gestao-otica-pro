@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { getActiveTowerSessions, getOrCreateTowerSession, type TowerSession } from '@/lib/actions/tower-session.actions'
+import type { TowerSession } from '@/lib/actions/tower-session.actions'
+import { getOperationalTowerSessions, getOrCreateOperationalTowerSession } from '@/lib/tower/local-operations'
 import {
   ArrowLeft,
   ArrowRight,
@@ -192,7 +193,7 @@ export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUn
 
     startTransition(async () => {
       // "Novo atendimento" nunca deve reaproveitar a sessao presente na URL.
-      const result = await getOrCreateTowerSession({ storeId, experience: sessionExperience })
+      const result = await getOrCreateOperationalTowerSession({ storeId, experience: sessionExperience })
       if (!result.success || !result.data) {
         setSelectedExperience(experience)
         return
@@ -220,7 +221,7 @@ export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUn
     }
     if (item === 'thickness') {
       startTransition(async () => {
-        const result = await getOrCreateTowerSession({ storeId, experience: 'thickness' })
+        const result = await getOrCreateOperationalTowerSession({ storeId, experience: 'thickness' })
         if (!result.success || !result.data) return
         router.push(`/torre/${storeId}/informacoes/espessura-lentes?session=${result.data.id}`)
       })
@@ -238,7 +239,7 @@ export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUn
     setResumeMessage(null)
     setActiveSessions(null)
     startTransition(async () => {
-      const result = await getActiveTowerSessions(storeId)
+      const result = await getOperationalTowerSessions(storeId)
       if (!result.success) {
         setResumeMessage(result.message)
         setActiveSessions([])

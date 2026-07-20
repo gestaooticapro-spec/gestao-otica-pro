@@ -2144,6 +2144,9 @@ export async function updateCompanyCredentials(organizationId: string, environme
 
         const payload = {
             ambiente: environment === 'production' ? 'producao' : 'homologacao',
+            ipm: {
+                modo_teste: environment === 'homologation'
+            },
             rps: {
                 lote: 1,
                 serie: "1",

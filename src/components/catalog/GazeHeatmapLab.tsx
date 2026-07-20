@@ -12,7 +12,7 @@ import {
   saveTowerHeatmapDemoTemplate,
   startTowerHeatmapSession,
 } from '@/lib/actions/tower-heatmap.actions'
-import { completeTowerSession } from '@/lib/actions/tower-session.actions'
+import { completeOperationalTowerSession } from '@/lib/tower/local-operations'
 import { closeTowerClientScreen, openTowerClientScreen } from '@/lib/tower/client-screen'
 import LensRecommendationSearchAnimation from '@/components/evaluation/LensRecommendationSearchAnimation'
 import type { RecommendationOption } from '@/lib/server/lens-recommendation'
@@ -3113,7 +3113,7 @@ export default function GazeHeatmapLab({
     if (!towerSessionId || towerActionBusy) return
 
     setTowerActionBusy(true)
-    const result = await completeTowerSession({ storeId, sessionId: towerSessionId })
+    const result = await completeOperationalTowerSession({ storeId, sessionId: towerSessionId })
     if (result.success) {
       window.location.assign(`/torre/${storeId}`)
       return

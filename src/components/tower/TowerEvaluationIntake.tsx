@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ChevronDown, Loader2, Minus, Plus, Search, Sparkles, User } from 'lucide-react'
 import { searchCustomersByName } from '@/lib/actions/vendas.actions'
-import { createQuickCustomer } from '@/lib/actions/customer.actions'
 import { upsertOpticalEvaluation } from '@/lib/actions/evaluation.actions'
 import { generateLensRecommendationsAction } from '@/lib/actions/lens-recommendation.actions'
 import {
@@ -12,11 +11,17 @@ import {
   type LensSalesAssist,
   type PatientAuditContext,
 } from '@/lib/actions/gemini-narratives.actions'
-import { linkCustomerToTowerSession, linkEvaluationToTowerSession, type TowerSessionContext } from '@/lib/actions/tower-session.actions'
+import { linkEvaluationToTowerSession, type TowerSessionContext } from '@/lib/actions/tower-session.actions'
+import {
+  createOperationalTowerCustomer,
+  linkOperationalTowerCustomer,
+  resolveOperationalTowerCustomer,
+  type OperationalTowerCustomer,
+} from '@/lib/tower/local-operations'
 import type { RecommendationOption } from '@/lib/server/lens-recommendation'
 import { buildRecommendationCaseInput } from '@/lib/recommendation/evaluation-case-input'
 
-type CustomerOption = { id: number; full_name: string; fone_movel?: string | null }
+type CustomerOption = OperationalTowerCustomer
 
 type Props = {
   storeId: number
@@ -348,11 +353,12 @@ export default function TowerEvaluationIntake({
 
   async function selectCustomer(customer: CustomerOption) {
     setBusy(true)
-    const linked = await linkCustomerToTowerSession({ storeId, sessionId: towerSessionId, customerId: customer.id })
+    const linked = await linkOperationalTowerCustomer({ storeId, sessionId: towerSessionId, customer })
     if (linked.success) {
-      setSelectedCustomer(customer)
+      const remoteCustomerId = linked.data?.remoteCustomerId
+      setSelectedCustomer(remoteCustomerId ? { ...customer, id: remoteCustomerId, provisional: false } : customer)
       setResults([])
-      setMessage('Cliente titular selecionado.')
+      setMessage(linked.message)
     } else {
       setMessage(linked.message)
     }
@@ -370,14 +376,17 @@ export default function TowerEvaluationIntake({
 
   async function createCustomer() {
     setBusy(true)
-    const form = new FormData()
-    form.set('store_id', String(storeId))
-    form.set('full_name', quickName)
-    form.set('fone_movel', quickPhone)
-    const created = await createQuickCustomer(form)
+    const created = await createOperationalTowerCustomer({
+      storeId,
+      sessionId: towerSessionId,
+      fullName: quickName,
+      mobilePhone: quickPhone,
+    })
     if (created.success && created.data) {
       setQuickCreateOpen(false)
-      await selectCustomer({ id: created.data.id, full_name: created.data.full_name, fone_movel: created.data.fone_movel })
+      setSelectedCustomer(created.data)
+      setResults([])
+      setMessage(created.message)
     } else {
       setMessage(created.message)
     }
@@ -389,6 +398,12 @@ export default function TowerEvaluationIntake({
       setMessage('Selecione o cliente titular antes de gerar sugestões.')
       return
     }
+    const operationalCustomer = await resolveOperationalTowerCustomer(selectedCustomer)
+    if (!operationalCustomer || typeof operationalCustomer.id !== 'number') {
+      setMessage('O cliente esta salvo neste equipamento e ainda aguarda sincronizacao para gerar a avaliacao.')
+      return
+    }
+    if (operationalCustomer.id !== selectedCustomer.id) setSelectedCustomer(operationalCustomer)
     if (!activeCatalogVersionId) {
       setMessage('Não existe catálogo ativo para gerar sugestões nesta loja.')
       return
@@ -407,11 +422,11 @@ export default function TowerEvaluationIntake({
     const recommendationInput = buildRecommendationInput(recipe, interview)
     const saved = await upsertOpticalEvaluation({
       storeId,
-      evaluatedCustomerId: selectedCustomer.id,
+      evaluatedCustomerId: operationalCustomer.id,
       evaluatedDependenteId: null,
-      responsibleCustomerId: selectedCustomer.id,
-      evaluatedNameSnapshot: selectedCustomer.full_name,
-      responsibleNameSnapshot: selectedCustomer.full_name,
+      responsibleCustomerId: operationalCustomer.id,
+      evaluatedNameSnapshot: operationalCustomer.full_name,
+      responsibleNameSnapshot: operationalCustomer.full_name,
       relationshipSnapshot: 'Titular',
       sourceSystem: 'manual',
       status: 'em_andamento',
@@ -555,6 +570,7 @@ export default function TowerEvaluationIntake({
             <div className="mt-4 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-4">
               <p className="text-sm text-emerald-100">Titular selecionado</p>
               <p className="mt-1 text-lg font-black">{selectedCustomer.full_name}</p>
+              {selectedCustomer.provisional && <p className="mt-2 text-xs font-bold text-amber-200">Salvo neste equipamento · aguardando sincronização</p>}
               <button type="button" onClick={() => setSelectedCustomer(null)} className="mt-3 text-xs font-bold text-slate-300 underline">Trocar cliente</button>
             </div>
           ) : (

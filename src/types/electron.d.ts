@@ -120,6 +120,82 @@ declare global {
         commercialPin?: string
         message?: string
       }>
+      createLocalSession: (request: {
+        experience: 'look' | 'visagismo' | 'campo_visual' | 'medidas' | 'thickness'
+        sessionId?: string
+      }) => Promise<{
+        success: boolean
+        message: string
+        data?: import('@/lib/actions/tower-session.actions').TowerSession
+      }>
+      listLocalSessions: () => Promise<{
+        success: boolean
+        message: string
+        data?: import('@/lib/actions/tower-session.actions').TowerSession[]
+      }>
+      createLocalCustomer: (request: {
+        sessionId: string
+        fullName: string
+        mobilePhone: string
+      }) => Promise<{
+        success: boolean
+        message: string
+        data?: {
+          id: number | string
+          localId: string
+          fullName: string
+          mobilePhone: string
+          provisional: boolean
+        }
+      }>
+      linkLocalCustomer: (request: {
+        sessionId: string
+        localCustomerId: string
+      }) => Promise<{
+        success: boolean
+        message: string
+        remoteCustomerId?: number | null
+      }>
+      getLocalCustomerStatus: (localCustomerId: string) => Promise<{
+        success: boolean
+        message?: string
+        localId?: string
+        remoteCustomerId?: number | null
+        syncStatus?: 'pending' | 'synced' | 'failed'
+        lastError?: string | null
+      }>
+      closeLocalSession: (request: {
+        sessionId: string
+        status: 'completed' | 'discarded'
+      }) => Promise<{
+        success: boolean
+        message: string
+      }>
+      saveLocalMeasurement: (request: {
+        towerSessionId: string
+        lensMode: 'multifocal' | 'bifocal'
+        referenceMm: number
+        frontMeasurements: object
+        profileMeasurements: object
+        attentionCodes: string[]
+        algorithmVersion: string
+      }) => Promise<{
+        success: boolean
+        message: string
+        data?: { id: string; version: number; syncStatus: 'pending' | 'synced' }
+      }>
+      getLocalSyncStatus: () => Promise<{
+        success: boolean
+        pending: number
+        synced: number
+        lastSyncedAt: string | null
+      }>
+      syncLocalNow: () => Promise<{
+        success: boolean
+        pending: number
+        synced: number
+        lastSyncedAt: string | null
+      }>
       getHardwareDiagnostics: () => Promise<{
         platform: string
         hostname: string

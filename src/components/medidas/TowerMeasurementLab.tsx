@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react'
 import { AlertTriangle, ArrowLeft, Bot, Camera, CheckCircle2, ImageUp, Loader2, Maximize2, MonitorUp, Play, ScanLine, Square, Wand2, ZoomIn, ZoomOut } from 'lucide-react'
 import { locateTowerMeasurementPointsWithAiAction } from '@/lib/actions/tower-measurement-ai.actions'
-import { saveTowerMeasurementResult } from '@/lib/actions/tower-measurement.actions'
+import { saveOperationalTowerMeasurement } from '@/lib/tower/local-operations'
 import { closeTowerClientScreen, openTowerClientScreen } from '@/lib/tower/client-screen'
 
 type Landmark = { x: number; y: number; z?: number }
@@ -330,7 +330,7 @@ export default function TowerMeasurementLab({
     setMeasurementSaveMessage(null)
     startPresentationTransition(() => {
       void (async () => {
-        const saved = await saveTowerMeasurementResult({
+        const saved = await saveOperationalTowerMeasurement({
           storeId,
           towerSessionId: sessionId,
           lensMode: result.lensMode,
