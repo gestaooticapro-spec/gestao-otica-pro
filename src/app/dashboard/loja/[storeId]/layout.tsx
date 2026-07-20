@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createAsyncClient } from '@/lib/supabase/server';
 import { redirect, notFound } from 'next/navigation';
 import SideNav from '@/components/SideNav';
 import { getProfileByAdmin } from '@/lib/supabase/admin';
@@ -34,7 +34,7 @@ export default async function StoreLayout(
     children
   } = props;
 
-  const supabase = createClient();
+  const supabase = await createAsyncClient();
   const storeIdParam = parseInt(params.storeId as string, 10);
 
   if (isNaN(storeIdParam)) return notFound();

@@ -6,6 +6,7 @@ import {
   getOrCreateTowerSession,
   linkCustomerToTowerSession,
   type TowerSession,
+  type TowerSessionSummary,
 } from '@/lib/actions/tower-session.actions'
 import { saveTowerMeasurementResult } from '@/lib/actions/tower-measurement.actions'
 import { createQuickCustomer } from '@/lib/actions/customer.actions'
@@ -35,21 +36,24 @@ export async function getOrCreateOperationalTowerSession(input: {
   return getOrCreateTowerSession(input)
 }
 
-export async function getOperationalTowerSessions(storeId: number): Promise<ActionResult<TowerSession[]>> {
+export async function getOperationalTowerSessions(storeId: number): Promise<ActionResult<TowerSessionSummary[]>> {
   if (window.towerDesktop) {
     const local = await window.towerDesktop.listLocalSessions()
     try {
       const remote = await getActiveTowerSessions(storeId)
       if (remote.success) {
-        const merged = new Map<string, TowerSession>()
+        const merged = new Map<string, TowerSessionSummary>()
         for (const session of remote.data ?? []) merged.set(session.id, session)
-        for (const session of local.data ?? []) merged.set(session.id, session)
+        for (const session of local.data ?? []) merged.set(session.id, { ...session, customer: null })
         return { success: true, message: 'Sessoes locais e remotas carregadas.', data: [...merged.values()] }
       }
     } catch {
       // Durante uma queda, a lista local continua sendo a fonte operacional.
     }
-    return local
+    return {
+      ...local,
+      data: local.data?.map((session) => ({ ...session, customer: null })),
+    }
   }
   return getActiveTowerSessions(storeId)
 }

@@ -10,6 +10,7 @@ const scope = {
   tenantId: '11111111-1111-4111-8111-111111111111',
   storeId: 7,
   deviceId: '22222222-2222-4222-8222-222222222222',
+  assetId: '33333333-3333-4333-8333-333333333333',
 }
 
 async function withDatabase(run) {
@@ -51,6 +52,26 @@ test('cria sessao local e evento de outbox na mesma operacao', async () => {
     assert.equal(events[0].eventType, 'tower_session.upsert')
     assert.equal(events[0].entityId, session.id)
     assert.equal(events[0].payload.id, session.id)
+  })
+})
+
+test('persiste a aprovacao de hardware por Torre fisica e envia pelo outbox', async () => {
+  await withDatabase((database) => {
+    const fingerprint = 'a'.repeat(64)
+    const first = database.saveHardwareApproval(scope, {
+      test: 'camera', hardwareFingerprint: fingerprint, hardwareSnapshot: { platform: 'win32', displays: [] },
+    })
+    const second = database.saveHardwareApproval(scope, {
+      test: 'touch', hardwareFingerprint: fingerprint, hardwareSnapshot: { platform: 'win32', displays: [] },
+    })
+    assert.equal(first.id, second.id)
+    assert.ok(second.cameraApprovedAt)
+    assert.ok(second.touchApprovedAt)
+    const events = database.getPendingEvents()
+    assert.equal(events.length, 2)
+    assert.equal(events[1].eventType, 'tower_hardware_validation.upsert')
+    database.markEventsSynced(events.map((event) => event.eventId))
+    assert.equal(database.getHardwareValidation(scope, fingerprint).syncStatus, 'synced')
   })
 })
 

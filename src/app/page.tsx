@@ -1,13 +1,19 @@
 // Caminho: src/app/page.tsx
-import { createClient } from '@/lib/supabase/server'
+import { createAsyncClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 // Importa o helper do admin, que usa o Service Role Client
 import { getProfileByAdmin } from '@/lib/supabase/admin' 
 import { getStoreModulesForStore } from '@/lib/store-modules.server'
 import { isPlatformAdminProfile } from '@/lib/auth/platform-admin'
 
+type HomeProfile = {
+  role: string | null
+  tenant_id: string | null
+  store_id: number | null
+}
+
 export default async function HomePage() {
-  const supabase = createClient()
+  const supabase = await createAsyncClient()
 
   const {
     data: { user },
@@ -15,7 +21,7 @@ export default async function HomePage() {
 
   if (user) {
     // CORREÇÃO: Cast 'as any' para garantir acesso às propriedades role e store_id
-    const profile = await getProfileByAdmin(user.id) as any;
+    const profile = await getProfileByAdmin(user.id) as HomeProfile | null;
 
     if (isPlatformAdminProfile(profile)) {
       redirect('/admin/torres')

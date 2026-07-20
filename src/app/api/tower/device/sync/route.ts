@@ -78,6 +78,32 @@ const SyncEventSchema = z.discriminatedUnion('eventType', [
       createdAt: z.string().datetime(),
     }),
   }),
+  CommonEventSchema.extend({
+    eventType: z.literal('tower_hardware_validation.upsert'),
+    payload: z.object({
+      id: z.string().uuid(),
+      hardwareFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+      hardwareSnapshot: z.object({
+        schemaVersion: z.literal(1),
+        platform: z.string().min(1).max(32),
+        hostname: z.string().min(1).max(255),
+        displays: z.array(z.object({
+          id: z.string().min(1).max(255),
+          primary: z.boolean(),
+          internal: z.boolean(),
+          rotation: z.number().int().min(0).max(360),
+          scaleFactor: z.number().finite().positive().max(10),
+          bounds: z.object({
+            x: z.number().int(), y: z.number().int(), width: z.number().int().positive(), height: z.number().int().positive(),
+          }),
+        })).min(1).max(8),
+      }),
+      cameraApprovedAt: z.string().datetime().nullable(),
+      touchApprovedAt: z.string().datetime().nullable(),
+      displayApprovedAt: z.string().datetime().nullable(),
+      updatedAt: z.string().datetime(),
+    }),
+  }),
 ])
 
 const SyncBatchSchema = z.object({
@@ -109,7 +135,7 @@ export async function POST(request: NextRequest) {
   const eventResults: Array<{ eventId: string; entityId: string; remoteCustomerId: number }> = []
   const admin = createAdminClient()
   const syncRpc = admin.rpc as unknown as (
-    functionName: 'apply_tower_device_sync_event_v2',
+    functionName: 'apply_tower_device_sync_event_v3',
     parameters: Record<string, unknown>,
   ) => Promise<{ data: number | null; error: { message: string } | null }>
   for (const event of parsed.data.events) {
@@ -128,7 +154,7 @@ export async function POST(request: NextRequest) {
 
     // A RPC deriva tenant e loja do dispositivo e aplica evento + recibo na
     // mesma transacao. Assim, repetir o lote depois de uma queda e seguro.
-    const { data: remoteCustomerId, error } = await syncRpc('apply_tower_device_sync_event_v2', {
+    const { data: remoteCustomerId, error } = await syncRpc('apply_tower_device_sync_event_v3', {
       p_device_id: authentication.device.id,
       p_event_id: event.eventId,
       p_event_type: event.eventType,

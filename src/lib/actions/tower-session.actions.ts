@@ -47,6 +47,9 @@ const SavePrescriptionSchema = SessionCommandSchema.extend({
 })
 
 export type TowerSession = Database['public']['Tables']['tower_sessions']['Row']
+export type TowerSessionSummary = TowerSession & {
+  customer: { id: number; full_name: string; fone_movel: string | null } | null
+}
 export type TowerPrescriptionSnapshot = z.infer<typeof PrescriptionSnapshotSchema>
 export type TowerSessionContext = { session: TowerSession; customer: { id: number; full_name: string; fone_movel: string | null } | null }
 type ActionResult<T = undefined> = { success: boolean; message: string; data?: T }
@@ -349,7 +352,7 @@ async function closeTowerSession(
 
 export async function getActiveTowerSessions(
   storeIdInput: z.input<typeof StoreIdSchema>,
-): Promise<ActionResult<TowerSession[]>> {
+): Promise<ActionResult<TowerSessionSummary[]>> {
   const parsed = StoreIdSchema.safeParse(storeIdInput)
   if (!parsed.success) return { success: false, message: 'Loja invalida.' }
 
@@ -358,11 +361,11 @@ export async function getActiveTowerSessions(
 
   const sessions = createAdminClient().from('tower_sessions') as any
   const { data, error } = await sessions
-    .select('*')
+    .select('*, customer:customers(id, full_name, fone_movel)')
     .eq('store_id', parsed.data)
     .eq('status', 'active')
     .order('started_at', { ascending: false })
 
   if (error) return { success: false, message: error.message }
-  return { success: true, message: 'Sessoes ativas carregadas.', data: (data ?? []) as TowerSession[] }
+  return { success: true, message: 'Sessoes ativas carregadas.', data: (data ?? []) as TowerSessionSummary[] }
 }

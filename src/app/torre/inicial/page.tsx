@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import TowerActivationQrScanner from '@/components/tower/TowerActivationQrScanner'
 import {
   normalizeTowerFallbackCode,
@@ -64,6 +65,7 @@ function formatExpiry(value: string) {
 }
 
 export default function TowerInitialPage() {
+  const router = useRouter()
   const [connection, setConnection] = useState<ConnectionState>('checking')
   const [activationMethod, setActivationMethod] = useState<TowerActivationMethod | null>(null)
   const [fallbackCode, setFallbackCode] = useState('')
@@ -75,12 +77,18 @@ export default function TowerInitialPage() {
   const [pairingState, setPairingState] = useState<PairingState>('idle')
   const [pairingMessage, setPairingMessage] = useState('')
   const [pairedDevice, setPairedDevice] = useState<PairedDevice | null>(null)
+  const [restoredDeviceSession, setRestoredDeviceSession] = useState(false)
   const [assetIdentity, setAssetIdentity] = useState<AssetIdentity | null>(null)
   const [assetMethod, setAssetMethod] = useState<TowerAssetEnrollmentMethod | null>(null)
   const [assetPublicCode, setAssetPublicCode] = useState('')
   const [assetFallbackCode, setAssetFallbackCode] = useState('')
   const [assetEnrollmentBusy, setAssetEnrollmentBusy] = useState(false)
   const [assetEnrollmentMessage, setAssetEnrollmentMessage] = useState('')
+
+  useEffect(() => {
+    if (!restoredDeviceSession || !pairedDevice) return
+    router.replace(`/torre/${pairedDevice.storeId}`)
+  }, [pairedDevice, restoredDeviceSession, router])
 
   const checkConnection = useCallback(async () => {
     setConnection('checking')
@@ -127,6 +135,7 @@ export default function TowerInitialPage() {
         const session = restored.session
         if (cancelled) return
 
+        setRestoredDeviceSession(Boolean(restored.credentialVerified))
         setPairedDevice({
           deviceId: session.deviceId,
           assetId: session.assetId,

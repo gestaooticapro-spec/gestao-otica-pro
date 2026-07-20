@@ -37,6 +37,10 @@ type PinStatus = {
   lockedUntil: string | null
 }
 
+function approvedAt(timestamp: string | null | undefined) {
+  return timestamp ? `Aprovado em ${new Date(timestamp).toLocaleString('pt-BR')}.` : null
+}
+
 function StatusBadge({ state }: { state: TestState }) {
   const styles = {
     pending: 'border-amber-300/20 bg-amber-300/10 text-amber-200',
@@ -68,17 +72,20 @@ export default function TowerSetupPage() {
   const [pinBusy, setPinBusy] = useState(false)
   const [pinMessage, setPinMessage] = useState('')
   const [maintenanceUnlocked, setMaintenanceUnlocked] = useState(false)
+  const [showPinChange, setShowPinChange] = useState(false)
 
   async function loadPinStatus() {
     try {
       const result = await window.towerDesktop?.getAdminPinStatus()
       if (!result) return
       if (result.success) {
+        const mustChange = Boolean(result.mustChange)
         setPinStatus({
-          mustChange: Boolean(result.mustChange),
+          mustChange,
           failedAttempts: Number(result.failedAttempts) || 0,
           lockedUntil: typeof result.lockedUntil === 'string' ? result.lockedUntil : null,
         })
+        setShowPinChange(mustChange)
       } else {
         setPinMessage(result.message || 'Não foi possível consultar o estado do PIN.')
       }
@@ -95,6 +102,36 @@ export default function TowerSetupPage() {
       setDisplayState('pending')
       setDisplayMessage('Somente uma tela foi detectada. O teste real continua pendente.')
     }
+  }
+
+  async function loadHardwareApprovals() {
+    try {
+      const result = await window.towerDesktop?.getHardwareApprovalStatus()
+      if (!result?.success || !result.data) return
+      const approval = result.data
+      if (approval.cameraApprovedAt) {
+        setCameraState('passed')
+        setCameraMessage(approvedAt(approval.cameraApprovedAt) || '')
+      }
+      if (approval.touchApprovedAt) {
+        setTouchConfirmed(true)
+        setTouchMessage(approvedAt(approval.touchApprovedAt) || '')
+      }
+      if (approval.displayApprovedAt) {
+        setDisplayState('passed')
+        setDisplayMessage(approvedAt(approval.displayApprovedAt) || '')
+      }
+    } catch {
+      // A tela continua utilizavel sem a leitura do historico local.
+    }
+  }
+
+  async function persistHardwareApproval(test: 'camera' | 'touch' | 'display') {
+    const result = await window.towerDesktop?.approveHardwareTest({ test })
+    if (!result?.success || !result.data) {
+      throw new Error(result?.message || 'Nao foi possivel registrar a aprovacao.')
+    }
+    return result.data
   }
 
   useEffect(() => {
@@ -116,6 +153,7 @@ export default function TowerSetupPage() {
 
       setSession(restored.session)
       await Promise.all([refreshHardware(), loadPinStatus()])
+      await loadHardwareApprovals()
       if (!cancelled) setLoading(false)
     }
 
@@ -161,10 +199,41 @@ export default function TowerSetupPage() {
     if (videoRef.current) videoRef.current.srcObject = null
   }
 
-  function confirmCameraImage() {
+  async function confirmCameraImage() {
     if (!streamRef.current) return
-    setCameraState('passed')
-    setCameraMessage('Imagem, foco e enquadramento confirmados visualmente neste equipamento.')
+    try {
+      const approval = await persistHardwareApproval('camera')
+      setCameraState('passed')
+      setCameraMessage(approvedAt(approval.cameraApprovedAt) || 'Imagem confirmada neste equipamento.')
+    } catch (error) {
+      setCameraState('failed')
+      setCameraMessage(error instanceof Error ? error.message : 'Nao foi possivel salvar a aprovacao da camera.')
+    }
+  }
+
+  async function confirmTouch(pointerType: string) {
+    if (pointerType !== 'touch') {
+      setTouchMessage('Foi detectado mouse ou trackpad. Use o dedo na tela touch.')
+      return
+    }
+    try {
+      const approval = await persistHardwareApproval('touch')
+      setTouchConfirmed(true)
+      setTouchMessage(approvedAt(approval.touchApprovedAt) || 'Toque real confirmado neste equipamento.')
+    } catch (error) {
+      setTouchMessage(error instanceof Error ? error.message : 'Nao foi possivel salvar a aprovacao do touch.')
+    }
+  }
+
+  async function confirmDisplay() {
+    try {
+      const approval = await persistHardwareApproval('display')
+      setDisplayState('passed')
+      setDisplayMessage(approvedAt(approval.displayApprovedAt) || 'Tela do cliente confirmada neste equipamento.')
+    } catch (error) {
+      setDisplayState('failed')
+      setDisplayMessage(error instanceof Error ? error.message : 'Nao foi possivel salvar a aprovacao da tela.')
+    }
   }
 
   async function openCustomerDisplayTest() {
@@ -191,7 +260,7 @@ export default function TowerSetupPage() {
   async function submitPin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!session || currentPin.length !== 6) return
-    const changing = Boolean(pinStatus?.mustChange || newPin || confirmPin)
+    const changing = Boolean(pinStatus?.mustChange || showPinChange)
 
     if (changing && (newPin.length !== 6 || newPin !== confirmPin || newPin === currentPin)) {
       setPinMessage('O novo PIN deve ter seis dígitos, ser diferente e coincidir com a confirmação.')
@@ -214,6 +283,7 @@ export default function TowerSetupPage() {
         setCurrentPin('')
         setNewPin('')
         setConfirmPin('')
+        setShowPinChange(false)
       } else if (typeof result.failedAttempts === 'number') {
         setPinStatus((current) => ({
           mustChange: current?.mustChange ?? true,
@@ -252,11 +322,17 @@ export default function TowerSetupPage() {
           <Link href="/torre/inicial" className="inline-flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-white"><ArrowLeft className="h-4 w-4" />Voltar</Link>
           <div className="mt-6 flex items-center gap-3 text-violet-200"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-violet-300/10"><KeyRound className="h-6 w-6" /></div><div><p className="text-xs font-black uppercase tracking-[0.14em]">Manutenção protegida</p><h1 className="mt-1 text-2xl font-black text-white">{pinStatus?.mustChange ? 'Troque o PIN provisório' : 'Informe o PIN administrativo'}</h1></div></div>
           <p className="mt-5 text-sm leading-6 text-slate-400">Câmera, telas, rede, calibração e demais controles locais ficam bloqueados até a confirmação do PIN. O acesso será fechado novamente ao sair do aplicativo.</p>
-          <form onSubmit={submitPin} className="mt-7 grid gap-4 md:grid-cols-3">
+          <form onSubmit={submitPin} className={`mt-7 grid gap-4 ${showPinChange ? 'md:grid-cols-3' : 'max-w-sm'}`}>
             <label className="text-xs font-black uppercase tracking-wide text-slate-400">PIN atual<input value={currentPin} onChange={(event) => setCurrentPin(event.target.value.replace(/\D/g, '').slice(0, 6))} type="password" inputMode="numeric" autoComplete="off" autoFocus className="mt-2 min-h-14 w-full rounded-xl border border-white/10 bg-slate-950 px-4 text-center text-xl tracking-[0.3em] text-white outline-none focus:border-violet-300/50" /></label>
-            <label className="text-xs font-black uppercase tracking-wide text-slate-400">Novo PIN {pinStatus?.mustChange ? '' : '(opcional)'}<input value={newPin} onChange={(event) => setNewPin(event.target.value.replace(/\D/g, '').slice(0, 6))} type="password" inputMode="numeric" autoComplete="new-password" className="mt-2 min-h-14 w-full rounded-xl border border-white/10 bg-slate-950 px-4 text-center text-xl tracking-[0.3em] text-white outline-none focus:border-violet-300/50" /></label>
-            <label className="text-xs font-black uppercase tracking-wide text-slate-400">Confirmar novo PIN<input value={confirmPin} onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, '').slice(0, 6))} type="password" inputMode="numeric" autoComplete="new-password" className="mt-2 min-h-14 w-full rounded-xl border border-white/10 bg-slate-950 px-4 text-center text-xl tracking-[0.3em] text-white outline-none focus:border-violet-300/50" /></label>
-            <div className="md:col-span-3"><button type="submit" disabled={pinBusy || currentPin.length !== 6} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-violet-300 px-5 text-sm font-black text-violet-950 disabled:opacity-40">{pinBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}{pinStatus?.mustChange || newPin ? 'Trocar PIN e entrar' : 'Entrar na manutenção'}</button>{pinMessage && <p className="mt-4 text-sm font-bold text-amber-200">{pinMessage}</p>}{pinStatus?.lockedUntil && <p className="mt-2 text-xs text-rose-200">Bloqueado até {new Date(pinStatus.lockedUntil).toLocaleString('pt-BR')}.</p>}</div>
+            {showPinChange && <>
+              <label className="text-xs font-black uppercase tracking-wide text-slate-400">Novo PIN<input value={newPin} onChange={(event) => setNewPin(event.target.value.replace(/\D/g, '').slice(0, 6))} type="password" inputMode="numeric" autoComplete="new-password" className="mt-2 min-h-14 w-full rounded-xl border border-white/10 bg-slate-950 px-4 text-center text-xl tracking-[0.3em] text-white outline-none focus:border-violet-300/50" /></label>
+              <label className="text-xs font-black uppercase tracking-wide text-slate-400">Confirmar novo PIN<input value={confirmPin} onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, '').slice(0, 6))} type="password" inputMode="numeric" autoComplete="new-password" className="mt-2 min-h-14 w-full rounded-xl border border-white/10 bg-slate-950 px-4 text-center text-xl tracking-[0.3em] text-white outline-none focus:border-violet-300/50" /></label>
+            </>}
+            <div className={showPinChange ? 'md:col-span-3' : 'flex flex-wrap gap-2'}>
+              <button type="submit" disabled={pinBusy || currentPin.length !== 6} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-violet-300 px-5 text-sm font-black text-violet-950 disabled:opacity-40">{pinBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}{showPinChange ? 'Trocar PIN e entrar' : 'Entrar na manutenção'}</button>
+              {!showPinChange && !pinStatus?.mustChange && <button type="button" onClick={() => { setShowPinChange(true); setPinMessage('') }} className="inline-flex min-h-12 items-center rounded-xl border border-violet-300/30 bg-violet-300/10 px-4 text-sm font-black text-violet-100 transition hover:bg-violet-300/20">Trocar PIN</button>}
+              {pinMessage && <p className="mt-4 basis-full text-sm font-bold text-amber-200">{pinMessage}</p>}{pinStatus?.lockedUntil && <p className="mt-2 basis-full text-xs text-rose-200">Bloqueado até {new Date(pinStatus.lockedUntil).toLocaleString('pt-BR')}.</p>}
+            </div>
           </form>
           <p className="mt-6 text-xs leading-5 text-slate-500">Depois de cinco tentativas incorretas, o acesso fica bloqueado por quinze minutos.</p>
         </section>
@@ -289,7 +365,7 @@ export default function TowerSetupPage() {
 
         <section className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <article className="rounded-2xl border border-white/10 bg-white/[0.045] p-5"><div className="flex items-center justify-between"><Wifi className="h-6 w-6 text-cyan-300" /><StatusBadge state={networkState} /></div><h2 className="mt-4 font-black">Rede</h2><p className="mt-2 text-sm text-slate-400">{diagnostics?.online ? 'Conexão detectada pelo Electron.' : 'Sem conexão detectada.'}</p></article>
-          <article className="rounded-2xl border border-white/10 bg-white/[0.045] p-5"><div className="flex items-center justify-between"><Smartphone className="h-6 w-6 text-violet-300" /><StatusBadge state={touchState} /></div><h2 className="mt-4 font-black">Tela touch</h2><p className="mt-2 text-sm text-slate-400">{touchPoints > 0 ? `${touchPoints} ponto(s) suportado(s). ${touchMessage}` : 'Nenhum touch anunciado neste computador; teste físico pendente.'}</p><button type="button" onPointerDown={(event) => { if (event.pointerType === 'touch') { setTouchConfirmed(true); setTouchMessage('Toque real confirmado neste equipamento.') } else { setTouchMessage('Foi detectado mouse ou trackpad. Use o dedo na tela touch.') } }} className="mt-4 min-h-11 w-full rounded-xl border border-violet-300/20 bg-violet-300/10 px-3 text-xs font-black text-violet-100">Toque aqui com o dedo</button></article>
+          <article className="rounded-2xl border border-white/10 bg-white/[0.045] p-5"><div className="flex items-center justify-between"><Smartphone className="h-6 w-6 text-violet-300" /><StatusBadge state={touchState} /></div><h2 className="mt-4 font-black">Tela touch</h2><p className="mt-2 text-sm text-slate-400">{touchPoints > 0 ? `${touchPoints} ponto(s) suportado(s). ${touchMessage}` : 'Nenhum touch anunciado neste computador; teste físico pendente.'}</p><button type="button" onPointerDown={(event) => { void confirmTouch(event.pointerType) }} className="mt-4 min-h-11 w-full rounded-xl border border-violet-300/20 bg-violet-300/10 px-3 text-xs font-black text-violet-100">Toque aqui com o dedo</button></article>
           <article className="rounded-2xl border border-white/10 bg-white/[0.045] p-5"><div className="flex items-center justify-between"><Monitor className="h-6 w-6 text-amber-300" /><StatusBadge state={displayState} /></div><h2 className="mt-4 font-black">Duas telas</h2><p className="mt-2 text-sm text-slate-400">{diagnostics ? `${diagnostics.displays.length} monitor(es) detectado(s).` : 'Aguardando leitura.'}</p></article>
           <article className="rounded-2xl border border-white/10 bg-white/[0.045] p-5"><div className="flex items-center justify-between"><ShieldCheck className="h-6 w-6 text-emerald-300" /><StatusBadge state="passed" /></div><h2 className="mt-4 font-black">Identidade local</h2><p className="mt-2 text-sm text-slate-400">Credencial protegida pelo sistema operacional.</p></article>
         </section>
@@ -299,7 +375,7 @@ export default function TowerSetupPage() {
             <div className="flex items-center justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-300">Câmera e captura</p><h2 className="mt-2 text-xl font-black">Teste de imagem</h2></div><StatusBadge state={cameraState} /></div>
             <div className="mt-5 aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black"><video ref={videoRef} muted playsInline className="h-full w-full object-cover" /></div>
             <p className="mt-4 min-h-10 text-sm leading-6 text-slate-400">{cameraMessage}</p>
-            <div className="mt-4 flex flex-wrap gap-3"><button type="button" onClick={() => void testCamera()} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-cyan-300 px-5 text-sm font-black text-slate-950"><Camera className="h-4 w-4" />Testar câmera</button><button type="button" disabled={!streamRef.current} onClick={confirmCameraImage} className="min-h-12 rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-4 text-sm font-black text-emerald-100 disabled:opacity-35">Confirmar imagem correta</button><button type="button" onClick={stopCamera} className="min-h-12 rounded-xl border border-white/10 px-4 text-sm font-black">Parar imagem</button></div>
+            <div className="mt-4 flex flex-wrap gap-3"><button type="button" onClick={() => void testCamera()} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-cyan-300 px-5 text-sm font-black text-slate-950"><Camera className="h-4 w-4" />Testar câmera</button><button type="button" disabled={!streamRef.current} onClick={() => void confirmCameraImage()} className="min-h-12 rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-4 text-sm font-black text-emerald-100 disabled:opacity-35">Confirmar imagem correta</button><button type="button" onClick={stopCamera} className="min-h-12 rounded-xl border border-white/10 px-4 text-sm font-black">Parar imagem</button></div>
           </article>
 
           <article className="rounded-3xl border border-white/10 bg-slate-900/75 p-6">
@@ -308,7 +384,7 @@ export default function TowerSetupPage() {
               {secondDisplay ? <><p className="font-black text-white">{secondDisplay.label}</p><p className="mt-2">{secondDisplay.bounds.width} × {secondDisplay.bounds.height} · escala {secondDisplay.scaleFactor} · {secondDisplay.orientation === 'portrait' ? 'retrato' : 'paisagem'}</p></> : <p>Nenhuma segunda tela conectada neste computador.</p>}
             </div>
             <p className="mt-4 min-h-10 text-sm leading-6 text-slate-400">{displayMessage}</p>
-            <div className="mt-4 flex flex-wrap gap-3"><button type="button" onClick={() => void openCustomerDisplayTest()} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-amber-300 px-5 text-sm font-black text-slate-950"><Monitor className="h-4 w-4" />Abrir teste na segunda tela</button><button type="button" disabled={displayState !== 'running'} onClick={() => { setDisplayState('passed'); setDisplayMessage('Orientação, cores e enquadramento confirmados visualmente na tela do cliente.') }} className="min-h-12 rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-4 text-sm font-black text-emerald-100 disabled:opacity-35">Confirmar tela correta</button><button type="button" onClick={() => void window.towerDesktop?.closeCustomerDisplayTest()} className="min-h-12 rounded-xl border border-white/10 px-4 text-sm font-black">Fechar teste</button></div>
+            <div className="mt-4 flex flex-wrap gap-3"><button type="button" onClick={() => void openCustomerDisplayTest()} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-amber-300 px-5 text-sm font-black text-slate-950"><Monitor className="h-4 w-4" />Abrir teste na segunda tela</button><button type="button" disabled={displayState !== 'running'} onClick={() => void confirmDisplay()} className="min-h-12 rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-4 text-sm font-black text-emerald-100 disabled:opacity-35">Confirmar tela correta</button><button type="button" onClick={() => void window.towerDesktop?.closeCustomerDisplayTest()} className="min-h-12 rounded-xl border border-white/10 px-4 text-sm font-black">Fechar teste</button></div>
           </article>
         </section>
 

@@ -29,6 +29,7 @@ export default async function TowerPage(
       remoteConfigUnavailable={!remoteConfig}
       initialExperienceMenu={searchParams?.menu === 'experiencias' || opensInformationMenu}
       initialInformationMenu={opensInformationMenu}
+      initialSessionId={searchParams?.session}
     />
   )
 }

@@ -3,6 +3,7 @@
 const path = require('path')
 const os = require('os')
 const fs = require('fs/promises')
+const { createHash } = require('crypto')
 const { app, BrowserWindow, ipcMain, net, safeStorage, screen, shell } = require('electron')
 const { TowerLocalDatabase } = require('./tower-local-database.cjs')
 
@@ -80,7 +81,28 @@ function getLocalScope(session) {
     tenantId: session.tenantId,
     storeId: session.storeId,
     deviceId: session.deviceId,
+    assetId: session.assetId,
   }
+}
+
+function getHardwareSnapshot() {
+  return {
+    schemaVersion: 1,
+    platform: process.platform,
+    hostname: os.hostname(),
+    displays: screen.getAllDisplays().map(serializeDisplay).map((display) => ({
+      id: display.id,
+      primary: display.primary,
+      internal: display.internal,
+      rotation: display.rotation,
+      scaleFactor: display.scaleFactor,
+      bounds: display.bounds,
+    })),
+  }
+}
+
+function getHardwareFingerprint(snapshot = getHardwareSnapshot()) {
+  return createHash('sha256').update(JSON.stringify(snapshot), 'utf8').digest('hex')
 }
 
 function protectLocalPayload(payload) {
@@ -242,6 +264,19 @@ function isAllowedNavigation(navigationUrl, rendererUrl) {
   } catch {
     return false
   }
+}
+
+function returnToTowerLanding(mainWindow, rendererUrl) {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  const landingUrl = new URL('/torre/inicial', rendererUrl).toString()
+  if (mainWindow.webContents.getURL() === landingUrl) return
+  setTimeout(() => {
+    if (!mainWindow.isDestroyed()) {
+      void mainWindow.loadURL(landingUrl).catch((error) => {
+        console.error('[Torre Electron] Falha ao retornar para a tela segura:', error)
+      })
+    }
+  }, 0)
 }
 
 function isTrustedIpcSender(event, allowedPaths) {
@@ -487,12 +522,20 @@ async function createMainWindow() {
   mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
     if (!isAllowedNavigation(navigationUrl, rendererUrl)) {
       event.preventDefault()
+      returnToTowerLanding(mainWindow, rendererUrl)
     }
   })
 
   mainWindow.webContents.on('will-redirect', (event, navigationUrl) => {
     if (!isAllowedNavigation(navigationUrl, rendererUrl)) {
       event.preventDefault()
+      returnToTowerLanding(mainWindow, rendererUrl)
+    }
+  })
+
+  mainWindow.webContents.on('did-navigate-in-page', (_event, navigationUrl, isMainFrame) => {
+    if (isMainFrame && !isAllowedNavigation(navigationUrl, rendererUrl)) {
+      returnToTowerLanding(mainWindow, rendererUrl)
     }
   })
 
@@ -542,7 +585,7 @@ async function createMainWindow() {
       scheduleTowerWebSessionRefresh(mainWindow.webContents.session)
       if (!process.env.TOWER_ELECTRON_URL?.trim()
           || rendererUrl.pathname === '/torre/inicial') {
-        initialUrl = new URL('/torre/configuracao', rendererUrl)
+        initialUrl = new URL(`/torre/${restoredSession.storeId}`, rendererUrl)
       }
     } catch (error) {
       console.error('[Torre Electron] Falha ao preparar sessao web:', error)
@@ -995,11 +1038,41 @@ function registerDesktopHandlers() {
   })
 
   secureHandle('tower:get-hardware-diagnostics', configurationOnly, () => ({
-    platform: process.platform,
-    hostname: os.hostname(),
+    ...getHardwareSnapshot(),
     online: net.isOnline(),
     displays: screen.getAllDisplays().map(serializeDisplay),
   }))
+
+  secureHandle('tower:get-hardware-approval-status', configurationOnly, async () => {
+    const session = await restoreDeviceSession()
+    if (!session || !towerLocalDatabase) return { success: false, message: 'Persistencia local da Torre indisponivel.' }
+    try {
+      const snapshot = getHardwareSnapshot()
+      return {
+        success: true,
+        data: towerLocalDatabase.getHardwareValidation(getLocalScope(session), getHardwareFingerprint(snapshot)),
+      }
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : 'Nao foi possivel consultar as aprovacoes.' }
+    }
+  })
+
+  secureHandle('tower:approve-hardware-test', configurationOnly, async (request) => {
+    const session = await restoreDeviceSession()
+    if (!session || !towerLocalDatabase) return { success: false, message: 'Persistencia local da Torre indisponivel.' }
+    try {
+      const snapshot = getHardwareSnapshot()
+      const data = towerLocalDatabase.saveHardwareApproval(getLocalScope(session), {
+        test: request?.test,
+        hardwareSnapshot: snapshot,
+        hardwareFingerprint: getHardwareFingerprint(snapshot),
+      })
+      requestTowerOutboxSync()
+      return { success: true, data, message: 'Aprovacao salva neste equipamento.' }
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : 'Nao foi possivel salvar a aprovacao.' }
+    }
+  })
 
   secureHandle('tower:create-local-session', experiencePages, async (request) => {
     const session = await restoreDeviceSession()

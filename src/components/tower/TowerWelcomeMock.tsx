@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useCallback, useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import type { TowerSession } from '@/lib/actions/tower-session.actions'
+import type { TowerSessionSummary } from '@/lib/actions/tower-session.actions'
 import { getOperationalTowerSessions, getOrCreateOperationalTowerSession } from '@/lib/tower/local-operations'
 import {
   ArrowLeft,
@@ -36,11 +36,19 @@ interface TowerWelcomeMockProps {
   remoteConfigUnavailable?: boolean
   initialExperienceMenu?: boolean
   initialInformationMenu?: boolean
+  initialSessionId?: string
 }
 
-const deviceStatus = [
-  { label: 'Tela cliente', detail: 'Conectada', icon: Monitor },
-  { label: 'Câmera', detail: 'Pronta', icon: Video },
+type DeviceStatus = {
+  label: string
+  detail: string
+  icon: typeof Monitor
+  color: string
+}
+
+const initialDeviceStatus: DeviceStatus[] = [
+  { label: 'Tela cliente', detail: 'Verificando', icon: Monitor, color: 'text-slate-400' },
+  { label: 'Câmera', detail: 'Verificando', icon: Video, color: 'text-slate-400' },
 ]
 
 const experiences = [
@@ -139,16 +147,20 @@ const informationItems = [
   },
 ]
 
-export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUnavailable = false, initialExperienceMenu = false, initialInformationMenu = false }: TowerWelcomeMockProps) {
+export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUnavailable = false, initialExperienceMenu = false, initialInformationMenu = false, initialSessionId }: TowerWelcomeMockProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
-  const [selectedAction, setSelectedAction] = useState<MockAction>(initialExperienceMenu ? 'new' : null)
+  const [selectedAction, setSelectedAction] = useState<MockAction>(initialSessionId ? 'resume' : initialExperienceMenu ? 'new' : null)
   const [selectedExperience, setSelectedExperience] = useState<ExperienceKey>(null)
   const [selectedInformation, setSelectedInformation] = useState<InformationKey>(null)
   const [showingInformation, setShowingInformation] = useState(initialInformationMenu)
-  const [activeSessions, setActiveSessions] = useState<TowerSession[] | null>(null)
+  const [activeSessions, setActiveSessions] = useState<TowerSessionSummary[] | null>(null)
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(initialSessionId ?? null)
   const [resumeMessage, setResumeMessage] = useState<string | null>(null)
-  const choosingExperience = selectedAction === 'new'
+  const [deviceStatus, setDeviceStatus] = useState<DeviceStatus[]>(initialDeviceStatus)
+  const [hardwareLoading, setHardwareLoading] = useState(false)
+  const choosingExperience = selectedAction !== null
+  const isResuming = selectedAction === 'resume'
   const enabledExperiences = experiences.filter((experience) => {
     if (experience.key === 'style') return remoteConfig.experiences.visagismo
     if (experience.key === 'field') return remoteConfig.experiences.campoVisual
@@ -163,6 +175,69 @@ export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUn
     if (item.key === 'thickness') return remoteConfig.information.espessuraLentes
     return remoteConfig.information.comparativoCampos
   })
+
+  const refreshDeviceStatus = useCallback(async () => {
+    const desktop = window.towerDesktop
+    if (!desktop) {
+      setDeviceStatus([
+        { label: 'Tela cliente', detail: 'Indisponível no navegador', icon: Monitor, color: 'text-slate-500' },
+        { label: 'Câmera', detail: 'Indisponível no navegador', icon: Video, color: 'text-slate-500' },
+      ])
+      return
+    }
+
+    setHardwareLoading(true)
+    try {
+      const [diagnostics, approvals] = await Promise.all([
+        desktop.getHardwareDiagnostics(),
+        desktop.getHardwareApprovalStatus(),
+      ])
+      const customerDisplayDetected = diagnostics.displays.some((display) => !display.primary)
+      const approval = approvals.success ? approvals.data : null
+      setDeviceStatus([
+        {
+          label: 'Tela cliente',
+          detail: approval?.displayApprovedAt
+            ? 'Aprovada'
+            : customerDisplayDetected ? 'Pendente' : 'Ausente',
+          icon: Monitor,
+          color: approval?.displayApprovedAt
+            ? 'text-emerald-300'
+            : customerDisplayDetected ? 'text-amber-300' : 'text-rose-300',
+        },
+        {
+          label: 'Câmera',
+          detail: approval?.cameraApprovedAt ? 'Aprovada' : 'Pendente',
+          icon: Video,
+          color: approval?.cameraApprovedAt ? 'text-emerald-300' : 'text-amber-300',
+        },
+      ])
+    } catch {
+      setDeviceStatus([
+        { label: 'Tela cliente', detail: 'Não foi possível verificar', icon: Monitor, color: 'text-rose-300' },
+        { label: 'Câmera', detail: 'Não foi possível verificar', icon: Video, color: 'text-rose-300' },
+      ])
+    } finally {
+      setHardwareLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!initialSessionId) return
+    startTransition(async () => {
+      const result = await getOperationalTowerSessions(storeId)
+      if (!result.success) {
+        setResumeMessage(result.message)
+        setActiveSessions([])
+        return
+      }
+      setActiveSessions(result.data ?? [])
+    })
+  }, [initialSessionId, storeId])
+
+  useEffect(() => {
+    void refreshDeviceStatus()
+  }, [refreshDeviceStatus])
 
   function startExperience(experience: Exclude<ExperienceKey, null>) {
     if (experience === 'information') {
@@ -193,7 +268,11 @@ export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUn
 
     startTransition(async () => {
       // "Novo atendimento" nunca deve reaproveitar a sessao presente na URL.
-      const result = await getOrCreateOperationalTowerSession({ storeId, experience: sessionExperience })
+      const result = await getOrCreateOperationalTowerSession({
+        storeId,
+        experience: sessionExperience,
+        sessionId: isResuming ? selectedSessionId ?? undefined : undefined,
+      })
       if (!result.success || !result.data) {
         setSelectedExperience(experience)
         return
@@ -221,7 +300,11 @@ export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUn
     }
     if (item === 'thickness') {
       startTransition(async () => {
-        const result = await getOrCreateOperationalTowerSession({ storeId, experience: 'thickness' })
+        const result = await getOrCreateOperationalTowerSession({
+          storeId,
+          experience: 'thickness',
+          sessionId: isResuming ? selectedSessionId ?? undefined : undefined,
+        })
         if (!result.success || !result.data) return
         router.push(`/torre/${storeId}/informacoes/espessura-lentes?session=${result.data.id}`)
       })
@@ -238,6 +321,7 @@ export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUn
     setSelectedAction('resume')
     setResumeMessage(null)
     setActiveSessions(null)
+    setSelectedSessionId(null)
     startTransition(async () => {
       const result = await getOperationalTowerSessions(storeId)
       if (!result.success) {
@@ -247,25 +331,6 @@ export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUn
       }
       setActiveSessions(result.data ?? [])
     })
-  }
-
-  function resumeSession(session: TowerSession) {
-    const destination = session.current_experience === 'look'
-      ? `/torre/${storeId}/seu-jeito-de-olhar?session=${session.id}`
-      : session.current_experience === 'visagismo'
-        ? `/torre/${storeId}/visagismo?session=${session.id}`
-        : session.current_experience === 'campo_visual'
-          ? `/torre/${storeId}/campo-visual?session=${session.id}`
-        : session.current_experience === 'medidas'
-          ? `/torre/${storeId}/medidas?session=${session.id}`
-          : session.current_experience === 'thickness'
-            ? `/torre/${storeId}/informacoes/espessura-lentes?session=${session.id}`
-          : null
-    if (destination) {
-      router.push(destination)
-      return
-    }
-    setResumeMessage('Esta etapa ainda nao possui uma tela de retomada.')
   }
 
   return (
@@ -305,6 +370,7 @@ export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUn
                 setSelectedExperience(null)
                 setSelectedInformation(null)
                 setShowingInformation(false)
+                setSelectedSessionId(null)
               }}
               onBackToExperiences={() => {
                 setSelectedExperience(null)
@@ -316,18 +382,12 @@ export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUn
               onSelectInformation={openInformation}
               enabledExperiences={enabledExperiences}
               enabledInformationItems={enabledInformationItems}
-            />
-          ) : selectedAction === 'resume' ? (
-            <ResumeChooser
-              sessions={activeSessions}
-              message={resumeMessage}
-              isLoading={isPending && activeSessions === null}
-              onBack={() => {
-                setSelectedAction(null)
-                setActiveSessions(null)
-                setResumeMessage(null)
-              }}
-              onResume={resumeSession}
+              resumeMode={isResuming}
+              resumeSessions={isResuming ? activeSessions : null}
+              selectedSessionId={selectedSessionId}
+              resumeMessage={isResuming ? resumeMessage : null}
+              isLoadingSessions={isResuming && isPending && activeSessions === null}
+              onSelectSession={setSelectedSessionId}
             />
           ) : (
             <>
@@ -386,18 +446,18 @@ export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUn
 
         <footer className="flex shrink-0 flex-col gap-3 border-t border-slate-800 pt-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-2">
-            {deviceStatus.map(({ label, detail, icon: Icon }) => (
+            {deviceStatus.map(({ label, detail, icon: Icon, color }) => (
               <div key={label} className="flex items-center gap-2 rounded-lg bg-slate-900/70 px-2.5 py-1.5 text-xs text-slate-300 ring-1 ring-slate-800">
-                <Icon size={15} className="text-emerald-400" />
+                <Icon size={15} className={color} />
                 <span>{label}</span>
                 <span className="h-1 w-1 rounded-full bg-slate-600" />
-                <span className="font-medium text-emerald-300">{detail}</span>
+                <span className={`font-medium ${color}`}>{detail}</span>
               </div>
             ))}
           </div>
 
           <div className="flex items-center gap-3 text-xs text-slate-400">
-            <button type="button" onClick={() => router.refresh()} disabled={isPending} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 font-semibold text-slate-300 transition hover:border-slate-500 hover:text-white disabled:opacity-50"><RefreshCw size={14} className={isPending ? 'animate-spin' : ''} />Atualizar</button>
+            <button type="button" onClick={() => { void refreshDeviceStatus(); startTransition(() => router.refresh()) }} disabled={isPending || hardwareLoading} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 font-semibold text-slate-300 transition hover:border-slate-500 hover:text-white disabled:opacity-50"><RefreshCw size={14} className={isPending || hardwareLoading ? 'animate-spin' : ''} />Atualizar</button>
             <span>Loja {storeId}</span>
             <span className="font-medium text-slate-500">Modo Torre</span>
           </div>
@@ -405,77 +465,6 @@ export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUn
       </div>
     </main>
   )
-}
-
-function ResumeChooser({
-  sessions,
-  message,
-  isLoading,
-  onBack,
-  onResume,
-}: {
-  sessions: TowerSession[] | null
-  message: string | null
-  isLoading: boolean
-  onBack: () => void
-  onResume: (session: TowerSession) => void
-}) {
-  return (
-    <div className="w-full max-w-5xl">
-      <button
-        type="button"
-        onClick={onBack}
-        className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-300 transition-colors hover:bg-white/10 hover:text-white active:scale-[0.98]"
-        title="Voltar"
-        aria-label="Voltar"
-      >
-        <ArrowLeft size={16} />
-      </button>
-      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-sky-300">Continuar atendimento</p>
-      <h2 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Qual atendimento deseja retomar?</h2>
-      <p className="mt-2 max-w-2xl text-base leading-relaxed text-slate-300">Escolha uma sessão que ainda está aberta nesta loja.</p>
-
-      {isLoading && <MockNotice icon={Clock3} title="Carregando" text="Buscando sessões abertas nesta Torre." />}
-      {!isLoading && message && <MockNotice icon={CircleHelp} title="Não foi possível retomar" text={message} />}
-      {!isLoading && !message && sessions?.length === 0 && (
-        <MockNotice icon={Clock3} title="Nenhum atendimento em andamento" text="Não há sessões abertas nesta loja." />
-      )}
-      {!isLoading && sessions && sessions.length > 0 && (
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          {sessions.map((session) => {
-            const experience = getResumableExperience(session.current_experience)
-            return (
-              <button
-                key={session.id}
-                type="button"
-                onClick={() => onResume(session)}
-                disabled={!experience}
-                className="group min-h-[132px] rounded-2xl border border-slate-700 bg-slate-900/80 p-4 text-left transition hover:-translate-y-0.5 hover:border-sky-300/45 hover:bg-slate-800 active:translate-y-0 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-400/10 text-sky-200 ring-1 ring-sky-300/20">
-                    <RotateCcw size={21} />
-                  </span>
-                  <ArrowRight className="text-slate-500 transition group-hover:translate-x-1 group-hover:text-sky-200" size={21} />
-                </div>
-                <h3 className="mt-3 text-lg font-bold text-white">{experience?.label ?? 'Atendimento em preparação'}</h3>
-                <p className="mt-1 text-sm text-slate-400">{experience ? `Aberto ${formatSessionStartedAt(session.started_at)}` : 'Esta etapa ainda não possui uma tela de retomada.'}</p>
-              </button>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function getResumableExperience(experience: TowerSession['current_experience']) {
-  if (experience === 'look') return { label: 'Seu Jeito de Olhar' }
-  if (experience === 'visagismo') return { label: 'Visagismo' }
-  if (experience === 'campo_visual') return { label: 'Campo Visual' }
-  if (experience === 'medidas') return { label: 'Medidas' }
-  if (experience === 'thickness') return { label: 'Espessura das lentes' }
-  return null
 }
 
 function formatSessionStartedAt(value: string) {
@@ -495,6 +484,12 @@ function ExperienceChooser({
   onSelectInformation,
   enabledExperiences,
   enabledInformationItems,
+  resumeMode,
+  resumeSessions,
+  selectedSessionId,
+  resumeMessage,
+  isLoadingSessions,
+  onSelectSession,
 }: {
   selectedExperience: ExperienceKey
   selectedInformation: InformationKey
@@ -506,6 +501,12 @@ function ExperienceChooser({
   onSelectInformation: (item: Exclude<InformationKey, null>) => void
   enabledExperiences: typeof experiences
   enabledInformationItems: typeof informationItems
+  resumeMode: boolean
+  resumeSessions: TowerSessionSummary[] | null
+  selectedSessionId: string | null
+  resumeMessage: string | null
+  isLoadingSessions: boolean
+  onSelectSession: (sessionId: string) => void
 }) {
   const selected = enabledExperiences.find((experience) => experience.key === selectedExperience)
   const selectedInfo = enabledInformationItems.find((item) => item.key === selectedInformation)
@@ -563,9 +564,33 @@ function ExperienceChooser({
       >
         <ArrowLeft size={16} />
       </button>
-      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-sky-300">Novo atendimento</p>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-sky-300">{resumeMode ? 'Continuar atendimento' : 'Novo atendimento'}</p>
       <h2 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Por onde vamos começar?</h2>
       <p className="mt-2 max-w-2xl text-base leading-relaxed text-slate-300">Escolha a experiência que faz sentido para este atendimento.</p>
+
+      {resumeMode && <div className="mt-5 max-w-2xl rounded-2xl border border-slate-700 bg-slate-900/80 p-4">
+        <label htmlFor="tower-session" className="block text-sm font-semibold text-white">Atendimento aberto</label>
+        <p className="mt-1 text-xs text-slate-400">Selecione o atendimento para carregar ou complementar uma etapa já iniciada.</p>
+        {isLoadingSessions ? (
+          <div className="mt-3 flex items-center gap-2 text-sm text-sky-200"><Clock3 size={16} className="animate-pulse" /> Buscando atendimentos abertos…</div>
+        ) : resumeMessage ? (
+          <p className="mt-3 text-sm text-amber-200">{resumeMessage}</p>
+        ) : resumeSessions?.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-400">Não há atendimentos abertos nesta loja.</p>
+        ) : (
+          <select
+            id="tower-session"
+            value={selectedSessionId ?? ''}
+            onChange={(event) => onSelectSession(event.target.value)}
+            className="mt-3 min-h-12 w-full rounded-xl border border-slate-600 bg-slate-950 px-3 text-sm font-medium text-white outline-none transition focus:border-sky-300"
+          >
+            <option value="">Selecione um atendimento</option>
+            {(resumeSessions ?? []).map((session) => (
+              <option key={session.id} value={session.id}>{formatSessionOption(session)}</option>
+            ))}
+          </select>
+        )}
+      </div>}
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         {enabledExperiences.map(({ key, title, description, note, icon: Icon, color, background }) => (
@@ -573,7 +598,7 @@ function ExperienceChooser({
             key={key}
             type="button"
             onClick={() => onSelect(key)}
-            disabled={isStarting}
+            disabled={isStarting || (resumeMode && !selectedSessionId)}
             className={`group min-h-[145px] rounded-2xl border border-slate-700 bg-gradient-to-br ${background} p-4 text-left transition hover:-translate-y-1 hover:border-slate-500 hover:bg-slate-800/70 active:translate-y-0 active:scale-[0.99] disabled:cursor-wait disabled:opacity-60`}
           >
             <div className="flex items-start justify-between gap-4">
@@ -593,6 +618,11 @@ function ExperienceChooser({
       {selected && <MockNotice icon={Play} title={`${selected.title} selecionado`} text="Mock visual: a próxima etapa será definida depois." />}
     </div>
   )
+}
+
+function formatSessionOption(session: TowerSessionSummary) {
+  const customerName = session.customer?.full_name?.trim()
+  return `${formatSessionStartedAt(session.started_at)}${customerName ? ` — ${customerName}` : ''}`
 }
 
 function MockNotice({

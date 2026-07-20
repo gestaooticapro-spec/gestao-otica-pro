@@ -212,6 +212,34 @@ declare global {
           orientation: 'portrait' | 'landscape'
         }>
       }>
+      getHardwareApprovalStatus: () => Promise<{
+        success: boolean
+        message?: string
+        data?: {
+          id: string
+          hardwareFingerprint: string
+          hardwareSnapshot: object
+          cameraApprovedAt: string | null
+          touchApprovedAt: string | null
+          displayApprovedAt: string | null
+          updatedAt: string
+          syncStatus: 'pending' | 'synced' | 'failed'
+        } | null
+      }>
+      approveHardwareTest: (request: {
+        test: 'camera' | 'touch' | 'display'
+      }) => Promise<{
+        success: boolean
+        message?: string
+        data?: {
+          id: string
+          cameraApprovedAt: string | null
+          touchApprovedAt: string | null
+          displayApprovedAt: string | null
+          updatedAt: string
+          syncStatus: 'pending' | 'synced' | 'failed'
+        }
+      }>
       openCustomerDisplayTest: () => Promise<{
         success: boolean
         message?: string

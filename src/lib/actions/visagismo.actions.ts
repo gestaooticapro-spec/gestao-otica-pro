@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { createAsyncClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { authorizeTowerStoreAccess } from '@/lib/server/tower-device-web-session'
 
@@ -138,7 +138,7 @@ type VisagismoTemplateRow = {
 export async function getGlobalVisagismoFrameTemplates(
   towerStoreId?: number,
 ): Promise<GlobalVisagismoFrameTemplate[]> {
-  const browserClient = createClient()
+  const browserClient = await createAsyncClient()
   let supabase = browserClient as unknown as ReturnType<typeof createAdminClient>
 
   if (towerStoreId) {
@@ -223,7 +223,7 @@ export async function saveGlobalVisagismoFrameTemplate(
   payload: VisagismoTemplatePayload,
 ): Promise<VisagismoTemplateActionResult> {
   try {
-    const supabase = createClient()
+    const supabase = await createAsyncClient()
     const {
       data: { user },
     } = await supabase.auth.getUser()
@@ -307,7 +307,7 @@ export async function deleteGlobalVisagismoFrameTemplate(
   templateId: string,
 ): Promise<VisagismoTemplateActionResult> {
   try {
-    const supabase = createClient()
+    const supabase = await createAsyncClient()
     const {
       data: { user },
     } = await supabase.auth.getUser()

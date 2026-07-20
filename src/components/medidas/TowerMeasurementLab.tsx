@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react'
-import { AlertTriangle, ArrowLeft, Bot, Camera, CheckCircle2, ImageUp, Loader2, Maximize2, MonitorUp, Play, ScanLine, Square, Wand2, ZoomIn, ZoomOut } from 'lucide-react'
+import { ArrowLeft, Bot, Camera, CheckCircle2, ImageUp, Loader2, Maximize2, MonitorUp, Play, ScanLine, Square, Wand2, ZoomIn, ZoomOut } from 'lucide-react'
 import { locateTowerMeasurementPointsWithAiAction } from '@/lib/actions/tower-measurement-ai.actions'
 import { saveOperationalTowerMeasurement } from '@/lib/tower/local-operations'
 import { closeTowerClientScreen, openTowerClientScreen } from '@/lib/tower/client-screen'
@@ -81,14 +81,12 @@ type MeasurementAttention = {
   code: 'low_fitting_height' | 'high_vertex_distance' | 'high_pantoscopic_angle' | 'dnp_difference'
   title: string
   message: string
-  clientMessage: string
 }
 
 type MeasurementPresentation = {
   lensMode: 'multifocal' | 'bifocal'
   front: { capture: CapturePayload; handles: Handles; measurements: FrontMeasurements }
   profile: { capture: CapturePayload; handles: SideHandles; axisAngle: number; measurements: ProfileMeasurements }
-  attentions: MeasurementAttention[]
   presentedAt: string
 }
 
@@ -323,7 +321,6 @@ export default function TowerMeasurementLab({
       lensMode: lensType === 'bifocal' ? 'bifocal' : 'multifocal',
       front: { capture, handles, measurements },
       profile: { capture: rightProfileCapture, handles: rightProfileHandles, axisAngle: rightProfileAxisAngle, measurements: sideMeasurements },
-      attentions: measurementAttentions,
       presentedAt: new Date().toISOString(),
     }
 
@@ -337,7 +334,7 @@ export default function TowerMeasurementLab({
           referenceMm,
           frontMeasurements: result.front.measurements,
           profileMeasurements: result.profile.measurements,
-          attentionCodes: result.attentions.map((attention) => attention.code),
+          attentionCodes: measurementAttentions.map((attention) => attention.code),
           algorithmVersion: 'tower-measurement-v1',
         })
         if (!saved.success) {
@@ -1493,22 +1490,6 @@ function ClientMeasurementResult({ result }: { result: MeasurementPresentation }
               <ResultMetric label="Dist. vértice" value={result.profile.measurements.vertexDistance} />
               <ResultMetric label="Pantoscópico" value={result.profile.measurements.pantoscopicAngle} suffix="°" />
             </div>
-            <div className={`mt-5 rounded-2xl border p-4 ${result.attentions.length ? 'border-amber-300/25 bg-amber-400/10' : 'border-emerald-300/20 bg-emerald-400/10'}`}>
-              <div className="flex items-center gap-2">
-                {result.attentions.length ? <AlertTriangle className="h-5 w-5 text-amber-200" /> : <CheckCircle2 className="h-5 w-5 text-emerald-200" />}
-                <p className={`text-sm font-black ${result.attentions.length ? 'text-amber-100' : 'text-emerald-100'}`}>{result.attentions.length ? 'Pontos para considerar' : 'Medidas conferidas'}</p>
-              </div>
-              {result.attentions.length ? (
-                <div className="mt-3 grid gap-3">
-                  {result.attentions.map((attention) => (
-                    <div key={attention.code}>
-                      <p className="text-sm font-black text-amber-50">{attention.title}</p>
-                      <p className="mt-1 text-xs leading-5 text-amber-50/75">{attention.clientMessage}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : <p className="mt-2 text-xs leading-5 text-emerald-50/75">A armação está em uma condição de montagem sem pontos de atenção nas faixas configuradas.</p>}
-            </div>
           </div>
         </section>
       </div>
@@ -1544,7 +1525,6 @@ function buildMeasurementAttentions(front: FrontMeasurements, profile: ProfileMe
       code: 'low_fitting_height',
       title: 'Altura de montagem baixa',
       message: 'A altura útil está baixa. Leve esta condição em consideração ao escolher o desenho e o corredor da lente.',
-      clientMessage: 'A altura de montagem é baixa. Leve esta medida em consideração ao escolher a lente.',
     })
   }
   if (profile.vertexDistance > MEASUREMENT_ATTENTION_LIMITS.highVertexDistanceMm) {
@@ -1552,7 +1532,6 @@ function buildMeasurementAttentions(front: FrontMeasurements, profile: ProfileMe
       code: 'high_vertex_distance',
       title: 'Distância de vértice elevada',
       message: 'A lente está mais afastada dos olhos. Considere ajustar a armação e levar essa posição em conta na escolha da lente.',
-      clientMessage: 'A armação deixa a lente mais afastada dos olhos. Um ajuste pode favorecer o conforto de uso.',
     })
   }
   if (profile.pantoscopicAngle > MEASUREMENT_ATTENTION_LIMITS.highPantoscopicAngleDegrees) {
@@ -1560,7 +1539,6 @@ function buildMeasurementAttentions(front: FrontMeasurements, profile: ProfileMe
       code: 'high_pantoscopic_angle',
       title: 'Inclinação pantoscópica acentuada',
       message: 'A inclinação atual merece atenção no ajuste da armação e na escolha posterior da lente.',
-      clientMessage: 'A inclinação da armação está acentuada. Vale considerar um ajuste antes da montagem.',
     })
   }
   if (dnpDifference > MEASUREMENT_ATTENTION_LIMITS.dnpDifferenceReviewMm) {
@@ -1568,7 +1546,6 @@ function buildMeasurementAttentions(front: FrontMeasurements, profile: ProfileMe
       code: 'dnp_difference',
       title: 'Conferência de centralização recomendada',
       message: 'A diferença entre as DNPs ficou acima da faixa de conferência. Revise os pinos e, se necessário, refaça a foto frontal antes de apresentar.',
-      clientMessage: 'Uma medida de centralização merece conferência antes de finalizar a montagem.',
     })
   }
   return attentions

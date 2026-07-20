@@ -6,7 +6,7 @@ import { authorizeTowerStoreAccess } from '@/lib/server/tower-device-web-session
 export default async function TowerVisagismoPage(
   props: {
     params: Promise<{ storeId: string }>
-    searchParams?: Promise<{ client?: string }>
+    searchParams?: Promise<{ client?: string; session?: string }>
   }
 ) {
   const searchParams = await props.searchParams;
@@ -24,7 +24,7 @@ export default async function TowerVisagismoPage(
       storeId={storeId}
       templates={templates}
       clientMode={searchParams?.client === '1'}
-      backHref={`/torre/${storeId}?menu=experiencias`}
+      backHref={`/torre/${storeId}?menu=experiencias${searchParams?.session ? `&session=${searchParams.session}` : ''}`}
       towerMode
     />
   )

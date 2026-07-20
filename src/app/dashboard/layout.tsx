@@ -1,6 +1,6 @@
 // Caminho: src/app/dashboard/layout.tsx
 import React from 'react';
-import { createClient } from '@/lib/supabase/server';
+import { createAsyncClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { getProfileByAdmin } from '@/lib/supabase/admin';
 import Header from '@/components/header';
@@ -13,7 +13,7 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = createClient();
+  const supabase = await createAsyncClient();
 
   // 1. Checagem de autenticação
   const { data: { user } } = await supabase.auth.getUser();

@@ -28,6 +28,7 @@ function hasColumn(database, tableName, columnName) {
 function assertScope(scope) {
   if (!scope || !UUID_PATTERN.test(scope.tenantId || '')
       || !UUID_PATTERN.test(scope.deviceId || '')
+      || !UUID_PATTERN.test(scope.assetId || '')
       || !Number.isSafeInteger(scope.storeId) || scope.storeId <= 0) {
     throw new Error('Contexto local da Torre invalido.')
   }
@@ -152,6 +153,26 @@ class TowerLocalDatabase {
 
       CREATE INDEX IF NOT EXISTS idx_tower_outbox_pending
         ON tower_outbox(status, next_attempt_at, created_at);
+
+      CREATE TABLE IF NOT EXISTS tower_local_hardware_validations (
+        id TEXT PRIMARY KEY CHECK(length(id) = 36),
+        tenant_id TEXT NOT NULL CHECK(length(tenant_id) = 36),
+        store_id INTEGER NOT NULL CHECK(store_id > 0),
+        source_device_id TEXT NOT NULL CHECK(length(source_device_id) = 36),
+        tower_asset_id TEXT NOT NULL CHECK(length(tower_asset_id) = 36),
+        hardware_fingerprint TEXT NOT NULL CHECK(length(hardware_fingerprint) = 64),
+        hardware_snapshot TEXT NOT NULL,
+        camera_approved_at TEXT,
+        touch_approved_at TEXT,
+        display_approved_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        sync_status TEXT NOT NULL DEFAULT 'pending' CHECK(sync_status IN ('pending', 'synced', 'failed')),
+        UNIQUE(tower_asset_id, hardware_fingerprint)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_tower_local_hardware_validations_asset
+        ON tower_local_hardware_validations(tower_asset_id, updated_at DESC);
     `)
     if (!hasColumn(this.database, 'tower_local_sessions', 'local_customer_id')) {
       this.database.exec('ALTER TABLE tower_local_sessions ADD COLUMN local_customer_id TEXT')
@@ -161,6 +182,7 @@ class TowerLocalDatabase {
     }
     this.database.prepare('INSERT OR IGNORE INTO tower_local_schema(version, applied_at) VALUES (?, ?)').run(1, isoNow())
     this.database.prepare('INSERT OR IGNORE INTO tower_local_schema(version, applied_at) VALUES (?, ?)').run(2, isoNow())
+    this.database.prepare('INSERT OR IGNORE INTO tower_local_schema(version, applied_at) VALUES (?, ?)').run(3, isoNow())
   }
 
   close() {
@@ -469,6 +491,75 @@ class TowerLocalDatabase {
     })
   }
 
+  getHardwareValidation(scope, hardwareFingerprint) {
+    assertScope(scope)
+    if (!/^[0-9a-f]{64}$/i.test(hardwareFingerprint || '')) {
+      throw new Error('Identidade de hardware invalida.')
+    }
+    const row = this.database.prepare(`
+      SELECT * FROM tower_local_hardware_validations
+      WHERE tenant_id = ? AND store_id = ? AND tower_asset_id = ? AND hardware_fingerprint = ?
+    `).get(scope.tenantId, scope.storeId, scope.assetId, hardwareFingerprint)
+    if (!row) return null
+    return {
+      id: row.id,
+      hardwareFingerprint: row.hardware_fingerprint,
+      hardwareSnapshot: parseJson(row.hardware_snapshot, {}),
+      cameraApprovedAt: row.camera_approved_at,
+      touchApprovedAt: row.touch_approved_at,
+      displayApprovedAt: row.display_approved_at,
+      updatedAt: row.updated_at,
+      syncStatus: row.sync_status,
+    }
+  }
+
+  saveHardwareApproval(scope, input) {
+    assertScope(scope)
+    const test = input?.test
+    if (!['camera', 'touch', 'display'].includes(test)
+        || !/^[0-9a-f]{64}$/i.test(input?.hardwareFingerprint || '')
+        || !input?.hardwareSnapshot || typeof input.hardwareSnapshot !== 'object') {
+      throw new Error('Aprovacao de hardware invalida.')
+    }
+    return this.transaction(() => {
+      const now = isoNow()
+      const snapshot = JSON.stringify(input.hardwareSnapshot)
+      if (snapshot.length > 12000) throw new Error('Diagnostico de hardware excede o limite permitido.')
+      let row = this.database.prepare(`
+        SELECT * FROM tower_local_hardware_validations
+        WHERE tower_asset_id = ? AND hardware_fingerprint = ?
+      `).get(scope.assetId, input.hardwareFingerprint)
+      if (!row) {
+        const id = randomUUID()
+        this.database.prepare(`
+          INSERT INTO tower_local_hardware_validations(
+            id, tenant_id, store_id, source_device_id, tower_asset_id, hardware_fingerprint,
+            hardware_snapshot, created_at, updated_at, sync_status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+        `).run(id, scope.tenantId, scope.storeId, scope.deviceId, scope.assetId,
+          input.hardwareFingerprint, snapshot, now, now)
+        row = this.database.prepare('SELECT * FROM tower_local_hardware_validations WHERE id = ?').get(id)
+      }
+      const approvalColumn = `${test}_approved_at`
+      this.database.prepare(`
+        UPDATE tower_local_hardware_validations
+        SET ${approvalColumn} = ?, hardware_snapshot = ?, updated_at = ?, sync_status = 'pending'
+        WHERE id = ?
+      `).run(now, snapshot, now, row.id)
+      row = this.database.prepare('SELECT * FROM tower_local_hardware_validations WHERE id = ?').get(row.id)
+      this.enqueue('tower_hardware_validation.upsert', row.id, {
+        id: row.id,
+        hardwareFingerprint: row.hardware_fingerprint,
+        hardwareSnapshot: parseJson(row.hardware_snapshot, {}),
+        cameraApprovedAt: row.camera_approved_at,
+        touchApprovedAt: row.touch_approved_at,
+        displayApprovedAt: row.display_approved_at,
+        updatedAt: row.updated_at,
+      }, now)
+      return this.getHardwareValidation(scope, row.hardware_fingerprint)
+    })
+  }
+
   getPendingEvents(limit = 20) {
     const safeLimit = Math.max(1, Math.min(100, Number(limit) || 20))
     const now = isoNow()
@@ -539,12 +630,17 @@ class TowerLocalDatabase {
         UPDATE tower_local_customer_drafts SET sync_status = 'synced'
         WHERE local_id = (SELECT entity_id FROM tower_outbox WHERE event_id = ?)
       `)
+      const updateHardware = this.database.prepare(`
+        UPDATE tower_local_hardware_validations SET sync_status = 'synced'
+        WHERE id = (SELECT entity_id FROM tower_outbox WHERE event_id = ?)
+      `)
       for (const eventId of eventIds) {
         if (!UUID_PATTERN.test(eventId || '')) continue
         updateOutbox.run(now, now, eventId)
         updateSession.run(eventId, eventId)
         updateMeasurement.run(eventId)
         updateCustomer.run(eventId)
+        updateHardware.run(eventId)
       }
     })
   }
@@ -563,12 +659,17 @@ class TowerLocalDatabase {
       UPDATE tower_local_customer_drafts SET sync_status = 'failed'
       WHERE local_id = (SELECT entity_id FROM tower_outbox WHERE event_id = ?)
     `)
+    const updateHardware = this.database.prepare(`
+      UPDATE tower_local_hardware_validations SET sync_status = 'failed'
+      WHERE id = (SELECT entity_id FROM tower_outbox WHERE event_id = ?)
+    `)
     for (const eventId of eventIds) {
       if (!UUID_PATTERN.test(eventId || '')) continue
       const current = this.database.prepare('SELECT attempt_count FROM tower_outbox WHERE event_id = ?').get(eventId)
       const delaySeconds = Math.min(300, 2 ** Math.min(8, Number(current?.attempt_count || 0) + 1))
       statement.run(new Date(now.getTime() + delaySeconds * 1000).toISOString(), safeMessage, now.toISOString(), eventId)
       updateCustomer.run(eventId)
+      updateHardware.run(eventId)
     }
   }
 

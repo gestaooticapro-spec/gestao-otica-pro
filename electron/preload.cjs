@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('towerDesktop', {
   getLocalSyncStatus: () => ipcRenderer.invoke('tower:get-local-sync-status'),
   syncLocalNow: () => ipcRenderer.invoke('tower:sync-local-now'),
   getHardwareDiagnostics: () => ipcRenderer.invoke('tower:get-hardware-diagnostics'),
+  getHardwareApprovalStatus: () => ipcRenderer.invoke('tower:get-hardware-approval-status'),
+  approveHardwareTest: (request) => ipcRenderer.invoke('tower:approve-hardware-test', request),
   openCustomerDisplayTest: () => ipcRenderer.invoke('tower:open-customer-display-test'),
   closeCustomerDisplayTest: () => ipcRenderer.invoke('tower:close-customer-display-test'),
   openCustomerExperience: (url) => ipcRenderer.invoke('tower:open-customer-experience', url),
