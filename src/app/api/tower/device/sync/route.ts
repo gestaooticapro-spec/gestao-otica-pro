@@ -134,10 +134,6 @@ export async function POST(request: NextRequest) {
   const acknowledgedEventIds: string[] = []
   const eventResults: Array<{ eventId: string; entityId: string; remoteCustomerId: number }> = []
   const admin = createAdminClient()
-  const syncRpc = admin.rpc as unknown as (
-    functionName: 'apply_tower_device_sync_event_v3',
-    parameters: Record<string, unknown>,
-  ) => Promise<{ data: number | null; error: { message: string } | null }>
   for (const event of parsed.data.events) {
     const calculatedHash = createHash('sha256')
       .update(JSON.stringify(event.payload), 'utf8')
@@ -154,7 +150,7 @@ export async function POST(request: NextRequest) {
 
     // A RPC deriva tenant e loja do dispositivo e aplica evento + recibo na
     // mesma transacao. Assim, repetir o lote depois de uma queda e seguro.
-    const { data: remoteCustomerId, error } = await syncRpc('apply_tower_device_sync_event_v3', {
+    const { data: remoteCustomerId, error } = await (admin as any).rpc('apply_tower_device_sync_event_v3', {
       p_device_id: authentication.device.id,
       p_event_id: event.eventId,
       p_event_type: event.eventType,

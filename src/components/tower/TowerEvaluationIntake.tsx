@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ChevronDown, Loader2, Minus, Plus, Search, Sparkles, User } from 'lucide-react'
-import { searchCustomersByName } from '@/lib/actions/vendas.actions'
 import { upsertOpticalEvaluation } from '@/lib/actions/evaluation.actions'
 import { generateLensRecommendationsAction } from '@/lib/actions/lens-recommendation.actions'
 import {
@@ -11,7 +10,7 @@ import {
   type LensSalesAssist,
   type PatientAuditContext,
 } from '@/lib/actions/gemini-narratives.actions'
-import { linkEvaluationToTowerSession, type TowerSessionContext } from '@/lib/actions/tower-session.actions'
+import { linkEvaluationToTowerSession, searchTowerCustomers, type TowerSessionContext } from '@/lib/actions/tower-session.actions'
 import {
   createOperationalTowerCustomer,
   linkOperationalTowerCustomer,
@@ -368,7 +367,7 @@ export default function TowerEvaluationIntake({
   async function searchCustomers() {
     if (!query.trim()) return
     setBusy(true)
-    const response = await searchCustomersByName(query, storeId)
+    const response = await searchTowerCustomers({ storeId, query })
     setResults((response.success ? response.data : []) as CustomerOption[])
     setMessage(response.success ? '' : response.message || 'Não foi possível buscar clientes.')
     setBusy(false)

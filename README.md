@@ -48,6 +48,30 @@ O app local abre em `http://localhost:3000`.
 - Relatorios operacionais e gerenciais
 - WhatsApp operacional com automacoes conservadoras
 
+## Torre e Electron
+
+A Torre possui uma experiência operacional própria, que deve funcionar com a
+credencial do dispositivo pareado e sem exigir login do sistema completo.
+Rotas, buscas de clientes, avaliação e indicação de lentes precisam respeitar
+o `store_id` da Torre e não podem redirecionar o touch para `/login`.
+
+O fluxo atual inclui campo visual com MediaPipe, persistência local-first de
+sessões e clientes provisórios, sincronização posterior e avaliação de lentes.
+Falhas de sincronização não devem apagar dados locais nem duplicar clientes;
+eventos da outbox precisam permanecer idempotentes.
+
+Na configuração remota da Torre ainda precisamos incluir explicitamente:
+
+- importação e ativação do catálogo global permitido para a loja;
+- configuração comercial das indicações de lentes, incluindo famílias,
+  tratamentos, prioridades, regras de apresentação e disponibilidade;
+- versionamento, ativação, desativação e sincronização desses dois blocos por
+  `store_id`.
+
+O Electron deve baixar e aplicar essa configuração somente depois de validar a
+credencial do dispositivo e a loja pareada. A tela de avaliação não deve
+depender de uma sessão humana do dashboard para carregar o catálogo autorizado.
+
 ## WhatsApp
 
 O projeto tem duas partes separadas:
@@ -114,12 +138,45 @@ Antes de considerar um deploy completo de WhatsApp, normalmente precisamos valid
 O `README.md` foi intencionalmente mantido sem IP, usuario, segredo, cron real ou passo a passo sensivel de infraestrutura. Esse tipo de detalhe deve ficar em runbook local ignorado pelo Git.
 
 ## Diario de desenvolvimento
+## Memória do projeto
 
-Ao final de cada alteracao relevante, atualize o arquivo `..\brain\gestao-otica-pro.md` usando o conhecimento disponivel no contexto da alteracao. O diario deve ter uma unica entrada por dia: alteracoes feitas no mesmo dia devem atualizar ou sobrescrever a secao daquele dia; quando mudar a data, crie uma nova secao e preserve integralmente o historico dos dias anteriores. O diario deve registrar:
+Este projeto possui uma memória externa localizada no repositório `brain`.
 
-- o que foi feito;
-- problemas encontrados ou pendencias;
-- proximos passos;
-- ideias futuras.
+Ao concluir uma alteração relevante ou encerrar uma sessão de trabalho, atualize o arquivo correspondente deste projeto localizado em:
 
-O arquivo pertence ao repositorio `brain`, nao a este projeto. Depois de atualizar o diario, faca commit e push para o GitHub no repositorio `brain`.
+`..\brain\gestao-otica-pro.md`
+
+Essa memória será utilizada por outras IAs para recuperar rapidamente o contexto do projeto e decidir os próximos passos. Portanto, registre apenas informações úteis para continuidade do desenvolvimento.
+
+Utilize apenas fatos confirmados durante a implementação. Nunca invente resultados, testes, decisões ou pendências.
+
+O arquivo deve conter uma única entrada para cada dia. Caso já exista uma entrada para a data atual, atualize essa mesma seção em vez de criar outra. Preserve integralmente todo o histórico dos dias anteriores.
+
+Cada entrada deve conter obrigatoriamente:
+
+- O que foi feito.
+- Problemas encontrados ou pendências.
+- Próximos passos.
+- Ideias futuras.
+
+Ao registrar o trabalho:
+
+- Consolide alterações relacionadas em vez de criar vários itens pequenos.
+- Registre apenas alterações relevantes para o entendimento do projeto.
+- Diferencie claramente o que foi concluído, o que ficou parcialmente implementado, o que ainda precisa ser testado e o que é apenas uma ideia futura.
+- Organize os próximos passos em ordem de prioridade.
+- Sempre que possível, indique se um próximo passo possui consumo de IA baixo, médio ou alto.
+- Grave o arquivo sempre em UTF-8, preservando corretamente todos os caracteres em português.
+- Nunca registre senhas, tokens, chaves de API, certificados, dados de clientes, informações fiscais confidenciais ou qualquer informação sensível.
+
+Após atualizar a memória:
+
+1. Faça commit apenas das alterações realizadas no repositório `brain`.
+2. Utilize uma mensagem de commit curta e objetiva, por exemplo:
+
+   `docs: atualizar memória da gestão ótica`
+
+3. Faça push para o GitHub.
+4. Caso o commit ou o push falhem, informe claramente o erro e não considere a memória sincronizada.
+
+O objetivo desta memória é permitir que qualquer IA continue o desenvolvimento exatamente do ponto onde a sessão anterior terminou, sem necessidade de reconstruir o contexto novamente.

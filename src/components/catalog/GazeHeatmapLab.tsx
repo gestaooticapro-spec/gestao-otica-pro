@@ -1493,90 +1493,48 @@ function drawTrackingOverlay(
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   if (!landmarks || !metrics.faceDetected) return
 
-  const leftEyeOuter = getLandmark(landmarks, LANDMARKS.leftEyeOuter)
-  const leftEyeInner = getLandmark(landmarks, LANDMARKS.leftEyeInner)
-  const leftEyeTop = getLandmark(landmarks, LANDMARKS.leftEyeTop)
-  const leftEyeBottom = getLandmark(landmarks, LANDMARKS.leftEyeBottom)
-  const rightEyeOuter = getLandmark(landmarks, LANDMARKS.rightEyeOuter)
-  const rightEyeInner = getLandmark(landmarks, LANDMARKS.rightEyeInner)
-  const rightEyeTop = getLandmark(landmarks, LANDMARKS.rightEyeTop)
-  const rightEyeBottom = getLandmark(landmarks, LANDMARKS.rightEyeBottom)
-  const leftFace = getLandmark(landmarks, LANDMARKS.leftFace)
-  const rightFace = getLandmark(landmarks, LANDMARKS.rightFace)
-  const elapsed = introStartedAt ? now - introStartedAt : 0
-  const lineProgress = clamp(elapsed / 520, 0, 1)
-  const boxProgress = clamp((elapsed - 360) / 620, 0, 1)
-  const targetsProgress = clamp((elapsed - 880) / 360, 0, 1)
-  const width = canvas.width
-  const height = canvas.height
-  const eyeLineY = ((leftEyeTop.y + leftEyeBottom.y + rightEyeTop.y + rightEyeBottom.y) / 4) * height
-  const templeLeft = leftFace.x * width
-  const templeRight = rightFace.x * width
-
+  const minX = Math.min(...landmarks.map((point) => point.x))
+  const maxX = Math.max(...landmarks.map((point) => point.x))
+  const minY = Math.min(...landmarks.map((point) => point.y))
+  const maxY = Math.max(...landmarks.map((point) => point.y))
+  const preview = { x: canvas.width - 28 - 250, y: 28, width: 250, height: 180, padding: 18 }
+  const faceWidth = Math.max(maxX - minX, 0.001)
+  const faceHeight = Math.max(maxY - minY, 0.001)
+  const scale = Math.min(
+    (preview.width - preview.padding * 2) / faceWidth,
+    (preview.height - preview.padding * 2) / faceHeight,
+  )
+  const horizontalScale = scale * 1.12
+  const renderedWidth = faceWidth * horizontalScale
+  const renderedHeight = faceHeight * scale
+  const offsetX = preview.x + (preview.width - renderedWidth) / 2
+  const offsetY = preview.y + (preview.height - renderedHeight) / 2
   ctx.save()
-  ctx.lineCap = 'round'
-  ctx.shadowColor = 'rgba(103, 232, 249, 0.72)'
-  ctx.shadowBlur = 12
-  ctx.strokeStyle = 'rgba(165, 243, 252, 0.92)'
-  ctx.lineWidth = 2.5
+  ctx.fillStyle = 'rgba(2, 6, 23, 0.78)'
   ctx.beginPath()
-  ctx.moveTo(templeLeft, eyeLineY)
-  ctx.lineTo(templeLeft + (templeRight - templeLeft) * lineProgress, eyeLineY)
+  ctx.roundRect(preview.x, preview.y, preview.width, preview.height, 18)
+  ctx.fill()
+  ctx.strokeStyle = 'rgba(165, 243, 252, 0.24)'
+  ctx.lineWidth = 1
   ctx.stroke()
-
-  const left = Math.min(leftEyeOuter.x, leftEyeInner.x, rightEyeOuter.x, rightEyeInner.x) * width - 28
-  const right = Math.max(leftEyeOuter.x, leftEyeInner.x, rightEyeOuter.x, rightEyeInner.x) * width + 28
-  const top = Math.min(leftEyeTop.y, rightEyeTop.y) * height - 30
-  const bottom = Math.max(leftEyeBottom.y, rightEyeBottom.y) * height + 30
-  const perimeter = 2 * ((right - left) + (bottom - top))
-  ctx.strokeStyle = 'rgba(103, 232, 249, 0.9)'
-  ctx.lineWidth = 2
-  ctx.setLineDash([perimeter * boxProgress, perimeter])
-  ctx.beginPath()
-  ctx.roundRect(left, top, right - left, bottom - top, 18)
-  ctx.stroke()
-  ctx.setLineDash([])
-
-  if (targetsProgress > 0) {
-    const mergeProgress = mergeStartedAt ? clamp((now - mergeStartedAt) / EYE_TARGETS_MERGE_MS, 0, 1) : 0
-    const centers = [
-      {
-        x: ((leftEyeOuter.x + leftEyeInner.x) / 2) * width,
-        y: ((leftEyeTop.y + leftEyeBottom.y) / 2) * height,
-      },
-      {
-        x: ((rightEyeOuter.x + rightEyeInner.x) / 2) * width,
-        y: ((rightEyeTop.y + rightEyeBottom.y) / 2) * height,
-      },
-    ]
-    const center = { x: width / 2, y: height / 2 }
-
-    for (const eye of centers) {
-      const x = eye.x + (center.x - eye.x) * mergeProgress
-      const y = eye.y + (center.y - eye.y) * mergeProgress
-      const radius = (17 - mergeProgress * 4) * targetsProgress
-      ctx.globalAlpha = mergeProgress === 1 ? 0.5 : 1
-      ctx.strokeStyle = 'rgba(207, 250, 254, 0.98)'
-      ctx.lineWidth = 2
-      ctx.beginPath()
-      ctx.arc(x, y, radius, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.strokeStyle = 'rgba(103, 232, 249, 0.8)'
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.arc(x, y, radius * 0.56, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.moveTo(x - radius * 1.4, y)
-      ctx.lineTo(x + radius * 1.4, y)
-      ctx.moveTo(x, y - radius * 1.4)
-      ctx.lineTo(x, y + radius * 1.4)
-      ctx.stroke()
-      ctx.fillStyle = 'rgba(103, 232, 249, 1)'
-      ctx.beginPath()
-      ctx.arc(x, y, Math.max(3, radius * 0.18), 0, Math.PI * 2)
-      ctx.fill()
-    }
+  ctx.shadowColor = 'rgba(103, 232, 249, 0.35)'
+  ctx.shadowBlur = 4
+  for (let index = 0; index < landmarks.length; index += 1) {
+    const point = landmarks[index]
+    const isIris = index === LANDMARKS.leftIris || index === LANDMARKS.rightIris
+    const radius = isIris ? 3.2 : 1.35
+    ctx.fillStyle = isIris
+      ? 'rgba(224, 251, 255, 0.98)'
+      : 'rgba(103, 232, 249, 0.78)'
+    ctx.beginPath()
+    ctx.arc(
+      offsetX + (point.x - minX) * horizontalScale,
+      offsetY + (point.y - minY) * scale,
+      radius,
+      0,
+      Math.PI * 2,
+    )
+    ctx.fill()
   }
   ctx.restore()
 }
@@ -2223,7 +2181,11 @@ export default function GazeHeatmapLab({
         .then(() => {
           if (phaseRef.current === 'idle') startTrackingLoop()
         })
-        .catch((error) => console.warn('Não foi possível iniciar a prévia do avatar.', error))
+        .catch((error) => {
+          const detail = error instanceof Error ? error.message : String(error)
+          console.warn('Não foi possível iniciar a prévia do avatar:', detail)
+          setStatus(`Não foi possível carregar o modelo facial: ${detail}`)
+        })
     }, 450)
 
     return () => window.clearTimeout(previewTimer)
@@ -3146,11 +3108,25 @@ export default function GazeHeatmapLab({
       }
       lastTickRef.current = now
 
-      const result = landmarker.detectForVideo(video, now)
+      let result: ReturnType<FaceLandmarkerInstance['detectForVideo']>
+      try {
+        result = landmarker.detectForVideo(video, now)
+      } catch (error) {
+        console.error('Falha ao processar um quadro da câmera.', error)
+        setStatus('A câmera abriu, mas o rastreamento facial falhou. Reinicie a leitura.')
+        animationRef.current = requestAnimationFrame(loop)
+        return
+      }
       const landmarks = result.faceLandmarks?.[0] as NormalizedPoint[] | undefined
       const metrics = landmarks ? computeFaceMetrics(landmarks) : { faceDetected: false, eyeX: 0, eyeY: 0, headX: 0, headY: 0 }
-      if (clientMode && phaseRef.current === 'idle' && metrics.faceDetected && !eyeScanStartedAtRef.current) {
+      if (
+        clientMode &&
+        phaseRef.current === 'idle' &&
+        metrics.faceDetected &&
+        !eyeScanStartedAtRef.current
+      ) {
         eyeScanStartedAtRef.current = now
+        setStatus('Rosto detectado. Aguardando o início da leitura.')
       }
       drawTrackingOverlay(
         overlay,
@@ -3304,7 +3280,11 @@ export default function GazeHeatmapLab({
     'absolute top-1/2 z-30 inline-flex -translate-y-1/2 items-center gap-2 rounded-2xl border border-white/15 bg-slate-950/74 px-4 py-3 text-sm font-black text-slate-100 shadow-[0_18px_42px_rgba(2,6,23,0.34)] backdrop-blur transition hover:bg-slate-900/88 disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-slate-950/42 disabled:text-slate-500'
   const clientResultMode = clientMode && (clientResultVisible || phase === 'finished')
   const clientVideoVisible = clientMode && !isFocusMode && !clientResultMode
-  const showClientTarget = !clientMode || (isFocusMode && !clientResultMode)
+  const showClientTarget = !clientMode || (
+    isFocusMode &&
+    !clientResultMode &&
+    !(phase === 'calibrating' && prepSecondsLeft > 0)
+  )
   const clientBackgroundOffsetX = (0.5 - target.x) * 64
   const clientBackgroundOffsetY = (0.5 - target.y) * 64
 
@@ -3754,7 +3734,7 @@ export default function GazeHeatmapLab({
               {phaseIsBusy ? (
             <button
               type="button"
-              onClick={() => sendCommand('cancelRun')}
+              onClick={() => (clientMode ? cancelRun() : sendCommand('cancelRun'))}
               className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-amber-300/25 bg-amber-400/10 px-4 text-sm font-black text-amber-100 transition hover:bg-amber-400/20"
             >
               <StopCircle className="h-4 w-4" />

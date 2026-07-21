@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { authorizeTowerStoreAccess } from '@/lib/server/tower-device-web-session'
 
 export type StoreCatalogVersionSummary = {
   id: string
@@ -203,8 +204,10 @@ function chunkValues<T>(values: T[], size = GLOBAL_CATALOG_CHUNK_SIZE): T[][] {
   return chunks
 }
 
-export async function getStoreGlobalCatalogOverview(storeId: number): Promise<StoreCatalogOverview> {
-  const { supabaseAdmin } = await getViewContext(storeId)
+async function getStoreGlobalCatalogOverviewWithAdmin(
+  storeId: number,
+  supabaseAdmin: ReturnType<typeof createAdminClient>,
+): Promise<StoreCatalogOverview> {
 
   const [
     { data: versions, error: versionsError },
@@ -328,6 +331,18 @@ export async function getStoreGlobalCatalogOverview(storeId: number): Promise<St
     activeActivations,
     versions: versionSummaries,
   }
+}
+
+export async function getStoreGlobalCatalogOverview(storeId: number): Promise<StoreCatalogOverview> {
+  const { supabaseAdmin } = await getViewContext(storeId)
+  return getStoreGlobalCatalogOverviewWithAdmin(storeId, supabaseAdmin)
+}
+
+/** Leitura operacional do catálogo para uma Torre já pareada com a loja. */
+export async function getTowerStoreGlobalCatalogOverview(storeId: number): Promise<StoreCatalogOverview> {
+  const access = await authorizeTowerStoreAccess(storeId)
+  if (!access.ok) throw new Error(access.message)
+  return getStoreGlobalCatalogOverviewWithAdmin(storeId, createAdminClient())
 }
 
 export async function activateGlobalCatalogForStore(

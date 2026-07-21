@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createAsyncClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizeLensName } from '@/lib/utils/lens'
 import type { PostgrestError } from '@supabase/supabase-js'
@@ -80,7 +80,7 @@ const LENS_GEOMETRY_COLUMNS = [
 const LENS_GEOMETRY_COLUMNS_WITH_CORRIDOR = LENS_GEOMETRY_COLUMNS + ', corridor_opening'
 
 export async function getAllLensGeometries(towerStoreId?: number): Promise<LensGeometry[]> {
-  let sb = createClient() as unknown as ReturnType<typeof createAdminClient>
+  let sb = await createAsyncClient() as unknown as ReturnType<typeof createAdminClient>
   if (towerStoreId) {
     const access = await authorizeTowerStoreAccess(towerStoreId)
     if (!access.ok) return []
@@ -177,7 +177,7 @@ export async function getCatalogFamilyNames(): Promise<string[]> {
 }
 
 export async function deleteLensGeometry(id: string): Promise<void> {
-  const sb = createClient()
+  const sb = await createAsyncClient()
   const { error } = await sb
     .from('global_lens_geometry')
     .delete()
@@ -189,7 +189,7 @@ export async function deleteLensGeometry(id: string): Promise<void> {
 export async function upsertLensGeometry(
   geometry: Omit<LensGeometry, 'id'>
 ): Promise<LensGeometry> {
-  const sb = createClient()
+  const sb = await createAsyncClient()
   const corridorOpening = geometry.corridor_opening ?? geometry.intermediate_width ?? 50
   const { data, error } = await sb
     .from('global_lens_geometry')

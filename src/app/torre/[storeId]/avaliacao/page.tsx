@@ -1,8 +1,8 @@
 import { notFound, redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
-import { getStoreGlobalCatalogOverview } from '@/lib/actions/global-catalog.actions'
+import { getTowerStoreGlobalCatalogOverview } from '@/lib/actions/global-catalog.actions'
 import { getTowerSessionContext } from '@/lib/actions/tower-session.actions'
 import TowerEvaluationIntake from '@/components/tower/TowerEvaluationIntake'
+import { authorizeTowerStoreAccess } from '@/lib/server/tower-device-web-session'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -17,9 +17,8 @@ export default async function TowerEvaluationPage(
   const storeId = Number.parseInt(params.storeId, 10)
   if (Number.isNaN(storeId)) return notFound()
 
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return redirect('/login')
+  const access = await authorizeTowerStoreAccess(storeId)
+  if (!access.ok) return redirect(`/torre/${storeId}?menu=experiencias`)
 
   const towerSessionId = searchParams?.session
   const heatmapSessionId = searchParams?.heatmap
@@ -27,7 +26,7 @@ export default async function TowerEvaluationPage(
     return redirect(`/torre/${storeId}?menu=experiencias`)
   }
 
-  const catalog = await getStoreGlobalCatalogOverview(storeId)
+  const catalog = await getTowerStoreGlobalCatalogOverview(storeId)
   const activeCatalogVersionId = catalog.currentActivation?.id ?? null
   const context = await getTowerSessionContext({ storeId, sessionId: towerSessionId })
 

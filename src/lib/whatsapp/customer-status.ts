@@ -2854,7 +2854,9 @@ export async function resolveCustomerStatus(
 
   if (genericPixReply) {
     await consumeForceAiOverrideIfNeeded()
-    await setCurrentConversationState('ai_session', AI_SESSION_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
+    await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
+      reason: 'pix_sent_handoff',
+      handoff_internal_note: 'Chave Pix enviada automaticamente; conversa transferida para atendimento humano.',
       ...buildDecisionMetadata({
         intent: 'payment_info',
         action: 'payment_pix_info',

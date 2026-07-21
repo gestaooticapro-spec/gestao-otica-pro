@@ -224,6 +224,17 @@ export default function ActionMenuDashboard({
     }
   }, [isWhatsAppAutomationEnabled, isWhatsAppChannelConfigured, isWhatsAppConnected, router, storeId])
 
+  useEffect(() => {
+    if (!isWhatsAppAutomationEnabled || !isWhatsAppChannelConfigured || !isWhatsAppConnected) return
+
+    // O radar precisa acompanhar novos handoffs sem depender da abertura da central operacional.
+    const interval = window.setInterval(() => {
+      router.refresh()
+    }, 30_000)
+
+    return () => window.clearInterval(interval)
+  }, [isWhatsAppAutomationEnabled, isWhatsAppChannelConfigured, isWhatsAppConnected, router])
+
   // LINHA 1: ATENDIMENTO (Frente de Loja)
   const topRow = [
     {

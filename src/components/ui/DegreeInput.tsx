@@ -51,6 +51,9 @@ export function DegreeInput({ name, value, onChange, placeholder, className }: D
             name={name}
             value={value}
             onChange={handleChange}
+            onFocus={() => {
+                if (name?.toLowerCase().includes('cilindrico') && !value.trim()) onChange('-')
+            }}
             onKeyDown={handleKeyDown}
             className={`${className} ${textColor}`}
             placeholder={placeholder || "0,00"}

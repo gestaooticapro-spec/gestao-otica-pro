@@ -1200,6 +1200,39 @@ integradas podem ser preservadas localmente durante uma queda de comunicacao.
 
 ---
 
+## Atualização - fluxo de avaliação, sincronização e configuração remota
+
+O fluxo validado da Torre deve permanecer independente do login do sistema
+completo. Depois do campo visual, o botão de continuar leva o funcionário para
+`/torre/[storeId]/avaliacao` usando a sessão pareada do dispositivo. Essa rota
+não pode exigir usuário Supabase humano nem redirecionar a tela touch para
+`/login`; quando a autorização da Torre falhar, deve retornar ao menu da Torre.
+
+A busca e o cadastro rápido de clientes pertencem ao fluxo operacional da
+Torre. O cadastro pode nascer no SQLite como cliente provisório, entrar na
+outbox e ser reconciliado com `customers.id` depois. A função SQL de
+sincronização deve manter a associação por `device_id` e UUID local, tratar
+reenvios como idempotentes e evitar ambiguidades entre nomes de variáveis
+PL/pgSQL e colunas SQL. A correção está registrada em
+`20260720110000_fix_tower_sync_customer_mapping_ambiguity.sql`.
+
+O catálogo usado pela tela de avaliação deve ser carregado por uma leitura
+operacional autorizada pela Torre, sem depender da autenticação comercial do
+dashboard. A configuração remota precisa evoluir para ser a fonte de verdade
+por loja para dois blocos relacionados:
+
+1. importação, disponibilidade, versionamento e ativação do catálogo global;
+2. configuração comercial das indicações de lentes, incluindo famílias,
+   tratamentos, prioridades, regras de recomendação e apresentação ao cliente.
+
+Esses blocos devem ser baixados pelo Electron somente após validar o
+dispositivo e o `store_id` pareado, aplicados localmente com versão e estado
+explícitos e sincronizados novamente quando houver conectividade. A Torre não
+deve depender do dashboard completo para indicar lentes, embora o dashboard
+possa continuar sendo a interface administrativa dessas configurações.
+
+---
+
 ## Regra de retomada
 
 Ao iniciar um novo contexto, informar:

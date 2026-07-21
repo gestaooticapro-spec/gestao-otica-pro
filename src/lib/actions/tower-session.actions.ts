@@ -35,6 +35,11 @@ const LinkEvaluationSchema = SessionCommandSchema.extend({
   evaluationId: z.coerce.number().int().positive(),
 })
 
+const SearchTowerCustomersSchema = z.object({
+  storeId: StoreIdSchema,
+  query: z.string().trim().min(1).max(160),
+})
+
 const PrescriptionSnapshotSchema = z.object({
   od: z.object({ sphere: z.number().min(-30).max(30), cylinder: z.number().min(-15).max(15), axis: z.number().min(0).max(180) }),
   oe: z.object({ sphere: z.number().min(-30).max(30), cylinder: z.number().min(-15).max(15), axis: z.number().min(0).max(180) }),
@@ -53,6 +58,12 @@ export type TowerSessionSummary = TowerSession & {
 export type TowerPrescriptionSnapshot = z.infer<typeof PrescriptionSnapshotSchema>
 export type TowerSessionContext = { session: TowerSession; customer: { id: number; full_name: string; fone_movel: string | null } | null }
 type ActionResult<T = undefined> = { success: boolean; message: string; data?: T }
+
+export type TowerCustomerSearchResult = {
+  id: number
+  full_name: string
+  fone_movel: string | null
+}
 
 async function findSessionForStore(sessionId: string, storeId: number) {
   const sessions = createAdminClient().from('tower_sessions') as any
@@ -79,6 +90,31 @@ async function syncHeatmapSessionAssociation(
     .eq('store_id', storeId)
 
   return error as { message: string } | null
+}
+
+/** Busca operacional de clientes: não depende da sessão comercial do sistema completo. */
+export async function searchTowerCustomers(
+  input: z.input<typeof SearchTowerCustomersSchema>,
+): Promise<ActionResult<TowerCustomerSearchResult[]>> {
+  const parsed = SearchTowerCustomersSchema.safeParse(input)
+  if (!parsed.success) return { success: false, message: 'Informe um nome ou CPF para buscar.' }
+
+  const auth = await authorizeTowerStoreAccess(parsed.data.storeId)
+  if (!auth.ok) return { success: false, message: auth.message }
+
+  const term = parsed.data.query.replace(/[%_,]/g, '').trim()
+  if (!term) return { success: false, message: 'Informe um nome ou CPF para buscar.' }
+
+  const customers = createAdminClient().from('customers') as any
+  const { data, error } = await customers
+    .select('id,full_name,fone_movel,cpf')
+    .eq('store_id', parsed.data.storeId)
+    .or(`full_name.ilike.%${term}%,cpf.ilike.%${term}%`)
+    .order('full_name')
+    .limit(30)
+
+  if (error) return { success: false, message: error.message }
+  return { success: true, message: 'Clientes encontrados.', data: (data ?? []) as TowerCustomerSearchResult[] }
 }
 
 export async function createTowerSession(
