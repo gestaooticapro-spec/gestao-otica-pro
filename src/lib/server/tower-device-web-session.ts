@@ -90,13 +90,12 @@ function verifyTowerDeviceWebSession(token: string): TowerDeviceWebSession | nul
   }
 }
 
-async function authorizeDeviceCookie(storeId: number): Promise<TowerStoreAccess | TowerStoreAccessFailure> {
-  const cookieStore = await cookies()
-  const token = cookieStore.get(TOWER_DEVICE_WEB_SESSION_COOKIE)?.value
-  if (!token) return { ok: false, message: 'Torre nao autenticada.' }
-
+export async function authenticateTowerDeviceWebSessionToken(
+  token: string,
+  expectedStoreId: number,
+): Promise<TowerStoreAccess | TowerStoreAccessFailure> {
   const session = verifyTowerDeviceWebSession(token)
-  if (!session || session.storeId !== storeId) {
+  if (!session || session.storeId !== expectedStoreId) {
     return { ok: false, message: 'Sessao local da Torre invalida para esta loja.' }
   }
 
@@ -119,6 +118,14 @@ async function authorizeDeviceCookie(storeId: number): Promise<TowerStoreAccess 
     deviceId: session.deviceId,
     source: 'device',
   }
+}
+
+async function authorizeDeviceCookie(storeId: number): Promise<TowerStoreAccess | TowerStoreAccessFailure> {
+  const cookieStore = await cookies()
+  const token = cookieStore.get(TOWER_DEVICE_WEB_SESSION_COOKIE)?.value
+  if (!token) return { ok: false, message: 'Torre nao autenticada.' }
+
+  return authenticateTowerDeviceWebSessionToken(token, storeId)
 }
 
 export async function authorizeTowerStoreAccess(
