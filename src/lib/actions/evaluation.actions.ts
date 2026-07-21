@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { Database } from '@/lib/database.types'
 import { createClient } from '@/lib/supabase/server'
+import { authorizeTowerStoreAccess } from '@/lib/server/tower-device-web-session'
 
 type PreSaleSettings = {
   pre_sale_analysis_enabled?: boolean
@@ -287,7 +288,14 @@ async function getAuthorizedContext(storeId: number) {
   } = await supabase.auth.getUser()
 
   if (!user) {
-    return { ok: false as const, message: 'Usuario nao autenticado.' }
+    const towerAccess = await authorizeTowerStoreAccess(storeId)
+    if (!towerAccess.ok) return { ok: false as const, message: towerAccess.message }
+    return {
+      ok: true as const,
+      userId: null,
+      tenantId: towerAccess.tenantId,
+      profile: null,
+    }
   }
 
   const profile = (await getProfileByAdmin(user.id)) as

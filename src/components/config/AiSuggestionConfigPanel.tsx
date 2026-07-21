@@ -141,7 +141,8 @@ function InvestmentPicker({ value, onChange, disabled }: {
     )
 }
 
-export default function AiSuggestionConfigPanel({ storeId }: { storeId: number }) {
+export default function AiSuggestionConfigPanel({ storeId, endpoint, collapsible = false }: { storeId: number; endpoint?: string; collapsible?: boolean }) {
+    const configEndpoint = endpoint || `/api/store/${storeId}/ai-suggestion-config`
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [lastSaved, setLastSaved] = useState<string | null>(null)
@@ -152,11 +153,14 @@ export default function AiSuggestionConfigPanel({ storeId }: { storeId: number }
     const [brandsByCategory, setBrandsByCategory] = useState<AiConfigBrandsByCategory[]>([])
 
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
+    const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() =>
+        collapsible ? new Set(['laboratories', 'profile', 'brands']) : new Set()
+    )
 
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     useEffect(() => {
-        fetch(`/api/store/${storeId}/ai-suggestion-config`)
+        fetch(configEndpoint)
             .then(r => r.json())
             .then((data: AiConfigApiResponse) => {
                 setConfig(data.config)
@@ -176,14 +180,14 @@ export default function AiSuggestionConfigPanel({ storeId }: { storeId: number }
             })
             .catch(() => setError('Falha ao carregar configurações.'))
             .finally(() => setLoading(false))
-    }, [storeId])
+    }, [configEndpoint])
 
     const persistConfig = useCallback((updated: AiSuggestionConfig) => {
         if (debounceRef.current) clearTimeout(debounceRef.current)
         debounceRef.current = setTimeout(async () => {
             setSaving(true)
             try {
-                const res = await fetch(`/api/store/${storeId}/ai-suggestion-config`, {
+                const res = await fetch(configEndpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(updated),
@@ -200,7 +204,7 @@ export default function AiSuggestionConfigPanel({ storeId }: { storeId: number }
                 setSaving(false)
             }
         }, 1200)
-    }, [storeId])
+    }, [configEndpoint])
 
     const updateConfig = useCallback((updater: (prev: AiSuggestionConfig) => AiSuggestionConfig) => {
         setConfig(prev => {
@@ -271,6 +275,16 @@ export default function AiSuggestionConfigPanel({ storeId }: { storeId: number }
         })
     }
 
+    const toggleSection = (section: string) => {
+        if (!collapsible) return
+        setCollapsedSections(prev => {
+            const next = new Set(prev)
+            if (next.has(section)) next.delete(section)
+            else next.add(section)
+            return next
+        })
+    }
+
     if (loading) {
         return (
             <div className="p-10 text-center">
@@ -321,9 +335,11 @@ export default function AiSuggestionConfigPanel({ storeId }: { storeId: number }
             {config.lab_preferences.length > 0 && (
                 <div className={cardStyle}>
                     <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
+                    {collapsible && <button type="button" onClick={() => toggleSection('laboratories')} className="absolute right-4 top-4 rounded-lg p-1 text-amber-300 hover:bg-white/10" aria-label="Alternar preferência por laboratório">{collapsedSections.has('laboratories') ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}</button>}
                     <h4 className="text-xs font-bold text-amber-300 uppercase mb-4 flex items-center gap-2 border-b border-white/10 pb-2">
                         <Building2 className="h-4 w-4 text-amber-400" /> Preferência por Laboratório
                     </h4>
+                    {!collapsedSections.has('laboratories') && <>
                     <div className="space-y-2">
                         {config.lab_preferences.map(lp => (
                             <div key={lp.versionId} className="flex items-center justify-between rounded-lg border border-white/5 bg-black/20 px-4 py-2.5 hover:bg-white/5 transition-colors">
@@ -342,15 +358,18 @@ export default function AiSuggestionConfigPanel({ storeId }: { storeId: number }
                         <Info className="h-3 w-3 mt-0.5 shrink-0" />
                         Mais estrelas = maior chance de aparecer quando houver empate clínico entre laboratórios.
                     </p>
+                    </>}
                 </div>
             )}
 
             {/* CARD B — Store Profile */}
             <div className={cardStyle}>
                 <div className="absolute top-0 left-0 w-1 h-full bg-sky-500"></div>
+                {collapsible && <button type="button" onClick={() => toggleSection('profile')} className="absolute right-4 top-4 rounded-lg p-1 text-sky-300 hover:bg-white/10" aria-label="Alternar perfil geral da loja">{collapsedSections.has('profile') ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}</button>}
                 <h4 className="text-xs font-bold text-sky-300 uppercase mb-4 flex items-center gap-2 border-b border-white/10 pb-2">
                     <Gauge className="h-4 w-4 text-sky-400" /> Perfil Geral da Loja
                 </h4>
+                {!collapsedSections.has('profile') && <>
                 <div className="space-y-3">
                     <div className="flex items-center justify-between rounded-lg border border-white/5 bg-black/20 px-4 py-2.5 hover:bg-white/5 transition-colors">
                         <div className="flex items-center gap-3">
@@ -389,15 +408,18 @@ export default function AiSuggestionConfigPanel({ storeId }: { storeId: number }
                         )
                     })}
                 </div>
+                </>}
             </div>
 
             {/* CARD C — Brands by Category */}
             {brandsByCategory.length > 0 && (
                 <div className={cardStyle}>
                     <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
+                    {collapsible && <button type="button" onClick={() => toggleSection('brands')} className="absolute right-4 top-4 rounded-lg p-1 text-emerald-300 hover:bg-white/10" aria-label="Alternar marcas preferidas por categoria">{collapsedSections.has('brands') ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}</button>}
                     <h4 className="text-xs font-bold text-emerald-300 uppercase mb-4 flex items-center gap-2 border-b border-white/10 pb-2">
                         <Sparkles className="h-4 w-4 text-emerald-400" /> Marcas Preferidas por Categoria
                     </h4>
+                    {!collapsedSections.has('brands') && <>
                     <p className="text-[10px] text-slate-500 mb-4 flex items-start gap-1">
                         <Info className="h-3 w-3 mt-0.5 shrink-0" />
                         Defina quais marcas (famílias) a IA deve priorizar dentro de cada categoria clínica. O padrão é 3 estrelas.
@@ -444,6 +466,7 @@ export default function AiSuggestionConfigPanel({ storeId }: { storeId: number }
                             )
                         })}
                     </div>
+                    </>}
                 </div>
             )}
 

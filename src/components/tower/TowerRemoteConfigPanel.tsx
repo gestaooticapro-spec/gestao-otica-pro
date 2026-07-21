@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import type { ReactNode } from 'react'
-import { Check, Loader2, MonitorCog, Save, ShoppingBag, Sparkles } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, Loader2, MonitorCog, Save, ShoppingBag, Sparkles } from 'lucide-react'
 import type { TowerRemoteConfig } from '@/lib/tower/remote-config'
 
 type Props = {
@@ -134,7 +134,8 @@ export default function TowerRemoteConfigPanel({ storeId, publicCode, initialCon
 }
 
 function ConfigGroup({ title, icon: Icon, children }: { title: string; icon: typeof Sparkles; children: ReactNode }) {
-  return <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-4 sm:p-5"><h3 className="mb-4 flex items-center gap-2 text-sm font-black text-white"><Icon className="h-4 w-4 text-cyan-300" />{title}</h3>{children}</div>
+  const [isOpen, setIsOpen] = useState(false)
+  return <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-4 sm:p-5"><button type="button" onClick={() => setIsOpen((current) => !current)} className="flex w-full items-center gap-2 text-left text-sm font-black text-white"><Icon className="h-4 w-4 text-cyan-300" />{title}{isOpen ? <ChevronUp className="ml-auto h-4 w-4 text-slate-400" /> : <ChevronDown className="ml-auto h-4 w-4 text-slate-400" />}</button>{isOpen && <div className="mt-4">{children}</div>}</div>
 }
 
 function ToggleCard({ label, description, checked, onChange }: { label: string; description?: string; checked: boolean; onChange(value: boolean): void }) {

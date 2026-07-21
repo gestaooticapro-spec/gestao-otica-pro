@@ -136,6 +136,7 @@ type RemoteCommand =
   | 'startVerticalHeadDebug'
   | 'startSession'
   | 'finishSession'
+  | 'stopCamera'
   | 'cancelRun'
   | 'resetLab'
 type CommandPayload = {
@@ -1775,15 +1776,20 @@ function ClientLensRecommendationResults({
   samples: SessionSample[]
 }) {
   const canvasRefs = useRef<Array<HTMLCanvasElement | null>>([])
+  const visibleRecommendations = recommendations.slice(0, 3)
+  const geometryByRecommendation = visibleRecommendations.map((recommendation) =>
+    findGeometryForRecommendation(recommendation.familyName, geometries),
+  )
+  const hasAnyGeometry = geometryByRecommendation.some(Boolean)
 
   useEffect(() => {
-    recommendations.slice(0, 3).forEach((recommendation, index) => {
+    visibleRecommendations.forEach((recommendation, index) => {
       const canvas = canvasRefs.current[index]
       const geometry = findGeometryForRecommendation(recommendation.familyName, geometries)
       if (!canvas || !geometry) return
       drawLensHeatmap(canvas, heatmap, undefined, undefined, geometry, samples, 'continuous', true)
     })
-  }, [geometries, heatmap, recommendations, samples])
+  }, [geometries, heatmap, samples, visibleRecommendations])
 
   return (
     <section className="client-recommendation-results fixed inset-0 z-[90] overflow-y-auto bg-slate-950 px-5 py-8 text-white sm:px-8 sm:py-10">
@@ -1792,19 +1798,21 @@ function ClientLensRecommendationResults({
           <p className="text-xs font-black uppercase tracking-[0.32em] text-cyan-200">Seu jeito de olhar</p>
           <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-5xl">Encontramos três lentes para você conhecer.</h1>
           <p className="mx-auto mt-4 max-w-3xl text-base leading-7 text-slate-300 sm:text-xl">
-            Veja como o seu mapa visual se comporta dentro da geometria de cada opção.
+            {hasAnyGeometry
+              ? 'Veja como o seu mapa visual se comporta dentro da geometria de cada opção.'
+              : 'Conheça as opções selecionadas para sua receita, rotina e preferência.'}
           </p>
         </header>
 
         <div className="mt-8 grid gap-6">
-          {recommendations.slice(0, 3).map((recommendation, index) => {
-            const geometry = findGeometryForRecommendation(recommendation.familyName, geometries)
+          {visibleRecommendations.map((recommendation, index) => {
+            const geometry = geometryByRecommendation[index]
             const narrative = salesAssist?.options.find((item) => item.configKey === recommendation.configKey)
 
             return (
               <article
                 key={recommendation.configKey}
-                className="client-recommendation-card grid gap-5 rounded-[34px] border border-white/12 bg-[linear-gradient(135deg,_rgba(8,47,73,0.58),_rgba(15,23,42,0.92)_48%,_rgba(2,6,23,0.98))] p-5 shadow-[0_28px_90px_rgba(2,6,23,0.48)] md:grid-cols-[minmax(0,0.9fr)_minmax(360px,1.1fr)] md:items-center sm:p-7"
+                className={`client-recommendation-card grid gap-5 rounded-[34px] border border-white/12 bg-[linear-gradient(135deg,_rgba(8,47,73,0.58),_rgba(15,23,42,0.92)_48%,_rgba(2,6,23,0.98))] p-5 shadow-[0_28px_90px_rgba(2,6,23,0.48)] sm:p-7 ${hasAnyGeometry ? 'md:grid-cols-[minmax(0,0.9fr)_minmax(360px,1.1fr)] md:items-center' : ''}`}
                 style={{ animationDelay: `${index * 180}ms` }}
               >
                 <div>
@@ -1825,7 +1833,7 @@ function ClientLensRecommendationResults({
                   )}
                 </div>
 
-                <div className="overflow-hidden rounded-[28px] border border-white/10 bg-slate-950/70 p-4">
+                {hasAnyGeometry && <div className="overflow-hidden rounded-[28px] border border-white/10 bg-slate-950/70 p-4">
                   {geometry ? (
                     <>
                       <canvas
@@ -1847,7 +1855,7 @@ function ClientLensRecommendationResults({
                       </div>
                     </div>
                   )}
-                </div>
+                </div>}
               </article>
             )
           })}
@@ -1967,9 +1975,35 @@ export default function GazeHeatmapLab({
   const [recommendationVisualPhase, setRecommendationVisualPhase] = useState<RecommendationVisualPhase>('idle')
   const [clientRecommendations, setClientRecommendations] = useState<RecommendationOption[]>([])
   const [clientSalesAssist, setClientSalesAssist] = useState<LensSalesAssist | null>(null)
+  const recommendationPresentationRef = useRef(false)
   const isFocusMode = phase === 'calibrating' || phase === 'running'
   const selectedGeometry = geometries.find((item) => item.id === selectedGeometryId) ?? geometry ?? geometries[0] ?? null
   const clientVisualAnalysis = buildClientVisualAnalysis(targetHeatSamplesRef.current)
+
+  useEffect(() => {
+    if (!clientMode || typeof window === 'undefined') return
+    const rawPayload = window.localStorage.getItem(`tower-recommendation-search-${storeId}`)
+    if (!rawPayload) return
+    try {
+      const payload = JSON.parse(rawPayload) as RecommendationSearchPayload
+      if (payload.type !== 'recommendation-search') return
+      if (payload.active) {
+        recommendationPresentationRef.current = true
+        setClientRecommendations([])
+        setClientSalesAssist(null)
+        setRecommendationSearchActive(true)
+        setRecommendationVisualPhase('search')
+      } else if (payload.recommendations?.length) {
+        recommendationPresentationRef.current = true
+        setClientRecommendations(payload.recommendations.slice(0, 3))
+        setClientSalesAssist(payload.salesAssist ?? null)
+        setRecommendationSearchActive(false)
+        setRecommendationVisualPhase('results')
+      }
+    } catch {
+      window.localStorage.removeItem(`tower-recommendation-search-${storeId}`)
+    }
+  }, [clientMode, storeId])
 
   const redrawHeatmaps = useCallback(() => {
     if (mainHeatmapRef.current) {
@@ -2061,6 +2095,7 @@ export default function GazeHeatmapLab({
           }
 
           if (data.active) {
+            recommendationPresentationRef.current = true
             setClientRecommendations([])
             setClientSalesAssist(null)
             setRecommendationSearchActive(false)
@@ -2071,11 +2106,13 @@ export default function GazeHeatmapLab({
               recommendationTransitionTimerRef.current = null
             }, 1150)
           } else if (data.recommendations?.length) {
+            recommendationPresentationRef.current = true
             setClientRecommendations(data.recommendations.slice(0, 3))
             setClientSalesAssist(data.salesAssist ?? null)
             setRecommendationSearchActive(false)
             setRecommendationVisualPhase('results')
           } else {
+            recommendationPresentationRef.current = false
             setClientRecommendations([])
             setClientSalesAssist(null)
             setRecommendationSearchActive(false)
@@ -2137,6 +2174,7 @@ export default function GazeHeatmapLab({
     if (pendingRemoteCommand.command === 'startVerticalHeadDebug') void startVerticalHeadDebug()
     if (pendingRemoteCommand.command === 'startSession') startSession()
     if (pendingRemoteCommand.command === 'finishSession') finishSession()
+    if (pendingRemoteCommand.command === 'stopCamera') stopCamera()
     if (pendingRemoteCommand.command === 'cancelRun') cancelRun()
     if (pendingRemoteCommand.command === 'resetLab') resetLab()
 
@@ -2168,7 +2206,7 @@ export default function GazeHeatmapLab({
 
   useEffect(() => {
     if (!clientMode) return
-    if (phase === 'finished' || clientResultVisible) return
+    if (phase === 'finished' || clientResultVisible || recommendationPresentationRef.current) return
     if (cameraReady) return
     void startCamera()
   }, [clientMode, cameraReady, clientResultVisible, phase])

@@ -7,6 +7,7 @@ import { Database, Json } from '@/lib/database.types'
 import { createClient } from '@/lib/supabase/server'
 import { syncStoreFiscalData } from './fiscal.actions'
 import { StoreSettings } from '@/lib/store-modules'
+import { sanitizeAiSuggestionConfig } from '@/lib/ai-suggestion-config'
 
 const StoreProfileSchema = z.object({
     id: z.coerce.number(),
@@ -478,33 +479,7 @@ export async function saveAiSuggestionConfig(
     storeId: number,
     config: AiSuggestionConfig
 ): Promise<StoreActionResult> {
-    const clampWeight = (w: number) => Math.max(0, Math.min(5, Math.round(w)))
-    const validLevels: AiStoreProfileLevel[] = ['baixo', 'medio', 'alto']
-    const clampLevel = (v: string): AiStoreProfileLevel =>
-        validLevels.includes(v as AiStoreProfileLevel) ? v as AiStoreProfileLevel : 'medio'
-    const validInvestment: AiStoreInvestmentProfile[] = ['economico', 'equilibrado', 'premium']
-    const clampInvestment = (v: string): AiStoreInvestmentProfile =>
-        validInvestment.includes(v as AiStoreInvestmentProfile) ? v as AiStoreInvestmentProfile : 'equilibrado'
-
-    const sanitized: AiSuggestionConfig = {
-        lab_preferences: (config.lab_preferences || []).map(lp => ({
-            versionId: lp.versionId,
-            laboratorio: lp.laboratorio,
-            weight: clampWeight(lp.weight),
-        })),
-        store_profile: {
-            investment_profile: clampInvestment(config.store_profile?.investment_profile || 'equilibrado'),
-            tech_adoption: clampLevel(config.store_profile?.tech_adoption || 'medio'),
-            aesthetic_priority: clampLevel(config.store_profile?.aesthetic_priority || 'medio'),
-        },
-        category_brand_preferences: Object.fromEntries(
-            Object.entries(config.category_brand_preferences || {}).map(([cat, brands]) => [
-                cat,
-                (brands || []).map(b => ({ brand: b.brand, weight: clampWeight(b.weight) })),
-            ])
-        ),
-    }
-
+    const sanitized = sanitizeAiSuggestionConfig(config)
     return updateStoreSettings(storeId, { ai_suggestion_config: sanitized as unknown as Json })
 }
 

@@ -19,6 +19,7 @@ import {
 } from '@/lib/tower/local-operations'
 import type { RecommendationOption } from '@/lib/server/lens-recommendation'
 import { buildRecommendationCaseInput } from '@/lib/recommendation/evaluation-case-input'
+import { openTowerClientScreen } from '@/lib/tower/client-screen'
 
 type CustomerOption = OperationalTowerCustomer
 
@@ -347,7 +348,16 @@ export default function TowerEvaluationIntake({
   }, [storeId])
 
   function setClientRecommendationSearch(active: boolean, recommendations?: RecommendationOption[], assist?: LensSalesAssist | null) {
-    recommendationChannelRef.current?.postMessage({ type: 'recommendation-search', active, recommendations, salesAssist: assist })
+    const payload = { type: 'recommendation-search' as const, active, recommendations, salesAssist: assist }
+    window.localStorage.setItem(`tower-recommendation-search-${storeId}`, JSON.stringify(payload))
+    recommendationChannelRef.current?.postMessage(payload)
+  }
+
+  function openClientRecommendationScreen() {
+    const url = new URL(`/torre/${storeId}/campo-visual`, window.location.origin)
+    url.searchParams.set('client', '1')
+    url.searchParams.set('session', towerSessionId)
+    openTowerClientScreen(url.toString())
   }
 
   async function selectCustomer(customer: CustomerOption) {
@@ -416,7 +426,9 @@ export default function TowerEvaluationIntake({
     setBusy(true)
     setSuggestions([])
     setSalesAssist(null)
+    recommendationChannelRef.current?.postMessage({ type: 'command', command: 'stopCamera' })
     setClientRecommendationSearch(true)
+    openClientRecommendationScreen()
     try {
     const recommendationInput = buildRecommendationInput(recipe, interview)
     const saved = await upsertOpticalEvaluation({

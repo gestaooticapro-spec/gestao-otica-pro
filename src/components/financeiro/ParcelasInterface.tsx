@@ -1,11 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { Search, CalendarRange, Filter, AlertCircle, Loader2, ArrowLeft, ArrowRight, MessageCircle } from 'lucide-react'
+import { Search, CalendarRange, Filter, AlertCircle, Loader2, ArrowLeft, ArrowRight, MessageCircle, CheckCircle2 } from 'lucide-react'
 import Link from 'next/link'
 import { getParcelasFiltradas, ParcelaFiltro } from '@/lib/actions/parcelas.actions'
 import { sendInstallmentReceiptWhatsApp } from '@/lib/actions/manual-whatsapp.actions'
 import { toast } from 'sonner'
+import ContratosQuitadosModal from './ContratosQuitadosModal'
 
 type ParcelaData = {
     id: number
@@ -39,6 +40,7 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
     const [viewMode, setViewMode] = useState<'cards' | 'table'>('table')
     const [sendingReceiptInstallmentId, setSendingReceiptInstallmentId] = useState<number | null>(null)
     const [sentReceiptInstallmentIds, setSentReceiptInstallmentIds] = useState<number[]>([])
+    const [showContratosQuitados, setShowContratosQuitados] = useState(false)
 
     const handleSearch = async () => {
         setLoading(true)
@@ -141,6 +143,9 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
                         </div>
                     </div>
                 </div>
+                <button onClick={() => setShowContratosQuitados(true)} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-slate-400 transition-colors hover:bg-white/10 hover:text-white" title="Consultar contratos quitados">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-400" />Contratos quitados
+                </button>
             </div>
 
             {/* BARRA DE FILTROS */}
@@ -449,6 +454,7 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
             <style dangerouslySetInnerHTML={{__html: `
                 .color-scheme-dark { color-scheme: dark; }
             `}} />
+            {showContratosQuitados && <ContratosQuitadosModal storeId={storeId} onClose={() => setShowContratosQuitados(false)} />}
         </div>
     )
 }

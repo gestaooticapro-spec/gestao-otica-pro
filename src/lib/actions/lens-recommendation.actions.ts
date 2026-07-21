@@ -11,6 +11,7 @@ import {
 import { getAiSuggestionConfig } from '@/lib/actions/store.actions'
 import { getAllLensGeometries } from '@/lib/actions/lens-geometry.actions'
 import { getCompletedTowerHeatmapResult } from '@/lib/actions/tower-heatmap.actions'
+import { authorizeTowerStoreAccess } from '@/lib/server/tower-device-web-session'
 
 const RecommendationCaseSchema = z.object({
   storeId: z.number().int().positive().optional(),
@@ -47,11 +48,18 @@ export type LensRecommendationActionResult = {
   data?: unknown
 }
 
-async function ensureAuthenticated() {
+async function ensureAuthenticated(storeId?: number) {
   const supabase = createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
+
+  if (user) return
+  if (storeId) {
+    const towerAccess = await authorizeTowerStoreAccess(storeId)
+    if (towerAccess.ok) return
+    throw new Error(towerAccess.message)
+  }
 
   if (!user) {
     throw new Error('Usuário não autenticado.')
@@ -82,8 +90,8 @@ export async function generateLensRecommendationsAction(
   input: unknown,
 ): Promise<LensRecommendationActionResult> {
   try {
-    await ensureAuthenticated()
     const parsed = RecommendationCaseSchema.parse(input)
+    await ensureAuthenticated(parsed.storeId)
 
     const aiConfig = parsed.storeId
       ? await getAiSuggestionConfig(parsed.storeId)

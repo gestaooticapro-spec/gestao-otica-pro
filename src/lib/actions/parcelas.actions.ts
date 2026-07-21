@@ -10,6 +10,89 @@ export type ParcelaFiltro = {
     busca?: string; // Nome do cliente ou ID da venda
 }
 
+export type ContratoQuitadoFiltro = {
+    dataInicial?: string
+    dataFinal?: string
+}
+
+export type ContratoQuitado = {
+    financiamento_id: number
+    venda_id: number | null
+    customer_id: number
+    cliente_nome: string
+    quantidade_parcelas: number
+    valor_total: number
+    data_quitacao: string
+}
+
+export async function getContratosQuitados(storeId: number, filtros: ContratoQuitadoFiltro = {}) {
+    const enabled = await isStoreModuleEnabledForStore(storeId, 'installments')
+    if (!enabled) return { success: false, message: 'Módulo de parcelamento desativado', data: [] as ContratoQuitado[] }
+
+    try {
+        const supabaseAdmin = createAdminClient()
+        const { data, error } = await (supabaseAdmin.from('financiamento_parcelas') as any)
+            .select(`
+                financiamento_id,
+                numero_parcela,
+                status,
+                data_pagamento,
+                customer_id,
+                customers ( full_name ),
+                financiamento_loja ( id, venda_id, customer_id, valor_total_financiado, quantidade_parcelas )
+            `)
+            .eq('store_id', storeId)
+
+        if (error) {
+            console.error('Erro getContratosQuitados:', error)
+            return { success: false, message: 'Erro ao buscar contratos quitados', data: [] as ContratoQuitado[] }
+        }
+
+        const grupos = new Map<number, any[]>()
+        for (const parcela of data || []) {
+            if (!parcela.financiamento_id) continue
+            const grupo = grupos.get(parcela.financiamento_id) || []
+            grupo.push(parcela)
+            grupos.set(parcela.financiamento_id, grupo)
+        }
+
+        const resultado: ContratoQuitado[] = []
+        for (const [financiamentoId, parcelas] of grupos) {
+            const pagas = parcelas.filter((p) => p.status?.toLowerCase() === 'pago' || p.data_pagamento)
+            if (pagas.length !== parcelas.length || pagas.length === 0) continue
+
+            const dataQuitacao = pagas
+                .map((p) => p.data_pagamento)
+                .filter(Boolean)
+                .sort()
+                .at(-1)
+            if (!dataQuitacao) continue
+
+            const dataDia = dataQuitacao.split('T')[0]
+            if (filtros.dataInicial && dataDia < filtros.dataInicial) continue
+            if (filtros.dataFinal && dataDia > filtros.dataFinal) continue
+
+            const financiamento = parcelas[0].financiamento_loja
+            const cliente = parcelas[0].customers
+            resultado.push({
+                financiamento_id: financiamentoId,
+                venda_id: financiamento?.venda_id ?? null,
+                customer_id: parcelas[0].customer_id,
+                cliente_nome: cliente?.full_name || 'Cliente desconhecido',
+                quantidade_parcelas: financiamento?.quantidade_parcelas ?? parcelas.length,
+                valor_total: Number(financiamento?.valor_total_financiado ?? pagas.reduce((sum, p) => sum + Number(p.valor_parcela || 0), 0)),
+                data_quitacao: dataQuitacao,
+            })
+        }
+
+        resultado.sort((a, b) => b.data_quitacao.localeCompare(a.data_quitacao))
+        return { success: true, data: resultado }
+    } catch (error) {
+        console.error('getContratosQuitados exception:', error)
+        return { success: false, message: 'Erro interno ao buscar contratos quitados', data: [] as ContratoQuitado[] }
+    }
+}
+
 export async function getParcelasFiltradas(storeId: number, filtros: ParcelaFiltro) {
     const enabled = await isStoreModuleEnabledForStore(storeId, 'installments')
     if (!enabled) {

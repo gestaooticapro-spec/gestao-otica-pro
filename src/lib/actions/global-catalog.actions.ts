@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { authorizeTowerStoreAccess } from '@/lib/server/tower-device-web-session'
+import { authorizeTowerRemoteConfigSession } from '@/lib/server/tower-remote-config-session'
 
 export type StoreCatalogVersionSummary = {
   id: string
@@ -333,6 +334,22 @@ async function getStoreGlobalCatalogOverviewWithAdmin(
   }
 }
 
+async function getTowerRemoteManageContext(storeId: number) {
+  const supabaseAdmin = createAdminClient()
+  const { data: rawStore, error } = await supabaseAdmin
+    .from('stores')
+    .select('id,tenant_id,settings')
+    .eq('id', storeId)
+    .single()
+
+  const store = rawStore as any
+  if (error || !store?.tenant_id || !store?.settings?.tower_enabled) {
+    throw new Error('Loja da Torre nao encontrada ou indisponivel.')
+  }
+
+  return { store, supabaseAdmin }
+}
+
 export async function getStoreGlobalCatalogOverview(storeId: number): Promise<StoreCatalogOverview> {
   const { supabaseAdmin } = await getViewContext(storeId)
   return getStoreGlobalCatalogOverviewWithAdmin(storeId, supabaseAdmin)
@@ -345,16 +362,25 @@ export async function getTowerStoreGlobalCatalogOverview(storeId: number): Promi
   return getStoreGlobalCatalogOverviewWithAdmin(storeId, createAdminClient())
 }
 
-export async function activateGlobalCatalogForStore(
+/** Leitura para a configuração remota, cuja sessão por PIN já foi validada pela rota. */
+export async function getGlobalCatalogOverviewForTowerRemote(publicCode: string): Promise<StoreCatalogOverview> {
+  const session = await authorizeTowerRemoteConfigSession(publicCode)
+  if (!session) throw new Error('Sessao comercial expirada.')
+  const { supabaseAdmin } = await getTowerRemoteManageContext(session.storeId)
+  return getStoreGlobalCatalogOverviewWithAdmin(session.storeId, supabaseAdmin)
+}
+
+async function activateGlobalCatalogForStoreWithContext(
   storeId: number,
   versionId: string,
+  getContext: () => Promise<{ store: any; supabaseAdmin: ReturnType<typeof createAdminClient> }>,
 ): Promise<GlobalCatalogActionResult> {
   let step = 'iniciando ativacao'
   const debugContext: Record<string, unknown> = { storeId, versionId }
 
   try {
     step = 'carregando contexto da loja'
-    const { store, supabaseAdmin } = await getManageContext(storeId)
+    const { store, supabaseAdmin } = await getContext()
     const now = new Date().toISOString()
     debugContext.tenantId = store.tenant_id
 
@@ -593,6 +619,23 @@ export async function activateGlobalCatalogForStore(
       )}`,
     }
   }
+}
+
+export async function activateGlobalCatalogForStore(
+  storeId: number,
+  versionId: string,
+): Promise<GlobalCatalogActionResult> {
+  return activateGlobalCatalogForStoreWithContext(storeId, versionId, () => getManageContext(storeId))
+}
+
+/** Uso exclusivo pela configuração remota já autenticada por PIN da Torre. */
+export async function activateGlobalCatalogForTowerRemote(
+  publicCode: string,
+  versionId: string,
+): Promise<GlobalCatalogActionResult> {
+  const session = await authorizeTowerRemoteConfigSession(publicCode)
+  if (!session) return { success: false, message: 'Sessao comercial expirada.' }
+  return activateGlobalCatalogForStoreWithContext(session.storeId, versionId, () => getTowerRemoteManageContext(session.storeId))
 }
 
 export async function deactivateGlobalCatalogForStore(
