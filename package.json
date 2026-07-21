@@ -1,13 +1,20 @@
 {
   "name": "gestao-otica-pro",
   "version": "0.1.0",
+  "description": "Aplicativo desktop da Torre MB Optical",
+  "author": "MB Optical",
   "private": true,
   "main": "electron/main.cjs",
+  "tower": {
+    "productionUrl": "https://gestao-otica-pro.vercel.app"
+  },
   "scripts": {
     "dev": "next dev -p 3000",
     "dev:electron": "concurrently --kill-others-on-fail --names next,electron \"npm:dev\" \"npm:electron:wait\"",
     "electron": "electron .",
     "electron:wait": "wait-on http-get://localhost:3000 && electron .",
+    "pack:electron": "electron-builder --dir --win",
+    "dist:electron": "electron-builder --win nsis",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -55,6 +62,7 @@
     "autoprefixer": "^10.4.22",
     "concurrently": "^10.0.3",
     "electron": "^43.1.1",
+    "electron-builder": "^26.15.3",
     "eslint": "^9",
     "eslint-config-next": "^15.5.20",
     "postcss": "^8.5.6",
@@ -62,5 +70,43 @@
     "tsx": "^4.20.6",
     "typescript": "^5",
     "wait-on": "^9.0.10"
+  },
+  "build": {
+    "appId": "br.com.mboptical.torre",
+    "productName": "Torre MB Optical",
+    "asar": true,
+    "compression": "maximum",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "executableName": "torre-mb-optical",
+      "icon": "public/web-app-manifest-512x512.png",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Torre MB Optical",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "Torre-MB-Optical-Setup-${version}-${arch}.${ext}"
+    }
   }
 }

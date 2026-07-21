@@ -9,6 +9,7 @@ const webSession = await readFile(new URL('../src/lib/server/tower-device-web-se
 const webSessionRoute = await readFile(new URL('../src/app/api/tower/device/web-session/route.ts', import.meta.url), 'utf8')
 const maintenanceGrant = await readFile(new URL('../src/lib/server/tower-maintenance-grant.ts', import.meta.url), 'utf8')
 const remoteSession = await readFile(new URL('../src/lib/server/tower-remote-config-session.ts', import.meta.url), 'utf8')
+const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
 
 test('preload nao expoe leitura ou gravacao direta de credenciais permanentes', () => {
   assert.doesNotMatch(preload, /holdAssetIdentity|getAssetIdentity\b|holdDeviceSession|getDeviceSession\b/)
@@ -77,4 +78,13 @@ test('sessao comercial e assinada, curta e limitada ao codigo publico', () => {
   assert.match(remoteSession, /timingSafeEqual/)
   assert.match(remoteSession, /session\.publicCode !== publicCode/)
   assert.match(remoteSession, /tower_remote_config_access/)
+})
+
+test('pacote Windows usa HTTPS, kiosk e inicializacao automatica por padrao', () => {
+  assert.equal(packageJson.tower.productionUrl, 'https://gestao-otica-pro.vercel.app')
+  assert.equal(packageJson.build.win.executableName, 'torre-mb-optical')
+  assert.equal(packageJson.build.nsis.deleteAppDataOnUninstall, false)
+  assert.match(main, /packagedFeatureEnabled\(process\.env\.TOWER_KIOSK, true\)/)
+  assert.match(main, /app\.setLoginItemSettings/)
+  assert.match(main, /packagedFeatureEnabled\(process\.env\.TOWER_AUTO_START, true\)/)
 })

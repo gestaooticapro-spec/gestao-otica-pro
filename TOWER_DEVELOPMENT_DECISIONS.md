@@ -1258,6 +1258,25 @@ possa continuar sendo a interface administrativa dessas configurações.
 - A desativacao explicita de catalogo continua disponivel no backoffice, mas
   ainda nao foi exposta na URL comercial remota da Torre.
 
+### Passo 10 - empacotamento iniciado em 21/07/2026
+
+- O aplicativo Windows x64 passou a ser empacotado com `electron-builder` e
+  instalador NSIS por maquina.
+- O pacote de producao usa `https://gestao-otica-pro.vercel.app`, com override
+  opcional por `TOWER_ELECTRON_URL`; origens remotas sem HTTPS continuam
+  bloqueadas.
+- Modo kiosk e inicializacao automatica ficam ativos por padrao no pacote e
+  podem ser desabilitados temporariamente por variaveis de manutencao.
+- O desinstalador preserva `userData`, evitando apagar identidade, credencial,
+  SQLite ou eventos pendentes sem confirmacao operacional.
+- O instalador `Torre-MB-Optical-Setup-0.1.0-x64.exe` foi gerado e o executavel
+  empacotado passou em smoke test no Windows de desenvolvimento.
+- O piloto ainda nao possui certificado de assinatura de codigo e pode exibir
+  alerta do SmartScreen. Assinatura e homologacao no mini PC real permanecem
+  obrigatorias antes da distribuicao comercial.
+- Antes de instalar, o backend atualizado precisa estar publicado na Vercel;
+  gerar o instalador nao publica as rotas novas automaticamente.
+
 ---
 
 ## Regra de retomada

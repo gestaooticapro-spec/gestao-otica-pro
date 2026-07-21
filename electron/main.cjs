@@ -6,8 +6,10 @@ const fs = require('fs/promises')
 const { createHash } = require('crypto')
 const { app, BrowserWindow, ipcMain, net, safeStorage, screen, shell } = require('electron')
 const { TowerLocalDatabase } = require('./tower-local-database.cjs')
+const packageMetadata = require('../package.json')
 
-const DEFAULT_RENDERER_URL = 'http://localhost:3000/torre/inicial'
+const DEVELOPMENT_RENDERER_URL = 'http://localhost:3000/torre/inicial'
+const PACKAGED_RENDERER_URL = packageMetadata.tower?.productionUrl
 const DEVICE_CREDENTIAL_PATTERN = /^tower_device_v1_[A-Za-z0-9_-]{43}$/
 const ASSET_CREDENTIAL_PATTERN = /^tower_asset_v1_[A-Za-z0-9_-]{43}$/
 const ASSET_PUBLIC_CODE_PATTERN = /^MBT-[0-9]{4}-[0-9]{6}$/
@@ -241,7 +243,11 @@ function isEnabled(value) {
 
 function getRendererUrl() {
   const configuredUrl = process.env.TOWER_ELECTRON_URL?.trim()
-  const rendererUrl = new URL(configuredUrl || DEFAULT_RENDERER_URL)
+  const defaultUrl = app.isPackaged ? PACKAGED_RENDERER_URL : DEVELOPMENT_RENDERER_URL
+  if (!configuredUrl && !defaultUrl) {
+    throw new Error('URL de producao da Torre nao configurada.')
+  }
+  const rendererUrl = new URL(configuredUrl || defaultUrl)
 
   if (!['http:', 'https:'].includes(rendererUrl.protocol)) {
     throw new Error('TOWER_ELECTRON_URL deve usar http ou https.')
@@ -256,6 +262,13 @@ function getRendererUrl() {
   }
 
   return rendererUrl
+}
+
+function packagedFeatureEnabled(environmentValue, packagedDefault) {
+  if (environmentValue === undefined || environmentValue === null || environmentValue === '') {
+    return app.isPackaged ? packagedDefault : false
+  }
+  return isEnabled(environmentValue)
 }
 
 function isAllowedNavigation(navigationUrl, rendererUrl) {
@@ -532,7 +545,7 @@ function isAllowedCameraRequest(webContents, permission, details, mainWindow, re
 
 async function createMainWindow() {
   const rendererUrl = getRendererUrl()
-  const kioskEnabled = isEnabled(process.env.TOWER_KIOSK)
+  const kioskEnabled = packagedFeatureEnabled(process.env.TOWER_KIOSK, true)
   const devToolsEnabled = !app.isPackaged || isEnabled(process.env.TOWER_DEVTOOLS)
 
   const mainWindow = new BrowserWindow({
@@ -678,7 +691,7 @@ async function openCustomerDisplayTest() {
 
   const rendererUrl = getRendererUrl()
   const customerUrl = new URL('/torre/cliente/diagnostico', rendererUrl)
-  const kioskEnabled = isEnabled(process.env.TOWER_KIOSK)
+  const kioskEnabled = packagedFeatureEnabled(process.env.TOWER_KIOSK, true)
   customerDisplayWindow = new BrowserWindow({
     ...customerDisplay.bounds,
     show: false,
@@ -753,7 +766,7 @@ async function openCustomerExperience(requestedUrl, deviceSession) {
     }
   }
 
-  const kioskEnabled = isEnabled(process.env.TOWER_KIOSK) && !simulated
+  const kioskEnabled = packagedFeatureEnabled(process.env.TOWER_KIOSK, true) && !simulated
   customerDisplayWindow = new BrowserWindow({
     ...targetBounds,
     show: false,
@@ -1330,6 +1343,12 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.whenReady().then(async () => {
+    if (app.isPackaged) {
+      app.setLoginItemSettings({
+        openAtLogin: packagedFeatureEnabled(process.env.TOWER_AUTO_START, true),
+        path: process.execPath,
+      })
+    }
     towerLocalDatabase = new TowerLocalDatabase(getLocalDatabasePath(), {
       protect: protectLocalPayload,
       unprotect: unprotectLocalPayload,
