@@ -157,3 +157,34 @@ test('protege cliente provisório e aplica o ID remoto na sessao', async () => {
     assert.equal(database.listActiveSessions(scope)[0].customer_id, 321)
   })
 })
+
+test('persiste snapshot versionado de configuracao protegido e isolado por dispositivo', async () => {
+  await withProtectedDatabase((database) => {
+    const snapshot = {
+      schemaVersion: 1,
+      revision: 'b'.repeat(64),
+      generatedAt: new Date().toISOString(),
+      storeId: scope.storeId,
+      remoteConfig: { version: 1, experiences: { visagismo: false } },
+      catalogs: [{ versionId: '44444444-4444-4444-8444-444444444444' }],
+      aiSuggestionConfig: { lab_preferences: [], store_profile: {}, category_brand_preferences: {} },
+    }
+    const saved = database.saveConfigurationSnapshot(scope, snapshot)
+    assert.equal(saved.revision, snapshot.revision)
+    assert.ok(saved.downloadedAt)
+
+    const raw = database.database.prepare(`
+      SELECT payload, payload_encoding FROM tower_local_configuration_snapshots WHERE store_id = ?
+    `).get(scope.storeId)
+    assert.equal(raw.payload_encoding, 'safe_storage_v1')
+    assert.doesNotMatch(raw.payload, /visagismo/)
+
+    const restored = database.getConfigurationSnapshot(scope)
+    assert.equal(restored.remoteConfig.experiences.visagismo, false)
+    assert.equal(restored.catalogs[0].versionId, snapshot.catalogs[0].versionId)
+    assert.equal(
+      database.getConfigurationSnapshot({ ...scope, deviceId: '55555555-5555-4555-8555-555555555555' }),
+      null,
+    )
+  })
+})

@@ -149,6 +149,8 @@ const informationItems = [
 
 export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUnavailable = false, initialExperienceMenu = false, initialInformationMenu = false, initialSessionId }: TowerWelcomeMockProps) {
   const router = useRouter()
+  const [effectiveRemoteConfig, setEffectiveRemoteConfig] = useState(remoteConfig)
+  const [configurationUnavailable, setConfigurationUnavailable] = useState(remoteConfigUnavailable)
   const [isPending, startTransition] = useTransition()
   const [selectedAction, setSelectedAction] = useState<MockAction>(initialSessionId ? 'resume' : initialExperienceMenu ? 'new' : null)
   const [selectedExperience, setSelectedExperience] = useState<ExperienceKey>(null)
@@ -162,19 +164,32 @@ export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUn
   const choosingExperience = selectedAction !== null
   const isResuming = selectedAction === 'resume'
   const enabledExperiences = experiences.filter((experience) => {
-    if (experience.key === 'style') return remoteConfig.experiences.visagismo
-    if (experience.key === 'field') return remoteConfig.experiences.campoVisual
-    if (experience.key === 'measurements') return remoteConfig.experiences.medidas
-    return remoteConfig.experiences.informacoesUteis
+    if (experience.key === 'style') return effectiveRemoteConfig.experiences.visagismo
+    if (experience.key === 'field') return effectiveRemoteConfig.experiences.campoVisual
+    if (experience.key === 'measurements') return effectiveRemoteConfig.experiences.medidas
+    return effectiveRemoteConfig.experiences.informacoesUteis
   })
   const enabledInformationItems = informationItems.filter((item) => {
-    if (item.key === 'look') return remoteConfig.information.seuJeitoDeOlhar
-    if (item.key === 'ar') return remoteConfig.information.tratamentoAr
-    if (item.key === 'optifog') return remoteConfig.information.optiFog
-    if (item.key === 'polarized') return remoteConfig.information.lentesPolarizadas
-    if (item.key === 'thickness') return remoteConfig.information.espessuraLentes
-    return remoteConfig.information.comparativoCampos
+    if (item.key === 'look') return effectiveRemoteConfig.information.seuJeitoDeOlhar
+    if (item.key === 'ar') return effectiveRemoteConfig.information.tratamentoAr
+    if (item.key === 'optifog') return effectiveRemoteConfig.information.optiFog
+    if (item.key === 'polarized') return effectiveRemoteConfig.information.lentesPolarizadas
+    if (item.key === 'thickness') return effectiveRemoteConfig.information.espessuraLentes
+    return effectiveRemoteConfig.information.comparativoCampos
   })
+
+  useEffect(() => {
+    let active = true
+    const loadLocalConfiguration = async () => {
+      const result = await window.towerDesktop?.getLocalConfiguration({ refresh: true })
+      if (active && result?.success && result.snapshot?.storeId === storeId) {
+        setEffectiveRemoteConfig(result.snapshot.remoteConfig)
+        setConfigurationUnavailable(false)
+      }
+    }
+    void loadLocalConfiguration()
+    return () => { active = false }
+  }, [storeId])
 
   const refreshDeviceStatus = useCallback(async () => {
     const desktop = window.towerDesktop
@@ -349,7 +364,7 @@ export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUn
             </div>
           </div>
 
-          {remoteConfig.interface.mostrarConfiguracoes && <button
+          {effectiveRemoteConfig.interface.mostrarConfiguracoes && <button
             type="button"
             onClick={() => router.push('/torre/configuracao')}
             className="flex min-h-10 items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/70 px-3 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800 active:scale-[0.98]"
@@ -393,9 +408,9 @@ export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUn
             <>
               <div className="max-w-3xl">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-sky-300">Pronta para atender</p>
-                <h2 className="max-w-3xl text-3xl font-semibold leading-[1.08] tracking-tight text-white sm:text-4xl lg:text-5xl">{remoteConfig.commercial.headline}</h2>
-                <p className="mt-3 max-w-2xl text-base leading-relaxed text-slate-300 sm:text-lg">{remoteConfig.commercial.supportingText}</p>
-                {remoteConfig.commercial.mode === 'campaign' && remoteConfig.commercial.offerText && <p className="mt-4 inline-flex rounded-xl border border-amber-300/30 bg-amber-300/10 px-4 py-2 text-sm font-bold text-amber-100">{remoteConfig.commercial.offerText}</p>}
+                <h2 className="max-w-3xl text-3xl font-semibold leading-[1.08] tracking-tight text-white sm:text-4xl lg:text-5xl">{effectiveRemoteConfig.commercial.headline}</h2>
+                <p className="mt-3 max-w-2xl text-base leading-relaxed text-slate-300 sm:text-lg">{effectiveRemoteConfig.commercial.supportingText}</p>
+                {effectiveRemoteConfig.commercial.mode === 'campaign' && effectiveRemoteConfig.commercial.offerText && <p className="mt-4 inline-flex rounded-xl border border-amber-300/30 bg-amber-300/10 px-4 py-2 text-sm font-bold text-amber-100">{effectiveRemoteConfig.commercial.offerText}</p>}
               </div>
 
               <div className="mt-6 grid max-w-5xl gap-4 lg:grid-cols-2">
@@ -411,14 +426,14 @@ export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUn
                     <ArrowRight className="mt-2 transition group-hover:translate-x-1" size={27} />
                   </div>
                   <div className="mt-5">
-                    <h3 className="text-xl font-bold">{remoteConfig.commercial.callToAction}</h3>
+                    <h3 className="text-xl font-bold">{effectiveRemoteConfig.commercial.callToAction}</h3>
                     <p className="mt-1 max-w-sm text-sm leading-relaxed text-sky-950/80">
                       Inicie o atendimento e escolha a primeira atividade junto ao cliente.
                     </p>
                   </div>
                 </button>
 
-                {remoteConfig.interface.mostrarContinuarAtendimento && <button
+                {effectiveRemoteConfig.interface.mostrarContinuarAtendimento && <button
                   type="button"
                   onClick={loadActiveSessions}
                   className="group min-h-[185px] rounded-3xl border border-slate-700 bg-slate-900/85 p-5 text-left shadow-xl shadow-black/20 transition hover:-translate-y-1 hover:border-slate-500 hover:bg-slate-800 active:translate-y-0 active:scale-[0.99] sm:p-6"
@@ -442,7 +457,7 @@ export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUn
 
         </section>
 
-        {remoteConfigUnavailable && <div className="mb-3 rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-100">Não foi possível consultar a configuração remota. A Torre está usando a configuração segura inicial.</div>}
+        {configurationUnavailable && <div className="mb-3 rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-100">Não foi possível consultar a configuração remota. A Torre está usando a configuração segura inicial.</div>}
 
         <footer className="flex shrink-0 flex-col gap-3 border-t border-slate-800 pt-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-2">

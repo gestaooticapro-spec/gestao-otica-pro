@@ -196,6 +196,14 @@ declare global {
         synced: number
         lastSyncedAt: string | null
       }>
+      getLocalConfiguration: (options?: { refresh?: boolean }) => Promise<{
+        success: boolean
+        source?: 'server' | 'cache'
+        message?: string
+        snapshot?: (import('@/lib/tower/configuration-snapshot').TowerConfigurationSnapshot & {
+          downloadedAt: string
+        }) | null
+      }>
       getHardwareDiagnostics: () => Promise<{
         platform: string
         hostname: string

@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('towerDesktop', {
   saveLocalMeasurement: (request) => ipcRenderer.invoke('tower:save-local-measurement', request),
   getLocalSyncStatus: () => ipcRenderer.invoke('tower:get-local-sync-status'),
   syncLocalNow: () => ipcRenderer.invoke('tower:sync-local-now'),
+  getLocalConfiguration: (options) => ipcRenderer.invoke('tower:get-local-configuration', options),
   getHardwareDiagnostics: () => ipcRenderer.invoke('tower:get-hardware-diagnostics'),
   getHardwareApprovalStatus: () => ipcRenderer.invoke('tower:get-hardware-approval-status'),
   approveHardwareTest: (request) => ipcRenderer.invoke('tower:approve-hardware-test', request),

@@ -18,6 +18,14 @@ const offlineCustomerSql = await readFile(
   new URL('../supabase/migrations/20260720101000_tower_offline_customer_fallback.sql', import.meta.url),
   'utf8',
 )
+const hardwareValidationSql = await readFile(
+  new URL('../supabase/migrations/20260720102000_tower_hardware_validations.sql', import.meta.url),
+  'utf8',
+)
+const offlineCustomerFixSql = await readFile(
+  new URL('../supabase/migrations/20260720110000_fix_tower_sync_customer_mapping_ambiguity.sql', import.meta.url),
+  'utf8',
+)
 
 test('migração corretiva protege exclusao de loja e imprime lote atomicamente', () => {
   assert.match(sql, /current_store_id\) REFERENCES public\.stores\(id\) ON DELETE RESTRICT/)
@@ -69,4 +77,10 @@ test('cliente provisório recebe mapeamento idempotente sem confiar na loja envi
   assert.match(offlineCustomerSql, /TOWER_SYNC_CUSTOMER_NAME_CONFLICT/)
   assert.match(offlineCustomerSql, /FUNCTION public\.apply_tower_device_sync_event_v2/)
   assert.match(offlineCustomerSql, /TO service_role/)
+})
+
+test('sync v3 delega eventos operacionais para a v2 corrigida', () => {
+  assert.match(hardwareValidationSql, /FUNCTION public\.apply_tower_device_sync_event_v3/)
+  assert.match(hardwareValidationSql, /RETURN public\.apply_tower_device_sync_event_v2/)
+  assert.match(offlineCustomerFixSql, /FUNCTION public\.apply_tower_device_sync_event_v2/)
 })

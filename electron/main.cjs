@@ -24,6 +24,8 @@ let inMemoryMaintenanceGrant = null
 let towerLocalDatabase = null
 let towerSyncTimer = null
 let towerSyncPromise = null
+let towerConfigurationTimer = null
+let towerConfigurationPromise = null
 
 function isValidDeviceSession(session) {
   return Boolean(
@@ -388,6 +390,49 @@ function scheduleTowerOutboxSync() {
 function requestTowerOutboxSync() {
   setTimeout(() => {
     void syncTowerOutbox()
+  }, 0)
+}
+
+async function syncTowerConfiguration() {
+  if (!towerLocalDatabase || !net.isOnline()) return null
+  if (towerConfigurationPromise) return towerConfigurationPromise
+
+  towerConfigurationPromise = (async () => {
+    const deviceSession = await restoreDeviceSession()
+    if (!deviceSession) return null
+    const result = await requestTowerApi('/api/tower/device/configuration', {
+      headers: { Authorization: `Bearer ${deviceSession.deviceCredential}` },
+    })
+    if (!result.ok || !result.data?.success || !result.data?.snapshot) {
+      throw new Error(result.data?.message || 'Nao foi possivel atualizar a configuracao local.')
+    }
+    return towerLocalDatabase.saveConfigurationSnapshot(
+      getLocalScope(deviceSession), result.data.snapshot,
+    )
+  })()
+
+  try {
+    return await towerConfigurationPromise
+  } finally {
+    towerConfigurationPromise = null
+  }
+}
+
+function scheduleTowerConfigurationSync() {
+  if (towerConfigurationTimer) clearInterval(towerConfigurationTimer)
+  towerConfigurationTimer = setInterval(() => {
+    void syncTowerConfiguration().catch((error) => {
+      console.error('[Torre Electron] Falha ao atualizar configuracao local:', error)
+    })
+  }, 5 * 60 * 1000)
+  towerConfigurationTimer.unref?.()
+}
+
+function requestTowerConfigurationSync() {
+  setTimeout(() => {
+    void syncTowerConfiguration().catch((error) => {
+      console.error('[Torre Electron] Falha ao atualizar configuracao local:', error)
+    })
   }, 0)
 }
 
@@ -934,6 +979,7 @@ function registerDesktopHandlers() {
         await bootstrapTowerWebSession(primaryWindow.webContents.session, protectedSession)
         scheduleTowerWebSessionRefresh(primaryWindow.webContents.session)
       }
+      requestTowerConfigurationSync()
       return {
         success: true,
         status: 'paired',
@@ -1215,6 +1261,38 @@ function registerDesktopHandlers() {
     ...(await syncTowerOutbox()),
   }))
 
+  secureHandle('tower:get-local-configuration', experiencePages, async (options) => {
+    const session = await restoreDeviceSession()
+    if (!session || !towerLocalDatabase) {
+      return { success: false, message: 'Configuracao local da Torre indisponivel.' }
+    }
+    try {
+      let snapshot = null
+      let source = 'cache'
+      if (options?.refresh !== false && net.isOnline()) {
+        snapshot = await syncTowerConfiguration()
+        source = snapshot ? 'server' : 'cache'
+      }
+      snapshot ||= towerLocalDatabase.getConfigurationSnapshot(getLocalScope(session))
+      return {
+        success: true,
+        source,
+        snapshot,
+      }
+    } catch (error) {
+      try {
+        return {
+          success: true,
+          source: 'cache',
+          snapshot: towerLocalDatabase.getConfigurationSnapshot(getLocalScope(session)),
+          message: error instanceof Error ? error.message : 'Falha ao atualizar configuracao.',
+        }
+      } catch {
+        return { success: false, message: 'Configuracao local da Torre indisponivel.' }
+      }
+    }
+  })
+
   secureHandle('tower:open-customer-display-test', configurationOnly, () => openCustomerDisplayTest())
 
   secureHandle('tower:close-customer-display-test', configurationOnly, () => {
@@ -1260,6 +1338,8 @@ if (!app.requestSingleInstanceLock()) {
     primaryWindow = await createMainWindow()
     scheduleTowerOutboxSync()
     requestTowerOutboxSync()
+    scheduleTowerConfigurationSync()
+    requestTowerConfigurationSync()
 
     app.on('activate', async () => {
       if (BrowserWindow.getAllWindows().length === 0) {
@@ -1272,6 +1352,7 @@ if (!app.requestSingleInstanceLock()) {
 app.on('window-all-closed', () => {
   if (webSessionRefreshTimer) clearInterval(webSessionRefreshTimer)
   if (towerSyncTimer) clearInterval(towerSyncTimer)
+  if (towerConfigurationTimer) clearInterval(towerConfigurationTimer)
   if (process.platform !== 'darwin') {
     app.quit()
   }
@@ -1280,6 +1361,8 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   if (towerSyncTimer) clearInterval(towerSyncTimer)
   towerSyncTimer = null
+  if (towerConfigurationTimer) clearInterval(towerConfigurationTimer)
+  towerConfigurationTimer = null
   towerLocalDatabase?.close()
   towerLocalDatabase = null
 })

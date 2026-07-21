@@ -173,6 +173,18 @@ class TowerLocalDatabase {
 
       CREATE INDEX IF NOT EXISTS idx_tower_local_hardware_validations_asset
         ON tower_local_hardware_validations(tower_asset_id, updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS tower_local_configuration_snapshots (
+        store_id INTEGER PRIMARY KEY CHECK(store_id > 0),
+        tenant_id TEXT NOT NULL CHECK(length(tenant_id) = 36),
+        source_device_id TEXT NOT NULL CHECK(length(source_device_id) = 36),
+        schema_version INTEGER NOT NULL CHECK(schema_version > 0),
+        revision TEXT NOT NULL CHECK(length(revision) = 64),
+        payload TEXT NOT NULL,
+        payload_encoding TEXT NOT NULL DEFAULT 'json',
+        server_generated_at TEXT NOT NULL,
+        downloaded_at TEXT NOT NULL
+      );
     `)
     if (!hasColumn(this.database, 'tower_local_sessions', 'local_customer_id')) {
       this.database.exec('ALTER TABLE tower_local_sessions ADD COLUMN local_customer_id TEXT')
@@ -183,6 +195,7 @@ class TowerLocalDatabase {
     this.database.prepare('INSERT OR IGNORE INTO tower_local_schema(version, applied_at) VALUES (?, ?)').run(1, isoNow())
     this.database.prepare('INSERT OR IGNORE INTO tower_local_schema(version, applied_at) VALUES (?, ?)').run(2, isoNow())
     this.database.prepare('INSERT OR IGNORE INTO tower_local_schema(version, applied_at) VALUES (?, ?)').run(3, isoNow())
+    this.database.prepare('INSERT OR IGNORE INTO tower_local_schema(version, applied_at) VALUES (?, ?)').run(4, isoNow())
   }
 
   close() {
@@ -558,6 +571,62 @@ class TowerLocalDatabase {
       }, now)
       return this.getHardwareValidation(scope, row.hardware_fingerprint)
     })
+  }
+
+  saveConfigurationSnapshot(scope, snapshot) {
+    assertScope(scope)
+    if (!snapshot || snapshot.schemaVersion !== 1
+        || snapshot.storeId !== scope.storeId
+        || !/^[0-9a-f]{64}$/i.test(snapshot.revision || '')
+        || typeof snapshot.generatedAt !== 'string'
+        || Number.isNaN(Date.parse(snapshot.generatedAt))
+        || !snapshot.remoteConfig || typeof snapshot.remoteConfig !== 'object'
+        || !Array.isArray(snapshot.catalogs)
+        || !snapshot.aiSuggestionConfig || typeof snapshot.aiSuggestionConfig !== 'object') {
+      throw new Error('Snapshot de configuracao da Torre invalido.')
+    }
+    const payloadText = JSON.stringify(snapshot)
+    const protectedPayload = this.protectPayload(payloadText)
+    if (!protectedPayload || typeof protectedPayload.payload !== 'string'
+        || !['json', 'safe_storage_v1'].includes(protectedPayload.encoding)) {
+      throw new Error('Protecao da configuracao local indisponivel.')
+    }
+    const downloadedAt = isoNow()
+    this.database.prepare(`
+      INSERT INTO tower_local_configuration_snapshots(
+        store_id, tenant_id, source_device_id, schema_version, revision,
+        payload, payload_encoding, server_generated_at, downloaded_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(store_id) DO UPDATE SET
+        tenant_id = excluded.tenant_id,
+        source_device_id = excluded.source_device_id,
+        schema_version = excluded.schema_version,
+        revision = excluded.revision,
+        payload = excluded.payload,
+        payload_encoding = excluded.payload_encoding,
+        server_generated_at = excluded.server_generated_at,
+        downloaded_at = excluded.downloaded_at
+    `).run(
+      scope.storeId, scope.tenantId, scope.deviceId, snapshot.schemaVersion,
+      snapshot.revision, protectedPayload.payload, protectedPayload.encoding,
+      snapshot.generatedAt, downloadedAt,
+    )
+    return { ...snapshot, downloadedAt }
+  }
+
+  getConfigurationSnapshot(scope) {
+    assertScope(scope)
+    const row = this.database.prepare(`
+      SELECT payload, payload_encoding, downloaded_at
+      FROM tower_local_configuration_snapshots
+      WHERE store_id = ? AND tenant_id = ? AND source_device_id = ?
+    `).get(scope.storeId, scope.tenantId, scope.deviceId)
+    if (!row) return null
+    const payload = parseJson(this.unprotectPayload(row.payload, row.payload_encoding))
+    if (!payload || payload.storeId !== scope.storeId || payload.schemaVersion !== 1) {
+      throw new Error('Snapshot local de configuracao invalido.')
+    }
+    return { ...payload, downloadedAt: row.downloaded_at }
   }
 
   getPendingEvents(limit = 20) {

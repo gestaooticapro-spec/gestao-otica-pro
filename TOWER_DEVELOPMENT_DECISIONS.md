@@ -1233,8 +1233,6 @@ possa continuar sendo a interface administrativa dessas configurações.
 
 ---
 
-## Regra de retomada
-
 ## Status verificado em 21/07/2026
 
 - A rota de avaliacao ja usa a autorizacao operacional do dispositivo pareado,
@@ -1245,16 +1243,24 @@ possa continuar sendo a interface administrativa dessas configurações.
 - A recomendacao de lentes aceita o acesso autorizado da Torre e a tela do
   cliente pode ser aberta com a recomendacao usando estado local e canal de
   mensagens.
-- A protecao contra reenvio e duplicidade foi implementada no fluxo de sync,
-  mas a migration adicionada declara `apply_tower_device_sync_event_v2` e a
-  rota atualmente chama `apply_tower_device_sync_event_v3`. Os nomes precisam
-  ser alinhados e a migration precisa ser confirmada no ambiente remoto.
-- Nao foi comprovado neste ciclo que o Electron ja baixa, persiste, aplica e
-  sincroniza os dois blocos de configuracao com versionamento local. Isso
-  continua como validacao pendente, assim como desativacao explicita do
-  catalogo.
+- A chamada de `apply_tower_device_sync_event_v3` nao e uma divergencia: a v3
+  trata aprovacoes de hardware e delega os demais eventos para a v2. A migration
+  corretiva atualiza a v2 e, portanto, tambem corrige o caminho usado pela v3.
+- O Electron baixa um snapshot autenticado e versionado com configuracao da
+  interface, versoes ativas do catalogo e prioridades comerciais. O snapshot e
+  cifrado pelo `safeStorage`, persistido no SQLite por loja e dispositivo,
+  atualizado no pareamento, na inicializacao, sob demanda e a cada cinco
+  minutos. A tela inicial aplica esse snapshot quando ele esta disponivel.
+- O snapshot local guarda a identidade e o estado comercial das versoes ativas,
+  nao todas as linhas de familias, ofertas, tratamentos e geometrias. Operacao
+  completa da recomendacao sem rede exige empacotar a interface e definir o
+  recorte local do motor de recomendacao; esse trabalho pertence ao Passo 10.
+- A desativacao explicita de catalogo continua disponivel no backoffice, mas
+  ainda nao foi exposta na URL comercial remota da Torre.
 
 ---
+
+## Regra de retomada
 
 Ao iniciar um novo contexto, informar:
 

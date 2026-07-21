@@ -17,6 +17,7 @@ test('preload nao expoe leitura ou gravacao direta de credenciais permanentes', 
   assert.match(preload, /pairDevice/)
   assert.match(preload, /saveLocalMeasurement/)
   assert.match(preload, /createLocalCustomer/)
+  assert.match(preload, /getLocalConfiguration/)
   assert.doesNotMatch(preload, /getPendingEvents|markEventsSynced/)
 })
 
@@ -27,6 +28,8 @@ test('SQLite local usa outbox e sincroniza apenas pelo processo principal', () =
   assert.match(main, /tower:save-local-measurement/)
   assert.match(main, /safeStorage\.encryptString\(JSON\.stringify\(payload\)\)/)
   assert.match(main, /tower:create-local-customer/)
+  assert.match(main, /requestTowerApi\('\/api\/tower\/device\/configuration'/)
+  assert.match(main, /saveConfigurationSnapshot/)
 })
 
 test('IPC valida janela, origem e caminho antes de executar operacoes', () => {
