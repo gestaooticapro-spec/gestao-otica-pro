@@ -2587,6 +2587,7 @@ export async function receberParcela(prevState: any, formData: FormData) {
     await quitarParcelasZeradasPendentes(parcelaAtual.financiamento_id, data_pagamento)
 
     revalidatePath(`/dashboard/loja/${store_id}/vendas/${venda_id}`)
+    revalidatePath(`/dashboard/loja/${store_id}`)
 
     return { success: true, message: 'Pagamento recebido com sucesso!' }
 

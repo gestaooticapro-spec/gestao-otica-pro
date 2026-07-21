@@ -235,6 +235,12 @@ export default function ActionMenuDashboard({
     return () => window.clearInterval(interval)
   }, [isWhatsAppAutomationEnabled, isWhatsAppChannelConfigured, isWhatsAppConnected, router])
 
+  useEffect(() => {
+    const refreshDashboard = () => router.refresh()
+    window.addEventListener('installment-payment-recorded', refreshDashboard)
+    return () => window.removeEventListener('installment-payment-recorded', refreshDashboard)
+  }, [router])
+
   // LINHA 1: ATENDIMENTO (Frente de Loja)
   const topRow = [
     {

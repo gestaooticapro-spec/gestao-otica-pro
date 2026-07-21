@@ -229,6 +229,8 @@ export default function OperatorMenuLojaVazia({
             }
         }
         fetchData();
+        window.addEventListener('installment-payment-recorded', fetchData);
+        return () => window.removeEventListener('installment-payment-recorded', fetchData);
     }, [storeId]);
 
     useEffect(() => {

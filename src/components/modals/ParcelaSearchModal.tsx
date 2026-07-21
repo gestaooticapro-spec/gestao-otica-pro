@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { useRouter } from 'next/navigation'
 import { X, Search, Calendar, Loader2, Wallet, ArrowLeft, ShoppingBag, CheckCircle2, AlertTriangle, ArrowDownCircle, Printer, MessageCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { searchPendenciasCliente, receberParcela } from '@/lib/actions/vendas.actions'
@@ -53,6 +54,7 @@ function ParcelaCard({ p, onClick }: { p: any, onClick: () => void }) {
 }
 
 export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQuery }: { isOpen: boolean, onClose: () => void, storeId: number, initialQuery?: string }) {
+    const router = useRouter()
     const [mounted, setMounted] = useState(false)
 
     const [step, setStep] = useState<'search' | 'details' | 'pay' | 'success'>('search')
@@ -213,6 +215,11 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQu
                     const parcelaId = selectedParcela.id
                     setPaidParcelaId(parcelaId)
                     setStep('success')
+                    // Atualiza os dois consumidores do Radar Operacional:
+                    // o dashboard por Server Components e o menu do operador
+                    // que carrega os alertas pela API no cliente.
+                    router.refresh()
+                    window.dispatchEvent(new Event('installment-payment-recorded'))
                     setIsPrinting(true)
                     printParcela(parcelaId).catch(console.error).finally(() => setIsPrinting(false))
                 } else {
