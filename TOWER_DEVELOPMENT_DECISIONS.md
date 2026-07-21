@@ -1235,6 +1235,27 @@ possa continuar sendo a interface administrativa dessas configurações.
 
 ## Regra de retomada
 
+## Status verificado em 21/07/2026
+
+- A rota de avaliacao ja usa a autorizacao operacional do dispositivo pareado,
+  sem exigir login humano, e a busca de clientes usa o contexto da loja.
+- A configuracao remota ja possui consulta e ativacao de versoes do catalogo
+  global por loja, alem da edicao das prioridades comerciais das sugestoes de
+  lentes.
+- A recomendacao de lentes aceita o acesso autorizado da Torre e a tela do
+  cliente pode ser aberta com a recomendacao usando estado local e canal de
+  mensagens.
+- A protecao contra reenvio e duplicidade foi implementada no fluxo de sync,
+  mas a migration adicionada declara `apply_tower_device_sync_event_v2` e a
+  rota atualmente chama `apply_tower_device_sync_event_v3`. Os nomes precisam
+  ser alinhados e a migration precisa ser confirmada no ambiente remoto.
+- Nao foi comprovado neste ciclo que o Electron ja baixa, persiste, aplica e
+  sincroniza os dois blocos de configuracao com versionamento local. Isso
+  continua como validacao pendente, assim como desativacao explicita do
+  catalogo.
+
+---
+
 Ao iniciar um novo contexto, informar:
 
 > Leia `TOWER_DEVELOPMENT_DECISIONS.md`, `TOWER_AND_TABLET_VISION_CONTEXT.md`
