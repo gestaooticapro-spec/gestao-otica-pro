@@ -3204,7 +3204,13 @@ export async function searchPendenciasCliente(storeId: number, termo: string) {
     if (cpfDigits.length > 0) {
         parcelasQuery = parcelasQuery.or(`cpf.ilike.%${cpfDigits}%,full_name.ilike.%${firstToken || cleanTerm}%`, { referencedTable: 'customers' })
     } else if (firstToken) {
-        parcelasQuery = parcelasQuery.ilike('customers.full_name', `%${firstToken}%`)
+        // A comparação final abaixo é sem acentos. Não podemos consultar
+        // diretamente por `firstToken` aqui, pois `ilike '%joao%'` não
+        // encontra um nome armazenado como `João` no PostgreSQL.
+        // Usamos o primeiro caractere como pré-filtro e deixamos a
+        // comparação completa (inclusive todos os tokens) para o JS.
+        const firstChar = firstToken.charAt(0)
+        parcelasQuery = parcelasQuery.ilike('customers.full_name', `%${firstChar}%`)
     }
 
     const { data: parcelasBrutas, error: errParc } = await parcelasQuery.limit(500)
