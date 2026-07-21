@@ -1,5 +1,5 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
-import { cookies, type UnsafeUnwrappedCookies } from 'next/headers'
+import { cookies } from 'next/headers'
 
 type ServerCookieStore = {
   get: (name: string) => { value?: string } | undefined
@@ -34,17 +34,11 @@ function createClientWithCookieStore(cookieStore: ServerCookieStore) {
   )
 }
 
-/** Prefer this factory in Next 15 Server Components and async server code. */
+/** Async-compatible factory kept for callers that already await the client. */
 export async function createAsyncClient() {
-  const cookieStore = await cookies()
-  return createClientWithCookieStore(cookieStore)
+  return createClientWithCookieStore(cookies())
 }
 
-/**
- * Legacy synchronous factory kept while older actions are migrated gradually.
- * New code must use createAsyncClient().
- */
 export function createClient() {
-  const cookieStore = (cookies() as unknown as UnsafeUnwrappedCookies) as unknown as ServerCookieStore
-  return createClientWithCookieStore(cookieStore)
+  return createClientWithCookieStore(cookies())
 }
