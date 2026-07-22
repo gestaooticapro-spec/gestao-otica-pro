@@ -10,6 +10,16 @@ const QuerySchema = z.object({
   storeId: z.coerce.number().int().positive(),
   query: z.string().trim().min(1).max(160),
 })
+const CreateSchema = z.object({
+  storeId: z.coerce.number().int().positive(),
+  fullName: z.string().trim().min(3).max(160),
+  mobilePhone: z.string().trim().min(8).max(32),
+})
+
+function getBearerToken(request: NextRequest) {
+  const authorization = request.headers.get('authorization') ?? ''
+  return authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : ''
+}
 
 export async function GET(request: NextRequest) {
   const parsed = QuerySchema.safeParse(Object.fromEntries(request.nextUrl.searchParams))
@@ -17,8 +27,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: false, message: 'Informe um nome ou CPF para buscar.' }, { status: 400 })
   }
 
-  const authorization = request.headers.get('authorization') ?? ''
-  const token = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : ''
+  const token = getBearerToken(request)
   if (!token) return NextResponse.json({ success: false, message: 'Torre nao autenticada.' }, { status: 401 })
 
   const auth = await authenticateTowerDeviceWebSessionToken(token, parsed.data.storeId)
@@ -30,6 +39,7 @@ export async function GET(request: NextRequest) {
   const { data, error } = await createAdminClient()
     .from('customers')
     .select('id,full_name,fone_movel,cpf')
+    .eq('tenant_id', auth.tenantId)
     .eq('store_id', parsed.data.storeId)
     .or(`full_name.ilike.%${term}%,cpf.ilike.%${term}%`)
     .order('full_name')
@@ -37,4 +47,54 @@ export async function GET(request: NextRequest) {
 
   if (error) return NextResponse.json({ success: false, message: error.message }, { status: 500 })
   return NextResponse.json({ success: true, message: 'Clientes encontrados.', data: data ?? [] })
+}
+
+export async function POST(request: NextRequest) {
+  const parsed = CreateSchema.safeParse(await request.json().catch(() => null))
+  if (!parsed.success) {
+    return NextResponse.json({ success: false, message: 'Dados invalidos para cadastrar o cliente.' }, { status: 400 })
+  }
+
+  const token = getBearerToken(request)
+  if (!token) return NextResponse.json({ success: false, message: 'Torre nao autenticada.' }, { status: 401 })
+  const auth = await authenticateTowerDeviceWebSessionToken(token, parsed.data.storeId)
+  if (!auth.ok) return NextResponse.json({ success: false, message: auth.message }, { status: 401 })
+
+  const fullName = parsed.data.fullName.trim()
+  const mobilePhone = parsed.data.mobilePhone.replace(/\D/g, '')
+  if (mobilePhone.length < 8 || mobilePhone.length > 15) {
+    return NextResponse.json({ success: false, message: 'Telefone invalido.' }, { status: 400 })
+  }
+
+  const customers = createAdminClient().from('customers') as any
+  const exactName = fullName.replace(/[%_]/g, '').trim()
+  if (exactName.length < 3) {
+    return NextResponse.json({ success: false, message: 'Nome invalido.' }, { status: 400 })
+  }
+  const { data: existing, error: findError } = await customers
+    .select('id, full_name, fone_movel')
+    .eq('tenant_id', auth.tenantId)
+    .eq('store_id', parsed.data.storeId)
+    .ilike('full_name', exactName)
+    .limit(1)
+    .maybeSingle()
+  if (findError) return NextResponse.json({ success: false, message: findError.message }, { status: 500 })
+  if (existing) {
+    if ((existing.fone_movel ?? '').replace(/\D/g, '') === mobilePhone) {
+      return NextResponse.json({ success: true, message: 'Cliente ja estava cadastrado.', data: existing })
+    }
+    return NextResponse.json({ success: false, message: 'Ja existe um cliente com este nome exato.' }, { status: 409 })
+  }
+
+  const { data, error } = await customers.insert({
+    tenant_id: auth.tenantId,
+    store_id: parsed.data.storeId,
+    full_name: exactName,
+    fone_movel: mobilePhone,
+    created_at: new Date().toISOString(),
+  }).select('id, full_name, fone_movel').single()
+  if (error || !data) {
+    return NextResponse.json({ success: false, message: error?.message || 'Nao foi possivel cadastrar o cliente.' }, { status: 500 })
+  }
+  return NextResponse.json({ success: true, message: 'Cliente cadastrado!', data })
 }

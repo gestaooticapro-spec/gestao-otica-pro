@@ -5,9 +5,10 @@ import test from 'node:test'
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')
 
 test('contratos web v1 autenticam o token do equipamento e limitam o acesso por loja', async () => {
-  const [access, customers, context, sessions, commands, measurements, heatmaps, measurementMigration] = await Promise.all([
+  const [access, customers, evaluations, context, sessions, commands, measurements, heatmaps, measurementMigration] = await Promise.all([
     read('src/app/api/tower/v1/web/access/route.ts'),
     read('src/app/api/tower/v1/web/customers/route.ts'),
+    read('src/app/api/tower/v1/web/evaluations/route.ts'),
     read('src/app/api/tower/v1/web/session-context/route.ts'),
     read('src/app/api/tower/v1/web/sessions/route.ts'),
     read('src/app/api/tower/v1/web/sessions/commands/route.ts'),
@@ -16,13 +17,20 @@ test('contratos web v1 autenticam o token do equipamento e limitam o acesso por 
     read('supabase/migrations/20260722100000_tower_web_measurements.sql'),
   ])
 
-  for (const source of [access, customers, context, sessions, commands, measurements, heatmaps]) {
+  for (const source of [access, customers, evaluations, context, sessions, commands, measurements, heatmaps]) {
     assert.match(source, /Bearer /)
     assert.match(source, /authenticateTowerDeviceWebSessionToken/)
     assert.match(source, /parsed\.data\.storeId/)
   }
 
   assert.match(customers, /\.eq\('store_id', parsed\.data\.storeId\)/)
+  assert.match(customers, /export async function POST/)
+  assert.match(customers, /\.eq\('tenant_id', auth\.tenantId\)/)
+  assert.match(customers, /Cliente ja estava cadastrado/)
+  assert.match(evaluations, /pre_sale_analysis_enabled/)
+  assert.match(evaluations, /\.eq\('tenant_id', auth\.tenantId\)/)
+  assert.match(evaluations, /\.eq\('evaluated_customer_id', customer\.id\)/)
+  assert.match(evaluations, /\.is\('exported_venda_id', null\)/)
   assert.match(context, /\.eq\('store_id', parsed\.data\.storeId\)/)
   assert.match(sessions, /tenant_id: auth\.tenantId/)
   assert.match(commands, /evaluation\.tenant_id !== auth\.tenantId/)
