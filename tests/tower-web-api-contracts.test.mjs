@@ -5,17 +5,18 @@ import test from 'node:test'
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')
 
 test('contratos web v1 autenticam o token do equipamento e limitam o acesso por loja', async () => {
-  const [access, customers, context, sessions, commands, measurements, measurementMigration] = await Promise.all([
+  const [access, customers, context, sessions, commands, measurements, heatmaps, measurementMigration] = await Promise.all([
     read('src/app/api/tower/v1/web/access/route.ts'),
     read('src/app/api/tower/v1/web/customers/route.ts'),
     read('src/app/api/tower/v1/web/session-context/route.ts'),
     read('src/app/api/tower/v1/web/sessions/route.ts'),
     read('src/app/api/tower/v1/web/sessions/commands/route.ts'),
     read('src/app/api/tower/v1/web/measurements/route.ts'),
+    read('src/app/api/tower/v1/web/heatmaps/commands/route.ts'),
     read('supabase/migrations/20260722100000_tower_web_measurements.sql'),
   ])
 
-  for (const source of [access, customers, context, sessions, commands, measurements]) {
+  for (const source of [access, customers, context, sessions, commands, measurements, heatmaps]) {
     assert.match(source, /Bearer /)
     assert.match(source, /authenticateTowerDeviceWebSessionToken/)
     assert.match(source, /parsed\.data\.storeId/)
@@ -30,6 +31,10 @@ test('contratos web v1 autenticam o token do equipamento e limitam o acesso por 
   assert.match(access, /deviceId: auth\.deviceId/)
   assert.match(measurements, /save_tower_web_measurement/)
   assert.match(measurements, /p_result_id: parsed\.data\.operationId/)
+  assert.match(heatmaps, /command: z\.literal\('get-or-create-tower-session'\)/)
+  assert.match(heatmaps, /command: z\.literal\('get-completed-result'\)/)
+  assert.match(heatmaps, /\.eq\('tenant_id', auth\.tenantId\)/)
+  assert.match(heatmaps, /Esta sessao ja foi concluida com outro resultado/)
   assert.match(measurementMigration, /FOR UPDATE/)
   assert.match(measurementMigration, /existing_result\.id/)
   assert.match(measurementMigration, /REVOKE ALL ON FUNCTION public\.save_tower_web_measurement/)
