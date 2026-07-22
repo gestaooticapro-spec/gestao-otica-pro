@@ -362,12 +362,30 @@ O commit `011967a` foi publicado no MB Optical com deploy `Ready`. Snapshot e
 recomendacao responderam `401` sem credencial. O commit local da Neosmart e
 `16f933b`.
 
+### Lote HTTP de ativacao e configuracao - publicado em 22/07/2026
+
+- a configuracao operacional ganhou o contrato autenticado
+  `/api/tower/v1/web/configuration`, limitado por dispositivo ativo, tenant e
+  loja;
+- a validacao de ativacao saiu da URL relativa do renderer e passou pelo IPC
+  restrito do Electron diretamente para o MB Optical;
+- as paginas copiadas de ativacao e configuracao remota da Neosmart agora
+  encaminham para as telas canonicas do MB Optical;
+- a sessao comercial, o PIN, os catalogos e a gravacao da configuracao remota
+  permanecem no dominio central, onde o cookie HTTP-only e valido;
+- a implementacao remota duplicada e seus acessos administrativos foram
+  removidos da Neosmart;
+- typecheck, 25 testes e build passaram no MB Optical; typecheck, 24 testes,
+  lint do lote e build passaram na Neosmart.
+
+O commit `0d2eafb` foi publicado no MB Optical com deploy `Ready`, e a nova
+rota respondeu `401` sem credencial. O commit local da Neosmart e `8d4d48f`.
+
 Ainda existem actions copiadas que podem acessar o Supabase diretamente. Antes
 do empacotamento final, executar um inventario e migrar pelo menos:
 
-1. ativacao, configuracao remota e URLs relativas;
-2. ativos e operacoes do equipamento que permanecerem no produto;
-5. qualquer outra action que use `createAdminClient`, service role ou acesso
+1. ativos e operacoes do equipamento que permanecerem no produto;
+2. qualquer outra action que use `createAdminClient`, service role ou acesso
    direto ao banco.
 
 Para cada dominio:
