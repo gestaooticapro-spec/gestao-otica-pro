@@ -206,17 +206,27 @@ Ou seja:
 
 ## Estado atual
 
-- branch atual: `eyetrack`
-- arquivo principal alterado nesta rodada: `src/components/catalog/GazeHeatmapLab.tsx`
-- typecheck validado com `npx tsc --noEmit`
+- a sandbox continua sendo laboratorio no MB Optical, nao contrato de
+  persistencia nem autoridade de sessao;
+- o fluxo operacional do Campo Visual da Neosmart usa o contrato autenticado
+  `/api/tower/v1/web/heatmaps/commands`;
+- o renderer Neosmart esta publicado em `https://neosmart-eta.vercel.app/`;
+- o resultado do heatmap permanece vinculado a `tower_session_id` e a sessao
+  deve ser retomada pelo mesmo UUID ao voltar ao menu;
+- typecheck, testes e build passaram nos dois repositorios.
+
+O nome da branch `eyetrack` e a referencia ao laboratorio permanecem como
+historico desta sandbox. Nao tratar este arquivo como indicacao de que o fluxo
+de producao da Torre acessa diretamente o Supabase.
 
 ## Proxima retomada sugerida
 
 Quando este tema for retomado, a ordem mais segura e:
 
-1. abrir este arquivo de status
-2. revisar `projectHeadSandboxSample()` e `getCalibratedHeadCarry()`
-3. decidir se o proximo passo sera:
+1. abrir este arquivo de status;
+2. revisar `projectHeadSandboxSample()` e `getCalibratedHeadCarry()`;
+3. manter a sandbox separada do contrato HTTP de producao;
+4. decidir se o proximo passo sera:
    - congelar o modo logico atual
    - adaptar a experiencia para a torre em retrato
    - reintroduzir os olhos reais como refinamento

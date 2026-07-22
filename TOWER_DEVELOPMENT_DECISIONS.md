@@ -258,11 +258,12 @@ Ainda falta validar funcionalmente, no Electron e depois no equipamento real:
 ### MB Optical
 
 - Next 14.2.35 e React 18.
-- Deploy de producao restaurado e com status `Ready`.
+- Deploy de producao ativo e com status `Ready` em `gestao-otica-pro.vercel.app`.
 - Typecheck aprovado.
-- 25 testes automatizados aprovados.
+- 26 testes automatizados aprovados.
 - Build de producao aprovado.
-- APIs HTTP v1 de clientes e sessoes publicadas.
+- APIs HTTP v1 de clientes, sessoes, heatmap, medidas, catalogo,
+  recomendacao, configuracao e IA publicadas.
 
 ### Neosmart
 
@@ -271,10 +272,11 @@ Ainda falta validar funcionalmente, no Electron e depois no equipamento real:
 - Identidade `br.com.mboptical.neosmart`.
 - Executavel `neosmart`.
 - Instalador planejado como `Neosmart-Setup-*`.
+- Renderer publicado em `https://neosmart-eta.vercel.app/`.
 - Origens do renderer e das APIs separadas.
 - Ciclo de clientes e sessoes migrado para HTTP v1.
 - Typecheck aprovado.
-- 19 testes automatizados aprovados.
+- 30 testes automatizados aprovados.
 - Build de producao aprovado.
 
 ## Pendencias antes do Passo 10
@@ -297,12 +299,10 @@ Optical foi publicado pelo commit `8ea4163`; o deploy de producao ficou
 `Ready`, e os contratos `/access` e `/measurements` responderam corretamente
 como rotas protegidas.
 
-O projeto Vercel exclusivo `neosmart` foi criado e vinculado ao repositorio,
-mas permanece sem deploy. A publicacao foi deliberadamente interrompida porque
-a Neosmart ainda possui dominios ativos que exigiriam acesso direto ao
-Supabase. Nao copiar a service role para esse projeto. Os lotes de heatmap e
-avaliacao/cliente ja foram migrados; o proximo e o snapshot de catalogo,
-geometria, visagismo e recomendacao.
+O projeto Vercel exclusivo `neosmart` foi criado, vinculado ao repositorio e
+publicado em `https://neosmart-eta.vercel.app/`, sem chaves administrativas ou
+acesso direto ao Supabase. Os lotes de heatmap, avaliacao/cliente, catalogo,
+recomendacao, ativacao, configuracao e IA operacional ja foram migrados.
 
 O lint da Neosmart terminou sem erros e com dois avisos preexistentes. O lint
 do MB Optical nao iniciou a analise por uma falha circular da configuracao do
@@ -325,8 +325,8 @@ dois sistemas:
 
 O commit `3f0c6ad` foi publicado no MB Optical com deploy `Ready`; uma chamada
 sem credencial ao endpoint retornou `401`. O commit local da Neosmart e
-`12db718`. O projeto Neosmart continua sem deploy por ainda haver outros
-dominios ativos acoplados.
+`12db718`. O renderer Neosmart ja possui deploy proprio; a validacao integrada
+continua sendo feita contra as duas origens publicadas.
 
 ### Lote HTTP de avaliacao e cliente - publicado em 22/07/2026
 
@@ -420,8 +420,25 @@ commit local da Neosmart e `ffe8861`.
   sem erros. Permanecem apenas as dividas globais de lint ja documentadas.
 
 O commit `6696498` foi publicado no MB Optical com deploy `Ready`, e a rota
-respondeu `401` sem credencial. O commit local da Neosmart e `2c9e439`; ela
-continua sem deploy.
+respondeu `401` sem credencial. O commit local da Neosmart e `2c9e439`; o
+renderer ja foi publicado separadamente.
+
+### Lote de experiencia e continuidade de sessao - publicado em 22/07/2026
+
+- narrativas de IA aguardam respostas validas dos provedores e mantem a tela do
+  cliente limpa quando todos falham;
+- comparativos de AR e polarizado publicam os videos de origem e tratamento;
+- a tela inicial do Electron exibe as aprovacoes reais de camera, touch e tela
+  cliente;
+- ao retornar para uma sessao existente, o UUID vindo na URL agora sincroniza
+  o estado interno do menu e impede a criacao silenciosa de uma nova sessao;
+- a correcao foi publicada no MB Optical (`e8e6834`) e na Neosmart (`2331597`);
+- 26 testes do MB Optical e 30 testes da Neosmart passaram, com typecheck e
+  build aprovados nos dois repositorios.
+
+As duas sessoes duplicadas criadas antes da correcao permanecem preservadas
+para reconciliacao posterior; nenhum dado foi apagado ou mesclado
+automaticamente.
 
 Ainda existem actions copiadas que podem acessar o Supabase diretamente. Antes
 do empacotamento final, executar um inventario e migrar pelo menos:
@@ -446,7 +463,7 @@ ausencia de credenciais administrativas e acessos amplos ao banco.
 
 ### Estado do passo
 
-**Interrompido antes da publicacao e instalacao do piloto.**
+**Renderer publicado; empacotamento e homologacao do piloto ainda pendentes.**
 
 O primeiro empacotamento foi feito quando a Torre ainda estava dentro do MB
 Optical. Ele gerou um instalador de prova e validou a abertura do Electron no
@@ -457,9 +474,9 @@ Windows de desenvolvimento. Esse instalador antigo nao deve ser usado porque:
 - foi criado antes da separacao dos repositorios;
 - nao representa a arquitetura final Neosmart -> APIs MB Optical.
 
-O trabalho foi interrompido quando o deploy do MB Optical travou na Vercel. O
-MB Optical ja foi restaurado, mas o Passo 10 nao deve continuar do ponto do
-instalador antigo. Ele deve ser retomado com a Neosmart separada.
+O deploy separado da Neosmart ja esta funcional. O instalador antigo continua
+fora do piloto; o proximo instalador deve ser gerado a partir do repositorio
+Neosmart e validado contra as duas origens publicadas.
 
 ### Condicoes para retomar
 
@@ -467,7 +484,7 @@ O Passo 10 so pode recomecar quando:
 
 - as actions operacionais necessarias estiverem migradas para HTTP;
 - a auditoria de credenciais da Neosmart estiver limpa;
-- o projeto web Neosmart existir na Vercel;
+- o projeto web Neosmart existir na Vercel; **atendido**;
 - a URL da interface Neosmart estiver separada da URL do MB Optical;
 - o fluxo Neosmart -> MB Optical estiver validado online;
 - a queda e o retorno da internet estiverem validados;
@@ -475,9 +492,8 @@ O Passo 10 so pode recomecar quando:
 
 ### Execucao do Passo 10
 
-1. Criar o projeto Vercel exclusivo da Neosmart.
-2. Configurar variaveis de ambiente sem copiar segredos administrativos.
-3. Publicar o renderer e validar suas rotas.
+1. Configurar variaveis de ambiente sem copiar segredos administrativos.
+2. Publicar o renderer e validar suas rotas. **Concluido em 22/07/2026.**
 4. Validar ativacao, pareamento e sessao curta contra o MB Optical em producao.
 5. Testar cliente, avaliacao, receita, medidas, heatmap e encerramento.
 6. Simular queda de internet durante cliente e medidas.
@@ -494,8 +510,7 @@ distribuicao comercial, mas podem ser posteriores ao piloto controlado.
 
 ## Plano de retomada da proxima sessao
 
-1. Fazer smoke test curto do MB Optical restaurado: login, loja, atendimento,
-   clientes e uma area critica.
+1. Reexecutar smoke test integrado nas duas URLs publicadas.
 2. No Neosmart, confirmar o HEAD e executar:
 
    ```bash
@@ -505,10 +520,11 @@ distribuicao comercial, mas podem ser posteriores ao piloto controlado.
    npm run build
    ```
 
-3. Inventariar os imports e acessos restantes ao Supabase.
-4. Migrar medidas, heatmap e ativos, um dominio por vez.
-5. Fazer a auditoria final de seguranca.
-6. Retomar o Passo 10 seguindo a lista acima.
+3. Validar online/offline, outbox, camera, touch e segunda tela no Electron.
+4. Auditar os imports residuais do Supabase por dominio; nao remover codigo
+   sem confirmar consumidor ativo.
+5. Gerar o instalador Neosmart e homologar o mini PC da Loja 7.
+6. Decidir a reconciliacao das sessoes duplicadas antigas.
 
 Nao e necessario recriar todos os testes. Os testes automatizados existentes
 devem ser reexecutados como regressao. Os testes integrados e de hardware devem

@@ -525,6 +525,28 @@ Separar em camadas:
 
 Isso permite reaproveitar o "cerebro" do sistema entre tablet e torre.
 
+### Atualizacao de implementacao em 22/07/2026
+
+Este documento preserva a visao historica do laboratorio de tablet, mas a
+Torre ja evoluiu para o repositorio independente Neosmart. O estado operacional
+atual e:
+
+- renderer web publicado em `https://neosmart-eta.vercel.app/`;
+- Electron, SQLite local, outbox, camera, touch e segunda tela pertencem ao
+  repositorio Neosmart;
+- MB Optical permanece como autoridade de dados e APIs HTTP autenticadas;
+- Campo Visual, avaliacao, clientes, catalogo, recomendacao, configuracao e IA
+  usam os contratos versionados do MB Optical;
+- uma sessao existente deve manter o mesmo UUID ao voltar de uma experiencia;
+  a correcao foi publicada em 22/07/2026;
+- os testes atuais cobrem os contratos, seguranca Electron, SQLite, videos dos
+  comparativos e continuidade da sessao.
+
+As secoes que tratam da Torre como hipotese futura ou de acesso direto ao
+dashboard devem ser lidas como historico. Para arquitetura e ordem de execucao,
+`TOWER_DEVELOPMENT_DECISIONS.md` e `CURRENT_STATUS.md` sao as referencias
+atuais.
+
 ---
 
 ## Modo demonstracao vs modo profissional
@@ -616,6 +638,14 @@ Quando a torre entrar em fase de implementacao real, ainda sera necessario defin
 ---
 
 ## Resumo executivo
+
+### Estado consolidado em 22/07/2026
+
+O tablet continua sendo o laboratorio conceitual do motor visual, mas a
+experiencia de Torre ja esta separada e publicada como Neosmart. O proximo
+marco nao e mais decidir se a Torre sera um produto separado: e homologar o
+Electron e o hardware real, validar online/offline e gerar o instalador do
+piloto.
 
 ### O que ja esta claro
 
