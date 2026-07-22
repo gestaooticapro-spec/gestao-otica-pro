@@ -269,7 +269,11 @@ function logOpenAISuccess(params: {
   )
 }
 
-async function generateWithOpenAI(prompt: string, logTag: 'Audit' | 'Triage' | 'Sales Assist'): Promise<string> {
+async function generateWithOpenAI(
+  prompt: string,
+  logTag: 'Audit' | 'Triage' | 'Sales Assist',
+  validateText: (text: string) => boolean = (text) => logTag === 'Audit' || Boolean(extractJsonObject(text)),
+): Promise<string> {
   if (!OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY nao configurada')
   }
@@ -314,7 +318,8 @@ async function generateWithOpenAI(prompt: string, logTag: 'Audit' | 'Triage' | '
         const responsesData = await responsesRes.json() as OpenAIResponseLike
         if (responsesRes.ok) {
           const text = extractOpenAIText(responsesData)
-          if (text) {
+          const validText = text && validateText(text)
+          if (validText) {
             logOpenAISuccess({
               logTag,
               endpoint: 'responses',
@@ -324,7 +329,7 @@ async function generateWithOpenAI(prompt: string, logTag: 'Audit' | 'Triage' | '
             })
             return text
           }
-          errors.push(`responses:${modelName}:resposta_vazia`)
+          errors.push(`responses:${modelName}:${text ? 'json_invalido' : 'resposta_vazia'}`)
         } else {
           errors.push(`responses:${modelName}:${buildError(responsesRes.status, responsesData)}`)
         }
@@ -346,7 +351,8 @@ async function generateWithOpenAI(prompt: string, logTag: 'Audit' | 'Triage' | '
         const chatData = await chatRes.json() as OpenAIChatCompletionLike
         if (chatRes.ok) {
           const text = String(chatData.choices?.[0]?.message?.content || '').trim()
-          if (text) {
+          const validText = text && validateText(text)
+          if (validText) {
             logOpenAISuccess({
               logTag,
               endpoint: 'chat',
@@ -356,7 +362,7 @@ async function generateWithOpenAI(prompt: string, logTag: 'Audit' | 'Triage' | '
             })
             return text
           }
-          errors.push(`chat:${modelName}:resposta_vazia`)
+          errors.push(`chat:${modelName}:${text ? 'json_invalido' : 'resposta_vazia'}`)
         } else {
           errors.push(`chat:${modelName}:${buildError(chatRes.status, chatData)}`)
         }
@@ -752,6 +758,9 @@ function buildSalesAssistCriticalFacts(params: {
     if (reasonText.includes('alvo_preco:acima_alvo')) {
       pushUnique(facts, 'Preco acima do alvo: apresentar como ponto de atencao comercial simples.')
     }
+    if (option.heatmapCompatibility?.status === 'nao_indicada') {
+      pushUnique(facts, 'O Campo Visual nao recomenda esta geometria; apresentar somente como alternativa que exige revisao, nunca como melhor escolha.')
+    }
     if (reasonText.includes('lens_tier:premium') || reasonText.includes('treatment_tier:premium')) {
       pushUnique(facts, 'Opcao com componente premium conforme tier do payload.')
     }
@@ -873,6 +882,34 @@ function normalizeSalesAssist(
   }
 }
 
+function isSalesAssistSafe(
+  assist: LensSalesAssist,
+  recommendations: RecommendationOption[],
+): boolean {
+  if (assist.options.length !== recommendations.length) return false
+
+  return recommendations.every((recommendation) => {
+    const argument = assist.options.find((item) => item.configKey === recommendation.configKey)
+    if (!argument) return false
+    const text = [argument.headline, argument.whyThisLens, argument.sellerArgument, argument.closingLine]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+    const reasonText = (recommendation.reasons || []).join(' ')
+
+    if (reasonText.includes('tratamento:ar_ausente_critico') && text.includes('antirreflexo')) return false
+    if (reasonText.includes('alvo_preco:acima_alvo') && !/(orcamento|preco|investimento|acima do|limite)/.test(text)) return false
+    if (
+      recommendation.heatmapCompatibility?.status === 'nao_indicada' &&
+      !/(campo visual|mapa visual|geometria|nao recomenda|revisao|rever)/.test(text)
+    ) return false
+
+    return true
+  })
+}
+
 export async function generateLensSalesAssistAction(params: {
   patientContext: PatientAuditContext
   technicalTriage: LensTechnicalTriage | null
@@ -942,12 +979,18 @@ export async function generateLensSalesAssistAction(params: {
   // Ordem ativa: OpenAI primeiro; GLM-4.7-Flash somente se a OpenAI falhar.
   if (OPENAI_API_KEY) {
     try {
-      const text = await generateWithOpenAI(prompt, 'Sales Assist')
+      const text = await generateWithOpenAI(prompt, 'Sales Assist', (candidate) => {
+        const parsed = extractJsonObject(candidate)
+        return parsed
+          ? isSalesAssistSafe(normalizeSalesAssist(parsed, params.recommendations), params.recommendations)
+          : false
+      })
       const json = extractJsonObject(text)
       if (json) {
-        return { success: true, assist: normalizeSalesAssist(json, params.recommendations) }
+        const assist = normalizeSalesAssist(json, params.recommendations)
+        if (isSalesAssistSafe(assist, params.recommendations)) return { success: true, assist }
       }
-      throw new Error('OpenAI retornou argumentos sem JSON valido')
+      throw new Error('OpenAI retornou argumentos sem JSON valido e seguro')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error(`[OpenAI Sales Assist] erro: ${msg}`)
@@ -960,9 +1003,10 @@ export async function generateLensSalesAssistAction(params: {
       const text = await generateWithGlm(prompt, 'Sales Assist')
       const json = extractJsonObject(text)
       if (json) {
-        return { success: true, assist: normalizeSalesAssist(json, params.recommendations) }
+        const assist = normalizeSalesAssist(json, params.recommendations)
+        if (isSalesAssistSafe(assist, params.recommendations)) return { success: true, assist }
       }
-      throw new Error('GLM retornou argumentos sem JSON valido')
+      throw new Error('GLM retornou argumentos sem JSON valido e seguro')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error(`[GLM Sales Assist] erro: ${msg}`)
