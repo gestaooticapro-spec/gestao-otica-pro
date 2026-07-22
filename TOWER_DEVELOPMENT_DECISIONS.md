@@ -344,12 +344,29 @@ O commit `9eca599` foi publicado no MB Optical com deploy `Ready`. Os dois
 contratos responderam `401` sem credencial e sem gravacao. O commit local da
 Neosmart e `107c01e`.
 
+### Lote HTTP de catalogo e recomendacao - publicado em 22/07/2026
+
+- o snapshot `/api/tower/v1/web/operational-catalog` expoe catalogos ativos,
+  geometrias e gabaritos como recursos selecionaveis;
+- ativacoes sao limitadas por tenant, loja e estado ativo;
+- a inferencia de perfil de gabaritos antigos foi mantida;
+- o motor de recomendacao passou para
+  `/api/tower/v1/web/recommendations` e valida todas as versoes solicitadas;
+- configuracao comercial, catalogo, geometrias e heatmap permanecem sob a
+  autoridade do MB Optical;
+- as paginas ativas e a action de recomendacao da Neosmart usam apenas HTTP;
+- typecheck, testes e builds passaram nos dois repositorios, e o lint do lote
+  Neosmart nao apresentou erros.
+
+O commit `011967a` foi publicado no MB Optical com deploy `Ready`. Snapshot e
+recomendacao responderam `401` sem credencial. O commit local da Neosmart e
+`16f933b`.
+
 Ainda existem actions copiadas que podem acessar o Supabase diretamente. Antes
 do empacotamento final, executar um inventario e migrar pelo menos:
 
-1. catalogo, geometrias, visagismo e recomendacao;
-2. ativacao, configuracao remota e URLs relativas;
-3. ativos e operacoes do equipamento que permanecerem no produto;
+1. ativacao, configuracao remota e URLs relativas;
+2. ativos e operacoes do equipamento que permanecerem no produto;
 5. qualquer outra action que use `createAdminClient`, service role ou acesso
    direto ao banco.
 

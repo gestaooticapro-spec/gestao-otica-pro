@@ -34,8 +34,8 @@ publicado em producao com os contratos `/access` e `/measurements` protegidos.
 
 O projeto Vercel `neosmart` tambem foi criado e vinculado, mas nao foi
 publicado. Os dominios ativos restantes ainda impedem um deploy sem credencial
-administrativa. A proxima migracao ativa e o snapshot de catalogo, geometria,
-visagismo e recomendacao.
+administrativa. A proxima migracao ativa e ativacao, configuracao remota e
+correcao das URLs relativas.
 
 ## Atualizacao do lote de heatmap
 
@@ -80,6 +80,30 @@ Implementado e publicado no MB Optical em 22/07/2026:
 O commit `9eca599` do MB Optical foi publicado com status `Ready`. Chamadas sem
 credencial aos dois contratos retornaram `401`, sem gravacao. O commit local
 correspondente na Neosmart e `107c01e`; o renderer permanece sem deploy.
+
+## Atualizacao do lote de catalogo e recomendacao
+
+Implementado e publicado no MB Optical em 22/07/2026:
+
+- `/api/tower/v1/web/operational-catalog` entrega somente os recursos
+  solicitados: catalogos ativos, geometrias ou gabaritos de armacao;
+- as ativacoes de catalogo sao filtradas por tenant, loja e estado ativo;
+- a inferencia legada de perfil dos gabaritos foi preservada;
+- `/api/tower/v1/web/recommendations` mantem no MB Optical o motor, as regras,
+  configuracao comercial, catalogos e leitura opcional do heatmap;
+- o endpoint rejeita versoes que nao estejam ativas para a loja;
+- as cinco paginas ativas da Torre usam o snapshot HTTP, e a action de
+  recomendacao da Neosmart virou apenas um adaptador HTTP;
+- typecheck, 25 testes e build passaram no MB Optical;
+- typecheck, 23 testes, lint sem erros e build passaram na Neosmart.
+
+O commit `011967a` do MB Optical foi publicado com status `Ready`. Snapshot e
+recomendacao responderam `401` sem credencial e sem executar consultas
+operacionais. O commit local correspondente na Neosmart e `16f933b`.
+
+A recontagem ampla passou para 73 arquivos relacionados e 51 actions
+relacionadas. Actions legadas de catalogo e visagismo permanecem copiadas, mas
+nao sao mais chamadas pelas paginas ativas da Torre.
 
 ## Linha de base validada
 
@@ -184,7 +208,7 @@ funcoes genericas antigas ainda existem nos arquivos copiados do backoffice,
 mas nao sao importadas pela interface da Torre. O fluxo Electron de cliente
 provisorio continua corretamente local-first.
 
-### 5. Catalogo, geometrias, visagismo e recomendacao
+### 5. Catalogo, geometrias, visagismo e recomendacao - migrado no fluxo ativo
 
 Arquivos ativos:
 
@@ -196,15 +220,10 @@ Arquivos ativos:
 - `src/lib/actions/store.actions.ts`;
 - `src/lib/actions/tower-heatmap.actions.ts`.
 
-As telas da Neosmart ainda leem diretamente:
-
-- versoes e ativacoes do catalogo global;
-- familias, ofertas, tratamentos e grades;
-- geometrias de lentes;
-- templates de armacao do visagismo;
-- configuracao comercial da loja;
-- resultado do heatmap usado pela recomendacao agora chega pelo contrato HTTP;
-  as demais entradas da recomendacao ainda sao leituras diretas.
+As paginas ativas leem o snapshot operacional por HTTP. O motor de recomendacao
+tambem executa no MB Optical, que valida as ativacoes e combina catalogo,
+configuracao comercial, geometrias e heatmap. Os arquivos genericos continuam
+na arvore apenas como codigo residual ou tipos compartilhados ate a limpeza.
 
 O motor reutilizavel pode continuar na Neosmart, mas suas entradas devem vir de
 um snapshot ou contrato HTTP autenticado, e nao de consultas diretas ao banco.
@@ -285,9 +304,8 @@ avaliacao possui contrato operacional proprio, ambos autenticados.
 
 ### Lote 4 - snapshot de catalogo e recomendacao
 
-Definir o recorte completo do snapshot operacional, alimentar o motor por
-dados recebidos e remover as leituras diretas de catalogo, geometria,
-visagismo e configuracao comercial.
+Concluido em 22/07/2026. O snapshot possui recursos selecionaveis e o motor foi
+mantido no MB Optical, sem consultas administrativas na action da Neosmart.
 
 ### Lote 5 - ativacao e configuracao remota
 
