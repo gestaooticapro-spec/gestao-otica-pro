@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
     success: true,
     message: 'Acesso da Torre validado.',
     data: {
+      ok: true as const,
       tenantId: auth.tenantId,
       userId: null,
       deviceId: auth.deviceId,

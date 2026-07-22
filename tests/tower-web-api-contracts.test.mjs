@@ -40,6 +40,7 @@ test('contratos web v1 autenticam o token do equipamento e limitam o acesso por 
   assert.match(commands, /session\.status !== 'active'/)
   assert.match(commands, /tower_heatmap_sessions/)
   assert.match(access, /deviceId: auth\.deviceId/)
+  assert.match(access, /data:\s*\{\s*ok: true as const/)
   assert.match(measurements, /save_tower_web_measurement/)
   assert.match(measurements, /p_result_id: parsed\.data\.operationId/)
   assert.match(heatmaps, /command: z\.literal\('get-or-create-tower-session'\)/)
