@@ -291,10 +291,17 @@ O primeiro lote posterior a separacao foi implementado nos dois repositorios:
 - caminho Electron SQLite -> outbox -> sync preservado;
 - typecheck, testes e builds aprovados nos dois repositorios.
 
-A migration `20260722100000_tower_web_measurements.sql` ainda nao foi aplicada
-ao Supabase porque a CLI vinculada respondeu `403` por falta de privilegio da
-conta. O lote nao deve ser publicado fora de ordem: primeiro aplicar a
-migration e publicar o MB Optical; depois publicar e validar a Neosmart.
+A migration `20260722100000_tower_web_measurements.sql` foi aplicada
+manualmente e a funcao foi confirmada por chamada remota sem gravacao. O MB
+Optical foi publicado pelo commit `8ea4163`; o deploy de producao ficou
+`Ready`, e os contratos `/access` e `/measurements` responderam corretamente
+como rotas protegidas.
+
+O projeto Vercel exclusivo `neosmart` foi criado e vinculado ao repositorio,
+mas permanece sem deploy. A publicacao foi deliberadamente interrompida porque
+a Neosmart ainda possui dominios ativos que exigiriam acesso direto ao
+Supabase. Nao copiar a service role para esse projeto. A proxima migracao deve
+ser o ciclo completo de heatmap/campo visual.
 
 O lint da Neosmart terminou sem erros e com dois avisos preexistentes. O lint
 do MB Optical nao iniciou a analise por uma falha circular da configuracao do

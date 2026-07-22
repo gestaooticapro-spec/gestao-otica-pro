@@ -28,10 +28,13 @@ Depois do lote, a Neosmart passou de 77 para 75 arquivos relacionados ao
 Supabase, de 54 para 53 actions relacionadas e de 64 para 62 imports do cliente
 administrativo.
 
-A migration `20260722100000_tower_web_measurements.sql` esta criada, mas nao
-foi aplicada: `npx supabase migration list` recebeu `403` por falta de
-privilegio da conta vinculada. Nao publicar a Neosmart antes de aplicar a
-migration e publicar primeiro os novos contratos do MB Optical.
+A migration `20260722100000_tower_web_measurements.sql` foi aplicada
+manualmente e confirmada por chamada remota sem gravacao. O MB Optical foi
+publicado em producao com os contratos `/access` e `/measurements` protegidos.
+
+O projeto Vercel `neosmart` tambem foi criado e vinculado, mas nao foi
+publicado. Os dominios ativos restantes ainda impedem um deploy sem credencial
+administrativa. A proxima migracao e o ciclo completo do heatmap/campo visual.
 
 ## Linha de base validada
 
