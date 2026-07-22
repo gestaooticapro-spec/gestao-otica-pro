@@ -5,7 +5,7 @@ import test from 'node:test'
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')
 
 test('contratos web v1 autenticam o token do equipamento e limitam o acesso por loja', async () => {
-  const [access, customers, evaluations, context, sessions, commands, measurements, heatmaps, operationalCatalog, recommendations, measurementMigration] = await Promise.all([
+  const [access, customers, evaluations, context, sessions, commands, measurements, heatmaps, operationalCatalog, recommendations, configuration, measurementMigration] = await Promise.all([
     read('src/app/api/tower/v1/web/access/route.ts'),
     read('src/app/api/tower/v1/web/customers/route.ts'),
     read('src/app/api/tower/v1/web/evaluations/route.ts'),
@@ -16,10 +16,11 @@ test('contratos web v1 autenticam o token do equipamento e limitam o acesso por 
     read('src/app/api/tower/v1/web/heatmaps/commands/route.ts'),
     read('src/app/api/tower/v1/web/operational-catalog/route.ts'),
     read('src/app/api/tower/v1/web/recommendations/route.ts'),
+    read('src/app/api/tower/v1/web/configuration/route.ts'),
     read('supabase/migrations/20260722100000_tower_web_measurements.sql'),
   ])
 
-  for (const source of [access, customers, evaluations, context, sessions, commands, measurements, heatmaps, operationalCatalog, recommendations]) {
+  for (const source of [access, customers, evaluations, context, sessions, commands, measurements, heatmaps, operationalCatalog, recommendations, configuration]) {
     assert.match(source, /Bearer /)
     assert.match(source, /authenticateTowerDeviceWebSessionToken/)
     assert.match(source, /parsed\.data\.storeId/)
@@ -53,6 +54,8 @@ test('contratos web v1 autenticam o token do equipamento e limitam o acesso por 
   assert.match(recommendations, /\.eq\('tenant_id', tenantId\)/)
   assert.match(recommendations, /\.eq\('store_id', storeId\)/)
   assert.match(recommendations, /tower_heatmap_sessions/)
+  assert.match(configuration, /readTowerRemoteConfig\(parsed\.data\.storeId, auth\.tenantId\)/)
+  assert.match(configuration, /Cache-Control.*no-store/)
   assert.match(measurementMigration, /FOR UPDATE/)
   assert.match(measurementMigration, /existing_result\.id/)
   assert.match(measurementMigration, /REVOKE ALL ON FUNCTION public\.save_tower_web_measurement/)
