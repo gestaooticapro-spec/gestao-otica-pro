@@ -307,13 +307,33 @@ O lint da Neosmart terminou sem erros e com dois avisos preexistentes. O lint
 do MB Optical nao iniciou a analise por uma falha circular da configuracao do
 ESLint 9; typecheck, testes e build continuaram aprovados.
 
+### Lote HTTP de Campo Visual - publicado em 22/07/2026
+
+O ciclo completo do heatmap foi migrado sem dividir sua autoridade entre os
+dois sistemas:
+
+- o MB Optical publicou `/api/tower/v1/web/heatmaps/commands`;
+- o endpoint autentica a sessao curta e aplica tenant e loja em todas as
+  operacoes;
+- a Neosmart preserva as nove funcoes consumidas pela interface, mas todas
+  encaminham comandos HTTP e nenhuma acessa o Supabase diretamente;
+- uma conclusao repetida aceita o mesmo resultado e rejeita conteudo
+  divergente;
+- typecheck, testes e builds passaram nos dois repositorios; o lint da
+  Neosmart tambem passou.
+
+O commit `3f0c6ad` foi publicado no MB Optical com deploy `Ready`; uma chamada
+sem credencial ao endpoint retornou `401`. O commit local da Neosmart e
+`12db718`. O projeto Neosmart continua sem deploy por ainda haver outros
+dominios ativos acoplados.
+
 Ainda existem actions copiadas que podem acessar o Supabase diretamente. Antes
 do empacotamento final, executar um inventario e migrar pelo menos:
 
-1. medidas;
-2. heatmap/campo visual;
-3. ativos e operacoes do equipamento;
-4. leituras restantes de catalogo e recomendacao;
+1. avaliacao e criacao de cliente;
+2. catalogo, geometrias, visagismo e recomendacao;
+3. ativacao, configuracao remota e URLs relativas;
+4. ativos e operacoes do equipamento que permanecerem no produto;
 5. qualquer outra action que use `createAdminClient`, service role ou acesso
    direto ao banco.
 

@@ -8,8 +8,8 @@ Este documento registra a linha de base dos repositorios e separa os acessos ao
 Supabase que ainda fazem parte dos fluxos ativos da Neosmart dos arquivos
 historicos que foram copiados, mas nao pertencem ao produto final.
 
-O inventario inicial foi diagnostico. O primeiro lote de autorizacao e medidas
-foi implementado localmente depois da auditoria, conforme registrado abaixo.
+O inventario inicial foi diagnostico. Os lotes de autorizacao/medidas e de
+heatmap foram implementados depois da auditoria, conforme registrado abaixo.
 
 ## Atualizacao do primeiro lote
 
@@ -34,7 +34,33 @@ publicado em producao com os contratos `/access` e `/measurements` protegidos.
 
 O projeto Vercel `neosmart` tambem foi criado e vinculado, mas nao foi
 publicado. Os dominios ativos restantes ainda impedem um deploy sem credencial
-administrativa. A proxima migracao e o ciclo completo do heatmap/campo visual.
+administrativa. A proxima migracao ativa e o ciclo de avaliacao e criacao de
+cliente.
+
+## Atualizacao do lote de heatmap
+
+Implementado e publicado no MB Optical em 22/07/2026:
+
+- as nove operacoes do Campo Visual foram reunidas no contrato autenticado
+  `/api/tower/v1/web/heatmaps/commands`;
+- todas as consultas e gravacoes do endpoint exigem tenant e loja derivados da
+  sessao curta do equipamento;
+- criar/retomar, iniciar, concluir, cancelar, reiniciar, consultar resultado e
+  salvar/carregar template deixaram de usar o cliente administrativo na
+  Neosmart;
+- retries de inicio e cancelamento sao idempotentes, e uma segunda conclusao
+  com resultado divergente e rejeitada;
+- typecheck, 25 testes e build passaram no MB Optical;
+- typecheck, 21 testes, lint e build passaram na Neosmart.
+
+O commit `3f0c6ad` do MB Optical foi publicado em producao com status `Ready`.
+Uma chamada sem credencial confirmou que a rota existe e responde `401`. O
+commit local correspondente na Neosmart e `12db718`; o renderer continua sem
+deploy ate a conclusao dos dominios ativos restantes.
+
+Uma recontagem com o mesmo recorte amplo encontrou 74 arquivos relacionados e
+52 actions relacionadas. O numero ainda inclui muito codigo residual que sera
+eliminado no lote final, por isso nao mede apenas o fluxo ativo.
 
 ## Linha de base validada
 
@@ -113,7 +139,7 @@ enviado por `/api/tower/device/sync`. Fora do Electron, o fallback conectado
 chama `saveTowerMeasurementResult()`, que ainda consulta `tower_sessions` e
 grava `tower_measurement_results` diretamente com o cliente administrativo.
 
-### 3. Campo visual e heatmap
+### 3. Campo visual e heatmap - migrado
 
 Arquivos ativos:
 
@@ -121,9 +147,9 @@ Arquivos ativos:
 - `src/app/torre/[storeId]/campo-visual/page.tsx`;
 - `src/components/catalog/GazeHeatmapLab.tsx`.
 
-Todo o ciclo do heatmap ainda usa acesso administrativo direto: criar ou
-retomar, iniciar, concluir, cancelar, reiniciar, consultar resultado e salvar
-ou carregar template demonstrativo.
+Todo o ciclo ativo agora usa `/api/tower/v1/web/heatmaps/commands`. A action da
+Neosmart preserva a interface consumida pelas telas, mas funciona apenas como
+adaptador HTTP e nao importa cliente administrativo nem autorizacao local.
 
 ### 4. Avaliacao e cliente
 
@@ -160,7 +186,8 @@ As telas da Neosmart ainda leem diretamente:
 - geometrias de lentes;
 - templates de armacao do visagismo;
 - configuracao comercial da loja;
-- resultado do heatmap usado pela recomendacao.
+- resultado do heatmap usado pela recomendacao agora chega pelo contrato HTTP;
+  as demais entradas da recomendacao ainda sao leituras diretas.
 
 O motor reutilizavel pode continuar na Neosmart, mas suas entradas devem vir de
 um snapshot ou contrato HTTP autenticado, e nao de consultas diretas ao banco.
@@ -231,8 +258,8 @@ renderer separado.
 
 ### Lote 2 - heatmap
 
-Migrar todo o ciclo do heatmap em conjunto, evitando um estado em que criar e
-concluir usem autoridades diferentes.
+Concluido em 22/07/2026. Todo o ciclo foi migrado em conjunto para manter o MB
+Optical como autoridade unica.
 
 ### Lote 3 - avaliacao e criacao de cliente
 
