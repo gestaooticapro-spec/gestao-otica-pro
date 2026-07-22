@@ -76,6 +76,8 @@ test('gateway de IA autentica equipamento, valida payload e limita consumo por d
   assert.match(route, /'locate-measurement-points'/)
   assert.match(route, /'generate-lens-sales-assist'/)
   assert.match(route, /'generate-visagismo-narrative'/)
+  assert.match(route, /export const maxDuration = 120/)
+  assert.match(route, /narrativa de visagismo.*validada.*esgotada/)
   assert.match(route, /Retry-After/)
   assert.match(route, /Cache-Control.*no-store/)
   assert.match(rateLimit, /createHash\('sha256'\)\.update\(`\$\{deviceId\}:\$\{operation\}`/)

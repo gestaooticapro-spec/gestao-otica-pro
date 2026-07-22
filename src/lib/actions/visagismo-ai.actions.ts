@@ -113,7 +113,7 @@ export async function generateVisagismoNarrativeAction(params: {
 
         const text = extractGeminiText(result.response)
         const json = text ? extractJsonObject(text) : null
-        if (json) {
+        if (json && hasUsefulNarrative(json, topRecommendations)) {
           return { success: true, narrative: normalizeNarrative(json, topRecommendations) }
         }
       }
@@ -132,14 +132,9 @@ export async function generateVisagismoNarrativeAction(params: {
         msg.includes('JSON invalido') ||
         msg.includes('Narrativa vazia')
 
-      if (recoverable) {
-        console.warn(`[Gemini Visagismo] ${keyLabel} - ${msg}, tentando proxima chave...`)
-        if (msg.includes('503') || msg.includes('Service Unavailable') || msg.includes('UNAVAILABLE')) {
-          await sleep(4000)
-        }
-      } else {
-        console.error(`[Gemini Visagismo] ${keyLabel} - erro: ${msg}`)
-        return { success: false, narrative: null, error: msg }
+      console.warn(`[Gemini Visagismo] ${keyLabel} - ${msg}, tentando proximo provedor...`)
+      if (recoverable && (msg.includes('503') || msg.includes('Service Unavailable') || msg.includes('UNAVAILABLE'))) {
+        await sleep(4000)
       }
     }
   }
@@ -148,18 +143,35 @@ export async function generateVisagismoNarrativeAction(params: {
     try {
       const text = await generateWithOpenAI(prompt)
       const json = extractJsonObject(text)
-      if (json) {
+      if (json && hasUsefulNarrative(json, topRecommendations)) {
         return { success: true, narrative: normalizeNarrative(json, topRecommendations) }
       }
       throw new Error('OpenAI retornou narrativa sem JSON valido')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error(`[OpenAI Visagismo] erro: ${msg}`)
-      return { success: false, narrative: null, error: msg }
     }
   }
 
   return { success: false, narrative: null, error: 'Nenhuma chave Gemini/OpenAI retornou texto util' }
+}
+
+function hasUsefulNarrative(raw: Record<string, unknown>, recommendations: FrameRecommendation[]) {
+  const options = Array.isArray(raw.options) ? raw.options : []
+  const byTemplateId = new Map(
+    options
+      .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object' && !Array.isArray(item))
+      .map((item) => [String(item.templateId || '').trim(), item]),
+  )
+
+  return recommendations.every((recommendation) => {
+    const option = byTemplateId.get(recommendation.templateId)
+    if (!option) return false
+    const explanation = String(option.explanation || '').trim()
+    const shapeSuggestion = String(option.shapeSuggestion || '').trim()
+    const colorSuggestion = String(option.colorSuggestion || '').trim()
+    return explanation.length >= 20 && shapeSuggestion.length >= 12 && colorSuggestion.length >= 12
+  })
 }
 
 function buildVisagismoNarrativePrompt(params: {

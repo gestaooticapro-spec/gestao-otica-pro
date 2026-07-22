@@ -8,6 +8,7 @@ import { authenticateTowerDeviceWebSessionToken } from '@/lib/server/tower-devic
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+export const maxDuration = 120
 
 const MAX_BODY_BYTES = 4_000_000
 const PointSchema = z.object({ x: z.number().finite(), y: z.number().finite() }).strict()
@@ -130,5 +131,6 @@ export async function POST(request: NextRequest) {
   }
 
   const result = await generateVisagismoNarrativeAction(parsed.data.payload as Parameters<typeof generateVisagismoNarrativeAction>[0])
+  console.info(`[Tower AI] narrativa de visagismo ${result.success ? 'validada' : 'esgotada'} para dispositivo ${auth.deviceId}`)
   return json({ success: true, message: 'Narrativa de visagismo concluida.', data: result })
 }
