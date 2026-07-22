@@ -12,19 +12,12 @@ type RateLimitRow = {
   retry_after_seconds: number
 }
 
-function getClientIdentifier(request: NextRequest) {
-  const forwardedFor = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-  const address = forwardedFor || request.headers.get('x-real-ip') || 'unknown-address'
-  return createHash('sha256').update(address, 'utf8').digest('hex')
-}
-
-function getScope(request: NextRequest) {
-  return request.nextUrl.pathname.slice(0, 60)
-}
-
-export async function registerTowerActivationAttempt(request: NextRequest) {
-  const key = getClientIdentifier(request)
-  const scope = getScope(request)
+async function consumeTowerRateLimit(
+  key: string,
+  scope: string,
+  maxAttempts: number,
+  windowSeconds: number,
+) {
   const admin = createAdminClient() as unknown as {
     rpc: (name: 'consume_tower_activation_rate_limit', args: Record<string, unknown>) => PromiseLike<{
       data: RateLimitRow[] | null
@@ -34,8 +27,8 @@ export async function registerTowerActivationAttempt(request: NextRequest) {
   const { data, error } = await admin.rpc('consume_tower_activation_rate_limit', {
     p_key_hash: key,
     p_scope: scope,
-    p_max_attempts: MAX_ATTEMPTS,
-    p_window_seconds: WINDOW_SECONDS,
+    p_max_attempts: maxAttempts,
+    p_window_seconds: windowSeconds,
   })
 
   if (error || !data?.[0]) {
@@ -50,6 +43,33 @@ export async function registerTowerActivationAttempt(request: NextRequest) {
     scope,
     unavailable: false,
   }
+}
+
+function getClientIdentifier(request: NextRequest) {
+  const forwardedFor = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+  const address = forwardedFor || request.headers.get('x-real-ip') || 'unknown-address'
+  return createHash('sha256').update(address, 'utf8').digest('hex')
+}
+
+function getScope(request: NextRequest) {
+  return request.nextUrl.pathname.slice(0, 60)
+}
+
+export async function registerTowerActivationAttempt(request: NextRequest) {
+  const key = getClientIdentifier(request)
+  const scope = getScope(request)
+  return consumeTowerRateLimit(key, scope, MAX_ATTEMPTS, WINDOW_SECONDS)
+}
+
+export async function consumeTowerAuthenticatedRateLimit(
+  deviceId: string,
+  operation: string,
+  maxAttempts: number,
+  windowSeconds: number,
+) {
+  const key = createHash('sha256').update(`${deviceId}:${operation}`, 'utf8').digest('hex')
+  const scope = `tower-ai:${operation}`.slice(0, 60)
+  return consumeTowerRateLimit(key, scope, maxAttempts, windowSeconds)
 }
 
 export async function clearTowerActivationAttempts(key: string, scope: string) {

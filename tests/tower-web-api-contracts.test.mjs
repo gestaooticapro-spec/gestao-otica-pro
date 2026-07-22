@@ -60,3 +60,23 @@ test('contratos web v1 autenticam o token do equipamento e limitam o acesso por 
   assert.match(measurementMigration, /existing_result\.id/)
   assert.match(measurementMigration, /REVOKE ALL ON FUNCTION public\.save_tower_web_measurement/)
 })
+
+test('gateway de IA autentica equipamento, valida payload e limita consumo por dispositivo', async () => {
+  const [route, rateLimit] = await Promise.all([
+    read('src/app/api/tower/v1/web/ai/route.ts'),
+    read('src/lib/server/tower-activation-rate-limit.ts'),
+  ])
+
+  assert.match(route, /MAX_BODY_BYTES = 4_000_000/)
+  assert.match(route, /Bearer /)
+  assert.match(route, /authenticateTowerDeviceWebSessionToken/)
+  assert.match(route, /parsed\.data\.storeId/)
+  assert.match(route, /consumeTowerAuthenticatedRateLimit/)
+  assert.match(route, /'locate-measurement-points'/)
+  assert.match(route, /'generate-lens-sales-assist'/)
+  assert.match(route, /'generate-visagismo-narrative'/)
+  assert.match(route, /Retry-After/)
+  assert.match(route, /Cache-Control.*no-store/)
+  assert.match(rateLimit, /createHash\('sha256'\)\.update\(`\$\{deviceId\}:\$\{operation\}`/)
+  assert.match(rateLimit, /tower-ai:\$\{operation\}/)
+})
