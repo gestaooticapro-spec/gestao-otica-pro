@@ -48,7 +48,11 @@ O app local abre em `http://localhost:3000`.
 - Relatorios operacionais e gerenciais
 - WhatsApp operacional com automacoes conservadoras
 
-## Torre e Electron
+## Neosmart e APIs da Torre
+
+Desde 21/07/2026, a antiga Torre é um produto e repositório próprio chamado
+**Neosmart**, localizado em `..\torre-neosmart`. Este repositório MB Optical
+permanece como backoffice, fonte de verdade e servidor das APIs autenticadas.
 
 A Torre possui uma experiência operacional própria, que deve funcionar com a
 credencial do dispositivo pareado e sem exigir login do sistema completo.
@@ -68,9 +72,14 @@ Na configuração remota da Torre ainda precisamos incluir explicitamente:
 - versionamento, ativação, desativação e sincronização desses dois blocos por
   `store_id`.
 
-O Electron deve baixar e aplicar essa configuração somente depois de validar a
+O Electron da Neosmart deve baixar e aplicar essa configuração somente depois de validar a
 credencial do dispositivo e a loja pareada. A tela de avaliação não deve
 depender de uma sessão humana do dashboard para carregar o catálogo autorizado.
+
+Novas interfaces, cache local e empacotamento Electron pertencem ao repositório
+Neosmart. O MB Optical deve conservar somente o backoffice e os endpoints de
+integração, incluindo os contratos versionados `/api/tower/v1/web/*`. A UI
+antiga da Torre só deve ser removida daqui depois da homologação do piloto.
 
 ## WhatsApp
 
