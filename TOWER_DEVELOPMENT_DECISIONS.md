@@ -398,6 +398,31 @@ rota respondeu `401` sem credencial. O commit local da Neosmart e `8d4d48f`.
 Este lote nao alterou codigo do MB Optical nem exigiu deploy funcional. O
 commit local da Neosmart e `ffe8861`.
 
+### Lote de desacoplamento final e IA operacional - publicado em 22/07/2026
+
+- a tela de espessura deixou de importar `vendas.actions.ts` e passou a usar a
+  busca autenticada de clientes da propria Torre;
+- medidas, narrativa comercial de lentes e narrativa de visagismo passaram a
+  usar o gateway autenticado `/api/tower/v1/web/ai` no MB Optical;
+- o gateway valida o payload, a loja e o dispositivo, responde sem cache e
+  aplica rate limit compartilhado por dispositivo e operacao;
+- as chaves e os SDKs dos provedores foram removidos dos tres fluxos ativos da
+  Neosmart e permanecem somente no servidor central;
+- a imagem de medidas e reduzida para no maximo 1600 px e recomprimida antes do
+  envio; as coordenadas sao escaladas na ida e restauradas na volta;
+- `.env.local` e as variaveis do projeto Vercel da Neosmart nao contem chaves
+  de provedores de IA;
+- a auditoria dos traces do build confirmou que espessura, medidas, avaliacao e
+  visagismo nao carregam `vendas.actions`, service role, chaves ou URLs de
+  provedores;
+- typecheck, testes e builds passaram nos dois repositorios. Foram aprovados 26
+  testes no MB Optical e 27 na Neosmart; o lint direcionado da Neosmart ficou
+  sem erros. Permanecem apenas as dividas globais de lint ja documentadas.
+
+O commit `6696498` foi publicado no MB Optical com deploy `Ready`, e a rota
+respondeu `401` sem credencial. O commit local da Neosmart e `2c9e439`; ela
+continua sem deploy.
+
 Ainda existem actions copiadas que podem acessar o Supabase diretamente. Antes
 do empacotamento final, executar um inventario e migrar pelo menos:
 
