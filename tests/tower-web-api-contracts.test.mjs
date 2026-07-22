@@ -5,7 +5,7 @@ import test from 'node:test'
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')
 
 test('contratos web v1 autenticam o token do equipamento e limitam o acesso por loja', async () => {
-  const [access, customers, evaluations, context, sessions, commands, measurements, heatmaps, measurementMigration] = await Promise.all([
+  const [access, customers, evaluations, context, sessions, commands, measurements, heatmaps, operationalCatalog, recommendations, measurementMigration] = await Promise.all([
     read('src/app/api/tower/v1/web/access/route.ts'),
     read('src/app/api/tower/v1/web/customers/route.ts'),
     read('src/app/api/tower/v1/web/evaluations/route.ts'),
@@ -14,10 +14,12 @@ test('contratos web v1 autenticam o token do equipamento e limitam o acesso por 
     read('src/app/api/tower/v1/web/sessions/commands/route.ts'),
     read('src/app/api/tower/v1/web/measurements/route.ts'),
     read('src/app/api/tower/v1/web/heatmaps/commands/route.ts'),
+    read('src/app/api/tower/v1/web/operational-catalog/route.ts'),
+    read('src/app/api/tower/v1/web/recommendations/route.ts'),
     read('supabase/migrations/20260722100000_tower_web_measurements.sql'),
   ])
 
-  for (const source of [access, customers, evaluations, context, sessions, commands, measurements, heatmaps]) {
+  for (const source of [access, customers, evaluations, context, sessions, commands, measurements, heatmaps, operationalCatalog, recommendations]) {
     assert.match(source, /Bearer /)
     assert.match(source, /authenticateTowerDeviceWebSessionToken/)
     assert.match(source, /parsed\.data\.storeId/)
@@ -43,6 +45,14 @@ test('contratos web v1 autenticam o token do equipamento e limitam o acesso por 
   assert.match(heatmaps, /command: z\.literal\('get-completed-result'\)/)
   assert.match(heatmaps, /\.eq\('tenant_id', auth\.tenantId\)/)
   assert.match(heatmaps, /Esta sessao ja foi concluida com outro resultado/)
+  assert.match(operationalCatalog, /RESOURCE_NAMES = new Set\(\['catalog', 'geometries', 'frames'\]\)/)
+  assert.match(operationalCatalog, /\.eq\('tenant_id', tenantId\)/)
+  assert.match(operationalCatalog, /global_lens_geometry/)
+  assert.match(operationalCatalog, /global_visagismo_frame_templates/)
+  assert.match(recommendations, /Catalogo nao esta ativo para esta loja/)
+  assert.match(recommendations, /\.eq\('tenant_id', tenantId\)/)
+  assert.match(recommendations, /\.eq\('store_id', storeId\)/)
+  assert.match(recommendations, /tower_heatmap_sessions/)
   assert.match(measurementMigration, /FOR UPDATE/)
   assert.match(measurementMigration, /existing_result\.id/)
   assert.match(measurementMigration, /REVOKE ALL ON FUNCTION public\.save_tower_web_measurement/)
