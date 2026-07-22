@@ -381,11 +381,27 @@ recomendacao responderam `401` sem credencial. O commit local da Neosmart e
 O commit `0d2eafb` foi publicado no MB Optical com deploy `Ready`, e a nova
 rota respondeu `401` sem credencial. O commit local da Neosmart e `8d4d48f`.
 
+### Lote de ativos e operacoes do equipamento - concluido em 22/07/2026
+
+- o inventario confirmou que registro fisico, status, validacao de ativacao,
+  pareamento, PIN, acesso remoto, configuracao, sessao curta e sincronizacao ja
+  usam os endpoints centrais existentes do MB Optical;
+- as credenciais permanentes continuam restritas ao processo principal do
+  Electron e nao foi necessario criar outro contrato HTTP;
+- `tower-admin.actions.ts`, `tower-assets.actions.ts` e os modulos servidores
+  copiados para autenticacao, rate limit e grant de manutencao nao possuíam
+  consumidor ativo na Neosmart e foram removidos;
+- os componentes usados apenas para apresentar ativacoes no backoffice central
+  tambem foram retirados da Neosmart;
+- typecheck, 25 testes, lint do lote e build passaram na Neosmart.
+
+Este lote nao alterou codigo do MB Optical nem exigiu deploy funcional. O
+commit local da Neosmart e `ffe8861`.
+
 Ainda existem actions copiadas que podem acessar o Supabase diretamente. Antes
 do empacotamento final, executar um inventario e migrar pelo menos:
 
-1. ativos e operacoes do equipamento que permanecerem no produto;
-2. qualquer outra action que use `createAdminClient`, service role ou acesso
+1. qualquer outra action que use `createAdminClient`, service role ou acesso
    direto ao banco.
 
 Para cada dominio:
