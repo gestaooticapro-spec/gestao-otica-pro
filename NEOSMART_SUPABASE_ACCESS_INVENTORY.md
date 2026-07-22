@@ -32,10 +32,9 @@ A migration `20260722100000_tower_web_measurements.sql` foi aplicada
 manualmente e confirmada por chamada remota sem gravacao. O MB Optical foi
 publicado em producao com os contratos `/access` e `/measurements` protegidos.
 
-O projeto Vercel `neosmart` tambem foi criado e vinculado, mas nao foi
-publicado. Os dominios ativos restantes ainda impedem um deploy sem credencial
-administrativa. A proxima migracao ativa e ativacao, configuracao remota e
-correcao das URLs relativas.
+O projeto Vercel `neosmart` foi criado, vinculado e publicado em
+`https://neosmart-eta.vercel.app/`, sem credencial administrativa. A ativacao,
+configuracao remota e correcao das URLs relativas tambem foram concluidas.
 
 ## Atualizacao do lote de heatmap
 
@@ -55,8 +54,8 @@ Implementado e publicado no MB Optical em 22/07/2026:
 
 O commit `3f0c6ad` do MB Optical foi publicado em producao com status `Ready`.
 Uma chamada sem credencial confirmou que a rota existe e responde `401`. O
-commit local correspondente na Neosmart e `12db718`; o renderer continua sem
-deploy ate a conclusao dos dominios ativos restantes.
+commit local correspondente na Neosmart e `12db718`; o renderer possui deploy
+proprio e a fronteira entre as origens esta publicada.
 
 Uma recontagem com o mesmo recorte amplo encontrou 74 arquivos relacionados e
 52 actions relacionadas. O numero ainda inclui muito codigo residual que sera
@@ -79,7 +78,7 @@ Implementado e publicado no MB Optical em 22/07/2026:
 
 O commit `9eca599` do MB Optical foi publicado com status `Ready`. Chamadas sem
 credencial aos dois contratos retornaram `401`, sem gravacao. O commit local
-correspondente na Neosmart e `107c01e`; o renderer permanece sem deploy.
+correspondente na Neosmart e `107c01e`; o renderer possui deploy proprio.
 
 ## Atualizacao do lote de catalogo e recomendacao
 
@@ -126,8 +125,11 @@ nao sao mais chamadas pelas paginas ativas da Torre.
 - testes: 19 aprovados;
 - build Next 14.2.35: aprovado.
 
-O `082e7a1` e o commit documental posterior ao `fa043f4` registrado como o
-ultimo commit funcional em `CURRENT_STATUS.md`.
+O inventario funcional atual foi validado nos HEAD publicados: `e8e6834` no MB
+Optical e `2331597` na Neosmart. Os testes registram 26 casos no MB Optical e
+30 na Neosmart. A existencia de actions legadas no repositorio nao significa
+que elas estejam no grafo ativo; cada uma deve ser classificada antes de ser
+removida.
 
 O `npm install` informou 10 vulnerabilidades em cada repositorio, sendo 2
 moderadas e 8 altas. Nenhuma correcao automatica foi aplicada, pois isso pode

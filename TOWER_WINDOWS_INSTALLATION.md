@@ -1,4 +1,4 @@
-# Instalacao Windows da Torre MB Optical
+# Instalacao Windows da Neosmart
 
 Este roteiro cobre o primeiro piloto fisico do Passo 10. Ele nao substitui a
 homologacao presencial de camera, touch e segunda tela.
@@ -15,9 +15,9 @@ npm run dist:electron
 ```
 
 O instalador e criado em `dist-electron` com o nome
-`Torre-MB-Optical-Setup-<versao>-x64.exe`.
+`Neosmart-Setup-<versao>-x64.exe`.
 
-O pacote de producao abre `https://gestao-otica-pro.vercel.app`. Para um teste
+O pacote de producao abre `https://neosmart-eta.vercel.app/`. Para um teste
 controlado, `TOWER_ELECTRON_URL` pode substituir essa origem. URLs remotas em
 HTTP sao rejeitadas; somente localhost pode usar HTTP.
 
@@ -27,7 +27,8 @@ HTTP sao rejeitadas; somente localhost pode usar HTTP.
 2. Executar o instalador como administrador para instalar para todos os usuarios.
 3. Manter a inicializacao automatica e o modo kiosk habilitados. Para manutencao
    temporaria, `TOWER_AUTO_START=0` e `TOWER_KIOSK=0` podem desabilita-los.
-4. Abrir o aplicativo e registrar a identidade fisica `MBT-2026-000001` usando
+4. Abrir o aplicativo e registrar a identidade fisica atribuida ao equipamento
+   (por exemplo, `MBT-2026-000002`) usando
    o codigo temporario de preparacao do Electron.
 5. Parear o equipamento com a loja 7 usando o QR ou codigo alternativo emitido
    pelo backoffice.
