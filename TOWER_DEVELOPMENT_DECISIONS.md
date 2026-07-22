@@ -279,6 +279,27 @@ Ainda falta validar funcionalmente, no Electron e depois no equipamento real:
 
 ## Pendencias antes do Passo 10
 
+### Lote HTTP de autorizacao e medidas - implementado localmente em 22/07/2026
+
+O primeiro lote posterior a separacao foi implementado nos dois repositorios:
+
+- novo contrato `/api/tower/v1/web/access`, que revalida no MB Optical o
+  dispositivo ativo usado pelo guard das rotas da Neosmart;
+- novo contrato `/api/tower/v1/web/measurements`;
+- persistencia de medidas atomica e idempotente por UUID de operacao;
+- fallback web da Neosmart migrado para HTTP;
+- caminho Electron SQLite -> outbox -> sync preservado;
+- typecheck, testes e builds aprovados nos dois repositorios.
+
+A migration `20260722100000_tower_web_measurements.sql` ainda nao foi aplicada
+ao Supabase porque a CLI vinculada respondeu `403` por falta de privilegio da
+conta. O lote nao deve ser publicado fora de ordem: primeiro aplicar a
+migration e publicar o MB Optical; depois publicar e validar a Neosmart.
+
+O lint da Neosmart terminou sem erros e com dois avisos preexistentes. O lint
+do MB Optical nao iniciou a analise por uma falha circular da configuracao do
+ESLint 9; typecheck, testes e build continuaram aprovados.
+
 Ainda existem actions copiadas que podem acessar o Supabase diretamente. Antes
 do empacotamento final, executar um inventario e migrar pelo menos:
 
