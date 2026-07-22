@@ -23,7 +23,7 @@ export default async function TowerPage(
 
   return (
     <TowerWelcomeMock
-      key={`${searchParams?.menu ?? 'inicio'}-${opensInformationMenu ? 'informacoes' : 'experiencias'}`}
+      key={`${searchParams?.menu ?? 'inicio'}-${opensInformationMenu ? 'informacoes' : 'experiencias'}-${searchParams?.session ?? 'sem-sessao'}`}
       storeId={storeId}
       remoteConfig={remoteConfig ?? DEFAULT_TOWER_REMOTE_CONFIG}
       remoteConfigUnavailable={!remoteConfig}

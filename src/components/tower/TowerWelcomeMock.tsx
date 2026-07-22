@@ -239,6 +239,11 @@ export default function TowerWelcomeMock({ storeId, remoteConfig, remoteConfigUn
 
   useEffect(() => {
     if (!initialSessionId) return
+    // Esta pagina pode permanecer montada quando voltamos de uma experiencia.
+    // Sincronize o estado do cliente com o UUID novo da URL; caso contrario,
+    // a tela parece estar retomando o atendimento, mas cria uma sessao nova.
+    setSelectedAction('resume')
+    setSelectedSessionId(initialSessionId)
     startTransition(async () => {
       const result = await getOperationalTowerSessions(storeId)
       if (!result.success) {
