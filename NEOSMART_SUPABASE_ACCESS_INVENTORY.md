@@ -34,8 +34,8 @@ publicado em producao com os contratos `/access` e `/measurements` protegidos.
 
 O projeto Vercel `neosmart` tambem foi criado e vinculado, mas nao foi
 publicado. Os dominios ativos restantes ainda impedem um deploy sem credencial
-administrativa. A proxima migracao ativa e o ciclo de avaliacao e criacao de
-cliente.
+administrativa. A proxima migracao ativa e o snapshot de catalogo, geometria,
+visagismo e recomendacao.
 
 ## Atualizacao do lote de heatmap
 
@@ -61,6 +61,25 @@ deploy ate a conclusao dos dominios ativos restantes.
 Uma recontagem com o mesmo recorte amplo encontrou 74 arquivos relacionados e
 52 actions relacionadas. O numero ainda inclui muito codigo residual que sera
 eliminado no lote final, por isso nao mede apenas o fluxo ativo.
+
+## Atualizacao do lote de avaliacao e cliente
+
+Implementado e publicado no MB Optical em 22/07/2026:
+
+- `POST /api/tower/v1/web/customers` cadastra o cliente rapido e retorna o
+  mesmo registro em um retry com nome e telefone iguais;
+- `POST /api/tower/v1/web/evaluations` valida loja, tenant, cliente e a
+  habilitacao da Analise Pre-Venda;
+- uma avaliacao aberta do mesmo cliente e atualizada em vez de duplicada;
+- a interface ativa da Torre usa `tower-customer.actions.ts` e
+  `tower-evaluation.actions.ts`, ambas exclusivamente HTTP;
+- o fluxo Electron de cliente provisorio permaneceu local-first;
+- typecheck, 25 testes e build passaram no MB Optical;
+- typecheck, 22 testes, lint sem erros e build passaram na Neosmart.
+
+O commit `9eca599` do MB Optical foi publicado com status `Ready`. Chamadas sem
+credencial aos dois contratos retornaram `401`, sem gravacao. O commit local
+correspondente na Neosmart e `107c01e`; o renderer permanece sem deploy.
 
 ## Linha de base validada
 
@@ -151,21 +170,19 @@ Todo o ciclo ativo agora usa `/api/tower/v1/web/heatmaps/commands`. A action da
 Neosmart preserva a interface consumida pelas telas, mas funciona apenas como
 adaptador HTTP e nao importa cliente administrativo nem autorizacao local.
 
-### 4. Avaliacao e cliente
+### 4. Avaliacao e cliente - migrado no fluxo ativo
 
 Arquivos ativos:
 
 - `src/components/tower/TowerEvaluationIntake.tsx`;
-- `src/lib/actions/evaluation.actions.ts`;
+- `src/lib/actions/tower-evaluation.actions.ts`;
 - `src/lib/tower/local-operations.ts`;
-- `src/lib/actions/customer.actions.ts`.
+- `src/lib/actions/tower-customer.actions.ts`.
 
-O ciclo de busca e vinculo de clientes ja usa os contratos HTTP v1 de sessao.
-Entretanto:
-
-- `upsertOpticalEvaluation()` ainda grava diretamente no Supabase;
-- o fallback web de criacao rapida usa `createQuickCustomer()`, ainda direto;
-- o fluxo Electron de cliente provisorio continua corretamente local-first.
+Busca, criacao, vinculo e avaliacao do fluxo ativo usam contratos HTTP v1. As
+funcoes genericas antigas ainda existem nos arquivos copiados do backoffice,
+mas nao sao importadas pela interface da Torre. O fluxo Electron de cliente
+provisorio continua corretamente local-first.
 
 ### 5. Catalogo, geometrias, visagismo e recomendacao
 
@@ -263,8 +280,8 @@ Optical como autoridade unica.
 
 ### Lote 3 - avaliacao e criacao de cliente
 
-Migrar a avaliacao e substituir a criacao rapida direta. Reutilizar o contrato
-de clientes ja existente sempre que possivel.
+Concluido em 22/07/2026. A criacao rapida reutiliza a rota de clientes e a
+avaliacao possui contrato operacional proprio, ambos autenticados.
 
 ### Lote 4 - snapshot de catalogo e recomendacao
 

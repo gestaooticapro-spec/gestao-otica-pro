@@ -300,8 +300,9 @@ como rotas protegidas.
 O projeto Vercel exclusivo `neosmart` foi criado e vinculado ao repositorio,
 mas permanece sem deploy. A publicacao foi deliberadamente interrompida porque
 a Neosmart ainda possui dominios ativos que exigiriam acesso direto ao
-Supabase. Nao copiar a service role para esse projeto. A proxima migracao deve
-ser o ciclo completo de heatmap/campo visual.
+Supabase. Nao copiar a service role para esse projeto. Os lotes de heatmap e
+avaliacao/cliente ja foram migrados; o proximo e o snapshot de catalogo,
+geometria, visagismo e recomendacao.
 
 O lint da Neosmart terminou sem erros e com dois avisos preexistentes. O lint
 do MB Optical nao iniciou a analise por uma falha circular da configuracao do
@@ -327,13 +328,28 @@ sem credencial ao endpoint retornou `401`. O commit local da Neosmart e
 `12db718`. O projeto Neosmart continua sem deploy por ainda haver outros
 dominios ativos acoplados.
 
+### Lote HTTP de avaliacao e cliente - publicado em 22/07/2026
+
+- a rota de clientes passou a aceitar criacao autenticada e idempotente em
+  retries com o mesmo nome e telefone;
+- a nova rota `/api/tower/v1/web/evaluations` valida tenant, loja, cliente e
+  configuracao de Analise Pre-Venda;
+- uma avaliacao aberta e atualizada em vez de duplicada;
+- a Neosmart usa actions HTTP dedicadas nos dois consumidores ativos;
+- o caminho local-first do Electron foi preservado;
+- typecheck, testes e builds passaram nos dois repositorios, e o lint do lote
+  Neosmart nao apresentou erros.
+
+O commit `9eca599` foi publicado no MB Optical com deploy `Ready`. Os dois
+contratos responderam `401` sem credencial e sem gravacao. O commit local da
+Neosmart e `107c01e`.
+
 Ainda existem actions copiadas que podem acessar o Supabase diretamente. Antes
 do empacotamento final, executar um inventario e migrar pelo menos:
 
-1. avaliacao e criacao de cliente;
-2. catalogo, geometrias, visagismo e recomendacao;
-3. ativacao, configuracao remota e URLs relativas;
-4. ativos e operacoes do equipamento que permanecerem no produto;
+1. catalogo, geometrias, visagismo e recomendacao;
+2. ativacao, configuracao remota e URLs relativas;
+3. ativos e operacoes do equipamento que permanecerem no produto;
 5. qualquer outra action que use `createAdminClient`, service role ou acesso
    direto ao banco.
 
