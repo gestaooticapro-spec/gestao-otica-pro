@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, use } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { getFechamentoData } from "@/lib/actions/fiscal-db.actions";
 import { recuperarXmlsNFCePeriodo, inutilizarNumeracaoFiscal, listarInutilizacoesFiscal } from "@/lib/actions/fiscal.actions";
 import { getStoreProfile } from "@/lib/actions/store.actions";
@@ -57,8 +57,8 @@ const hasXmlSource = (item: { xml_content: string | null; xml_url: string | null
     return Boolean(item.xml_content || item.xml_url);
 };
 
-export default function FechamentoMensalOtica(props: { params: Promise<{ storeId: string }> }) {
-    const params = use(props.params);
+export default function FechamentoMensalOtica(props: { params: { storeId: string } }) {
+    const params = props.params;
     const storeId = parseInt(params.storeId);
     const modules = useStoreModules();
 

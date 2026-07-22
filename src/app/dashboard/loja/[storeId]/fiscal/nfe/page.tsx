@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -518,8 +518,8 @@ function customerFormFromParticipant(participant: ParticipantResult): CustomerFo
     };
 }
 
-export default function EmitirNFePage(props: { params: Promise<{ storeId: string }> }) {
-    const params = use(props.params);
+export default function EmitirNFePage(props: { params: { storeId: string } }) {
+    const params = props.params;
     const storeId = Number(params.storeId);
     const modules = useStoreModules();
     const router = useRouter();

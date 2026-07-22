@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState } from "react";
 import { emitirNFCe } from "@/lib/actions/fiscal.actions";
 import { getPendingSales, searchProducts, getProductFiscalData, getSaleData, getTenantIdByStore } from "@/lib/actions/fiscal-db.actions";
 import {
@@ -34,8 +34,8 @@ type InvoiceItem = {
     tipo_origem: 'peca' | 'avulso';
 };
 
-export default function EmitirNotaPage(props: { params: Promise<{ storeId: string }> }) {
-    const params = use(props.params);
+export default function EmitirNotaPage(props: { params: { storeId: string } }) {
+    const params = props.params;
     const storeId = parseInt(params.storeId);
     const router = useRouter();
     const searchParams = useSearchParams();

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect } from 'react';
 import { getEmployees } from '@/lib/actions/employee.actions'
 import PdvExpressInterface from '@/components/vendas/PdvExpressInterface'
 import { Zap, ArrowLeft } from 'lucide-react'
@@ -9,8 +9,8 @@ import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/Backg
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 import ModuleDisabledState from '@/components/modules/ModuleDisabledState'
 
-export default function PdvExpressPage(props: { params: Promise<{ storeId: string }> }) {
-  const params = use(props.params);
+export default function PdvExpressPage(props: { params: { storeId: string } }) {
+  const params = props.params;
   const storeId = parseInt(params.storeId, 10)
   const [employees, setEmployees] = useState<any[]>([])
   const { preference, isLoaded } = useBackgroundPreference()

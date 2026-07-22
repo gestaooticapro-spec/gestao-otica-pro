@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, use } from 'react';
+import { useEffect, useState } from 'react';
 import { getDadosProtocolo } from '@/lib/actions/ProtocoloPrint.actions'
 import { PRINT_CONFIG } from '@/config/printLayout'
 import { Loader2, AlertTriangle } from 'lucide-react'
@@ -8,8 +8,8 @@ import { Loader2, AlertTriangle } from 'lucide-react'
 // Tipagem das coordenadas (Sup/Inf)
 type Coord = { x: number; y: number }
 
-export default function PrintOSPage(props: { params: Promise<{ id: string }> }) {
-  const params = use(props.params);
+export default function PrintOSPage(props: { params: { id: string } }) {
+  const params = props.params;
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [data, setData] = useState<any>(null)
