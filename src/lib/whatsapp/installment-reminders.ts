@@ -3,7 +3,7 @@
 import { Json } from '@/lib/database.types'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getStoreModules, StoreSettings, WhatsAppInstallmentDueReminderSettings } from '@/lib/store-modules'
-import { toEvolutionNumber } from '@/lib/whatsapp/phone'
+import { phonesMatch, toEvolutionNumber } from '@/lib/whatsapp/phone'
 
 const SAO_PAULO_TIME_ZONE = 'America/Sao_Paulo'
 const DEFAULT_DAYS_BEFORE_DUE = 2
@@ -89,6 +89,25 @@ type ReminderRow = {
   stores?: {
     settings: Json | null
   } | null
+}
+
+async function loadForcedHumanPhones(channelId: number): Promise<string[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await (supabase.from('whatsapp_customer_control') as any)
+    .select('remote_phone')
+    .eq('channel_id', channelId)
+    .eq('mode', 'force_human')
+
+  if (error) throw error
+
+  return (data ?? [])
+    .map((row: { remote_phone?: string | null }) => row.remote_phone)
+    .filter((phone: string | null | undefined): phone is string => Boolean(phone))
+}
+
+async function isCustomerForcedToHuman(channelId: number, phone: string) {
+  const forcedHumanPhones = await loadForcedHumanPhones(channelId)
+  return forcedHumanPhones.some((forcedPhone: string) => phonesMatch(forcedPhone, phone))
 }
 
 function reminderExpiresAt(ms: number) {
@@ -370,6 +389,7 @@ async function scheduleReminders(now: Date) {
   for (const channel of channels) {
     const settings = reminderSettingsFromChannel(channel)
     if (!settings) continue
+    const forcedHumanPhones = await loadForcedHumanPhones(channel.id)
 
     const reminderDays = [...new Set([settings.days_before_due, 1].filter((days) => days > 0))]
     const installmentsWithTargetDate: Array<InstallmentRow & { reminderTargetDate: string }> = []
@@ -400,6 +420,7 @@ async function scheduleReminders(now: Date) {
     for (const installment of installmentsWithTargetDate) {
       const phone = toEvolutionNumber(installment.customers?.fone_movel || installment.customers?.phone)
       if (!phone) continue
+      if (forcedHumanPhones.some((forcedPhone: string) => phonesMatch(forcedPhone, phone))) continue
 
       const scheduledFor = new Date(now.getTime() + channelSequence * SCHEDULE_SPACING_MINUTES * 60 * 1000)
       const vendaId = installment.financiamento_loja?.venda_id ?? null
@@ -518,6 +539,17 @@ async function dispatchDueReminders(now: Date, limit = DEFAULT_DISPATCH_LIMIT) {
     if (!reminderEnabledFromStoreSettings(reminder.stores?.settings)) {
       await (supabase.from('whatsapp_installment_reminders') as any)
         .update({ status: 'cancelled', error_message: 'Automacao de vencimento desativada antes do envio.' })
+        .eq('id', reminder.id)
+      continue
+    }
+
+    if (await isCustomerForcedToHuman(reminder.channel_id, reminder.remote_phone)) {
+      await (supabase.from('whatsapp_installment_reminders') as any)
+        .update({
+          status: 'cancelled',
+          error_message: 'Cliente em atendimento manual no momento do envio.',
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', reminder.id)
       continue
     }

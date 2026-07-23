@@ -1623,14 +1623,15 @@ async function clearConversationStateById(id: number) {
 async function loadCustomerControlMode(channelId: number, phone: string): Promise<CustomerControlMode> {
   const supabase = createAdminClient()
   const { data, error } = await (supabase.from('whatsapp_customer_control') as any)
-    .select('mode')
+    .select('remote_phone, mode')
     .eq('channel_id', channelId)
-    .eq('remote_phone', phone)
-    .maybeSingle()
 
   if (error) throw error
 
-  const mode = typeof data?.mode === 'string' ? data.mode : 'auto'
+  const control = (data ?? []).find((row: { remote_phone?: string | null }) =>
+    phonesMatch(row.remote_phone, phone)
+  )
+  const mode = typeof control?.mode === 'string' ? control.mode : 'auto'
   return mode === 'force_ai' || mode === 'force_human' ? mode : 'auto'
 }
 
