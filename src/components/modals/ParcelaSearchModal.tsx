@@ -3,7 +3,7 @@
 import { useState, useTransition, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import { X, Search, Calendar, Loader2, Wallet, ArrowLeft, ShoppingBag, CheckCircle2, AlertTriangle, ArrowDownCircle, Printer, MessageCircle } from 'lucide-react'
+import { X, Search, Calendar, Loader2, Wallet, ArrowLeft, ShoppingBag, CheckCircle2, AlertTriangle, ArrowDownCircle, Printer, MessageCircle, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { searchPendenciasCliente, receberParcela } from '@/lib/actions/vendas.actions'
 import { sendInstallmentReceiptWhatsApp } from '@/lib/actions/manual-whatsapp.actions'
@@ -20,6 +20,8 @@ const parseMoney = (val: string) => {
     const clean = val.replace(/[^\d,]/g, '')
     return parseFloat(clean.replace(',', '.')) || 0
 }
+
+const PAYMENT_METHODS = ['PIX Remoto', 'PIX na maquininha', 'Dinheiro', 'Cartão Débito', 'Cartão Crédito']
 
 function ParcelaCard({ p, onClick }: { p: any, onClick: () => void }) {
     const isVencida = new Date(p.data_vencimento) < new Date(getToday())
@@ -70,7 +72,7 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQu
 
     const [valorTotalPagoStr, setValorTotalPagoStr] = useState('')
     const [valorJurosStr, setValorJurosStr] = useState('0,00')
-    const [forma, setForma] = useState('PIX Remoto')
+    const [recebimentos, setRecebimentos] = useState([{ forma_pagamento: 'PIX Remoto', valor: '' }])
     const [estrategia, setEstrategia] = useState('criar_pendencia')
 
     const [isAuthOpen, setIsAuthOpen] = useState(false)
@@ -136,6 +138,7 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQu
 
         const valLimpo = formatCurrency(parcela.valor_parcela).replace(/[^\d,]/g, '')
         setValorTotalPagoStr(valLimpo)
+        setRecebimentos([{ forma_pagamento: 'PIX Remoto', valor: valLimpo }])
         setValorJurosStr('0,00')
         setEstrategia('criar_pendencia')
         setStep('pay')
@@ -182,7 +185,17 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQu
         const valorTotalPago = parseMoney(valorTotalPagoStr)
         const valorJuros = parseMoney(valorJurosStr)
 
-        console.log("[DEBUG] Valores parseados:", { valorOriginal, valorTotalPago, valorJuros, forma })
+        const recebimentosValidos = recebimentos
+            .map((item) => ({ forma_pagamento: item.forma_pagamento, valor: parseMoney(item.valor) }))
+            .filter((item) => item.valor > 0)
+        const totalDasFormas = recebimentosValidos.reduce((total, item) => total + item.valor, 0)
+
+        if (recebimentosValidos.length === 0 || Math.abs(totalDasFormas - valorTotalPago) > 0.01) {
+            alert('A soma das formas de recebimento deve ser igual ao total recebido.')
+            return
+        }
+
+        console.log("[DEBUG] Valores parseados:", { valorOriginal, valorTotalPago, valorJuros, recebimentos: recebimentosValidos })
 
         const formData = new FormData()
         formData.append('parcela_id', selectedParcela.id.toString())
@@ -194,7 +207,8 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQu
         formData.append('valor_pago_total', valorTotalPago.toString())
         formData.append('valor_juros', valorJuros.toString())
 
-        formData.append('forma_pagamento', forma)
+        formData.append('forma_pagamento', recebimentosValidos[0].forma_pagamento)
+        formData.append('recebimentos', JSON.stringify(recebimentosValidos))
         formData.append('data_pagamento', getToday())
 
         const principalAbatido = valorTotalPago - valorJuros
@@ -374,7 +388,7 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQu
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
+                                <div>
                                     <div>
                                         <label className="block text-[10px] font-bold text-amber-500/80 mb-1.5 uppercase list-none">Total Recebido</label>
                                         <div className="relative">
@@ -387,19 +401,26 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQu
                                             />
                                         </div>
                                     </div>
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-amber-500/80 mb-1.5 uppercase">Forma</label>
-                                        <div className="relative">
-                                            <select value={forma} onChange={e => setForma(e.target.value)} className="w-full h-11 bg-white/5 border border-white/10 rounded-lg shadow-sm focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 outline-none font-bold text-slate-200 cursor-pointer appearance-none px-4">
-                                                <option className="bg-slate-900">PIX Remoto</option>
-                                                <option className="bg-slate-900">PIX na maquininha</option>
-                                                <option className="bg-slate-900">Dinheiro</option>
-                                                <option className="bg-slate-900">Cartão Débito</option>
-                                                <option className="bg-slate-900">Cartão Crédito</option>
-                                            </select>
-                                            <ArrowDownCircle className="absolute right-3 top-3.5 h-4 w-4 text-slate-500 pointer-events-none" />
-                                        </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <label className="block text-[10px] font-bold text-amber-500/80 uppercase">Formas de recebimento</label>
+                                        <button type="button" onClick={() => setRecebimentos([...recebimentos, { forma_pagamento: 'Dinheiro', valor: '' }])} className="text-xs text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1"><Plus className="h-3.5 w-3.5" /> Adicionar forma</button>
                                     </div>
+                                    {recebimentos.map((recebimento, index) => (
+                                        <div key={index} className="grid grid-cols-[1fr_120px_32px] gap-2 items-center">
+                                            <div className="relative">
+                                                <select value={recebimento.forma_pagamento} onChange={e => setRecebimentos(recebimentos.map((item, itemIndex) => itemIndex === index ? { ...item, forma_pagamento: e.target.value } : item))} className="w-full h-11 bg-white/5 border border-white/10 rounded-lg outline-none font-bold text-slate-200 cursor-pointer appearance-none px-3 text-sm">
+                                                    {PAYMENT_METHODS.map((method) => <option key={method} className="bg-slate-900">{method}</option>)}
+                                                </select>
+                                                <ArrowDownCircle className="absolute right-3 top-3.5 h-4 w-4 text-slate-500 pointer-events-none" />
+                                            </div>
+                                            <input type="text" value={recebimento.valor} placeholder="0,00" onChange={e => setRecebimentos(recebimentos.map((item, itemIndex) => itemIndex === index ? { ...item, valor: e.target.value } : item))} className="h-11 bg-white/5 border border-white/10 rounded-lg outline-none font-bold text-emerald-400 px-3 text-right" />
+                                            <button type="button" aria-label="Remover forma" disabled={recebimentos.length === 1} onClick={() => setRecebimentos(recebimentos.filter((_, itemIndex) => itemIndex !== index))} className="p-2 text-slate-500 hover:text-red-400 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
+                                        </div>
+                                    ))}
+                                    <p className="text-[10px] text-slate-500">A soma das formas deve ser igual ao total recebido.</p>
                                 </div>
 
                                 {new Date(selectedParcela.data_vencimento) < new Date(getToday()) && (

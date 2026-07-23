@@ -1787,6 +1787,7 @@ export interface Database {
           obs: string | null
           created_at: string
           receipt_printed_at: string | null
+          parcela_id?: number | null
         }
         Insert: {
           venda_id: number
@@ -1799,6 +1800,7 @@ export interface Database {
           store_id?: number
           created_by_user_id?: string
           receipt_printed_at?: string
+          parcela_id?: number | null
         }
         Update: {
           [key: string]: any

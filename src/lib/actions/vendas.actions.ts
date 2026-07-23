@@ -2368,6 +2368,10 @@ const ReceberParcelaSchema = z.object({
   valor_pago_total: z.coerce.number().min(0.01),
   valor_juros: z.coerce.number().default(0),
   forma_pagamento: z.string().min(1),
+  recebimentos: z.array(z.object({
+    forma_pagamento: z.string().min(1),
+    valor: z.coerce.number().min(0.01),
+  })).min(1).optional(),
   data_pagamento: z.string(),
   estrategia: z.enum(['quitacao_total', 'criar_pendencia', 'somar_proxima']).default('quitacao_total'),
 })
@@ -2430,7 +2434,12 @@ export async function receberParcela(prevState: any, formData: FormData) {
     valor_juros: valorJuros,          // Passamos o juros já corrigido
     forma_pagamento: formData.get('forma_pagamento'),
     data_pagamento: formData.get('data_pagamento'),
-    estrategia: formData.get('estrategia')
+    estrategia: formData.get('estrategia'),
+    recebimentos: (() => {
+      const raw = formData.get('recebimentos')
+      if (!raw || typeof raw !== 'string') return undefined
+      try { return JSON.parse(raw) } catch { return undefined }
+    })()
   }
 
   const validated = ReceberParcelaSchema.safeParse(inputData)
@@ -2438,6 +2447,11 @@ export async function receberParcela(prevState: any, formData: FormData) {
 
   // Mantive os nomes originais das suas variáveis aqui para não mudar a lógica abaixo
   const { parcela_id, venda_id, store_id, employee_id, valor_original, valor_pago_total, valor_juros, forma_pagamento, estrategia, data_pagamento } = validated.data
+  const recebimentos = validated.data.recebimentos || [{ forma_pagamento, valor: valor_pago_total }]
+  const totalRecebimentos = recebimentos.reduce((total, recebimento) => total + recebimento.valor, 0)
+  if (Math.abs(totalRecebimentos - valor_pago_total) > 0.01) {
+    return { success: false, message: 'A soma das formas de recebimento difere do total informado.' }
+  }
   if (!(await isStoreModuleEnabledForStore(store_id, 'installments'))) {
     return { success: false, message: 'Modulo de parcelamento desativado para esta loja.' }
   }
@@ -2456,20 +2470,22 @@ export async function receberParcela(prevState: any, formData: FormData) {
     const parcelaAtual = parcelaRaw as any;
 
     // Registra Pagamento e Checa Erro
-    const { error: errorPagto } = await (supabaseAdmin.from('pagamentos') as any).insert({
+    const observacaoBase = `Ref. Venda #${venda_id} - Parc. ${parcelaAtual.numero_parcela} (Principal: ${principalAbatido.toFixed(2)} + Juros: ${valor_juros.toFixed(2)}) - Cliente: ${parcelaAtual.customers?.full_name}`
+    const { error: errorPagto } = await (supabaseAdmin.from('pagamentos') as any).insert(recebimentos.map((recebimento) => ({
       tenant_id: (profile as any).tenant_id,
       store_id: store_id,
       venda_id: venda_id,
+      parcela_id: parcela_id,
       customer_id: parcelaAtual.customer_id,
       employee_id: employee_id,
       created_by_user_id: user.id,
-      valor_pago: valor_pago_total,
-      forma_pagamento: forma_pagamento,
+      valor_pago: recebimento.valor,
+      forma_pagamento: recebimento.forma_pagamento,
       data_pagamento: data_pagamento,
       created_at: new Date(`${data_pagamento}T12:00:00Z`).toISOString(),
       parcelas: 1,
-      obs: `Ref. Venda #${venda_id} - Parc. ${parcelaAtual.numero_parcela} (Principal: ${principalAbatido.toFixed(2)} + Juros: ${valor_juros.toFixed(2)}) - Cliente: ${parcelaAtual.customers?.full_name}`
-    })
+      obs: observacaoBase
+    })))
 
     if (errorPagto) throw new Error(`Erro ao registrar pagamento: ${errorPagto.message}`)
 
