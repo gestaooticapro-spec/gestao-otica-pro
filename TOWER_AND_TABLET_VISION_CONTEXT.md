@@ -549,6 +549,32 @@ atuais.
 
 ---
 
+## Atualizacao do prototipo Neosmart em 23/07/2026
+
+O prototipo no mini PC confirmou a estrategia de duas telas e trouxe as
+seguintes decisoes praticas:
+
+- a tela do cliente e persistente e usa o video de abertura como estado neutro;
+- iniciar camera ou demonstracao tambem define o objetivo da tela do cliente;
+- sair da experiencia sempre restaura o estado neutro;
+- informacoes operacionais e erros nao devem aparecer para o cliente;
+- fullscreen fica ativo apenas no Electron empacotado;
+- camera e composicao visual foram adaptadas ao monitor em retrato;
+- o carrossel do Visagismo foi afastado do rosto.
+
+Na demonstracao de espessura, as bordas sao o conteudo principal. Vista fisica
+e perfil calculado ficam acima; a lente frontal fica abaixo como apoio
+explicativo. As tres representacoes compartilham a mesma escala em pixels por
+milimetro, usam canvases de 640 px e sao recentralizadas sem redimensionamento
+ao girar. Essa regra deve ser preservada: nenhuma vista pode sugerir uma lente
+maior que outra apenas por usar outro renderer, angulo ou `viewBox`.
+
+O fluxo de sessoes tambem foi endurecido. "Continuar atendimento" e "Novo
+atendimento" agora sao modos explicitos. Retomar exige UUID e preserva a data
+original ao importar uma sessao remota para o SQLite. O dropdown combina dados
+locais e remotos sem apagar o nome do cliente e tambem entende clientes
+provisorios protegidos localmente.
+
 ## Modo demonstracao vs modo profissional
 
 ### Modo demonstracao (tablet)

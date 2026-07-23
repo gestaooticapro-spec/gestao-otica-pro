@@ -219,6 +219,23 @@ O nome da branch `eyetrack` e a referencia ao laboratorio permanecem como
 historico desta sandbox. Nao tratar este arquivo como indicacao de que o fluxo
 de producao da Torre acessa diretamente o Supabase.
 
+## Atualizacao operacional da Torre - 23/07/2026
+
+Sem alterar o motor matematico desta sandbox, a experiencia operacional do
+Campo Visual na Neosmart recebeu ajustes de interface e de segunda tela:
+
+- a camera continua sendo o comando que ativa a apresentacao do cliente;
+- ao sair da experiencia, a segunda tela retorna ao video de abertura;
+- textos de espera e fullscreen foram removidos da tela do cliente;
+- o enquadramento foi adaptado ao monitor em retrato;
+- depois da leitura, os botoes do operador foram compactados para evitar
+  sobreposicao e remontagem em varias linhas.
+
+O vinculo com a `tower_session` deve respeitar o modo explicito de retomada:
+continuar exige UUID e nao pode criar outra sessao silenciosamente. Essa
+protecao foi validada na camada local da Neosmart e nao muda as premissas de
+alvo conhecido e compensacao de cabeca deste documento.
+
 ## Proxima retomada sugerida
 
 Quando este tema for retomado, a ordem mais segura e:

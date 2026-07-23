@@ -120,6 +120,45 @@ QR Code, codigo alternativo e PIN devem ser tratados como credenciais
 separadas. Codigos devem ser temporarios, armazenados como hash e reemitidos
 quando perdidos; reemissao nao cria outra loja nem outro tenant.
 
+### Decisao de produto: prototipo aberto e producao appliance
+
+Em 23/07/2026 foi decidido separar explicitamente os dois cenarios:
+
+- o MiniPC atualmente em homologacao e um prototipo de laboratorio; ele pode
+  usar o Windows normalmente para configurar rede, instalar o Electron e
+  ajustar camera, iluminacao, telas, rastreamento ocular e ergonomia;
+- esse prototipo nao sera entregue a uma otica;
+- a Torre de producao deve ser um appliance Windows: iniciar diretamente no
+  Electron, impedir o acesso normal ao desktop e bloquear atalhos de escape
+  como `Alt+Tab` por politica de kiosk do Windows, nao apenas pelo fullscreen
+  da janela Electron;
+- a configuracao inicial de Wi-Fi deve ocorrer dentro do Electron, em uma tela
+  protegida, sem exigir que a otica receba acesso ao Windows;
+- deve existir uma porta de manutencao separada, protegida por PIN ou codigo
+  temporario de suporte, capaz de abrir as ferramentas tecnicas do Windows
+  somente quando autorizada e com auditoria;
+- a implementacao do modo appliance, da configuracao interna de Wi-Fi e da
+  manutencao protegida e obrigatoria antes do primeiro equipamento de
+  producao, mas nao bloqueia a homologacao do prototipo atual.
+
+O kiosk de janela existente no Electron e apenas uma camada parcial. Ele nao
+substitui Assigned Access/Shell Launcher, politicas do Windows e os testes de
+reinicio, perda de rede, recuperacao e suporte.
+
+### Mudanca registrada no WhatsApp - 23/07/2026
+
+O fluxo de atendimento passou a respeitar o modo manual do cliente de forma
+uniforme:
+
+- o roteador de mensagens automaticas reconhece `force_human` mesmo quando o
+  telefone salvo possui variacao de formato;
+- lembretes automaticos de parcelas nao sao agendados para clientes em modo
+  manual;
+- lembretes que ja estavam agendados sao cancelados antes do envio quando o
+  cliente entra em atendimento manual;
+- a validacao foi concluida com `tsc --noEmit`; o lint global continua
+  bloqueado por uma falha circular preexistente na configuracao do ESLint 9.
+
 ## Decisoes da experiencia
 
 ### Fluxo de avaliacao e sessoes
@@ -463,7 +502,13 @@ ausencia de credenciais administrativas e acessos amplos ao banco.
 
 ### Estado do passo
 
-**Renderer publicado; empacotamento e homologacao do piloto ainda pendentes.**
+**Renderer publicado; prototipo de laboratorio em instalacao; empacotamento e
+homologacao do piloto de producao ainda pendentes.**
+
+O MiniPC em uso nesta fase e somente de laboratorio. A instalacao atual pode
+ser feita com acesso normal ao Windows para acelerar os ajustes fisicos da
+Torre. Isso nao constitui homologacao do modo de entrega e nao autoriza usar
+essa configuracao em uma otica final.
 
 O primeiro empacotamento foi feito quando a Torre ainda estava dentro do MB
 Optical. Ele gerou um instalador de prova e validou a abertura do Electron no
@@ -500,7 +545,8 @@ O Passo 10 so pode recomecar quando:
 7. Confirmar persistencia no SQLite e sincronizacao posterior da outbox.
 8. Gerar o instalador Windows com identidade Neosmart.
 9. Instalar no mini PC da Loja 7.
-10. Homologar camera, touch, segunda tela, kiosk e inicializacao automatica.
+10. Homologar camera, touch, segunda tela, kiosk/appliance, Wi-Fi interno,
+    manutencao protegida e inicializacao automatica.
 11. Reiniciar Windows e confirmar identidade, cache e dados locais preservados.
 12. Validar desinstalacao/reinstalacao sem perda acidental de `userData`.
 13. Registrar resultados e bloqueios do piloto.
@@ -530,6 +576,75 @@ Nao e necessario recriar todos os testes. Os testes automatizados existentes
 devem ser reexecutados como regressao. Os testes integrados e de hardware devem
 ser repetidos porque mudaram o repositorio, o executavel, a origem do renderer
 e a fronteira de comunicacao com o MB Optical.
+
+## Atualizacao do prototipo e da continuidade - 23/07/2026
+
+### Tela do cliente e operacao no Electron
+
+- A segunda tela passou a ser persistente. Sem uma experiencia ativa, ela
+  apresenta `public/abertura.mp4` em loop; ao sair de qualquer experiencia,
+  volta automaticamente para essa abertura.
+- Botoes de camera agora tambem ativam a experiencia correspondente na tela do
+  cliente. Demonstracoes sem camera alternam entre apresentar e fechar a
+  apresentacao, sem exigir um botao separado para abrir outra janela.
+- A tela do cliente deixou de exibir mensagens operacionais como "Aguardando
+  comando" e "Tela cheia". Falhas devem permanecer nos diagnosticos/logs do
+  operador, sem poluir a apresentacao comercial.
+- O repouso preto por inatividade usa 30 minutos como padrao e e interrompido
+  por atividade, desbloqueio, retorno da suspensao ou reconexao do monitor. A
+  chamada correta no processo principal e
+  `powerMonitor.getSystemIdleTime()`.
+- Fullscreen/kiosk foi limitado ao aplicativo empacotado. No desenvolvimento,
+  moldura e barra do Windows podem permanecer visiveis para facilitar debug.
+- O Visagismo teve o acionamento da camera corrigido, inclusive a publicacao
+  do video na tela do cliente. Em retrato, o video usa preenchimento com
+  recorte e coordenadas compensadas; o carrossel de armacoes fica proximo ao
+  topo para nao competir com o rosto.
+
+### Espessura das lentes
+
+- A apresentacao inicial e ampliada; "Tamanho real" permanece como opcao
+  calibrada.
+- Em retrato, as vistas de borda fisica e perfil calculado ocupam a parte
+  superior e recebem prioridade demonstrativa. A lente frontal permanece
+  abaixo, com funcao explicativa.
+- Vista fisica 3D, perfil calculado e lente frontal usam uma unica escala de
+  pixels por milimetro. Foi removida a ampliacao duplicada do SVG frontal e a
+  reducao artificial da camera 3D.
+- Os canvases passaram a 640 px, com margem para a diagonal da lente. A
+  geometria e recentralizada depois de cada giro, inclusive quando DNP ou
+  altura do centro optico estao deslocadas, sem mudar a escala.
+- O indice inicial e `1.56`. As opcoes atuais sao `1.49`, `1.56`, `1.59`,
+  `1.67` e `1.74`; `1.60` foi removido.
+
+### Continuar atendimento e dropdown de cliente
+
+O rastreio do SQLite confirmou uma sessao indevida criada em 23/07/2026 as
+10h45, na experiencia de espessura. O problema tinha duas camadas:
+
+1. o renderer podia chegar ao helper de criacao sem um UUID efetivo, mesmo
+   partindo visualmente do fluxo "Continuar atendimento";
+2. ao materializar localmente uma sessao existente apenas no servidor, o
+   Electron usava o horario atual como `started_at`, fazendo a retomada parecer
+   um novo atendimento e sincronizando esse estado pela outbox.
+
+A correcao separa explicitamente os modos `new` e `resume`:
+
+- `resume` exige UUID e nunca gera um UUID novo;
+- uma sessao remota importada para o SQLite preserva UUID, `started_at` e
+  `customer_id`;
+- `new` rejeita a reutilizacao de UUID;
+- a selecao do dropdown abre imediatamente as experiencias, sem botao
+  intermediario "Continuar";
+- a mesclagem local/remota preserva o objeto `customer` do servidor;
+- clientes provisorios offline sao lidos do payload local protegido e tambem
+  podem aparecer como `data e hora - nome` no dropdown.
+
+Foram adicionadas regressoes para impedir criacao sem UUID, preservar os dados
+da sessao remota e listar o nome do cliente local. Na Neosmart, 31 testes,
+typecheck, lint direcionado e `git diff --check` passaram. Nao houve deploy.
+A sessao indevida das 10h45 continua preservada; qualquer exclusao ou
+reconciliacao exige decisao explicita.
 
 ## Documentos complementares
 
