@@ -1,7 +1,6 @@
 import React from 'react'
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
 import { ImageResponse } from 'next/og'
+import { loadStoreLogoDataUrl } from '@/lib/store-logo.server'
 import type {
   CustomerFinancialSummaryPdfData,
   CustomerPrescriptionSummaryPdfData,
@@ -55,32 +54,6 @@ function buildStoreAddress(store: InstallmentReceiptData['store']) {
   ].filter(Boolean).join(' - ')
 
   return [firstLine, secondLine].filter(Boolean)
-}
-
-async function loadStoreLogoDataUrl(logoFile?: string | null) {
-  const safeLogoFile = String(logoFile || '').trim()
-  if (!safeLogoFile || !/^[a-zA-Z0-9._-]{1,160}$/.test(safeLogoFile)) {
-    return null
-  }
-
-  const extension = path.extname(safeLogoFile).toLowerCase()
-  const mimeType = extension === '.png'
-    ? 'image/png'
-    : extension === '.jpg' || extension === '.jpeg'
-      ? 'image/jpeg'
-      : extension === '.webp'
-        ? 'image/webp'
-        : null
-
-  if (!mimeType) return null
-
-  try {
-    const filePath = path.join(process.cwd(), 'public', 'logos', safeLogoFile)
-    const fileBuffer = await readFile(filePath)
-    return `data:${mimeType};base64,${fileBuffer.toString('base64')}`
-  } catch {
-    return null
-  }
 }
 
 async function imageResponseToBuffer(element: React.ReactElement, width: number, height: number) {

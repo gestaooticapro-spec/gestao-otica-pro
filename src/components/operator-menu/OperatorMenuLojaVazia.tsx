@@ -98,6 +98,7 @@ interface RadarData {
     clientesInativos: ClienteInativo[];
     whatsAppPendencias: WhatsAppPendencia[];
     whatsAppHumanOverrides: number;
+    whatsAppStatusContextsPending: number;
     isWhatsAppAutomationEnabled: boolean;
     isWhatsAppConnected: boolean;
 }
@@ -136,6 +137,7 @@ import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/Backg
 import FullscreenToggleButton from '@/components/FullscreenToggleButton';
 import WidgetWhatsAppPendencias from '@/components/consultas/WidgetWhatsAppPendencias';
 import WhatsAppOperatorModal from '@/components/modals/WhatsAppOperatorModal';
+import WhatsAppStatusContextModal from '@/components/modals/WhatsAppStatusContextModal';
 
 export default function OperatorMenuLojaVazia({
     storeId,
@@ -182,11 +184,13 @@ export default function OperatorMenuLojaVazia({
         clientesInativos: [],
         whatsAppPendencias: [],
         whatsAppHumanOverrides: 0,
+        whatsAppStatusContextsPending: 0,
         isWhatsAppAutomationEnabled: false,
         isWhatsAppConnected: false
     });
     const [loading, setLoading] = useState(true);
     const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
+    const [isStatusContextModalOpen, setIsStatusContextModalOpen] = useState(false);
     const [whatsAppInitialPhone, setWhatsAppInitialPhone] = useState<string | null>(null);
     const [wakePingAuditFlag, setWakePingAuditFlag] = useState<OperatorWhatsAppWakePingAuditFlag | null>(null);
     const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
@@ -218,6 +222,7 @@ export default function OperatorMenuLojaVazia({
                         clientesInativos: data.clientesInativos || [],
                         whatsAppPendencias: data.whatsAppPendencias || [],
                         whatsAppHumanOverrides: data.whatsAppHumanOverrides || 0,
+                        whatsAppStatusContextsPending: data.whatsAppStatusContextsPending || 0,
                         isWhatsAppAutomationEnabled: data.isWhatsAppAutomationEnabled === true,
                         isWhatsAppConnected: data.isWhatsAppConnected === true
                     });
@@ -755,15 +760,33 @@ export default function OperatorMenuLojaVazia({
                                 )}
                                 {/* WHATSAPP PENDÊNCIAS */}
                                 {radar.isWhatsAppAutomationEnabled && (
-                                    <WidgetWhatsAppPendencias
-                                        pendencias={radar.whatsAppPendencias}
-                                        humanOverrides={radar.whatsAppHumanOverrides}
-                                        isConnected={radar.isWhatsAppConnected}
-                                        onOpen={() => {
-                                            setWhatsAppInitialPhone(null);
-                                            setIsWhatsAppModalOpen(true);
-                                        }}
-                                    />
+                                    <>
+                                        {radar.whatsAppStatusContextsPending > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsStatusContextModalOpen(true)}
+                                                className="mb-4 flex w-full items-center justify-between rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-left transition hover:bg-emerald-400/15"
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <MessageCircle className="h-5 w-5 text-emerald-300" />
+                                                    <div>
+                                                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-300">Novo Status detectado</p>
+                                                        <p className="mt-1 text-xs text-emerald-100/65">Informe o objetivo da publicação.</p>
+                                                    </div>
+                                                </div>
+                                                <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-emerald-400 px-2 text-xs font-black text-emerald-950">{radar.whatsAppStatusContextsPending}</span>
+                                            </button>
+                                        )}
+                                        <WidgetWhatsAppPendencias
+                                            pendencias={radar.whatsAppPendencias}
+                                            humanOverrides={radar.whatsAppHumanOverrides}
+                                            isConnected={radar.isWhatsAppConnected}
+                                            onOpen={() => {
+                                                setWhatsAppInitialPhone(null);
+                                                setIsWhatsAppModalOpen(true);
+                                            }}
+                                        />
+                                    </>
                                 )}
                                 
                                 {/* VENCIMENTOS */}
@@ -1019,15 +1042,23 @@ export default function OperatorMenuLojaVazia({
                 </div>
             )}
             {radar.isWhatsAppConnected && (
-                <WhatsAppOperatorModal
-                    isOpen={isWhatsAppModalOpen}
-                    onClose={() => {
-                        setIsWhatsAppModalOpen(false);
-                        setWhatsAppInitialPhone(null);
-                    }}
-                    storeId={storeId}
-                    initialPhone={whatsAppInitialPhone}
-                />
+                <>
+                    <WhatsAppOperatorModal
+                        isOpen={isWhatsAppModalOpen}
+                        onClose={() => {
+                            setIsWhatsAppModalOpen(false);
+                            setWhatsAppInitialPhone(null);
+                        }}
+                        storeId={storeId}
+                        initialPhone={whatsAppInitialPhone}
+                    />
+                    <WhatsAppStatusContextModal
+                        isOpen={isStatusContextModalOpen}
+                        onClose={() => setIsStatusContextModalOpen(false)}
+                        storeId={storeId}
+                        onRemainingChange={(count) => setRadar((current) => ({ ...current, whatsAppStatusContextsPending: count }))}
+                    />
+                </>
             )}
         </div >
     );

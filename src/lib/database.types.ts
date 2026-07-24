@@ -711,6 +711,60 @@ export interface Database {
         }
       }
 
+      whatsapp_status_publications: {
+        Row: {
+          id: number
+          tenant_id: string
+          store_id: number
+          channel_id: number
+          provider_message_id: string
+          message_text: string | null
+          media_kind: string | null
+          payload: Json | null
+          published_at: string
+          expires_at: string
+          created_at: string
+          context_category: string | null
+          context_description: string | null
+          response_guidance: string | null
+          auto_reply_enabled: boolean
+          contextualized_at: string | null
+          contextualized_by_user_id: string | null
+        }
+        Insert: {
+          id?: number
+          tenant_id: string
+          store_id: number
+          channel_id: number
+          provider_message_id: string
+          message_text?: string | null
+          media_kind?: string | null
+          payload?: Json | null
+          published_at?: string
+          expires_at?: string
+          created_at?: string
+          context_category?: string | null
+          context_description?: string | null
+          response_guidance?: string | null
+          auto_reply_enabled?: boolean
+          contextualized_at?: string | null
+          contextualized_by_user_id?: string | null
+        }
+        Update: {
+          message_text?: string | null
+          media_kind?: string | null
+          payload?: Json | null
+          published_at?: string
+          expires_at?: string
+          context_category?: string | null
+          context_description?: string | null
+          response_guidance?: string | null
+          auto_reply_enabled?: boolean
+          contextualized_at?: string | null
+          contextualized_by_user_id?: string | null
+        }
+      }
+
       fiscal_invoices: {
         Row: {
           id: number

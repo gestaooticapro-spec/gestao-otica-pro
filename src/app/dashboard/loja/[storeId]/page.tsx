@@ -15,6 +15,7 @@ import type { StoreSettings } from '@/lib/store-modules'
 import { ManagerDashboard, AdminDashboard } from '@/components/dashboard/DashboardViews'
 import ActionMenuDashboard from '@/components/dashboard/ActionMenuDashboard'
 import { TabletRedirect } from '@/components/tablet/TabletRedirect'
+import { countPendingWhatsAppStatusContexts } from '@/lib/whatsapp/status-publications'
 
 type StoreHomeProfile = {
     role?: string | null
@@ -115,13 +116,14 @@ export default async function StoreHomePage(props: { params: Promise<{ storeId: 
 
     // 3. OPERADOR / VENDEDOR (Dashboard Operacional)
     const modules = await getStoreModulesForStore(storeId)
-    const [alertas, aniversariantes, vencimentos, retornos, whatsAppPendencias, whatsAppHumanOverrides] = await Promise.all([
+    const [alertas, aniversariantes, vencimentos, retornos, whatsAppPendencias, whatsAppHumanOverrides, whatsAppStatusContextsPending] = await Promise.all([
         getAlertasOperacionais(storeId),
         getAniversariantes(storeId),
         modules.installments ? getVencimentosProximos(storeId) : Promise.resolve([]),
         modules.installments ? getRetornosDeHoje(storeId) : Promise.resolve([]),
         isWhatsAppConnected ? getWhatsAppPendencias(storeId) : Promise.resolve([]),
-        isWhatsAppConnected ? getWhatsAppHumanOverrideCount(storeId) : Promise.resolve(0)
+        isWhatsAppConnected ? getWhatsAppHumanOverrideCount(storeId) : Promise.resolve(0),
+        isWhatsAppConnected ? countPendingWhatsAppStatusContexts(storeId) : Promise.resolve(0)
     ])
 
     return (
@@ -137,6 +139,7 @@ export default async function StoreHomePage(props: { params: Promise<{ storeId: 
                 retornos={retornos}
                 whatsAppPendencias={whatsAppPendencias}
                 whatsAppHumanOverrides={whatsAppHumanOverrides}
+                whatsAppStatusContextsPending={whatsAppStatusContextsPending}
                 isWhatsAppAutomationEnabled={isWhatsAppAutomationEnabled}
                 isWhatsAppChannelConfigured={isWhatsAppChannelConfigured}
                 isWhatsAppConnected={isWhatsAppConnected}

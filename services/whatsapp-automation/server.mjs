@@ -66,15 +66,101 @@ function extractText(message = {}) {
 
   return message.conversation
     || message.extendedTextMessage?.text
+    || message.reactionMessage?.text
     || message.imageMessage?.caption
     || message.videoMessage?.caption
     || message.documentMessage?.caption
     || unwrappedMessage.conversation
     || unwrappedMessage.extendedTextMessage?.text
+    || unwrappedMessage.reactionMessage?.text
     || unwrappedMessage.imageMessage?.caption
     || unwrappedMessage.videoMessage?.caption
     || unwrappedMessage.documentMessage?.caption
     || ''
+}
+
+function messageTimestampIso(payload) {
+  const raw = payload.data?.messageTimestamp ?? payload.messageTimestamp
+  const seconds = Number(typeof raw === 'object' ? raw?.low : raw)
+  if (!Number.isFinite(seconds) || seconds <= 0) return new Date().toISOString()
+  return new Date(seconds * 1000).toISOString()
+}
+
+function statusContextInfo(message = {}, dataContextInfo = null) {
+  const unwrapped = unwrapMessage(message)
+  return message.extendedTextMessage?.contextInfo
+    || message.imageMessage?.contextInfo
+    || message.videoMessage?.contextInfo
+    || message.documentMessage?.contextInfo
+    || message.audioMessage?.contextInfo
+    || unwrapped.extendedTextMessage?.contextInfo
+    || unwrapped.imageMessage?.contextInfo
+    || unwrapped.videoMessage?.contextInfo
+    || unwrapped.documentMessage?.contextInfo
+    || unwrapped.audioMessage?.contextInfo
+    || dataContextInfo
+    || null
+}
+
+function extractStatusReference(message = {}, dataContextInfo = null) {
+  const unwrapped = unwrapMessage(message)
+  const reaction = message.reactionMessage || unwrapped.reactionMessage
+  if (reaction?.key?.id && reaction.key.remoteJid === 'status@broadcast') {
+    return {
+      providerMessageId: String(reaction.key.id),
+      interactionType: 'reaction',
+    }
+  }
+
+  const contextInfo = statusContextInfo(message, dataContextInfo)
+  const quotedRemoteJid = contextInfo?.remoteJid
+    || contextInfo?.participant
+    || contextInfo?.quotedMessage?.key?.remoteJid
+  if (contextInfo?.stanzaId && (
+    quotedRemoteJid === 'status@broadcast'
+    || contextInfo.quotedMessage
+  )) {
+    return {
+      providerMessageId: String(contextInfo.stanzaId),
+      interactionType: 'reply',
+    }
+  }
+
+  return null
+}
+
+function extractStoreStatusPublication(payload) {
+  const data = payload.data || {}
+  const key = data.key || {}
+  const remoteJid = key.remoteJid || data.remoteJid || ''
+  const providerMessageId = key.id || data.id || payload.messageId || ''
+  const fromMe = Boolean(key.fromMe ?? data.fromMe)
+  const message = data.message || {}
+  const unwrapped = unwrapMessage(message)
+  const statusReference = extractStatusReference(message, data.contextInfo)
+
+  // O WhatsApp nem sempre replica a publicação de Status feita no celular para
+  // o dispositivo conectado. Uma reação recebida em status@broadcast é o
+  // marcador explícito de que existe um Status da loja para contextualizar.
+  if (statusReference?.interactionType === 'reaction') {
+    return {
+      providerMessageId: statusReference.providerMessageId,
+      messageText: null,
+      mediaKind: null,
+      publishedAt: messageTimestampIso(payload),
+      detectedByReaction: true,
+    }
+  }
+
+  if (!fromMe || remoteJid !== 'status@broadcast' || !providerMessageId) return null
+
+  return {
+    providerMessageId: String(providerMessageId),
+    messageText: extractText(message),
+    mediaKind: detectAttachmentKind(message),
+    publishedAt: messageTimestampIso(payload),
+    detectedByReaction: false,
+  }
 }
 
 function unwrapMessage(message = {}) {
@@ -135,18 +221,28 @@ function extractInbound(payload) {
   const message = data.message || {}
   const providerMessageId = key.id || data.id || payload.messageId || ''
   const fromMe = Boolean(key.fromMe ?? data.fromMe)
+  const statusReference = extractStatusReference(message, data.contextInfo)
 
   if (fromMe || !providerMessageId || !remoteJid) return null
-  if (remoteJid.endsWith('@g.us') || remoteJid === 'status@broadcast') return null
+  if (remoteJid.endsWith('@g.us')) return null
 
-  const phone = remoteJid.split('@')[0].replace(/\D/g, '')
+  const participant = key.participant
+    || data.participant
+    || data.sender
+    || data.pushNameJid
+    || ''
+  const phoneSource = remoteJid === 'status@broadcast' ? participant : remoteJid
+  const phone = String(phoneSource).split('@')[0].replace(/\D/g, '')
   if (!phone) return null
+  if (remoteJid === 'status@broadcast' && !statusReference) return null
 
   return {
     phone,
     providerMessageId,
     messageText: extractText(message),
     attachmentKind: detectAttachmentKind(message),
+    statusReferenceId: statusReference?.providerMessageId || null,
+    statusInteractionType: statusReference?.interactionType || null,
   }
 }
 
@@ -163,11 +259,13 @@ function extractStoreInitiatedMessage(payload) {
 
   const phone = remoteJid.split('@')[0].replace(/\D/g, '')
   if (!phone) return null
+  const attachmentKind = detectAttachmentKind(message)
+  const readableText = extractText(message)
 
   return {
     phone,
     providerMessageId,
-    messageText: extractText(message),
+    messageText: readableText || (attachmentKind ? `[${attachmentKind} enviado pela loja]` : ''),
   }
 }
 
@@ -643,12 +741,31 @@ function enqueueBufferedInbound(instanceKey, inbound) {
 }
 
 async function handleMessage(instanceKey, payload) {
+  const statusPublication = extractStoreStatusPublication(payload)
+  if (statusPublication) {
+    const { detectedByReaction, ...publicationPayload } = statusPublication
+    await appRequest('/api/whatsapp/status-publications', {
+      instanceKey,
+      ...publicationPayload,
+      payload: prepareInboundPayloadForApp(payload, null),
+    })
+    console.log(`[webhook] status captured instance=${instanceKey} provider_message_id=${statusPublication.providerMessageId} source=${detectedByReaction ? 'reaction' : 'publication'} media=${statusPublication.mediaKind || 'text'}`)
+
+    // Publicacoes da propria loja terminam aqui. Reacoes continuam para o
+    // atendimento: sem contexto vao para humano; com contexto podem responder.
+    if (!detectedByReaction) {
+      return { ignored: true, statusPublication: true }
+    }
+  }
+
   const storeInitiated = extractStoreInitiatedMessage(payload)
   if (storeInitiated) {
     await appRequest('/api/whatsapp/store-initiated', {
       instanceKey,
       ...storeInitiated,
-      payload,
+      // Mensagens enviadas pelo celular da loja so precisam deixar contexto.
+      // O arquivo em base64 nao deve ser replicado nem persistido no app.
+      payload: prepareInboundPayloadForApp(payload, null),
     })
     return { ignored: true, fromMe: true }
   }
@@ -659,6 +776,11 @@ async function handleMessage(instanceKey, payload) {
   console.log(`[webhook] inbound instance=${instanceKey} phone=${inbound.phone} text="${previewText(inbound.messageText)}"`)
 
   const key = inboundBufferKey(instanceKey, inbound.phone)
+  if (inbound.statusReferenceId) {
+    console.log(`[webhook] status interaction ignored instance=${instanceKey} phone=${inbound.phone} provider_message_id=${inbound.providerMessageId} status_reference_id=${inbound.statusReferenceId}`)
+    return { ignored: true, statusInteraction: true }
+  }
+
   if (inbound.attachmentKind) {
     if (inboundBuffers.has(key)) {
       await flushBufferedInbound(key, 'attachment_bypass')

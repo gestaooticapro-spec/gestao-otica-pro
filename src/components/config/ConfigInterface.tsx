@@ -8,13 +8,14 @@ import {
     MessageCircle, Clock
 } from 'lucide-react';
 import { getEmployees, saveEmployee, toggleEmployeeStatus } from '@/lib/actions/employee.actions';
-import { getStoreProfile, updateStoreProfile, updateStoreSettings } from '@/lib/actions/store.actions';
+import { getStoreProfile, updateStoreProfile, updateStoreSettings, uploadStoreLogo } from '@/lib/actions/store.actions';
 import { Database } from '@/lib/database.types';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import dynamic from 'next/dynamic';
 import { StoreSettings as SharedStoreSettings, getStoreModules } from '@/lib/store-modules';
+import { getStoreLogoPublicUrl } from '@/lib/store-logo';
 import {
     getStoreAccessAccounts,
     updateStoreAccessPassword,
@@ -111,6 +112,9 @@ function StoreDataForm({ storeId }: { storeId: number }) {
     const [codigoMunicipioIbge, setCodigoMunicipioIbge] = useState('')
     const [isCepLoading, setIsCepLoading] = useState(false)
     const [cepMessage, setCepMessage] = useState<string | null>(null)
+    const [logoFile, setLogoFile] = useState<File | null>(null)
+    const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null)
+    const [isLogoSaving, startLogoTransition] = useTransition()
 
     const maskCep = (value: string) => {
         const digits = value.replace(/\D/g, '').slice(0, 8)
@@ -133,7 +137,34 @@ function StoreDataForm({ storeId }: { storeId: number }) {
         setCity(data.city ?? '')
         setStateUf((data.state ?? '').toUpperCase())
         setCodigoMunicipioIbge(data.codigo_municipio_ibge ?? '')
+        setLogoPreviewUrl(getStoreLogoPublicUrl(data.settings?.logo))
     }, [data])
+
+    useEffect(() => {
+        if (!logoFile) return
+        const objectUrl = URL.createObjectURL(logoFile)
+        setLogoPreviewUrl(objectUrl)
+        return () => URL.revokeObjectURL(objectUrl)
+    }, [logoFile])
+
+    const handleLogoUpload = () => {
+        if (!logoFile) return
+        startLogoTransition(async () => {
+            const logoData = new FormData()
+            logoData.set('logo', logoFile)
+            const result = await uploadStoreLogo(storeId, logoData)
+            if (!result.success) {
+                alert(`Erro: ${result.message}`)
+                return
+            }
+            setData(current => current
+                ? { ...current, settings: { ...(current.settings || {}), logo: result.logoPath } }
+                : current)
+            setLogoFile(null)
+            setLogoPreviewUrl(result.logoUrl || null)
+            alert(result.message)
+        })
+    }
 
     const handleCepChange = (value: string) => {
         setCep(maskCep(value))
@@ -297,6 +328,34 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                     <Store className="h-4 w-4 text-indigo-400" /> Identidade & Fiscal
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
+                    <div className="col-span-2 flex flex-col gap-4 rounded-xl border border-white/10 bg-black/20 p-4 md:flex-row md:items-center">
+                        <div className="flex h-24 w-40 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-slate-950/60">
+                            {logoPreviewUrl ? (
+                                <img src={logoPreviewUrl} alt={`Logo ${data.name}`} className="h-full w-full object-contain p-2" />
+                            ) : (
+                                <Store className="h-9 w-9 text-slate-600" />
+                            )}
+                        </div>
+                        <div className="flex-1">
+                            <label className={labelStyle}>Logo da loja</label>
+                            <input
+                                type="file"
+                                accept="image/png,image/jpeg,image/webp"
+                                onChange={event => setLogoFile(event.target.files?.[0] || null)}
+                                className="block w-full text-xs text-slate-400 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-500/20 file:px-3 file:py-2 file:font-bold file:text-indigo-200 hover:file:bg-indigo-500/30"
+                            />
+                            <p className="mt-2 text-[10px] text-slate-500">PNG, JPG ou WebP, com no máximo 5 MB.</p>
+                            <button
+                                type="button"
+                                onClick={handleLogoUpload}
+                                disabled={!logoFile || isLogoSaving}
+                                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-black text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                                {isLogoSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                                SALVAR LOGO
+                            </button>
+                        </div>
+                    </div>
                     <div className="col-span-2 md:col-span-1">
                         <label className={labelStyle}>Nome Fantasia (Marca)</label>
                         <input name="name" defaultValue={data.name ?? ''} className={inputStyle} required />
@@ -839,6 +898,43 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                                     className="h-4 w-4 border-white/20 bg-slate-900 text-cyan-500 focus:ring-cyan-500 disabled:opacity-50"
                                 />
                                 <span className="text-sm text-slate-300 group-hover:text-white font-medium">Folha Branca (1/2 A4 com dados da loja)</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4 transition-colors">
+                    <div>
+                        <p className="text-sm font-black text-white uppercase tracking-[0.15em] mb-2">
+                            Formato de Impressão da OS
+                        </p>
+                        <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                            Esta escolha vale somente para a Ordem de Serviço e não altera o recibo financeiro.
+                        </p>
+                        <div className="flex flex-col gap-3">
+                            <label className="flex items-center gap-3 cursor-pointer group">
+                                <input
+                                    type="radio"
+                                    name="os_print_type"
+                                    value="pre_printed"
+                                    checked={data?.settings?.os_print_type === 'pre_printed' || !data?.settings?.os_print_type}
+                                    onChange={() => handleSettingChange('os_print_type', 'pre_printed')}
+                                    disabled={isSaving}
+                                    className="h-4 w-4 border-white/20 bg-slate-900 text-cyan-500 focus:ring-cyan-500 disabled:opacity-50"
+                                />
+                                <span className="text-sm text-slate-300 group-hover:text-white font-medium">Formulário Pré-Impresso (Gráfica)</span>
+                            </label>
+                            <label className="flex items-center gap-3 cursor-pointer group">
+                                <input
+                                    type="radio"
+                                    name="os_print_type"
+                                    value="half_a4"
+                                    checked={data?.settings?.os_print_type === 'half_a4'}
+                                    onChange={() => handleSettingChange('os_print_type', 'half_a4')}
+                                    disabled={isSaving}
+                                    className="h-4 w-4 border-white/20 bg-slate-900 text-cyan-500 focus:ring-cyan-500 disabled:opacity-50"
+                                />
+                                <span className="text-sm text-slate-300 group-hover:text-white font-medium">Folha Branca (1/2 A4, A5 destacável)</span>
                             </label>
                         </div>
                     </div>

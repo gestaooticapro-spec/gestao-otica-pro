@@ -301,10 +301,17 @@ function isTrustedIpcSender(event, allowedPaths) {
   try {
     const rendererUrl = getRendererUrl()
     const senderUrl = new URL(event.senderFrame.url)
-    const exactPath = allowedPaths.includes(senderUrl.pathname)
-    const prefixPath = allowedPaths.some((allowedPath) => (
+    // Next/Vercel pode preservar ou acrescentar uma barra final na rota
+    // canonica. A barra nao muda a tela autorizada, mas a comparacao literal
+    // faria o IPC retornar "Operacao local nao autorizada".
+    const normalizedSenderPath = senderUrl.pathname.replace(/\/+$/, '') || '/'
+    const normalizedAllowedPaths = allowedPaths.map((allowedPath) =>
+      allowedPath.endsWith('/') && allowedPath !== '/' ? allowedPath.replace(/\/+$/, '') : allowedPath,
+    )
+    const exactPath = normalizedAllowedPaths.includes(normalizedSenderPath)
+    const prefixPath = normalizedAllowedPaths.some((allowedPath) => (
       allowedPath.endsWith('*')
-      && senderUrl.pathname.startsWith(allowedPath.slice(0, -1))
+      && normalizedSenderPath.startsWith(allowedPath.slice(0, -1))
     ))
     return senderUrl.origin === rendererUrl.origin && (exactPath || prefixPath)
   } catch {

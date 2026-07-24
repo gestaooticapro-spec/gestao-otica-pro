@@ -38,6 +38,10 @@ import {
   type PostSaleContext,
 } from './post-sale-followup'
 import { concludePostSaleFromWhatsApp, recordPostSaleInteraction } from './post-sales'
+import {
+  buildWhatsAppStatusContextLine,
+  findWhatsAppStatusPublication,
+} from './status-publications'
 
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
 const HUMAN_PAUSE_MS = 60 * 60 * 1000
@@ -170,6 +174,8 @@ export type CustomerStatusRequest = {
   phone: string
   providerMessageId: string
   messageText?: string
+  statusReferenceId?: string | null
+  statusInteractionType?: 'reply' | 'reaction' | null
   payload?: Json
 }
 
@@ -908,6 +914,8 @@ function buildInboundContextMetadata(input: {
   mimeType: string | null
   fileName: string | null
   caption: string | null
+  statusReferenceId?: string | null
+  statusInteractionType?: string | null
 }) {
   return {
     lastInboundAt: new Date().toISOString(),
@@ -918,6 +926,8 @@ function buildInboundContextMetadata(input: {
     lastInboundMimeType: input.mimeType,
     lastInboundFileName: input.fileName,
     lastInboundCaption: input.caption,
+    lastInboundStatusReferenceId: input.statusReferenceId || null,
+    lastInboundStatusInteractionType: input.statusInteractionType || null,
   } satisfies ConversationMetadataRecord
 }
 
@@ -2050,6 +2060,8 @@ export async function resolveCustomerStatus(
     mimeType: inboundPayloadMeta.mimeType,
     fileName: inboundPayloadMeta.fileName,
     caption: inboundPayloadMeta.caption,
+    statusReferenceId: input.statusReferenceId,
+    statusInteractionType: input.statusInteractionType,
   })
 
   if (isWhatsAppInboundPayloadFromMe(input.payload)) {
@@ -2092,6 +2104,10 @@ export async function resolveCustomerStatus(
     return ignoreInbound(inbound.id)
   }
 
+  const statusPublication = await findWhatsAppStatusPublication(channel.id, input.statusReferenceId)
+  const statusContextLine = statusPublication
+    ? buildWhatsAppStatusContextLine(statusPublication)
+    : null
   const option = optionFromMessage(effectiveMessageText || undefined)
   let state = await findConversationState(channel.id, normalizedPhone)
   const controlMode = await loadCustomerControlMode(channel.id, normalizedPhone)
@@ -2124,13 +2140,17 @@ export async function resolveCustomerStatus(
     : null
   const postSaleContextWasRecovered = !livePostSaleContext && Boolean(recoveredPostSaleContext)
   const recentContext = [
+    ...(statusContextLine ? [statusContextLine] : []),
     ...buildRecentContextFromMetadata(state?.metadata, effectiveMessageText),
     ...(persistentPostSaleMemory?.recentContextLines || []),
   ].slice(0, 8)
   const conversationHistory = buildAiConversationHistoryFromMetadata(state?.metadata)
   const aiReplyContext = {
     userMessageText: effectiveMessageText,
-    conversationHistory: buildAiConversationHistoryFromMetadata(baseMetadata),
+    conversationHistory: [
+      ...(statusContextLine ? [statusContextLine] : []),
+      ...buildAiConversationHistoryFromMetadata(baseMetadata),
+    ].slice(-8),
   }
   const aiDiagnostics: WhatsAppAiDiagnostic[] = []
 
@@ -2216,6 +2236,61 @@ export async function resolveCustomerStatus(
       return createCurrentOutbound(maybeHumanized.text, 'store_hours', maybeHumanized.payload)
     }
     return fallbackAction()
+  }
+
+  if (statusPublication && (!statusPublication.contextualized_at || !statusPublication.auto_reply_enabled)) {
+    await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+      reason: statusPublication.contextualized_at ? 'status_auto_reply_disabled' : 'status_awaiting_context',
+      statusPublicationId: statusPublication.id,
+      statusProviderMessageId: statusPublication.provider_message_id,
+      statusInteractionType: input.statusInteractionType || 'reply',
+      handoff_internal_note: statusPublication.contextualized_at
+        ? 'Cliente interagiu com um Status configurado para atendimento humano.'
+        : 'Cliente interagiu com um Status que ainda não foi contextualizado pela equipe.',
+      ...buildDecisionMetadata({
+        intent: 'status_interaction',
+        action: 'human_handoff_status_without_automation',
+        outboundType: null,
+      }),
+    }))
+    return ignoreInbound(inbound.id)
+  }
+
+  if (statusPublication) {
+    return applyOohTrapIfNeeded(async () => {
+      const fallbackText = 'Que bom que você se interessou por essa publicação! O que você gostaria de saber sobre ela?'
+      let text = fallbackText
+
+      if (isWhatsAppAiResponderEnabled(automationSettings)) {
+        const statusReply = await generateWhatsAppFallbackReply({
+          userMessageText: effectiveMessageText || 'O cliente reagiu à publicação.',
+          conversationHistory: aiReplyContext.conversationHistory,
+          storeName: storeProfile.name,
+        })
+        await recordAiResult('fallback_reply', statusReply)
+        if (statusReply.success) text = statusReply.data.reply_text
+      }
+
+      const statusMetadata = mergeMetadata(baseMetadata, {
+        statusPublicationId: statusPublication.id,
+        statusProviderMessageId: statusPublication.provider_message_id,
+        statusInteractionType: input.statusInteractionType || 'reply',
+        statusContext: statusContextLine,
+        ...buildDecisionMetadata({
+          intent: 'status_interaction',
+          action: 'reply_to_status_interaction',
+          outboundType: 'status_interaction',
+        }),
+      })
+      await setCurrentConversationState('ai_session', AI_SESSION_MS, statusMetadata)
+
+      return withAiDiagnostics(await createCurrentOutbound(text, 'status_interaction', {
+        statusPublicationId: statusPublication.id,
+        statusProviderMessageId: statusPublication.provider_message_id,
+        statusInteractionType: input.statusInteractionType || 'reply',
+        statusContext: statusContextLine,
+      }))
+    })
   }
 
   const preAiRoute = decidePreAiRoute({
@@ -4021,6 +4096,17 @@ export async function markStoreInitiatedConversation(
       return { success: true, skipped: 'system_outbound' as const }
     }
   }
+
+  // Uma nova mensagem enviada pela propria loja sempre retoma o atendimento
+  // humano. Ela deve prevalecer sobre um "force_ai" deixado para a proxima
+  // mensagem do cliente, evitando que a IA entre no meio da conversa.
+  const { error: forceAiClearError } = await (supabase.from('whatsapp_customer_control') as any)
+    .delete()
+    .eq('channel_id', channel.id)
+    .eq('remote_phone', normalizedPhone)
+    .eq('mode', 'force_ai')
+
+  if (forceAiClearError) throw forceAiClearError
 
   if (mirrorOutbound) {
     const { error: outboundInsertError } = await (supabase.from('whatsapp_outbound_messages') as any)

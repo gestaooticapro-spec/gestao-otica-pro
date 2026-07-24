@@ -89,6 +89,7 @@ export type StoreModules = Record<StoreModuleKey, boolean>
 export type StoreSettings = {
   logo?: string
   receipt_type?: 'pre_printed' | 'half_a4'
+  os_print_type?: 'pre_printed' | 'half_a4'
   commission_generation_mode?: 'closed_only' | 'open_or_closed'
   delivery_date_enabled?: boolean
   service_order_mode?: 'single' | 'multiple'

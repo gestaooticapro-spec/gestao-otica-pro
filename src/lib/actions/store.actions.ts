@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/server'
 import { syncStoreFiscalData } from './fiscal.actions'
 import { StoreSettings } from '@/lib/store-modules'
 import { sanitizeAiSuggestionConfig } from '@/lib/ai-suggestion-config'
+import { getStoreLogoPublicUrl, STORE_LOGOS_BUCKET } from '@/lib/store-logo'
 
 const StoreProfileSchema = z.object({
     id: z.coerce.number(),
@@ -44,6 +45,13 @@ export type StoreActionResult = {
     success: boolean
     message: string
 }
+
+const STORE_LOGO_MAX_BYTES = 5 * 1024 * 1024
+const STORE_LOGO_TYPES = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/webp': 'webp',
+} as const
 
 type ProfileRow = Database['public']['Tables']['profiles']['Row']
 type StoreRow = Database['public']['Tables']['stores']['Row']
@@ -82,6 +90,19 @@ function onlyDigits(value: FormDataEntryValue | null) {
 function normalizeTextValue(value: FormDataEntryValue | null) {
     const normalized = String(value ?? '').trim()
     return normalized || null
+}
+
+function hasValidImageSignature(bytes: Uint8Array, mimeType: keyof typeof STORE_LOGO_TYPES) {
+    if (mimeType === 'image/png') {
+        return bytes.length >= 8 && [137, 80, 78, 71, 13, 10, 26, 10]
+            .every((value, index) => bytes[index] === value)
+    }
+    if (mimeType === 'image/jpeg') {
+        return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+    }
+    return bytes.length >= 12
+        && String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF'
+        && String.fromCharCode(...bytes.slice(8, 12)) === 'WEBP'
 }
 
 export async function getStoreProfile(storeId: number): Promise<StoreRow | null> {
@@ -230,7 +251,7 @@ export async function getStorePublicProfile(storeId: number) {
         if (!data) return null
 
         const settings = (data.settings || null) as StoreSettings | null
-        const logoUrl = settings?.logo ? `/logos/${settings.logo}` : null
+        const logoUrl = getStoreLogoPublicUrl(settings?.logo)
         return { name: data.name, tenant_id: data.tenant_id, logo_url: logoUrl }
     } catch {
         return null
@@ -481,6 +502,64 @@ export async function saveAiSuggestionConfig(
 ): Promise<StoreActionResult> {
     const sanitized = sanitizeAiSuggestionConfig(config)
     return updateStoreSettings(storeId, { ai_suggestion_config: sanitized as unknown as Json })
+}
+
+export async function uploadStoreLogo(
+    storeId: number,
+    formData: FormData
+): Promise<StoreActionResult & { logoPath?: string, logoUrl?: string }> {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { success: false, message: 'Sem permissao.' }
+
+    const profile = await getProfileByAdmin(user.id) as ProfileRow | null
+    if (!profile || (profile.role !== 'admin' && profile.store_id !== storeId)) {
+        return { success: false, message: 'Acesso negado.' }
+    }
+
+    const logoFile = formData.get('logo')
+    if (!(logoFile instanceof File) || logoFile.size === 0) {
+        return { success: false, message: 'Selecione uma imagem.' }
+    }
+    if (logoFile.size > STORE_LOGO_MAX_BYTES) {
+        return { success: false, message: 'A logo deve ter no maximo 5 MB.' }
+    }
+
+    const mimeType = logoFile.type as keyof typeof STORE_LOGO_TYPES
+    const extension = STORE_LOGO_TYPES[mimeType]
+    if (!extension) {
+        return { success: false, message: 'Use uma imagem PNG, JPG ou WebP.' }
+    }
+
+    const bytes = new Uint8Array(await logoFile.arrayBuffer())
+    if (!hasValidImageSignature(bytes, mimeType)) {
+        return { success: false, message: 'O arquivo enviado nao e uma imagem valida.' }
+    }
+
+    const currentStore = await getStoreProfile(storeId)
+    if (!currentStore) return { success: false, message: 'Loja nao encontrada.' }
+
+    const logoPath = `stores/${storeId}/logo.${extension}`
+    const admin = createAdminClient()
+    const { error: uploadError } = await admin.storage
+        .from(STORE_LOGOS_BUCKET)
+        .upload(logoPath, bytes, { contentType: mimeType, upsert: true })
+    if (uploadError) return { success: false, message: `Erro ao enviar logo: ${uploadError.message}` }
+
+    const settings = ((currentStore.settings || {}) as StoreSettings | Json) as StoreSettings
+    const { error: updateError } = await (admin.from('stores') as unknown as StoreTableApi)
+        .update({ settings: { ...settings, logo: logoPath } as Json })
+        .eq('id', storeId)
+    if (updateError) return { success: false, message: `Erro ao salvar logo: ${updateError.message}` }
+
+    revalidatePath(`/dashboard/loja/${storeId}/config`)
+    revalidatePath(`/dashboard/loja/${storeId}`, 'layout')
+    return {
+        success: true,
+        message: 'Logo atualizada!',
+        logoPath,
+        logoUrl: getStoreLogoPublicUrl(logoPath) || undefined,
+    }
 }
 
 export async function getAiConfigCatalogData(storeId: number): Promise<{

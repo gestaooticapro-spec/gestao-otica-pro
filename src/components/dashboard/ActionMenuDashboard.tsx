@@ -7,7 +7,7 @@ import {
   Zap, DollarSign,
   HeartHandshake, Megaphone, Search, Printer,
   ArrowRight, BellRing, AlertCircle, FileText, Wallet, CheckCircle2,
-  X,
+  X, MessageCircle,
 } from 'lucide-react'
 import AniversariantesWidget from '@/components/consultas/AniversariantesWidget'
 import { WidgetEntregas, WidgetLaboratorio } from '@/components/consultas/PaineisAlertas'
@@ -20,6 +20,7 @@ import WidgetWhatsAppPendencias from '@/components/consultas/WidgetWhatsAppPende
 import WhatsAppOperatorModal from '@/components/modals/WhatsAppOperatorModal'
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 import { runDashboardWhatsAppWakePing, type DashboardWhatsAppWakePingResult } from '@/lib/actions/whatsapp.actions'
+import WhatsAppStatusContextModal from '@/components/modals/WhatsAppStatusContextModal'
 
 interface Props {
   storeId: number
@@ -38,6 +39,7 @@ interface Props {
   retornos: RetornoCobranca[]
   whatsAppPendencias: WhatsAppPendencia[]
   whatsAppHumanOverrides: number
+  whatsAppStatusContextsPending: number
 }
 
 const WA_WAKE_PING_MAX_PER_DAY = 2
@@ -154,9 +156,12 @@ export default function ActionMenuDashboard({
   retornos,
   whatsAppPendencias,
   whatsAppHumanOverrides,
+  whatsAppStatusContextsPending,
 }: Props) {
   const [isParcelaModalOpen, setIsParcelaModalOpen] = useState(false)
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false)
+  const [isStatusContextModalOpen, setIsStatusContextModalOpen] = useState(false)
+  const [pendingStatusContexts, setPendingStatusContexts] = useState(whatsAppStatusContextsPending)
   const [effectiveWhatsAppConnected, setEffectiveWhatsAppConnected] = useState(isWhatsAppConnected)
   const [whatsAppWakeWarning, setWhatsAppWakeWarning] = useState<string | null>(
     isWhatsAppAutomationEnabled && isWhatsAppChannelConfigured && !isWhatsAppConnected
@@ -502,13 +507,33 @@ export default function ActionMenuDashboard({
                 )}
 
                 {effectiveWhatsAppConnected && (
-                  <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
-                    <WidgetWhatsAppPendencias
-                      pendencias={whatsAppPendencias}
-                      humanOverrides={whatsAppHumanOverrides}
-                      onOpen={() => setIsWhatsAppModalOpen(true)}
-                    />
-                  </div>
+                  <>
+                    {pendingStatusContexts > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setIsStatusContextModalOpen(true)}
+                        className="flex w-full items-center justify-between rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-left shadow-xl shadow-black/10 transition hover:border-emerald-300/50 hover:bg-emerald-400/15"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="rounded-xl bg-emerald-400/15 p-2.5 text-emerald-300">
+                            <MessageCircle className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300">Novo Status detectado</p>
+                            <p className="mt-1 text-xs text-emerald-100/70">Explique o objetivo para liberar respostas automáticas.</p>
+                          </div>
+                        </div>
+                        <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-emerald-400 px-2 text-xs font-black text-emerald-950">{pendingStatusContexts}</span>
+                      </button>
+                    )}
+                    <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
+                      <WidgetWhatsAppPendencias
+                        pendencias={whatsAppPendencias}
+                        humanOverrides={whatsAppHumanOverrides}
+                        onOpen={() => setIsWhatsAppModalOpen(true)}
+                      />
+                    </div>
+                  </>
                 )}
                 {modules.installments && (
                   <>
@@ -560,11 +585,19 @@ export default function ActionMenuDashboard({
       />
 
       {effectiveWhatsAppConnected && (
-        <WhatsAppOperatorModal
-          isOpen={isWhatsAppModalOpen}
-          onClose={() => setIsWhatsAppModalOpen(false)}
-          storeId={storeId}
-        />
+        <>
+          <WhatsAppOperatorModal
+            isOpen={isWhatsAppModalOpen}
+            onClose={() => setIsWhatsAppModalOpen(false)}
+            storeId={storeId}
+          />
+          <WhatsAppStatusContextModal
+            isOpen={isStatusContextModalOpen}
+            onClose={() => setIsStatusContextModalOpen(false)}
+            storeId={storeId}
+            onRemainingChange={setPendingStatusContexts}
+          />
+        </>
       )}
     </div>
   )

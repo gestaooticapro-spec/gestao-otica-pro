@@ -1,11 +1,12 @@
 'use client';
 
 import { ShoppingCart, Archive, LogOut } from 'lucide-react';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { getStoreLogoPublicUrl } from '@/lib/store-logo';
 
 export default function DemoMenuPage() {
     const router = useRouter();
+    const demoLogoUrl = getStoreLogoPublicUrl('stores/3/logo.png') || '';
 
     return (
         <div className="min-h-screen relative flex flex-col items-center justify-center p-8 overflow-hidden">
@@ -22,11 +23,10 @@ export default function DemoMenuPage() {
                 {/* Logo da Loja */}
                 <div className="mb-12 text-center">
                     <div className="w-28 h-28 mx-auto relative mb-4">
-                        <Image
-                            src="/logos/otica_prisma.png"
+                        <img
+                            src={demoLogoUrl}
                             alt="Ótica Prisma"
-                            fill
-                            className="object-contain rounded-2xl shadow-xl"
+                            className="h-full w-full object-contain rounded-2xl shadow-xl"
                         />
                     </div>
                     <h1 className="text-slate-500 text-sm font-medium uppercase tracking-widest">

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { getDadosProtocolo } from '@/lib/actions/ProtocoloPrint.actions'
 import { PRINT_CONFIG } from '@/config/printLayout'
+import { ServiceOrderHalfA4 } from '@/components/print/ServiceOrderHalfA4'
 import { Loader2, AlertTriangle } from 'lucide-react'
 
 // Tipagem das coordenadas (Sup/Inf)
@@ -127,6 +128,10 @@ export default function PrintOSPage(props: { params: { id: string } }) {
   }
 
   if (!data) return null
+
+  if (data.print_type === 'half_a4') {
+    return <ServiceOrderHalfA4 data={data} />
+  }
 
   // Formatador de Dinheiro
   const fmtMoney = (val: number) => val?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })

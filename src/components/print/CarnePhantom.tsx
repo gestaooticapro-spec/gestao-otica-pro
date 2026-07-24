@@ -3,6 +3,7 @@
 import { Database } from '@/lib/database.types'
 import { QRCodeSVG } from 'qrcode.react'
 import { PixPayload } from '@/lib/pix'
+import { getStoreLogoPublicUrl } from '@/lib/store-logo'
 
 type Financiamento = Database['public']['Tables']['financiamento_loja']['Row']
 type FinanciamentoParcela = Database['public']['Tables']['financiamento_parcelas']['Row']
@@ -54,7 +55,7 @@ export default function CarnePhantom({ financiamento }: CarnePhantomProps) {
     const storeAddress = (store as any)?.address || (store ? formatAddress(store.street, store.number, store.neighborhood, store.city, store.state) : 'Endereço da Loja')
 
     const settings = store?.settings as any
-    const logoUrl = settings?.logo ? `/logos/${settings.logo}` : null
+    const logoUrl = getStoreLogoPublicUrl(settings?.logo)
 
     // Dados para o Pix
     const pixKey = (store as any)?.pix_key

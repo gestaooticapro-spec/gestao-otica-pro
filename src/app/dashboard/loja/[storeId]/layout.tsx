@@ -11,6 +11,7 @@ import { TabletRedirect } from '@/components/tablet/TabletRedirect';
 import { TabletModeButton } from '@/components/tablet/TabletModeButton';
 import { StoreModulesProvider } from '@/lib/contexts/StoreModulesContext';
 import { StoreSettings, getStoreModules } from '@/lib/store-modules';
+import { getStoreLogoPublicUrl } from '@/lib/store-logo';
 
 type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor' | 'tecnico';
 type StoreProfile = {
@@ -83,7 +84,7 @@ export default async function StoreLayout(
     }
   }
 
-  const logoUrl = logoFile ? `/logos/${logoFile}` : null;
+  const logoUrl = getStoreLogoPublicUrl(logoFile);
 
   if (userRole === 'store_operator') {
     return (

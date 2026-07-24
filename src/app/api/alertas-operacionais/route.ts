@@ -7,6 +7,7 @@ import { getRetornosDeHoje } from '@/lib/actions/collection.actions';
 import { getClientesMetrics } from '@/lib/actions/reports.actions';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { StoreSettings } from '@/lib/store-modules';
+import { countPendingWhatsAppStatusContexts } from '@/lib/whatsapp/status-publications';
 
 type WhatsAppChannelStatusRow = {
     connection_status: 'unknown' | 'connecting' | 'connected' | 'disconnected'
@@ -47,14 +48,15 @@ export async function GET(request: NextRequest) {
             channel?.is_active === true;
 
         // Busca todos os dados em paralelo
-        const [alertas, aniversariantes, vencimentos, retornos, clientesMetrics, whatsAppPendencias, whatsAppHumanOverrides] = await Promise.all([
+        const [alertas, aniversariantes, vencimentos, retornos, clientesMetrics, whatsAppPendencias, whatsAppHumanOverrides, whatsAppStatusContextsPending] = await Promise.all([
             getAlertasOperacionais(storeId),
             getAniversariantes(storeId),
             getVencimentosProximos(storeId),
             getRetornosDeHoje(storeId),
             getClientesMetrics(storeId),
             isWhatsAppAutomationEnabled && isWhatsAppConnected ? getWhatsAppPendencias(storeId) : Promise.resolve([]),
-            isWhatsAppAutomationEnabled && isWhatsAppConnected ? getWhatsAppHumanOverrideCount(storeId) : Promise.resolve(0)
+            isWhatsAppAutomationEnabled && isWhatsAppConnected ? getWhatsAppHumanOverrideCount(storeId) : Promise.resolve(0),
+            isWhatsAppAutomationEnabled && isWhatsAppConnected ? countPendingWhatsAppStatusContexts(storeId) : Promise.resolve(0)
         ]);
 
         return NextResponse.json({
@@ -67,6 +69,7 @@ export async function GET(request: NextRequest) {
             clientesInativos: clientesMetrics.clientesInativos,
             whatsAppPendencias: whatsAppPendencias,
             whatsAppHumanOverrides,
+            whatsAppStatusContextsPending,
             isWhatsAppAutomationEnabled,
             isWhatsAppConnected
         });

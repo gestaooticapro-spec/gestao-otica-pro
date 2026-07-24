@@ -1,9 +1,10 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getStoreLogoPublicUrl } from '@/lib/store-logo'
 
 // Tipagem básica para facilitar o retorno (pode ajustar conforme seu projeto)
-interface DadosProtocolo {
+export interface DadosProtocolo {
   os_id: number
   os_numero: string | number
   data_emissao: string
@@ -32,6 +33,18 @@ interface DadosProtocolo {
   diametro: string
   laboratorio: string
   obs_os: string
+  print_type: 'pre_printed' | 'half_a4'
+  store: {
+    name: string
+    logo_url: string
+    street: string
+    number: string
+    neighborhood: string
+    city: string
+    state: string
+    phone: string
+    whatsapp: string
+  }
 }
 
 export async function getDadosProtocolo(osId: number) {
@@ -53,6 +66,16 @@ export async function getDadosProtocolo(osId: number) {
       throw new Error(`OS ${osId} não encontrada.`)
     }
     const os = osRaw as any
+
+    const { data: storeRaw } = await (supabase
+      .from('stores') as any)
+      .select('name, settings, street, number, neighborhood, city, state, phone, whatsapp')
+      .eq('id', os.store_id)
+      .single()
+
+    const storeSettings = (storeRaw?.settings || {}) as Record<string, unknown>
+    const logoSetting = typeof storeSettings.logo === 'string' ? storeSettings.logo : ''
+    const logoUrl = getStoreLogoPublicUrl(logoSetting) || ''
 
     // ------------------------------------------------------------------
     // PASSO 2: Busca o Cliente e/ou Dependente (prioridade para dependente)
@@ -260,7 +283,20 @@ export async function getDadosProtocolo(osId: number) {
       altura: os.medida_altura_od || '', // Usando OD como padrão conforme conversado
       diametro: os.medida_diametro || '',
       laboratorio: os.lab_nome || '',
-      obs_os: os.obs_os || ''
+      obs_os: os.obs_os || '',
+
+      print_type: storeSettings.os_print_type === 'half_a4' ? 'half_a4' : 'pre_printed',
+      store: {
+        name: storeRaw?.name || '',
+        logo_url: logoUrl,
+        street: storeRaw?.street || '',
+        number: storeRaw?.number || '',
+        neighborhood: storeRaw?.neighborhood || '',
+        city: storeRaw?.city || '',
+        state: storeRaw?.state || '',
+        phone: storeRaw?.phone || '',
+        whatsapp: storeRaw?.whatsapp || ''
+      }
     }
 
     console.log(`[PRINT_DEBUG] Sucesso OS ${osId}. Cliente: ${clienteNome}`)
