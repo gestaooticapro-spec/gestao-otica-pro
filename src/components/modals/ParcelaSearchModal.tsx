@@ -82,6 +82,16 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQu
     const [receiptSent, setReceiptSent] = useState(false)
     const searchInputRef = useRef<HTMLInputElement>(null)
 
+    const valorTotalRecebido = parseMoney(valorTotalPagoStr)
+    const totalFormasRecebimento = recebimentos.reduce(
+        (total, recebimento) => total + parseMoney(recebimento.valor),
+        0
+    )
+    const diferencaFormasRecebimento = valorTotalRecebido - totalFormasRecebimento
+    const formasRecebimentoCompletas =
+        valorTotalRecebido > 0 &&
+        Math.abs(diferencaFormasRecebimento) <= 0.01
+
     useEffect(() => {
         setMounted(true)
     }, [])
@@ -164,6 +174,11 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQu
 
         if (isProcessing) {
             console.log("[DEBUG] Abortando: Já está processando")
+            return
+        }
+
+        if (!formasRecebimentoCompletas) {
+            console.log("[DEBUG] Abortando: formas de recebimento não completam o total")
             return
         }
 
@@ -420,7 +435,15 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQu
                                             <button type="button" aria-label="Remover forma" disabled={recebimentos.length === 1} onClick={() => setRecebimentos(recebimentos.filter((_, itemIndex) => itemIndex !== index))} className="p-2 text-slate-500 hover:text-red-400 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
                                         </div>
                                     ))}
-                                    <p className="text-[10px] text-slate-500">A soma das formas deve ser igual ao total recebido.</p>
+                                    <p className={`text-[10px] font-medium ${formasRecebimentoCompletas ? 'text-emerald-400' : diferencaFormasRecebimento < -0.01 ? 'text-red-400' : 'text-slate-500'}`}>
+                                        {formasRecebimentoCompletas
+                                            ? 'Valor completo. O recebimento pode ser confirmado.'
+                                            : diferencaFormasRecebimento > 0.01
+                                                ? `Falta distribuir ${formatCurrency(diferencaFormasRecebimento)} entre as formas de recebimento.`
+                                                : diferencaFormasRecebimento < -0.01
+                                                    ? `A soma ultrapassa o total em ${formatCurrency(Math.abs(diferencaFormasRecebimento))}.`
+                                                    : 'A soma das formas deve ser igual ao total recebido.'}
+                                    </p>
                                 </div>
 
                                 {new Date(selectedParcela.data_vencimento) < new Date(getToday()) && (
@@ -485,8 +508,8 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQu
 
                                 <button
                                     onClick={handlePreConfirm}
-                                    disabled={isProcessing}
-                                    className="w-full py-4 rounded-xl bg-amber-600 text-white font-bold hover:bg-amber-500 shadow-lg shadow-amber-900/20 flex items-center justify-center gap-2 transition-all active:scale-95 text-lg uppercase tracking-wide"
+                                    disabled={isProcessing || !formasRecebimentoCompletas}
+                                    className="w-full py-4 rounded-xl bg-amber-600 text-white font-bold hover:bg-amber-500 shadow-lg shadow-amber-900/20 flex items-center justify-center gap-2 transition-all active:scale-95 text-lg uppercase tracking-wide disabled:bg-slate-800 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed disabled:active:scale-100"
                                 >
                                     {isProcessing ? <Loader2 className="h-6 w-6 animate-spin" /> : <CheckCircle2 className="h-6 w-6" />}
                                     RECEBER
