@@ -609,14 +609,11 @@ export async function deleteServiceOrder(id: number, storeId: number, vendaId: n
       .eq('id', id)
       .maybeSingle()
 
-    if (orderToDelete?.source_optical_evaluation_id) {
-      const { error: unlinkError } = await (supabaseAdmin.from('optical_evaluations') as any)
-        .update({ exported_service_order_id: null, updated_at: new Date().toISOString() })
-        .eq('id', orderToDelete.source_optical_evaluation_id)
-        .eq('store_id', storeId)
+    const { count: osCount, error: osCountError } = await (supabaseAdmin.from('service_orders') as any)
+      .select('id', { count: 'exact', head: true })
+      .eq('venda_id', vendaId)
 
-      if (unlinkError) throw unlinkError
-    }
+    if (osCountError) throw osCountError
 
     const { data: linkedPostSale } = await (supabaseAdmin.from('post_sales') as any)
       .select('id')
@@ -636,24 +633,42 @@ export async function deleteServiceOrder(id: number, storeId: number, vendaId: n
       return { success: false, message: reservationRelease.message, timestamp: Date.now() }
     }
 
+    const { data: linkedFiscalInvoice } = await (supabaseAdmin.from('fiscal_invoices') as any)
+      .select('id, status, tipo_documento, work_order_id')
+      .eq('work_order_id', id)
+      .limit(1)
+
+    if (linkedFiscalInvoice && linkedFiscalInvoice.length > 0) {
+      if ((osCount ?? 0) <= 1) {
+        return {
+          success: false,
+          message: 'Esta OS possui documento fiscal vinculado e nao pode ser excluida automaticamente.',
+          timestamp: Date.now()
+        }
+      }
+
+      const invoiceIds = linkedFiscalInvoice.map((invoice: { id: number }) => invoice.id)
+      const { error: unlinkFiscalError } = await (supabaseAdmin.from('fiscal_invoices') as any)
+        .update({ work_order_id: null })
+        .in('id', invoiceIds)
+
+      if (unlinkFiscalError) throw unlinkFiscalError
+    }
+
+    if (orderToDelete?.source_optical_evaluation_id) {
+      const { error: unlinkError } = await (supabaseAdmin.from('optical_evaluations') as any)
+        .update({ exported_service_order_id: null, updated_at: new Date().toISOString() })
+        .eq('id', orderToDelete.source_optical_evaluation_id)
+        .eq('store_id', storeId)
+
+      if (unlinkError) throw unlinkError
+    }
+
     const { error: linksDeleteError } = await (supabaseAdmin.from('venda_itens_os_links') as any)
       .delete()
       .eq('service_order_id', id)
 
     if (linksDeleteError) throw linksDeleteError
-
-    const { data: linkedFiscalInvoice } = await (supabaseAdmin.from('fiscal_invoices') as any)
-      .select('id, status, tipo_documento')
-      .eq('work_order_id', id)
-      .limit(1)
-
-    if (linkedFiscalInvoice && linkedFiscalInvoice.length > 0) {
-      return {
-        success: false,
-        message: 'Esta OS possui documento fiscal vinculado e nao pode ser excluida automaticamente.',
-        timestamp: Date.now()
-      }
-    }
 
     const { error } = await supabaseAdmin.from('service_orders').delete().eq('id', id)
     if (error) throw error

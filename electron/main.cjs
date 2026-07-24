@@ -576,6 +576,11 @@ async function createMainWindow() {
     },
   })
 
+  // Registrar a janela antes de qualquer carregamento de URL. A página pode
+  // executar IPC assim que o renderer fica utilizável, enquanto createMainWindow
+  // ainda aguarda loadURL; sem isso, o IPC era rejeitado como não autorizado.
+  primaryWindow = mainWindow
+
   mainWindow.removeMenu()
 
   mainWindow.once('ready-to-show', () => {

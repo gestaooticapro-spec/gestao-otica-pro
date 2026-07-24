@@ -6,7 +6,7 @@
   "private": true,
   "main": "electron/main.cjs",
   "tower": {
-    "productionUrl": "https://gestao-otica-pro.vercel.app"
+    "productionUrl": "https://neosmart-eta.vercel.app/"
   },
   "scripts": {
     "dev": "next dev -p 3000",

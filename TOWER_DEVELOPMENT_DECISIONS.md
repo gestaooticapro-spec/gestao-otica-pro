@@ -312,6 +312,11 @@ Ainda falta validar funcionalmente, no Electron e depois no equipamento real:
 - Executavel `neosmart`.
 - Instalador planejado como `Neosmart-Setup-*`.
 - Renderer publicado em `https://neosmart-eta.vercel.app/`.
+- O renderer oficial da Torre/Neosmart e o projeto Vercel `neosmart`; o
+  instalador de producao deve usar
+  `tower.productionUrl = https://neosmart-eta.vercel.app/`. O dominio
+  `gestao-otica-pro.vercel.app` pertence ao backoffice MB Optical e nao deve
+  ser usado como origem do Electron da Neosmart.
 - Origens do renderer e das APIs separadas.
 - Ciclo de clientes e sessoes migrado para HTTP v1.
 - Typecheck aprovado.
@@ -522,6 +527,12 @@ Windows de desenvolvimento. Esse instalador antigo nao deve ser usado porque:
 O deploy separado da Neosmart ja esta funcional. O instalador antigo continua
 fora do piloto; o proximo instalador deve ser gerado a partir do repositorio
 Neosmart e validado contra as duas origens publicadas.
+
+A publicacao de novas telas no projeto Vercel `neosmart` nao atualiza um
+instalador que ainda aponta para `gestao-otica-pro.vercel.app`. Depois de cada
+alteracao de UI, confirmar o deploy `Ready` de `neosmart` e gerar o instalador
+a partir do repositorio `G:\projetos\torre-neosmart`, com a origem
+`https://neosmart-eta.vercel.app/`.
 
 ### Condicoes para retomar
 
