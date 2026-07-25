@@ -75,8 +75,8 @@ const LoadDemoTemplateSchema = z.object({
 })
 
 export type PersistedTowerHeatmapResult = {
-  evaluationId: number
-  customerId: number
+  evaluationId: number | null
+  customerId: number | null
   summary: z.infer<typeof HeatmapSummarySchema>
   targetSamples: z.infer<typeof HeatmapTargetSampleSchema>[]
 }
@@ -475,9 +475,6 @@ export async function getCompletedTowerHeatmapResult(
 
   if (error || !session) return { success: false, message: error?.message || 'Sessao de mapa visual nao encontrada.' }
   if (session.status !== 'completed') return { success: false, message: 'O mapa visual ainda nao foi concluido.' }
-  if (!session.customer_id || !session.optical_evaluation_id) {
-    return { success: false, message: 'O mapa visual ainda nao foi associado a cliente e avaliacao.' }
-  }
 
   const result = CompleteSessionSchema.safeParse({
     storeId: data.storeId,

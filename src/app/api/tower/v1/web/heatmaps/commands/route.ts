@@ -235,9 +235,6 @@ export async function POST(request: NextRequest) {
   }
 
   if (session.status !== 'completed') return json(false, 'O mapa visual ainda nao foi concluido.', 409)
-  if (!session.customer_id || !session.optical_evaluation_id) {
-    return json(false, 'O mapa visual ainda nao foi associado a cliente e avaliacao.', 409)
-  }
   const result = z.object({ summary: SummarySchema, targetSamples: z.array(TargetSampleSchema).min(1).max(40) }).safeParse({
     summary: session.result_summary,
     targetSamples: session.target_samples,

@@ -47,6 +47,7 @@ test('contratos web v1 autenticam o token do equipamento e limitam o acesso por 
   assert.match(heatmaps, /command: z\.literal\('get-completed-result'\)/)
   assert.match(heatmaps, /\.eq\('tenant_id', auth\.tenantId\)/)
   assert.match(heatmaps, /Esta sessao ja foi concluida com outro resultado/)
+  assert.doesNotMatch(heatmaps, /O mapa visual ainda nao foi associado a cliente e avaliacao/)
   assert.match(operationalCatalog, /RESOURCE_NAMES = new Set\(\['catalog', 'geometries', 'frames'\]\)/)
   assert.match(operationalCatalog, /\.eq\('tenant_id', tenantId\)/)
   assert.match(operationalCatalog, /global_lens_geometry/)
