@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
   if (session.optical_evaluation_id) {
     const evaluations = admin.from('optical_evaluations') as any
     const { data } = await evaluations
-      .select('id, recommended_items')
+      .select('id, recommended_items, receita_longe_od_esferico, receita_longe_od_cilindrico, receita_longe_od_eixo, receita_longe_oe_esferico, receita_longe_oe_cilindrico, receita_longe_oe_eixo, receita_adicao')
       .eq('id', session.optical_evaluation_id)
       .eq('store_id', parsed.data.storeId)
       .eq('tenant_id', auth.tenantId)
