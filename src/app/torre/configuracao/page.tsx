@@ -5,6 +5,7 @@ import {
   Camera,
   KeyRound,
   Loader2,
+  LogOut,
   Monitor,
   PlayCircle,
   RefreshCw,
@@ -199,6 +200,16 @@ export default function TowerSetupPage() {
     if (videoRef.current) videoRef.current.srcObject = null
   }
 
+  function logoutMaintenance() {
+    stopCamera()
+    void window.towerDesktop?.closeCustomerDisplayTest()
+    setMaintenanceUnlocked(false)
+    setCurrentPin('')
+    setNewPin('')
+    setConfirmPin('')
+    setPinMessage('')
+  }
+
   async function confirmCameraImage() {
     if (!streamRef.current) return
     try {
@@ -358,6 +369,7 @@ export default function TowerSetupPage() {
           <div className="flex flex-wrap gap-3">
             <Link href={`/torre/${session.storeId}`} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-cyan-300 px-4 text-sm font-black text-slate-950 hover:bg-cyan-200"><PlayCircle className="h-4 w-4" />Testar experiências</Link>
             <button type="button" onClick={() => void refreshHardware()} className="inline-flex min-h-12 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-black hover:bg-white/10"><RefreshCw className="h-4 w-4" />Atualizar hardware</button>
+            <button type="button" onClick={logoutMaintenance} className="inline-flex min-h-12 items-center gap-2 rounded-xl border border-rose-300/20 bg-rose-300/10 px-4 text-sm font-black text-rose-100 hover:bg-rose-300/20"><LogOut className="h-4 w-4" />Encerrar acesso</button>
           </div>
         </header>
 

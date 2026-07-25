@@ -1,9 +1,16 @@
 
+import 'dotenv/config';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { createAdminClient } from '../src/lib/supabase/admin';
 
 async function main() {
   const storeId = 3;
   const logoFileName = 'otica_prisma.png';
+  const bucket = 'store-logos';
+  const extension = path.extname(logoFileName).toLowerCase();
+  const contentType = extension === '.png' ? 'image/png' : extension === '.jpg' || extension === '.jpeg' ? 'image/jpeg' : 'image/webp';
+  const logoPath = `stores/${storeId}/logo${extension === '.jpeg' ? '.jpg' : extension}`;
 
   const supabase = createAdminClient();
 
@@ -19,9 +26,19 @@ async function main() {
   }
 
   const currentSettings = ((store as any)?.settings || {}) as Record<string, any>;
+  const bytes = await readFile(path.join(process.cwd(), 'public', 'logos', logoFileName));
+  const { error: uploadError } = await supabase.storage
+    .from(bucket)
+    .upload(logoPath, bytes, { contentType, upsert: true });
+
+  if (uploadError) {
+    console.error('Error uploading store logo:', uploadError);
+    return;
+  }
+
   const newSettings = {
     ...currentSettings,
-    logo: logoFileName
+    logo: logoPath
   };
 
   // 2. Update store
@@ -34,7 +51,7 @@ async function main() {
     return;
   }
 
-  console.log(`Successfully updated logo for store ${storeId} to ${logoFileName}`);
+  console.log(`Successfully updated logo for store ${storeId} to ${logoPath}`);
 }
 
 main();
