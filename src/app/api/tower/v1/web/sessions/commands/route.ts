@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
     const { data: customer, error } = await customers.select('id').eq('id', parsed.data.customerId).eq('store_id', parsed.data.storeId).maybeSingle()
     if (error || !customer) return NextResponse.json({ success: false, message: error?.message || 'Cliente nao encontrado para esta loja.' }, { status: 404 })
     update = parsed.data.command === 'save-prescription'
-      ? { customer_id: customer.id, prescription_snapshot: parsed.data.prescription, current_experience: 'thickness' }
+      ? { customer_id: customer.id, prescription_snapshot: parsed.data.prescription }
       : { customer_id: customer.id }
     association = { customer_id: customer.id }
     successMessage = parsed.data.command === 'save-prescription' ? 'Receita real salva na sessao da Torre.' : 'Cliente vinculado a sessao da Torre.'

@@ -30,7 +30,9 @@ export async function GET(request: NextRequest) {
   const auth = await authenticateTowerDeviceWebSessionToken(token, parsed.data.storeId)
   if (!auth.ok) return NextResponse.json({ success: false, message: auth.message }, { status: 401 })
 
-  const admin = createAdminClient()
+  // O contexto muda durante o atendimento e nunca pode reutilizar uma leitura
+  // anterior do Supabase.
+  const admin = createAdminClient({ noStore: true })
   const sessions = admin.from('tower_sessions') as any
   const { data: session, error } = await sessions
     .select('*')

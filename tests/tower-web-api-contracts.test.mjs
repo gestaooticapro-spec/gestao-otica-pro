@@ -52,6 +52,11 @@ test('contratos web v1 autenticam o token do equipamento e limitam o acesso por 
   assert.match(recommendations, /recommended_items: result\.recommendations/)
   assert.match(context, /data: \{ session, customer, evaluation \}/)
   assert.match(context, /receita_longe_od_esferico/)
+  assert.match(context, /createAdminClient\(\{ noStore: true \}\)/)
+  assert.doesNotMatch(
+    commands,
+    /prescription_snapshot: parsed\.data\.prescription, current_experience: 'thickness'/,
+  )
   assert.match(operationalCatalog, /RESOURCE_NAMES = new Set\(\['catalog', 'geometries', 'frames'\]\)/)
   assert.match(operationalCatalog, /\.eq\('tenant_id', tenantId\)/)
   assert.match(operationalCatalog, /global_lens_geometry/)
