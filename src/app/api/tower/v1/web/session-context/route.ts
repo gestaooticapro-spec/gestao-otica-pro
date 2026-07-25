@@ -52,9 +52,21 @@ export async function GET(request: NextRequest) {
     customer = data ?? null
   }
 
+  let evaluation: { id: number; recommended_items: unknown[] | null } | null = null
+  if (session.optical_evaluation_id) {
+    const evaluations = admin.from('optical_evaluations') as any
+    const { data } = await evaluations
+      .select('id, recommended_items')
+      .eq('id', session.optical_evaluation_id)
+      .eq('store_id', parsed.data.storeId)
+      .eq('tenant_id', auth.tenantId)
+      .maybeSingle()
+    evaluation = data ?? null
+  }
+
   return NextResponse.json({
     success: true,
     message: 'Contexto da sessao carregado.',
-    data: { session, customer },
+    data: { session, customer, evaluation },
   })
 }

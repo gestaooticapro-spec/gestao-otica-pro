@@ -77,6 +77,7 @@ const LoadDemoTemplateSchema = z.object({
 export type PersistedTowerHeatmapResult = {
   evaluationId: number | null
   customerId: number | null
+  recommendations: unknown[]
   summary: z.infer<typeof HeatmapSummarySchema>
   targetSamples: z.infer<typeof HeatmapTargetSampleSchema>[]
 }
@@ -484,9 +485,21 @@ export async function getCompletedTowerHeatmapResult(
   })
   if (!result.success) return { success: false, message: 'O resultado salvo do mapa visual esta incompleto.' }
 
+  let recommendations: unknown[] = []
+  if (session.optical_evaluation_id) {
+    const { data: evaluation, error: evaluationError } = await (createAdminClient().from('optical_evaluations') as any)
+      .select('recommended_items')
+      .eq('id', session.optical_evaluation_id)
+      .eq('store_id', data.storeId)
+      .maybeSingle()
+    if (evaluationError) return { success: false, message: evaluationError.message }
+    recommendations = Array.isArray(evaluation?.recommended_items) ? evaluation.recommended_items : []
+  }
+
   return { success: true, message: 'Mapa visual recuperado.', data: {
     evaluationId: session.optical_evaluation_id,
     customerId: session.customer_id,
+    recommendations,
     summary: result.data.summary,
     targetSamples: result.data.targetSamples,
   } }

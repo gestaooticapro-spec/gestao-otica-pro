@@ -154,6 +154,32 @@ export async function POST(request: NextRequest) {
       topN: parsed.data.topN,
       heatmap,
     })
+
+    if (parsed.data.heatmapSessionId && result.recommendations.length > 0) {
+      const { data: heatmapSession, error: heatmapSessionError } = await (admin.from('tower_heatmap_sessions') as any)
+        .select('optical_evaluation_id')
+        .eq('id', parsed.data.heatmapSessionId)
+        .eq('tenant_id', auth.tenantId)
+        .eq('store_id', parsed.data.storeId)
+        .maybeSingle()
+      if (heatmapSessionError) throw new Error(heatmapSessionError.message)
+      if (!heatmapSession?.optical_evaluation_id) {
+        throw new Error('A avaliacao ainda nao esta vinculada ao Campo Visual.')
+      }
+
+      const firstRecommendation = result.recommendations[0]
+      const { error: persistenceError } = await (admin.from('optical_evaluations') as any)
+        .update({
+          recommended_items: result.recommendations,
+          recommended_lens_name: firstRecommendation.familyName || firstRecommendation.offerLabel || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', heatmapSession.optical_evaluation_id)
+        .eq('tenant_id', auth.tenantId)
+        .eq('store_id', parsed.data.storeId)
+      if (persistenceError) throw new Error(persistenceError.message)
+    }
+
     return NextResponse.json({ success: true, message: 'Recomendacoes geradas.', data: result })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao gerar recomendacoes.'

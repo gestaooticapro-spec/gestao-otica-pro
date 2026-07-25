@@ -240,9 +240,23 @@ export async function POST(request: NextRequest) {
     targetSamples: session.target_samples,
   })
   if (!result.success) return json(false, 'O resultado salvo do mapa visual esta incompleto.', 409)
+
+  let recommendations: unknown[] = []
+  if (session.optical_evaluation_id) {
+    const { data: evaluation, error: evaluationError } = await (admin.from('optical_evaluations') as any)
+      .select('recommended_items')
+      .eq('id', session.optical_evaluation_id)
+      .eq('tenant_id', auth.tenantId)
+      .eq('store_id', input.storeId)
+      .maybeSingle()
+    if (evaluationError) return json(false, evaluationError.message, 500)
+    recommendations = Array.isArray(evaluation?.recommended_items) ? evaluation.recommended_items : []
+  }
+
   return json(true, 'Mapa visual recuperado.', 200, {
     evaluationId: session.optical_evaluation_id,
     customerId: session.customer_id,
+    recommendations,
     ...result.data,
   })
 }
