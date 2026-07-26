@@ -15,6 +15,9 @@ const CreateSchema = z.object({
   fullName: z.string().trim().min(3).max(160),
   mobilePhone: z.string().trim().min(8).max(32),
 })
+const UpdateSchema = CreateSchema.extend({
+  customerId: z.coerce.number().int().positive(),
+})
 
 function getBearerToken(request: NextRequest) {
   const authorization = request.headers.get('authorization') ?? ''
@@ -50,7 +53,33 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const parsed = CreateSchema.safeParse(await request.json().catch(() => null))
+  const body = await request.json().catch(() => null)
+  const updateParsed = UpdateSchema.safeParse(body)
+  if (updateParsed.success) {
+    const token = getBearerToken(request)
+    if (!token) return NextResponse.json({ success: false, message: 'Torre nao autenticada.' }, { status: 401 })
+    const auth = await authenticateTowerDeviceWebSessionToken(token, updateParsed.data.storeId)
+    if (!auth.ok) return NextResponse.json({ success: false, message: auth.message }, { status: 401 })
+
+    const fullName = updateParsed.data.fullName.trim()
+    const mobilePhone = updateParsed.data.mobilePhone.replace(/\D/g, '')
+    if (mobilePhone.length < 8 || mobilePhone.length > 15) {
+      return NextResponse.json({ success: false, message: 'Telefone invalido.' }, { status: 400 })
+    }
+    const customers = createAdminClient().from('customers') as any
+    const { data, error } = await customers
+      .update({ full_name: fullName, fone_movel: mobilePhone })
+      .eq('id', updateParsed.data.customerId)
+      .eq('tenant_id', auth.tenantId)
+      .eq('store_id', updateParsed.data.storeId)
+      .select('id, full_name, fone_movel')
+      .maybeSingle()
+    if (error) return NextResponse.json({ success: false, message: error.message }, { status: 500 })
+    if (!data) return NextResponse.json({ success: false, message: 'Cliente nao encontrado nesta loja.' }, { status: 404 })
+    return NextResponse.json({ success: true, message: 'Cliente atualizado.', data })
+  }
+
+  const parsed = CreateSchema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ success: false, message: 'Dados invalidos para cadastrar o cliente.' }, { status: 400 })
   }
@@ -97,4 +126,38 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, message: error?.message || 'Nao foi possivel cadastrar o cliente.' }, { status: 500 })
   }
   return NextResponse.json({ success: true, message: 'Cliente cadastrado!', data })
+}
+
+export async function PATCH(request: NextRequest) {
+  const parsed = UpdateSchema.safeParse(await request.json().catch(() => null))
+  if (!parsed.success) {
+    return NextResponse.json({ success: false, message: 'Dados invalidos para editar o cliente.' }, { status: 400 })
+  }
+
+  const token = getBearerToken(request)
+  if (!token) return NextResponse.json({ success: false, message: 'Torre nao autenticada.' }, { status: 401 })
+  const auth = await authenticateTowerDeviceWebSessionToken(token, parsed.data.storeId)
+  if (!auth.ok) return NextResponse.json({ success: false, message: auth.message }, { status: 401 })
+
+  const fullName = parsed.data.fullName.trim()
+  const mobilePhone = parsed.data.mobilePhone.replace(/\D/g, '')
+  if (mobilePhone.length < 8 || mobilePhone.length > 15) {
+    return NextResponse.json({ success: false, message: 'Telefone invalido.' }, { status: 400 })
+  }
+  if (fullName.length < 3) {
+    return NextResponse.json({ success: false, message: 'Nome invalido.' }, { status: 400 })
+  }
+
+  const customers = createAdminClient().from('customers') as any
+  const { data, error } = await customers
+    .update({ full_name: fullName, fone_movel: mobilePhone })
+    .eq('id', parsed.data.customerId)
+    .eq('tenant_id', auth.tenantId)
+    .eq('store_id', parsed.data.storeId)
+    .select('id, full_name, fone_movel')
+    .maybeSingle()
+
+  if (error) return NextResponse.json({ success: false, message: error.message }, { status: 500 })
+  if (!data) return NextResponse.json({ success: false, message: 'Cliente nao encontrado nesta loja.' }, { status: 404 })
+  return NextResponse.json({ success: true, message: 'Cliente atualizado.', data })
 }
