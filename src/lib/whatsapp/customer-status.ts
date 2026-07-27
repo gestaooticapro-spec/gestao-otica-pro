@@ -1631,14 +1631,21 @@ async function clearConversationStateById(id: number) {
 }
 
 async function loadCustomerControlMode(channelId: number, phone: string): Promise<CustomerControlMode> {
-  const supabase = createAdminClient()
+  // A entrada de uma mensagem precisa consultar o override mais recente. Sem
+  // isso, um handoff humano recém-gravado pode ser ignorado por uma resposta
+  // automática servida a partir de cache.
+  const supabase = createAdminClient({ noStore: true })
   const { data, error } = await (supabase.from('whatsapp_customer_control') as any)
     .select('remote_phone, mode')
     .eq('channel_id', channelId)
 
   if (error) throw error
 
-  const control = (data ?? []).find((row: { remote_phone?: string | null }) =>
+  const normalizedPhone = digitsOnly(phone)
+  const exactControl = (data ?? []).find((row: { remote_phone?: string | null }) =>
+    digitsOnly(row.remote_phone) === normalizedPhone
+  )
+  const control = exactControl || (data ?? []).find((row: { remote_phone?: string | null }) =>
     phonesMatch(row.remote_phone, phone)
   )
   const mode = typeof control?.mode === 'string' ? control.mode : 'auto'

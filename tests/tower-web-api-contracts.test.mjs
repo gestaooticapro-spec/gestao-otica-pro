@@ -5,7 +5,7 @@ import test from 'node:test'
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')
 
 test('contratos web v1 autenticam o token do equipamento e limitam o acesso por loja', async () => {
-  const [access, customers, evaluations, context, sessions, commands, measurements, heatmaps, operationalCatalog, recommendations, configuration, measurementMigration] = await Promise.all([
+  const [access, customers, evaluations, context, sessions, commands, measurements, heatmaps, operationalCatalog, operationalCatalogLoader, recommendations, configuration, measurementMigration] = await Promise.all([
     read('src/app/api/tower/v1/web/access/route.ts'),
     read('src/app/api/tower/v1/web/customers/route.ts'),
     read('src/app/api/tower/v1/web/evaluations/route.ts'),
@@ -15,6 +15,7 @@ test('contratos web v1 autenticam o token do equipamento e limitam o acesso por 
     read('src/app/api/tower/v1/web/measurements/route.ts'),
     read('src/app/api/tower/v1/web/heatmaps/commands/route.ts'),
     read('src/app/api/tower/v1/web/operational-catalog/route.ts'),
+    read('src/lib/server/tower-operational-catalog.ts'),
     read('src/app/api/tower/v1/web/recommendations/route.ts'),
     read('src/app/api/tower/v1/web/configuration/route.ts'),
     read('supabase/migrations/20260722100000_tower_web_measurements.sql'),
@@ -58,9 +59,9 @@ test('contratos web v1 autenticam o token do equipamento e limitam o acesso por 
     /prescription_snapshot: parsed\.data\.prescription, current_experience: 'thickness'/,
   )
   assert.match(operationalCatalog, /RESOURCE_NAMES = new Set\(\['catalog', 'geometries', 'frames'\]\)/)
-  assert.match(operationalCatalog, /\.eq\('tenant_id', tenantId\)/)
-  assert.match(operationalCatalog, /global_lens_geometry/)
-  assert.match(operationalCatalog, /global_visagismo_frame_templates/)
+  assert.match(operationalCatalogLoader, /\.eq\('tenant_id', tenantId\)/)
+  assert.match(operationalCatalogLoader, /global_lens_geometry/)
+  assert.match(operationalCatalogLoader, /global_visagismo_frame_templates/)
   assert.match(recommendations, /Catalogo nao esta ativo para esta loja/)
   assert.match(recommendations, /\.eq\('tenant_id', tenantId\)/)
   assert.match(recommendations, /\.eq\('store_id', storeId\)/)
@@ -92,4 +93,25 @@ test('gateway de IA autentica equipamento, valida payload e limita consumo por d
   assert.match(route, /Cache-Control.*no-store/)
   assert.match(rateLimit, /createHash\('sha256'\)\.update\(`\$\{deviceId\}:\$\{operation\}`/)
   assert.match(rateLimit, /tower-ai:\$\{operation\}/)
+})
+
+test('sync do dispositivo aceita todo o atendimento offline e a configuracao instala dados operacionais', async () => {
+  const [sync, configuration] = await Promise.all([
+    read('src/app/api/tower/device/sync/route.ts'),
+    read('src/app/api/tower/device/configuration/route.ts'),
+  ])
+
+  assert.match(sync, /eventType: z\.literal\('tower_heatmap\.upsert'\)/)
+  assert.match(sync, /eventType: z\.literal\('tower_evaluation\.upsert'\)/)
+  assert.match(sync, /remoteCustomerId: z\.number\(\)\.int\(\)\.positive\(\)\.nullable\(\)\.optional\(\)/)
+  assert.match(sync, /function isPermanentEventFailure/)
+  assert.match(sync, /permanentFailure: isPermanentEventFailure\(error\.message\)/)
+  assert.match(sync, /localEvaluationId: z\.string\(\)\.uuid\(\)\.nullable\(\)\.optional\(\)/)
+  assert.match(sync, /apply_tower_device_sync_event_v4/)
+  assert.match(sync, /remoteEvaluationId/)
+  assert.match(configuration, /loadRecommendationCatalogMulti/)
+  assert.match(configuration, /loadStoreCustomers/)
+  assert.match(configuration, /availableCatalogs/)
+  assert.match(configuration, /operationalCatalog/)
+  assert.match(configuration, /\.eq\('tenant_id', authentication\.device\.tenantId\)/)
 })

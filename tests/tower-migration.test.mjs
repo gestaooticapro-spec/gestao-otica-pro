@@ -26,6 +26,10 @@ const offlineCustomerFixSql = await readFile(
   new URL('../supabase/migrations/20260720110000_fix_tower_sync_customer_mapping_ambiguity.sql', import.meta.url),
   'utf8',
 )
+const offlineFirstOperationalSql = await readFile(
+  new URL('../supabase/migrations/20260727190000_tower_offline_first_operational_sync.sql', import.meta.url),
+  'utf8',
+)
 
 test('migração corretiva protege exclusao de loja e imprime lote atomicamente', () => {
   assert.match(sql, /current_store_id\) REFERENCES public\.stores\(id\) ON DELETE RESTRICT/)
@@ -83,4 +87,18 @@ test('sync v3 delega eventos operacionais para a v2 corrigida', () => {
   assert.match(hardwareValidationSql, /FUNCTION public\.apply_tower_device_sync_event_v3/)
   assert.match(hardwareValidationSql, /RETURN public\.apply_tower_device_sync_event_v2/)
   assert.match(offlineCustomerFixSql, /FUNCTION public\.apply_tower_device_sync_event_v2/)
+})
+
+test('sync v4 persiste Campo Visual e avaliacao local com mapeamento idempotente', () => {
+  assert.match(offlineFirstOperationalSql, /CREATE TABLE IF NOT EXISTS public\.tower_device_evaluation_mappings/)
+  assert.match(offlineFirstOperationalSql, /PRIMARY KEY \(device_id, local_evaluation_id\)/)
+  assert.match(offlineFirstOperationalSql, /'tower_heatmap\.upsert'/)
+  assert.match(offlineFirstOperationalSql, /'tower_evaluation\.upsert'/)
+  assert.match(offlineFirstOperationalSql, /FUNCTION public\.apply_tower_device_sync_event_v4/)
+  assert.match(offlineFirstOperationalSql, /RETURN public\.apply_tower_device_sync_event_v3/)
+  assert.match(offlineFirstOperationalSql, /requested_remote_customer_id/)
+  assert.match(offlineFirstOperationalSql, /SET full_name = normalized_name/)
+  assert.match(offlineFirstOperationalSql, /TOWER_SYNC_CUSTOMER_SCOPE_INVALID/)
+  assert.match(offlineFirstOperationalSql, /UPDATE public\.tower_heatmap_sessions AS heatmap/)
+  assert.match(offlineFirstOperationalSql, /GRANT EXECUTE ON FUNCTION public\.apply_tower_device_sync_event_v4[\s\S]*TO service_role/)
 })

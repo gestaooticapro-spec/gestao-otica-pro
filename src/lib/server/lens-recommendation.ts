@@ -190,7 +190,7 @@ type CatalogTreatment = {
   features: Record<string, unknown>
 }
 
-type RecommendationCatalog = {
+export type RecommendationCatalog = {
   families: CatalogFamily[]
   offers: CatalogOffer[]
   grids: CatalogGrid[]
@@ -3053,7 +3053,7 @@ export async function loadRecommendationCatalog(versionId: string): Promise<Reco
   }
 }
 
-async function loadRecommendationCatalogMulti(versionIds: string[]): Promise<RecommendationCatalog> {
+export async function loadRecommendationCatalogMulti(versionIds: string[]): Promise<RecommendationCatalog> {
   const uniqueIds = uniqueValues(versionIds.filter(Boolean))
   if (uniqueIds.length <= 1) {
     return loadRecommendationCatalog(uniqueIds[0])

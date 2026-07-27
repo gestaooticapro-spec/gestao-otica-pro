@@ -550,6 +550,9 @@ function pickPreferredRemotePhone(current: string, candidate: string) {
 }
 
 function findMapValueByPhoneMatch<T>(map: Map<string, T>, phone: string) {
+  const exact = map.get(normalizeRemotePhone(phone))
+  if (exact !== undefined) return exact
+
   for (const [key, value] of map.entries()) {
     if (phonesBelongToSameThread(key, phone)) return value
   }
@@ -660,7 +663,10 @@ async function getViewContext(storeId: number) {
 
   return {
     profile,
-    supabaseAdmin: createAdminClient(),
+    // O painel operacional precisa refletir imediatamente mudanças de controle
+    // (principalmente o handoff humano). Uma resposta em cache aqui fazia a UI
+    // continuar exibindo "Auto" mesmo depois do upsert ter sido concluído.
+    supabaseAdmin: createAdminClient({ noStore: true }),
   }
 }
 
@@ -794,7 +800,9 @@ function buildThreadListItem(
 }
 
 async function loadCustomerControlMap(storeId: number, phones?: string[]) {
-  const supabaseAdmin = createAdminClient()
+  // Controle de atendimento é uma decisão operacional em tempo real. Nunca
+  // reutilize uma leitura anterior nesta consulta.
+  const supabaseAdmin = createAdminClient({ noStore: true })
   const query = (supabaseAdmin.from('whatsapp_customer_control') as any)
     .select('remote_phone, mode')
     .eq('store_id', storeId)
@@ -1443,13 +1451,31 @@ export async function setWhatsAppCustomerControl(input: {
       return { success: false, message: 'Canal WhatsApp da loja nao encontrado.' }
     }
 
-    if (mode === 'auto') {
-      const { error } = await (supabaseAdmin.from('whatsapp_customer_control') as any)
-        .delete()
-        .eq('channel_id', channel.id)
-        .eq('remote_phone', remotePhone)
+    // Um mesmo celular pode chegar pela Evolution com ou sem o nono dígito.
+    // A chave única do banco é literal, então controles antigos em variantes
+    // diferentes coexistiam (ex.: force_ai e force_human) e a IA podia ler o
+    // registro errado. Mantemos apenas um controle para a thread lógica.
+    const { data: existingControls, error: existingControlsError } = await (supabaseAdmin.from('whatsapp_customer_control') as any)
+      .select('id, remote_phone')
+      .eq('channel_id', channel.id)
 
-      if (error) throw error
+    if (existingControlsError) throw existingControlsError
+
+    const equivalentControlIds = (existingControls || [])
+      .filter((control: { id?: number; remote_phone?: string | null }) =>
+        Number.isFinite(control.id) && phonesBelongToSameThread(control.remote_phone, remotePhone)
+      )
+      .map((control: { id: number }) => control.id)
+
+    if (equivalentControlIds.length > 0) {
+      const { error: clearEquivalentControlsError } = await (supabaseAdmin.from('whatsapp_customer_control') as any)
+        .delete()
+        .in('id', equivalentControlIds)
+
+      if (clearEquivalentControlsError) throw clearEquivalentControlsError
+    }
+
+    if (mode === 'auto') {
       return { success: true, message: 'Cliente voltou para o modo automatico.', mode }
     }
 
@@ -1462,7 +1488,7 @@ export async function setWhatsAppCustomerControl(input: {
       if (stateClearError) throw stateClearError
     }
 
-    const { error } = await (supabaseAdmin.from('whatsapp_customer_control') as any)
+    const { data: persistedControl, error } = await (supabaseAdmin.from('whatsapp_customer_control') as any)
       .upsert({
         tenant_id: channel.tenant_id,
         store_id: storeId,
@@ -1472,8 +1498,13 @@ export async function setWhatsAppCustomerControl(input: {
         updated_by: user.id,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'channel_id,remote_phone' })
+      .select('remote_phone, mode')
+      .single()
 
     if (error) throw error
+    if (!persistedControl || persistedControl.mode !== mode || !phonesBelongToSameThread(persistedControl.remote_phone, remotePhone)) {
+      return { success: false, message: 'O modo foi salvo, mas nao foi possivel confirmar a conversa correta. Tente atualizar a central.' }
+    }
 
     return {
       success: true,
