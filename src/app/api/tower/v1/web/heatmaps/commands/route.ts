@@ -223,7 +223,22 @@ export async function POST(request: NextRequest) {
       status: 'created', result_summary: null, target_samples: null,
       started_at: null, completed_at: null, cancelled_at: null,
     }).eq('id', input.sessionId).eq('store_id', input.storeId).eq('tenant_id', auth.tenantId)
-    return error ? json(false, error.message, 500) : json(true, 'Leitura preparada para recomecar.')
+    if (error) return json(false, error.message, 500)
+
+    if (session.optical_evaluation_id) {
+      const { error: evaluationError } = await (admin.from('optical_evaluations') as any)
+        .update({
+          recommended_items: null,
+          recommended_lens_name: null,
+          commercial_recommendation_raw: null,
+        })
+        .eq('id', session.optical_evaluation_id)
+        .eq('tenant_id', auth.tenantId)
+        .eq('store_id', input.storeId)
+      if (evaluationError) return json(false, evaluationError.message, 500)
+    }
+
+    return json(true, 'Leitura e indicacoes anteriores removidas. Nova leitura preparada.')
   }
 
   if (input.command === 'cancel') {
