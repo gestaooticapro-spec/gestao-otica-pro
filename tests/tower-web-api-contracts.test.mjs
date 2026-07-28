@@ -59,7 +59,8 @@ test('contratos web v1 autenticam o token do equipamento e limitam o acesso por 
     /prescription_snapshot: parsed\.data\.prescription, current_experience: 'thickness'/,
   )
   assert.match(operationalCatalog, /RESOURCE_NAMES = new Set\(\['catalog', 'geometries', 'frames'\]\)/)
-  assert.match(operationalCatalogLoader, /\.eq\('tenant_id', tenantId\)/)
+  assert.match(operationalCatalogLoader, /\.from\('global_catalog_versions'\)/)
+  assert.doesNotMatch(operationalCatalogLoader, /tenant_catalog_activations/)
   assert.match(operationalCatalogLoader, /global_lens_geometry/)
   assert.match(operationalCatalogLoader, /global_visagismo_frame_templates/)
   assert.match(recommendations, /Catalogo nao esta ativo para esta loja/)
@@ -113,18 +114,25 @@ test('sync do dispositivo aceita todo o atendimento offline e a configuracao ins
   assert.match(configuration, /loadRecommendationCatalogMulti/)
   assert.match(configuration, /loadStoreCustomers/)
   assert.match(configuration, /availableCatalogs/)
-  assert.match(configuration, /availableMeasurementGabaritos/)
-  assert.match(configuration, /selectedGabaritoIds/)
+  assert.match(configuration, /\.from\('global_catalog_versions'\)/)
+  assert.match(configuration, /\.eq\('status', 'published'\)/)
+  assert.match(configuration, /visagismoFrames: frames/)
+  assert.match(configuration, /loadTowerOperationalFrames\(admin\)/)
+  assert.doesNotMatch(configuration, /tenant_catalog_activations/)
+  assert.doesNotMatch(configuration, /MeasurementGabarito/)
   assert.match(configuration, /const installedIds = selectedByTower \?\? \[\]/)
   assert.doesNotMatch(
     configuration,
     /const installedIds = selectedByTower \?\? catalogs\.map/,
   )
-  assert.match(configuration, /loadTowerOperationalCatalog\(admin, authentication\.device\.tenantId, storeId, installedIds\)/)
-  assert.match(operationalCatalogLoader, /selectedVersionIds\.length === 0/)
+  assert.match(configuration, /loadTowerOperationalCatalog\(admin, storeId, installedIds\)/)
+  assert.match(operationalCatalogLoader, /!selectedVersionIds\.length/)
   assert.match(operationalCatalogLoader, /selectedFamilyNames\.length === 0/)
+  assert.match(operationalCatalogLoader, /\.in\('id', selectedVersionIds\)/)
+  assert.match(operationalCatalogLoader, /\.eq\('status', 'published'\)/)
   assert.match(configuration, /operationalCatalog/)
-  assert.match(configuration, /\.eq\('tenant_id', authentication\.device\.tenantId\)/)
+  assert.match(configuration, /loadStoreCustomers\(admin, authentication\.device\.tenantId, storeId\)/)
+  assert.match(configuration, /\.eq\('tenant_id', tenantId\)/)
 })
 
 test('recuperacao de PIN autentica o dispositivo e consome codigo de uso unico', async () => {

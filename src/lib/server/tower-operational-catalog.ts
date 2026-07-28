@@ -59,54 +59,29 @@ function normalizeFrameProfile(row: any) {
 
 export async function loadTowerOperationalCatalog(
   admin: ReturnType<typeof createAdminClient>,
-  tenantId: string,
   storeId: number,
-  selectedVersionIds?: string[],
+  selectedVersionIds: string[],
 ) {
-  if (Array.isArray(selectedVersionIds) && selectedVersionIds.length === 0) {
+  if (!selectedVersionIds.length) {
     return { storeId, currentActivation: null, activeActivations: [], versions: [] }
   }
-  const { data: rawActivations, error: activationError } = await (admin.from('tenant_catalog_activations') as any)
-    .select('id, global_version_id, status, activated_at, last_synced_at')
-    .eq('tenant_id', tenantId)
-    .eq('store_id', storeId)
-    .eq('status', 'active')
-    .order('activated_at', { ascending: false })
-  if (activationError) throw new Error(activationError.message)
-  const selectedIds = Array.isArray(selectedVersionIds) ? new Set(selectedVersionIds) : null
-  const activations = (rawActivations ?? []).filter(
-    (item: any) => !selectedIds || selectedIds.has(item.global_version_id),
-  )
-  const versionIds = [...new Set(activations.map((item: any) => item.global_version_id as string))]
-  if (!versionIds.length) return { storeId, currentActivation: null, activeActivations: [], versions: [] }
-
   const { data: rawVersions, error: versionError } = await admin
     .from('global_catalog_versions')
     .select('id, laboratorio, versao, status, published_at, created_at')
-    .in('id', versionIds)
+    .in('id', selectedVersionIds)
+    .eq('status', 'published')
   if (versionError) throw new Error(versionError.message)
-  const versionById = new Map((rawVersions ?? []).map((item: any) => [item.id, item]))
-  const summaries = activations.flatMap((activation: any) => {
-    const version = versionById.get(activation.global_version_id) as any
-    if (!version) return []
-    return [{
-      id: version.id,
-      laboratorio: version.laboratorio,
-      versao: version.versao,
-      status: version.status,
-      publishedAt: version.published_at,
-      createdAt: version.created_at,
-      familiesCount: 0,
-      offersCount: 0,
-      treatmentsCount: 0,
-      activation: {
-        id: activation.id,
-        status: activation.status,
-        activatedAt: activation.activated_at,
-        lastSyncedAt: activation.last_synced_at,
-      },
-    }]
-  })
+  const summaries = (rawVersions ?? []).map((version: any) => ({
+    id: version.id,
+    laboratorio: version.laboratorio,
+    versao: version.versao,
+    status: version.status,
+    publishedAt: version.published_at,
+    createdAt: version.created_at,
+    familiesCount: 0,
+    offersCount: 0,
+    treatmentsCount: 0,
+  }))
   return { storeId, currentActivation: summaries[0] ?? null, activeActivations: summaries, versions: summaries }
 }
 

@@ -4,13 +4,11 @@ import type { RecommendationCatalog } from '@/lib/server/lens-recommendation'
 
 export const TOWER_CONFIGURATION_SNAPSHOT_VERSION = 1 as const
 
-export type TowerActiveCatalogSnapshot = {
-  activationId: string
+export type TowerCatalogSnapshot = {
   versionId: string
   laboratorio: string
   versao: string
-  activatedAt: string
-  lastSyncedAt: string | null
+  publishedAt: string | null
 }
 
 export type TowerCustomerSnapshot = {
@@ -20,41 +18,20 @@ export type TowerCustomerSnapshot = {
   updatedAt: string | null
 }
 
-export type TowerMeasurementGabaritoProfile = {
-  id: string
-  name: string
-  version: number
-  distanceMm: number
-  targetColor: 'blue'
-  targetShape: 'quartered-circle'
-  stages: Array<'front' | 'rightProfile'>
-  description: string
-  referenceImages: {
-    front: string | null
-    rightProfile: string | null
-  }
-  detector: {
-    minimumConfidence: number
-    frontFrameClearanceMm: number
-  }
-}
-
 export type TowerConfigurationSnapshot = {
   schemaVersion: typeof TOWER_CONFIGURATION_SNAPSHOT_VERSION
   revision: string
   generatedAt: string
   storeId: number
   remoteConfig: TowerRemoteConfig
-  catalogs: TowerActiveCatalogSnapshot[]
-  availableCatalogs: TowerActiveCatalogSnapshot[]
+  catalogs: TowerCatalogSnapshot[]
+  availableCatalogs: TowerCatalogSnapshot[]
   aiSuggestionConfig: AiSuggestionConfig
   customers: TowerCustomerSnapshot[]
-  measurementGabaritos: TowerMeasurementGabaritoProfile[]
-  availableMeasurementGabaritos: TowerMeasurementGabaritoProfile[]
+  visagismoFrames: unknown[]
   operationalCatalog?: {
     catalog: unknown
     geometries: unknown[]
-    frames: unknown[]
     recommendationData: RecommendationCatalog
   }
 }
