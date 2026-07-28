@@ -116,7 +116,8 @@ test('sync do dispositivo aceita todo o atendimento offline e a configuracao ins
   assert.match(configuration, /availableCatalogs/)
   assert.match(configuration, /\.from\('global_catalog_versions'\)/)
   assert.match(configuration, /\.eq\('status', 'published'\)/)
-  assert.match(configuration, /visagismoFrames: frames/)
+  assert.match(configuration, /visagismoFrames,/)
+  assert.match(configuration, /visagismoFrames = loadedFrames/)
   assert.match(configuration, /loadTowerOperationalFrames\(admin\)/)
   assert.doesNotMatch(configuration, /tenant_catalog_activations/)
   assert.doesNotMatch(configuration, /MeasurementGabarito/)
@@ -133,6 +134,8 @@ test('sync do dispositivo aceita todo o atendimento offline e a configuracao ins
   assert.match(configuration, /operationalCatalog/)
   assert.match(configuration, /loadStoreCustomers\(admin, authentication\.device\.tenantId, storeId\)/)
   assert.match(configuration, /\.eq\('tenant_id', tenantId\)/)
+  assert.match(configuration, /select\('id,full_name,fone_movel,created_at'\)/)
+  assert.doesNotMatch(configuration, /fone_movel,updated_at/)
 })
 
 test('recuperacao de PIN autentica o dispositivo e consome codigo de uso unico', async () => {

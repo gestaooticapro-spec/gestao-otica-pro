@@ -24,7 +24,7 @@ type CustomerRow = {
   id: number
   full_name: string
   fone_movel: string | null
-  updated_at: string | null
+  created_at: string | null
 }
 
 function requestedCatalogIds(request: NextRequest) {
@@ -41,7 +41,7 @@ async function loadStoreCustomers(admin: ReturnType<typeof createAdminClient>, t
   const customers: CustomerRow[] = []
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await (admin.from('customers') as any)
-      .select('id,full_name,fone_movel,updated_at')
+      .select('id,full_name,fone_movel,created_at')
       .eq('tenant_id', tenantId)
       .eq('store_id', storeId)
       .order('id')
@@ -55,7 +55,10 @@ async function loadStoreCustomers(admin: ReturnType<typeof createAdminClient>, t
     id: customer.id,
     fullName: customer.full_name,
     mobilePhone: customer.fone_movel,
-    updatedAt: customer.updated_at,
+    // A tabela legada de clientes nao possui updated_at. Para o snapshot
+    // inicial, created_at e suficiente; as alteracoes feitas na Torre seguem
+    // pela outbox e nunca dependem desta coluna remota.
+    updatedAt: customer.created_at,
   }))
 }
 
@@ -107,24 +110,30 @@ export async function GET(request: NextRequest) {
 
   let operationalCatalog: TowerConfigurationSnapshot['operationalCatalog']
   let customers: TowerConfigurationSnapshot['customers']
+  let visagismoFrames: NonNullable<TowerConfigurationSnapshot['visagismoFrames']> = []
   try {
     const recommendationData = installedIds.length
       ? await loadRecommendationCatalogMulti(installedIds)
       : null
     const selectedFamilyNames = recommendationData?.families?.map((family) => family.nome) ?? []
-    const [catalog, geometries, frames, customerSnapshot] = await Promise.all([
+    const [catalog, geometries, loadedFrames, customerSnapshot] = await Promise.all([
       loadTowerOperationalCatalog(admin, storeId, installedIds),
       loadTowerOperationalGeometries(admin, selectedFamilyNames),
       loadTowerOperationalFrames(admin),
       loadStoreCustomers(admin, authentication.device.tenantId, storeId),
     ])
+    visagismoFrames = loadedFrames
     customers = customerSnapshot
     operationalCatalog = recommendationData
       ? { catalog, geometries, recommendationData }
       : undefined
   } catch (error) {
     console.error('[Torre] Falha ao montar instalacao offline:', error)
-    return NextResponse.json({ success: false, message: 'Dados para instalacao offline indisponiveis.' }, { status: 503 })
+    const detail = error instanceof Error ? error.message.slice(0, 240) : 'erro desconhecido'
+    return NextResponse.json({
+      success: false,
+      message: `Dados para instalacao offline indisponiveis: ${detail}`,
+    }, { status: 503 })
   }
 
   const revisionPayload = {
@@ -132,7 +141,7 @@ export async function GET(request: NextRequest) {
     remoteConfig,
     catalogs: installedCatalogs,
     availableCatalogs: catalogs,
-    visagismoFrames: frames,
+    visagismoFrames,
     aiSuggestionConfig,
     customers,
     operationalCatalog,

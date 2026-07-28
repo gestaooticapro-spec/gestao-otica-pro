@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
       if (resource === 'catalog') {
         return [
           resource,
-          await loadTowerOperationalCatalog(admin, auth.tenantId, parsed.data.storeId),
+          await loadTowerOperationalCatalog(admin, parsed.data.storeId, []),
         ]
       }
       if (resource === 'geometries') {
