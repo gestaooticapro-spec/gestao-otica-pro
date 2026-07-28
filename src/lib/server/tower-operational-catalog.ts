@@ -61,7 +61,11 @@ export async function loadTowerOperationalCatalog(
   admin: ReturnType<typeof createAdminClient>,
   tenantId: string,
   storeId: number,
+  selectedVersionIds?: string[],
 ) {
+  if (Array.isArray(selectedVersionIds) && selectedVersionIds.length === 0) {
+    return { storeId, currentActivation: null, activeActivations: [], versions: [] }
+  }
   const { data: rawActivations, error: activationError } = await (admin.from('tenant_catalog_activations') as any)
     .select('id, global_version_id, status, activated_at, last_synced_at')
     .eq('tenant_id', tenantId)
@@ -69,7 +73,10 @@ export async function loadTowerOperationalCatalog(
     .eq('status', 'active')
     .order('activated_at', { ascending: false })
   if (activationError) throw new Error(activationError.message)
-  const activations = rawActivations ?? []
+  const selectedIds = Array.isArray(selectedVersionIds) ? new Set(selectedVersionIds) : null
+  const activations = (rawActivations ?? []).filter(
+    (item: any) => !selectedIds || selectedIds.has(item.global_version_id),
+  )
   const versionIds = [...new Set(activations.map((item: any) => item.global_version_id as string))]
   if (!versionIds.length) return { storeId, currentActivation: null, activeActivations: [], versions: [] }
 
@@ -103,7 +110,11 @@ export async function loadTowerOperationalCatalog(
   return { storeId, currentActivation: summaries[0] ?? null, activeActivations: summaries, versions: summaries }
 }
 
-export async function loadTowerOperationalGeometries(admin: ReturnType<typeof createAdminClient>) {
+export async function loadTowerOperationalGeometries(
+  admin: ReturnType<typeof createAdminClient>,
+  selectedFamilyNames?: string[],
+) {
+  if (Array.isArray(selectedFamilyNames) && selectedFamilyNames.length === 0) return []
   let { data, error } = await admin.from('global_lens_geometry').select(GEOMETRY_COLUMNS_WITH_CORRIDOR).order('family_name')
   if (error && error.message?.toLowerCase().includes('corridor_opening')) {
     const fallback = await admin.from('global_lens_geometry').select(GEOMETRY_COLUMNS).order('family_name')
@@ -111,7 +122,12 @@ export async function loadTowerOperationalGeometries(admin: ReturnType<typeof cr
     error = fallback.error
   }
   if (error) throw new Error(error.message)
-  return (data ?? []).map((geometry: any) => {
+  const selectedNames = Array.isArray(selectedFamilyNames)
+    ? new Set(selectedFamilyNames.map((name) => name.trim().toLocaleLowerCase('pt-BR')))
+    : null
+  return (data ?? []).filter((geometry: any) => (
+    !selectedNames || selectedNames.has(String(geometry.family_name || '').trim().toLocaleLowerCase('pt-BR'))
+  )).map((geometry: any) => {
     const corridorOpening = geometry.corridor_opening ?? geometry.intermediate_width ?? 50
     return { ...geometry, corridor_opening: corridorOpening, intermediate_width: geometry.intermediate_width ?? corridorOpening }
   })

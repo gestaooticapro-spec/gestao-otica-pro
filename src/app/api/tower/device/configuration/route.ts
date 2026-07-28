@@ -34,6 +34,25 @@ type CustomerRow = {
   updated_at: string | null
 }
 
+const AVAILABLE_MEASUREMENT_GABARITOS: NonNullable<TowerConfigurationSnapshot['availableMeasurementGabaritos']> = [{
+  id: 'neosmart-blue-100mm-v1',
+  name: 'Neosmart azul 100 mm',
+  version: 1,
+  distanceMm: 100,
+  targetColor: 'blue',
+  targetShape: 'quartered-circle',
+  stages: ['front', 'rightProfile'],
+  description: 'Gabarito fisico com dois alvos azuis separados por 100 mm, usado nas fotos frontal e de perfil.',
+  referenceImages: {
+    front: null,
+    rightProfile: null,
+  },
+  detector: {
+    minimumConfidence: 0.57,
+    frontFrameClearanceMm: 20,
+  },
+}]
+
 function requestedCatalogIds(request: NextRequest) {
   const raw = request.nextUrl.searchParams.get('catalogs')
   if (!raw) return null
@@ -41,6 +60,13 @@ function requestedCatalogIds(request: NextRequest) {
   return ids.length && ids.every((id) => /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(id))
     ? ids
     : []
+}
+
+function requestedGabaritoIds(request: NextRequest) {
+  const raw = request.nextUrl.searchParams.get('gabaritos')
+  if (!raw) return []
+  return [...new Set(raw.split(',').map((value) => value.trim()).filter(Boolean))]
+    .filter((id) => /^[a-z0-9-]{3,80}$/i.test(id))
 }
 
 async function loadStoreCustomers(admin: ReturnType<typeof createAdminClient>, tenantId: string, storeId: number) {
@@ -77,6 +103,7 @@ export async function GET(request: NextRequest) {
 
   const storeId = authentication.device.storeId
   const selectedByTower = requestedCatalogIds(request)
+  const selectedGabaritoIds = requestedGabaritoIds(request)
   if (selectedByTower?.length === 0) {
     return NextResponse.json({ success: false, message: 'Selecao de catalogos invalida.' }, { status: 400 })
   }
@@ -128,17 +155,30 @@ export async function GET(request: NextRequest) {
   if (selectedByTower?.some((id) => !availableIds.has(id))) {
     return NextResponse.json({ success: false, message: 'Um catalogo escolhido nao esta disponivel para esta loja.' }, { status: 409 })
   }
-  const installedIds = selectedByTower ?? catalogs.map((catalog) => catalog.versionId)
+  // A primeira consulta serve apenas para listar os recursos disponiveis.
+  // Nenhum catalogo pesado deve ser instalado implicitamente: a Torre envia
+  // a selecao explicita feita na configuracao local.
+  const installedIds = selectedByTower ?? []
   const installedCatalogs = catalogs.filter((catalog) => installedIds.includes(catalog.versionId))
+  const availableGabaritoIds = new Set(AVAILABLE_MEASUREMENT_GABARITOS.map((profile) => profile.id))
+  if (selectedGabaritoIds.some((id) => !availableGabaritoIds.has(id))) {
+    return NextResponse.json({ success: false, message: 'Um gabarito escolhido nao esta disponivel.' }, { status: 409 })
+  }
+  const installedGabaritos = AVAILABLE_MEASUREMENT_GABARITOS.filter(
+    (profile) => selectedGabaritoIds.includes(profile.id),
+  )
 
   let operationalCatalog: TowerConfigurationSnapshot['operationalCatalog']
   let customers: TowerConfigurationSnapshot['customers']
   try {
-    const [catalog, geometries, frames, recommendationData, customerSnapshot] = await Promise.all([
-      loadTowerOperationalCatalog(admin, authentication.device.tenantId, storeId),
-      loadTowerOperationalGeometries(admin),
+    const recommendationData = installedIds.length
+      ? await loadRecommendationCatalogMulti(installedIds)
+      : null
+    const selectedFamilyNames = recommendationData?.families?.map((family) => family.nome) ?? []
+    const [catalog, geometries, frames, customerSnapshot] = await Promise.all([
+      loadTowerOperationalCatalog(admin, authentication.device.tenantId, storeId, installedIds),
+      loadTowerOperationalGeometries(admin, selectedFamilyNames),
       loadTowerOperationalFrames(admin),
-      installedIds.length ? loadRecommendationCatalogMulti(installedIds) : Promise.resolve(null),
       loadStoreCustomers(admin, authentication.device.tenantId, storeId),
     ])
     customers = customerSnapshot
@@ -155,6 +195,8 @@ export async function GET(request: NextRequest) {
     remoteConfig,
     catalogs: installedCatalogs,
     availableCatalogs: catalogs,
+    measurementGabaritos: installedGabaritos,
+    availableMeasurementGabaritos: AVAILABLE_MEASUREMENT_GABARITOS,
     aiSuggestionConfig,
     customers,
     operationalCatalog,

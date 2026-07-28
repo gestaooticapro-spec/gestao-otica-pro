@@ -20,6 +20,25 @@ export type TowerCustomerSnapshot = {
   updatedAt: string | null
 }
 
+export type TowerMeasurementGabaritoProfile = {
+  id: string
+  name: string
+  version: number
+  distanceMm: number
+  targetColor: 'blue'
+  targetShape: 'quartered-circle'
+  stages: Array<'front' | 'rightProfile'>
+  description: string
+  referenceImages: {
+    front: string | null
+    rightProfile: string | null
+  }
+  detector: {
+    minimumConfidence: number
+    frontFrameClearanceMm: number
+  }
+}
+
 export type TowerConfigurationSnapshot = {
   schemaVersion: typeof TOWER_CONFIGURATION_SNAPSHOT_VERSION
   revision: string
@@ -30,6 +49,8 @@ export type TowerConfigurationSnapshot = {
   availableCatalogs: TowerActiveCatalogSnapshot[]
   aiSuggestionConfig: AiSuggestionConfig
   customers: TowerCustomerSnapshot[]
+  measurementGabaritos: TowerMeasurementGabaritoProfile[]
+  availableMeasurementGabaritos: TowerMeasurementGabaritoProfile[]
   operationalCatalog?: {
     catalog: unknown
     geometries: unknown[]

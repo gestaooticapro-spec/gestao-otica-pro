@@ -96,9 +96,10 @@ test('gateway de IA autentica equipamento, valida payload e limita consumo por d
 })
 
 test('sync do dispositivo aceita todo o atendimento offline e a configuracao instala dados operacionais', async () => {
-  const [sync, configuration] = await Promise.all([
+  const [sync, configuration, operationalCatalogLoader] = await Promise.all([
     read('src/app/api/tower/device/sync/route.ts'),
     read('src/app/api/tower/device/configuration/route.ts'),
+    read('src/lib/server/tower-operational-catalog.ts'),
   ])
 
   assert.match(sync, /eventType: z\.literal\('tower_heatmap\.upsert'\)/)
@@ -112,6 +113,27 @@ test('sync do dispositivo aceita todo o atendimento offline e a configuracao ins
   assert.match(configuration, /loadRecommendationCatalogMulti/)
   assert.match(configuration, /loadStoreCustomers/)
   assert.match(configuration, /availableCatalogs/)
+  assert.match(configuration, /availableMeasurementGabaritos/)
+  assert.match(configuration, /selectedGabaritoIds/)
+  assert.match(configuration, /const installedIds = selectedByTower \?\? \[\]/)
+  assert.doesNotMatch(
+    configuration,
+    /const installedIds = selectedByTower \?\? catalogs\.map/,
+  )
+  assert.match(configuration, /loadTowerOperationalCatalog\(admin, authentication\.device\.tenantId, storeId, installedIds\)/)
+  assert.match(operationalCatalogLoader, /selectedVersionIds\.length === 0/)
+  assert.match(operationalCatalogLoader, /selectedFamilyNames\.length === 0/)
   assert.match(configuration, /operationalCatalog/)
   assert.match(configuration, /\.eq\('tenant_id', authentication\.device\.tenantId\)/)
+})
+
+test('recuperacao de PIN autentica o dispositivo e consome codigo de uso unico', async () => {
+  const route = await read('src/app/api/tower/device/admin-pin/recovery/route.ts')
+  const contract = await read('src/lib/tower/admin-pin-recovery-contract.ts')
+  assert.match(route, /authenticateTowerDevice/)
+  assert.match(route, /consume_tower_admin_pin_recovery/)
+  assert.match(route, /authentication\.device\.storeId/)
+  assert.match(route, /hashTowerAdminPin/)
+  assert.match(contract, /MBTOWER-PIN:1:/)
+  assert.match(contract, /normalizeTowerPinRecoveryCode/)
 })

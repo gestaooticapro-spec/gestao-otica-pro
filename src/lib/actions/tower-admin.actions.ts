@@ -89,10 +89,20 @@ export type TowerActivationCredential = {
   expiresAt: string
 }
 
+export type TowerPinRecoveryCredential = {
+  recoveryId: string
+  storeId: number
+  storeName: string
+  qrPayload: string
+  fallbackCode: string
+  expiresAt: string
+}
+
 export type TowerAdminActionResult = {
   success: boolean
   message: string
   activation?: TowerActivationCredential
+  pinRecovery?: TowerPinRecoveryCredential
 }
 
 type TenantRow = { id: string; name: string }
@@ -175,6 +185,22 @@ type TowerReissueRpcClient = {
     functionName: 'reissue_tower_store_activation',
     args: TowerReissueRpcArgs,
   ) => PromiseLike<{ data: TowerOnboardingRpcRow[] | null; error: unknown }>
+}
+
+type TowerPinRecoveryRpcClient = {
+  rpc: (
+    functionName: 'issue_tower_admin_pin_recovery',
+    args: {
+      p_store_id: number
+      p_token_hash: string
+      p_fallback_code_hash: string
+      p_expires_at: string
+      p_created_by: string
+    },
+  ) => PromiseLike<{
+    data: Array<{ tenant_id: string; store_id: number; recovery_id: string }> | null
+    error: unknown
+  }>
 }
 
 const onboardingSchema = z.object({
@@ -612,6 +638,73 @@ export async function reissueTowerActivation(input: z.infer<typeof towerReissueS
       qrPayload: `MBTOWER:1:${rawToken}`,
       fallbackCode,
       adminPin,
+      expiresAt,
+    },
+  }
+}
+
+export async function issueTowerAdminPinRecovery(
+  input: z.infer<typeof towerReissueSchema>,
+): Promise<TowerAdminActionResult> {
+  const context = await requirePlatformAdmin()
+  const parsed = towerReissueSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: parsed.error.issues[0]?.message || 'Dados de recuperacao invalidos.',
+    }
+  }
+
+  const admin = createAdminClient()
+  const { data: rawStore, error: storeError } = await admin
+    .from('stores')
+    .select('id,name,settings')
+    .eq('id', parsed.data.storeId)
+    .maybeSingle()
+
+  const store = rawStore as {
+    id: number
+    name: string
+    settings: { tower_enabled?: unknown } | null
+  } | null
+  if (storeError) {
+    return { success: false, message: actionError(storeError, 'Nao foi possivel carregar a loja.') }
+  }
+  if (!store?.settings?.tower_enabled) {
+    return { success: false, message: 'Loja com Torre nao encontrada.' }
+  }
+
+  const rawToken = randomBytes(32).toString('base64url')
+  const fallbackCode = createFallbackCode()
+  const expiresAt = new Date(
+    Date.now() + parsed.data.validForHours * 60 * 60 * 1000,
+  ).toISOString()
+  const rpc = admin as unknown as TowerPinRecoveryRpcClient
+  const { data, error } = await rpc.rpc('issue_tower_admin_pin_recovery', {
+    p_store_id: store.id,
+    p_token_hash: hashCredential(rawToken),
+    p_fallback_code_hash: hashCredential(fallbackCode),
+    p_expires_at: expiresAt,
+    p_created_by: context.user.id,
+  })
+
+  if (error || !data?.[0]) {
+    return {
+      success: false,
+      message: actionError(error, 'Nao foi possivel gerar a recuperacao do PIN.'),
+    }
+  }
+
+  revalidatePath(`/admin/torres/${store.id}`)
+  return {
+    success: true,
+    message: 'Codigo de recuperacao gerado. Ele funciona uma vez e nao reinstala a Torre.',
+    pinRecovery: {
+      recoveryId: data[0].recovery_id,
+      storeId: store.id,
+      storeName: store.name,
+      qrPayload: `MBTOWER-PIN:1:${rawToken}`,
+      fallbackCode,
       expiresAt,
     },
   }

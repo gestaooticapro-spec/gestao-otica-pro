@@ -6,9 +6,11 @@ import { QRCodeSVG } from 'qrcode.react'
 import { Check, Copy, KeyRound, Loader2, Mail, MessageCircle, RefreshCw, Save, ShieldCheck } from 'lucide-react'
 import {
   grantTowerStoreFullAccess,
+  issueTowerAdminPinRecovery,
   reissueTowerActivation,
   updateTowerStoreDetails,
   type TowerActivationCredential,
+  type TowerPinRecoveryCredential,
   type TowerStoreAdminData,
 } from '@/lib/actions/tower-admin.actions'
 
@@ -22,9 +24,11 @@ export default function TowerStoreAdminPanel({ initialData }: Props) {
   const router = useRouter()
   const [message, setMessage] = useState<string | null>(null)
   const [activation, setActivation] = useState<TowerActivationCredential | null>(null)
+  const [pinRecovery, setPinRecovery] = useState<TowerPinRecoveryCredential | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
   const [saving, startSaving] = useTransition()
   const [reissuing, startReissuing] = useTransition()
+  const [recoveringPin, startRecoveringPin] = useTransition()
   const [grantingFullAccess, startGrantingFullAccess] = useTransition()
 
   const copy = async (key: string, value: string) => {
@@ -67,6 +71,17 @@ export default function TowerStoreAdminPanel({ initialData }: Props) {
       setMessage(result.message)
       if (result.success && result.activation) setActivation(result.activation)
       if (result.success) router.refresh()
+    })
+  }
+
+  const recoverPin = (formData: FormData) => {
+    startRecoveringPin(async () => {
+      const result = await issueTowerAdminPinRecovery({
+        storeId: initialData.store.id,
+        validForHours: Number(formData.get('validForHours') || 24),
+      })
+      setMessage(result.message)
+      if (result.success && result.pinRecovery) setPinRecovery(result.pinRecovery)
     })
   }
 
@@ -119,6 +134,64 @@ export default function TowerStoreAdminPanel({ initialData }: Props) {
     <section className="rounded-3xl border border-cyan-300/15 bg-cyan-300/[.05] p-6 sm:p-8"><div className="flex flex-wrap items-start justify-between gap-5"><div><p className="text-xs font-black uppercase tracking-[.16em] text-cyan-200">Recuperacao da instalacao</p><h2 className="mt-2 text-xl font-black text-white">Reemitir QR, codigo e PIN</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-cyan-100/70">Use quando a Torre for formatada, substituida ou as credenciais de instalacao forem perdidas. A nova emissao revoga ativacoes pendentes anteriores e gera um novo PIN provisório.</p></div><form action={reissue} className="flex flex-wrap items-end gap-3"><label className="text-xs font-bold text-cyan-100">Validade<select name="validForHours" defaultValue="168" className="ml-2 rounded-lg border border-white/10 bg-slate-950 px-2 py-2 text-sm text-white"><option value="24">24 h</option><option value="168">7 dias</option><option value="720">30 dias</option></select></label><button disabled={reissuing} className="h-10 rounded-xl bg-cyan-300 px-4 text-xs font-black text-slate-950 hover:bg-cyan-200 disabled:opacity-50">{reissuing ? <Loader2 className="h-4 w-4 animate-spin" /> : <><RefreshCw className="mr-2 inline h-4 w-4" />Reemitir</>}</button></form></div></section>
 
     {activation && <section className="rounded-3xl border border-amber-300/25 bg-slate-900 p-6 sm:p-8"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[.16em] text-amber-300">Nova instalacao pronta</p><h2 className="mt-2 text-xl font-black text-white">{activation.storeName}</h2></div><span className="text-xs font-bold text-amber-100">Expira em {formatDate(activation.expiresAt)}</span></div><div className="mt-6 grid gap-6 lg:grid-cols-[260px_1fr]"><div className="rounded-3xl bg-white p-4"><QRCodeSVG value={activation.qrPayload} size={240} level="H" marginSize={1} className="h-auto w-full" /></div><div className="space-y-3"><Credential label="Codigo alternativo" value={activation.fallbackCode} copied={copied === 'code'} onCopy={() => copy('code', activation.fallbackCode)} /><Credential label="PIN administrativo provisório" value={activation.adminPin} copied={copied === 'pin'} onCopy={() => copy('pin', activation.adminPin)} /><div className="flex flex-wrap gap-3"><a href={shareUrl(activation)} target="_blank" rel="noreferrer" className="rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-white">Abrir tela do QR</a><button type="button" onClick={() => shareWhatsApp(activation)} className="rounded-xl bg-emerald-400 px-3 py-2 text-xs font-black text-emerald-950"><MessageCircle className="mr-2 inline h-4 w-4" />Enviar pelo WhatsApp</button></div></div></div></section>}
+
+    <section className="rounded-3xl border border-violet-300/15 bg-violet-300/[.05] p-6 sm:p-8">
+      <div className="flex flex-wrap items-start justify-between gap-5">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[.16em] text-violet-200">Acesso administrativo local</p>
+          <h2 className="mt-2 text-xl font-black text-white">Recuperar PIN da Torre</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-violet-100/70">
+            Use quando o PIN local foi esquecido. Este codigo nao reinstala nem
+            desvincula a Torre e nao apaga clientes, sessoes ou configuracoes.
+          </p>
+        </div>
+        <form action={recoverPin} className="flex flex-wrap items-end gap-3">
+          <label className="text-xs font-bold text-violet-100">
+            Validade
+            <select name="validForHours" defaultValue="24" className="ml-2 rounded-lg border border-white/10 bg-slate-950 px-2 py-2 text-sm text-white">
+              <option value="24">24 h</option>
+              <option value="168">7 dias</option>
+              <option value="720">30 dias</option>
+            </select>
+          </label>
+          <button disabled={recoveringPin} className="h-10 rounded-xl bg-violet-300 px-4 text-xs font-black text-violet-950 hover:bg-violet-200 disabled:opacity-50">
+            {recoveringPin
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <><KeyRound className="mr-2 inline h-4 w-4" />Gerar recuperacao</>}
+          </button>
+        </form>
+      </div>
+    </section>
+
+    {pinRecovery && (
+      <section className="rounded-3xl border border-violet-300/25 bg-slate-900 p-6 sm:p-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[.16em] text-violet-300">Recuperacao de uso unico</p>
+            <h2 className="mt-2 text-xl font-black text-white">{pinRecovery.storeName}</h2>
+          </div>
+          <span className="text-xs font-bold text-violet-100">Expira em {formatDate(pinRecovery.expiresAt)}</span>
+        </div>
+        <div className="mt-6 grid gap-6 lg:grid-cols-[260px_1fr]">
+          <div className="rounded-3xl bg-white p-4">
+            <QRCodeSVG value={pinRecovery.qrPayload} size={240} level="H" marginSize={1} className="h-auto w-full" />
+          </div>
+          <div className="space-y-3">
+            <Credential
+              label="Codigo alternativo de recuperacao"
+              value={pinRecovery.fallbackCode}
+              copied={copied === 'pin-recovery'}
+              onCopy={() => copy('pin-recovery', pinRecovery.fallbackCode)}
+            />
+            <p className="rounded-xl border border-violet-300/15 bg-violet-300/[.06] p-4 text-sm leading-6 text-violet-100">
+              Na Torre, escolha <strong>Esqueci o PIN</strong>, leia este QR ou
+              informe o codigo e cadastre o novo PIN. O codigo deixa de funcionar
+              imediatamente apos a recuperacao.
+            </p>
+          </div>
+        </div>
+      </section>
+    )}
 
     <section className="rounded-3xl border border-white/10 bg-slate-900/70 p-6 sm:p-8"><div className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-slate-400" /><h2 className="text-xl font-black text-white">Historico de ativacoes</h2></div><div className="mt-5 space-y-3">{!initialData.activations.length && <p className="text-sm text-slate-500">Nenhuma ativacao registrada.</p>}{initialData.activations.map((item) => <div key={item.id} className="flex flex-wrap justify-between gap-3 rounded-xl border border-white/10 bg-slate-950/40 px-4 py-3 text-sm"><span className="font-bold text-white">{item.status === 'pending' ? 'Aguardando leitura' : item.status === 'consumed' ? 'Torre ativada' : item.status === 'revoked' ? 'Revogada' : 'Expirada'}</span><span className="text-slate-500">Criada em {formatDate(item.createdAt)}</span></div>)}</div></section>
   </div>
