@@ -39,6 +39,7 @@ const StoreProfileSchema = z.object({
         .optional()
         .nullable(),
     regime_tributario: z.string().optional().nullable(),
+    contador_email: z.string().email().optional().or(z.literal('')).nullable(),
 })
 
 export type StoreActionResult = {
@@ -169,6 +170,7 @@ export async function updateStoreProfile(
         nfe_serie: formData.get('nfe_serie'),
         codigo_municipio_ibge: onlyDigits(formData.get('codigo_municipio_ibge')),
         regime_tributario: normalizeTextValue(formData.get('regime_tributario')),
+        contador_email: normalizeTextValue(formData.get('contador_email')),
     }
     const validated = StoreProfileSchema.safeParse(rawData)
     if (!validated.success) {

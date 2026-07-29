@@ -472,6 +472,7 @@ export interface Database {
           nfe_serie: number | null
           codigo_municipio_ibge: string | null
           regime_tributario: string | null
+          contador_email: string | null
           rt_cnpj: string | null
           rt_contato: string | null
           rt_email: string | null
@@ -505,6 +506,7 @@ export interface Database {
           nfe_serie?: number | null
           codigo_municipio_ibge?: string | null
           regime_tributario?: string | null
+          contador_email?: string | null
           rt_cnpj?: string | null
           rt_contato?: string | null
           rt_email?: string | null
@@ -538,6 +540,7 @@ export interface Database {
           nfe_serie?: number | null
           codigo_municipio_ibge?: string | null
           regime_tributario?: string | null
+          contador_email?: string | null
           rt_cnpj?: string | null
           rt_contato?: string | null
           rt_email?: string | null

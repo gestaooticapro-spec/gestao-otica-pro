@@ -67,6 +67,7 @@ type StoreData = {
     nfe_serie?: number | null;
     codigo_municipio_ibge?: string | null;
     regime_tributario?: string | null;
+    contador_email?: string | null;
     certificate_thumbprint?: string | null;
     certificate_valid_until?: string | null;
     settings: StoreFeatureSettings | null;
@@ -473,6 +474,19 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                 </h3>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="md:col-span-2">
+                        <label className={labelStyle}>E-mail do contador</label>
+                        <input
+                            name="contador_email"
+                            type="email"
+                            defaultValue={data.contador_email ?? ''}
+                            className={inputStyle}
+                            placeholder="contador@escritorio.com.br"
+                        />
+                        <p className="text-[9px] text-slate-500 mt-1">
+                            Contato responsável pelo acompanhamento das informações fiscais da loja.
+                        </p>
+                    </div>
                     {/* CSC - Código de Segurança do Contribuinte */}
                     <div className="space-y-4">
                         <h4 className="text-xs font-bold text-slate-400 uppercase border-b border-white/10 pb-1">CSC (Token)</h4>

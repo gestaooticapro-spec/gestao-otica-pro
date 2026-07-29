@@ -2416,8 +2416,8 @@ export default function EmitirNFePage(props: { params: { storeId: string } }) {
                                 {items.map((item, index) => (
                                     <div key={index} className="rounded-3xl border border-white/5 bg-white/5 p-5">
                                         <div className="space-y-4">
-                                            <fieldset disabled={itemsLocked} className={itemsLocked ? "opacity-80" : ""}>
                                             <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:items-end">
+                                            <fieldset disabled={itemsLocked} className={`contents ${itemsLocked ? "opacity-80" : ""}`}>
                                                 <div className="xl:col-span-7">
                                                     <ProductField
                                                         label="Descrição"
@@ -2452,12 +2452,14 @@ export default function EmitirNFePage(props: { params: { storeId: string } }) {
                                                         status={ncmAiStatus?.itemIndex === index ? ncmAiStatus : null}
                                                     />
                                                 </div>
+                                            </fieldset>
                                                 <div className="xl:col-span-1 flex justify-end">
                                                     <button type="button" onClick={() => removeItem(index)} className="flex h-12 w-12 items-center justify-center rounded-2xl bg-black/40 text-slate-500 transition hover:bg-red-500/10 hover:text-red-500">
                                                         <Trash2 size={16} />
                                                     </button>
                                                 </div>
                                             </div>
+                                            <fieldset disabled={itemsLocked}>
                                             {ncmOptions?.itemIndex === index && (
                                                 <div className="rounded-2xl border border-yellow-100 bg-black/40 p-3">
                                                     <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Escolha o NCM sugerido</p>
