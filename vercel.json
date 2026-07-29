@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/fiscal/closing/monthly",
-      "schedule": "30 18 29 7 *"
+      "schedule": "0 11 1-5 * *"
     }
   ]
 }
