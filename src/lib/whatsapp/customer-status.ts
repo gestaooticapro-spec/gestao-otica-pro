@@ -3,7 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { Database, Json } from '@/lib/database.types'
 import { describeOpenOs, WhatsAppOsStatusCode } from './os-status'
-import { digitsOnly, phonesMatch, phonesMatchLast8, toEvolutionNumber } from './phone'
+import { digitsOnly, getPhoneVariants, phonesMatch, phonesMatchLast8, toEvolutionNumber } from './phone'
 import type { StoreSettings } from '@/lib/store-modules'
 import { evaluateStoreHours } from './store-hours-logic'
 import {
@@ -85,6 +85,7 @@ type CustomerRow = {
 
 type ConversationStateRow = {
   id: number
+  remote_phone: string
   state: ConversationState
   expires_at: string
   metadata: Json | null
@@ -1602,23 +1603,31 @@ function shouldSilenceRepeatedStatus(
 
 async function findConversationState(channelId: number, phone: string): Promise<ConversationStateRow | null> {
   const supabase = createAdminClient()
+  const phoneVariants = [...getPhoneVariants(phone)]
+  if (!phoneVariants.length) return null
   const { data, error } = await (supabase.from('whatsapp_conversation_states') as any)
-    .select('id, state, expires_at, metadata')
+    .select('id, remote_phone, state, expires_at, metadata')
     .eq('channel_id', channelId)
-    .eq('remote_phone', phone)
-    .maybeSingle()
+    .in('remote_phone', phoneVariants)
 
   if (error) throw error
-  if (!data) return null
-
-  if (new Date(data.expires_at).getTime() <= Date.now()) {
+  const candidates = (data ?? []) as ConversationStateRow[]
+  const now = Date.now()
+  const expiredIds = candidates
+    .filter((item) => new Date(item.expires_at).getTime() <= now)
+    .map((item) => item.id)
+  if (expiredIds.length) {
     await (supabase.from('whatsapp_conversation_states') as any)
       .delete()
-      .eq('id', data.id)
-    return null
+      .in('id', expiredIds)
   }
 
-  return data
+  const activeCandidates = candidates.filter((item) => !expiredIds.includes(item.id))
+  const exact = activeCandidates.find((item) => item.remote_phone === phone)
+  const matching = exact || activeCandidates.find((item) => phonesMatch(item.remote_phone, phone))
+  if (!matching) return null
+
+  return matching
 }
 
 async function clearConversationStateById(id: number) {
@@ -1654,10 +1663,12 @@ async function loadCustomerControlMode(channelId: number, phone: string): Promis
 
 async function clearCustomerControlMode(channelId: number, phone: string) {
   const supabase = createAdminClient()
+  const phoneVariants = [...getPhoneVariants(phone)]
+  if (!phoneVariants.length) return
   const { error } = await (supabase.from('whatsapp_customer_control') as any)
     .delete()
     .eq('channel_id', channelId)
-    .eq('remote_phone', phone)
+    .in('remote_phone', phoneVariants)
 
   if (error) throw error
 }
@@ -1677,6 +1688,25 @@ async function upsertCustomerLink(
     customer_id: customerId,
     source,
     last_confirmed_at: new Date().toISOString(),
+  }
+
+  const phoneVariants = [...getPhoneVariants(phone)]
+  const { data: existingLinks, error: existingLinksError } = await (supabase.from('whatsapp_customer_links') as any)
+    .select('id, remote_phone')
+    .eq('store_id', channel.store_id)
+    .in('remote_phone', phoneVariants)
+
+  if (existingLinksError) throw existingLinksError
+  const existingLink = (existingLinks ?? []).find((item: { remote_phone?: string | null }) =>
+    item.remote_phone === phone || phonesMatch(item.remote_phone, phone)
+  )
+
+  if (existingLink?.id) {
+    const { error } = await (supabase.from('whatsapp_customer_links') as any)
+      .update(values)
+      .eq('id', existingLink.id)
+    if (error) throw error
+    return
   }
 
   const { error } = await (supabase.from('whatsapp_customer_links') as any)
@@ -1729,6 +1759,18 @@ async function setConversationState(
     metadata: preparedMetadata,
     expires_at: expiresIn(ms),
     updated_at: new Date().toISOString(),
+  }
+
+  // A Evolution pode alternar entre os formatos brasileiro com e sem o nono
+  // dígito. Atualiza o estado equivalente existente para não criar duas
+  // conversas e perder uma pausa humana já ativa.
+  const existingState = await findConversationState(channel.id, phone)
+  if (existingState?.id) {
+    const { error } = await (supabase.from('whatsapp_conversation_states') as any)
+      .update(values)
+      .eq('id', existingState.id)
+    if (error) throw error
+    return true
   }
 
   const { error } = await (supabase.from('whatsapp_conversation_states') as any)
@@ -4110,7 +4152,7 @@ export async function markStoreInitiatedConversation(
   const { error: forceAiClearError } = await (supabase.from('whatsapp_customer_control') as any)
     .delete()
     .eq('channel_id', channel.id)
-    .eq('remote_phone', normalizedPhone)
+    .in('remote_phone', [...getPhoneVariants(normalizedPhone)])
     .eq('mode', 'force_ai')
 
   if (forceAiClearError) throw forceAiClearError
