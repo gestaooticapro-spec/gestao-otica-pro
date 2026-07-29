@@ -57,7 +57,6 @@ import { EvaluationDashboard } from './EvaluationDashboard'
 import { updateEvaluationPanicReason, updateEvaluationOutcomeStatus } from '@/lib/actions/evaluation.actions'
 import { createTowerHeatmapSession, getCompletedTowerHeatmapResult } from '@/lib/actions/tower-heatmap.actions'
 import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/BackgroundToggle'
-import LensThicknessLab from './LensThicknessLab'
 import type {
   RecommendationCaseInput,
   RecommendationConversationState,
@@ -5113,21 +5112,6 @@ export default function EvaluationInterface({
                     </div>
                   </div>
                 </div>
-
-                <LensThicknessLab
-                  od={{
-                    sphere: form.receitaLongeOdEsferico,
-                    cylinder: form.receitaLongeOdCilindrico,
-                    axis: form.receitaLongeOdEixo,
-                    dnp: form.medidaDnpOd,
-                  }}
-                  oe={{
-                    sphere: form.receitaLongeOeEsferico,
-                    cylinder: form.receitaLongeOeCilindrico,
-                    axis: form.receitaLongeOeEixo,
-                    dnp: form.medidaDnpOe,
-                  }}
-                />
 
                 <div className="rounded-2xl border border-cyan-400/25 bg-cyan-500/5 p-5 shadow-[0_0_32px_rgba(34,211,238,0.07)]">
                   <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

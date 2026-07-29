@@ -530,7 +530,7 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                                         min="1"
                                         max="999"
                                         defaultValue={data.nfce_serie ?? 1}
-                                        className={inputStyle}
+                                        className={`${inputStyle} bg-slate-950/70`}
                                         placeholder="Ex: 1"
                                     />
                                     <p className="text-[9px] text-indigo-400/60 mt-1 leading-tight">
@@ -545,7 +545,7 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                                         min="1"
                                         max="999"
                                         defaultValue={data.nfe_serie ?? 1}
-                                        className={inputStyle}
+                                        className={`${inputStyle} bg-slate-950/70`}
                                         placeholder="Ex: 1"
                                     />
                                     <p className="text-[9px] text-indigo-400/60 mt-1 leading-tight">
@@ -553,15 +553,16 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                                     </p>
                                 </div>
                                 <div>
-                                    <label className={labelStyle}>Regime Tributário</label>
+                                    <label className={labelStyle}>Reg. Trib.</label>
                                     <select
                                         name="regime_tributario"
                                         defaultValue={data.regime_tributario ?? '1'}
-                                        className={inputStyle}
+                                        className={`${inputStyle} bg-slate-950/70 text-slate-100 [color-scheme:dark]`}
+                                        style={{ colorScheme: 'dark', backgroundColor: 'rgba(2, 6, 23, 0.7)', color: '#e2e8f0' }}
                                     >
-                                        <option value="1">1 – Simples Nacional</option>
-                                        <option value="2">2 – Lucro Presumido</option>
-                                        <option value="3">3 – Lucro Real</option>
+                                        <option style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }} value="1">1 – Simples Nacional</option>
+                                        <option style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }} value="2">2 – Lucro Presumido</option>
+                                        <option style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }} value="3">3 – Lucro Real</option>
                                     </select>
                                 </div>
                             </div>
