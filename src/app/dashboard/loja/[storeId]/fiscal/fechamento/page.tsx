@@ -6,7 +6,7 @@ import { recuperarXmlsNFCePeriodo, inutilizarNumeracaoFiscal, listarInutilizacoe
 import { getStoreProfile } from "@/lib/actions/store.actions";
 import {
     Download, Loader2, FileArchive, FileText,
-    CheckCircle, XCircle, ArrowLeft
+    CheckCircle, XCircle, ArrowLeft, Mail
 } from "lucide-react";
 import Link from "next/link";
 import JSZip from "jszip";
@@ -53,6 +53,14 @@ type InutilizacaoItem = {
     created_at: string;
 };
 
+type ClosingEmailLog = {
+    status: "processing" | "success" | "error";
+    attempt_count: number;
+    sent_at: string | null;
+    last_attempt_at: string | null;
+    error_message: string | null;
+};
+
 const hasXmlSource = (item: { xml_content: string | null; xml_url: string | null }) => {
     return Boolean(item.xml_content || item.xml_url);
 };
@@ -87,6 +95,8 @@ export default function FechamentoMensalOtica(props: { params: { storeId: string
     const [invalidateReason, setInvalidateReason] = useState("Falha operacional no controle de numeração, sem autorização de uso para os números informados.");
     const [storeInfo, setStoreInfo] = useState<{ name: string; razao_social: string | null; cnpj: string | null } | null>(null);
     const [inutilizacoes, setInutilizacoes] = useState<InutilizacaoItem[]>([]);
+    const [sendingEmail, setSendingEmail] = useState(false);
+    const [closingEmailLog, setClosingEmailLog] = useState<ClosingEmailLog | null>(null);
 
     const fetchXmlText = useCallback(async (xmlUrl?: string | null) => {
         if (!xmlUrl) return null;
@@ -121,6 +131,21 @@ export default function FechamentoMensalOtica(props: { params: { storeId: string
             active = false;
         };
     }, [storeId, year, invalidateModel, invalidateEnvironment]);
+
+    const loadClosingEmailLog = useCallback(async () => {
+        try {
+            const response = await fetch(`/api/fiscal/closing/status?storeId=${storeId}&month=${month + 1}&year=${year}`);
+            if (!response.ok) return;
+            const body = await response.json();
+            setClosingEmailLog(body.log ?? null);
+        } catch {
+            // O status do envio não deve impedir a consulta manual do fechamento.
+        }
+    }, [storeId, month, year]);
+
+    useEffect(() => {
+        void loadClosingEmailLog();
+    }, [loadClosingEmailLog]);
 
     const fetchSummary = async () => {
         setLoading(true);
@@ -320,6 +345,28 @@ export default function FechamentoMensalOtica(props: { params: { storeId: string
         }
     };
 
+    const handleSendEmailContador = async () => {
+        setSendingEmail(true);
+        try {
+            const response = await fetch("/api/fiscal/closing/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ storeId, month: month + 1, year }),
+            });
+            const body = await response.json();
+            if (!response.ok || !body.success) {
+                throw new Error(body.message || body.error || "Não foi possível enviar o fechamento.");
+            }
+            setClosingEmailLog(body.log ?? null);
+            alert(body.message || "Fechamento enviado ao contador.");
+        } catch (error: any) {
+            alert(`Erro ao enviar para o contador: ${error.message || "erro desconhecido"}`);
+            await loadClosingEmailLog();
+        } finally {
+            setSendingEmail(false);
+        }
+    };
+
     const handleRecoverXmls = async () => {
         setRecovering(true);
         try {
@@ -418,7 +465,7 @@ export default function FechamentoMensalOtica(props: { params: { storeId: string
                     <ArrowLeft size={20} className="text-slate-400" />
                 </Link>
                 <div>
-                    <h1 className="text-2xl font-black text-[#1A1A1A] tracking-tight uppercase">Fechamento para Contador</h1>
+                    <h1 className="text-2xl font-black text-white tracking-tight uppercase">Fechamento para Contador</h1>
                     <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Exportar XMLs e resumo mensal</p>
                 </div>
             </div>
@@ -457,9 +504,6 @@ export default function FechamentoMensalOtica(props: { params: { storeId: string
                     </button>
                 </div>
 
-                <p className="text-xs text-slate-500 mt-3">
-                    * Considera apenas NFC-e de produção. Homologação é excluída.
-                </p>
             </div>
 
             {/* Resumo */}
@@ -532,6 +576,37 @@ export default function FechamentoMensalOtica(props: { params: { storeId: string
                                 ? <><Loader2 size={16} className="animate-spin" /> Buscando XMLs...</>
                                 : <>Buscar XMLs faltantes</>
                             }
+                        </button>
+                    </div>
+
+                    <div className="bg-indigo-500/10 rounded-2xl border border-indigo-400/20 shadow-sm p-6 mt-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                        <div>
+                            <p className="font-bold text-indigo-100">Envio automático ao contador</p>
+                            <p className="text-sm text-slate-300 mt-0.5">
+                                O sistema tenta enviar o pacote fiscal completo no início de cada mês. Você também pode reenviar esta competência manualmente.
+                            </p>
+                            {closingEmailLog && (
+                                <p className={`text-xs mt-2 ${closingEmailLog.status === "success" ? "text-emerald-300" : closingEmailLog.status === "error" ? "text-rose-300" : "text-amber-300"}`}>
+                                    {closingEmailLog.status === "success"
+                                        ? `Enviado em ${new Date(closingEmailLog.sent_at || closingEmailLog.last_attempt_at || "").toLocaleString("pt-BR")}.`
+                                        : closingEmailLog.status === "error"
+                                            ? `Última tentativa falhou: ${closingEmailLog.error_message || "erro desconhecido"}`
+                                            : "Envio em processamento."}
+                                    {closingEmailLog.attempt_count > 0 ? ` Tentativas: ${closingEmailLog.attempt_count}.` : ""}
+                                </p>
+                            )}
+                            {!closingEmailLog && (
+                                <p className="text-xs text-slate-400 mt-2">Ainda não há envio registrado para esta competência.</p>
+                            )}
+                        </div>
+                        <button
+                            onClick={handleSendEmailContador}
+                            disabled={sendingEmail}
+                            className="flex items-center gap-2 bg-indigo-500 hover:bg-indigo-400 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-sm transition disabled:opacity-50 whitespace-nowrap"
+                        >
+                            {sendingEmail
+                                ? <><Loader2 size={16} className="animate-spin" /> Enviando...</>
+                                : <><Mail size={16} /> Enviar para contador</>}
                         </button>
                     </div>
 

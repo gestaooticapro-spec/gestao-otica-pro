@@ -20,7 +20,7 @@
     "lint": "eslint",
     "lint:tower": "eslint electron/main.cjs electron/preload.cjs src/app/torre src/app/api/tower src/components/tower src/lib/server/tower-activation-rate-limit.ts src/lib/server/tower-device-web-session.ts src/lib/server/tower-maintenance-grant.ts src/lib/server/tower-remote-config.ts src/lib/server/tower-remote-config-session.ts src/lib/tower src/lib/actions/tower-assets.actions.ts src/lib/actions/tower-session.actions.ts src/lib/actions/tower-heatmap.actions.ts src/lib/actions/tower-measurement.actions.ts tests",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/tower-contracts.test.ts && node --test tests/electron-security.test.mjs tests/tower-local-database.test.mjs tests/tower-migration.test.mjs tests/tower-web-api-contracts.test.mjs"
+    "test": "tsx --test tests/tower-contracts.test.ts tests/monthly-accountant-closing.test.ts && node --test tests/electron-security.test.mjs tests/tower-local-database.test.mjs tests/tower-migration.test.mjs tests/tower-web-api-contracts.test.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -42,6 +42,7 @@
     "jszip": "^3.10.1",
     "lucide-react": "^0.554.0",
     "next": "14.2.35",
+    "nodemailer": "^9.0.3",
     "pdf-parse": "^2.4.5",
     "qrcode": "^1.5.4",
     "qrcode.react": "^4.2.0",
@@ -55,6 +56,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.6",
     "@types/node": "^20",
+    "@types/nodemailer": "^8.0.1",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
