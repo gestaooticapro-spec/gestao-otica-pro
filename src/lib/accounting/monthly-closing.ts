@@ -253,27 +253,46 @@ async function acquireClosingLock(store: StoreRecord, year: number, month: numbe
   }
 }
 
+const INVOICE_PAGE_SIZE = 500
+
+export async function loadAccountantInvoicePages(
+  fetchPage: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+) {
+  const invoices: FiscalInvoice[] = []
+  let from = 0
+
+  while (true) {
+    const { data, error } = await fetchPage(from, from + INVOICE_PAGE_SIZE - 1)
+    if (error) throw new Error(`Não foi possível buscar documentos fiscais: ${error.message}`)
+
+    const page = (data || []) as FiscalInvoice[]
+    invoices.push(...page)
+    if (page.length < INVOICE_PAGE_SIZE) return invoices
+    from += page.length
+  }
+}
+
 async function loadInvoices(store: StoreRecord, year: number, month: number) {
   const admin = createAdminClient() as any
   const { start, end } = getAccountantClosingPeriodBounds(year, month)
   const fields = 'id, direction, tipo_documento, numero, serie, status, valor_total, chave_acesso, xml_content, xml_url, motivo_rejeicao, error_message, data_emissao, created_at'
 
   const [datedResult, fallbackResult] = await Promise.all([
-    admin.from('fiscal_invoices').select(fields)
+    loadAccountantInvoicePages((from, to) => admin.from('fiscal_invoices').select(fields)
       .eq('organization_id', store.tenant_id).eq('store_id', store.id)
       .or('environment.is.null,environment.neq.homologation')
-      .gte('data_emissao', start).lt('data_emissao', end),
-    admin.from('fiscal_invoices').select(fields)
+      .gte('data_emissao', start).lt('data_emissao', end)
+      .order('data_emissao', { ascending: true }).order('id', { ascending: true })
+      .range(from, to)),
+    loadAccountantInvoicePages((from, to) => admin.from('fiscal_invoices').select(fields)
       .eq('organization_id', store.tenant_id).eq('store_id', store.id)
       .or('environment.is.null,environment.neq.homologation')
-      .is('data_emissao', null).gte('created_at', start).lt('created_at', end),
+      .is('data_emissao', null).gte('created_at', start).lt('created_at', end)
+      .order('created_at', { ascending: true }).order('id', { ascending: true })
+      .range(from, to)),
   ])
 
-  if (datedResult.error || fallbackResult.error) {
-    throw new Error(`Não foi possível buscar documentos fiscais: ${datedResult.error?.message || fallbackResult.error?.message}`)
-  }
-
-  return ([...(datedResult.data || []), ...(fallbackResult.data || [])] as FiscalInvoice[])
+  return ([...datedResult, ...fallbackResult] as FiscalInvoice[])
     .filter((invoice) => isProductionDocument(invoice))
     .filter((invoice, index, list) => list.findIndex((item) => String(item.id) === String(invoice.id)) === index)
 }

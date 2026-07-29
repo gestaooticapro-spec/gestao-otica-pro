@@ -5,6 +5,7 @@ import {
   escapeAccountantEmailHtml,
   getAccountantClosingPeriodBounds,
   getAccountantXmlFileName,
+  loadAccountantInvoicePages,
 } from '../src/lib/accounting/monthly-closing'
 
 test('apura o mês contábil no fuso de São Paulo', () => {
@@ -33,4 +34,17 @@ test('gera nome de XML sem colisão entre modelo e série', () => {
 
 test('escapa dados da loja no HTML do e-mail', () => {
   assert.equal(escapeAccountantEmailHtml('<Loja & Filhos>'), '&lt;Loja &amp; Filhos&gt;')
+})
+
+test('pagina todos os documentos acima do limite padrão do PostgREST', async () => {
+  const records = Array.from({ length: 1_201 }, (_, id) => ({ id }))
+  const requestedRanges: Array<[number, number]> = []
+
+  const result = await loadAccountantInvoicePages(async (from, to) => {
+    requestedRanges.push([from, to])
+    return { data: records.slice(from, to + 1), error: null }
+  })
+
+  assert.equal(result.length, 1_201)
+  assert.deepEqual(requestedRanges, [[0, 499], [500, 999], [1000, 1499]])
 })
