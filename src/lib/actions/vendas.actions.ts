@@ -3256,7 +3256,6 @@ export async function searchPendenciasCliente(storeId: number, termo: string) {
 
     const parcelasFiltradas = parcelas.filter((p: any) => {
         const clienteName = normalizeSearch(p.customers?.full_name || '')
-        if (searchTokens.length <= 1) return true
         return searchTokens.every((token: string) => clienteName.includes(token))
     })
 
