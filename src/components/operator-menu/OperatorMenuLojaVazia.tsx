@@ -290,6 +290,26 @@ export default function OperatorMenuLojaVazia({
         };
     }, [storeId, isSupportModalOpen]);
 
+    useEffect(() => {
+        if (!supportIframeUrl) return;
+
+        let supportOrigin = '';
+        try {
+            supportOrigin = new URL(supportIframeUrl).origin;
+        } catch {
+            return;
+        }
+
+        const handleSupportMessage = (event: MessageEvent) => {
+            if (event.origin !== supportOrigin || event.data?.type !== 'mb-support:conversation-seen') return;
+            supportReadPendingRef.current = true;
+            setSupportStatus((current) => current ? { ...current, unreadSupportCount: 0 } : current);
+        };
+
+        window.addEventListener('message', handleSupportMessage);
+        return () => window.removeEventListener('message', handleSupportMessage);
+    }, [supportIframeUrl]);
+
     const handleZapAniversario = async (fone: string | null, nome: string) => {
         if (sendingWhatsAppKey) return;
         if (!fone) return alert(`${nome.split(' ')[0]} não tem celular cadastrado.`);
@@ -407,6 +427,7 @@ export default function OperatorMenuLojaVazia({
 
             setSupportIframeUrl(payload.iframeUrl);
         } catch (error) {
+            supportReadPendingRef.current = false;
             setSupportError(error instanceof Error ? error.message : 'Nao foi possivel abrir o suporte.');
         } finally {
             setSupportLoading(false);
