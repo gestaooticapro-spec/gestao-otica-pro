@@ -1003,31 +1003,64 @@ async function ensureNoActiveNFeForSale(
     }
 }
 
-async function ensureNoActiveReturnForOrigin(
+async function ensureReturnQuantitiesAreAvailable(
     supabase: any,
     organizationId: string,
     storeId: number,
     accessKey: string,
     environment: NFeEnvironment,
+    originItems: Array<Pick<FiscalItem, "codigo" | "quantidade">>,
+    requestedItems: Array<Pick<FiscalItem, "codigo" | "quantidade" | "descricao">>,
 ) {
     const { data, error } = await supabase
         .from("fiscal_invoices")
-        .select("id")
+        .select("payload_json")
         .eq("organization_id", organizationId)
         .eq("store_id", storeId)
         .eq("tipo_documento", "NFe")
         .eq("direction", "output")
         .eq("environment", environment)
         .contains("payload_json", { _entry_access_key: accessKey })
-        .in("status", ["draft", "processing", "authorized"])
-        .limit(1)
-        .maybeSingle();
+        .in("status", ["draft", "processing", "authorized"]);
 
     if (error) {
-        throw new Error("Nao foi possivel validar duplicidade da devolucao.");
+        throw new Error("Nao foi possivel validar as quantidades ja devolvidas.");
     }
-    if (data) {
-        throw new Error(`Ja existe uma NF-e de devolucao ativa para esta nota de entrada em ${environment === "production" ? "producao" : "homologacao"}.`);
+
+    const returnedQuantityByCode = new Map<string, number>();
+    for (const invoice of data || []) {
+        const details = Array.isArray(invoice?.payload_json?.infNFe?.det)
+            ? invoice.payload_json.infNFe.det
+            : [];
+
+        for (const detail of details) {
+            const code = cleanText(detail?.prod?.cProd);
+            const quantity = Number(detail?.prod?.qCom ?? detail?.prod?.qTrib ?? 0);
+            if (!code || !Number.isFinite(quantity) || quantity <= 0) continue;
+            returnedQuantityByCode.set(code, (returnedQuantityByCode.get(code) || 0) + quantity);
+        }
+    }
+
+    const originQuantityByCode = new Map<string, number>();
+    for (const item of originItems) {
+        const code = cleanText(item.codigo);
+        const quantity = Number(item.quantidade || 0);
+        if (!code || !Number.isFinite(quantity) || quantity <= 0) continue;
+        originQuantityByCode.set(code, (originQuantityByCode.get(code) || 0) + quantity);
+    }
+
+    for (const item of requestedItems) {
+        const code = cleanText(item.codigo);
+        const requestedQuantity = Number(item.quantidade || 0);
+        const originalQuantity = originQuantityByCode.get(code) || 0;
+        const previouslyReturnedQuantity = returnedQuantityByCode.get(code) || 0;
+
+        if (previouslyReturnedQuantity + requestedQuantity > originalQuantity) {
+            throw new Error(
+                `Quantidade de devolucao indisponivel para o item ${item.descricao || code}. `
+                + `Ja devolvida: ${previouslyReturnedQuantity}. Disponivel: ${Math.max(0, originalQuantity - previouslyReturnedQuantity)}.`,
+            );
+        }
     }
 }
 
@@ -1271,7 +1304,6 @@ export async function emitirNFe(input: NFeSaleInput) {
             if (!/^\d{44}$/.test(referenceKey)) {
                 throw new Error("Selecione uma NF-e de entrada importada para emitir a devolucao.");
             }
-            await ensureNoActiveReturnForOrigin(supabase, organizationId, input.storeId, referenceKey, environment);
         }
         if (isWarrantyShipment && !/^\d{44}$/.test(referenceKey)) {
             throw new Error("Selecione uma NF-e de entrada importada para emitir a remessa em garantia.");
@@ -1314,6 +1346,7 @@ export async function emitirNFe(input: NFeSaleInput) {
             ? { nome: input.cliente.nome, cpf_cnpj: input.cliente.cpf_cnpj }
             : null;
         let fiscalItems: FiscalItem[];
+        let returnOriginItems: Array<Pick<FiscalItem, "codigo" | "quantidade">> = [];
         let salePayments: any[] = input.pagamentos || [];
 
         if (isDemonstrationReturn) {
@@ -1664,6 +1697,7 @@ export async function emitirNFe(input: NFeSaleInput) {
             if (fiscalItems.length !== input.itens.length) {
                 throw new Error("Um ou mais itens selecionados nao pertencem a NF-e de origem.");
             }
+            returnOriginItems = originResult.items;
             salePayments = [];
         } else if (input.saleId && isSaleOperation) {
             const { data: saleData, error: saleError } = await supabase
@@ -1688,6 +1722,18 @@ export async function emitirNFe(input: NFeSaleInput) {
             salePayments = sale.pagamentos || [];
         } else {
             fiscalItems = normalizeManualItems(input.itens);
+        }
+
+        if (isReturnOperation) {
+            await ensureReturnQuantitiesAreAvailable(
+                supabase,
+                organizationId,
+                input.storeId,
+                referenceKey,
+                environment,
+                returnOriginItems,
+                fiscalItems,
+            );
         }
 
         if (isAdvancedOperation) {
