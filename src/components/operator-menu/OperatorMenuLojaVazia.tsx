@@ -198,6 +198,8 @@ export default function OperatorMenuLojaVazia({
     const [supportLoading, setSupportLoading] = useState(false);
     const [supportError, setSupportError] = useState<string | null>(null);
     const [supportStatus, setSupportStatus] = useState<SupportStatus | null>(null);
+    const supportModalOpenRef = useRef(false);
+    const supportReadPendingRef = useRef(false);
 
     useEffect(() => {
         const refreshAudit = () => setWakePingAuditFlag(readOperatorWhatsAppWakePingAudit(storeId));
@@ -252,12 +254,26 @@ export default function OperatorMenuLojaVazia({
                 const payload = await response.json().catch(() => null);
 
                 if (!cancelled && response.ok && payload) {
+                    const unreadSupportCount = Number(payload.unreadSupportCount || 0);
+
+                    // Abrir o iframe marca a conversa como lida no serviço de suporte.
+                    // Enquanto essa confirmação não chega, uma resposta antiga não pode
+                    // reaparecer no botão por causa do polling ou de uma resposta em voo.
+                    if (supportReadPendingRef.current && unreadSupportCount > 0) {
+                        if (supportModalOpenRef.current) return;
+                        return;
+                    }
+
+                    if (supportReadPendingRef.current && unreadSupportCount === 0) {
+                        supportReadPendingRef.current = false;
+                    }
+
                     setSupportStatus({
                         active: payload.active === true,
                         ticketId: typeof payload.ticketId === 'string' ? payload.ticketId : undefined,
                         protocol: typeof payload.protocol === 'string' ? payload.protocol : undefined,
                         status: typeof payload.status === 'string' ? payload.status : undefined,
-                        unreadSupportCount: Number(payload.unreadSupportCount || 0),
+                        unreadSupportCount,
                     });
                 }
             } catch (error) {
@@ -365,6 +381,8 @@ export default function OperatorMenuLojaVazia({
     };
 
     const handleOpenSupport = async () => {
+        supportModalOpenRef.current = true;
+        supportReadPendingRef.current = true;
         setIsSupportModalOpen(true);
         setSupportError(null);
         setSupportStatus((current) => current ? { ...current, unreadSupportCount: 0 } : current);
@@ -1000,6 +1018,7 @@ export default function OperatorMenuLojaVazia({
                             </div>
                             <button
                                 onClick={() => {
+                                    supportModalOpenRef.current = false;
                                     setIsSupportModalOpen(false);
                                     setSupportIframeUrl(null);
                                     setSupportError(null);

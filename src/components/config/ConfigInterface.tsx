@@ -5,7 +5,7 @@ import {
     Users, Plus, Save, Power, Loader2, Lock, User, KeyRound, Eye, EyeOff, Mail,
     ShieldCheck, Briefcase, Wrench, BadgeCheck, Percent, CheckCircle2,
     Store, MapPin, Phone, QrCode, ArrowLeft, AlertCircle, Sparkles, FileText, Wallet, HeartHandshake, Zap, Printer, UploadCloud,
-    MessageCircle, Clock
+    MessageCircle, Clock, CalendarDays, Files, ReceiptText, ClipboardList
 } from 'lucide-react';
 import { getEmployees, saveEmployee, toggleEmployeeStatus } from '@/lib/actions/employee.actions';
 import { getStoreProfile, updateStoreProfile, updateStoreSettings, uploadStoreLogo } from '@/lib/actions/store.actions';
@@ -818,13 +818,18 @@ function ResourcesForm({ storeId }: { storeId: number }) {
 
                 <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4 transition-colors">
                     <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                        <div className="flex-1">
+                        <div className="flex items-start gap-3">
+                            <div className="h-10 w-10 rounded-xl border border-cyan-400/20 bg-cyan-500/15 flex items-center justify-center shrink-0">
+                                <CalendarDays className="h-5 w-5 text-cyan-300" />
+                            </div>
+                            <div className="flex-1">
                             <p className="text-sm font-black text-white uppercase tracking-[0.15em]">
                                 Data de Entrega na OS
                             </p>
                             <p className="mt-2 text-xs text-slate-400 leading-relaxed">
                                 Escolha se a loja usa a data de entrega prevista na ordem de serviço. Quando desligado, o programa continua igual e o radar operacional deixa de mostrar o bloco de próximas entregas.
                             </p>
+                        </div>
                         </div>
 
                         <select
@@ -841,13 +846,18 @@ function ResourcesForm({ storeId }: { storeId: number }) {
 
                 <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4 transition-colors">
                     <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                        <div className="flex-1">
+                        <div className="flex items-start gap-3">
+                            <div className="h-10 w-10 rounded-xl border border-indigo-400/20 bg-indigo-500/15 flex items-center justify-center shrink-0">
+                                <Files className="h-5 w-5 text-indigo-300" />
+                            </div>
+                            <div className="flex-1">
                             <p className="text-sm font-black text-white uppercase tracking-[0.15em]">
                                 Modelo de Ordem de Serviço
                             </p>
                             <p className="mt-2 text-xs text-slate-400 leading-relaxed">
                                 Define se cada venda pode ter várias fichas técnicas ou se a venda experimental usa uma única OS embutida na própria venda.
                             </p>
+                        </div>
                         </div>
 
                         <select
@@ -882,7 +892,11 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                 </label>)}
 
                 <div className="rounded-xl border border-white/10 bg-black/20 p-4 transition-colors">
-                    <div>
+                    <div className="flex items-start gap-3">
+                        <div className="h-10 w-10 rounded-xl border border-amber-400/20 bg-amber-500/15 flex items-center justify-center shrink-0">
+                            <ReceiptText className="h-5 w-5 text-amber-300" />
+                        </div>
+                        <div className="flex-1">
                         <p className="text-sm font-black text-white uppercase tracking-[0.15em] mb-2">
                             Formato de Impressão do Recibo
                         </p>
@@ -916,10 +930,15 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                             </label>
                         </div>
                     </div>
+                    </div>
                 </div>
 
                 <div className="rounded-xl border border-white/10 bg-black/20 p-4 transition-colors">
-                    <div>
+                    <div className="flex items-start gap-3">
+                        <div className="h-10 w-10 rounded-xl border border-sky-400/20 bg-sky-500/15 flex items-center justify-center shrink-0">
+                            <ClipboardList className="h-5 w-5 text-sky-300" />
+                        </div>
+                        <div className="flex-1">
                         <p className="text-sm font-black text-white uppercase tracking-[0.15em] mb-2">
                             Formato de Impressão da OS
                         </p>
@@ -952,6 +971,7 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                                 <span className="text-sm text-slate-300 group-hover:text-white font-medium">Folha Branca (1/2 A4, A5 destacável)</span>
                             </label>
                         </div>
+                    </div>
                     </div>
                 </div>
 

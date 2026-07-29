@@ -14,7 +14,6 @@ import {
   Loader2,
   MessageCircle,
   MessageSquareText,
-  PackageSearch,
   PartyPopper,
   QrCode,
   RefreshCw,
@@ -63,13 +62,6 @@ function qrImageSource(qrCodeBase64: string | null) {
 }
 
 const automationPlaceholders = [
-  {
-    id: 'os_status_proactive',
-    title: 'Enviar status da OS',
-    description: 'Atualizacoes ativas quando a OS muda de etapa.',
-    placeholder: 'Ex.: Oi, {nome}! Seu oculos entrou em uma nova etapa e ja temos uma atualizacao para voce.',
-    icon: PackageSearch,
-  },
   {
     id: 'collection',
     title: 'Fazer cobranca',
