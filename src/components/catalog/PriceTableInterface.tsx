@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ChevronDown,
   ChevronRight,
@@ -19,6 +20,7 @@ import {
 } from 'lucide-react'
 import type { PriceTableData, PriceTableOffer } from '@/lib/actions/price-table.actions'
 import { normalizeLensName } from '@/lib/utils/lens'
+import CatalogLensSaleActions from '@/components/catalog/CatalogLensSaleActions'
 
 type ViewMode = 'matrix' | 'list'
 
@@ -427,13 +429,24 @@ function getAtomicOfferIndexLabel(offer: PriceTableOffer): string {
 function AtomicMatrixTable({
   offers,
   gridSummaryByOffer,
+  storeId,
+  laboratorio,
+  versao,
 }: {
   offers: PriceTableOffer[]
   gridSummaryByOffer: Map<string, OfferGridSummary>
+  storeId: number
+  laboratorio: string
+  versao: string
 }) {
   const [photoMode, setPhotoMode] = useState<AtomicMatrixPhotoMode>('normal')
   const [selectedPhotoTechnology, setSelectedPhotoTechnology] = useState<string | null>(null)
   const [selectedOffer, setSelectedOffer] = useState<PriceTableOffer | null>(null)
+  const [isMounted, setIsMounted] = useState(false)
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   const photoTechnologies = useMemo(
     () =>
@@ -673,7 +686,8 @@ function AtomicMatrixTable({
         </div>
       )}
 
-      {selectedOffer && (
+      {selectedOffer && isMounted
+        ? createPortal(
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
           role="dialog"
@@ -766,9 +780,20 @@ function AtomicMatrixTable({
                 </p>
               </div>
             )}
+
+            <CatalogLensSaleActions
+              storeId={storeId}
+              globalOfferId={selectedOffer.globalOfferId}
+              displayName={getOfferLabel(selectedOffer)}
+              originalPrice={selectedOffer.basePrice || 0}
+              laboratorio={laboratorio}
+              versao={versao}
+            />
           </div>
-        </div>
-      )}
+        </div>,
+        document.body,
+      )
+        : null}
     </div>
   )
 }
@@ -821,6 +846,8 @@ function FamilySection({
   viewMode,
   hasGeometry,
   returnTo,
+  laboratorio,
+  versao,
 }: {
   storeId: number
   familyName: string
@@ -832,6 +859,8 @@ function FamilySection({
   viewMode: ViewMode
   hasGeometry: boolean
   returnTo: string
+  laboratorio: string
+  versao: string
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const geometryHref = useMemo(() => {
@@ -987,7 +1016,13 @@ function FamilySection({
                 </p>
               )}
               {viewMode === 'matrix' && composableOffers.length === 0 ? (
-                <AtomicMatrixTable offers={atomicOffers} gridSummaryByOffer={gridSummaryByOffer} />
+                <AtomicMatrixTable
+                  offers={atomicOffers}
+                  gridSummaryByOffer={gridSummaryByOffer}
+                  storeId={storeId}
+                  laboratorio={laboratorio}
+                  versao={versao}
+                />
               ) : (
                 atomicOffers.map((offer) => <AtomicOfferCard key={offer.globalOfferId} offer={offer} />)
               )}
@@ -1621,6 +1656,8 @@ export default function PriceTableInterface({
               viewMode={viewMode}
               hasGeometry={geometryFamilyNameSet.has(normalizeLensName(group.family.nome))}
               returnTo={safeReturnTo}
+              laboratorio={data.laboratorio}
+              versao={data.versao}
             />
           ))}
 

@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 
-import AddItemFormExperimental from '@/components/vendas/AddItemFormExperimental'
+import AddItemFormExperimental, { type CatalogLensPrefill } from '@/components/vendas/AddItemFormExperimental'
 import AddPagamentoForm from '@/components/vendas/AddPagamentoForm'
 import FinanciamentoBox from '@/components/vendas/FinanciamentoBox'
 import ListaItens from '@/components/vendas/ListaItens'
@@ -66,6 +66,7 @@ interface VendaInterfaceProps {
     isQuitado: boolean
     isVendaFechadaOuCancelada: boolean
     onDataReload: () => Promise<void>
+    initialCatalogLens?: CatalogLensPrefill | null
 }
 
 // Componente de Modal Simples Local
@@ -727,7 +728,7 @@ function SingleServiceOrderCard({
 
 export default function VendaInterfaceExperimental({
     venda, customer, employee, vendaItens, serviceOrders,
-    pagamentos, financiamento, storeSettings, dependentes, oftalmologistas, employees, isQuitado, isVendaFechadaOuCancelada, onDataReload
+    pagamentos, financiamento, storeSettings, dependentes, oftalmologistas, employees, isQuitado, isVendaFechadaOuCancelada, onDataReload, initialCatalogLens = null
 }: VendaInterfaceProps) {
 
     const router = useRouter()
@@ -745,6 +746,7 @@ export default function VendaInterfaceExperimental({
     const [isSingleOSDraftOpen, setIsSingleOSDraftOpen] = useState(false)
     const [singleOSIndex, setSingleOSIndex] = useState(0)
     const [isSingleOSCollapsed, setIsSingleOSCollapsed] = useState(false)
+    const openedCatalogLensRef = useRef(false)
 
     // Novos campos experimentais
     const [obsGeral, setObsGeral] = useState(venda.obs_geral || '')
@@ -787,6 +789,24 @@ export default function VendaInterfaceExperimental({
             setActiveModal('none')
         }
     }, [activeModal, modules.installments])
+
+    useEffect(() => {
+        if (!initialCatalogLens || openedCatalogLensRef.current || isVendaFechadaOuCancelada) return
+        openedCatalogLensRef.current = true
+        setActiveModal('produto')
+
+        const nextParams = new URLSearchParams(searchParams.toString())
+        ;[
+            'open_product',
+            'catalog_offer_id',
+            'catalog_offer_name',
+            'catalog_offer_price',
+            'catalog_offer_lab',
+            'catalog_offer_version',
+        ].forEach((key) => nextParams.delete(key))
+        const query = nextParams.toString()
+        router.replace(query ? `${pathname}?${query}` : pathname)
+    }, [initialCatalogLens, isVendaFechadaOuCancelada, pathname, router, searchParams])
 
     useEffect(() => {
         if (serviceOrders.length === 0) {
@@ -1154,6 +1174,7 @@ export default function VendaInterfaceExperimental({
                     onItemAdded={async () => { await onDataReload(); closeModal(); }}
                     disabled={isVendaFechadaOuCancelada}
                     lensSaleUnitMode={storeSettings?.lens_sale_unit_mode === true}
+                    initialCatalogLens={initialCatalogLens}
                 />
             </SimpleModal>
 

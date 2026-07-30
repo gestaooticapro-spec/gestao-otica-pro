@@ -1277,6 +1277,14 @@ const VendaItemSchema = z.object({
   unidade: z.string().optional().default('Unidade'),
 })
 
+const CatalogOfferSnapshotSchema = z.object({
+  globalOfferId: z.string().min(1),
+  displayName: z.string().min(1),
+  originalPrice: z.coerce.number().nonnegative(),
+  laboratorio: z.string().nullable().optional(),
+  versao: z.string().nullable().optional(),
+})
+
 export type SaveVendaItemResult = {
   success: boolean
   message: string
@@ -1320,9 +1328,25 @@ export async function addVendaItem(
 
   const data = validatedFields.data
 
+  const rawCatalogOfferSnapshot = formData.get('catalog_offer_snapshot')
+  let catalogOfferSnapshot: z.infer<typeof CatalogOfferSnapshotSchema> | null = null
+  if (typeof rawCatalogOfferSnapshot === 'string' && rawCatalogOfferSnapshot.trim()) {
+    try {
+      const parsedSnapshot = JSON.parse(rawCatalogOfferSnapshot)
+      const validation = CatalogOfferSnapshotSchema.safeParse(parsedSnapshot)
+      if (!validation.success) {
+        return { success: false, message: 'A lente carregada da tabela é inválida.', timestamp: Date.now() }
+      }
+      catalogOfferSnapshot = validation.data
+    } catch {
+      return { success: false, message: 'Não foi possível ler a lente carregada da tabela.', timestamp: Date.now() }
+    }
+  }
+
   // Validação: Exigir Produto do Banco para tipos específicos
   const requiresProductId = ['Lente', 'Armacao', 'Solar', 'Tratamento'].includes(data.item_tipo);
-  if (requiresProductId && !data.lente_id && !data.armacao_id && !data.tratamento_id) {
+  const isCatalogLens = data.item_tipo === 'Lente' && catalogOfferSnapshot !== null
+  if (requiresProductId && !data.lente_id && !data.armacao_id && !data.tratamento_id && !isCatalogLens) {
     return {
       success: false,
       message: 'Você precisa selecionar um produto válido do catálogo para este tipo de item.',
@@ -1348,13 +1372,28 @@ export async function addVendaItem(
     unidade: data.unidade,
     tenant_id: (profile as any).tenant_id, // Forçamos aqui
     store_id: (profile as any).store_id,   // CORREÃ‡ÃƒO: Forçamos aqui também
-    detalhes_avulsos: { original_price: data.valor_unitario } // Salva preço original para cálculos de desconto
+    detalhes_avulsos: {
+      original_price: catalogOfferSnapshot?.originalPrice ?? data.valor_unitario,
+      ...(catalogOfferSnapshot
+        ? {
+            catalog_offer: {
+              source: 'price_table',
+              global_offer_id: catalogOfferSnapshot.globalOfferId,
+              display_name: catalogOfferSnapshot.displayName,
+              laboratorio: catalogOfferSnapshot.laboratorio || null,
+              versao: catalogOfferSnapshot.versao || null,
+              original_price: catalogOfferSnapshot.originalPrice,
+              applied_price: data.valor_unitario,
+            },
+          }
+        : {}),
+    },
   }
 
   const supabaseAdmin = createAdminClient();
 
   const { data: saleContext, error: saleContextError } = await (supabaseAdmin.from('vendas') as any)
-    .select('store_id, tenant_id')
+    .select('store_id, tenant_id, status')
     .eq('id', data.venda_id)
     .eq('tenant_id', (profile as any).tenant_id)
     .maybeSingle()
@@ -1364,6 +1403,27 @@ export async function addVendaItem(
       success: false,
       message: 'Venda não encontrada para adicionar o item.',
       timestamp: Date.now(),
+    }
+  }
+
+  if (saleContext.status !== 'Em Aberto') {
+    return { success: false, message: 'Só é possível adicionar itens em vendas abertas.', timestamp: Date.now() }
+  }
+
+  if (catalogOfferSnapshot) {
+    const { data: activeCatalogOffer, error: activeCatalogOfferError } = await (supabaseAdmin.from('tenant_commercial_offers') as any)
+      .select('id')
+      .eq('store_id', saleContext.store_id)
+      .eq('global_offer_id', catalogOfferSnapshot.globalOfferId)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (activeCatalogOfferError || !activeCatalogOffer) {
+      return {
+        success: false,
+        message: 'Esta lente não está mais disponível nas tabelas ativas da loja.',
+        timestamp: Date.now(),
+      }
     }
   }
 
@@ -1382,7 +1442,7 @@ export async function addVendaItem(
 
   const storeSettings = (storeContext.settings || {}) as StoreSettings
   const shouldRegisterLensAsUnits =
-    data.item_tipo === 'Lente' && storeSettings.lens_sale_unit_mode === true
+    data.item_tipo === 'Lente' && storeSettings.lens_sale_unit_mode === true && !catalogOfferSnapshot
 
   if (shouldRegisterLensAsUnits) {
     const pairPrice = data.valor_unitario

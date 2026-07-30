@@ -20,6 +20,15 @@ type AddItemFormProps = {
     onItemAdded: () => Promise<void>
     disabled: boolean
     lensSaleUnitMode: boolean
+    initialCatalogLens?: CatalogLensPrefill | null
+}
+
+export type CatalogLensPrefill = {
+    globalOfferId: string
+    displayName: string
+    originalPrice: number
+    laboratorio?: string | null
+    versao?: string | null
 }
 
 const formatCurrency = (value: number | null | undefined): string => {
@@ -83,6 +92,7 @@ export default function AddItemFormExperimental({
     onItemAdded,
     disabled,
     lensSaleUnitMode,
+    initialCatalogLens = null,
 }: AddItemFormProps) {
     const formRef = useRef<HTMLFormElement>(null)
     const dropdownRef = useRef<HTMLDivElement>(null)
@@ -103,6 +113,8 @@ export default function AddItemFormExperimental({
     const [isDropdownOpen, setIsDropdownOpen] = useState(false)
     const [isSearching, setIsSearching] = useState(false)
     const [isSelected, setIsSelected] = useState(false)
+    const [catalogLens, setCatalogLens] = useState<CatalogLensPrefill | null>(initialCatalogLens)
+    const appliedInitialCatalogLens = useRef(false)
 
     // NOVO ESTADO: Validação Visual
     const [validationError, setValidationError] = useState<string | null>(null)
@@ -111,6 +123,20 @@ export default function AddItemFormExperimental({
     const [saveState, dispatchSave] = useFormState(addVendaItem, initialState)
 
     const lastStateRef = useRef(initialState);
+
+    useEffect(() => {
+        if (!initialCatalogLens || appliedInitialCatalogLens.current) return
+        appliedInitialCatalogLens.current = true
+        setCatalogLens(initialCatalogLens)
+        setItemTipo('Lente')
+        setDescricao(initialCatalogLens.displayName)
+        setQuantidade(1)
+        setUnidade('Par')
+        setValorUnitario(formatCurrency(initialCatalogLens.originalPrice))
+        setSelectedIds({ lente_id: null, armacao_id: null, tratamento_id: null })
+        setIsSelected(false)
+        setValidationError(null)
+    }, [initialCatalogLens])
 
     useEffect(() => {
         if (saveState !== lastStateRef.current) {
@@ -123,6 +149,7 @@ export default function AddItemFormExperimental({
                 setValorUnitario('0,00')
                 setSelectedIds({ lente_id: null, armacao_id: null, tratamento_id: null })
                 setIsSelected(false)
+                setCatalogLens(null)
                 setValidationError(null)
                 onItemAdded()
             } else if (saveState.message) {
@@ -160,6 +187,7 @@ export default function AddItemFormExperimental({
         setDescricao(e.target.value)
         setSelectedIds({ lente_id: null, armacao_id: null, tratamento_id: null })
         setIsSelected(false)
+        setCatalogLens(null)
         setValidationError(null)
     }
 
@@ -168,6 +196,7 @@ export default function AddItemFormExperimental({
         setDescricao(buildSelectedDescription(item))
         setValorUnitario(formatCurrency(item.preco_venda))
         setValidationError(null)
+        setCatalogLens(null)
 
         setItemTipo(item.tipo)
 
@@ -210,6 +239,7 @@ export default function AddItemFormExperimental({
         const nextType = e.target.value as typeof itemTipo
         setItemTipo(nextType);
         setSelectedIds({ lente_id: null, armacao_id: null, tratamento_id: null });
+        setCatalogLens(null)
         if (nextType === 'Lente') {
             setQuantidade(lensSaleUnitMode ? 2 : 1)
             setUnidade(lensSaleUnitMode ? 'Unidade' : 'Par')
@@ -225,12 +255,13 @@ export default function AddItemFormExperimental({
     // mas Lente, Armacao, Solar e Tratamento OBRIGATORIAMENTE precisam de ID.
     const isProductSelected =
         (itemTipo === 'Lente' && selectedIds.lente_id !== null) ||
+        (itemTipo === 'Lente' && catalogLens !== null) ||
         (itemTipo === 'Armacao' && selectedIds.armacao_id !== null) ||
         (itemTipo === 'Solar' && selectedIds.armacao_id !== null) ||
         (itemTipo === 'Tratamento' && selectedIds.tratamento_id !== null) ||
         (itemTipo === 'Outro') ||
         (itemTipo === 'Servico')
-    const isLensUnitSale = lensSaleUnitMode && itemTipo === 'Lente'
+    const isLensUnitSale = lensSaleUnitMode && itemTipo === 'Lente' && catalogLens === null
 
     // ESTILOS ADAPTADOS PARA DARK MODE (MODAL)
     const labelStyle = 'block text-[10px] font-bold text-slate-400 mb-0.5 uppercase tracking-wider'
@@ -251,6 +282,11 @@ export default function AddItemFormExperimental({
                 <input type="hidden" name="lente_id" value={selectedIds.lente_id ?? ''} />
                 <input type="hidden" name="armacao_id" value={selectedIds.armacao_id ?? ''} />
                 <input type="hidden" name="tratamento_id" value={selectedIds.tratamento_id ?? ''} />
+                <input
+                    type="hidden"
+                    name="catalog_offer_snapshot"
+                    value={catalogLens ? JSON.stringify(catalogLens) : ''}
+                />
                 <input type="hidden" name="unidade" value={unidade} />
                 <input type="hidden" name="valor_unitario" value={parseLocaleFloat(valorUnitario)} />
 
@@ -280,6 +316,13 @@ export default function AddItemFormExperimental({
                             <div className="absolute -bottom-5 left-1 text-[10px] text-red-400 font-bold tracking-wide">
                                 * {validationError}
                             </div>
+                        )}
+
+                        {catalogLens && (
+                            <p className="mt-1 text-[10px] font-bold text-cyan-300">
+                                Lente carregada da tabela: {catalogLens.laboratorio || 'Catálogo global'}
+                                {catalogLens.versao ? ` • ${catalogLens.versao}` : ''}
+                            </p>
                         )}
 
                         {isDropdownOpen && suggestions.length > 0 && (
@@ -360,7 +403,7 @@ export default function AddItemFormExperimental({
                             >
                                 <option value="Unidade" className="bg-slate-800">Un.</option>
                                 <option value="Par" className="bg-slate-800">Par</option>
-                                <option value="Caixa" className="bg-slate-800">Cx.</option>
+                                {!catalogLens && <option value="Caixa" className="bg-slate-800">Cx.</option>}
                             </select>
                         </div>
                     </div>
