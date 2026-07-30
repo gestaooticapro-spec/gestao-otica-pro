@@ -148,6 +148,7 @@ export async function saveEmployee(
 
     revalidatePath(`/dashboard/loja/${profile.store_id}/config`)
     revalidatePath(`/dashboard/loja/${profile.store_id}/financeiro/comissoes`)
+    revalidatePath(`/dashboard/loja/${profile.store_id}/reports/avaliacoes`)
     return { success: true, message: 'Funcionário salvo com sucesso!' }
 
   } catch (error: any) {
@@ -205,6 +206,7 @@ export async function toggleEmployeeStatus(
     if (error) throw error
 
     revalidatePath(`/dashboard/loja/${storeId}/config`)
+    revalidatePath(`/dashboard/loja/${storeId}/reports/avaliacoes`)
     return { success: true, message: `Funcionário ${!currentStatus ? 'ativado' : 'inativado'}.` }
   } catch (error: any) {
     return { success: false, message: error.message }

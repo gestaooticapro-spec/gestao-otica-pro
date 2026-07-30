@@ -100,7 +100,29 @@ export default async function PrintReciboPage(
 }
 
 function PrintTrigger() {
+    const printScript = `
+        (() => {
+            const closeAfterPrint = () => {
+                window.removeEventListener('afterprint', closeAfterPrint)
+                window.close()
+            }
+
+            const startPrint = () => {
+                window.addEventListener('afterprint', closeAfterPrint, { once: true })
+                window.print()
+            }
+
+            // Aguarda a página terminar de carregar para garantir que o recibo
+            // esteja renderizado antes de abrir a janela de impressão.
+            if (document.readyState === 'complete') {
+                window.setTimeout(startPrint, 800)
+            } else {
+                window.addEventListener('load', () => window.setTimeout(startPrint, 800), { once: true })
+            }
+        })()
+    `
+
     return (
-        <script dangerouslySetInnerHTML={{ __html: 'window.onafterprint = function() { window.close(); }; window.print();' }} />
+        <script dangerouslySetInnerHTML={{ __html: printScript }} />
     )
 }

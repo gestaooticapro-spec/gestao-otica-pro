@@ -24,6 +24,7 @@ import AddDependenteModal from '@/components/modals/AddDependenteModal'
 import AddOftalmoModal from '@/components/modals/AddOftalmoModal'
 import PrescriptionHistoryModal from '@/components/modals/PrescriptionHistoryModal'
 import OpticalEvaluationImportModal from '@/components/modals/OpticalEvaluationImportModal'
+import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import { DegreeInput } from '@/components/ui/DegreeInput'
 import {
     applyOpticalEvaluationToServiceOrder,
@@ -284,6 +285,8 @@ function ServiceOrderFormContent({
     const [localOftalmos, setLocalOftalmos] = useState(oftalmosList)
     const [sourceOpticalEvaluationId, setSourceOpticalEvaluationId] = useState('')
     const [linkedEvaluationSummary, setLinkedEvaluationSummary] = useState<OpticalEvaluationSummary | null>(null)
+    const [isEvaluationUnlinkAuthOpen, setIsEvaluationUnlinkAuthOpen] = useState(false)
+    const [evaluationUnlinkAuthorizer, setEvaluationUnlinkAuthorizer] = useState<Pick<Database['public']['Tables']['employees']['Row'], 'id' | 'full_name' | 'role'> | null>(null)
     const [isLoadingLinkedEvaluation, setIsLoadingLinkedEvaluation] = useState(false)
     const [isApplyingEvaluation, startApplyEvaluationTransition] = useTransition()
 
@@ -450,6 +453,7 @@ function ServiceOrderFormContent({
         setProtocolo('')
         setSourceOpticalEvaluationId('')
         setLinkedEvaluationSummary(null)
+        setEvaluationUnlinkAuthorizer(null)
         setPendingReservationBySlot(emptyPendingReservations())
     }, [])
 
@@ -614,6 +618,17 @@ function ServiceOrderFormContent({
         const confirmed = confirm('Deseja remover o vínculo com a avaliação importada? Os campos copiados permanecerão na OS até você alterá-los.')
         if (!confirmed) return
 
+        setIsEvaluationUnlinkAuthOpen(true)
+    }
+
+    const handleEvaluationUnlinkAuthSuccess = (employee: Pick<Database['public']['Tables']['employees']['Row'], 'id' | 'full_name' | 'role'>) => {
+        if (employee.role !== 'gerente') {
+            alert('Desvinculacao nao autorizada. Apenas um gerente pode remover o vinculo com a avaliacao.')
+            setEvaluationUnlinkAuthorizer(null)
+            return
+        }
+
+        setEvaluationUnlinkAuthorizer(employee)
         setSourceOpticalEvaluationId('')
         setLinkedEvaluationSummary(null)
     }
@@ -1223,6 +1238,7 @@ ${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tok
                 <input type="hidden" name="venda_id" value={vendaId} />
                 <input type="hidden" name="customer_id" value={customer.id} />
                 <input type="hidden" name="source_optical_evaluation_id" value={sourceOpticalEvaluationId} />
+                <input type="hidden" name="evaluation_unlink_authorizer_id" value={evaluationUnlinkAuthorizer?.id ?? ''} />
                 <input type="hidden" name="item_links_json" value={JSON.stringify([{ item_id: lenteOdItemId, uso: 'lente_od' }, { item_id: lenteOeItemId, uso: 'lente_oe' }, { item_id: armacaoItemId, uso: 'armacao' }].filter(x => x.item_id))} />
                 <input type="hidden" name="pending_reservations_json" value={JSON.stringify(Object.values(pendingReservationBySlot).filter(Boolean))} />
 
@@ -1277,6 +1293,14 @@ ${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tok
                 dependenteId={dependenteId ? parseInt(dependenteId) : null}
                 serviceOrderId={activeId || null}
                 patientName={currentPatientName}
+            />
+            <EmployeeAuthModal
+                storeId={storeId}
+                isOpen={isEvaluationUnlinkAuthOpen}
+                onClose={() => setIsEvaluationUnlinkAuthOpen(false)}
+                onSuccess={handleEvaluationUnlinkAuthSuccess}
+                title="Autorizar desvinculaÃ§Ã£o"
+                description="Apenas o PIN de um gerente pode remover o vÃ­nculo com a avaliaÃ§Ã£o."
             />
         </>
     )

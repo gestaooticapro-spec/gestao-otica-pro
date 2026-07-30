@@ -312,6 +312,29 @@ export async function saveServiceOrder(
     previousSourceEvaluationId = existingOrderLink?.source_optical_evaluation_id ?? null
   }
 
+  const requestedSourceEvaluationId = validated.data.source_optical_evaluation_id ?? null
+  let evaluationUnlinkAuthorizerName: string | null = null
+  let evaluationUnlinkAuthorizerId: number | null = null
+  if (previousSourceEvaluationId && !requestedSourceEvaluationId) {
+    const authorizerId = Number(formData.get('evaluation_unlink_authorizer_id') || 0)
+    const { data: authorizer } = await (supabaseAdmin.from('employees') as any)
+      .select('id, full_name, role, is_active')
+      .eq('id', authorizerId)
+      .eq('store_id', osData.store_id)
+      .maybeSingle()
+
+    if (!authorizer || authorizer.is_active !== true || authorizer.role !== 'gerente') {
+      return {
+        success: false,
+        message: 'Desvinculacao nao autorizada. Apenas um gerente pode remover o vinculo com a avaliacao.',
+        timestamp: Date.now(),
+      }
+    }
+
+    evaluationUnlinkAuthorizerName = authorizer.full_name
+    evaluationUnlinkAuthorizerId = authorizer.id
+  }
+
   let itemLinks: z.infer<typeof ItemLinkSchema>[] = []
   try {
     const json = formData.get('item_links_json') as string
@@ -325,6 +348,68 @@ export async function saveServiceOrder(
     }
   } catch (e) {
     return { success: false, message: 'Erro nos vínculos de itens.', timestamp: Date.now() }
+  }
+
+  const lensItemIds = [...new Set(
+    itemLinks
+      .filter((link) => link.uso === 'lente_od' || link.uso === 'lente_oe')
+      .map((link) => link.item_id)
+  )]
+
+  if (lensItemIds.length > 0) {
+    const { data: saleOrders, error: saleOrdersError } = await (supabaseAdmin.from('service_orders') as any)
+      .select('id')
+      .eq('venda_id', osData.venda_id)
+      .eq('store_id', osData.store_id)
+
+    if (saleOrdersError) {
+      return { success: false, message: 'Nao foi possivel validar as lentes vinculadas a esta venda.', timestamp: Date.now() }
+    }
+
+    const currentOrderLensItemIds = new Set<number>()
+    if (id) {
+      const { data: currentOrderLinks, error: currentOrderLinksError } = await (supabaseAdmin.from('venda_itens_os_links') as any)
+        .select('venda_item_id, uso_na_os')
+        .eq('service_order_id', id)
+
+      if (currentOrderLinksError) {
+        return { success: false, message: 'Nao foi possivel validar os itens desta OS.', timestamp: Date.now() }
+      }
+
+      ;(currentOrderLinks || [])
+        .filter((link: { uso_na_os: string }) => link.uso_na_os === 'lente_od' || link.uso_na_os === 'lente_oe')
+        .forEach((link: { venda_item_id: number }) => currentOrderLensItemIds.add(Number(link.venda_item_id)))
+    }
+
+    const otherOrderIds = (saleOrders || [])
+      .map((order: { id: number }) => Number(order.id))
+      .filter((orderId: number) => orderId !== id)
+
+    if (otherOrderIds.length > 0) {
+      const { data: otherOrderLinks, error: otherOrderLinksError } = await (supabaseAdmin.from('venda_itens_os_links') as any)
+        .select('venda_item_id, uso_na_os')
+        .in('service_order_id', otherOrderIds)
+        .in('venda_item_id', lensItemIds)
+
+      if (otherOrderLinksError) {
+        return { success: false, message: 'Nao foi possivel validar as lentes usadas nas outras OSs.', timestamp: Date.now() }
+      }
+
+      const unavailableLensItemIds = [...new Set(
+        (otherOrderLinks || [])
+          .filter((link: { uso_na_os: string }) => link.uso_na_os === 'lente_od' || link.uso_na_os === 'lente_oe')
+          .map((link: { venda_item_id: number }) => Number(link.venda_item_id))
+          .filter((itemId: number) => !currentOrderLensItemIds.has(itemId))
+      )]
+
+      if (unavailableLensItemIds.length > 0) {
+        return {
+          success: false,
+          message: 'Esta lente ja esta vinculada a outra OS desta venda. Inclua outro par de lentes para usa-la em uma segunda OS.',
+          timestamp: Date.now(),
+        }
+      }
+    }
   }
 
   let pendingReservations: z.infer<typeof PendingReservationSchema>[] = []
@@ -540,11 +625,45 @@ export async function saveServiceOrder(
 
     if (previousSourceEvaluationId && previousSourceEvaluationId !== nextSourceEvaluationId) {
       const { error: unlinkError } = await (supabaseAdmin.from('optical_evaluations') as any)
-        .update({ exported_service_order_id: null, updated_at: new Date().toISOString() })
+        .update({
+          exported_service_order_id: null,
+          unlinked_at: new Date().toISOString(),
+          unlinked_by_employee_id: evaluationUnlinkAuthorizerId,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', previousSourceEvaluationId)
         .eq('store_id', osData.store_id)
 
       if (unlinkError) throw unlinkError
+
+      const { data: vendaAtual, error: vendaAtualError } = await (supabaseAdmin.from('vendas') as any)
+        .select('obs_geral')
+        .eq('id', osData.venda_id)
+        .eq('store_id', osData.store_id)
+        .single()
+
+      if (vendaAtualError) throw vendaAtualError
+
+      const unlinkNote = `Esta venda foi desvinculada da avaliacao por ${evaluationUnlinkAuthorizerName}.`
+      const currentObservation = String(vendaAtual?.obs_geral || '').trim()
+      const nextObservation = currentObservation ? `${currentObservation}\n\n${unlinkNote}` : unlinkNote
+      const { error: observationError } = await (supabaseAdmin.from('vendas') as any)
+        .update({ obs_geral: nextObservation })
+        .eq('id', osData.venda_id)
+        .eq('store_id', osData.store_id)
+
+      if (observationError) {
+        await (supabaseAdmin.from('optical_evaluations') as any)
+          .update({
+            exported_service_order_id: savedId,
+            unlinked_at: null,
+            unlinked_by_employee_id: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', previousSourceEvaluationId)
+          .eq('store_id', osData.store_id)
+        throw observationError
+      }
     }
 
     if (nextSourceEvaluationId) {
@@ -571,7 +690,12 @@ export async function saveServiceOrder(
       }
 
       const { error: linkError } = await (supabaseAdmin.from('optical_evaluations') as any)
-        .update({ exported_service_order_id: savedId, updated_at: new Date().toISOString() })
+        .update({
+          exported_service_order_id: savedId,
+          unlinked_at: null,
+          unlinked_by_employee_id: null,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', nextSourceEvaluationId)
         .eq('store_id', osData.store_id)
 
@@ -580,6 +704,7 @@ export async function saveServiceOrder(
 
     revalidatePath(`/dashboard/loja/${osData.store_id}/vendas/${osData.venda_id}/os`)
     revalidatePath(`/dashboard/loja/${osData.store_id}/vendas/${osData.venda_id}`)
+    revalidatePath(`/dashboard/loja/${osData.store_id}/vendas/${osData.venda_id}/experimental`)
     revalidatePath(`/dashboard/loja/${osData.store_id}/avaliacao`)
 
     const { data: finalOS } = await supabaseAdmin
@@ -1957,6 +2082,14 @@ export async function saveFinanciamentoLoja(...args: any[]) {
   if (erroCapa) return { success: false, message: `Erro ao criar contrato: ${erroCapa.message}` };
 
   const capaCriada: any = capa;
+  const desfazerCarneCriado = async () => {
+    await (supabaseAdmin.from('financiamento_parcelas') as any)
+      .delete()
+      .eq('financiamento_id', capaCriada.id);
+    await (supabaseAdmin.from('financiamento_loja') as any)
+      .delete()
+      .eq('id', capaCriada.id);
+  };
 
   // 8. Gerar Parcelas
   // NOVO: Se parcelas_customizadas foi enviado, usa os valores editados pelo usuário
@@ -2007,7 +2140,7 @@ export async function saveFinanciamentoLoja(...args: any[]) {
   const { error: erroParcelas } = await (supabaseAdmin.from('financiamento_parcelas') as any).insert(parcelas);
 
   if (erroParcelas) {
-    await supabaseAdmin.from('financiamento_loja').delete().eq('id', capaCriada.id);
+    await desfazerCarneCriado();
     return { success: false, message: `Erro ao gerar parcelas: ${erroParcelas.message}` };
   }
 
@@ -2034,7 +2167,10 @@ export async function saveFinanciamentoLoja(...args: any[]) {
     })
     .eq('id', venda_id);
 
-  if (erroUpdate) return { success: false, message: `Erro ao atualizar venda: ${erroUpdate.message}` };
+  if (erroUpdate) {
+    await desfazerCarneCriado();
+    return { success: false, message: `Erro ao atualizar venda: ${erroUpdate.message}` };
+  }
 
   await calcularERegistrarComissao(venda_id);
   await calcularComissaoMedico(venda_id);

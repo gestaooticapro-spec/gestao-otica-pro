@@ -213,6 +213,7 @@ export default function FinanciamentoBox({
     const [vencimentoPrimeira, setVencimentoPrimeira] = useState(getFirstDueMonth())
     const [parcelasGrid, setParcelasGrid] = useState<ParcelaGridItem[]>([])
     const [obs, setObs] = useState('')
+    const [isCreatingCarne, setIsCreatingCarne] = useState(false)
 
     const initialState: CreateFinanciamentoResult = { success: false, message: '' }
     // NOTA: saveState removido pois usaremos chamada manual
@@ -501,6 +502,8 @@ export default function FinanciamentoBox({
                         const somaValida = diferencaSoma < 0.02; // Tolerância de 2 centavos
 
                         const handleCriarCarneManual = async (empIdOverride?: number) => {
+                            if (isCreatingCarne) return;
+
                             if (parcelasGrid.length === 0) {
                                 alert("Por favor, clique em CALCULAR antes de gerar o carnê.");
                                 return;
@@ -529,19 +532,31 @@ export default function FinanciamentoBox({
                                 parcelas_customizadas: parcelasCustomizadas
                             };
 
-                            const resultado = await saveFinanciamentoLoja(null, payload);
+                            setIsCreatingCarne(true);
 
-                            if (resultado.success) {
+                            try {
+                                const resultado = await saveFinanciamentoLoja(null, payload);
+
+                                if (!resultado.success) {
+                                    alert(resultado.message || "Erro desconhecido ao criar carnê.");
+                                    return;
+                                }
+
                                 setParcelasGrid([]);
-                                setIsDeletedLocally(false); // Garante que a UI atualize
-                                // AUTO-PRINT: Abre a impressão automaticamente
+                                setIsDeletedLocally(false);
+
+                                // Atualiza e fecha o modal antes de abrir a impressão em outra aba.
+                                // Assim, a venda já estará consistente se o saldo for zerado.
+                                await onFinanceAdded();
+
                                 if (resultado.data?.id) {
                                     window.open(`/print/promissoria/${resultado.data.id}`, '_blank');
                                 }
-
-                                await onFinanceAdded();
-                            } else {
-                                alert(resultado.message || "Erro desconhecido ao criar carnê.");
+                            } catch (error) {
+                                console.error('[FinanciamentoBox] Erro inesperado ao gerar carnê:', error);
+                                alert('O carnê pode ter sido criado, mas a tela não conseguiu atualizar. Volte à venda e confira antes de tentar novamente.');
+                            } finally {
+                                setIsCreatingCarne(false);
                             }
                         };
 
@@ -549,7 +564,7 @@ export default function FinanciamentoBox({
                         const handleAuthSuccessAuto = (employee: Pick<Employee, 'id' | 'full_name'>) => {
                             setAuthedEmployee(employee);
                             setIsConfigModalOpen(false);
-                            handleCriarCarneManual(employee.id);
+                            void handleCriarCarneManual(employee.id);
                         }
 
                         return (
@@ -639,10 +654,10 @@ export default function FinanciamentoBox({
                                                 }
                                                 setIsConfigModalOpen(true)
                                             }}
-                                            disabled={parcelasGrid.length === 0 || !somaValida}
+                                            disabled={parcelasGrid.length === 0 || !somaValida || isCreatingCarne}
                                             className={`w-full h-9 font-bold text-xs rounded-lg shadow-lg shadow-amber-900/20 transition-all active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wide ${somaValida ? 'bg-amber-500 hover:bg-amber-600 text-white border border-amber-500/50' : 'bg-white/10 text-slate-500 border border-white/10'}`}
                                         >
-                                            <CheckCircle2 className="h-4 w-4" /> GERAR CARNÊ
+                                            {isCreatingCarne ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} {isCreatingCarne ? 'GERANDO...' : 'GERAR CARNÊ'}
                                         </button>
                                     ) : (
                                         <div className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
@@ -653,9 +668,11 @@ export default function FinanciamentoBox({
                                             <button
                                                 type="button"
                                                 onClick={() => handleCriarCarneManual()}
+                                                disabled={isCreatingCarne}
                                                 className="h-9 px-4 bg-green-500 hover:bg-green-600 text-white font-bold text-xs rounded-lg shadow-md transition-all active:scale-95 flex items-center gap-1"
                                             >
-                                                CONFIRMAR
+                                                {isCreatingCarne ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                                                {isCreatingCarne ? 'GERANDO...' : 'CONFIRMAR'}
                                             </button>
                                         </div>
                                     )}

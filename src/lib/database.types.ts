@@ -1308,6 +1308,8 @@ export interface Database {
           parse_warning: string | null
           document_hash: string | null
           exported_service_order_id: number | null
+          unlinked_at: string | null
+          unlinked_by_employee_id: number | null
           employee_id: number | null
           outcome_status: 'venda_fechada' | 'cliente_pesquisa' | 'perdido_preco' | 'perdido_produto' | 'perdido_prazo' | null
           panic_reason: string | null
@@ -1373,6 +1375,8 @@ export interface Database {
           parse_warning?: string | null
           document_hash?: string | null
           exported_service_order_id?: number | null
+          unlinked_at?: string | null
+          unlinked_by_employee_id?: number | null
           employee_id?: number | null
         }
         Update: {
@@ -1434,6 +1438,8 @@ export interface Database {
           parse_warning?: string | null
           document_hash?: string | null
           exported_service_order_id?: number | null
+          unlinked_at?: string | null
+          unlinked_by_employee_id?: number | null
           employee_id?: number | null
         }
       }

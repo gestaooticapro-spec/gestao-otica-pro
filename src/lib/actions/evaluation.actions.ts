@@ -103,6 +103,8 @@ export type OpticalEvaluationRow = {
   parse_warning: string | null
   document_hash: string | null
   exported_service_order_id: number | null
+  unlinked_at: string | null
+  unlinked_by_employee_id: number | null
   outcome_status: 'venda_fechada' | 'cliente_pesquisa' | 'perdido_preco' | 'perdido_produto' | 'perdido_prazo' | null
   panic_reason: string | null
   recommended_items: unknown | null
@@ -812,6 +814,7 @@ export async function getRecentEvaluationsForEmployee(
       query = query
         .is('exported_venda_id', null)
         .is('outcome_status', null)
+        .is('unlinked_at', null)
     }
 
     if (typeof maxAgeDays === 'number' && Number.isFinite(maxAgeDays) && maxAgeDays > 0) {
@@ -863,6 +866,7 @@ export async function getRecentEvaluationsForStore(
       query = query
         .is('exported_venda_id', null)
         .is('outcome_status', null)
+        .is('unlinked_at', null)
     }
 
     if (typeof maxAgeDays === 'number' && Number.isFinite(maxAgeDays) && maxAgeDays > 0) {

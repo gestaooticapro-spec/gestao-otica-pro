@@ -88,6 +88,7 @@ export async function getEmployeeEvaluationReport(
   const { data: evaluations, error } = await (supabase.from('optical_evaluations') as any)
     .select('id, employee_id, updated_at, outcome_status, exported_venda_id, recommended_items, employees(full_name)')
     .eq('store_id', storeId)
+    .is('unlinked_at', null)
     .gte('created_at', inicioIso)
     .lte('created_at', fimIso)
     .order('created_at', { ascending: false })

@@ -16,6 +16,9 @@ import {
 } from 'lucide-react'
 import { getEmployeeEvaluationReport } from '@/lib/actions/reports.actions'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 function formatMoney(value: number) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }

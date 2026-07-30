@@ -246,6 +246,7 @@ function SingleServiceOrderCard({
     customer,
     vendaItens,
     serviceOrder,
+    serviceOrders,
     dependentes,
     oftalmologistas,
     employees,
@@ -263,6 +264,7 @@ function SingleServiceOrderCard({
     customer: Customer | null
     vendaItens: VendaItem[]
     serviceOrder?: ServiceOrderWithLinks
+    serviceOrders: ServiceOrderWithLinks[]
     dependentes: Dependente[]
     oftalmologistas: Oftalmologista[]
     employees: Employee[]
@@ -396,12 +398,24 @@ function SingleServiceOrderCard({
     const itensLente = vendaItens.filter((item) => item.item_tipo === 'Lente')
     const itensArmacao = vendaItens.filter((item) => item.item_tipo === 'Armacao' || item.item_tipo === 'Solar')
     const firstEmployeeId = venda.employee_id || employees[0]?.id || null
+    const lenteItemIdsEmOutraOs = new Set(
+        serviceOrders
+            .filter((order) => order.id !== serviceOrder?.id)
+            .flatMap((order) => order.links || [])
+            .filter((link) => link.uso_na_os === 'lente_od' || link.uso_na_os === 'lente_oe')
+            .map((link) => link.venda_item_id)
+    )
 
     const isLenteDisponivel = (item: VendaItem, olho: 'OD' | 'OE') => {
         if ((item as any).unidade === 'Par') return true
         const outroOlhoId = olho === 'OD' ? lenteOeItemId : lenteOdItemId
         if (!outroOlhoId || outroOlhoId !== item.id.toString()) return true
         return Number((item as any).quantidade || 0) >= 2
+    }
+
+    const isLenteDisponivelEmOutraOs = (item: VendaItem, olho: 'OD' | 'OE') => {
+        const selecaoAtual = olho === 'OD' ? lenteOdItemId : lenteOeItemId
+        return selecaoAtual === item.id.toString() || !lenteItemIdsEmOutraOs.has(item.id)
     }
 
     const itemLinks = [
@@ -560,7 +574,7 @@ function SingleServiceOrderCard({
                                 <label className={osLabelStyle}>Lente OD</label>
                                 <select value={lenteOdItemId} onChange={(e) => setLenteOdItemId(e.target.value)} disabled={disabled} className={osSelectStyle}>
                                     <option value="" className={osOptionStyle}>Selecione...</option>
-                                    {itensLente.filter((item) => isLenteDisponivel(item, 'OD')).map((item) => (
+                                    {itensLente.filter((item) => isLenteDisponivel(item, 'OD') && isLenteDisponivelEmOutraOs(item, 'OD')).map((item) => (
                                         <option key={item.id} value={item.id} className={osOptionStyle}>{item.descricao}</option>
                                     ))}
                                 </select>
@@ -569,7 +583,7 @@ function SingleServiceOrderCard({
                                 <label className={osLabelStyle}>Lente OE</label>
                                 <select value={lenteOeItemId} onChange={(e) => setLenteOeItemId(e.target.value)} disabled={disabled} className={osSelectStyle}>
                                     <option value="" className={osOptionStyle}>Selecione...</option>
-                                    {itensLente.filter((item) => isLenteDisponivel(item, 'OE')).map((item) => (
+                                    {itensLente.filter((item) => isLenteDisponivel(item, 'OE') && isLenteDisponivelEmOutraOs(item, 'OE')).map((item) => (
                                         <option key={item.id} value={item.id} className={osOptionStyle}>{item.descricao}</option>
                                     ))}
                                 </select>
@@ -736,6 +750,7 @@ export default function VendaInterfaceExperimental({
     const [obsGeral, setObsGeral] = useState(venda.obs_geral || '')
     const [nfEmitida, setNfEmitida] = useState(venda.nf_emitida || false)
     const [isSavingObs, setIsSavingObs] = useState(false)
+    const savedObsGeral = venda.obs_geral?.trim() || ''
 
     const vendedorNome = employee?.full_name || 'N/A'
     const employeeIdFinanceiro = employee?.id || 0
@@ -919,6 +934,17 @@ export default function VendaInterfaceExperimental({
             <div className="relative z-10 flex-1 overflow-y-auto custom-scrollbar p-4">
                 <div className="max-w-5xl mx-auto w-full space-y-4">
 
+                    {savedObsGeral && (
+                        <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-amber-100 shadow-lg shadow-amber-950/10">
+                            <div className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-300">
+                                Observação da venda
+                            </div>
+                            <p className="whitespace-pre-wrap text-sm leading-relaxed text-amber-50">
+                                {savedObsGeral}
+                            </p>
+                        </div>
+                    )}
+
                     {/* QUADRO 1: PRODUTOS (AZUL - Comercial) */}
                     <SectionCard
                         title="Produtos"
@@ -957,6 +983,7 @@ export default function VendaInterfaceExperimental({
                                     customer={customer}
                                     vendaItens={vendaItens}
                                     serviceOrder={singleServiceOrder}
+                                    serviceOrders={serviceOrders}
                                     dependentes={dependentes}
                                     oftalmologistas={oftalmologistas}
                                     employees={employees}
