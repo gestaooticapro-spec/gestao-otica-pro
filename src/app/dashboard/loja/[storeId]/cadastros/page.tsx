@@ -605,7 +605,7 @@ function FormProdutosGerais({ data, onChange, disabled, sugestoes, storeId }: an
       </div>
       <div className="col-span-3">
         <label className={`${labelStyle} text-emerald-400`}>Preço Venda (R$) *</label>
-        <input type="number" step="0.01" required value={data.preco_venda || ''} onChange={e => onChange('preco_venda', e.target.value)} className={`${inputStyle} border-emerald-500/30 bg-emerald-900/20 text-emerald-300`} disabled={disabled} />
+        <input type="number" step="0.01" value={data.preco_venda || ''} onChange={e => onChange('preco_venda', e.target.value)} className={`${inputStyle} border-emerald-500/30 bg-emerald-900/20 text-emerald-300`} disabled={disabled} />
       </div>
       <div className="col-span-3">
         <label className={labelStyle}>Estoque Atual</label>
@@ -696,8 +696,8 @@ function FormArmacoes({ data, onChange, disabled, storeId }: any) {
         <input type="number" step="0.01" value={data.preco_custo || ''} onChange={e => onChange('preco_custo', e.target.value)} className={inputStyle} disabled={disabled} />
       </div>
       <div className="col-span-6">
-        <label className={`${labelStyle} text-emerald-400`}>Preço de Venda (R$) *</label>
-        <input type="number" step="0.01" required value={data.preco_venda || ''} onChange={e => onChange('preco_venda', e.target.value)} className={`${inputStyle} border-emerald-500/30 bg-emerald-900/20 text-emerald-300`} disabled={disabled} />
+      <label className={`${labelStyle} text-emerald-400`}>Preço de Venda (R$)</label>
+      <input type="number" step="0.01" value={data.preco_venda || ''} onChange={e => onChange('preco_venda', e.target.value)} className={`${inputStyle} border-emerald-500/30 bg-emerald-900/20 text-emerald-300`} disabled={disabled} />
       </div>
     </div>
   );
@@ -752,8 +752,8 @@ function FormLentes({ data, onChange, disabled, onOpenGrid }: any) {
         <input type="number" step="0.01" value={data.preco_custo || ''} onChange={e => onChange('preco_custo', e.target.value)} className={inputStyle} disabled={disabled} />
       </div>
       <div>
-        <label className={`${labelStyle} text-emerald-400`}>Preço de Venda (R$) *</label>
-        <input type="number" step="0.01" required value={data.preco_venda || ''} onChange={e => onChange('preco_venda', e.target.value)} className={`${inputStyle} border-emerald-500/30 bg-emerald-900/20 text-emerald-300`} disabled={disabled} />
+      <label className={`${labelStyle} text-emerald-400`}>Preço de Venda (R$)</label>
+      <input type="number" step="0.01" value={data.preco_venda || ''} onChange={e => onChange('preco_venda', e.target.value)} className={`${inputStyle} border-emerald-500/30 bg-emerald-900/20 text-emerald-300`} disabled={disabled} />
       </div>
     </div>
   );
@@ -776,8 +776,8 @@ function FormTratamentos({ data, onChange, disabled }: any) {
           <input type="number" step="0.01" value={data.preco_custo_adicional || ''} onChange={e => onChange('preco_custo_adicional', e.target.value)} className={inputStyle} disabled={disabled} />
         </div>
         <div>
-          <label className={`${labelStyle} text-emerald-400`}>Venda Adicional (R$) *</label>
-          <input type="number" step="0.01" required value={data.preco_venda_adicional || ''} onChange={e => onChange('preco_venda_adicional', e.target.value)} className={`${inputStyle} border-emerald-500/30 bg-emerald-900/20 text-emerald-300`} disabled={disabled} />
+          <label className={`${labelStyle} text-emerald-400`}>Venda Adicional (R$)</label>
+          <input type="number" step="0.01" value={data.preco_venda_adicional || ''} onChange={e => onChange('preco_venda_adicional', e.target.value)} className={`${inputStyle} border-emerald-500/30 bg-emerald-900/20 text-emerald-300`} disabled={disabled} />
         </div>
       </div>
     </div>

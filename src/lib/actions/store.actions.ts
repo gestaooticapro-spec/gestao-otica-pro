@@ -312,7 +312,7 @@ export async function updateStoreSettings(storeId: number, newSettings: Partial<
             .eq('id', storeId)
 
         revalidatePath(`/dashboard/loja/${storeId}/config`)
-        revalidatePath(`/dashboard/loja/${storeId}`)
+        revalidatePath(`/dashboard/loja/${storeId}`, 'layout')
         revalidatePath(`/dashboard/loja/${storeId}/vendas`, 'layout')
         return { success: true, message: 'Recursos atualizados!' }
     } catch (error: unknown) {

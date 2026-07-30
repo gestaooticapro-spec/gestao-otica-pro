@@ -91,6 +91,11 @@ async function insertSupplierWithPkeyRetry(supabaseAdmin: any, payload: Record<s
 }
 
 // --- SCHEMAS ---
+const PriceSchema = z.preprocess(
+  (value) => value === null || value === undefined || value === '' ? 0 : value,
+  z.coerce.number().min(0)
+)
+
 const LenteSchema = z.object({
   id: z.coerce.number().optional(),
   store_id: z.coerce.number(),
@@ -100,7 +105,7 @@ const LenteSchema = z.object({
   material: z.string().optional().nullable(),
   indice_refracao: z.string().optional().nullable(),
   preco_custo: z.coerce.number().optional().nullable(),
-  preco_venda: z.coerce.number().min(0, 'Preço obrigatório'),
+  preco_venda: PriceSchema,
 })
 
 const ArmacaoSchema = z.object({
@@ -114,7 +119,7 @@ const ArmacaoSchema = z.object({
   tamanho_ponte: z.string().optional().nullable(),
   tamanho_haste: z.string().optional().nullable(),
   preco_custo: z.coerce.number().optional().nullable(),
-  preco_venda: z.coerce.number().min(0),
+  preco_venda: PriceSchema,
   quantidade_estoque: z.coerce.number().int().default(0),
   codigo_barras: z.string().optional().nullable(),
 })
@@ -125,7 +130,7 @@ const TratamentoSchema = z.object({
   nome_tratamento: z.string().min(2, 'Nome é obrigatório'),
   descricao: z.string().optional().nullable(),
   preco_custo_adicional: z.coerce.number().optional().nullable(),
-  preco_venda_adicional: z.coerce.number().min(0),
+  preco_venda_adicional: PriceSchema,
 })
 
 const ProdutoGeralSchema = z.object({
@@ -135,7 +140,7 @@ const ProdutoGeralSchema = z.object({
   descricao: z.string().min(2, 'Descrição é obrigatória'),
   marca: z.string().optional().nullable(),
   preco_custo: z.coerce.number().optional().nullable(),
-  preco_venda: z.coerce.number().min(0),
+  preco_venda: PriceSchema,
   estoque_atual: z.coerce.number().int().default(0),
   estoque_minimo: z.coerce.number().int().default(1),
   codigo_barras: z.string().optional().nullable(),

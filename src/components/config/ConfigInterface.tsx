@@ -1206,12 +1206,12 @@ function TeamManagement({ storeId }: { storeId: number }) {
                                     <label className={labelStyle}>Nome Completo</label>
                                     <div className="relative">
                                         <User className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
-                                        <input type="text" required value={formData.full_name} onChange={e => setFormData({ ...formData, full_name: e.target.value })} className={`${inputStyle} pl-9`} placeholder="Ex: Fábio Silva" disabled={isSaving} />
+                                        <input type="text" required value={formData.full_name} onChange={e => setFormData({ ...formData, full_name: e.target.value })} className={`${inputStyle} bg-slate-950/70 text-slate-100 pl-9`} style={{ backgroundColor: 'rgba(2, 6, 23, 0.7)', color: '#e2e8f0' }} placeholder="Ex: Fábio Silva" disabled={isSaving} />
                                     </div>
                                 </div>
                                 <div>
                                     <label className={labelStyle}>Cargo / Função</label>
-                                    <select value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value as EmployeeRole })} className={inputStyle} disabled={isSaving}>
+                                    <select value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value as EmployeeRole })} className={`${inputStyle} bg-slate-950/70 text-slate-100 [color-scheme:dark]`} style={{ colorScheme: 'dark', backgroundColor: '#020617', color: '#e2e8f0' }} disabled={isSaving}>
                                         <option value="vendedor">Vendedor (Padrão)</option>
                                         <option value="gerente">Gerente (Acesso Total)</option>
                                         <option value="tecnico">Técnico / Estoquista</option>
@@ -1221,7 +1221,7 @@ function TeamManagement({ storeId }: { storeId: number }) {
                                     <label className={labelStyle}>PIN (4+ Dígitos)</label>
                                     <div className="relative">
                                         <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
-                                        <input type="text" required value={formData.pin} onChange={e => setFormData({ ...formData, pin: e.target.value.replace(/\D/g, '') })} maxLength={6} className={`${inputStyle} pl-9 tracking-widest`} placeholder="****" disabled={isSaving} />
+                                        <input type="text" required value={formData.pin} onChange={e => setFormData({ ...formData, pin: e.target.value.replace(/\D/g, '') })} maxLength={6} className={`${inputStyle} bg-slate-950/70 text-slate-100 pl-9 tracking-widest`} style={{ backgroundColor: 'rgba(2, 6, 23, 0.7)', color: '#e2e8f0' }} placeholder="****" disabled={isSaving} />
                                     </div>
                                 </div>
                             </div>

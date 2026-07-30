@@ -55,7 +55,7 @@ import {
 import { Database } from '@/lib/database.types'
 import { EvaluationDashboard } from './EvaluationDashboard'
 import { updateEvaluationPanicReason, updateEvaluationOutcomeStatus } from '@/lib/actions/evaluation.actions'
-import { createTowerHeatmapSession, getCompletedTowerHeatmapResult } from '@/lib/actions/tower-heatmap.actions'
+import { getCompletedTowerHeatmapResult } from '@/lib/actions/tower-heatmap.actions'
 import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/BackgroundToggle'
 import type {
   RecommendationCaseInput,
@@ -2817,7 +2817,6 @@ export default function EvaluationInterface({
   const [isSearching, startSearchTransition] = useTransition()
   const [isImporting, startImportTransition] = useTransition()
   const [isSaving, startSaveTransition] = useTransition()
-  const [isStartingHeatmap, startHeatmapTransition] = useTransition()
   const [isCreatingVenda, startCreateVendaTransition] = useTransition()
   const [isLoadingHistory, startHistoryTransition] = useTransition()
   const [isGeneratingAi, startAiGenerationTransition] = useTransition()
@@ -3434,44 +3433,6 @@ export default function EvaluationInterface({
     })
   }, [heatmapSessionId, selectedCustomer, storeId])
 
-  const handleStartHeatmap = () => {
-    if (!isHeatmapEligible || !selectedCustomer) {
-      setFormError('O mapa visual exige um titular com receita de longe, adicao e necessidade multifocal confirmada.')
-      return
-    }
-
-    setFormError(null)
-    setFeedback(null)
-
-    startHeatmapTransition(async () => {
-      // A mesma avaliacao e gravada antes de abrir a torre. A sessao persistida
-      // do heatmap sera criada na proxima etapa, pela migration dedicada.
-      const persistedEvaluationId = await persistEvaluationForSale({
-        displayName: form.recommendedLensName || '',
-        commercialSummary: form.commercialRecommendationRaw || null,
-        recommendedItems: aiRecommendations.length > 0 ? aiRecommendations : null,
-      })
-
-      if (!persistedEvaluationId) return
-
-      const sessionResult = await createTowerHeatmapSession({
-        storeId,
-        evaluationId: persistedEvaluationId,
-        customerId: selectedCustomer.id,
-      })
-
-      if (!sessionResult.success || !sessionResult.data) {
-        setFormError(sessionResult.message || 'Nao foi possivel preparar a sessao do mapa visual.')
-        return
-      }
-
-      const query = new URLSearchParams({
-        heatmapSessionId: sessionResult.data.id,
-      })
-      router.push(`/dashboard/loja/${storeId}/lentes/mapa-calor?${query.toString()}`)
-    })
-  }
-
   const handleCreateSaleFromRecommendation = (recommendation: {
     source: 'ai' | 'ivision' | 'deferred'
     displayName: string
@@ -3959,18 +3920,7 @@ export default function EvaluationInterface({
   const recommendationBlockingIssues = recommendationConsistencyIssues.filter((issue) => issue.severity === 'blocker')
   const patientAge = aiCaseInput.idade ?? null
   const isChild = patientAge !== null && patientAge <= 14
-  const hasAdicao = aiCaseInput.adicao !== null
   const usedMultifocalBefore = form.tipoLenteAtual === 'multifocal' || form.tipoLenteAtual === 'bifocal'
-  const hasPositiveAdd = (aiCaseInput.adicao ?? 0) > 0
-  const hasExplicitMultifocalNeed =
-    form.tipoLenteAtual === 'multifocal' ||
-    form.objetivoCompra === 'primeira_multifocal'
-  const isHeatmapEligible =
-    selectedSubjectType === 'customer' &&
-    !!selectedCustomer &&
-    hasAnyDegreeData(form) &&
-    hasPositiveAdd &&
-    hasExplicitMultifocalNeed
   const canGenerateAi =
     hasCatalogForAi &&
     isSubjectChosen &&
@@ -5110,33 +5060,6 @@ export default function EvaluationInterface({
                         <input value={form.medidaAlturaOe} onChange={(e) => handleFormChange('medidaAlturaOe', e.target.value)} className={inputStyle} />
                       </div>
                     </div>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-cyan-400/25 bg-cyan-500/5 p-5 shadow-[0_0_32px_rgba(34,211,238,0.07)]">
-                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">
-                        Mapeamento visual para multifocais
-                      </p>
-                      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-                        Registre o padrao visual antes da indicacao. A avaliacao atual sera preservada e vinculada a proxima sessao de mapa de calor.
-                      </p>
-                      {!isHeatmapEligible && (
-                        <p className="mt-2 text-xs font-bold text-amber-200/90">
-                          Disponivel para titular com receita de longe, adicao positiva e necessidade multifocal confirmada.
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleStartHeatmap}
-                      disabled={isStartingHeatmap || isSaving || !isHeatmapEligible}
-                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-5 py-3 text-xs font-black uppercase tracking-[0.16em] text-cyan-100 transition-colors hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-45"
-                    >
-                      {isStartingHeatmap ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                      {isStartingHeatmap ? 'Preparando mapa...' : 'Mapear padrao visual'}
-                    </button>
                   </div>
                 </div>
 
