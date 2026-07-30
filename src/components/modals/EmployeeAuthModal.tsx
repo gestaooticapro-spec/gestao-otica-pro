@@ -18,7 +18,9 @@ import { Database } from '@/lib/database.types'
 type AuthedEmployee = Pick<
   Database['public']['Tables']['employees']['Row'],
   'id' | 'full_name' | 'role'
->
+> & {
+  authorization_token?: string
+}
 
 type EmployeeAuthModalProps = {
   storeId: number
@@ -27,6 +29,8 @@ type EmployeeAuthModalProps = {
   onSuccess: (employee: AuthedEmployee) => void
   title?: string
   description?: string
+  purpose?: 'evaluation_unlink'
+  authorizationContext?: string
 }
 
 function SubmitButton() {
@@ -52,6 +56,8 @@ function EmployeeAuthForm({
   onSuccess,
   title,
   description,
+  purpose,
+  authorizationContext,
 }: Omit<EmployeeAuthModalProps, 'isOpen'>) {
   const initialState: AuthEmployeeResult = { success: false, message: '' }
   const [state, dispatch] = useFormState(autenticarFuncionarioPorPin, initialState)
@@ -79,6 +85,8 @@ function EmployeeAuthForm({
 
       <form action={dispatch} className="space-y-6">
         <input type="hidden" name="store_id" value={storeId} />
+        {purpose && <input type="hidden" name="authorization_purpose" value={purpose} />}
+        {authorizationContext && <input type="hidden" name="authorization_context" value={authorizationContext} />}
 
         <div>
           <label htmlFor="auth_pin" className={labelStyle}>
@@ -118,6 +126,8 @@ export default function EmployeeAuthModal({
   onSuccess,
   title = 'Autorizar Pagamento',
   description = 'Insira seu PIN para confirmar o recebimento.',
+  purpose,
+  authorizationContext,
 }: EmployeeAuthModalProps) {
   const [mounted, setMounted] = useState(false)
 
@@ -152,6 +162,8 @@ export default function EmployeeAuthModal({
           onSuccess={onSuccess}
           title={title}
           description={description}
+          purpose={purpose}
+          authorizationContext={authorizationContext}
         />
       </div>
     </div>,

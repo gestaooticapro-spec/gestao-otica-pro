@@ -1993,6 +1993,7 @@ export interface Database {
           dt_prometido_para: string | null
           obs_os: string | null
           protocolo_fisico: string | null
+          protocol_uniqueness_enforced: boolean
           dependente_id: number | null
           oftalmologista_id: number | null
           source_optical_evaluation_id: number | null
@@ -2344,6 +2345,16 @@ export interface Database {
           p_initial_number: number
         }
         Returns: number
+      }
+      apply_service_order_evaluation_link_change: {
+        Args: {
+          p_service_order_id: number
+          p_store_id: number
+          p_expected_previous_evaluation_id: number | null
+          p_next_evaluation_id: number | null
+          p_authorizer_employee_id: number | null
+        }
+        Returns: undefined
       }
     }
     Enums: {

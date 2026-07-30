@@ -11,6 +11,11 @@ import { calcularERegistrarComissao, cancelarComissao, calcularComissaoMedico } 
 import { checkLensStock, confirmReservations, cancelReservations, getLensReservationForOsSlot, releaseReservationsForServiceOrder, reserveLensByAdmin, type LensReservationSlot } from './stock.actions'
 import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
 import { clearNfcTrayLinkForDeliveredOrder } from '@/lib/nfc-tray-cleanup'
+import {
+  issueEmployeeAuthorization,
+  verifyEmployeeAuthorization,
+  type EmployeeAuthorizationPurpose,
+} from '@/lib/server/employee-authorization'
 
 // ================================================================
 // --- TIPOS GLOBAIS ---
@@ -244,10 +249,15 @@ export async function saveServiceOrder(
   const { data: { user } } = await createClient().auth.getUser()
 
   if (!user) return { success: false, message: 'Usuário não autenticado.', timestamp: Date.now() }
-  const { data: profile } = await supabaseAdmin.from('profiles').select('tenant_id, store_id').eq('id', user.id).single()
+  const { data: profile } = await supabaseAdmin.from('profiles').select('tenant_id, store_id, role').eq('id', user.id).single()
   if (!profile) return { success: false, message: 'Perfil não encontrado.', timestamp: Date.now() }
 
-  const { tenant_id } = profile // Nota: Não usamos profile.store_id aqui para evitar o bug
+  const profileRow = profile as Database['public']['Tables']['profiles']['Row']
+  const { tenant_id } = profileRow
+  if (!tenant_id) {
+    return { success: false, message: 'Perfil sem empresa vinculada.', timestamp: Date.now() }
+  }
+
   const nullIfEmpty = (val: unknown) => (val === '' ? null : val)
   const parseDate = (val: unknown) => (val && val !== '') ? new Date(val as string).toISOString() : null
 
@@ -308,25 +318,70 @@ export async function saveServiceOrder(
   }
 
   const { id, ...osData } = validated.data
+  const { data: authorizedStore } = await (supabaseAdmin.from('stores') as any)
+    .select('id')
+    .eq('id', osData.store_id)
+    .eq('tenant_id', tenant_id)
+    .maybeSingle()
+
+  const canAccessStore =
+    Boolean(authorizedStore)
+    && (profileRow.role === 'admin' || Number(profileRow.store_id) === osData.store_id)
+
+  if (!canAccessStore) {
+    return {
+      success: false,
+      message: 'Voce nao tem permissao para salvar OS nesta loja.',
+      timestamp: Date.now(),
+    }
+  }
+
   let previousSourceEvaluationId: number | null = null
 
   if (id) {
     const { data: existingOrderLink } = await (supabaseAdmin.from('service_orders') as any)
       .select('source_optical_evaluation_id')
       .eq('id', id)
+      .eq('store_id', osData.store_id)
+      .eq('tenant_id', tenant_id)
       .maybeSingle()
+
+    if (!existingOrderLink) {
+      return { success: false, message: 'OS nao encontrada nesta loja.', timestamp: Date.now() }
+    }
 
     previousSourceEvaluationId = existingOrderLink?.source_optical_evaluation_id ?? null
   }
 
   const requestedSourceEvaluationId = validated.data.source_optical_evaluation_id ?? null
-  let evaluationUnlinkAuthorizerName: string | null = null
   let evaluationUnlinkAuthorizerId: number | null = null
-  if (previousSourceEvaluationId && !requestedSourceEvaluationId) {
-    const authorizerId = Number(formData.get('evaluation_unlink_authorizer_id') || 0)
+  const isRemovingOrReplacingEvaluation =
+    previousSourceEvaluationId !== null
+    && previousSourceEvaluationId !== requestedSourceEvaluationId
+
+  if (isRemovingOrReplacingEvaluation) {
+    const authorization = verifyEmployeeAuthorization(
+      String(formData.get('evaluation_unlink_authorization') || ''),
+      {
+        userId: user.id,
+        tenantId: tenant_id,
+        storeId: osData.store_id,
+        purpose: 'evaluation_unlink',
+        context: `${id}:${previousSourceEvaluationId}`,
+      },
+    )
+
+    if (!authorization) {
+      return {
+        success: false,
+        message: 'Autorizacao de gerente ausente, invalida ou expirada.',
+        timestamp: Date.now(),
+      }
+    }
+
     const { data: authorizer } = await (supabaseAdmin.from('employees') as any)
       .select('id, full_name, role, is_active')
-      .eq('id', authorizerId)
+      .eq('id', authorization.employeeId)
       .eq('store_id', osData.store_id)
       .maybeSingle()
 
@@ -338,8 +393,32 @@ export async function saveServiceOrder(
       }
     }
 
-    evaluationUnlinkAuthorizerName = authorizer.full_name
     evaluationUnlinkAuthorizerId = authorizer.id
+  }
+
+  if (requestedSourceEvaluationId) {
+    const { data: requestedEvaluation, error: requestedEvaluationError } = await (supabaseAdmin.from('optical_evaluations') as any)
+      .select('id, evaluated_customer_id, evaluated_dependente_id, exported_service_order_id')
+      .eq('id', requestedSourceEvaluationId)
+      .eq('store_id', osData.store_id)
+      .eq('tenant_id', tenant_id)
+      .maybeSingle()
+
+    if (requestedEvaluationError || !requestedEvaluation) {
+      return { success: false, message: 'Avaliacao vinculada nao encontrada para esta loja.', timestamp: Date.now() }
+    }
+
+    const matchesSubject =
+      (osData.dependente_id && requestedEvaluation.evaluated_dependente_id === osData.dependente_id)
+      || (!osData.dependente_id && requestedEvaluation.evaluated_customer_id === osData.customer_id)
+
+    if (!matchesSubject) {
+      return { success: false, message: 'A avaliacao selecionada nao pertence ao paciente desta OS.', timestamp: Date.now() }
+    }
+
+    if (requestedEvaluation.exported_service_order_id && requestedEvaluation.exported_service_order_id !== id) {
+      return { success: false, message: 'A avaliacao selecionada ja esta vinculada a outra OS.', timestamp: Date.now() }
+    }
   }
 
   let itemLinks: z.infer<typeof ItemLinkSchema>[] = []
@@ -434,7 +513,11 @@ export async function saveServiceOrder(
   }
 
   try {
-    const payload: any = { ...osData, tenant_id: (profile as any).tenant_id }
+    const {
+      source_optical_evaluation_id: _requestedEvaluationId,
+      ...orderDataWithoutEvaluationLink
+    } = osData
+    const payload: any = { ...orderDataWithoutEvaluationLink, tenant_id }
     let savedId: number
 
     if (typeof payload.protocolo_fisico === 'string') {
@@ -481,14 +564,69 @@ export async function saveServiceOrder(
 
     if (id) {
       if (!payload.protocolo_fisico) payload.protocolo_fisico = id.toString();
-      const { error } = await (supabaseAdmin.from('service_orders') as any).update(payload).eq('id', id).select().single()
+      const { error } = await (supabaseAdmin.from('service_orders') as any)
+        .update(payload)
+        .eq('id', id)
+        .eq('store_id', osData.store_id)
+        .eq('tenant_id', tenant_id)
+        .select()
+        .single()
+      if (error?.code === '23505') {
+        throw new Error('Este protocolo ja esta sendo usado por outra OS desta loja.')
+      }
       if (error) throw error
       savedId = id
     } else {
       const { data, error } = await (supabaseAdmin.from('service_orders') as any).insert(payload).select('id').single()
+      if (error?.code === '23505') {
+        throw new Error('Este protocolo ja esta sendo usado por outra OS desta loja.')
+      }
       if (error) throw error
       savedId = data.id
-      if (!payload.protocolo_fisico) await (supabaseAdmin.from('service_orders') as any).update({ protocolo_fisico: savedId.toString() }).eq('id', savedId)
+      if (!payload.protocolo_fisico) {
+        const { error: fallbackProtocolError } = await (supabaseAdmin.from('service_orders') as any)
+          .update({ protocolo_fisico: savedId.toString() })
+          .eq('id', savedId)
+          .eq('store_id', osData.store_id)
+          .eq('tenant_id', tenant_id)
+
+        if (fallbackProtocolError) {
+          await (supabaseAdmin.from('service_orders') as any)
+            .delete()
+            .eq('id', savedId)
+            .eq('store_id', osData.store_id)
+            .eq('tenant_id', tenant_id)
+
+          if (fallbackProtocolError.code === '23505') {
+            throw new Error('O protocolo automatico baseado no numero da OS ja esta em uso nesta loja.')
+          }
+          throw fallbackProtocolError
+        }
+      }
+    }
+
+    if (previousSourceEvaluationId !== requestedSourceEvaluationId) {
+      const { error: evaluationLinkError } = await (supabaseAdmin as any).rpc(
+        'apply_service_order_evaluation_link_change',
+        {
+          p_service_order_id: savedId,
+          p_store_id: osData.store_id,
+          p_expected_previous_evaluation_id: previousSourceEvaluationId,
+          p_next_evaluation_id: requestedSourceEvaluationId,
+          p_authorizer_employee_id: evaluationUnlinkAuthorizerId,
+        },
+      )
+
+      if (evaluationLinkError) {
+        if (!id) {
+          await (supabaseAdmin.from('service_orders') as any)
+            .delete()
+            .eq('id', savedId)
+            .eq('store_id', osData.store_id)
+            .eq('tenant_id', tenant_id)
+        }
+        throw new Error(`Nao foi possivel atualizar o vinculo com a avaliacao: ${evaluationLinkError.message}`)
+      }
     }
 
     if (payload.dt_entregue_em) {
@@ -668,87 +806,6 @@ export async function saveServiceOrder(
       } else {
         reservationDebug.push(`${reservationSlot.slot}=auto-ok:${stockMatches.autoReserveCandidate.variant_id}`)
       }
-    }
-
-    const nextSourceEvaluationId = payload.source_optical_evaluation_id ?? null
-
-    if (previousSourceEvaluationId && previousSourceEvaluationId !== nextSourceEvaluationId) {
-      const { error: unlinkError } = await (supabaseAdmin.from('optical_evaluations') as any)
-        .update({
-          exported_service_order_id: null,
-          unlinked_at: new Date().toISOString(),
-          unlinked_by_employee_id: evaluationUnlinkAuthorizerId,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', previousSourceEvaluationId)
-        .eq('store_id', osData.store_id)
-
-      if (unlinkError) throw unlinkError
-
-      const { data: vendaAtual, error: vendaAtualError } = await (supabaseAdmin.from('vendas') as any)
-        .select('obs_geral')
-        .eq('id', osData.venda_id)
-        .eq('store_id', osData.store_id)
-        .single()
-
-      if (vendaAtualError) throw vendaAtualError
-
-      const unlinkNote = `Esta venda foi desvinculada da avaliacao por ${evaluationUnlinkAuthorizerName}.`
-      const currentObservation = String(vendaAtual?.obs_geral || '').trim()
-      const nextObservation = currentObservation ? `${currentObservation}\n\n${unlinkNote}` : unlinkNote
-      const { error: observationError } = await (supabaseAdmin.from('vendas') as any)
-        .update({ obs_geral: nextObservation })
-        .eq('id', osData.venda_id)
-        .eq('store_id', osData.store_id)
-
-      if (observationError) {
-        await (supabaseAdmin.from('optical_evaluations') as any)
-          .update({
-            exported_service_order_id: savedId,
-            unlinked_at: null,
-            unlinked_by_employee_id: null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', previousSourceEvaluationId)
-          .eq('store_id', osData.store_id)
-        throw observationError
-      }
-    }
-
-    if (nextSourceEvaluationId) {
-      const { data: linkedEvaluation, error: linkedEvaluationError } = await (supabaseAdmin.from('optical_evaluations') as any)
-        .select('id, store_id, evaluated_customer_id, evaluated_dependente_id, exported_service_order_id')
-        .eq('id', nextSourceEvaluationId)
-        .eq('store_id', osData.store_id)
-        .maybeSingle()
-
-      if (linkedEvaluationError || !linkedEvaluation) {
-        throw new Error('Avaliação vinculada não encontrada para esta loja.')
-      }
-
-      const matchesSubject =
-        (osData.dependente_id && linkedEvaluation.evaluated_dependente_id === osData.dependente_id) ||
-        (!osData.dependente_id && linkedEvaluation.evaluated_customer_id === osData.customer_id)
-
-      if (!matchesSubject) {
-        throw new Error('A avaliação selecionada não pertence ao paciente desta OS.')
-      }
-
-      if (linkedEvaluation.exported_service_order_id && linkedEvaluation.exported_service_order_id !== savedId) {
-        throw new Error('A avaliação selecionada já está vinculada a outra OS.')
-      }
-
-      const { error: linkError } = await (supabaseAdmin.from('optical_evaluations') as any)
-        .update({
-          exported_service_order_id: savedId,
-          unlinked_at: null,
-          unlinked_by_employee_id: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', nextSourceEvaluationId)
-        .eq('store_id', osData.store_id)
-
-      if (linkError) throw linkError
     }
 
     revalidatePath(`/dashboard/loja/${osData.store_id}/vendas/${osData.venda_id}/os`)
@@ -3127,6 +3184,7 @@ export type AuthEmployeeResult = {
     id: number
     full_name: string
     role: 'vendedor' | 'gerente' | 'tecnico'
+    authorization_token?: string
   }
 }
 
@@ -3136,11 +3194,47 @@ export async function autenticarFuncionarioPorPin(
 ): Promise<AuthEmployeeResult> {
   const storeId = parseInt(formData.get('store_id') as string)
   const pin = formData.get('pin') as string
+  const requestedPurpose = String(formData.get('authorization_purpose') || '')
+  const authorizationContext = String(formData.get('authorization_context') || '')
+  const authorizationPurpose: EmployeeAuthorizationPurpose | null =
+    requestedPurpose === 'evaluation_unlink' ? 'evaluation_unlink' : null
 
   // Usamos AdminClient para ler o PIN (que é um dado sensível/interno)
   const supabaseAdmin = createAdminClient()
 
   try {
+    const { data: { user } } = await createClient().auth.getUser()
+    if (!user) {
+      return { success: false, message: 'Usuario nao autenticado.' }
+    }
+
+    const { data: profile } = await (supabaseAdmin.from('profiles') as any)
+      .select('tenant_id, store_id, role')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    if (!profile?.tenant_id) {
+      return { success: false, message: 'Perfil sem empresa vinculada.' }
+    }
+
+    const { data: store } = await (supabaseAdmin.from('stores') as any)
+      .select('id')
+      .eq('id', storeId)
+      .eq('tenant_id', profile.tenant_id)
+      .maybeSingle()
+
+    const canAccessStore =
+      Boolean(store)
+      && (profile.role === 'admin' || Number(profile.store_id) === storeId)
+
+    if (!canAccessStore) {
+      return { success: false, message: 'Usuario sem acesso a esta loja.' }
+    }
+
+    if (authorizationPurpose && !/^\d+:\d+$/.test(authorizationContext)) {
+      return { success: false, message: 'Contexto de autorizacao invalido.' }
+    }
+
     const { data: employee } = await supabaseAdmin
       .from('employees')
       .select('id, full_name, role, is_active')
@@ -3151,13 +3245,25 @@ export async function autenticarFuncionarioPorPin(
 
     if (employee) {
       const emp: any = employee
+      const authorizationToken = authorizationPurpose
+        ? issueEmployeeAuthorization({
+            userId: user.id,
+            tenantId: profile.tenant_id,
+            storeId,
+            employeeId: emp.id,
+            purpose: authorizationPurpose,
+            context: authorizationContext,
+          })
+        : undefined
+
       return {
         success: true,
         message: 'Autenticado com sucesso.',
         employee: {
           id: emp.id,
           full_name: emp.full_name,
-          role: emp.role as 'vendedor' | 'gerente' | 'tecnico' || 'vendedor'
+          role: emp.role as 'vendedor' | 'gerente' | 'tecnico' || 'vendedor',
+          authorization_token: authorizationToken,
         }
       }
     }

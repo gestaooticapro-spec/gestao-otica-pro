@@ -36,6 +36,12 @@ import {
 type ServiceOrderWithLinks = any
 type Dependente = Database['public']['Tables']['dependentes']['Row']
 type LensEye = 'OD' | 'OE' | 'AMBOS'
+type EvaluationUnlinkAuthorizer = Pick<
+    Database['public']['Tables']['employees']['Row'],
+    'id' | 'full_name' | 'role'
+> & {
+    authorization_token?: string
+}
 
 const toDateTimeInput = (isoString: string | null | undefined) => {
     if (!isoString) return '';
@@ -286,7 +292,8 @@ function ServiceOrderFormContent({
     const [sourceOpticalEvaluationId, setSourceOpticalEvaluationId] = useState('')
     const [linkedEvaluationSummary, setLinkedEvaluationSummary] = useState<OpticalEvaluationSummary | null>(null)
     const [isEvaluationUnlinkAuthOpen, setIsEvaluationUnlinkAuthOpen] = useState(false)
-    const [evaluationUnlinkAuthorizer, setEvaluationUnlinkAuthorizer] = useState<Pick<Database['public']['Tables']['employees']['Row'], 'id' | 'full_name' | 'role'> | null>(null)
+    const [evaluationUnlinkAuthorizer, setEvaluationUnlinkAuthorizer] = useState<EvaluationUnlinkAuthorizer | null>(null)
+    const [pendingEvaluationSelection, setPendingEvaluationSelection] = useState<OpticalEvaluationImportOption | null>(null)
     const [isLoadingLinkedEvaluation, setIsLoadingLinkedEvaluation] = useState(false)
     const [isApplyingEvaluation, startApplyEvaluationTransition] = useTransition()
 
@@ -407,6 +414,7 @@ function ServiceOrderFormContent({
 
     // CORREÇÃO: activeId garante que usamos o ID recém-salvo mesmo se o currentIndex ainda não atualizou
     const activeId = currentOrder?.id || (saveState?.success && saveState?.data?.id ? saveState.data.id : undefined)
+    const persistedSourceEvaluationId = Number(currentOrder?.source_optical_evaluation_id || 0)
     const currentPatientName = dependenteId
         ? localDependentes.find(d => d.id === parseInt(dependenteId))?.full_name || customer?.full_name || 'Paciente'
         : customer?.full_name || 'Paciente'
@@ -432,6 +440,7 @@ function ServiceOrderFormContent({
             onListChange(newList)
             setCurrentIndex(newList.findIndex(o => o.id === savedOS.id))
             setProtocolo(savedOS.protocolo_fisico || (localProtocolEnabled ? '' : savedOS.id.toString()))
+            setEvaluationUnlinkAuthorizer(null)
             lastSuccessRef.current = saveState.timestamp;
 
             // Se tinha WhatsApp pendente, envia agora
@@ -455,6 +464,7 @@ function ServiceOrderFormContent({
         setSourceOpticalEvaluationId('')
         setLinkedEvaluationSummary(null)
         setEvaluationUnlinkAuthorizer(null)
+        setPendingEvaluationSelection(null)
         setPendingReservationBySlot(emptyPendingReservations())
     }, [])
 
@@ -462,6 +472,8 @@ function ServiceOrderFormContent({
         if (!currentOrder) { resetForm() } else {
             const os = currentOrder
             setPendingReservationBySlot(emptyPendingReservations())
+            setEvaluationUnlinkAuthorizer(null)
+            setPendingEvaluationSelection(null)
             setDependenteId(os.dependente_id?.toString() ?? '')
             setOftalmologistaId(os.oftalmologista_id?.toString() ?? '')
             const linkLenteOd = os.links?.find((l: any) => l.uso_na_os === 'lente_od'); setLenteOdItemId(linkLenteOd?.venda_item_id.toString() ?? '')
@@ -538,7 +550,10 @@ function ServiceOrderFormContent({
         }
     }
 
-    const handleSelectEvaluation = (evaluation: OpticalEvaluationImportOption) => {
+    const applySelectedEvaluation = (
+        evaluation: OpticalEvaluationImportOption,
+        unlinkAuthorizer: EvaluationUnlinkAuthorizer | null = null,
+    ) => {
         startApplyEvaluationTransition(async () => {
             const result = await applyOpticalEvaluationToServiceOrder({
                 storeId,
@@ -600,6 +615,9 @@ function ServiceOrderFormContent({
                     return prev ? `${prev} | ${evaluationNote}` : evaluationNote
                 })
             }
+            if (unlinkAuthorizer) {
+                setEvaluationUnlinkAuthorizer(unlinkAuthorizer)
+            }
             setSourceOpticalEvaluationId(String(result.data.evaluationId))
             setLinkedEvaluationSummary({
                 id: result.data.evaluationId,
@@ -615,17 +633,43 @@ function ServiceOrderFormContent({
         })
     }
 
+    const handleSelectEvaluation = (evaluation: OpticalEvaluationImportOption) => {
+        if (persistedSourceEvaluationId > 0 && persistedSourceEvaluationId !== evaluation.id) {
+            setPendingEvaluationSelection(evaluation)
+            setIsEvaluationModalOpen(false)
+            setIsEvaluationUnlinkAuthOpen(true)
+            return
+        }
+
+        applySelectedEvaluation(evaluation)
+    }
+
     const handleClearEvaluationLink = () => {
         const confirmed = confirm('Deseja remover o vínculo com a avaliação importada? Os campos copiados permanecerão na OS até você alterá-los.')
         if (!confirmed) return
 
+        if (!persistedSourceEvaluationId) {
+            setSourceOpticalEvaluationId('')
+            setLinkedEvaluationSummary(null)
+            return
+        }
+
+        setPendingEvaluationSelection(null)
         setIsEvaluationUnlinkAuthOpen(true)
     }
 
-    const handleEvaluationUnlinkAuthSuccess = (employee: Pick<Database['public']['Tables']['employees']['Row'], 'id' | 'full_name' | 'role'>) => {
-        if (employee.role !== 'gerente') {
-            alert('Desvinculacao nao autorizada. Apenas um gerente pode remover o vinculo com a avaliacao.')
+    const handleEvaluationUnlinkAuthSuccess = (employee: EvaluationUnlinkAuthorizer) => {
+        if (employee.role !== 'gerente' || !employee.authorization_token) {
+            alert('Desvinculação não autorizada. Apenas um gerente pode remover ou trocar o vínculo com a avaliação.')
             setEvaluationUnlinkAuthorizer(null)
+            setPendingEvaluationSelection(null)
+            return
+        }
+
+        if (pendingEvaluationSelection) {
+            const evaluationToApply = pendingEvaluationSelection
+            setPendingEvaluationSelection(null)
+            applySelectedEvaluation(evaluationToApply, employee)
             return
         }
 
@@ -1239,7 +1283,7 @@ ${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tok
                 <input type="hidden" name="venda_id" value={vendaId} />
                 <input type="hidden" name="customer_id" value={customer.id} />
                 <input type="hidden" name="source_optical_evaluation_id" value={sourceOpticalEvaluationId} />
-                <input type="hidden" name="evaluation_unlink_authorizer_id" value={evaluationUnlinkAuthorizer?.id ?? ''} />
+                <input type="hidden" name="evaluation_unlink_authorization" value={evaluationUnlinkAuthorizer?.authorization_token ?? ''} />
                 <input type="hidden" name="item_links_json" value={JSON.stringify([{ item_id: lenteOdItemId, uso: 'lente_od' }, { item_id: lenteOeItemId, uso: 'lente_oe' }, { item_id: armacaoItemId, uso: 'armacao' }].filter(x => x.item_id))} />
                 <input type="hidden" name="pending_reservations_json" value={JSON.stringify(Object.values(pendingReservationBySlot).filter(Boolean))} />
 
@@ -1298,10 +1342,15 @@ ${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tok
             <EmployeeAuthModal
                 storeId={storeId}
                 isOpen={isEvaluationUnlinkAuthOpen}
-                onClose={() => setIsEvaluationUnlinkAuthOpen(false)}
+                onClose={() => {
+                    setIsEvaluationUnlinkAuthOpen(false)
+                    setPendingEvaluationSelection(null)
+                }}
                 onSuccess={handleEvaluationUnlinkAuthSuccess}
-                title="Autorizar desvinculaÃ§Ã£o"
-                description="Apenas o PIN de um gerente pode remover o vÃ­nculo com a avaliaÃ§Ã£o."
+                purpose="evaluation_unlink"
+                authorizationContext={`${activeId}:${persistedSourceEvaluationId}`}
+                title={pendingEvaluationSelection ? 'Autorizar troca de avaliação' : 'Autorizar desvinculação'}
+                description="Apenas o PIN de um gerente pode remover ou trocar o vínculo com a avaliação."
             />
         </>
     )

@@ -803,7 +803,7 @@ async function reserveLensWithAdminContext(params: {
     osId: number
     employeeId: number
     userId: string
-    tenantId: number
+    tenantId: string
     slot?: LensReservationSlot
     source?: 'automatic' | 'manual'
 }): Promise<{ success: boolean, message: string }> {
@@ -1018,7 +1018,7 @@ export async function reserveLensByAdmin(
     osId: number,
     employeeId: number,
     userId: string,
-    tenantId: number,
+    tenantId: string,
     options?: {
         slot?: LensReservationSlot
         source?: 'automatic' | 'manual'
