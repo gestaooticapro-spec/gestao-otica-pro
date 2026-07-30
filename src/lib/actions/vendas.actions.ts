@@ -633,22 +633,62 @@ export async function saveServiceOrder(
       await clearNfcTrayLinkForDeliveredOrder(savedId, payload.dt_entregue_em)
     }
 
-    // Limpa vínculos antigos
-    await supabaseAdmin.from('venda_itens_os_links').delete().eq('service_order_id', savedId)
+    const { data: previousItemLinks, error: previousItemLinksError } = await (supabaseAdmin
+      .from('venda_itens_os_links') as any)
+      .select('venda_item_id, uso_na_os')
+      .eq('service_order_id', savedId)
+
+    if (previousItemLinksError) {
+      throw new Error('Nao foi possivel preparar a atualizacao dos vinculos de itens da OS.')
+    }
+
+    const buildItemLinksPayload = (links: Array<{ venda_item_id: number; uso_na_os: string }>) =>
+      links.map((link) => ({
+        tenant_id,
+        store_id: osData.store_id,
+        service_order_id: savedId,
+        venda_item_id: link.venda_item_id,
+        uso_na_os: link.uso_na_os,
+      }))
+
+    const { error: deleteLinksError } = await (supabaseAdmin
+      .from('venda_itens_os_links') as any)
+      .delete()
+      .eq('service_order_id', savedId)
+
+    if (deleteLinksError) {
+      throw new Error('Nao foi possivel substituir os vinculos de itens da OS.')
+    }
 
     // Insere novos vínculos
     if (itemLinks.length > 0) {
-      const linksToInsert = itemLinks.map((link) => ({
-        tenant_id: tenant_id,
-        store_id: osData.store_id, // âœ… CORREÃ‡ÃƒO 2: Usa o store_id validado (correto), não o do profile
-        service_order_id: savedId,
-        venda_item_id: link.item_id,
-        uso_na_os: link.uso
-      }))
+      const linksToInsert = buildItemLinksPayload(
+        itemLinks.map((link) => ({ venda_item_id: link.item_id, uso_na_os: link.uso }))
+      )
 
       const { error: linkError } = await (supabaseAdmin.from('venda_itens_os_links') as any).insert(linksToInsert as any)
       if (linkError) {
-        console.error("Erro ao salvar links:", linkError)
+        const { error: cleanupLinksError } = await (supabaseAdmin
+          .from('venda_itens_os_links') as any)
+          .delete()
+          .eq('service_order_id', savedId)
+
+        const { error: restoreLinksError } = previousItemLinks?.length
+          ? await (supabaseAdmin.from('venda_itens_os_links') as any)
+              .insert(buildItemLinksPayload(previousItemLinks) as any)
+          : { error: null }
+
+        if (cleanupLinksError || restoreLinksError) {
+          console.error('Falha ao restaurar vinculos anteriores da OS:', {
+            cleanupLinksError,
+            restoreLinksError,
+            originalError: linkError,
+          })
+          throw new Error('Nao foi possivel salvar nem restaurar os vinculos de itens da OS. Verifique a OS antes de tentar novamente.')
+        }
+
+        console.error('Falha ao salvar vinculos de itens da OS; vinculos anteriores restaurados:', linkError)
+        throw new Error('Nao foi possivel salvar os vinculos de itens da OS. Nenhuma alteracao de vinculo foi mantida.')
       }
     }
 
