@@ -93,6 +93,9 @@ export type StoreSettings = {
   commission_generation_mode?: 'closed_only' | 'open_or_closed'
   delivery_date_enabled?: boolean
   service_order_mode?: 'single' | 'multiple'
+  lens_sale_unit_mode?: boolean
+  local_protocol_enabled?: boolean
+  local_protocol_initial?: number
   pre_sale_analysis_enabled?: boolean
   module_global_tables_enabled?: boolean
   module_fiscal_enabled?: boolean

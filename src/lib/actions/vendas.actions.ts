@@ -30,6 +30,9 @@ type Employee = Database['public']['Tables']['employees']['Row']
 type StoreSettings = {
   pre_sale_analysis_enabled?: boolean
   service_order_mode?: 'single' | 'multiple'
+  lens_sale_unit_mode?: boolean
+  local_protocol_enabled?: boolean
+  local_protocol_initial?: number
 }
 
 type ServiceOrderWithLinks = ServiceOrder & {
@@ -50,6 +53,7 @@ export type OSPageData = {
   vendaItens: VendaItem[]
   existingOrders: ServiceOrderWithLinks[]
   preSaleAnalysisEnabled: boolean
+  localProtocolEnabled: boolean
 }
 
 export type GetOSPageDataResult = {
@@ -130,7 +134,9 @@ export async function getOSPageData(
 
     if (customerRes.error) throw new Error(`Cliente: ${customerRes.error.message}`)
     const storeSettings = (storeRes.data as { settings?: unknown } | null)?.settings
-    const preSaleAnalysisEnabled = ((storeSettings || {}) as StoreSettings).pre_sale_analysis_enabled === true
+    const typedStoreSettings = (storeSettings || {}) as StoreSettings
+    const preSaleAnalysisEnabled = typedStoreSettings.pre_sale_analysis_enabled === true
+    const localProtocolEnabled = typedStoreSettings.local_protocol_enabled === true
 
     const data: OSPageData = {
       customer: customerRes.data,
@@ -141,6 +147,7 @@ export async function getOSPageData(
       vendaItens: itensRes.data || [],
       existingOrders: osRes.data || [],
       preSaleAnalysisEnabled,
+      localProtocolEnabled,
     }
 
     return { success: true, data }
@@ -429,6 +436,48 @@ export async function saveServiceOrder(
   try {
     const payload: any = { ...osData, tenant_id: (profile as any).tenant_id }
     let savedId: number
+
+    if (typeof payload.protocolo_fisico === 'string') {
+      payload.protocolo_fisico = payload.protocolo_fisico.trim() || null
+    }
+
+    if (!payload.protocolo_fisico) {
+      const { data: storeConfig, error: storeConfigError } = await (supabaseAdmin.from('stores') as any)
+        .select('settings')
+        .eq('id', osData.store_id)
+        .maybeSingle()
+
+      if (storeConfigError || !storeConfig) {
+        throw new Error('Não foi possível carregar a configuração de protocolo da loja.')
+      }
+
+      const settings = (storeConfig.settings || {}) as StoreSettings
+      if (settings.local_protocol_enabled === true) {
+        const initialNumber = Number(settings.local_protocol_initial)
+        if (!Number.isInteger(initialNumber) || initialNumber <= 0) {
+          throw new Error('Configure uma numeração inicial válida para o protocolo local automático.')
+        }
+
+        const { data: reservedProtocol, error: protocolError } = await (supabaseAdmin as any).rpc(
+          'reserve_next_store_local_protocol',
+          {
+            p_store_id: osData.store_id,
+            p_initial_number: initialNumber,
+          }
+        )
+
+        if (protocolError) {
+          throw new Error(`Não foi possível gerar o protocolo local: ${protocolError.message}`)
+        }
+
+        const protocolNumber = Number(reservedProtocol)
+        if (!Number.isSafeInteger(protocolNumber) || protocolNumber <= 0) {
+          throw new Error('O gerador de protocolo local retornou um número inválido.')
+        }
+
+        payload.protocolo_fisico = String(protocolNumber)
+      }
+    }
 
     if (id) {
       if (!payload.protocolo_fisico) payload.protocolo_fisico = id.toString();
@@ -1206,6 +1255,54 @@ export async function addVendaItem(
   }
 
   const supabaseAdmin = createAdminClient();
+
+  const { data: saleContext, error: saleContextError } = await (supabaseAdmin.from('vendas') as any)
+    .select('store_id, tenant_id')
+    .eq('id', data.venda_id)
+    .eq('tenant_id', (profile as any).tenant_id)
+    .maybeSingle()
+
+  if (saleContextError || !saleContext) {
+    return {
+      success: false,
+      message: 'Venda não encontrada para adicionar o item.',
+      timestamp: Date.now(),
+    }
+  }
+
+  const { data: storeContext, error: storeContextError } = await (supabaseAdmin.from('stores') as any)
+    .select('settings')
+    .eq('id', saleContext.store_id)
+    .maybeSingle()
+
+  if (storeContextError || !storeContext) {
+    return {
+      success: false,
+      message: 'Não foi possível carregar a configuração da loja.',
+      timestamp: Date.now(),
+    }
+  }
+
+  const storeSettings = (storeContext.settings || {}) as StoreSettings
+  const shouldRegisterLensAsUnits =
+    data.item_tipo === 'Lente' && storeSettings.lens_sale_unit_mode === true
+
+  if (shouldRegisterLensAsUnits) {
+    const pairPrice = data.valor_unitario
+    Object.assign(itemToInsert, {
+      quantidade: 2,
+      unidade: 'Unidade',
+      valor_unitario: pairPrice / 2,
+      valor_total_item: pairPrice,
+      tenant_id: saleContext.tenant_id,
+      store_id: saleContext.store_id,
+      detalhes_avulsos: {
+        original_price: pairPrice / 2,
+        lens_sale_unit_mode: true,
+        pair_price: pairPrice,
+      },
+    })
+  }
 
   try {
     // CORREÃ‡ÃƒO 1: Usamos (as any) na chamada da tabela

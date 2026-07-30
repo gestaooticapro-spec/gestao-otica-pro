@@ -19,6 +19,7 @@ type AddItemFormProps = {
     storeId: number
     onItemAdded: () => Promise<void>
     disabled: boolean
+    lensSaleUnitMode: boolean
 }
 
 const formatCurrency = (value: number | null | undefined): string => {
@@ -81,6 +82,7 @@ export default function AddItemFormExperimental({
     storeId,
     onItemAdded,
     disabled,
+    lensSaleUnitMode,
 }: AddItemFormProps) {
     const formRef = useRef<HTMLFormElement>(null)
     const dropdownRef = useRef<HTMLDivElement>(null)
@@ -114,9 +116,10 @@ export default function AddItemFormExperimental({
         if (saveState !== lastStateRef.current) {
             if (saveState.success) {
                 formRef.current?.reset()
+                setItemTipo('Lente')
                 setDescricao('')
-                setQuantidade(1)
-                setUnidade('Unidade')
+                setQuantidade(lensSaleUnitMode ? 2 : 1)
+                setUnidade(lensSaleUnitMode ? 'Unidade' : 'Par')
                 setValorUnitario('0,00')
                 setSelectedIds({ lente_id: null, armacao_id: null, tratamento_id: null })
                 setIsSelected(false)
@@ -127,7 +130,7 @@ export default function AddItemFormExperimental({
             }
         }
         lastStateRef.current = saveState;
-    }, [saveState, onItemAdded])
+    }, [saveState, onItemAdded, lensSaleUnitMode])
 
     // LÓGICA DE BUSCA GLOBAL
     useEffect(() => {
@@ -175,8 +178,10 @@ export default function AddItemFormExperimental({
         else setSelectedIds({ lente_id: null, armacao_id: null, tratamento_id: null })
 
         if (item.tipo === 'Lente') {
-            setUnidade('Par')
+            setQuantidade(lensSaleUnitMode ? 2 : 1)
+            setUnidade(lensSaleUnitMode ? 'Unidade' : 'Par')
         } else {
+            setQuantidade(1)
             setUnidade('Unidade')
         }
 
@@ -202,8 +207,16 @@ export default function AddItemFormExperimental({
     }
 
     const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        setItemTipo(e.target.value as any);
+        const nextType = e.target.value as typeof itemTipo
+        setItemTipo(nextType);
         setSelectedIds({ lente_id: null, armacao_id: null, tratamento_id: null });
+        if (nextType === 'Lente') {
+            setQuantidade(lensSaleUnitMode ? 2 : 1)
+            setUnidade(lensSaleUnitMode ? 'Unidade' : 'Par')
+        } else {
+            setQuantidade(1)
+            setUnidade('Unidade')
+        }
         setValidationError(null)
     }
 
@@ -217,6 +230,7 @@ export default function AddItemFormExperimental({
         (itemTipo === 'Tratamento' && selectedIds.tratamento_id !== null) ||
         (itemTipo === 'Outro') ||
         (itemTipo === 'Servico')
+    const isLensUnitSale = lensSaleUnitMode && itemTipo === 'Lente'
 
     // ESTILOS ADAPTADOS PARA DARK MODE (MODAL)
     const labelStyle = 'block text-[10px] font-bold text-slate-400 mb-0.5 uppercase tracking-wider'
@@ -335,12 +349,13 @@ export default function AddItemFormExperimental({
                                 value={quantidade}
                                 onChange={e => setQuantidade(parseInt(e.target.value) || 1)}
                                 disabled={disabled}
+                                readOnly={isLensUnitSale}
                                 className={`${inputStyle} text-center font-bold w-1/2 px-0.5`}
                             />
                             <select
                                 value={unidade}
                                 onChange={(e) => setUnidade(e.target.value)}
-                                disabled={disabled}
+                                disabled={disabled || isLensUnitSale}
                                 className={`${inputStyle} text-[10px] px-0.5 w-1/2 appearance-none text-center bg-white/5 text-slate-300`}
                             >
                                 <option value="Unidade" className="bg-slate-800">Un.</option>
@@ -352,7 +367,7 @@ export default function AddItemFormExperimental({
 
                     {/* 4. Valor Unitário */}
                     <div className="col-span-4">
-                        <label className={labelStyle}>Valor (R$)</label>
+                        <label className={labelStyle}>{isLensUnitSale ? 'Valor do par (R$)' : 'Valor (R$)'}</label>
                         <input
                             type="text"
                             value={valorUnitario}
@@ -363,6 +378,12 @@ export default function AddItemFormExperimental({
                     </div>
 
                 </div>
+
+                {isLensUnitSale && (
+                    <p className="text-[10px] text-blue-300/80">
+                        A venda mostrará 2 unidades físicas, mantendo este valor como preço comercial do par.
+                    </p>
+                )}
 
                 <div className="pt-2">
                     <SubmitButton />

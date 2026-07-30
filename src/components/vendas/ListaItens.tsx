@@ -26,6 +26,14 @@ const formatCurrency = (value: number | null | undefined): string => {
     currency: 'BRL',
   })
 }
+
+const getLensPairPrice = (item: VendaItem): number | null => {
+  if (item.item_tipo !== 'Lente') return null
+  const details = (item.detalhes_avulsos || {}) as Record<string, unknown>
+  if (details.lens_sale_unit_mode !== true) return null
+
+  return Number(item.valor_total_item || 0)
+}
 // --- FIM HELPER ---
 
 // --- Botão Deletar (Componente interno) ---
@@ -95,7 +103,7 @@ export default function ListaItens({
       <div className="hidden md:flex bg-white/5 p-2 rounded-t-xl font-bold text-slate-400 text-[10px] uppercase tracking-wider border-b border-white/10">
         <div className="w-1/2 pl-1">Descrição</div>
         <div className="w-1/6 text-center">Qtd.</div>
-        <div className="w-1/6 text-right">Unit.</div>
+        <div className="w-1/6 text-right">Preço</div>
         <div className="w-1/6 text-right pr-2">Total</div>
         <div className="w-6"></div> {/* Coluna do X */}
       </div>
@@ -108,8 +116,9 @@ export default function ListaItens({
             <p className="text-[10px]">Adicione itens ao lado</p>
           </div>
         ) : (
-          itens.map((item) => (
-            <div
+          itens.map((item) => {
+            const pairPrice = getLensPairPrice(item)
+            return <div
               key={item.id}
               className="flex flex-col md:flex-row md:items-center p-2 rounded-lg hover:bg-white/5 border-b border-white/5 last:border-0 transition-colors group"
             >
@@ -130,8 +139,9 @@ export default function ListaItens({
 
               {/* Vl. Unitário */}
               <div className="w-full md:w-1/6 md:text-right text-xs text-slate-400">
-                <span className="md:hidden text-[10px] text-slate-500 uppercase font-bold mr-1">Unit:</span>
-                {formatCurrency(item.valor_unitario)}
+                <span className="md:hidden text-[10px] text-slate-500 uppercase font-bold mr-1">Preço:</span>
+                {formatCurrency(pairPrice ?? item.valor_unitario)}
+                {pairPrice !== null && <span className="ml-1 text-[9px] uppercase text-slate-500">/ par</span>}
               </div>
 
               {/* Vl. Total */}
@@ -151,7 +161,7 @@ export default function ListaItens({
                 />
               </div>
             </div>
-          ))
+          })
         )}
       </div>
     </div>

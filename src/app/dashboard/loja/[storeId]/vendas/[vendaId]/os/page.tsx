@@ -251,7 +251,7 @@ type FormProps = Omit<OSPageData, 'oftalmologistas'> & {
 }
 
 function ServiceOrderFormContent({
-    storeId, vendaId, customer, vendaItens, dependentes: initialDependentes, oftalmosList, employees, existingOrders, authedEmployeeName, onListChange, saveState, dispatch, preSaleAnalysisEnabled,
+    storeId, vendaId, customer, vendaItens, dependentes: initialDependentes, oftalmosList, employees, existingOrders, authedEmployeeName, onListChange, saveState, dispatch, preSaleAnalysisEnabled, localProtocolEnabled,
     venda
 }: FormProps) {
 
@@ -431,11 +431,12 @@ function ServiceOrderFormContent({
             newList.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
             onListChange(newList)
             setCurrentIndex(newList.findIndex(o => o.id === savedOS.id))
+            setProtocolo(savedOS.protocolo_fisico || (localProtocolEnabled ? '' : savedOS.id.toString()))
             lastSuccessRef.current = saveState.timestamp;
 
             // Se tinha WhatsApp pendente, envia agora
             if (pendingWhatsApp) {
-                sendWhatsAppPedido(savedOS.id)
+                sendWhatsAppPedido(savedOS.id, savedOS.protocolo_fisico || undefined)
                 setPendingWhatsApp(false)
                 isSilentSave.current = false
             }
@@ -480,10 +481,10 @@ function ServiceOrderFormContent({
             setArmacaoComCliente((os as any).armacao_com_cliente ?? false); setOsEnviadaAoLab((os as any).os_enviada_ao_lab ?? false)
             setDtChegou(toDateTimeInput(os.dt_lente_chegou)); setDtMontado(toDateTimeInput(os.dt_montado_em)); setDtEntregue(toDateTimeInput(os.dt_entregue_em))
             setDtPrometido(toDateTimeInput(os.dt_prometido_para)); setObsOs(os.obs_os ?? '')
-            setProtocolo(os.protocolo_fisico || os.id.toString())
+            setProtocolo(os.protocolo_fisico || (localProtocolEnabled ? '' : os.id.toString()))
             setSourceOpticalEvaluationId(os.source_optical_evaluation_id?.toString() ?? '')
         }
-    }, [currentIndex, currentOrder, resetForm])
+    }, [currentIndex, currentOrder, resetForm, localProtocolEnabled])
 
     useEffect(() => {
         if (!sourceOpticalEvaluationId) {
@@ -633,7 +634,7 @@ function ServiceOrderFormContent({
         setLinkedEvaluationSummary(null)
     }
 
-    const sendWhatsAppPedido = (overrideId?: number) => {
+    const sendWhatsAppPedido = (overrideId?: number, overrideProtocol?: string) => {
         // Silent Save Trigger
         const finalId = overrideId || activeId
         if (!finalId) {
@@ -675,7 +676,7 @@ ${[
         const msg = `
 *Pedido de Lentes*
 
-Protocolo/OS #${protocolo || finalId}
+Protocolo/OS #${overrideProtocol || protocolo || finalId}
 Prometido para: ${prometidoPara}
 
 --Receita--
@@ -775,7 +776,7 @@ ${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tok
                                     value={protocolo}
                                     onChange={(e) => setProtocolo(e.target.value)}
                                     className={inputStyle}
-                                    placeholder="AUTO"
+                                    placeholder={localProtocolEnabled ? 'GERADO AO SALVAR' : 'AUTO'}
                                 />
                             </div>
                         </div>
@@ -1387,6 +1388,7 @@ export default function ServiceOrderPage() {
                 saveState={saveState}
                 dispatch={dispatch}
                 preSaleAnalysisEnabled={data.preSaleAnalysisEnabled}
+                localProtocolEnabled={data.localProtocolEnabled}
                 venda={data.venda}
             />
         </div>

@@ -14,6 +14,12 @@ type ExistingGlobalCommission = {
 
 const STORE_UTC_OFFSET = '-03:00'
 
+function getCommercialCostQuantity(item: any): number {
+    const quantity = Number(item?.quantidade || 1)
+    const details = item?.detalhes_avulsos || {}
+    return details.lens_sale_unit_mode === true ? quantity / 2 : quantity
+}
+
 function getStoreDayRangeFromKey(dateKey: string) {
     return {
         startIso: new Date(`${dateKey}T00:00:00${STORE_UTC_OFFSET}`).toISOString(),
@@ -52,7 +58,7 @@ export async function calcularERegistrarComissao(vendaId: number) {
             .from('vendas') as any)
             .select(`
                 *,
-                venda_itens ( valor_total_item, quantidade, product_id, produtos:products(preco_custo) ),
+                venda_itens ( valor_total_item, quantidade, detalhes_avulsos, product_id, produtos:products(preco_custo) ),
                 pagamentos ( valor_pago, forma_pagamento ),
                 employees ( 
                     id, 
@@ -271,7 +277,7 @@ export async function calcularComissoesGlobais(storeId: number, inicio: string, 
         let vendasQuery = (supabase.from('vendas') as any)
             .select(`
                 id, valor_final, created_at, data_fechamento, status,
-                venda_itens ( quantidade, product_id, produtos:products(preco_custo) )
+                venda_itens ( quantidade, detalhes_avulsos, product_id, produtos:products(preco_custo) )
             `)
             .eq('store_id', storeId)
 
@@ -305,7 +311,7 @@ export async function calcularComissoesGlobais(storeId: number, inicio: string, 
         ;(vendas || []).forEach((v: any) => {
             (v.venda_itens || []).forEach((item: any) => {
                 const custoUnit = item.produtos?.preco_custo || 0
-                totalCusto += custoUnit * (item.quantidade || 1)
+                totalCusto += custoUnit * getCommercialCostQuantity(item)
             })
         })
         const totalLucro = Math.max(0, totalVendido - totalCusto)
@@ -404,7 +410,7 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
         let globalVendasQuery = (supabase.from('vendas') as any)
             .select(`
                 id, valor_final, created_at, data_fechamento, status,
-                venda_itens ( quantidade, product_id, produtos:products(preco_custo) ),
+                venda_itens ( quantidade, detalhes_avulsos, product_id, produtos:products(preco_custo) ),
                 service_orders ( id, protocolo_fisico )
             `)
             .eq('store_id', storeId)
@@ -458,7 +464,7 @@ export async function getRelatorioComissoes(storeId: number, inicio: string, fim
             let custoVenda = 0
             ;(Array.isArray(v?.venda_itens) ? v.venda_itens : []).forEach((item: any) => {
                 const custoUnit = Number(item?.produtos?.preco_custo || 0)
-                const quantidade = Number(item?.quantidade || 1)
+                const quantidade = getCommercialCostQuantity(item)
                 custoVenda += custoUnit * quantidade
             })
             const valorVenda = Number(v?.valor_final || 0)

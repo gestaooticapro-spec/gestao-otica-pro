@@ -1001,6 +1001,7 @@ export default function ServiceOrderPage() {
             saveState={saveState}
             dispatch={dispatch}
             preSaleAnalysisEnabled={data.preSaleAnalysisEnabled}
+            localProtocolEnabled={data.localProtocolEnabled}
             venda={data.venda}
         />
     )

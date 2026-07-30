@@ -5,7 +5,7 @@ import {
     Users, Plus, Save, Power, Loader2, Lock, User, KeyRound, Eye, EyeOff, Mail,
     ShieldCheck, Briefcase, Wrench, BadgeCheck, Percent, CheckCircle2,
     Store, MapPin, Phone, QrCode, ArrowLeft, AlertCircle, Sparkles, FileText, Wallet, HeartHandshake, Zap, Printer, UploadCloud,
-    MessageCircle, Clock, CalendarDays, Files, ReceiptText, ClipboardList
+    MessageCircle, Clock, CalendarDays, Files, ReceiptText, ClipboardList, Glasses, Hash
 } from 'lucide-react';
 import { getEmployees, saveEmployee, toggleEmployeeStatus } from '@/lib/actions/employee.actions';
 import { getStoreProfile, updateStoreProfile, updateStoreSettings, uploadStoreLogo } from '@/lib/actions/store.actions';
@@ -653,12 +653,21 @@ function ResourcesForm({ storeId }: { storeId: number }) {
     const [data, setData] = useState<StoreData | null>(null)
     const [loading, setLoading] = useState(true)
     const [isSaving, startTransition] = useTransition()
+    const [localProtocolInitialInput, setLocalProtocolInitialInput] = useState('')
     const deliveryDateEnabled = data?.settings?.delivery_date_enabled !== false
     const serviceOrderMode = data?.settings?.service_order_mode === 'single' ? 'single' : 'multiple'
+    const lensSaleUnitMode = data?.settings?.lens_sale_unit_mode === true
+    const localProtocolEnabled = data?.settings?.local_protocol_enabled === true
 
     useEffect(() => {
         getStoreProfile(storeId).then(res => {
-            setData(res as StoreData | null)
+            const storeData = res as StoreData | null
+            setData(storeData)
+            setLocalProtocolInitialInput(
+                storeData?.settings?.local_protocol_initial
+                    ? String(storeData.settings.local_protocol_initial)
+                    : ''
+            )
             setLoading(false)
         })
     }, [storeId])
@@ -683,6 +692,23 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                 alert("Erro: " + res.message)
             }
         })
+    }
+
+    const saveLocalProtocolInitial = () => {
+        const initialNumber = Number(localProtocolInitialInput)
+        if (!Number.isInteger(initialNumber) || initialNumber <= 0) {
+            alert('Informe uma numeração inicial inteira maior que zero.')
+            setLocalProtocolInitialInput(
+                data?.settings?.local_protocol_initial
+                    ? String(data.settings.local_protocol_initial)
+                    : ''
+            )
+            return
+        }
+
+        if (initialNumber !== data?.settings?.local_protocol_initial) {
+            handleSettingChange('local_protocol_initial', initialNumber)
+        }
     }
 
     if (loading) return <div className="p-10 text-center"><Loader2 className="animate-spin h-8 w-8 text-indigo-400 mx-auto" /></div>
@@ -869,6 +895,95 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                             <option value="multiple">Várias OSs por venda</option>
                             <option value="single">OS única por venda</option>
                         </select>
+                    </div>
+                </div>
+
+                <label className="mt-4 flex items-start gap-4 rounded-xl border border-white/10 bg-black/20 p-4 cursor-pointer hover:bg-white/5 transition-colors group">
+                    <input
+                        type="checkbox"
+                        checked={lensSaleUnitMode}
+                        onChange={(e) => handleSettingChange('lens_sale_unit_mode', e.target.checked)}
+                        disabled={isSaving}
+                        className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-900 text-cyan-500 focus:ring-cyan-500 disabled:opacity-50"
+                    />
+                    <div className="flex-1">
+                        <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-xl border border-blue-400/20 bg-blue-500/15 flex items-center justify-center shrink-0">
+                                <Glasses className="h-5 w-5 text-blue-300" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-black text-blue-300 uppercase tracking-[0.15em]">
+                                    Trabalhar lentes em unidades
+                                </p>
+                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 mt-1">
+                                    {lensSaleUnitMode ? 'Ativado' : 'Desativado'}
+                                </p>
+                            </div>
+                        </div>
+                        <p className="mt-3 text-xs text-slate-400 leading-relaxed">
+                            Registra cada par como duas unidades físicas, mantendo na venda o preço comercial normal do par.
+                        </p>
+                    </div>
+                </label>
+
+                <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4 transition-colors">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                        <label className="flex items-start gap-4 cursor-pointer group flex-1">
+                            <input
+                                type="checkbox"
+                                checked={localProtocolEnabled}
+                                onChange={(e) => handleSettingChange('local_protocol_enabled', e.target.checked)}
+                                disabled={isSaving}
+                                className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-900 text-cyan-500 focus:ring-cyan-500 disabled:opacity-50"
+                            />
+                            <div className="flex-1">
+                                <div className="flex items-center gap-3">
+                                    <div className="h-10 w-10 rounded-xl border border-amber-400/20 bg-amber-500/15 flex items-center justify-center shrink-0">
+                                        <Hash className="h-5 w-5 text-amber-300" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-black text-amber-300 uppercase tracking-[0.15em]">
+                                            Protocolo local automático
+                                        </p>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 mt-1">
+                                            {localProtocolEnabled ? 'Ativado' : 'Desativado'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <p className="mt-3 text-xs text-slate-400 leading-relaxed">
+                                    Gera uma numeração sequencial exclusiva desta loja quando a OS for salva com o protocolo vazio.
+                                </p>
+                            </div>
+                        </label>
+
+                        {localProtocolEnabled && (
+                            <div className="min-w-[220px]">
+                                <label htmlFor="local_protocol_initial" className="block text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 mb-1.5">
+                                    Numeração inicial
+                                </label>
+                                <input
+                                    id="local_protocol_initial"
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    value={localProtocolInitialInput}
+                                    onChange={(e) => setLocalProtocolInitialInput(e.target.value)}
+                                    onBlur={saveLocalProtocolInitial}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault()
+                                            saveLocalProtocolInitial()
+                                        }
+                                    }}
+                                    disabled={isSaving}
+                                    placeholder="Ex.: 607"
+                                    className="w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-sm font-bold text-white outline-none transition-colors focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/40 disabled:opacity-50"
+                                />
+                                <p className="mt-1.5 text-[10px] text-slate-500">
+                                    A sequência nunca retrocede nem reutiliza números já reservados.
+                                </p>
+                            </div>
+                        )}
                     </div>
                 </div>
 

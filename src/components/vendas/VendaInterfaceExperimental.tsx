@@ -1153,6 +1153,7 @@ export default function VendaInterfaceExperimental({
                     storeId={venda.store_id}
                     onItemAdded={async () => { await onDataReload(); closeModal(); }}
                     disabled={isVendaFechadaOuCancelada}
+                    lensSaleUnitMode={storeSettings?.lens_sale_unit_mode === true}
                 />
             </SimpleModal>
 

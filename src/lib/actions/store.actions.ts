@@ -307,9 +307,13 @@ export async function updateStoreSettings(storeId: number, newSettings: Partial<
             ...newSettings
         }
 
-        await storesTable
+        const { error: updateError } = await storesTable
             .update({ settings: updatedSettings as Json })
             .eq('id', storeId)
+
+        if (updateError) {
+            return { success: false, message: `Erro ao salvar recursos: ${updateError.message}` }
+        }
 
         revalidatePath(`/dashboard/loja/${storeId}/config`)
         revalidatePath(`/dashboard/loja/${storeId}`, 'layout')

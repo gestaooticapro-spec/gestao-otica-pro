@@ -552,6 +552,25 @@ export interface Database {
         }
       }
 
+      store_local_protocol_sequences: {
+        Row: {
+          store_id: number
+          next_number: number
+          updated_at: string
+        }
+        Insert: {
+          store_id: number
+          next_number: number
+          updated_at?: string
+        }
+        Update: {
+          store_id?: number
+          next_number?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+
       whatsapp_store_channels: {
         Row: {
           id: number
@@ -2316,6 +2335,13 @@ export interface Database {
           p_org_id: string
           p_serie: string | number
           p_store_id: number
+        }
+        Returns: number
+      }
+      reserve_next_store_local_protocol: {
+        Args: {
+          p_store_id: number
+          p_initial_number: number
         }
         Returns: number
       }

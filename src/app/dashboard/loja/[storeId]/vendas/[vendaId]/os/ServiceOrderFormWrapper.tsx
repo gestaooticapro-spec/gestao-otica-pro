@@ -37,6 +37,7 @@ export default function ServiceOrderFormWrapper({
             saveState={saveState}
             dispatch={dispatch}
             preSaleAnalysisEnabled={initialData.preSaleAnalysisEnabled}
+            localProtocolEnabled={initialData.localProtocolEnabled}
             venda={initialData.venda}
         />
     )
