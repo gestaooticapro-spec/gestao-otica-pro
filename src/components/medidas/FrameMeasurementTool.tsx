@@ -322,27 +322,27 @@ export default function FrameMeasurementTool({
   function applyLandmarks(lms: RawLm[], b: typeof imgBounds, cur: Handles): Handles {
     const tc = (lm: RawLm): Pt => ({ x: b.x + lm.x * b.w, y: b.y + lm.y * b.h })
     const irisR  = tc(lms[468]); const irisL  = tc(lms[473])
-    const outerR = tc(lms[33]);  const botR   = tc(lms[145]); const botL = tc(lms[374])
-    const noseBridge = tc(lms[6])
-    const pxMm  = dist(cur.calibA, cur.calibB) / cardMm
-    const bridgeCX = (irisR.x + irisL.x) / 2
-    const BRIDGE_HALF = 8.5; const LENS_OUTER = 26; const LENS_TOP = 12; const MOUNT_H = 18
-    const lensLeftX  = Math.min(irisR.x - LENS_OUTER * pxMm, outerR.x - 4 * pxMm)
-    const lensRightX = bridgeCX - BRIDGE_HALF * pxMm
-    const bridgeY    = noseBridge.y - 2 * pxMm
+    const outerR = tc(lms[33]);  const innerR  = tc(lms[133])
+    const topR   = tc(lms[159]); const botR    = tc(lms[145])
+    const outerL = tc(lms[263]); const innerL  = tc(lms[362])
+    const topL   = tc(lms[386]); const botL    = tc(lms[374])
+    const eyeW   = Math.abs(outerR.x - innerR.x)
+    const fOut   = eyeW * 0.40
+    const fV     = eyeW * 0.32
+    const bGap   = (innerL.x - innerR.x) * 0.08
     return {
       ...cur,
       pupilR: irisR, pupilL: irisL,
-      bridgeR:    { x: lensRightX,                  y: bridgeY },
-      bridgeL:    { x: bridgeCX + BRIDGE_HALF * pxMm, y: bridgeY },
-      mountR:     { x: irisR.x, y: irisR.y + MOUNT_H * pxMm },
-      mountL:     { x: irisL.x, y: irisL.y + MOUNT_H * pxMm },
-      lensLeft:   { x: lensLeftX,  y: irisR.y },
-      lensRight:  { x: lensRightX, y: irisR.y },
-      lensTop:    { x: irisR.x,    y: irisR.y - LENS_TOP * pxMm },
-      lensBottom: { x: irisR.x,    y: irisR.y + MOUNT_H * pxMm },
-      diagA:      { x: lensLeftX,  y: irisR.y - LENS_TOP * pxMm },
-      diagB:      { x: lensRightX, y: irisR.y + MOUNT_H * pxMm },
+      bridgeR: { x: innerR.x + bGap, y: (irisR.y + topR.y) / 2 },
+      bridgeL: { x: innerL.x - bGap, y: (irisL.y + topL.y) / 2 },
+      mountR: { x: irisR.x, y: botR.y + fV },
+      mountL: { x: irisL.x, y: botL.y + Math.abs(outerL.x - innerL.x) * 0.32 },
+      lensLeft: { x: outerR.x - fOut, y: irisR.y },
+      lensRight: { x: innerR.x + bGap, y: irisR.y },
+      lensTop: { x: irisR.x, y: topR.y - fV },
+      lensBottom: { x: irisR.x, y: botR.y + fV },
+      diagA: { x: outerR.x - fOut, y: topR.y - fV },
+      diagB: { x: innerR.x + bGap, y: botR.y + fV },
       // pálpebra: borda inferior do olho (landmark da pálpebra inferior)
       palpebraR:  botR,
       palpebraL:  botL,
