@@ -3,6 +3,10 @@
     {
       "path": "/api/fiscal/closing/monthly",
       "schedule": "0 11 1-5 * *"
+    },
+    {
+      "path": "/api/internal/tower-report-cleanup",
+      "schedule": "15 5 * * *"
     }
   ]
 }

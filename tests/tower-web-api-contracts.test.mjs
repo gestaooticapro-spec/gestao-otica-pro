@@ -148,3 +148,50 @@ test('recuperacao de PIN autentica o dispositivo e consome codigo de uso unico',
   assert.match(contract, /MBTOWER-PIN:1:/)
   assert.match(contract, /normalizeTowerPinRecoveryCode/)
 })
+
+test('publicacao de relatorio usa dispositivo, escopo, hash e expiracao sem alterar o sync', async () => {
+  const [prepare, upload, finalize, publicRoute, publicPage, share] = await Promise.all([
+    read('src/app/api/tower/device/customer-reports/route.ts'),
+    read('src/app/api/tower/device/customer-reports/[reportId]/assets/[assetId]/route.ts'),
+    read('src/app/api/tower/device/customer-reports/[reportId]/finalize/route.ts'),
+    read('src/app/api/public/tower-reports/[token]/route.ts'),
+    read('src/app/relatorio/[token]/page.tsx'),
+    read('src/lib/server/tower-customer-report-share.ts'),
+  ])
+
+  for (const route of [prepare, upload, finalize]) assert.match(route, /authenticateTowerDevice/)
+  assert.match(prepare, /\.eq\('tenant_id', device\.tenantId\)/)
+  assert.match(prepare, /\.eq\('store_id', device\.storeId\)/)
+  assert.match(prepare, /snapshotHash/)
+  assert.match(prepare, /audience: z\.enum\(\['customer', 'retailer_export'\]\)/)
+  assert.match(upload, /MAX_ASSET_BYTES = 4 \* 1024 \* 1024/)
+  assert.match(upload, /createHash\('sha256'\)/)
+  assert.match(upload, /source_device_id/)
+  assert.match(finalize, /TOWER_CUSTOMER_REPORT_TTL_SECONDS/)
+  assert.match(finalize, /Ainda existem imagens pendentes/)
+  assert.match(share, /createHmac\('sha256'/)
+  assert.match(share, /TOWER_CUSTOMER_REPORT_SIGNED_ASSET_SECONDS = 5 \* 60/)
+  assert.match(share, /status: 'expired'/)
+  assert.match(publicRoute, /Cache-Control.*private, no-store/)
+  assert.match(publicPage, /robots: \{ index: false, follow: false, nocache: true \}/)
+  assert.doesNotMatch(publicPage, /JSON\.stringify/)
+})
+
+test('limpeza de relatorios usa cron autenticado e so neutraliza depois de remover o storage', async () => {
+  const [route, share, vercel] = await Promise.all([
+    read('src/app/api/internal/tower-report-cleanup/route.ts'),
+    read('src/lib/server/tower-customer-report-share.ts'),
+    read('vercel.json'),
+  ])
+
+  assert.match(route, /process\.env\.CRON_SECRET/)
+  assert.match(route, /timingSafeEqual/)
+  assert.match(route, /cleanupExpiredTowerCustomerReports/)
+  assert.match(share, /status', \['published', 'expired'\]/)
+  assert.match(share, /status', 'preparing'/)
+  assert.match(share, /\.remove\(storagePaths\)/)
+  assert.match(share, /snapshot: \{ expired: true \}/)
+  assert.ok(share.indexOf('.remove(storagePaths)') < share.indexOf('snapshot: { expired: true }'))
+  assert.match(vercel, /\/api\/internal\/tower-report-cleanup/)
+  assert.match(vercel, /15 5 \* \* \*/)
+})

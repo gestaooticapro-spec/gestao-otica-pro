@@ -34,6 +34,10 @@ const adminPinRecoverySql = await readFile(
   new URL('../supabase/migrations/20260727213000_tower_admin_pin_recovery.sql', import.meta.url),
   'utf8',
 )
+const customerReportSql = await readFile(
+  new URL('../supabase/migrations/20260731160000_tower_customer_report_shares.sql', import.meta.url),
+  'utf8',
+)
 
 test('migração corretiva protege exclusao de loja e imprime lote atomicamente', () => {
   assert.match(sql, /current_store_id\) REFERENCES public\.stores\(id\) ON DELETE RESTRICT/)
@@ -117,4 +121,17 @@ test('recuperacao de PIN e temporaria, atomica e restrita ao service role', () =
   assert.match(adminPinRecoverySql, /consumed_by_device_id = p_device_id/)
   assert.match(adminPinRecoverySql, /tower_store_admin_pins/)
   assert.match(adminPinRecoverySql, /TO service_role/)
+})
+
+test('relatorios temporarios sao aditivos, privados e isolados do sync operacional', () => {
+  assert.match(customerReportSql, /CREATE TABLE IF NOT EXISTS public\.tower_customer_report_shares/)
+  assert.match(customerReportSql, /CREATE TABLE IF NOT EXISTS public\.tower_customer_report_assets/)
+  assert.match(customerReportSql, /audience IN \('customer', 'retailer_export'\)/)
+  assert.match(customerReportSql, /status IN \('preparing', 'published', 'expired', 'revoked', 'failed'\)/)
+  assert.match(customerReportSql, /tower_customer_report_shares ENABLE ROW LEVEL SECURITY/)
+  assert.match(customerReportSql, /tower_customer_report_assets ENABLE ROW LEVEL SECURITY/)
+  assert.match(customerReportSql, /'tower-customer-reports'/)
+  assert.match(customerReportSql, /FALSE,/)
+  assert.doesNotMatch(customerReportSql, /ALTER TABLE public\.tower_sessions/)
+  assert.doesNotMatch(customerReportSql, /apply_tower_device_sync_event/)
 })
