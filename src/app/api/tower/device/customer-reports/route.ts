@@ -19,7 +19,7 @@ const AssetSchema = z.object({
 const PrepareSchema = z.object({
   reportId: z.string().uuid(),
   sessionId: z.string().uuid(),
-  audience: z.enum(['customer', 'retailer_export']),
+  audience: z.literal('customer'),
   sourceReportId: z.string().uuid(),
   sourceReportVersion: z.number().int().positive(),
   selectedSections: z.array(SectionSchema).min(1).max(8),
@@ -45,7 +45,22 @@ export async function POST(request: NextRequest) {
     .select('id,customer_id,status').eq('id', parsed.data.sessionId).eq('tenant_id', device.tenantId).eq('store_id', device.storeId).maybeSingle()
   if (sessionError) return NextResponse.json({ success: false, message: 'Nao foi possivel validar a sessao.' }, { status: 500 })
   if (!session || ['discarded', 'expired'].includes(session.status)) return NextResponse.json({ success: false, message: 'Sessao indisponivel para publicacao.' }, { status: 409 })
-  if (parsed.data.audience === 'customer' && !session.customer_id) return NextResponse.json({ success: false, message: 'Vincule o cliente antes de publicar seu relatorio.' }, { status: 409 })
+  if (!session.customer_id) return NextResponse.json({ success: false, message: 'Vincule o cliente antes de publicar seu relatorio.' }, { status: 409 })
+  const snapshotSession = parsed.data.snapshot.session
+  const snapshotCustomer = parsed.data.snapshot.customer
+  if (!snapshotSession || typeof snapshotSession !== 'object'
+      || Array.isArray(snapshotSession)
+      || (snapshotSession as Record<string, unknown>).id !== session.id) {
+    return NextResponse.json({ success: false, message: 'A sessao do snapshot nao confere com a publicacao.' }, { status: 400 })
+  }
+  if (snapshotCustomer !== null && snapshotCustomer !== undefined) {
+    const customerId = typeof snapshotCustomer === 'object' && !Array.isArray(snapshotCustomer)
+      ? (snapshotCustomer as Record<string, unknown>).id
+      : null
+    if (customerId !== session.customer_id && customerId !== String(session.customer_id)) {
+      return NextResponse.json({ success: false, message: 'O cliente do snapshot nao confere com a sessao.' }, { status: 409 })
+    }
+  }
 
   const reports = admin.from('tower_customer_report_shares') as any
   const { data: existing, error: existingError } = await reports.select('id,tower_session_id,audience,snapshot_hash,status').eq('id', parsed.data.reportId).maybeSingle()
