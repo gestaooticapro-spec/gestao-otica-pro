@@ -219,7 +219,7 @@ export default function ImportacaoPage() {
                 setLastSyncInfo({
                     type: 'warning',
                     message: 'A SEFAZ/Nuvem Local recusou a consulta temporariamente com status 656.',
-                    details: `CNPJ: ${result.cpfCnpj || '-'} | Nova tentativa sugerida: ${nextAttemptText}.`,
+                    details: `CNPJ: ${result.cpfCnpj || '-'} | Aguarde ate: ${nextAttemptText}. Novas tentativas nao renovam esse prazo.`,
                 })
                 return
             }

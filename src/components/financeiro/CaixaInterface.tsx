@@ -622,9 +622,9 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
                                             <label className={labelStyle}>Tipo</label>
-                                            <select name="tipo" className={`${inputStyle} cursor-pointer`}>
-                                                <option value="Saida">Saída (Sangria)</option>
-                                                <option value="Entrada">Entrada (Suprimento)</option>
+                                            <select name="tipo" className={`${inputStyle} cursor-pointer text-slate-200 [color-scheme:dark] [&>option]:bg-slate-900 [&>option]:text-slate-100`}>
+                                                <option value="Saida">Saída</option>
+                                                <option value="Entrada">Entrada</option>
                                             </select>
                                         </div>
                                         <div>
@@ -843,7 +843,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
                                         <label className={labelStyle}>Tipo</label>
-                                        <select name="tipo" defaultValue={editingMov.tipo} className={`${inputStyle} cursor-pointer`}>
+                                        <select name="tipo" defaultValue={editingMov.tipo} className={`${inputStyle} cursor-pointer text-slate-200 [color-scheme:dark] [&>option]:bg-slate-900 [&>option]:text-slate-100`}>
                                             <option value="Saida">Saída</option>
                                             <option value="Entrada">Entrada</option>
                                         </select>

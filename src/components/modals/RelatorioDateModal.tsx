@@ -76,7 +76,7 @@ export default function RelatorioDateModal({ isOpen, onClose, onConfirm, type }:
                             <select
                                 value={mes}
                                 onChange={(e) => setMes(Number(e.target.value))}
-                                className="w-full h-11 rounded-lg border border-white/10 bg-black/20 font-bold text-slate-200 focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/50 outline-none backdrop-blur-sm px-3"
+                                className="w-full h-11 rounded-lg border border-white/10 bg-black/20 font-bold text-slate-200 focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/50 outline-none backdrop-blur-sm px-3 [color-scheme:dark] [&>option]:bg-slate-900 [&>option]:text-slate-100"
                             >
                                 {meses.map((m, i) => (
                                     <option key={i} value={i + 1}>{m}</option>

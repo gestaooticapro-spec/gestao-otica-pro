@@ -545,17 +545,12 @@ export async function syncNfeFromSefaz(storeId?: number) {
         }
 
         if (isRateLimitStatus((result as any)?.codigo_status)) {
-            // Update last_sync_at even if rate limited, so the UI correctly reflects the new blocked window
-            await touchDistributionState({
-                organizationId,
-                cpfCnpj,
-                ambiente: NFE_AMBIENTE,
-                ultimoNsu: Number(state.ultimo_nsu || 0),
-                maxNsu: state.max_nsu ?? null,
-            })
-
-            // Recalculate nextAttemptAt based on the updated time (which is now)
-            const nextAttemptAt = getNextAllowedSyncAt(new Date().toISOString())
+            // A resposta 656 nao inicia uma nova janela. Em especial, nao devemos
+            // gravar last_sync_at aqui: tentativas repetidas durante o bloqueio
+            // acabariam empurrando o horario permitido sempre mais uma hora.
+            // Usamos a ultima consulta persistida como referencia; se ela nao
+            // existir, nao inventamos um horario que seria renovado a cada clique.
+            const nextAttemptAt = getNextAllowedSyncAt(state.last_sync_at ?? null)
             diagnostico.proximaTentativaSugerida = nextAttemptAt
 
             return {

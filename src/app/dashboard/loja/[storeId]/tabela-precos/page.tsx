@@ -156,8 +156,9 @@ export default async function StorePriceTablePage(
                 Ative pelo menos uma tabela primeiro
               </h1>
               <p className="mt-3 text-sm leading-6 text-slate-300">
-                A consulta de preços usa as tabelas globais ativas da loja. Primeiro ligue pelo
-                menos uma tabela e depois consulte os preços logo abaixo.
+                Na parte superior direita, clique em “Tabelas disponíveis”. Escolha uma ou mais
+                tabelas de preços e ative-as para esta loja. Depois, volte a esta tela para
+                consultar os valores.
               </p>
             </div>
           </div>
@@ -173,8 +174,9 @@ export default async function StorePriceTablePage(
                 Ative pelo menos uma tabela primeiro
               </h1>
               <p className="mt-3 text-sm leading-6 text-slate-300">
-                A busca por lente usa todas as tabelas globais ativas da loja. Ligue pelo menos
-                uma tabela para pesquisar entre os laboratorios.
+                Na parte superior direita, clique em “Tabelas disponíveis”. Escolha uma ou mais
+                tabelas e ative-as para esta loja. Depois, volte a esta tela para pesquisar entre
+                os laboratórios.
               </p>
             </div>
           </div>
