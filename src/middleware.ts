@@ -4,6 +4,24 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
+  const maintenanceWriteLock = process.env.MAINTENANCE_WRITE_LOCK === 'true'
+  const isWriteRequest = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)
+
+  // Bloqueia gravacoes durante manutencoes sem impedir consultas e sem afetar a conexao
+  // direta usada pelo procedimento administrativo de migracao.
+  if (maintenanceWriteLock && isWriteRequest) {
+    return new NextResponse(
+      JSON.stringify({ error: 'Sistema temporariamente em manutencao. Nenhuma alteracao pode ser salva agora.' }),
+      {
+        status: 503,
+        headers: {
+          'content-type': 'application/json; charset=utf-8',
+          'retry-after': '300',
+        },
+      },
+    )
+  }
+
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set('x-pathname', request.nextUrl.pathname)
 

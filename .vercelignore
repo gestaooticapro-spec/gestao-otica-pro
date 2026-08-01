@@ -5,3 +5,8 @@ dist-electron
 electron
 .env*
 *.log
+backup.sql
+tmp
+.tabelas
+*.sql
+!supabase/migrations/*.sql

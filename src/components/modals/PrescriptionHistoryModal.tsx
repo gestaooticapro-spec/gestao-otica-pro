@@ -78,13 +78,16 @@ export default function PrescriptionHistoryModal({
             </div>
           ) : (
             history.map((item) => (
-              <div key={item.id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm hover:border-blue-300 transition-colors">
+              <div key={`${item.source}-${item.id}`} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm hover:border-blue-300 transition-colors">
                 
                 {/* Cabeçalho do Card */}
                 <div className="flex justify-between items-start mb-3 border-b border-gray-100 pb-2">
                   <div className="flex gap-4">
                     <span className="flex items-center gap-1 text-xs font-bold text-blue-700 bg-blue-50 px-2 py-1 rounded">
                       <Calendar className="h-3 w-3" /> {formatDate(item.created_at)}
+                    </span>
+                    <span className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded ${item.source === 'legacy_import' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                      {item.source_label}
                     </span>
                     <span className="flex items-center gap-1 text-xs font-medium text-gray-600">
                       <Stethoscope className="h-3 w-3" /> {item.oftalmologistas?.nome_completo || 'Médico N/A'}
@@ -138,6 +141,12 @@ export default function PrescriptionHistoryModal({
                     {item.medida_dnp_od && <span>DNP OD: <strong>{item.medida_dnp_od}</strong></span>}
                     {item.medida_dnp_oe && <span>DNP OE: <strong>{item.medida_dnp_oe}</strong></span>}
                   </div>
+                )}
+
+                {item.service_description && (
+                  <p className="mt-3 text-xs text-gray-600 border-t border-dashed border-gray-200 pt-2">
+                    <strong>Serviço:</strong> {item.service_description}
+                  </p>
                 )}
 
               </div>

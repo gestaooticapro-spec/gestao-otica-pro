@@ -644,6 +644,9 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                                                             {rx.medico && (
                                                                 <p className="text-xs text-slate-500 mt-1">Dr(a). {rx.medico}</p>
                                                             )}
+                                                            {rx.origem === 'legado' && (
+                                                                <p className="text-xs text-slate-500 mt-1">Sistema anterior</p>
+                                                            )}
                                                         </div>
                                                     </div>
 
@@ -672,6 +675,11 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                                                     {rx.adicao && (
                                                         <div className="mt-2 pt-2 border-t border-dashed border-white/10 text-xs text-slate-400">
                                                             <span>Adição: <strong className="text-slate-200">{rx.adicao}</strong></span>
+                                                        </div>
+                                                    )}
+                                                    {rx.descricaoServico && (
+                                                        <div className="mt-2 pt-2 border-t border-dashed border-white/10 text-xs text-slate-400">
+                                                            <span>Servico: <strong className="text-slate-200">{rx.descricaoServico}</strong></span>
                                                         </div>
                                                     )}
                                                 </div>

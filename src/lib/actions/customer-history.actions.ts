@@ -57,6 +57,8 @@ export interface FinancialSummary {
 export interface PrescriptionSummary {
     id: number
     dataCompra: string
+    origem?: 'os' | 'legado'
+    descricaoServico?: string | null
     // Longe
     longeOdEsf: string | null
     longeOdCil: string | null
@@ -355,6 +357,47 @@ export async function getCustomerPrescriptionSummary(
     const dependentes = Array.from(groupedMap.values())
         .filter((group) => group.id !== 'titular')
         .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'))
+
+    const { data: legacyData, error: legacyError } = await (supabaseAdmin
+        .from('customer_prescription_history') as any)
+        .select(`
+            id, created_at, prescription_date, service_description,
+            receita_longe_od_esferico, receita_longe_od_cilindrico, receita_longe_od_eixo,
+            receita_longe_oe_esferico, receita_longe_oe_cilindrico, receita_longe_oe_eixo,
+            receita_perto_od_esferico, receita_perto_od_cilindrico, receita_perto_od_eixo,
+            receita_perto_oe_esferico, receita_perto_oe_cilindrico, receita_perto_oe_eixo,
+            receita_adicao_od, receita_adicao_oe
+        `)
+        .eq('store_id', storeId)
+        .eq('customer_id', customerId)
+        .order('prescription_date', { ascending: false })
+        .limit(20)
+
+    if (!legacyError) {
+        for (const item of legacyData || []) {
+            titular.receitas.push({
+                id: item.id,
+                dataCompra: item.prescription_date || item.created_at,
+                origem: 'legado',
+                descricaoServico: item.service_description || null,
+                longeOdEsf: item.receita_longe_od_esferico,
+                longeOdCil: item.receita_longe_od_cilindrico,
+                longeOdEixo: item.receita_longe_od_eixo,
+                longeOeEsf: item.receita_longe_oe_esferico,
+                longeOeCil: item.receita_longe_oe_cilindrico,
+                longeOeEixo: item.receita_longe_oe_eixo,
+                pertoOdEsf: item.receita_perto_od_esferico,
+                pertoOdCil: item.receita_perto_od_cilindrico,
+                pertoOdEixo: item.receita_perto_od_eixo,
+                pertoOeEsf: item.receita_perto_oe_esferico,
+                pertoOeCil: item.receita_perto_oe_cilindrico,
+                pertoOeEixo: item.receita_perto_oe_eixo,
+                adicao: item.receita_adicao_od || item.receita_adicao_oe || null,
+                medico: null,
+            })
+        }
+        titular.receitas.sort((a, b) => new Date(b.dataCompra).getTime() - new Date(a.dataCompra).getTime())
+    }
 
     return [titular, ...dependentes]
 }

@@ -50,6 +50,7 @@ next-env.d.ts
 /.claude/
 /.migracao_nfce/
 /supabase/.temp/
+/scripts/__pycache__/
 
 # Heavy Files & Archives
 *.pdf
@@ -63,6 +64,7 @@ next-env.d.ts
 
 # SQL & Backups (Keep migrations, ignore others)
 *.sql
+/backup.sql
 !supabase_migration_*.sql
 !supabase/migrations/*.sql
 !src/lib/database/*.sql

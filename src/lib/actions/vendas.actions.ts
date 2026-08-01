@@ -3557,6 +3557,8 @@ export async function getLastSalesForCustomer(storeId: number, customerId: numbe
 // ================================================================
 export type PrescriptionHistoryItem = {
   id: number
+  source: 'service_order' | 'legacy_import'
+  source_label: string
   created_at: string
   receita_longe_od_esferico: string | null
   receita_longe_od_cilindrico: string | null
@@ -3573,6 +3575,7 @@ export type PrescriptionHistoryItem = {
   receita_adicao: string | null
   medida_dnp_od: string | null
   medida_dnp_oe: string | null
+  service_description: string | null
   oftalmologistas: {
     nome_completo: string
   } | null
@@ -3599,8 +3602,16 @@ export async function getCustomerPrescriptionHistory(
         `)
       .eq('store_id', storeId)
       .eq('customer_id', customerId)
-      // Filtra para pegar apenas receitas que tenham algum dado preenchido
-      .not('receita_longe_od_esferico', 'is', null)
+      // Inclui qualquer OS que tenha ao menos um campo óptico preenchido.
+      .or([
+        'receita_longe_od_esferico.not.is.null',
+        'receita_longe_od_cilindrico.not.is.null',
+        'receita_longe_oe_esferico.not.is.null',
+        'receita_longe_oe_cilindrico.not.is.null',
+        'receita_perto_od_esferico.not.is.null',
+        'receita_perto_oe_esferico.not.is.null',
+        'receita_adicao.not.is.null',
+      ].join(','))
       .order('created_at', { ascending: false })
 
     // Se um dependente específico estiver selecionado, filtra por ele.
@@ -3618,7 +3629,46 @@ export async function getCustomerPrescriptionHistory(
       return []
     }
 
-    return data as any
+    const serviceOrderHistory = (data || []).map((item: any) => ({
+      ...item,
+      source: 'service_order' as const,
+      source_label: 'OS anterior',
+      service_description: null,
+    }))
+
+    // Receitas migradas pertencem apenas ao titular: dependentes nao existiam no sistema legado.
+    if (dependenteId) return serviceOrderHistory
+
+    const { data: legacyData, error: legacyError } = await (supabaseAdmin
+      .from('customer_prescription_history') as any)
+      .select(`
+        id, created_at, prescription_date, service_description,
+        receita_longe_od_esferico, receita_longe_od_cilindrico, receita_longe_od_eixo,
+        receita_longe_oe_esferico, receita_longe_oe_cilindrico, receita_longe_oe_eixo,
+        receita_perto_od_esferico, receita_perto_od_cilindrico, receita_perto_od_eixo,
+        receita_perto_oe_esferico, receita_perto_oe_cilindrico, receita_perto_oe_eixo,
+        receita_adicao_od, receita_adicao_oe, medida_dnp_od, medida_dnp_oe
+      `)
+      .eq('store_id', storeId)
+      .eq('customer_id', customerId)
+      .order('prescription_date', { ascending: false })
+
+    if (legacyError) {
+      // A tabela ainda nao existe ate a migracao ser aplicada. O historico normal continua funcional.
+      return serviceOrderHistory
+    }
+
+    const legacyHistory = (legacyData || []).map((item: any) => ({
+      ...item,
+      created_at: item.prescription_date || item.created_at,
+      receita_adicao: item.receita_adicao_od || item.receita_adicao_oe || null,
+      oftalmologistas: null,
+      source: 'legacy_import' as const,
+      source_label: 'Sistema anterior',
+    }))
+
+    return [...serviceOrderHistory, ...legacyHistory]
+      .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()) as PrescriptionHistoryItem[]
   } catch (e) {
     return []
   }

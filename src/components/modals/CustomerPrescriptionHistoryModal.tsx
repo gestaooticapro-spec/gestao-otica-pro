@@ -221,7 +221,9 @@ export default function CustomerPrescriptionHistoryModal({
                                                 <Calendar className="h-3.5 w-3.5" />
                                                 {formatDate(rx.dataCompra)}
                                             </div>
-                                            <p className="text-[11px] text-slate-500">OS #{rx.id}</p>
+                                            <p className="text-[11px] text-slate-500">
+                                                {rx.origem === 'legado' ? 'Sistema anterior' : `OS #${rx.id}`}
+                                            </p>
                                         </div>
                                         {rx.medico && (
                                             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-slate-300">
@@ -260,6 +262,12 @@ export default function CustomerPrescriptionHistoryModal({
                                             <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
                                                 Adicao: <strong>{rx.adicao}</strong>
                                             </div>
+                                        )}
+
+                                        {rx.descricaoServico && (
+                                            <p className="border-t border-dashed border-white/10 pt-3 text-xs text-slate-300">
+                                                <strong>Servico:</strong> {rx.descricaoServico}
+                                            </p>
                                         )}
                                     </div>
                                 </div>
