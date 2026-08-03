@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Clock3, Eye, FileText, ImageIcon, ShieldCheck } from 'lucide-react'
 import { loadPublicTowerCustomerReport } from '@/lib/server/tower-customer-report-share'
+import TowerReportLensSimulation from '@/components/tower/TowerReportLensSimulation'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = {
@@ -70,7 +71,8 @@ function SectionContent({ id, snapshot }: { id: string; snapshot: UnknownRecord 
   }
   if (id === 'thickness') {
     const thickness = record(snapshot.thickness); const lens = record(thickness.lens); const frame = record(thickness.frame)
-    return <Values value={{ indice: lens.index, espessuraMinima: lens.minimumThicknessMm ? `${scalar(lens.minimumThicknessMm)} mm` : '', espessuraMaxima: lens.maximumThicknessMm ? `${scalar(lens.maximumThicknessMm)} mm` : '', armacao: frame.name, montagem: frame.mount }} />
+    const minimum = Number(lens.minimumThicknessMm); const maximum = Number(lens.maximumThicknessMm); const width = Number(frame.widthMm); const height = Number(frame.heightMm)
+    return <div><Values value={{ indice: lens.index, espessuraMinima: lens.minimumThicknessMm ? `${scalar(lens.minimumThicknessMm)} mm` : '', espessuraMaxima: lens.maximumThicknessMm ? `${scalar(lens.maximumThicknessMm)} mm` : '', armacao: frame.name, montagem: frame.mount }} />{[minimum, maximum, width, height].every(Number.isFinite) && <TowerReportLensSimulation frameWidthMm={width} frameHeightMm={height} minimumThicknessMm={minimum} maximumThicknessMm={maximum} />}</div>
   }
   return null
 }

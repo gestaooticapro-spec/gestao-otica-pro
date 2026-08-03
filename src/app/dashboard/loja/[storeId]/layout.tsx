@@ -12,6 +12,8 @@ import { TabletModeButton } from '@/components/tablet/TabletModeButton';
 import { StoreModulesProvider } from '@/lib/contexts/StoreModulesContext';
 import { StoreSettings, getStoreModules } from '@/lib/store-modules';
 import { getStoreLogoPublicUrl } from '@/lib/store-logo';
+import BillingStatusBanner from '@/components/billing/BillingStatusBanner';
+import { syncStoreWithBillingGateway } from '@/lib/billing/integracao-asaas';
 
 type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor' | 'tecnico';
 type StoreProfile = {
@@ -20,6 +22,7 @@ type StoreProfile = {
 };
 type StoreDataShape = {
   name?: string | null;
+  cnpj?: string | null;
   settings?: unknown;
 };
 
@@ -64,7 +67,7 @@ export default async function StoreLayout(
   const supabaseAdmin = createAdminClient();
   const { data: rawStoreData } = await supabaseAdmin
     .from('stores')
-    .select('name, settings')
+    .select('name, cnpj, settings')
     .eq('id', storeIdParam)
     .single();
   const storeData = rawStoreData as StoreDataShape | null;
@@ -86,10 +89,21 @@ export default async function StoreLayout(
 
   const logoUrl = getStoreLogoPublicUrl(logoFile);
 
+  try {
+    await syncStoreWithBillingGateway({
+      id: storeIdParam,
+      name: storeName,
+      cnpj: storeData?.cnpj || null,
+    });
+  } catch (error) {
+    console.error('[Cobranca] Nao foi possivel sincronizar a loja com o gateway:', error);
+  }
+
   if (userRole === 'store_operator') {
     return (
       <StoreModulesProvider modules={storeModules}>
         <ModalsProvider storeId={storeIdParam}>
+          <BillingStatusBanner storeId={storeIdParam} />
           <TabletRedirect storeId={storeIdParam} />
           <TabletModeButton storeId={storeIdParam} />
           <OperatorLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl} preSaleAnalysisEnabled={preSaleAnalysisEnabled} deliveryDateEnabled={deliveryDateEnabled}>
@@ -104,6 +118,7 @@ export default async function StoreLayout(
     return (
       <StoreModulesProvider modules={storeModules}>
         <ModalsProvider storeId={storeIdParam}>
+          <BillingStatusBanner storeId={storeIdParam} />
           <TabletRedirect storeId={storeIdParam} />
           <TabletModeButton storeId={storeIdParam} />
           <ManagerLayout storeId={storeIdParam} storeName={storeName} logoUrl={logoUrl}>
@@ -117,6 +132,7 @@ export default async function StoreLayout(
   return (
     <StoreModulesProvider modules={storeModules}>
       <ModalsProvider storeId={storeIdParam}>
+        <BillingStatusBanner storeId={storeIdParam} />
         <TabletRedirect storeId={storeIdParam} />
         <TabletModeButton storeId={storeIdParam} />
         <div className="flex w-full h-full overflow-hidden">

@@ -11,6 +11,7 @@ import { calcularERegistrarComissao, cancelarComissao, calcularComissaoMedico } 
 import { checkLensStock, confirmReservations, cancelReservations, getLensReservationForOsSlot, releaseReservationsForServiceOrder, reserveLensByAdmin, type LensReservationSlot } from './stock.actions'
 import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
 import { clearNfcTrayLinkForDeliveredOrder } from '@/lib/nfc-tray-cleanup'
+import { getNewSaleBillingGuard } from '@/lib/billing/billing-guard'
 import {
   issueEmployeeAuthorization,
   verifyEmployeeAuthorization,
@@ -1088,6 +1089,11 @@ export async function createNewVenda(
   const profile: any = await getProfileByAdmin(user.id)
   if (!profile || !profile.tenant_id || !profile.store_id) {
     return { success: false, message: 'Perfil do usuário não encontrado.' }
+  }
+
+  const billingGuard = await getNewSaleBillingGuard(Number(profile.store_id))
+  if (billingGuard.blocked) {
+    return { success: false, message: billingGuard.message || 'Novas vendas estao bloqueadas para esta loja.' }
   }
 
   const vendaData = {
@@ -3116,6 +3122,10 @@ export async function finalizarVendaExpress(formData: FormData) {
   // CORREÃ‡ÃƒO 1: Conversão explícita para Number
   const storeId = parseInt(formData.get('store_id') as string)
   const employeeId = parseInt(formData.get('employee_id') as string)
+  const billingGuard = await getNewSaleBillingGuard(storeId)
+  if (billingGuard.blocked) {
+    return { success: false, message: billingGuard.message || 'Novas vendas estao bloqueadas para esta loja.' }
+  }
   if (!(await isStoreModuleEnabledForStore(storeId, 'quickSale'))) {
     return { success: false, message: 'Modulo de venda rapida desativado para esta loja.' }
   }
@@ -3226,6 +3236,10 @@ export async function criarVendaParcialCarnê(formData: FormData) {
   const storeId = parseInt(formData.get('store_id') as string)
   const customerId = parseInt(formData.get('customer_id') as string)
   const employeeId = parseInt(formData.get('employee_id') as string)
+  const billingGuard = await getNewSaleBillingGuard(storeId)
+  if (billingGuard.blocked) {
+    return { success: false, message: billingGuard.message || 'Novas vendas estao bloqueadas para esta loja.' }
+  }
   if (!(await isStoreModuleEnabledForStore(storeId, 'installments'))) {
     return { success: false, message: 'Modulo de parcelamento desativado para esta loja.' }
   }

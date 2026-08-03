@@ -6,6 +6,7 @@ import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { Database } from '@/lib/database.types'
 import { createClient } from '@/lib/supabase/server'
 import { authorizeTowerStoreAccess } from '@/lib/server/tower-device-web-session'
+import { getNewSaleBillingGuard } from '@/lib/billing/billing-guard'
 
 type PreSaleSettings = {
   pre_sale_analysis_enabled?: boolean
@@ -952,6 +953,11 @@ export async function createSaleAndServiceOrderFromEvaluation(
   const data = validated.data
   const auth = await getAuthorizedContext(data.storeId)
   if (!auth.ok) return { success: false, message: auth.message }
+
+  const billingGuard = await getNewSaleBillingGuard(data.storeId)
+  if (billingGuard.blocked) {
+    return { success: false, message: billingGuard.message || 'Novas vendas estao bloqueadas para esta loja.' }
+  }
 
   const supabaseAdmin = createAdminClient()
   let createdVendaId: number | null = null
