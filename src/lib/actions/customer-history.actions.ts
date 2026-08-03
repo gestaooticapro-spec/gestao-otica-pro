@@ -282,6 +282,8 @@ export async function getCustomerPrescriptionSummary(
         .select(`
             id,
             created_at,
+            venda_id,
+            obs_os,
             dependente_id,
             receita_longe_od_esferico,
             receita_longe_od_cilindrico,
@@ -311,6 +313,30 @@ export async function getCustomerPrescriptionSummary(
         return []
     }
 
+    const vendaIds = Array.from(new Set(
+        (data || [])
+            .map((os: any) => Number(os.venda_id))
+            .filter((id: number) => Number.isFinite(id) && id > 0)
+    ))
+    const observacaoVendaById = new Map<number, string>()
+
+    if (vendaIds.length > 0) {
+        const { data: vendasData, error: vendasError } = await (supabaseAdmin
+            .from('vendas') as any)
+            .select('id, obs_geral')
+            .eq('store_id', storeId)
+            .in('id', vendaIds)
+
+        if (vendasError) {
+            console.error('Erro ao buscar observacoes das vendas:', vendasError)
+        } else {
+            for (const venda of vendasData || []) {
+                const observacao = String(venda.obs_geral || '').trim()
+                if (observacao) observacaoVendaById.set(Number(venda.id), observacao)
+            }
+        }
+    }
+
     const groupedMap = new Map<string, PrescriptionSummaryGroup>()
 
     for (const os of data || []) {
@@ -327,9 +353,15 @@ export async function getCustomerPrescriptionSummary(
             })
         }
 
+        const observacoes = [
+            observacaoVendaById.get(Number(os.venda_id)) || '',
+            String(os.obs_os || '').trim()
+        ].filter(Boolean)
+
         groupedMap.get(groupId)?.receitas.push({
             id: os.id,
             dataCompra: os.created_at,
+            descricaoServico: observacoes.length > 0 ? observacoes.join(' | ') : null,
             longeOdEsf: os.receita_longe_od_esferico,
             longeOdCil: os.receita_longe_od_cilindrico,
             longeOdEixo: os.receita_longe_od_eixo,

@@ -266,7 +266,7 @@ export default function CustomerPrescriptionHistoryModal({
 
                                         {rx.descricaoServico && (
                                             <p className="border-t border-dashed border-white/10 pt-3 text-xs text-slate-300">
-                                                <strong>Servico:</strong> {rx.descricaoServico}
+                                                <strong>Observação:</strong> {rx.descricaoServico}
                                             </p>
                                         )}
                                     </div>
