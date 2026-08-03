@@ -54,6 +54,8 @@ next-env.d.ts
 
 # Heavy Files & Archives
 *.pdf
+Guia_tecnico_integracao_APIPix_Sicredi_v2.1.pdf
+CollectionAPIPixSicredi.json
 *.zip
 *.rar
 *.7z
