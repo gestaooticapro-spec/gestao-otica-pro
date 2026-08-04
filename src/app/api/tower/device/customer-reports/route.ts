@@ -10,7 +10,12 @@ export const dynamic = 'force-dynamic'
 const SectionSchema = z.enum(['customer', 'prescription', 'lensRecommendations', 'decisionCriteria', 'heatmap', 'measurement', 'visagismo', 'thickness'])
 const AssetSchema = z.object({
   id: z.string().uuid(),
-  kind: z.enum(['visagismo', 'measurement_front', 'measurement_profile']),
+  kind: z.enum([
+    'visagismo', 'visagismo_analysis', 'visagismo_final',
+    'measurement_front', 'measurement_front_annotated',
+    'measurement_profile', 'measurement_profile_annotated',
+    'heatmap',
+  ]),
   mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
   contentHash: z.string().regex(/^[0-9a-f]{64}$/),
   byteSize: z.number().int().min(1).max(4 * 1024 * 1024),

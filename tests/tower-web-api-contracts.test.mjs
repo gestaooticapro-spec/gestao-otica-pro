@@ -168,6 +168,9 @@ test('publicacao de relatorio usa dispositivo, escopo, hash e expiracao sem alte
   assert.match(prepare, /snapshotSession/)
   assert.match(prepare, /A sessao do snapshot nao confere/)
   assert.match(prepare, /O cliente do snapshot nao confere/)
+  for (const kind of ['visagismo_analysis', 'visagismo_final', 'measurement_front_annotated', 'measurement_profile_annotated', 'heatmap']) {
+    assert.match(prepare, new RegExp(kind))
+  }
   assert.match(upload, /MAX_ASSET_BYTES = 4 \* 1024 \* 1024/)
   assert.match(upload, /createHash\('sha256'\)/)
   assert.match(upload, /source_device_id/)
@@ -179,6 +182,8 @@ test('publicacao de relatorio usa dispositivo, escopo, hash e expiracao sem alte
   assert.match(publicRoute, /Cache-Control.*private, no-store/)
   assert.match(publicPage, /robots: \{ index: false, follow: false, nocache: true \}/)
   assert.doesNotMatch(publicPage, /JSON\.stringify/)
+  assert.match(publicPage, /lensGeometry/)
+  assert.match(publicPage, /assetCaption/)
 })
 
 test('limpeza de relatorios usa cron autenticado e so neutraliza depois de remover o storage', async () => {

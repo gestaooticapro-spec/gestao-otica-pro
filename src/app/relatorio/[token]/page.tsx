@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { Clock3, Eye, FileText, ImageIcon, ShieldCheck } from 'lucide-react'
 import { loadPublicTowerCustomerReport } from '@/lib/server/tower-customer-report-share'
-import { TowerReportLensSimulation } from '@/components/tower/TowerReportLensSimulation'
+import { TowerReportLensSimulation, type TowerReportLensGeometry } from '@/components/tower/TowerReportLensSimulation'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = {
@@ -19,6 +19,18 @@ const VALUE_LABELS: Record<string, string> = { sim: 'Sim', nao: 'Não', multifoc
 
 function record(value: unknown): UnknownRecord {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as UnknownRecord : {}
+}
+function lensGeometry(value: unknown): TowerReportLensGeometry | null {
+  const source = record(value)
+  const points = (input: unknown, includeThickness: boolean) => Array.isArray(input) ? input.map((item) => {
+    const point = record(item)
+    const x = Number(point.x); const y = Number(point.y); const thickness = Number(point.thickness)
+    if (!Number.isFinite(x) || !Number.isFinite(y) || (includeThickness && !Number.isFinite(thickness))) return null
+    return includeThickness ? { x, y, thickness } : { x, y }
+  }).filter((point): point is { x: number; y: number; thickness?: number } => Boolean(point)) : []
+  const contour = points(source.contour, false).map(({ x, y }) => ({ x, y }))
+  const rim = points(source.rim, true).map(({ x, y, thickness }) => ({ x, y, thickness: thickness! }))
+  return contour.length >= 3 && rim.length >= 3 ? { contour, rim } : null
 }
 function scalar(value: unknown): string {
   if (typeof value === 'boolean') return value ? 'Sim' : 'Não'
@@ -38,6 +50,16 @@ function date(value: string) {
 function degree(value: unknown) {
   const parsed = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(parsed) ? `${parsed >= 0 ? '+' : ''}${parsed.toFixed(2)}` : '—'
+}
+function assetCaption(kind: unknown) {
+  if (kind === 'visagismo_final') return 'Escolha final do Visagismo'
+  if (kind === 'visagismo_analysis' || kind === 'visagismo') return 'Análise de Visagismo'
+  if (kind === 'measurement_front_annotated') return 'Medida frontal anotada'
+  if (kind === 'measurement_profile_annotated') return 'Medida de perfil anotada'
+  if (kind === 'measurement_front') return 'Medida frontal original'
+  if (kind === 'measurement_profile') return 'Medida de perfil original'
+  if (kind === 'heatmap') return 'Mapa de calor'
+  return 'Registro visual do atendimento'
 }
 
 function Values({ value }: { value: unknown }) {
@@ -70,9 +92,9 @@ function SectionContent({ id, snapshot }: { id: string; snapshot: UnknownRecord 
     return <div className="space-y-3"><Values value={{ formatoDoRosto: analysis.faceShape, tomDePele: visagismo.detectedSkinTone }} />{scalar(frame.name) && <p className="rounded-xl bg-violet-50 p-3 text-sm text-violet-950">Armação selecionada: <strong>{scalar(frame.name)}</strong></p>}</div>
   }
   if (id === 'thickness') {
-    const thickness = record(snapshot.thickness); const lens = record(thickness.lens); const frame = record(thickness.frame)
+    const thickness = record(snapshot.thickness); const lens = record(thickness.lens); const frame = record(thickness.frame); const geometry = lensGeometry(thickness.geometry)
     const minimum = Number(lens.minimumThicknessMm); const maximum = Number(lens.maximumThicknessMm); const width = Number(frame.widthMm); const height = Number(frame.heightMm)
-    return <div><Values value={{ indice: lens.index, espessuraMinima: lens.minimumThicknessMm ? `${scalar(lens.minimumThicknessMm)} mm` : '', espessuraMaxima: lens.maximumThicknessMm ? `${scalar(lens.maximumThicknessMm)} mm` : '', armacao: frame.name, montagem: frame.mount }} />{[minimum, maximum, width, height].every(Number.isFinite) && <TowerReportLensSimulation minimumThicknessMm={minimum} maximumThicknessMm={maximum} widthMm={width} heightMm={height} />}</div>
+    return <div><Values value={{ indice: lens.index, espessuraMinima: lens.minimumThicknessMm ? `${scalar(lens.minimumThicknessMm)} mm` : '', espessuraMaxima: lens.maximumThicknessMm ? `${scalar(lens.maximumThicknessMm)} mm` : '', armacao: frame.name, montagem: frame.mount }} />{[minimum, maximum, width, height].every(Number.isFinite) && <TowerReportLensSimulation minimumThicknessMm={minimum} maximumThicknessMm={maximum} widthMm={width} heightMm={height} geometry={geometry} />}</div>
   }
   return null
 }
@@ -88,6 +110,6 @@ export default async function PublicTowerReportPage({ params }: { params: Promis
   const title = report.audience === 'retailer_export' ? 'Relatório técnico do atendimento' : 'Seu relatório Neosmart'
   return <main className="min-h-screen bg-slate-100 px-4 py-8 text-slate-900"><div className="mx-auto max-w-4xl"><header className="overflow-hidden rounded-3xl bg-gradient-to-br from-violet-800 to-fuchsia-700 p-6 text-white shadow-xl sm:p-8"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[.18em] text-violet-100">MB Optical · Neosmart</p><h1 className="mt-3 text-3xl font-black">{title}</h1><p className="mt-2 text-sm text-violet-100">Disponível até {date(report.expiresAt)}</p></div><FileText className="shrink-0 text-violet-200" size={38} /></div></header>
     <div className="mt-5 space-y-4">{selectedSections.map((id) => <section key={id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><Eye size={18} className="text-violet-700" />{SECTION_LABELS[id]}</h2><SectionContent id={id} snapshot={snapshot} /></section>)}
-      {report.assets.length > 0 && <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><ImageIcon size={18} className="text-violet-700" />Fotos selecionadas</h2><div className="grid gap-3 sm:grid-cols-3">{report.assets.map((asset) => <figure key={asset!.id} className="overflow-hidden rounded-2xl bg-slate-100"><img src={asset!.url} alt="Registro visual do atendimento" className="aspect-[4/3] h-auto w-full object-cover" /><figcaption className="p-3 text-xs text-slate-500">Registro protegido do atendimento</figcaption></figure>)}</div></section>}
+      {report.assets.length > 0 && <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><ImageIcon size={18} className="text-violet-700" />Fotos selecionadas</h2><div className="grid gap-3 sm:grid-cols-3">{report.assets.map((asset) => <figure key={asset!.id} className="overflow-hidden rounded-2xl bg-slate-100"><img src={asset!.url} alt={assetCaption(asset!.kind)} className="aspect-[4/3] h-auto w-full object-cover" /><figcaption className="p-3 text-xs text-slate-500">{assetCaption(asset!.kind)}</figcaption></figure>)}</div></section>}
     </div><footer className="mt-6 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-xs leading-5 text-emerald-900"><ShieldCheck className="mt-0.5 shrink-0" size={18} /><p>Este relatório foi compartilhado temporariamente pela ótica. As imagens utilizam acesso privado e expiram com o relatório.</p></footer></div></main>
 }
