@@ -1,0 +1,3401 @@
+feature-cobranca-programa{
+  "info": {
+    "name": "API Pix Sicredi",
+    "description": "# API PIX - Sicredi\n\nA API Pix padroniza serviços oferecidos pelo PSP recebedor no contexto do arranjo Pix, como criação de cobrança, verificação de Pix recebidos, devolução e conciliação. Os serviços expostos pelo PSP recebedor permitem ao usuário recebedor estabelecer integração de sua automação com os serviços PIX do PSP.\n\n# Variáveis\n\nPara executar as requisições dessa coleção, será necessário preencher o valor das variáveis com as suas informações para o teste. Segue uma sequência de imagens demonstrado como deve ser feita a configuração.\n\n<img src=\"https://content.pstmn.io/e87f2d65-4024-4bfa-bb67-80e4e8a7fb08/cG9zdG1hbl92YXIxLnBuZw==\" alt=\"1%20-%20Selecione%20a%20collection%20Api%20Pix%20Sicredi\">\n\n<img src=\"https://content.pstmn.io/816f9fb8-e632-4278-9e38-5af7c71570fb/cG9zdG1hbl92YXIyLnBuZw==\" alt=\"2%20-%20Alterne%20para%20a%20aba%20&quot;Variáveis/Variables&quot;\">\n\n<img src=\"https://content.pstmn.io/784e1c8d-919b-4b69-a379-1bba5ee58485/cG9zdG1hbl92YXIzLnBuZw==\" alt=\"3%20-%20%20Preencha%20os%20valores%20das%20variáveis%20de%20acordo%20com%20as%20suas%20informações%20-%20Em%20seguida%20clique%20em%20&quot;Salvar/Save&quot;\" width=\"910\" height=\"387\">\n\n# Autenticação mTLS\n\nPara realizar requisições na API PIX do Sicredi é necessário autenticação _**mTLS**_. Para realizar essa autenticação é necessário configurar o Postman, para que sejam utilizados o certificado e a chave privada, gerados no processo de credenciamento. Abaixo sege uma sequência de imagens demonstrando essa configuração que deve ser adicionada ao seu Postman:\n\n<img src=\"https://content.pstmn.io/bd70a673-4721-4a53-a0c2-e7dac7f7e036/NV9wb3N0bWFuX3NldHRpbmdzLnBuZw==\" alt=\"1%20-%20Navegue%20até%20as%20configurações%20(settings)\">\n\n<img src=\"https://content.pstmn.io/73d09093-4708-4e3a-900b-e5a1150f317a/NV9zZXR0aW5ncy5wbmc=\" alt=\"2%20-%20Navegue%20até%20o%20bloco%20demarcado%20para%20verificação%20SSL,%20habilite%20se%20necessário,%20e%20em%20seguida%20clique%20em%20&quot;Configurações/Settings&quot;\">\n\n<img src=\"https://content.pstmn.io/9291eb2c-5258-42a0-9f84-f44ec0398ec6/Nl9jZXJ0aWZpY2F0ZXMucG5n\" alt=\"3%20-%20Habilite%20a%20verificação%20SSL,%20em%20seguida%20navegue%20até%20a%20aba%20&quot;Certificados/Certificates&quot;\">\n\n<img src=\"https://content.pstmn.io/26b5de73-08a9-46a7-b777-5a94a5874549/N19hZGRfY2VydGlmaWNhdGUucG5n\" alt=\"4%20-%20Na%20aba%20&quot;Certificados/Certificates&quot;%20acione%20&quot;Adicionar%20Certicado/Add%20Certificate&quot;\" width=\"890\" height=\"658\">\n\n<img src=\"https://content.pstmn.io/800f7455-a75c-4c93-8c3b-53841daceebe/OF9hZGRfY2xpZW50X2NlcnRpZmljYXRlX2FuZF9rZXlfYW5kX2hvc3QucG5n\" alt=\"5%20-%20Preencha%20o%20formulário%20apontando%20para%20os%20arquivos%20-%20Lembrando%20que%20o%20certificado%20deve%20estar%20no%20formato%20.PEM%20e%20o%20recomendamos%20que%20o%20arquivo%20.KEY%20esteja%20sem%20senha\">\n\n<img src=\"https://content.pstmn.io/400f755b-28fb-48ef-b82c-d4af335a96f2/OV92YWxpZGF0ZV9zZXR0aW5ncy5wbmc=\" alt=\"6%20-%20Confira%20as%20informações%20configuradas,%20conforme%20a%20localização%20dos%20seus%20arquivos\">\n\n<img src=\"https://content.pstmn.io/6dbcfb6c-f4f3-4250-8c12-d74c90d4b9a5/MTBfYWNjZXNzX3Rva2VuLnBuZw==\" alt=\"7%20-%20Após%20as%20configurações,%20será%20possível%20realizar%20as%20requisições%20-%20Você%20pode%20validar%20a%20autenticação%20como%20demonstrado%20na%20imagem\">",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Cobrança com Vencimento (cobv)",
+      "item": [
+        {
+          "name": "Consultar cobrança com vencimento",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false,
+                "type": "default"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Endpoint para consultar uma cobrança com vencimento através de um determinado txid.\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| revisao | queryParam |  | No | integer($int32) |",
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/cobv/{{txid}}",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "cobv",
+                "{{txid}}"
+              ],
+              "query": [
+                {
+                  "key": "revisao",
+                  "value": ""
+                }
+              ],
+              "variable": []
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {},
+                "exec": [
+                  "const res = res.getBody(); // Converte a resposta para objeto JSON",
+                  "",
+                  "if (res.pix && res.pix.length > 0 && res.pix[0].endToEndId) {",
+                  "    bru.setVar('e2eid', res.pix[0].endToEndId); // Salva na variável de coleção",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar lista de cobranças com vencimento",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false,
+                "type": "default"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Endpoint para consultar cobranças com vencimento através de parâmetros como início, fim, cpf, cnpj e status.\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| inicio | query | Data inicial do range da consulta, baseada na data de criação | Yes | string($date-time)('yyyy-MM-ddTHH:mm:ssZ') |\n| fim | query | Data final do range da consulta, baseada na data de criação | Yes | string($date-time)('yyyy-MM-ddTHH:mm:ssZ') |\n| cpf | query | cpf do devedor | No | string |\n| cnpj | query | cnpj do devedor | No | string |\n| locationPresente | query |  | No | boolean |\n| status | query |  | No | string |\n| loteCobVId | query | ID do lote de cobranças com vencimento | No | integer($int32)  <br> |\n| paginacao.paginaAtual | query |  | No | integer($int32) |\n| paginacao.itensPorPagina | query |  | No | integer($int32) |",
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/cobv?inicio={{dataInicio}}&fim={{dataFim}}",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "cobv?inicio={{dataInicio}}&fim={{dataFim}}"
+              ],
+              "query": [
+                {
+                  "key": "inicio",
+                  "value": "{{dataInicio}}"
+                },
+                {
+                  "key": "fim",
+                  "value": "{{dataFim}}"
+                },
+                {
+                  "key": "cpf",
+                  "value": ""
+                },
+                {
+                  "key": "cnpj",
+                  "value": ""
+                },
+                {
+                  "key": "locationPresente",
+                  "value": ""
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "loteCobVId",
+                  "value": ""
+                },
+                {
+                  "key": "paginacao.paginaAtual",
+                  "value": "0"
+                },
+                {
+                  "key": "paginacao.itensPorPagina",
+                  "value": "100"
+                }
+              ],
+              "variable": []
+            }
+          }
+        },
+        {
+          "name": "Criar cobrança com vencimento",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "disabled": false,
+                "type": "default"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false,
+                "type": "default"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Endpoint para criar uma cobrança com vencimento.\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| txid | path |  | Yes | string |",
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/cobv/{{txid}}",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "cobv",
+                "{{txid}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"calendario\": {\n        \"dataDeVencimento\": \"2025-10-30\",\n        \"validadeAposVencimento\": 0\n    },\n    \"devedor\": {\n        \"nome\": \"Fulano de tal\",\n        \"cpf\": \"00012312312\"\n    },\n    \"valor\": {\n        \"original\": \"0.30\",\n        \"multa\": {\n            \"modalidade\": 2,\n            \"valorPerc\": \"15.00\"\n        },\n        \"juros\": {\n            \"modalidade\": 2,\n            \"valorPerc\": \"2.00\"\n        },\n        \"desconto\": {\n            \"modalidade\": 2,\n            \"descontoDataFixa\": [\n                {\n                    \"data\": \"2025-09-20\",\n                    \"valorPerc\": \"30.00\"\n                }\n            ]\n        }\n    },\n    \"chave\": \"{{chavePix}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {},
+                "exec": [
+                  "let id =  utils.makeid(26);",
+                  "bru.setVar(\"txid\",id);",
+                  "// console.log(\"pm.collectionVariables.txid: \" + bru.getVar(\"txid\"));",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Revisar cobrança com vencimento - Remover Cobrança - Exemplo 3",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "disabled": false,
+                "type": "default"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false,
+                "type": "default"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Endpoint para revisar informações da cobrança com vencimento.\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| txid | path |  | Yes | string |",
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/cobv/cobrancacomvencimentoteste",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "cobv",
+                "cobrancacomvencimentoteste"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"REMOVIDA_PELO_USUARIO_RECEBEDOR\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Revisar cobrança com vencimento - Revisa dados do devedor - Exemplo 1",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "disabled": false,
+                "type": "default"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false,
+                "type": "default"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Endpoint para revisar informações da cobrança com vencimento.\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| txid | path |  | Yes | string |",
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/cobv/{{txid}}",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "cobv",
+                "{{txid}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"devedor\": {\n        \"logradouro\": \"Alameda Souza, Numero 80, Bairro Braz\",\n        \"cidade\": \"Recife\",\n        \"uf\": \"PE\",\n        \"cep\": \"70011750\",\n        \"cpf\": \"12345678909\",\n        \"nome\": \"Francisco da Silva\",\n        \"email\": \"frandasilva@provedor.com.br\"\n    }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Revisar cobrança com vencimento - Revisar Chave Pix - Exemplo 3",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "disabled": false,
+                "type": "default"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false,
+                "type": "default"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Endpoint para revisar informações da cobrança com vencimento.\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| txid | path |  | Yes | string |",
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/cobv/{{txid}}",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "cobv",
+                "{{txid}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"chave\": {{chavePix}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Revisar cobrança com vencimento - Revisar valor - Exemplo 2",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "disabled": false,
+                "type": "default"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false,
+                "type": "default"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Endpoint para revisar informações da cobrança com vencimento.\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| txid | path |  | Yes | string |",
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/cobv/{{txid}}",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "cobv",
+                "{{txid}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"valor\": {\n        \"original\": \"567.89\"\n    }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Gerar access token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "disabled": false,
+                "type": "default"
+              }
+            ],
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "password",
+                  "value": "{{clientSecret}}",
+                  "type": "string"
+                },
+                {
+                  "key": "username",
+                  "value": "{{clientId}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "",
+            "url": {
+              "raw": "{{baseUrl}}/oauth/token?grant_type=client_credentials",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "oauth",
+                "token?grant_type=client_credentials"
+              ],
+              "query": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials"
+                }
+              ],
+              "variable": []
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {},
+                "exec": [
+                  "const resp = res.getBody();",
+                  "bru.setVar('token',resp.access_token);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Cobrança imediata (cob)",
+      "item": [
+        {
+          "name": "Cobrança Saque",
+          "item": [
+            {
+              "name": "Criar cobrança de saque",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "disabled": false,
+                    "type": "default"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "Cria uma Cobrança de saque.\n\nEndpoint para criar uma cobrança imediata.\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| txid | path |  | Yes | string |",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v3/cob/{{txid}}",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v3",
+                    "cob",
+                    "{{txid}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"calendario\": {\n        \"expiracao\": 3600\n    },\n    \"devedor\": {\n        \"cnpj\": \"12345678000195\",\n        \"nome\": \"Empresa de Serviços SA\"\n    },\n    \"valor\": {\n        \"original\": \"0.00\",\n        \"modalidadeAlteracao\": 0,\n        \"retirada\": {\n            \"saque\": {\n                \"valor\": \"20.00\",\n                \"modalidadeAlteracao\": 1,\n                \"modalidadeAgente\": \"AGTEC\",\n                \"prestadorDoServicoDeSaque\": \"01181521\"\n            }\n        }\n    },\n    \"chave\": \"{{chavePix}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {},
+                    "exec": [
+                      "bru.setVar(\"txid\", utils.makeid(26));",
+                      "// console.log(\"pm.collectionVariables.txid: \" + bru.getVar(\"txid\"));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Criar cobrança de saque_1",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "disabled": false,
+                    "type": "default"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "Criar uma cobrança de saque\n\nEndpoint para criar uma cobrança imediata, neste caso, o txid deve ser definido pelo PSP.",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v3/cob",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v3",
+                    "cob"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"calendario\": {\n        \"expiracao\": 3600\n    },\n    \"devedor\": {\n        \"cnpj\": \"12345678000195\",\n        \"nome\": \"Empresa de Serviços SA\"\n    },\n    \"valor\": {\n        \"original\": \"0.00\",\n        \"modalidadeAlteracao\": 0,\n        \"retirada\": {\n            \"saque\": {\n                \"valor\": \"5.00\",\n                \"modalidadeAlteracao\": 0,\n                \"modalidadeAgente\": \"AGTEC\",\n                \"prestadorDoServicoDeSaque\": \"01181521\"\n            }\n        }\n    },\n    \"chave\": \"{{chavePix}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {},
+                    "exec": [
+                      "bru.setVar(\"txid\", utils.makeid(26));",
+                      "// console.log(\"pm.collectionVariables.txid: \" + bru.getVar(\"txid\"));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Cobrança Troco",
+          "item": [
+            {
+              "name": "Criar cobrança de troco",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "disabled": false,
+                    "type": "default"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "Cria uma Cobrança de troco.\n\nEndpoint para criar uma cobrança imediata.\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| txid | path |  | Yes | string |",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v3/cob/{{txid}}",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v3",
+                    "cob",
+                    "{{txid}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"calendario\": {\n        \"expiracao\": 3600\n    },\n    \"devedor\": {\n        \"cnpj\": \"12345678000195\",\n        \"nome\": \"Empresa de Serviços SA\"\n    },\n    \"valor\": {\n        \"original\": \"10.00\",\n        \"modalidadeAlteracao\": 0,\n        \"retirada\": {\n            \"troco\": {\n                \"valor\": \"10.00\",\n                \"modalidadeAlteracao\": 0,\n                \"modalidadeAgente\": \"AGTEC\",\n                \"prestadorDoServicoDeSaque\": \"01181521\"\n            }\n        }\n    },\n    \"chave\": \"{{chavePix}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {},
+                    "exec": [
+                      "bru.setVar(\"txid\", utils.makeid(26));",
+                      "// console.log(\"pm.collectionVariables.txid: \" + bru.getVar(\"txid\"));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Criar cobrança de troco_1",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "disabled": false,
+                    "type": "default"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "Criar uma cobrança de troco.\n\nEndpoint para criar uma cobrança imediata, neste caso, o txid deve ser definido pelo PSP.",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v3/cob",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v3",
+                    "cob"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"calendario\": {\n        \"expiracao\": 3600\n    },\n    \"devedor\": {\n        \"cnpj\": \"12345678000195\",\n        \"nome\": \"Empresa de Serviços SA\"\n    },\n    \"valor\": {\n        \"original\": \"15.00\",\n        \"modalidadeAlteracao\": 0,\n        \"retirada\": {\n            \"troco\": {\n                \"valor\": \"5.00\",\n                \"modalidadeAlteracao\": 1,\n                \"modalidadeAgente\": \"AGTEC\",\n                \"prestadorDoServicoDeSaque\": \"01181521\"\n            }\n        }\n    },\n    \"chave\": \"{{chavePix}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {},
+                    "exec": [
+                      "bru.setVar(\"txid\", utils.makeid(26));",
+                      "// console.log(\"pm.collectionVariables.txid: \" + bru.getVar(\"txid\"));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Cobrança",
+          "item": [
+            {
+              "name": "Consultar cobrança imediata",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "**Recupera dados do Pagamento.**\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| revisao | queryParam |  | No | string |",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v3/cob/{{txid}}",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v3",
+                    "cob",
+                    "{{txid}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "revisao",
+                      "value": ""
+                    }
+                  ],
+                  "variable": []
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {},
+                    "exec": [
+                      "const res = res.getBody(); // Converte a resposta para objeto JSON",
+                      "",
+                      "if (res.pix && res.pix.length > 0 && res.pix[0].endToEndId) {",
+                      "    bru.setVar('e2eid', res.pix[0].endToEndId); // Salva na variável de coleção",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Consultar lista de cobranças imediatas",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "Consultar lista de cobranças imediatas.\n\nEndpoint para consultar cobranças imediatas através de parâmetros como início, fim, cpf, cnpj e status.\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| inicio | query | Data inicial do range da consulta, baseada na data de criação | Yes | string($date-time)('yyyy-MM-ddTHH:mm:ssZ') |\n| fim | query | Data final do range da consulta, baseada na data de criação | Yes | string($date-time)('yyyy-MM-ddTHH:mm:ssZ') |\n| cpf | query | cpf do devedor | No | string |\n| cnpj | query | cnpj do devedor | No | string |\n| locationPresente | query |  | No | boolean |\n| status | query |  | No | string |\n| paginacao.paginaAtual | query |  | No | integer($int32) |\n| paginacao.itensPorPagina | query |  | No | integer($int32) |",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/cob?fim={{dataFim}}&inicio=2025-01-01T00:00:00Z&status=CONCLUIDA",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v2",
+                    "cob?fim={{dataFim}}&inicio=2025-01-01T00:00:00Z&status=CONCLUIDA"
+                  ],
+                  "query": [
+                    {
+                      "key": "fim",
+                      "value": "{{dataFim}}"
+                    },
+                    {
+                      "key": "inicio",
+                      "value": "2025-01-01T00:00:00Z"
+                    },
+                    {
+                      "key": "status",
+                      "value": "CONCLUIDA"
+                    },
+                    {
+                      "key": "cpf",
+                      "value": ""
+                    },
+                    {
+                      "key": "cnpj",
+                      "value": ""
+                    },
+                    {
+                      "key": "locationPresente",
+                      "value": ""
+                    },
+                    {
+                      "key": "paginacao.paginaAtual",
+                      "value": "0"
+                    },
+                    {
+                      "key": "paginacao.itensPorPagina",
+                      "value": "100"
+                    }
+                  ],
+                  "variable": []
+                }
+              }
+            },
+            {
+              "name": "Criar cobrança imediata",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "disabled": false,
+                    "type": "default"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "Criar uma cobrança.\n\nEndpoint para criar uma cobrança imediata, neste caso, o txid deve ser definido pelo PSP.",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v3/cob",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v3",
+                    "cob"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"calendario\": {\n    \"expiracao\": 3600\n  },\n  \"valor\": {\n    \"original\": \"3.00\",\n    \"modalidadeAlteracao\": 0\n  },\n  \"chave\": \"{{chavePix}}\",\n  \"solicitacaoPagador\": \"Serviço realizado.\",\n  \"infoAdicionais\": [\n    {\n      \"nome\": \"Campo 1\",\n      \"valor\": \"Informação Adicional1 do PSP-Recebedor\"\n    },\n    {\n      \"nome\": \"Campo 2\",\n      \"valor\": \"Informação Adicional2 do PSP-Recebedor\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {},
+                    "exec": [
+                      "bru.setVar(\"txid\", utils.makeid(26));",
+                      "// console.log(\"pm.collectionVariables.txid: \" + bru.getVar(\"txid\"));"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {},
+                    "exec": [
+                      "const resp = res.getBody();",
+                      "bru.setVar('txid',resp.txid);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Criar cobrança imediata_1",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "disabled": false,
+                    "type": "default"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "Cria uma Cobrança.\n\nEndpoint para criar uma cobrança imediata.\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| txid | path |  | Yes | string |",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v3/cob/{{txid}}",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v3",
+                    "cob",
+                    "{{txid}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"calendario\": {\n    \"expiracao\": 3600\n  },\n  \"valor\": {\n    \"original\": \"123.45\"\n  },\n  \"chave\": \"{{chavePix}}\",\n  \"solicitacaoPagador\": \"Informar como foi sua experiência na nossa loja\",\n  \"infoAdicionais\": [\n    {\n      \"nome\": \"Detalhes do Pagamento\",\n      \"valor\": \"Pagamendo do Churrasco\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {},
+                    "exec": [
+                      "bru.setVar(\"txid\", utils.makeid(26));",
+                      "// console.log(\"pm.collectionVariables.txid: \" + bru.getVar(\"txid\"));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Revisar cobrança imediata - Remoção de cobrança",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "disabled": false,
+                    "type": "default"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "Revisar uma cobrança.\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| txid | path |  | Yes | string |",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v3/cob/{{txid}}",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v3",
+                    "cob",
+                    "{{txid}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"REMOVIDA_PELO_USUARIO_RECEBEDOR\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Gestão de Pix",
+      "item": [
+        {
+          "name": "Consulta Pix - Cod. FimAFim",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false,
+                "type": "default"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "**Recupera dados do Pagamento.**\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| revisao | queryParam |  | No | string |",
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/pix/{{e2eid}}",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "pix",
+                "{{e2eid}}"
+              ],
+              "query": [
+                {
+                  "key": "revisao",
+                  "value": ""
+                }
+              ],
+              "variable": []
+            }
+          }
+        },
+        {
+          "name": "Consulta Pix recebidos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false,
+                "type": "default"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Consultar lista de cobranças imediatas.\n\nEndpoint para consultar cobranças imediatas através de parâmetros como início, fim, cpf, cnpj e status.\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| inicio | query | Data inicial do range da consulta, baseada na data de criação | Yes | string($date-time)('yyyy-MM-ddTHH:mm:ssZ') |\n| fim | query | Data final do range da consulta, baseada na data de criação | Yes | string($date-time)('yyyy-MM-ddTHH:mm:ssZ') |\n| cpf | query | cpf do devedor | No | string |\n| cnpj | query | cnpj do devedor | No | string |\n| locationPresente | query |  | No | boolean |\n| status | query |  | No | string |\n| paginacao.paginaAtual | query |  | No | integer($int32) |\n| paginacao.itensPorPagina | query |  | No | integer($int32) |",
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/pix?fim={{dataFim}}&inicio={{dataInicio}}",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "pix?fim={{dataFim}}&inicio={{dataInicio}}"
+              ],
+              "query": [
+                {
+                  "key": "fim",
+                  "value": "{{dataFim}}"
+                },
+                {
+                  "key": "inicio",
+                  "value": "{{dataInicio}}"
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "cpf",
+                  "value": ""
+                },
+                {
+                  "key": "cnpj",
+                  "value": ""
+                },
+                {
+                  "key": "txIdPresente",
+                  "value": "true"
+                },
+                {
+                  "key": "devolucaoPresente",
+                  "value": "false"
+                },
+                {
+                  "key": "paginacao.paginaAtual",
+                  "value": "0"
+                },
+                {
+                  "key": "paginacao.itensPorPagina",
+                  "value": "100"
+                }
+              ],
+              "variable": []
+            }
+          }
+        },
+        {
+          "name": "Consultar devolução - Pix",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false,
+                "type": "default"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "**Recupera dados do Pagamento.**\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| revisao | queryParam |  | No | string |",
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/pix/{{e2eid}}/devolucao/{{idControleDevolucao}}",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "pix",
+                "{{e2eid}}",
+                "devolucao",
+                "{{idControleDevolucao}}"
+              ],
+              "query": [
+                {
+                  "key": "revisao",
+                  "value": ""
+                }
+              ],
+              "variable": []
+            }
+          }
+        },
+        {
+          "name": "Solicitar devolução - Pix",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "disabled": false,
+                "type": "default"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false,
+                "type": "default"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "",
+            "url": {
+              "raw": "{{baseUrlToken}}/api/v2/pix/{{e2eid}}/devolucao/{{idControleDevolucao}}",
+              "protocol": "",
+              "host": [
+                "{{baseUrlToken}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "pix",
+                "{{e2eid}}",
+                "devolucao",
+                "{{idControleDevolucao}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"valor\": \"0.01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payload Recorrência",
+      "item": [
+        {
+          "name": "Consulta locations cadastradas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false,
+                "type": "default"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/locrec?fim={{dataFim}}&inicio={{dataInicio}}",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "locrec?fim={{dataFim}}&inicio={{dataInicio}}"
+              ],
+              "query": [
+                {
+                  "key": "fim",
+                  "value": "{{dataFim}}"
+                },
+                {
+                  "key": "inicio",
+                  "value": "{{dataInicio}}"
+                },
+                {
+                  "key": "idRecPresente",
+                  "value": ""
+                },
+                {
+                  "key": "convenio",
+                  "value": ""
+                },
+                {
+                  "key": "paginacao.paginaAtual",
+                  "value": ""
+                },
+                {
+                  "key": "paginacao.itensPorPagina",
+                  "value": ""
+                }
+              ],
+              "variable": []
+            }
+          }
+        },
+        {
+          "name": "Criar location do payload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false,
+                "type": "default"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/locrec",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "locrec"
+              ],
+              "query": [],
+              "variable": []
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {},
+                "exec": [
+                  "const resp = res.getBody();",
+                  "bru.setVar('idLocRec',resp.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Desvincular uma recorrência de uma location",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false,
+                "type": "default"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/locrec/{{idLocRec}}/idRec",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "locrec",
+                "{{idLocRec}}",
+                "idRec"
+              ],
+              "query": [],
+              "variable": []
+            }
+          }
+        },
+        {
+          "name": "Recuperar location do payload",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false,
+                "type": "default"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/locrec/{{idLocRec}}",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "locrec",
+                "{{idLocRec}}"
+              ],
+              "query": [],
+              "variable": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pix Automático",
+      "item": [
+        {
+          "name": "Cobrança recorrente (cobr)",
+          "item": [
+            {
+              "name": "Consulta cobrança recorrente",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/cobr/{{txid}}",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "cobr",
+                    "{{txid}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              }
+            },
+            {
+              "name": "Consulta lista de cobranças recorrentes",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/cobr?fim={{dataFim}}&inicio={{dataInicio}}",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "cobr?fim={{dataFim}}&inicio={{dataInicio}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "fim",
+                      "value": "{{dataFim}}"
+                    },
+                    {
+                      "key": "inicio",
+                      "value": "{{dataInicio}}"
+                    },
+                    {
+                      "key": "idRec",
+                      "value": ""
+                    },
+                    {
+                      "key": "cpf",
+                      "value": ""
+                    },
+                    {
+                      "key": "cnpj",
+                      "value": ""
+                    },
+                    {
+                      "key": "status",
+                      "value": ""
+                    },
+                    {
+                      "key": "convenio",
+                      "value": ""
+                    },
+                    {
+                      "key": "paginacao.paginaAtual",
+                      "value": "2"
+                    },
+                    {
+                      "key": "paginacao.itensPorPagina",
+                      "value": "2"
+                    }
+                  ],
+                  "variable": []
+                }
+              }
+            },
+            {
+              "name": "Criar cobrança recorrente",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/cobr",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "cobr"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"idRec\": \"RR1234567820240115abcdefghijk\",\n  \"infoAdicional\": \"Serviços de Streamming de Música e Filmes.\",\n  \"calendario\": {\n    \"dataDeVencimento\": \"2024-04-15\"\n  },\n  \"valor\": {\n    \"original\": \"106.07\"\n  },\n  \"ajusteDiaUtil\": true,\n  \"devedor\": {\n    \"cep\": \"89256-140\",\n    \"cidade\": \"Uberlândia\",\n    \"email\": \"sebastiao.tavares@mail.com\",\n    \"logradouro\": \"Alameda Franco 1056\",\n    \"uf\": \"MG\"\n  },\n  \"recebedor\": {\n    \"agencia\": \"{{agencia}}\",\n    \"conta\": \"{{conta}}\",\n    \"tipoConta\": \"CORRENTE\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {},
+                    "exec": [
+                      "const resp = res.getBody();",
+                      "bru.setVar('txid',resp.txid);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Criar cobrança recorrente_1",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/cobr/{{txid}}",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "cobr",
+                    "{{txid}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"idRec\": \"RR1234567820240115abcdefghijk\",\n  \"infoAdicional\": \"Serviços de Streamming de Música e Filmes.\",\n  \"calendario\": {\n    \"dataDeVencimento\": \"2025-06-15\"\n  },\n  \"valor\": {\n    \"original\": \"106.07\"\n  },\n  \"ajusteDiaUtil\": true,\n  \"devedor\": {\n    \"cep\": \"89256140\",\n    \"cidade\": \"Uberlândia\",\n    \"email\": \"sebastiao.tavares@mail.com\",\n    \"logradouro\": \"Alameda Franco 1056\",\n    \"uf\": \"MG\"\n  },\n  \"recebedor\": {\n    \"agencia\": \"{{agencia}}\",\n    \"conta\": \"{{conta}}\",\n    \"tipoConta\": \"CORRENTE\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {},
+                    "exec": [
+                      "const resp = res.getBody();",
+                      "bru.setVar('txid',resp.txid);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Revisar cobrança recorrente",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/cobr/{{txid}}",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "cobr",
+                    "{{txid}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "",
+                      "value": ""
+                    }
+                  ],
+                  "variable": []
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"status\": \"CANCELADA\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Solicitar retentativa de cobrança",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/cobr/{{txid}}/retentativa/{{dataRetentativa}}",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "cobr",
+                    "{{txid}}",
+                    "retentativa",
+                    "{{dataRetentativa}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Solicitação Recorrência",
+          "item": [
+            {
+              "name": "Consultar solicitação de confirmação de recorrência",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/solicrec/{{idSolicRec}}",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "solicrec",
+                    "{{idSolicRec}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              }
+            },
+            {
+              "name": "Criar solicitação de confirmação de recorrência",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/solicrec",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "solicrec"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"idRec\": \"RN123456782024011577825445612\",\n  \"calendario\": {\n    \"dataExpiracaoSolicitacao\": \"2023-12-20T12:17:11.926Z\"\n  },\n  \"destinatario\": {\n    \"agencia\": \"2569\",\n    \"conta\": \"550689\",\n    \"cpf\": \"15231470190\",\n    \"ispbParticipante\": \"91193552\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {},
+                    "exec": [
+                      "const resp = res.getBody();",
+                      "bru.setVar('idSolicRec',resp.idSolicRec);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Revisar solicitação de confirmação de recorrência",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/solicrec/{{idSolicRec}}",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "solicrec",
+                    "{{idSolicRec}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "",
+                      "value": ""
+                    }
+                  ],
+                  "variable": []
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"CANCELADA\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Jornadas",
+          "item": [
+            {
+              "name": "Jornada 4 - QR Code contendo cobrança vencimento + oferta Recorrência",
+              "item": [
+                {
+                  "name": "J4 - Consultar recorrência contendo cobrança com vencimento",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "authorization",
+                        "value": "Bearer {{token}}",
+                        "disabled": false,
+                        "type": "default"
+                      }
+                    ],
+                    "auth": {
+                      "type": "noauth"
+                    },
+                    "description": "",
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/rec/{{idRec_jornada4}}?txid={{txid_jornada4}}",
+                      "protocol": "",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "rec",
+                        "{{idRec_jornada4}}?txid={{txid_jornada4}}"
+                      ],
+                      "query": [
+                        {
+                          "key": "txid",
+                          "value": "{{txid_jornada4}}"
+                        }
+                      ],
+                      "variable": []
+                    }
+                  }
+                },
+                {
+                  "name": "J4 - Criar cobrança com vencimento",
+                  "request": {
+                    "method": "PUT",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "disabled": false,
+                        "type": "default"
+                      },
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{token}}",
+                        "disabled": false,
+                        "type": "default"
+                      }
+                    ],
+                    "auth": {
+                      "type": "noauth"
+                    },
+                    "description": "Endpoint para criar uma cobrança com vencimento.\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| txid | path |  | Yes | string |",
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v2/cobv/{{txid}}",
+                      "protocol": "",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v2",
+                        "cobv",
+                        "{{txid}}"
+                      ],
+                      "query": [],
+                      "variable": []
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"calendario\": {\n    \"dataDeVencimento\": \"2020-12-31\",\n    \"validadeAposVencimento\": 30\n  },\n  \"devedor\": {\n    \"logradouro\": \"Alameda Souza, Numero 80, Bairro Braz\",\n    \"cidade\": \"Recife\",\n    \"uf\": \"PE\",\n    \"cep\": \"70011750\",\n    \"cpf\": \"12345678909\",\n    \"nome\": \"Francisco da Silva\"\n  },\n  \"valor\": {\n    \"original\": \"123.45\",\n    \"multa\": {\n      \"modalidade\": 2,\n      \"valorPerc\": \"15.00\"\n    },\n    \"juros\": {\n      \"modalidade\": 2,\n      \"valorPerc\": \"2.00\"\n    },\n    \"desconto\": {\n      \"modalidade\": 1,\n      \"descontoDataFixa\": [\n        {\n          \"data\": \"2020-11-30\",\n          \"valorPerc\": \"30.00\"\n        }\n      ]\n    }\n  },\n  \"chave\": \"5f84a4c5-c5cb-4599-9f13-7eb4d419dacc\",\n  \"solicitacaoPagador\": \"Cobrança dos serviços prestados.\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    }
+                  },
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "packages": {},
+                        "requests": {},
+                        "exec": [
+                          "const resp = res.getBody();",
+                          "bru.setVar('txid_jornada4',resp.txid);"
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "name": "J4 - Criar location do payload",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "authorization",
+                        "value": "Bearer {{token}}",
+                        "disabled": false,
+                        "type": "default"
+                      }
+                    ],
+                    "auth": {
+                      "type": "noauth"
+                    },
+                    "description": "",
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/locrec",
+                      "protocol": "",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "locrec"
+                      ],
+                      "query": [],
+                      "variable": []
+                    }
+                  },
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "packages": {},
+                        "requests": {},
+                        "exec": [
+                          "const resp = res.getBody();",
+                          "bru.setVar('idLocRec_jornada4',resp.id);"
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "name": "J4 - Criar recorrência",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "authorization",
+                        "value": "Bearer {{token}}",
+                        "disabled": false,
+                        "type": "default"
+                      }
+                    ],
+                    "auth": {
+                      "type": "noauth"
+                    },
+                    "description": "",
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/rec",
+                      "protocol": "",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "rec"
+                      ],
+                      "query": [],
+                      "variable": []
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"vinculo\": {\n    \"contrato\": \"63100862\",\n    \"devedor\": {\n      \"cpf\": \"45164632481\",\n      \"nome\": \"Fulano de Tal\"\n    },\n    \"objeto\": \"Serviço de Streamming de Música.\"\n  },\n  \"calendario\": {\n    \"dataFinal\": \"2025-04-01\",\n    \"dataInicial\": \"2024-04-01\",\n    \"periodicidade\": \"MENSAL\"\n  },\n  \"valor\": {\n    \"valorRec\": \"35.00\"\n  },\n  \"politicaRetentativa\": \"NAO_PERMITE\",\n  \"loc\": {{idLocRec_jornada4}},\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    }
+                  },
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "packages": {},
+                        "requests": {},
+                        "exec": [
+                          "const resp = res.getBody();",
+                          "bru.setVar('idRec_jornada4',resp.idRec);"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Jornada 1 - Notificação (push) para confirmação no app",
+              "item": [
+                {
+                  "name": "J1 - Criar recorrência",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "authorization",
+                        "value": "Bearer {{token}}",
+                        "disabled": false,
+                        "type": "default"
+                      }
+                    ],
+                    "auth": {
+                      "type": "noauth"
+                    },
+                    "description": "",
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/rec",
+                      "protocol": "",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "rec"
+                      ],
+                      "query": [],
+                      "variable": []
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"vinculo\": {\n    \"contrato\": \"63100862\",\n    \"devedor\": {\n      \"cpf\": \"45164632481\",\n      \"nome\": \"Fulano de Tal\"\n    },\n    \"objeto\": \"Serviço de Streamming de Música.\"\n  },\n  \"calendario\": {\n    \"dataFinal\": \"2025-04-01\",\n    \"dataInicial\": \"2024-04-01\",\n    \"periodicidade\": \"MENSAL\"\n  },\n  \"valor\": {\n    \"valorRec\": \"35.00\"\n  },\n  \"politicaRetentativa\": \"NAO_PERMITE\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    }
+                  },
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "packages": {},
+                        "requests": {},
+                        "exec": [
+                          "const resp = res.getBody();",
+                          "bru.setVar('idRec_jornada1',resp.idRec);"
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "name": "J1 - Criar solicitação de confirmação de recorrência",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "authorization",
+                        "value": "Bearer {{token}}",
+                        "disabled": false,
+                        "type": "default"
+                      }
+                    ],
+                    "auth": {
+                      "type": "noauth"
+                    },
+                    "description": "",
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/solicrec",
+                      "protocol": "",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "solicrec"
+                      ],
+                      "query": [],
+                      "variable": []
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"idRec\": \"{{idRec_jornada1}}\",\n  \"calendario\": {\n    \"dataExpiracaoSolicitacao\": \"2023-12-20T12:17:11.926Z\"\n  },\n  \"destinatario\": {\n    \"agencia\": \"2569\",\n    \"conta\": \"550689\",\n    \"cpf\": \"15231470190\",\n    \"ispbParticipante\": \"91193552\"\n  }\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    }
+                  },
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "packages": {},
+                        "requests": {},
+                        "exec": [
+                          "const resp = res.getBody();",
+                          "bru.setVar('idSolicRec',resp.idSolicRec);"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Jornada 3 - QR Code Autorização recorrência e pgto imediato",
+              "item": [
+                {
+                  "name": "J3 - Consultar recorrência contendo cobrança imediata",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "authorization",
+                        "value": "Bearer {{token}}",
+                        "disabled": false,
+                        "type": "default"
+                      }
+                    ],
+                    "auth": {
+                      "type": "noauth"
+                    },
+                    "description": "",
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/rec/{{idRec_jornada3}}?txid={{txid_jornada3}}",
+                      "protocol": "",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "rec",
+                        "{{idRec_jornada3}}?txid={{txid_jornada3}}"
+                      ],
+                      "query": [
+                        {
+                          "key": "txid",
+                          "value": "{{txid_jornada3}}"
+                        }
+                      ],
+                      "variable": []
+                    }
+                  }
+                },
+                {
+                  "name": "J3 - Criar cobrança imediata",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "disabled": false,
+                        "type": "default"
+                      },
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{token}}",
+                        "disabled": false,
+                        "type": "default"
+                      }
+                    ],
+                    "auth": {
+                      "type": "noauth"
+                    },
+                    "description": "Criar uma cobrança.\n\nEndpoint para criar uma cobrança imediata, neste caso, o txid deve ser definido pelo PSP.",
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v2/cob",
+                      "protocol": "",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v2",
+                        "cob"
+                      ],
+                      "query": [],
+                      "variable": []
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"calendario\": {\n    \"expiracao\": 3600\n  },\n  \"valor\": {\n    \"original\": \"3.00\",\n    \"modalidadeAlteracao\": 0\n  },\n  \"chave\": \"{{chavePix}}\",\n  \"solicitacaoPagador\": \"Serviço realizado.\",\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    }
+                  },
+                  "event": [
+                    {
+                      "listen": "prerequest",
+                      "script": {
+                        "type": "text/javascript",
+                        "packages": {},
+                        "requests": {},
+                        "exec": [
+                          "bru.setVar(\"txid\", utils.makeid(26));",
+                          "// console.log(\"pm.collectionVariables.txid: \" + bru.getVar(\"txid\"));"
+                        ]
+                      }
+                    },
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "packages": {},
+                        "requests": {},
+                        "exec": [
+                          "const resp = res.getBody();",
+                          "bru.setVar('txid_jornada3',resp.txid);"
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "name": "J3 - Criar location do payload",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "authorization",
+                        "value": "Bearer {{token}}",
+                        "disabled": false,
+                        "type": "default"
+                      }
+                    ],
+                    "auth": {
+                      "type": "noauth"
+                    },
+                    "description": "",
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/locrec",
+                      "protocol": "",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "locrec"
+                      ],
+                      "query": [],
+                      "variable": []
+                    }
+                  },
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "packages": {},
+                        "requests": {},
+                        "exec": [
+                          "const resp = res.getBody();",
+                          "bru.setVar('idLocRec_jornada3',resp.id);"
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "name": "J3 - Criar recorrência",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "authorization",
+                        "value": "Bearer {{token}}",
+                        "disabled": false,
+                        "type": "default"
+                      }
+                    ],
+                    "auth": {
+                      "type": "noauth"
+                    },
+                    "description": "",
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/rec",
+                      "protocol": "",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "rec"
+                      ],
+                      "query": [],
+                      "variable": []
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"vinculo\": {\n    \"contrato\": \"63100862\",\n    \"devedor\": {\n      \"cpf\": \"45164632481\",\n      \"nome\": \"Fulano de Tal\"\n    },\n    \"objeto\": \"Serviço de Streamming de Música.\"\n  },\n  \"calendario\": {\n    \"dataFinal\": \"2025-04-01\",\n    \"dataInicial\": \"2024-04-01\",\n    \"periodicidade\": \"MENSAL\"\n  },\n  \"valor\": {\n    \"valorRec\": \"35.00\"\n  },\n  \"politicaRetentativa\": \"NAO_PERMITE\",\n  \"loc\": {{idLocRec_jornada3}},\n  \"ativacao\": {\n    \"dadosJornada\": {\n      \"txid\": \"{{txid_jornada3}}\"\n    }\n  }\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    }
+                  },
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "packages": {},
+                        "requests": {},
+                        "exec": [
+                          "const resp = res.getBody();",
+                          "bru.setVar('idRec_jornada3',resp.idRec);"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Jornada 2 - QR Code Autorização recorrência",
+              "item": [
+                {
+                  "name": "J2 - Consultar recorrência",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "authorization",
+                        "value": "Bearer {{token}}",
+                        "disabled": false,
+                        "type": "default"
+                      }
+                    ],
+                    "auth": {
+                      "type": "noauth"
+                    },
+                    "description": "",
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/rec/{{idRec_jornada2}}",
+                      "protocol": "",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "rec",
+                        "{{idRec_jornada2}}"
+                      ],
+                      "query": [],
+                      "variable": []
+                    }
+                  }
+                },
+                {
+                  "name": "J2 - Criar location do payload",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "authorization",
+                        "value": "Bearer {{token}}",
+                        "disabled": false,
+                        "type": "default"
+                      }
+                    ],
+                    "auth": {
+                      "type": "noauth"
+                    },
+                    "description": "",
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/locrec",
+                      "protocol": "",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "locrec"
+                      ],
+                      "query": [],
+                      "variable": []
+                    }
+                  },
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "packages": {},
+                        "requests": {},
+                        "exec": [
+                          "const resp = res.getBody();",
+                          "bru.setVar('idLocRec_jornada2',resp.id);"
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "name": "J2 - Criar recorrência",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "authorization",
+                        "value": "Bearer {{token}}",
+                        "disabled": false,
+                        "type": "default"
+                      }
+                    ],
+                    "auth": {
+                      "type": "noauth"
+                    },
+                    "description": "",
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/rec",
+                      "protocol": "",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "rec"
+                      ],
+                      "query": [],
+                      "variable": []
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n\"vinculo\": {\n\"contrato\": \"998782003\",\n\"devedor\": {\n\"cpf\": \"02989131415\",\n\"nome\": \"Beltrano da Silva\"\n},\n\"objeto\": \"Serviço de Plano de Saúde.\"\n},\n\"calendario\": {\n\"dataInicial\": \"2024-10-10\",\n\"periodicidade\": \"ANUAL\"\n},\n\"valor\": {\n\"valorMinimoRecebedor\": \"5000.00\"\n},\n\"politicaRetentativa\": \"PERMITE_3R_7D\",\n\"loc\": {{idLocRec_jornada2}}\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    }
+                  },
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "packages": {},
+                        "requests": {},
+                        "exec": [
+                          "const resp = res.getBody();",
+                          "bru.setVar('idRec_jornada2',resp.idRec);"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Recorrência",
+          "item": [
+            {
+              "name": "Consultar lista de recorrências",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/rec?fim={{dataFim}}&inicio={{dataInicio}}",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "rec?fim={{dataFim}}&inicio={{dataInicio}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "fim",
+                      "value": "{{dataFim}}"
+                    },
+                    {
+                      "key": "inicio",
+                      "value": "{{dataInicio}}"
+                    },
+                    {
+                      "key": "cpf",
+                      "value": ""
+                    },
+                    {
+                      "key": "cnpj",
+                      "value": ""
+                    },
+                    {
+                      "key": "locationPresente",
+                      "value": ""
+                    },
+                    {
+                      "key": "status",
+                      "value": ""
+                    },
+                    {
+                      "key": "convenio",
+                      "value": ""
+                    },
+                    {
+                      "key": "paginacao.paginaAtual",
+                      "value": ""
+                    },
+                    {
+                      "key": "paginacao.itensPorPagina",
+                      "value": ""
+                    }
+                  ],
+                  "variable": []
+                }
+              }
+            },
+            {
+              "name": "Consultar recorrência",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/rec/{{idRec}}",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "rec",
+                    "{{idRec}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              }
+            },
+            {
+              "name": "Criar recorrência - exemplo 1",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/rec",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "rec"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"vinculo\": {\n    \"contrato\": \"63100862\",\n    \"devedor\": {\n      \"cpf\": \"45164632481\",\n      \"nome\": \"Fulano de Tal\"\n    },\n    \"objeto\": \"Serviço de Streamming de Música.\"\n  },\n  \"calendario\": {\n    \"dataFinal\": \"2025-04-01\",\n    \"dataInicial\": \"2024-04-01\",\n    \"periodicidade\": \"MENSAL\"\n  },\n  \"valor\": {\n    \"valorRec\": \"35.00\"\n  },\n  \"politicaRetentativa\": \"NAO_PERMITE\",\n  \"loc\": 108,\n  \"ativacao\": {\n    \"dadosJornada\": {\n      \"txid\": \"33beb661beda44a8928fef47dbeb2dc5\"\n    }\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {},
+                    "exec": [
+                      "const resp = res.getBody();",
+                      "bru.setVar('idRec',resp.idRec);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Criar recorrência - exemplo 2",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/rec",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "rec"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"vinculo\": {\n    \"contrato\": \"998782003\",\n    \"devedor\": {\n      \"cpf\": \"02989131415\",\n      \"nome\": \"Beltrano da Silva\"\n    },\n    \"objeto\": \"Serviço de Plano de Saúde.\"\n  },\n  \"calendario\": {\n    \"dataInicial\": \"2024-10-10\",\n    \"periodicidade\": \"ANUAL\"\n  },\n  \"valor\": {\n    \"valorMinimoRecebedor\": \"5000.00\"\n  },\n  \"politicaRetentativa\": \"PERMITE_3R_7D\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {},
+                    "exec": [
+                      "const resp = res.getBody();",
+                      "bru.setVar('idRec',resp.idRec);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Revisar recorrência",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/rec/{{idRec}}",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "rec",
+                    "{{idRec}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "",
+                      "value": ""
+                    }
+                  ],
+                  "variable": []
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"loc\": 108,\n  \"vinculo\": {\n    \"devedor\": {\n      \"nome\": \"Fulano de Tal\"\n    }\n  },\n  \"calendario\": {\n    \"dataInicial\": \"2024-04-01\"\n  },\n  \"ativacao\": {\n    \"dadosJornada\": {\n      \"txid\": \"33beb661beda44a8928fef47dbeb2dc5\"\n    }\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "Webhook (cob & cobv)",
+          "item": [
+            {
+              "name": "Cancelar o webhook Pix",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "Endpoint para cancelamento do webhook.\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| chave | path | Chave pix do recebedor | Yes | string |",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/webhook/{{chavePix}}",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v2",
+                    "webhook",
+                    "{{chavePix}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {},
+                    "exec": [
+                      "",
+                      ""
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Configurar o Webhook Pix",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "disabled": false,
+                    "type": "default"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "Endpoint para configuração do serviço de notificações acerca de Pix recebidos. Somente PIX associados a um txid serão notificados.\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| chave | path | Chave pix do recebedor | Yes | string |",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/webhook/{{chavePix}}",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v2",
+                    "webhook",
+                    "{{chavePix}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"webhookUrl\": \"https://dominio.com.br/endpoint/pix\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Exibir informações acerca do Webhook Pix",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "Endpoint para recuperação de informações sobre o webhook pix.\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| inicio | query | Data inicial do range da consulta, baseada na data de criação | Yes | string($date-time)('yyyy-MM-ddTHH:mm:ssZ') |\n| fim | query | Data final do range da consulta, baseada na data de criação | Yes | string($date-time)('yyyy-MM-ddTHH:mm:ssZ') |\n| paginacao.paginaAtual | query |  | No | integer($int32) |\n| paginacao.itensPorPagina | query |  | No | integer($int32) |",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/webhook?inicio={{dataInicio}}&fim={{dataFim}}",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v2",
+                    "webhook?inicio={{dataInicio}}&fim={{dataFim}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "inicio",
+                      "value": "{{dataInicio}}"
+                    },
+                    {
+                      "key": "fim",
+                      "value": "{{dataFim}}"
+                    },
+                    {
+                      "key": "paginacao.paginaAtual",
+                      "value": "0"
+                    },
+                    {
+                      "key": "paginacao.itensPorPagina",
+                      "value": "100"
+                    }
+                  ],
+                  "variable": []
+                }
+              }
+            },
+            {
+              "name": "Exibir informações acerca do Webhook Pix_1",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "Endpoint para recuperação de informações sobre o webhook pix.\n\nEndFragment\n\n##### Parâmetros\n\n| Name | Located in | Description | Required | Schema |\n| --- | --- | --- | --- | --- |\n| chave | path | Chave pix do recebedor | Yes | string |",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/webhook/{{chavePix}}",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v2",
+                    "webhook",
+                    "{{chavePix}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Webhook Cobrança Recorrente",
+          "item": [
+            {
+              "name": "Cancelar webhook CobR",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/webhookcobr",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "webhookcobr"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              }
+            },
+            {
+              "name": "Configurar webhook CobR",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/webhookcobr",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "webhookcobr"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"webhookUrl\": \"https://usuario.recebedor.com/api/webhookcobr/\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Consultar webhook CobR",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/webhookcobr",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "webhookcobr"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Webhook recorrências",
+          "item": [
+            {
+              "name": "Cancelar webhook de recorrências",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/webhookrec",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "webhookrec"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              }
+            },
+            {
+              "name": "Configurar webhook de recorrências",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/webhookrec",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "webhookrec"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"webhookUrl\": \"https://usuario.recebedor.com/api/webhookrec/\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Consulta webhook de recorrências",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": false,
+                    "type": "default"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/webhookrec",
+                  "protocol": "",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "webhookrec"
+                  ],
+                  "query": [],
+                  "variable": []
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "txid",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "dataInicio",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "dataFim",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "chavePix",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "clientId",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "clientSecret",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "e2eid",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "idControleDevolucao",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "baseUrlToken",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "idLocRec",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "agencia",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "conta",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "dataRetentativa",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "idSolicRec",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "idRec_jornada4",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "txid_jornada4",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "idLocRec_jornada4",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "idRec_jornada1",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "idRec_jornada3",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "txid_jornada3",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "idLocRec_jornada3",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "idRec_jornada2",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "idLocRec_jornada2",
+      "value": "",
+      "type": "default"
+    },
+    {
+      "key": "idRec",
+      "value": "",
+      "type": "default"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          "utils = {",
+          "  makeid: function(length) {",
+          "    var result           = '';",
+          "    var characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';",
+          "    var charactersLength = characters.length;",
+          "    for ( var i = 0; i < length; i++ ) {",
+          "        result += characters.charAt(Math.floor(Math.random() * charactersLength));",
+          "    }",
+          "    return result;",
+          "  },",
+          "  hojeInicio: function() {",
+          "      let today = new Date().toISOString().split('T')[0];",
+          "      return  today + 'T00:00:00Z';",
+          "  },",
+          "  hojeFim: function() {",
+          "      let today = new Date().toISOString().split('T')[0];",
+          "      return  today + 'T23:59:59Z';",
+          "  }",
+          "};",
+          "",
+          "bru.setVar(\"dataInicio\",utils.hojeInicio());",
+          "bru.setVar(\"dataFim\",utils.hojeFim());"
+        ]
+      }
+    }
+  ]
+}
