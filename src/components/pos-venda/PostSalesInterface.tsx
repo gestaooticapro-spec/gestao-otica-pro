@@ -524,7 +524,7 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
                                                 <h3 className="font-bold text-slate-300 text-sm uppercase tracking-widest">Encerrar Acompanhamento</h3>
                                             </div>
                                             <div className="p-6 flex flex-col items-center">
-                                                <p className="text-sm text-slate-500 mb-4 font-medium">Como foi a adaptação do cliente?</p>
+                                                <p className="text-sm text-slate-500 mb-4 font-medium">Como foi o atendimento ao cliente?</p>
                                                 <StarRating value={rating} onChange={setRating} />
 
                                                 <textarea

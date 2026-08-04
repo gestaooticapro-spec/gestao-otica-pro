@@ -2880,22 +2880,74 @@ export async function receberParcela(prevState: any, formData: FormData) {
     if (!parcelaRaw) throw new Error('Parcela não encontrada.')
     const parcelaAtual = parcelaRaw as any;
 
-    // Registra Pagamento e Checa Erro
-    const observacaoBase = `Ref. Venda #${venda_id} - Parc. ${parcelaAtual.numero_parcela} (Principal: ${principalAbatido.toFixed(2)} + Juros: ${valor_juros.toFixed(2)}) - Cliente: ${parcelaAtual.customers?.full_name}`
-    const { error: errorPagto } = await (supabaseAdmin.from('pagamentos') as any).insert(recebimentos.map((recebimento) => ({
+    // Em pagamentos maiores que uma parcela, cada parcela quitada precisa ter seu
+    // próprio registro de pagamento. Assim o caixa preserva a forma correta e não
+    // cria recebimentos de contingência em dinheiro.
+    const parcelasQuitadas = [{
+      id: parcelaAtual.id,
+      numero_parcela: parcelaAtual.numero_parcela,
+      valor: Math.min(principalAbatido, valor_original) + valor_juros
+    }]
+
+    let proximasParcelasQuitacao: any[] = []
+    if (diferencaDivida < -0.01) {
+      const { data: proximasParcelas, error: errorProximasParcelas } = await supabaseAdmin
+        .from('financiamento_parcelas')
+        .select('*')
+        .eq('financiamento_id', parcelaAtual.financiamento_id)
+        .gt('numero_parcela', parcelaAtual.numero_parcela)
+        .eq('status', 'Pendente')
+        .gt('valor_parcela', 0.01)
+        .order('numero_parcela', { ascending: true })
+
+      if (errorProximasParcelas) throw new Error(`Erro ao buscar próximas parcelas: ${errorProximasParcelas.message}`)
+
+      let excedenteParaDistribuir = Math.abs(diferencaDivida)
+      proximasParcelasQuitacao = (proximasParcelas || []) as any[]
+      for (const prox of proximasParcelasQuitacao) {
+        if (excedenteParaDistribuir <= 0.01) break
+        const valorQuitado = Math.min(excedenteParaDistribuir, Number(prox.valor_parcela))
+        parcelasQuitadas.push({ id: prox.id, numero_parcela: prox.numero_parcela, valor: valorQuitado })
+        excedenteParaDistribuir -= valorQuitado
+      }
+    }
+
+    const pagamentosPorParcela: any[] = []
+    let indiceRecebimento = 0
+    let saldoRecebimento = recebimentos[0]?.valor || 0
+    for (const parcelaQuitada of parcelasQuitadas) {
+      let saldoParcela = parcelaQuitada.valor
+      while (saldoParcela > 0.01 && indiceRecebimento < recebimentos.length) {
+        const recebimento = recebimentos[indiceRecebimento]
+        const valorAlocado = Math.min(saldoParcela, saldoRecebimento)
+        pagamentosPorParcela.push({
+          ...parcelaQuitada,
+          valor: Number(valorAlocado.toFixed(2)),
+          forma_pagamento: recebimento.forma_pagamento
+        })
+        saldoParcela -= valorAlocado
+        saldoRecebimento -= valorAlocado
+        if (saldoRecebimento <= 0.01) {
+          indiceRecebimento += 1
+          saldoRecebimento = recebimentos[indiceRecebimento]?.valor || 0
+        }
+      }
+    }
+
+    const { error: errorPagto } = await (supabaseAdmin.from('pagamentos') as any).insert(pagamentosPorParcela.map((pagamento) => ({
       tenant_id: (profile as any).tenant_id,
       store_id: store_id,
       venda_id: venda_id,
-      parcela_id: parcela_id,
+      parcela_id: pagamento.id,
       customer_id: parcelaAtual.customer_id,
       employee_id: employee_id,
       created_by_user_id: user.id,
-      valor_pago: recebimento.valor,
-      forma_pagamento: recebimento.forma_pagamento,
+      valor_pago: pagamento.valor,
+      forma_pagamento: pagamento.forma_pagamento,
       data_pagamento: data_pagamento,
       created_at: new Date(`${data_pagamento}T12:00:00Z`).toISOString(),
       parcelas: 1,
-      obs: observacaoBase
+      obs: `Ref. Venda #${venda_id} - Parc. ${pagamento.numero_parcela} - Cliente: ${parcelaAtual.customers?.full_name}`
     })))
 
     if (errorPagto) throw new Error(`Erro ao registrar pagamento: ${errorPagto.message}`)
@@ -2904,7 +2956,7 @@ export async function receberParcela(prevState: any, formData: FormData) {
     const { error: errBaixa } = await (supabaseAdmin.from('financiamento_parcelas') as any).update({
       status: 'Pago',
       data_pagamento: new Date().toISOString(),
-      valor_parcela: principalAbatido
+      valor_parcela: Math.min(principalAbatido, valor_original)
     }).eq('id', parcela_id)
     if (errBaixa) throw new Error(`Erro ao baixar a parcela original: ${errBaixa.message}`)
 
@@ -2975,17 +3027,8 @@ export async function receberParcela(prevState: any, formData: FormData) {
       // Excedente: quita parcelas seguintes em cascata até o dinheiro acabar
       let excedente = Math.abs(diferencaDivida)
 
-      const { data: proximasParcelas } = await supabaseAdmin
-        .from('financiamento_parcelas')
-        .select('*')
-        .eq('financiamento_id', parcelaAtual.financiamento_id)
-        .gt('numero_parcela', parcelaAtual.numero_parcela)
-        .eq('status', 'Pendente')
-        .gt('valor_parcela', 0.01)
-        .order('numero_parcela', { ascending: true })
-
-      if (proximasParcelas) {
-        for (const prox of proximasParcelas as any[]) {
+      if (proximasParcelasQuitacao.length > 0) {
+        for (const prox of proximasParcelasQuitacao) {
           if (excedente <= 0.01) break
 
           if (excedente >= prox.valor_parcela - 0.01) {
@@ -3493,7 +3536,10 @@ export async function getLastSalesForCustomer(storeId: number, customerId: numbe
       if (financ) {
         // Lógica Carnê
         const parcelas = financ.financiamento_parcelas || []
-        parcelas.sort((a: any, b: any) => a.numero_parcela - b.numero_parcela)
+        parcelas.sort((a: any, b: any) => {
+          const dateOrder = String(a.data_vencimento || '').localeCompare(String(b.data_vencimento || ''))
+          return dateOrder || (Number(a.id) - Number(b.id))
+        })
 
         parcelasDetalhadas = parcelas.map((p: any) => ({
           numero: p.numero_parcela,

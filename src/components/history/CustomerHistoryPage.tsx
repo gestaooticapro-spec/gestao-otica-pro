@@ -772,7 +772,10 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                                 <div className="space-y-4">
                                     {Object.keys(groupedSalesInModal).map((vendaIdStr) => {
                                         const vendaId = Number(vendaIdStr)
-                                        const saleParcelas = groupedSalesInModal[vendaId]
+                                        const saleParcelas = [...groupedSalesInModal[vendaId]].sort((a: any, b: any) => {
+                                            const dateOrder = String(a.data_vencimento || '').localeCompare(String(b.data_vencimento || ''))
+                                            return dateOrder || (Number(a.id) - Number(b.id))
+                                        })
                                         const isExpanded = expandedSales[vendaId] ?? true
                                         
                                         const totalSaleValue = saleParcelas.reduce((acc: number, p: any) => acc + Number(p.valor_parcela || 0), 0)

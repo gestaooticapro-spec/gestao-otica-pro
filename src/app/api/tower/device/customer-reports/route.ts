@@ -29,7 +29,7 @@ const PrepareSchema = z.object({
   sourceReportVersion: z.number().int().positive(),
   selectedSections: z.array(SectionSchema).min(1).max(8),
   snapshot: z.record(z.string(), z.unknown()),
-  assets: z.array(AssetSchema).max(3),
+  assets: z.array(AssetSchema).max(5),
 })
 const extensionByMime = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' } as const
 

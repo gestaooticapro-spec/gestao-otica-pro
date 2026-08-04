@@ -275,7 +275,10 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
                                         
                                         <div className="p-6 flex flex-col gap-6">
                                             {saleIds.map((sid) => {
-                                                const saleParcelas = sales[sid];
+                                                const saleParcelas = [...sales[sid]].sort((a, b) => {
+                                                    const dateOrder = String(a.data_vencimento || '').localeCompare(String(b.data_vencimento || ''))
+                                                    return dateOrder || (a.id - b.id)
+                                                });
                                                 return (
                                                     <div key={sid} className="border border-white/5 bg-slate-950/50 rounded-xl overflow-hidden">
                                                         <div className="bg-white/5 px-4 py-3 border-b border-white/5 flex items-center justify-between">

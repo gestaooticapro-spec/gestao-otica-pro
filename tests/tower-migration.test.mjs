@@ -38,6 +38,10 @@ const customerReportSql = await readFile(
   new URL('../supabase/migrations/20260731160000_tower_customer_report_shares.sql', import.meta.url),
   'utf8',
 )
+const customerReportAssetKindsSql = await readFile(
+  new URL('../supabase/migrations/20260803190000_tower_customer_report_asset_kinds.sql', import.meta.url),
+  'utf8',
+)
 
 test('migração corretiva protege exclusao de loja e imprime lote atomicamente', () => {
   assert.match(sql, /current_store_id\) REFERENCES public\.stores\(id\) ON DELETE RESTRICT/)
@@ -134,4 +138,8 @@ test('relatorios temporarios sao aditivos, privados e isolados do sync operacion
   assert.match(customerReportSql, /FALSE,/)
   assert.doesNotMatch(customerReportSql, /ALTER TABLE public\.tower_sessions/)
   assert.doesNotMatch(customerReportSql, /apply_tower_device_sync_event/)
+  for (const kind of ['visagismo_analysis', 'visagismo_final', 'measurement_front_annotated', 'measurement_profile_annotated', 'heatmap']) {
+    assert.match(customerReportAssetKindsSql, new RegExp(kind))
+  }
+  assert.match(customerReportAssetKindsSql, /DROP CONSTRAINT IF EXISTS tower_customer_report_assets_kind_check/)
 })

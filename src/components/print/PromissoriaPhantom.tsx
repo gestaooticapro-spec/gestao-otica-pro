@@ -18,7 +18,10 @@ type PromissoriaPhantomProps = {
 export default function PromissoriaPhantom({ financiamento }: PromissoriaPhantomProps) {
     const customer = financiamento.customers
     const store = financiamento.store
-    const parcelas = financiamento.financiamento_parcelas.sort((a, b) => a.numero_parcela - b.numero_parcela)
+    const parcelas = [...financiamento.financiamento_parcelas].sort((a, b) => {
+        const dateOrder = String(a.data_vencimento || '').localeCompare(String(b.data_vencimento || ''))
+        return dateOrder || (a.id - b.id)
+    })
 
     const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
     const formatDate = (dateStr: string) => {

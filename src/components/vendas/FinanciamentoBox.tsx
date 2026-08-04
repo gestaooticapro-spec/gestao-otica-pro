@@ -417,7 +417,12 @@ export default function FinanciamentoBox({
                     )}
 
                     <div className="divide-y divide-white/5">
-                        {financiamento?.financiamento_parcelas.sort((a, b) => a.numero_parcela - b.numero_parcela).map((p) => {
+                        {[...(financiamento?.financiamento_parcelas || [])]
+                            .sort((a, b) => {
+                                const dateOrder = String(a.data_vencimento || '').localeCompare(String(b.data_vencimento || ''))
+                                return dateOrder || (a.id - b.id)
+                            })
+                            .map((p) => {
                             const isPago = p.status === 'Pago';
                             const isAtrasado = !isPago && new Date(p.data_vencimento) < new Date(new Date().setHours(0, 0, 0, 0));
                             return (

@@ -724,6 +724,11 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                             setIsMovModalOpen(true)
                                         }}
                                         onDelete={(rawId: number) => handleDeletarMov(rawId)}
+                                        onEditForma={(mov: any) => {
+                                            setEditingPgForma(mov)
+                                            setNovaFormaSelecionada(mov.forma_pagamento || '')
+                                            setIsPgFormaAuthOpen(true)
+                                        }}
                                     />
                                 </div>
                             </div>
