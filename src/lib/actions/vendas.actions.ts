@@ -3522,7 +3522,10 @@ export async function getLastSalesForCustomer(storeId: number, customerId: numbe
       if (financ) {
         // Lógica Carnê
         const parcelas = financ.financiamento_parcelas || []
-        parcelas.sort((a: any, b: any) => a.numero_parcela - b.numero_parcela)
+        parcelas.sort((a: any, b: any) => {
+          const dateOrder = String(a.data_vencimento || '').localeCompare(String(b.data_vencimento || ''))
+          return dateOrder || (Number(a.id) - Number(b.id))
+        })
 
         parcelasDetalhadas = parcelas.map((p: any) => ({
           numero: p.numero_parcela,

@@ -177,18 +177,24 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
             serviceOrders = serviceOrdersData || []
         }
 
-        const serviceOrderIds = serviceOrders
-            .map((os: any) => Number(os.id))
+        // O dossiê também recebe as OS embutidas na venda. Em dados legados,
+        // a consulta direta por customer_id pode não retornar uma OS que ainda
+        // possui um pós-venda válido; nesse caso a nota ficava invisível.
+        const serviceOrderIds = [
+            ...serviceOrders.map((os: any) => Number(os.id)),
+            ...vendas.flatMap((venda: any) => (venda.os || []).map((os: any) => Number(os.id))),
+        ]
             .filter((id: number) => Number.isFinite(id))
+        const uniqueServiceOrderIds = [...new Set(serviceOrderIds)]
 
         // 2d. Fetch post-sales by service_order_id
         let postSalesRows: any[] = []
-        if (serviceOrderIds.length > 0) {
+        if (uniqueServiceOrderIds.length > 0) {
             const { data: postSalesData, error: postSalesError } = await (supabase
                 .from('post_sales') as any)
                 .select('id, created_at, status, avaliacao_cliente, observacoes_finais, service_order_id')
                 .eq('store_id', storeId)
-                .in('service_order_id', serviceOrderIds)
+                .in('service_order_id', uniqueServiceOrderIds)
                 .order('created_at', { ascending: false })
 
             if (postSalesError) {
