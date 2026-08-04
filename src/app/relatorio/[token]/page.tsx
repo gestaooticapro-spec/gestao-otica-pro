@@ -68,6 +68,21 @@ function Values({ value }: { value: unknown }) {
   return <dl className="grid gap-2 sm:grid-cols-2">{entries.map(([key, item]) => <div key={key} className="rounded-xl bg-slate-50 px-3 py-2"><dt className="text-[10px] font-black uppercase tracking-wide text-slate-400">{label(key)}</dt><dd className="mt-1 text-sm font-semibold text-slate-700">{scalar(item)}</dd></div>)}</dl>
 }
 
+function LensRecommendationContent({ snapshot }: { snapshot: UnknownRecord }) {
+  const recommendations = Array.isArray(snapshot.lensRecommendations)
+    ? snapshot.lensRecommendations.map(record)
+    : []
+  const support = record(snapshot.lensDecisionSupport)
+  const supportOptions = Array.isArray(support.options) ? support.options.map(record) : []
+  if (!recommendations.length) return <p className="text-sm text-slate-500">Nenhuma lente sugerida.</p>
+  return <div className="space-y-2">{scalar(support.sellerOpening) && <p className="rounded-xl bg-violet-50 p-3 text-sm leading-6 text-violet-950">{scalar(support.sellerOpening)}</p>}{recommendations.map((item, index) => {
+    const narrative = supportOptions.find((option) => scalar(option.configKey) === scalar(item.configKey)) ?? supportOptions[index] ?? {}
+    const aiText = scalar(narrative.sellerArgument) || scalar(narrative.whyThisLens) || scalar(narrative.headline)
+    const details = [scalar(item.offerLabel), scalar(item.treatmentName), aiText || scalar(item.commercialSummary)].filter(Boolean)
+    return <div key={index} className="rounded-xl bg-slate-50 p-3"><p className="font-black text-slate-900">{scalar(item.familyName) || 'Lente indicada'}</p>{details.length > 0 && <p className="mt-1 text-sm leading-6 text-slate-500">{details.join(' · ')}</p>}</div>
+  })}</div>
+}
+
 function SectionContent({ id, snapshot }: { id: string; snapshot: UnknownRecord }) {
   if (id === 'customer') {
     const customer = record(snapshot.customer)
@@ -78,8 +93,7 @@ function SectionContent({ id, snapshot }: { id: string; snapshot: UnknownRecord 
     return <div className="grid gap-3 sm:grid-cols-2">{(['od', 'oe'] as const).map((eye) => { const values = record(prescription[eye]); return <div key={eye} className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-black uppercase text-violet-700">{eye.toUpperCase()}</p><p className="mt-2 text-sm text-slate-700">Esf. <strong>{degree(values.sphere)}</strong> · Cil. <strong>{degree(values.cylinder)}</strong> · Eixo <strong>{scalar(values.axis) || '—'}°</strong></p></div> })}<p className="text-sm text-slate-600 sm:col-span-2">Adição: <strong>{degree(prescription.addition)}</strong></p></div>
   }
   if (id === 'lensRecommendations') {
-    const recommendations = Array.isArray(snapshot.lensRecommendations) ? snapshot.lensRecommendations.map(record) : []
-    return recommendations.length ? <div className="space-y-2">{recommendations.map((item, index) => <div key={index} className="rounded-xl bg-slate-50 p-3"><p className="font-black text-slate-900">{scalar(item.familyName) || `Opção ${index + 1}`}</p><p className="mt-1 text-sm text-slate-500">{[scalar(item.offerLabel), scalar(item.treatmentName), scalar(item.commercialSummary)].filter(Boolean).join(' · ')}</p></div>)}</div> : <p className="text-sm text-slate-500">Nenhuma lente sugerida.</p>
+    return <LensRecommendationContent snapshot={snapshot} />
   }
   if (id === 'decisionCriteria') return <Values value={snapshot.decisionCriteria} />
   if (id === 'heatmap') return <Values value={record(snapshot.heatmap).summary} />
