@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Copy, QrCode, X } from 'lucide-react'
 import { usePathname } from 'next/navigation'
-import { getBillingBannerPresentation, localBillingDateKey } from '@/lib/billing/billing-status-ui'
+import { getBillingBannerPresentation, getBillingNoticePeriod } from '@/lib/billing/billing-status-ui'
 import type { BillingStoreStatus } from '@/lib/billing/integracao-asaas'
 
 export default function BillingStatusBanner({ storeId }: { storeId: number }) {
@@ -26,7 +26,7 @@ export default function BillingStatusBanner({ storeId }: { storeId: number }) {
   }, [pathname, storeId])
 
   const presentation = useMemo(() => status ? getBillingBannerPresentation(status) : null, [status])
-  const noticeKey = useMemo(() => status ? `billing-notice:${storeId}:${status.status}:${localBillingDateKey()}` : null, [status, storeId])
+  const noticeKey = useMemo(() => status ? `billing-notice:${storeId}:${status.status}:${getBillingNoticePeriod(status)}` : null, [status, storeId])
 
   useEffect(() => {
     setDismissed(Boolean(noticeKey && window.localStorage.getItem(noticeKey)))
@@ -50,7 +50,7 @@ export default function BillingStatusBanner({ storeId }: { storeId: number }) {
 
   const closePaymentModal = () => {
     setPaymentOpen(false)
-    window.alert('Assim que o pagamento for identificado, o aviso sera removido automaticamente.')
+    window.alert('Assim que o pagamento for identificado, o aviso será removido automaticamente.')
   }
 
   const copyPix = async () => {

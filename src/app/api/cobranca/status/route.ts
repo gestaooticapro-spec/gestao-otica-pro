@@ -7,12 +7,12 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
   const storeId = Number(new URL(request.url).searchParams.get('storeId'))
-  if (!Number.isInteger(storeId) || storeId <= 0) return NextResponse.json({ error: 'Loja invalida.' }, { status: 400 })
+  if (!Number.isInteger(storeId) || storeId <= 0) return NextResponse.json({ error: 'Loja inválida.' }, { status: 400 })
 
   try {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: 'Nao autenticado.' }, { status: 401 })
+    if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
 
     const profile = await getProfileByAdmin(user.id) as { role?: string | null; store_id?: number | null } | null
     if (!profile || (profile.role !== 'admin' && Number(profile.store_id) !== storeId)) {
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json(await getStoreBillingStatus(storeId))
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Erro ao consultar cobranca.'
+    const message = error instanceof Error ? error.message : 'Erro ao consultar cobrança.'
     return NextResponse.json({ error: message }, { status: 503 })
   }
 }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { getBillingBannerPresentation } from '../src/lib/billing/billing-status-ui'
+import { getBillingBannerPresentation, getBillingNoticePeriod } from '../src/lib/billing/billing-status-ui'
 import type { BillingStoreStatus } from '../src/lib/billing/integracao-asaas'
 
 const now = new Date(2026, 7, 3, 12, 0, 0)
@@ -52,7 +52,7 @@ test('informa pendencia sem data de pagamento', () => {
 test('na data final de tolerancia o aviso nao pode ser dispensado', () => {
   const result = getBillingBannerPresentation(status({ status: 'pendente', blockAfter: '2026-08-03' }), now)
   assert.equal(result.isFinalGraceDay, true)
-  assert.match(result.message, /ultimo dia de tolerancia/)
+  assert.match(result.message, /último dia de tolerância/)
 })
 
 test('informa o bloqueio de novas vendas', () => {
@@ -70,4 +70,14 @@ test('vip nao exibe atalho de pagamento', () => {
 test('nao exibe pagamento fora de um estado de cobranca', () => {
   const result = getBillingBannerPresentation(status({ paymentDueSoon: false, store: { monthly_amount: 150, paid_until: '2026-08-20', payment_qr_code: 'qr' } }), now)
   assert.equal(result.canPay, false)
+})
+
+test('dispensa antes do vencimento dura D-2 e D-1, mas vence no dia do pagamento', () => {
+  const billingStatus = status({ store: { paid_until: '2026-08-05' } })
+  const dMinus2 = getBillingNoticePeriod(billingStatus, new Date(2026, 7, 3, 12))
+  const dMinus1 = getBillingNoticePeriod(billingStatus, new Date(2026, 7, 4, 12))
+  const dueDate = getBillingNoticePeriod(billingStatus, new Date(2026, 7, 5, 12))
+
+  assert.equal(dMinus2, dMinus1)
+  assert.notEqual(dMinus1, dueDate)
 })

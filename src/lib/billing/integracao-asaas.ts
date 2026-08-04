@@ -28,7 +28,7 @@ const syncCache = new Map<string, number>()
 
 function getRequiredEnv(name: string) {
   const value = process.env[name]
-  if (!value) throw new Error(`Variavel de ambiente ausente: ${name}`)
+  if (!value) throw new Error(`Variável de ambiente ausente: ${name}`)
   return value
 }
 
@@ -55,9 +55,9 @@ function normalizeStatus(storeId: number, payload: unknown): BillingStoreStatus 
 
   const statuses = new Set<BillingStoreStatus['status']>(['ativo', 'pendente', 'bloqueado', 'liberado', 'vip'])
   const scopes = new Set<BillingStoreStatus['blockScope']>(['none', 'new_operations_only'])
-  if (!statuses.has(data.status as BillingStoreStatus['status'])) throw new Error('Gateway retornou status de cobranca invalido.')
-  if (typeof data.shouldShowBillingReminder !== 'boolean' || typeof data.shouldBlockNewOperations !== 'boolean') throw new Error('Gateway retornou regras de cobranca invalidas.')
-  if (!scopes.has(data.blockScope as BillingStoreStatus['blockScope'])) throw new Error('Gateway retornou escopo de bloqueio invalido.')
+  if (!statuses.has(data.status as BillingStoreStatus['status'])) throw new Error('Gateway retornou status de cobrança inválido.')
+  if (typeof data.shouldShowBillingReminder !== 'boolean' || typeof data.shouldBlockNewOperations !== 'boolean') throw new Error('Gateway retornou regras de cobrança inválidas.')
+  if (!scopes.has(data.blockScope as BillingStoreStatus['blockScope'])) throw new Error('Gateway retornou escopo de bloqueio inválido.')
   return data as BillingStoreStatus
 }
 

@@ -40,6 +40,14 @@ export function billingDaysUntil(value?: string | null, now = new Date()) {
   return Math.round((calendarTimestamp(date) - calendarTimestamp(localCalendarDate(now))) / 86_400_000)
 }
 
+export function getBillingNoticePeriod(status: BillingBannerStatus, now = new Date()) {
+  const daysUntilDue = billingDaysUntil(status.store?.paid_until, now)
+  if (status.status === 'ativo' && daysUntilDue !== null && daysUntilDue >= 1 && daysUntilDue <= 2) {
+    return `before-due:${status.store?.paid_until}`
+  }
+  return `day:${localBillingDateKey(now)}`
+}
+
 export function getBillingBannerPresentation(status: BillingBannerStatus, now = new Date()) {
   const paidUntil = formatBillingDate(status.store?.paid_until)
   const daysUntilDue = billingDaysUntil(status.store?.paid_until, now)
@@ -63,18 +71,18 @@ export function getBillingBannerPresentation(status: BillingBannerStatus, now = 
 
   let message: string
   if (isBlocked) {
-    message = 'Novas vendas estao bloqueadas por atraso na mensalidade. Seus dados, historico e relatorios continuam salvos. Fale com o administrador para regularizar.'
+    message = 'Novas vendas estão bloqueadas por atraso na mensalidade. Seus dados, histórico e relatórios continuam salvos. Fale com o administrador para regularizar.'
   } else if (isFinalGraceDay) {
-    message = 'Hoje e o ultimo dia de tolerancia. Novas vendas serao bloqueadas ao fim do dia se a mensalidade nao for regularizada.'
+    message = 'Hoje é o último dia de tolerância. Novas vendas serão bloqueadas ao fim do dia se a mensalidade não for regularizada.'
   } else if (paidUntil) {
     if (isOverdue) {
       message = daysUntilBlock !== null && daysUntilBlock >= 1 && daysUntilBlock <= 4
-        ? `Sua mensalidade venceu em ${paidUntil}. Seu acesso sera bloqueado em ${daysUntilBlock} ${daysUntilBlock === 1 ? 'dia' : 'dias'}. Regularize para evitar a interrupcao.`
+        ? `Sua mensalidade venceu em ${paidUntil}. Seu acesso será bloqueado em ${daysUntilBlock} ${daysUntilBlock === 1 ? 'dia' : 'dias'}. Regularize para evitar a interrupção.`
         : `Sua mensalidade venceu em ${paidUntil}. Regularize o pagamento para evitar bloqueio de novas vendas.`
     } else if (isDueToday) {
       message = 'Sua mensalidade vence hoje. Use o QR Code para realizar o pagamento por Pix.'
     } else {
-      message = `Sua mensalidade vence em ${paidUntil}. O QR Code ja esta disponivel para pagamento antecipado.`
+      message = `Sua mensalidade vence em ${paidUntil}. O QR Code já está disponível para pagamento antecipado.`
     }
   } else {
     message = 'Existe uma mensalidade pendente.'
