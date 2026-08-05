@@ -11,9 +11,9 @@ export const metadata: Metadata = {
 
 type UnknownRecord = Record<string, unknown>
 const SECTION_LABELS: Record<string, string> = {
-  customer: 'Cliente', prescription: 'Receita e grau', lensRecommendations: 'Lentes sugeridas',
-  decisionCriteria: 'Critérios da indicação', heatmap: 'Campo visual', measurement: 'Medidas',
-  visagismo: 'Visagismo', thickness: 'Espessura da lente',
+  customer: 'Seu atendimento', prescription: 'Sua receita', lensRecommendations: 'Lentes para comparar',
+  decisionCriteria: 'O que orientou a indicação', heatmap: 'Seu comportamento visual', measurement: 'Suas medidas',
+  visagismo: 'Sua escolha de armação', thickness: 'Como fica a sua lente',
 }
 const VALUE_LABELS: Record<string, string> = { sim: 'Sim', nao: 'Não', multifocal: 'Multifocal', bifocal: 'Bifocal', completed: 'Concluído' }
 
@@ -65,7 +65,7 @@ function assetCaption(kind: unknown) {
 function Values({ value }: { value: unknown }) {
   const entries = Object.entries(record(value)).filter(([, item]) => scalar(item))
   if (!entries.length) return <p className="text-sm text-slate-500">Informação não disponível.</p>
-  return <dl className="grid gap-2 sm:grid-cols-2">{entries.map(([key, item]) => <div key={key} className="rounded-xl bg-slate-50 px-3 py-2"><dt className="text-[10px] font-black uppercase tracking-wide text-slate-400">{label(key)}</dt><dd className="mt-1 text-sm font-semibold text-slate-700">{scalar(item)}</dd></div>)}</dl>
+  return <dl className="grid gap-2 sm:grid-cols-2">{entries.map(([key, item]) => <div key={key} className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2.5"><dt className="text-[10px] font-black uppercase tracking-wide text-slate-400">{label(key)}</dt><dd className="mt-1 text-sm font-semibold text-slate-700">{scalar(item)}</dd></div>)}</dl>
 }
 
 function LensRecommendationContent({ snapshot }: { snapshot: UnknownRecord }) {
@@ -79,7 +79,7 @@ function LensRecommendationContent({ snapshot }: { snapshot: UnknownRecord }) {
     const narrative = supportOptions.find((option) => scalar(option.configKey) === scalar(item.configKey)) ?? supportOptions[index] ?? {}
     const aiText = scalar(narrative.sellerArgument) || scalar(narrative.whyThisLens) || scalar(narrative.headline)
     const details = [scalar(item.offerLabel), scalar(item.treatmentName), aiText || scalar(item.commercialSummary)].filter(Boolean)
-    return <div key={index} className="rounded-xl bg-slate-50 p-3"><p className="font-black text-slate-900">{scalar(item.familyName) || 'Lente indicada'}</p>{details.length > 0 && <p className="mt-1 text-sm leading-6 text-slate-500">{details.join(' · ')}</p>}</div>
+    return <div key={index} className={`rounded-2xl p-4 ${index === 0 ? 'border border-cyan-200 bg-cyan-50' : 'border border-slate-100 bg-slate-50'}`}><p className="text-[10px] font-black uppercase tracking-[.16em] text-cyan-700">{index === 0 ? 'Sua primeira opção' : `Alternativa ${index + 1}`}</p><p className="mt-1 font-black text-slate-900">{scalar(item.familyName) || 'Lente indicada'}</p>{details.length > 0 && <p className="mt-1 text-sm leading-6 text-slate-600">{details.join(' · ')}</p>}</div>
   })}</div>
 }
 
@@ -122,8 +122,10 @@ export default async function PublicTowerReportPage({ params }: { params: Promis
   const selectedSections = Array.isArray(envelope.selectedSections) ? envelope.selectedSections.filter((item): item is string => typeof item === 'string' && Boolean(SECTION_LABELS[item])) : []
   const snapshot = record(envelope.snapshot)
   const title = report.audience === 'retailer_export' ? 'Relatório técnico do atendimento' : 'Seu relatório Neosmart'
-  return <main className="min-h-screen bg-slate-100 px-4 py-8 text-slate-900"><div className="mx-auto max-w-4xl"><header className="overflow-hidden rounded-3xl bg-gradient-to-br from-violet-800 to-fuchsia-700 p-6 text-white shadow-xl sm:p-8"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[.18em] text-violet-100">MB Optical · Neosmart</p><h1 className="mt-3 text-3xl font-black">{title}</h1><p className="mt-2 text-sm text-violet-100">Disponível até {date(report.expiresAt)}</p></div><FileText className="shrink-0 text-violet-200" size={38} /></div></header>
-    <div className="mt-5 space-y-4">{selectedSections.map((id) => <section key={id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><Eye size={18} className="text-violet-700" />{SECTION_LABELS[id]}</h2><SectionContent id={id} snapshot={snapshot} /></section>)}
-      {report.assets.length > 0 && <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><ImageIcon size={18} className="text-violet-700" />Fotos selecionadas</h2><div className="grid gap-3 sm:grid-cols-3">{report.assets.map((asset) => <figure key={asset!.id} className="overflow-hidden rounded-2xl bg-slate-100"><img src={asset!.url} alt={assetCaption(asset!.kind)} className="aspect-[4/3] h-auto w-full object-cover" /><figcaption className="p-3 text-xs text-slate-500">{assetCaption(asset!.kind)}</figcaption></figure>)}</div></section>}
-    </div><footer className="mt-6 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-xs leading-5 text-emerald-900"><ShieldCheck className="mt-0.5 shrink-0" size={18} /><p>Este relatório foi compartilhado temporariamente pela ótica. As imagens utilizam acesso privado e expiram com o relatório.</p></footer></div></main>
+  const customer = record(snapshot.customer)
+  return <main className="min-h-screen bg-[radial-gradient(circle_at_12%_0%,rgba(34,211,238,.18),transparent_28%),#f8fafc] px-4 py-6 text-slate-900 sm:py-10"><div className="mx-auto max-w-4xl"><header className="overflow-hidden rounded-[30px] bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 p-6 text-white shadow-2xl shadow-cyan-950/20 sm:p-8"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[.18em] text-cyan-200">Neosmart · experiência óptica</p><h1 className="mt-3 text-3xl font-black">{title}</h1><p className="mt-2 text-sm text-slate-300">{scalar(customer.fullName) ? `Olá, ${scalar(customer.fullName)}.` : 'Um resumo da sua experiência na ótica.'}</p><p className="mt-4 text-xs font-bold text-cyan-100">Disponível até {date(report.expiresAt)}</p></div><FileText className="shrink-0 text-cyan-200" size={38} /></div></header>
+    <section className="mt-5 rounded-3xl border border-cyan-100 bg-white p-5 shadow-sm"><p className="text-xs font-black uppercase tracking-[.16em] text-cyan-700">O resultado da sua experiência</p><p className="mt-2 text-sm leading-6 text-slate-600">Aqui estão as descobertas, escolhas e registros que ajudam você a conversar com segurança sobre a melhor solução para o seu olhar.</p></section>
+    <div className="mt-5 space-y-4">{selectedSections.map((id) => <section key={id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><p className="text-[10px] font-black uppercase tracking-[.16em] text-slate-400">Experiência personalizada</p><h2 className="mt-1.5 mb-4 flex items-center gap-2 text-lg font-black"><Eye size={18} className="text-cyan-700" />{SECTION_LABELS[id]}</h2><SectionContent id={id} snapshot={snapshot} /></section>)}
+      {report.assets.length > 0 && <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><p className="text-[10px] font-black uppercase tracking-[.16em] text-slate-400">Registros da experiência</p><h2 className="mt-1.5 mb-4 flex items-center gap-2 text-lg font-black"><ImageIcon size={18} className="text-cyan-700" />Imagens que comprovam suas escolhas</h2><div className="grid gap-3 sm:grid-cols-3">{report.assets.map((asset) => <figure key={asset!.id} className="overflow-hidden rounded-2xl border border-slate-100 bg-slate-50"><img src={asset!.url} alt={assetCaption(asset!.kind)} className="aspect-[4/3] h-auto w-full object-cover" /><figcaption className="p-3 text-xs font-medium text-slate-500">{assetCaption(asset!.kind)}</figcaption></figure>)}</div></section>}
+    </div><footer className="mt-6 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-xs leading-5 text-emerald-900"><ShieldCheck className="mt-0.5 shrink-0" size={18} /><p>Este resultado foi compartilhado temporariamente pela sua ótica. As imagens utilizam acesso privado e expiram junto com o relatório.</p></footer></div></main>
 }

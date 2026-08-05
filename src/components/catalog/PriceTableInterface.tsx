@@ -60,6 +60,12 @@ type OfferGridSummary = {
   metadata?: Record<string, unknown> | null
 }
 
+type OfferSelection = {
+  offer: PriceTableOffer
+  price: number | null
+  treatment: string | null
+}
+
 function resolvePrice(
   offer: PriceTableOffer,
   compatibility: { specialPrice: number | null; priceMode: 'final' | 'surcharge' } | null,
@@ -182,11 +188,13 @@ function MatrixTable({
   treatments,
   compatibilityMap,
   gridSummaryByOffer,
+  onOpenOffer,
 }: {
   offers: PriceTableOffer[]
   treatments: { id: string; nome: string }[]
   compatibilityMap: Map<string, Map<string, { specialPrice: number | null; priceMode: 'final' | 'surcharge' }>>
   gridSummaryByOffer: Map<string, OfferGridSummary>
+  onOpenOffer: (selection: OfferSelection) => void
 }) {
   if (!offers.length) return null
 
@@ -220,7 +228,14 @@ function MatrixTable({
                 </p>
               )}
             </div>
-            <p className="text-lg font-black text-white">{formatCurrency(offer.basePrice)}</p>
+            <button
+              type="button"
+              onClick={() => onOpenOffer({ offer, price: offer.basePrice, treatment: 'Preço base' })}
+              className="rounded-lg px-2 py-1 text-lg font-black text-white transition hover:bg-cyan-500/12 hover:text-cyan-200 focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
+              title={`Ver detalhes de ${getOfferLabel(offer)}`}
+            >
+              {formatCurrency(offer.basePrice)}
+            </button>
           </div>
         ))}
       </div>
@@ -295,9 +310,14 @@ function MatrixTable({
                   </p>
                 </td>
                 <td className="px-3 py-3 text-center">
-                  <span className="font-mono text-xs font-bold text-slate-300">
+                  <button
+                    type="button"
+                    onClick={() => onOpenOffer({ offer, price: offer.basePrice, treatment: 'Preço base' })}
+                    className="rounded-lg px-2 py-1 font-mono text-xs font-bold text-slate-300 transition hover:bg-cyan-500/12 hover:text-cyan-200 focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
+                    title={`Ver detalhes de ${getOfferLabel(offer)}`}
+                  >
                     {formatCurrency(offer.basePrice)}
-                  </span>
+                  </button>
                 </td>
                 {visibleTreatments.map((treatment) => {
                   const compat = offerCompat?.get(treatment.id) || null
@@ -305,9 +325,14 @@ function MatrixTable({
                   return (
                     <td key={treatment.id} className="px-3 py-3 text-center">
                       {price != null ? (
-                        <span className="font-mono text-xs font-bold text-cyan-200">
+                        <button
+                          type="button"
+                          onClick={() => onOpenOffer({ offer, price, treatment: treatment.nome })}
+                          className="rounded-lg px-2 py-1 font-mono text-xs font-bold text-cyan-200 transition hover:bg-cyan-500/12 focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
+                          title={`Ver detalhes de ${getOfferLabel(offer)}`}
+                        >
                           {formatCurrency(price)}
-                        </span>
+                        </button>
                       ) : (
                         <span className="text-slate-600">—</span>
                       )}
@@ -429,24 +454,14 @@ function getAtomicOfferIndexLabel(offer: PriceTableOffer): string {
 function AtomicMatrixTable({
   offers,
   gridSummaryByOffer,
-  storeId,
-  laboratorio,
-  versao,
+  onOpenOffer,
 }: {
   offers: PriceTableOffer[]
   gridSummaryByOffer: Map<string, OfferGridSummary>
-  storeId: number
-  laboratorio: string
-  versao: string
+  onOpenOffer: (selection: OfferSelection) => void
 }) {
   const [photoMode, setPhotoMode] = useState<AtomicMatrixPhotoMode>('normal')
   const [selectedPhotoTechnology, setSelectedPhotoTechnology] = useState<string | null>(null)
-  const [selectedOffer, setSelectedOffer] = useState<PriceTableOffer | null>(null)
-  const [isMounted, setIsMounted] = useState(false)
-
-  useEffect(() => {
-    setIsMounted(true)
-  }, [])
 
   const photoTechnologies = useMemo(
     () =>
@@ -464,15 +479,6 @@ function AtomicMatrixTable({
     selectedPhotoTechnology && photoTechnologies.includes(selectedPhotoTechnology)
       ? selectedPhotoTechnology
       : photoTechnologies[0] || null
-
-  useEffect(() => {
-    if (!selectedOffer) return
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setSelectedOffer(null)
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedOffer])
 
   const matrix = useMemo(() => {
     const rows = new Map<string, { indexLabel: string; indexValue: number | null }>()
@@ -664,7 +670,7 @@ function AtomicMatrixTable({
                     <td key={col.key} className="px-3 py-3 text-left">
                       <button
                         type="button"
-                        onClick={() => setSelectedOffer(offer)}
+                        onClick={() => onOpenOffer({ offer, price: offer.basePrice, treatment: col.key })}
                         className="rounded-lg px-2 py-1 font-mono text-xs font-black text-white transition hover:bg-cyan-500/12 hover:text-cyan-200 focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
                         title={`Ver detalhes de ${getOfferLabel(offer)}`}
                       >
@@ -686,119 +692,65 @@ function AtomicMatrixTable({
         </div>
       )}
 
-      {selectedOffer && isMounted
-        ? createPortal(
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="atomic-offer-detail-title"
-          onClick={() => setSelectedOffer(null)}
-        >
-          <div
-            className="w-full max-w-2xl rounded-3xl border border-white/10 bg-slate-900 p-6 shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300">
-                  Detalhes da oferta
-                </p>
-                <h2 id="atomic-offer-detail-title" className="mt-2 text-xl font-black text-white">
-                  {getOfferLabel(selectedOffer)}
-                </h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedOffer(null)}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-400 transition hover:text-white"
-                aria-label="Fechar detalhes"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="mt-5 flex flex-wrap gap-2">
-              {getAtomicOfferPhotoTechnology(selectedOffer) && (
-                <span className="rounded-full border border-amber-300/25 bg-amber-400/10 px-3 py-1 text-xs font-bold text-amber-200">
-                  Foto: {getAtomicOfferPhotoTechnology(selectedOffer)}
-                </span>
-              )}
-              {selectedOffer.material && (
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold text-slate-300">
-                  Material: {selectedOffer.material}
-                </span>
-              )}
-              {selectedOffer.indiceRefracao != null && (
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold text-slate-300">
-                  Indice: {selectedOffer.indiceRefracao}
-                </span>
-              )}
-              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold text-slate-300">
-                {getClinicalLabel(selectedOffer.clinicalCategory)}
-              </span>
-            </div>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                  Preco final
-                </p>
-                <p className="mt-1 text-2xl font-black text-white">
-                  {formatCurrency(selectedOffer.basePrice)}
-                </p>
-              </div>
-              <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                  Tratamento embutido
-                </p>
-                <p className="mt-1 text-sm font-bold text-white">
-                  {getAtomicOfferTreatmentColumn(selectedOffer) || 'Nao informado'}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-3 rounded-2xl border border-white/8 bg-black/20 p-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                Grade e disponibilidade
-              </p>
-              <p className="mt-2 text-sm leading-relaxed text-slate-300">
-                {buildOfferDetailTitle(
-                  gridSummaryByOffer.get(selectedOffer.globalOfferId) || null,
-                  getFeatureNumber(selectedOffer.features || {}, 'min_fitting_height'),
-                )}
-              </p>
-            </div>
-
-            {(selectedOffer.canonicalLabel || selectedOffer.rawLabel) !== getOfferLabel(selectedOffer) && (
-              <div className="mt-3 rounded-2xl border border-white/8 bg-black/20 p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                  Nome no catalogo
-                </p>
-                <p className="mt-2 text-sm text-slate-300">
-                  {selectedOffer.canonicalLabel || selectedOffer.rawLabel}
-                </p>
-              </div>
-            )}
-
-            <CatalogLensSaleActions
-              storeId={storeId}
-              globalOfferId={selectedOffer.globalOfferId}
-              displayName={getOfferLabel(selectedOffer)}
-              originalPrice={selectedOffer.basePrice || 0}
-              laboratorio={laboratorio}
-              versao={versao}
-            />
-          </div>
-        </div>,
-        document.body,
-      )
-        : null}
     </div>
   )
 }
 
-function AtomicOfferCard({ offer }: { offer: PriceTableOffer }) {
+function OfferDetailsModal({
+  selection,
+  onClose,
+  gridSummaryByOffer,
+  storeId,
+  laboratorio,
+  versao,
+}: {
+  selection: OfferSelection | null
+  onClose: () => void
+  gridSummaryByOffer: Map<string, OfferGridSummary>
+  storeId: number
+  laboratorio: string
+  versao: string
+}) {
+  useEffect(() => {
+    if (!selection) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selection, onClose])
+
+  if (!selection || typeof document === 'undefined') return null
+
+  const { offer, price, treatment } = selection
+
+  return createPortal(
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="offer-detail-title" onClick={onClose}>
+      <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-slate-900 p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300">Detalhes da oferta</p><h2 id="offer-detail-title" className="mt-2 text-xl font-black text-white">{getOfferLabel(offer)}</h2></div>
+          <button type="button" onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-400 transition hover:text-white" aria-label="Fechar detalhes"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="mt-5 flex flex-wrap gap-2">
+          {getAtomicOfferPhotoTechnology(offer) && <span className="rounded-full border border-amber-300/25 bg-amber-400/10 px-3 py-1 text-xs font-bold text-amber-200">Foto: {getAtomicOfferPhotoTechnology(offer)}</span>}
+          {offer.material && <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold text-slate-300">Material: {offer.material}</span>}
+          {offer.indiceRefracao != null && <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold text-slate-300">Indice: {offer.indiceRefracao}</span>}
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold text-slate-300">{getClinicalLabel(offer.clinicalCategory)}</span>
+        </div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-white/8 bg-black/20 p-4"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Preco selecionado</p><p className="mt-1 text-2xl font-black text-white">{formatCurrency(price)}</p></div>
+          <div className="rounded-2xl border border-white/8 bg-black/20 p-4"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Tratamento</p><p className="mt-1 text-sm font-bold text-white">{treatment || getAtomicOfferTreatmentColumn(offer) || 'Nao informado'}</p></div>
+        </div>
+        <div className="mt-3 rounded-2xl border border-white/8 bg-black/20 p-4"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Grade e disponibilidade</p><p className="mt-2 text-sm leading-relaxed text-slate-300">{buildOfferDetailTitle(gridSummaryByOffer.get(offer.globalOfferId) || null, getFeatureNumber(offer.features || {}, 'min_fitting_height'))}</p></div>
+        {(offer.canonicalLabel || offer.rawLabel) !== getOfferLabel(offer) && <div className="mt-3 rounded-2xl border border-white/8 bg-black/20 p-4"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Nome no catalogo</p><p className="mt-2 text-sm text-slate-300">{offer.canonicalLabel || offer.rawLabel}</p></div>}
+        <CatalogLensSaleActions storeId={storeId} globalOfferId={offer.globalOfferId} displayName={getOfferLabel(offer)} originalPrice={price || 0} laboratorio={laboratorio} versao={versao} />
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+function AtomicOfferCard({ offer, onOpenOffer }: { offer: PriceTableOffer; onOpenOffer: (selection: OfferSelection) => void }) {
   return (
     <div className="flex items-center justify-between rounded-2xl border border-white/8 bg-black/20 px-5 py-4 transition-all hover:border-white/15 hover:bg-black/30">
       <div className="space-y-1">
@@ -830,7 +782,7 @@ function AtomicOfferCard({ offer }: { offer: PriceTableOffer }) {
           )}
         </div>
       </div>
-      <p className="text-xl font-black text-white">{formatCurrency(offer.basePrice)}</p>
+      <button type="button" onClick={() => onOpenOffer({ offer, price: offer.basePrice, treatment: getAtomicOfferTreatmentColumn(offer) })} className="rounded-lg px-2 py-1 text-xl font-black text-white transition hover:bg-cyan-500/12 hover:text-cyan-200 focus:outline-none focus:ring-2 focus:ring-cyan-400/40" title={`Ver detalhes de ${getOfferLabel(offer)}`}>{formatCurrency(offer.basePrice)}</button>
     </div>
   )
 }
@@ -863,6 +815,7 @@ function FamilySection({
   versao: string
 }) {
   const [isOpen, setIsOpen] = useState(false)
+  const [selectedOffer, setSelectedOffer] = useState<OfferSelection | null>(null)
   const geometryHref = useMemo(() => {
     const params = new URLSearchParams()
     params.set('returnTo', returnTo)
@@ -936,6 +889,7 @@ function FamilySection({
                       treatments={treatments}
                       compatibilityMap={compatibilityMap}
                       gridSummaryByOffer={gridSummaryByOffer}
+                      onOpenOffer={setSelectedOffer}
                     />
                   </div>
                 ))
@@ -989,14 +943,14 @@ function FamilySection({
                         <div className="text-right">
                           {minPrice != null && maxPrice != null && minPrice !== maxPrice ? (
                             <>
-                              <p className="text-xs text-slate-400">
+                              <button type="button" onClick={() => setSelectedOffer({ offer, price: minPrice, treatment: 'Faixa de preços' })} className="rounded-lg px-2 py-1 text-xs text-slate-400 transition hover:bg-cyan-500/12 hover:text-cyan-200 focus:outline-none focus:ring-2 focus:ring-cyan-400/40" title={`Ver detalhes de ${getOfferLabel(offer)}`}>
                                 {formatCurrency(minPrice)} – {formatCurrency(maxPrice)}
-                              </p>
+                              </button>
                             </>
                           ) : (
-                            <p className="font-mono text-sm font-bold text-white">
+                            <button type="button" onClick={() => setSelectedOffer({ offer, price: minPrice, treatment: 'Preço' })} className="rounded-lg px-2 py-1 font-mono text-sm font-bold text-white transition hover:bg-cyan-500/12 hover:text-cyan-200 focus:outline-none focus:ring-2 focus:ring-cyan-400/40" title={`Ver detalhes de ${getOfferLabel(offer)}`}>
                               {formatCurrency(minPrice)}
-                            </p>
+                            </button>
                           )}
                         </div>
                       </div>
@@ -1019,17 +973,16 @@ function FamilySection({
                 <AtomicMatrixTable
                   offers={atomicOffers}
                   gridSummaryByOffer={gridSummaryByOffer}
-                  storeId={storeId}
-                  laboratorio={laboratorio}
-                  versao={versao}
+                  onOpenOffer={setSelectedOffer}
                 />
               ) : (
-                atomicOffers.map((offer) => <AtomicOfferCard key={offer.globalOfferId} offer={offer} />)
+                atomicOffers.map((offer) => <AtomicOfferCard key={offer.globalOfferId} offer={offer} onOpenOffer={setSelectedOffer} />)
               )}
             </div>
           )}
         </div>
       )}
+      <OfferDetailsModal selection={selectedOffer} onClose={() => setSelectedOffer(null)} gridSummaryByOffer={gridSummaryByOffer} storeId={storeId} laboratorio={laboratorio} versao={versao} />
     </div>
   )
 }
