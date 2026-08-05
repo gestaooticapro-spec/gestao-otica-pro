@@ -1059,7 +1059,7 @@ export default function VendaInterfaceExperimental({
                     {/* QUADRO 3: PAGAMENTOS (VERDE - Financeiro) */}
                     <SectionCard
                         title="Pagamentos"
-                        count={pagamentos.length}
+                        count={pagamentos.filter((pagamento) => pagamento.parcela_id == null).length}
                         icon={DollarSign}
                         onAdd={isVendaFechadaOuCancelada ? undefined : () => setActiveModal('pagamento')}
                         actionLabel="Novo Pagamento"

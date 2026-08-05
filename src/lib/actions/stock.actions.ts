@@ -1356,15 +1356,42 @@ export async function confirmReservations(vendaId: number) {
         .in('related_os_id', osIds)
         .in('tipo', ['Reserva', 'Saida'])
 
-    const pendingReservationIds = (reservations || [])
+    const pendingReservations = (reservations || [])
         .filter((movement: any) => isPendingLensReservationMovement(movement))
-        .map((movement: any) => movement.id)
 
-    if (pendingReservationIds.length === 0) return
+    for (const reservation of pendingReservations) {
+        await (supabase.from('stock_movements') as any)
+            .update({
+                tipo: 'Saida',
+                // Preserva a origem e o marcador OD/OE para uma reabertura segura.
+                motivo: `Venda #${vendaId} Finalizada (Era Reserva) | ${reservation.motivo}`
+            })
+            .eq('id', reservation.id)
+    }
+}
 
-    await (supabase.from('stock_movements') as any)
-        .update({ tipo: 'Saida', motivo: `Venda #${vendaId} Finalizada (Era Reserva)` })
-        .in('id', pendingReservationIds)
+// Reabrir devolve uma reserva confirmada ao estado reservado, sem mexer no
+// estoque. Somente cancelar a venda deve liberar a unidade para a loja.
+export async function reopenReservations(vendaId: number) {
+    const supabase = createAdminClient()
+    const { data: osList } = await (supabase.from('service_orders') as any)
+        .select('id')
+        .eq('venda_id', vendaId)
+
+    if (!osList || osList.length === 0) return
+
+    const { data: movements } = await (supabase.from('stock_movements') as any)
+        .select('id, motivo')
+        .in('related_os_id', osList.map((os: any) => os.id))
+        .eq('tipo', 'Saida')
+        .ilike('motivo', `Venda #${vendaId} Finalizada (Era Reserva)%`)
+
+    for (const movement of movements || []) {
+        const originalReason = String(movement.motivo || '').split(' | ').slice(1).join(' | ')
+        await (supabase.from('stock_movements') as any)
+            .update({ motivo: originalReason || 'Reserva manual de lente reaberta' })
+            .eq('id', movement.id)
+    }
 }
 
 export async function cancelReservations(vendaId: number) {

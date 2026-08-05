@@ -55,7 +55,23 @@ function ParcelaCard({ p, onClick }: { p: any, onClick: () => void }) {
     )
 }
 
-export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQuery }: { isOpen: boolean, onClose: () => void, storeId: number, initialQuery?: string }) {
+type ParcelaSearchModalProps = {
+    isOpen: boolean
+    onClose: () => void
+    storeId: number
+    initialQuery?: string
+    initialParcela?: any
+    onPaymentRecorded?: () => void | Promise<void>
+}
+
+export default function ParcelaSearchModal({
+    isOpen,
+    onClose,
+    storeId,
+    initialQuery,
+    initialParcela,
+    onPaymentRecorded,
+}: ParcelaSearchModalProps) {
     const router = useRouter()
     const [mounted, setMounted] = useState(false)
 
@@ -98,8 +114,18 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQu
 
     useEffect(() => {
         if (isOpen) {
-            setStep('search')
-            setQuery(initialQuery || '')
+            if (initialParcela) {
+                setSelectedClientData(null)
+                setSelectedParcela(initialParcela)
+                setValorTotalPagoStr(formatCurrency(initialParcela.valor_parcela).replace(/[^\d,]/g, ''))
+                setRecebimentos([{ forma_pagamento: 'PIX Remoto', valor: formatCurrency(initialParcela.valor_parcela).replace(/[^\d,]/g, '') }])
+                setValorJurosStr('0,00')
+                setEstrategia('criar_pendencia')
+                setStep('pay')
+            } else {
+                setStep('search')
+                setQuery(initialQuery || '')
+            }
             setResults([])
             setHasSearched(false)
             setPaidParcelaId(null)
@@ -108,7 +134,7 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQu
             setTimeout(() => searchInputRef.current?.focus(), 100)
         }
 
-    }, [isOpen, initialQuery])
+    }, [isOpen, initialQuery, initialParcela?.id])
 
     useEffect(() => {
         if (!isOpen) return
@@ -244,6 +270,7 @@ export default function ParcelaSearchModal({ isOpen, onClose, storeId, initialQu
                     const parcelaId = selectedParcela.id
                     setPaidParcelaId(parcelaId)
                     setStep('success')
+                    await onPaymentRecorded?.()
                     // Atualiza os dois consumidores do Radar Operacional:
                     // o dashboard por Server Components e o menu do operador
                     // que carrega os alertas pela API no cliente.

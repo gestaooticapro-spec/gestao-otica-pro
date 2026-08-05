@@ -14,6 +14,7 @@ import {
     type CreateFinanciamentoResult,
 } from '@/lib/actions/vendas.actions'
 import { sendInstallmentReceiptWhatsApp } from '@/lib/actions/manual-whatsapp.actions'
+import ParcelaSearchModal from '@/components/modals/ParcelaSearchModal'
 
 import { Database } from '@/lib/database.types'
 import { Calendar, ClipboardList, AlertTriangle, CheckCircle2, Wallet, DollarSign, X, RefreshCw, Trash2, Calculator, Loader2, MessageCircle, Printer } from 'lucide-react'
@@ -202,6 +203,8 @@ export default function FinanciamentoBox({
     const [isCpfModalOpen, setIsCpfModalOpen] = useState(false)
     const [authedEmployee, setAuthedEmployee] = useState<Pick<Employee, 'id' | 'full_name'> | null>(null)
     const [selectedParcela, setSelectedParcela] = useState<FinanciamentoParcela | null>(null)
+    const [parcelaAtalho, setParcelaAtalho] = useState<FinanciamentoParcela | null>(null)
+    const [isParcelaSearchModalOpen, setIsParcelaSearchModalOpen] = useState(false)
     const [isResetting, startResetTransition] = useState(false)
     const [sendingReceiptInstallmentId, setSendingReceiptInstallmentId] = useState<number | null>(null)
     const [sentReceiptInstallmentIds, setSentReceiptInstallmentIds] = useState<number[]>([])
@@ -466,7 +469,11 @@ export default function FinanciamentoBox({
                                         ) : (
                                             <button
                                                 type="button"
-                                                onClick={(e) => { e.stopPropagation(); setSelectedParcela(p); }}
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    setParcelaAtalho(p)
+                                                    setIsParcelaSearchModalOpen(true)
+                                                }}
                                                 disabled={disabled || isQuitado}
                                                 className="px-3 py-1.5 bg-amber-500/20 text-amber-400 text-[10px] font-bold rounded-lg hover:bg-amber-500/30 border border-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-amber-900/20"
                                             >
@@ -697,6 +704,17 @@ export default function FinanciamentoBox({
 
                 {selectedParcela && <RecebimentoModal parcela={selectedParcela} storeId={storeId} onClose={() => setSelectedParcela(null)} onConfirm={handleConfirmRecebimento} />}
 
+                <ParcelaSearchModal
+                    isOpen={isParcelaSearchModalOpen}
+                    onClose={() => {
+                        setIsParcelaSearchModalOpen(false)
+                        setParcelaAtalho(null)
+                    }}
+                    storeId={storeId}
+                    initialParcela={parcelaAtalho ? { ...parcelaAtalho, venda_id: vendaId } : undefined}
+                    onPaymentRecorded={onFinanceAdded}
+                />
+
                 {isCpfModalOpen && customer && (
                     <UpdateCpfModal
                         isOpen={isCpfModalOpen}
@@ -750,6 +768,17 @@ export default function FinanciamentoBox({
 
 
             {selectedParcela && <RecebimentoModal parcela={selectedParcela} storeId={storeId} onClose={() => setSelectedParcela(null)} onConfirm={handleConfirmRecebimento} />}
+
+            <ParcelaSearchModal
+                isOpen={isParcelaSearchModalOpen}
+                onClose={() => {
+                    setIsParcelaSearchModalOpen(false)
+                    setParcelaAtalho(null)
+                }}
+                storeId={storeId}
+                initialParcela={parcelaAtalho ? { ...parcelaAtalho, venda_id: vendaId } : undefined}
+                onPaymentRecorded={onFinanceAdded}
+            />
 
             {isCpfModalOpen && customer && (
                 <UpdateCpfModal

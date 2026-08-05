@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { useCredit } from './wallet.actions'
 import { calcularERegistrarComissao, cancelarComissao, calcularComissaoMedico } from './commission.actions'
-import { checkLensStock, confirmReservations, cancelReservations, getLensReservationForOsSlot, releaseReservationsForServiceOrder, reserveLensByAdmin, type LensReservationSlot } from './stock.actions'
+import { checkLensStock, confirmReservations, cancelReservations, getLensReservationForOsSlot, releaseReservationsForServiceOrder, reopenReservations, reserveLensByAdmin, type LensReservationSlot } from './stock.actions'
 import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
 import { clearNfcTrayLinkForDeliveredOrder } from '@/lib/nfc-tray-cleanup'
 import { getNewSaleBillingGuard } from '@/lib/billing/billing-guard'
@@ -1692,8 +1692,23 @@ export async function addPagamento(
     if (rpcError) throw new Error(`Erro ao recalcular total: ${rpcError.message}`)
 
     // 4. Recalcula comissão (caso tenha % por recebimento ou % garantida mudada pelo pagamento)
-    await calcularERegistrarComissao(venda_id)
-    await calcularComissaoMedico(venda_id)
+    const { data: vendaAtual } = await (supabaseAdmin.from('vendas') as any)
+      .select('status, valor_restante, financiamento_id')
+      .eq('id', venda_id)
+      .single()
+
+    const deveFecharAutomaticamente =
+      vendaAtual?.status === 'Em Aberto' &&
+      !vendaAtual?.financiamento_id &&
+      Number(vendaAtual?.valor_restante || 0) <= 0.01
+
+    if (deveFecharAutomaticamente) {
+      const fechamento = await updateVendaStatus(venda_id, store_id, 'Fechada', pagamentoData.employee_id)
+      if (!fechamento.success) throw new Error(fechamento.message || 'Não foi possível finalizar a venda quitada.')
+    } else {
+      await calcularERegistrarComissao(venda_id)
+      await calcularComissaoMedico(venda_id)
+    }
 
     revalidatePath(`/dashboard/loja/${store_id}/vendas`)
     revalidatePath(`/dashboard/loja/${store_id}/vendas/${venda_id}`)
@@ -1773,7 +1788,35 @@ async function registrarSaidaVenda(vendaId: number, storeId: string | number, us
 
   if (!itens || itens.length === 0) return
 
+  // Produtos já reservados por uma OS tiveram o estoque abatido no ato da
+  // reserva. No fechamento, a reserva é apenas confirmada e não pode receber
+  // uma segunda saída.
+  const { data: osList } = await (supabaseAdmin.from('service_orders') as any)
+    .select('id')
+    .eq('venda_id', vendaId)
+  const osIds = (osList || []).map((os: any) => os.id)
+  const reservedProductIds = new Set<number>()
+
+  if (osIds.length > 0) {
+    const { data: reservationMovements } = await (supabaseAdmin.from('stock_movements') as any)
+      .select('product_id, motivo')
+      .in('related_os_id', osIds)
+      .in('tipo', ['Reserva', 'Saida'])
+
+    for (const movement of reservationMovements || []) {
+      const reason = String(movement.motivo || '').toLowerCase()
+      if (
+        reason.startsWith('reserva automatica') ||
+        reason.startsWith('reserva manual') ||
+        reason.startsWith(`venda #${vendaId} finalizada (era reserva)`)
+      ) {
+        reservedProductIds.add(Number(movement.product_id))
+      }
+    }
+  }
+
   for (const item of itens) {
+    if (reservedProductIds.has(Number(item.product_id))) continue
     // Par = 2 unidades reais de lente, Unidade = 1
     const multiplicador = item.unidade === 'Par' ? 2 : 1
     const qtdReal = (item.quantidade || 1) * multiplicador
@@ -1806,19 +1849,25 @@ async function registrarSaidaVenda(vendaId: number, storeId: string | number, us
 }
 
 // Helper reverso: estorna saídas de venda no cancelamento/reabertura
-async function estornarSaidaVenda(vendaId: number, storeId: string | number, userId: string, tenantId: string) {
+async function estornarSaidaVenda(vendaId: number, storeId: string | number, userId: string, tenantId: string, includeConfirmedReservations = false) {
   const supabaseAdmin = createAdminClient()
 
   // Busca as saídas que foram geradas por esta venda
   const { data: movimentos } = await (supabaseAdmin.from('stock_movements') as any)
-    .select('id, product_id, quantidade, custo_unitario_momento')
+    .select('id, product_id, quantidade, custo_unitario_momento, motivo')
     .eq('store_id', storeId)
     .eq('tipo', 'Saida')
     .ilike('motivo', `Venda #${vendaId}%`)
 
-  if (!movimentos || movimentos.length === 0) return
+  const saidasParaEstornar = (movimentos || []).filter((mov: any) => {
+    const reason = String(mov.motivo || '').toLowerCase()
+    const isConfirmedReservation = reason.startsWith(`venda #${vendaId} finalizada (era reserva)`)
+    return includeConfirmedReservations || !isConfirmedReservation
+  })
 
-  for (const mov of movimentos) {
+  if (saidasParaEstornar.length === 0) return
+
+  for (const mov of saidasParaEstornar) {
     // 1. Devolve ao estoque
     const { data: produto } = await (supabaseAdmin.from('products') as any)
       .select('estoque_atual')
@@ -1843,6 +1892,12 @@ async function estornarSaidaVenda(vendaId: number, storeId: string | number, use
       registrado_por_id: userId,
       created_at: new Date().toISOString()
     })
+
+    // Marca a saída original como revertida para que ciclos sucessivos de
+    // fechar/reabrir não devolvam a mesma unidade duas vezes.
+    await (supabaseAdmin.from('stock_movements') as any)
+      .update({ tipo: 'Devolucao' })
+      .eq('id', mov.id)
   }
 }
 
@@ -1875,7 +1930,6 @@ export async function updateVendaStatus(
     if (newStatus === 'Em Aberto') {
       // REABERTURA:
       // 1. Remove o vínculo com financiamento (se houver, para permitir recriar)
-      updatePayload.financiamento_id = null;
       // 2. Limpa data de fechamento
       updatePayload.data_fechamento = null;
 
@@ -1883,7 +1937,7 @@ export async function updateVendaStatus(
       await cancelarComissao(vendaId)
 
       // 3. Cancela reservas de estoque
-      await cancelReservations(vendaId)
+      await reopenReservations(vendaId)
 
       // 4. Estorna saídas de estoque geradas pelo fechamento anterior
       if (user && profile) {
@@ -1930,7 +1984,7 @@ export async function updateVendaStatus(
 
       // Estorna saídas de estoque
       if (user && profile) {
-        await estornarSaidaVenda(vendaId, storeId, user.id, (profile as any).tenant_id)
+        await estornarSaidaVenda(vendaId, storeId, user.id, (profile as any).tenant_id, true)
       }
     }
     // ---------------------------
@@ -2422,8 +2476,9 @@ export async function saveFinanciamentoLoja(...args: any[]) {
     .update({
       financiamento_id: capaCriada.id,
       valor_restante: novoValorRestante,
-      status: novoStatus,
-      data_fechamento: novoStatus === 'Fechada' ? new Date().toISOString() : null
+      ...(novoStatus === 'Em Aberto'
+        ? { status: 'Em Aberto', data_fechamento: null }
+        : {})
     })
     .eq('id', venda_id);
 
@@ -2432,8 +2487,22 @@ export async function saveFinanciamentoLoja(...args: any[]) {
     return { success: false, message: `Erro ao atualizar venda: ${erroUpdate.message}` };
   }
 
-  await calcularERegistrarComissao(venda_id);
-  await calcularComissaoMedico(venda_id);
+  if (novoStatus === 'Fechada') {
+    // Usa a mesma rotina do botão "Finalizar Venda": comissão, reservas,
+    // estoque, ranking e demais efeitos operacionais ficam consistentes.
+    const fechamento = await updateVendaStatus(
+      venda_id,
+      vendaReal.store_id,
+      'Fechada',
+      employee_id
+    )
+    if (!fechamento.success) {
+      return { success: false, message: fechamento.message || 'Não foi possível finalizar a venda após gerar o carnê.' }
+    }
+  } else {
+    await calcularERegistrarComissao(venda_id);
+    await calcularComissaoMedico(venda_id);
+  }
 
   revalidatePath(`/vendas/${venda_id}`);
   revalidatePath(`/dashboard/loja/${vendaReal.store_id}/financeiro/comissoes`);
@@ -2956,7 +3025,8 @@ export async function receberParcela(prevState: any, formData: FormData) {
     const { error: errBaixa } = await (supabaseAdmin.from('financiamento_parcelas') as any).update({
       status: 'Pago',
       data_pagamento: new Date().toISOString(),
-      valor_parcela: Math.min(principalAbatido, valor_original)
+      valor_parcela: Math.min(principalAbatido, valor_original),
+      valor_pago: Math.min(principalAbatido, valor_original)
     }).eq('id', parcela_id)
     if (errBaixa) throw new Error(`Erro ao baixar a parcela original: ${errBaixa.message}`)
 
@@ -3034,7 +3104,7 @@ export async function receberParcela(prevState: any, formData: FormData) {
           if (excedente >= prox.valor_parcela - 0.01) {
             // Quita essa parcela inteira
             const { error: errQuita } = await (supabaseAdmin.from('financiamento_parcelas') as any)
-              .update({ status: 'Pago', data_pagamento: new Date().toISOString() })
+              .update({ status: 'Pago', data_pagamento: new Date().toISOString(), valor_pago: prox.valor_parcela })
               .eq('id', prox.id)
             if (errQuita) throw new Error(`Erro ao quitar parcela ${prox.numero_parcela}: ${errQuita.message}`)
             excedente -= prox.valor_parcela

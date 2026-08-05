@@ -92,6 +92,11 @@ export default function ListaPagamentos({
   const [sendingReceiptPaymentId, setSendingReceiptPaymentId] = useState<number | null>(null)
   const [sentReceiptPaymentIds, setSentReceiptPaymentIds] = useState<number[]>([])
 
+  // Recebimentos de parcelas também são registrados em `pagamentos`, mas já
+  // aparecem dentro do carnê. Mantê-los nesta lista causa duplicidade visual.
+  const pagamentosDiretos = pagamentos.filter((pagamento) => pagamento.parcela_id == null)
+  const pagamentosDeParcelas = pagamentos.length - pagamentosDiretos.length
+
   const handleSendReceipt = async (paymentId: number) => {
     if (sendingReceiptPaymentId === paymentId) return
 
@@ -136,12 +141,19 @@ export default function ListaPagamentos({
       </div>
 
       <div className="flex-1 overflow-y-auto space-y-1 bg-transparent p-0 rounded-b-xl custom-scrollbar max-h-60">
-        {pagamentos.length === 0 ? (
+        {pagamentosDiretos.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-slate-500 bg-white/5 rounded-b-xl border border-dashed border-white/10 m-0">
-            <p className="text-xs font-medium">Sem pagamentos</p>
+            <p className="text-xs font-medium">
+              {pagamentosDeParcelas > 0 ? 'Sem pagamentos diretos' : 'Sem pagamentos'}
+            </p>
+            {pagamentosDeParcelas > 0 ? (
+              <p className="text-[10px] mt-1 text-slate-500">
+                Os recebimentos das parcelas aparecem no parcelamento abaixo.
+              </p>
+            ) : null}
           </div>
         ) : (
-          pagamentos.map((pag) => (
+          pagamentosDiretos.map((pag) => (
             <div
               key={pag.id}
               className="flex flex-col md:flex-row md:items-center p-2 rounded-lg hover:bg-white/5 border-b border-white/5 last:border-0 transition-colors group"
