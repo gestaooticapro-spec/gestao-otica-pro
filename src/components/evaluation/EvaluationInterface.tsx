@@ -2573,15 +2573,16 @@ const createEmptyForm = () => ({
   sourceExamType: '',
   sourceExamDatetime: '',
   patientNameRaw: '',
-  ageYears: '30',
-  estiloVidaUsoComputadorHoras: '4',
-  estiloVidaDirigirHoras: '1',
-  estiloVidaLeituraHoras: '1',
-  estiloVidaUsoCelularHoras: '3',
-  estiloVidaExposicaoSolHoras: '1',
-  estiloVidaAmbienteInternoHoras: '8',
-  estiloVidaAmbienteExternoHoras: '1',
-  estiloVidaAssistirTvHoras: '2',
+  ageYears: '',
+  estiloVidaUsoComputadorHoras: '0',
+  estiloVidaDirigirHoras: '0',
+  estiloVidaLeituraHoras: '0',
+  estiloVidaUsoCelularHoras: '0',
+  estiloVidaExposicaoSolHoras: '0',
+  estiloVidaAmbienteInternoHoras: '0',
+  estiloVidaAmbienteExternoHoras: '0',
+  estiloVidaAssistirTvHoras: '0',
+  olhosUtilizaveis: 'ambos' as 'ambos' | 'od' | 'oe',
   marcaAtual: '',
   dificuldadeAdaptacao: 'nao_informado',
   queixaDirigirNoite: 'nao',
@@ -5017,6 +5018,14 @@ export default function EvaluationInterface({
                     Receita e Medidas
                   </h3>
                   <div className="grid grid-cols-12 gap-4">
+                    <div className="col-span-12 md:col-span-3">
+                      <label className={labelStyle}>Olhos usados nesta receita</label>
+                      <select value={form.olhosUtilizaveis} onChange={(e) => handleFormChange('olhosUtilizaveis', e.target.value as 'ambos' | 'od' | 'oe')} className={inputStyle}>
+                        <option value="ambos">OD e OE</option>
+                        <option value="od">Somente OD</option>
+                        <option value="oe">Somente OE</option>
+                      </select>
+                    </div>
                     <div className="col-span-12 md:col-span-2">
                       <label className={labelStyle}>OD ESF</label>
                       <DegreeInput value={form.receitaLongeOdEsferico} onChange={(value) => handleFormChange('receitaLongeOdEsferico', value)} className={inputStyle} />

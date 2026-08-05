@@ -31,9 +31,12 @@ export type EvaluationCaseForm = {
   estiloVidaAmbienteExternoHoras?: string | null
   receitaLongeOdEsferico?: string | null
   receitaLongeOdCilindrico?: string | null
+  receitaLongeOdEixo?: string | null
   receitaLongeOeEsferico?: string | null
   receitaLongeOeCilindrico?: string | null
+  receitaLongeOeEixo?: string | null
   receitaAdicao?: string | null
+  olhosUtilizaveis?: 'ambos' | 'od' | 'oe' | null
 }
 
 function numberValue(value: string | null | undefined) {
@@ -59,12 +62,17 @@ function unique(values: string[]) {
 export function buildRecommendationCaseInput(form: EvaluationCaseForm): RecommendationCaseInput {
   const odSphere = numberValue(form.receitaLongeOdEsferico)
   const odCylinder = numberValue(form.receitaLongeOdCilindrico)
+  const odAxis = numberValue(form.receitaLongeOdEixo)
   const oeSphere = numberValue(form.receitaLongeOeEsferico)
   const oeCylinder = numberValue(form.receitaLongeOeCilindrico)
+  const oeAxis = numberValue(form.receitaLongeOeEixo)
   const adicao = numberValue(form.receitaAdicao)
   const odStrength = Math.abs(odSphere ?? 0) + Math.abs(odCylinder ?? 0)
   const oeStrength = Math.abs(oeSphere ?? 0) + Math.abs(oeCylinder ?? 0)
-  const useOd = odStrength >= oeStrength
+  const eyesUsed = form.olhosUtilizaveis === 'od' || form.olhosUtilizaveis === 'oe'
+    ? form.olhosUtilizaveis
+    : 'ambos'
+  const useOd = eyesUsed === 'od' || (eyesUsed !== 'oe' && odStrength >= oeStrength)
   const age = integerValue(form.ageYears)
   const rotina: string[] = []
   const objetivos: string[] = []
@@ -146,6 +154,11 @@ export function buildRecommendationCaseInput(form: EvaluationCaseForm): Recommen
     esferico: useOd ? odSphere : oeSphere,
     cilindrico: useOd ? odCylinder : oeCylinder,
     adicao,
+    receita: {
+      od: { esferico: odSphere, cilindrico: odCylinder, eixo: odAxis },
+      oe: { esferico: oeSphere, cilindrico: oeCylinder, eixo: oeAxis },
+      olhos_utilizaveis: eyesUsed,
+    },
     rotina_tags: unique(rotina),
     objetivo_tags: unique(objetivos),
     desired_benefits: unique(beneficios),

@@ -154,6 +154,7 @@ function AxisProtractor({ value, onSelect }: { value: string; onSelect: (value: 
 
 type TowerInterview = {
   ageYears: string
+  olhosUtilizaveis: 'ambos' | 'od' | 'oe'
   estiloVidaUsoComputadorHoras: string
   estiloVidaDirigirHoras: string
   estiloVidaLeituraHoras: string
@@ -185,7 +186,7 @@ type TowerInterview = {
 }
 
 const emptyInterview = (): TowerInterview => ({
-  ageYears: '30', estiloVidaUsoComputadorHoras: '0', estiloVidaDirigirHoras: '0', estiloVidaLeituraHoras: '0', estiloVidaUsoCelularHoras: '0', estiloVidaExposicaoSolHoras: '0', estiloVidaAmbienteInternoHoras: '0', estiloVidaAmbienteExternoHoras: '0', estiloVidaAssistirTvHoras: '0',
+  ageYears: '', olhosUtilizaveis: 'ambos', estiloVidaUsoComputadorHoras: '0', estiloVidaDirigirHoras: '0', estiloVidaLeituraHoras: '0', estiloVidaUsoCelularHoras: '0', estiloVidaExposicaoSolHoras: '0', estiloVidaAmbienteInternoHoras: '0', estiloVidaAmbienteExternoHoras: '0', estiloVidaAssistirTvHoras: '0',
   marcaAtual: '', tipoLenteAtual: 'nao_informado', usaMultifocalHoje: 'nao_informado', dificuldadeAdaptacao: 'nao_informado', historicoTrocasRecentes: 'nao_informado', prioridadePrincipal: 'equilibrio', principalIncomodoAtual: 'nao_informado', objetivoCompra: 'nao_informado', budgetTarget: '', aceitaPremium: 'nao_informado', importanciaEstetica: 'nao_informado', importanciaResistencia: 'nao_informado', prefereTransitions: 'nao_informado', prefereBlueUv: 'nao_informado', queixaDirigirNoite: 'nao', queixaSensibilidadeLuz: 'nao', queixaQuebraOculos: 'nao', queixaCriancaAtiva: 'nao', queixaProgressaoRapida: 'nao', observacoesConsultor: '',
 })
 
@@ -225,6 +226,13 @@ const currentLensBrands = ['Varilux', 'Zeiss', 'Hoya', 'Nikon', 'Kodak', 'Shamir
 function numberValue(value: string) {
   const parsed = Number.parseFloat(value)
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+function hasCompletePrescriptionForUsableEyes(recipe: Record<string, string>, eyes: TowerInterview['olhosUtilizaveis']) {
+  const hasValue = (key: PrescriptionFieldKey) => Number.isFinite(Number.parseFloat(recipe[key] ?? ''))
+  const odComplete = hasValue('receitaLongeOdEsferico') && hasValue('receitaLongeOdCilindrico')
+  const oeComplete = hasValue('receitaLongeOeEsferico') && hasValue('receitaLongeOeCilindrico')
+  return eyes === 'od' ? odComplete : eyes === 'oe' ? oeComplete : odComplete && oeComplete
 }
 
 function buildRecommendationInput(recipe: Record<string, string>, interview: TowerInterview) {
@@ -405,6 +413,11 @@ export default function TowerEvaluationIntake({
   async function generateSuggestions() {
     if (!selectedCustomer) {
       setMessage('Selecione o cliente titular antes de gerar sugestões.')
+      return
+    }
+    if (!hasCompletePrescriptionForUsableEyes(recipe, interview.olhosUtilizaveis)) {
+      const eyesLabel = interview.olhosUtilizaveis === 'ambos' ? 'OD e OE' : interview.olhosUtilizaveis.toUpperCase()
+      setMessage(`Informe esfera e cilindro de ${eyesLabel}. Use 0.00 quando o campo for plano.`)
       return
     }
     const operationalCustomer = await resolveOperationalTowerCustomer(selectedCustomer)
@@ -603,6 +616,9 @@ export default function TowerEvaluationIntake({
           <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-200">2. Receita e entrevista</p>
           <h2 className="mt-2 text-xl font-black">Campos da receita</h2>
           <p className="mt-1 text-sm text-slate-400">Toque em um campo para escolher o grau. Esfera usa sinal positivo e negativo; cilindro fica sempre negativo.</p>
+          <div className="mt-3">
+            <ChoiceChips label="Olhos usados nesta receita" value={interview.olhosUtilizaveis} onChange={(value) => updateInterview('olhosUtilizaveis', value as TowerInterview['olhosUtilizaveis'])} options={[["ambos", "OD e OE"], ["od", "Somente OD"], ["oe", "Somente OE"]]} />
+          </div>
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
             {prescriptionPickerFields.map((field) => {
               const value = recipe[field.key] ?? (field.kind === 'axis' ? '0' : '0.00')

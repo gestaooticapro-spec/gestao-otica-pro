@@ -24,6 +24,14 @@ export type FulfillmentMode = 'pronta' | 'sob_demanda'
 
 export type AdaptationDifficulty = 'baixa' | 'media' | 'alta'
 
+export type PrescriptionEye = {
+  esferico: number | null
+  cilindrico: number | null
+  eixo?: number | null
+}
+
+export type UsablePrescriptionEyes = 'ambos' | 'od' | 'oe'
+
 const MAX_ANTI_FATIGUE_ADDITION = 1.25
 
 export type RecommendationCaseInput = {
@@ -32,6 +40,12 @@ export type RecommendationCaseInput = {
   esferico: number | null
   cilindrico: number | null
   adicao?: number | null
+  /** Receita completa usada para a disponibilidade técnica. */
+  receita?: {
+    od: PrescriptionEye
+    oe: PrescriptionEye
+    olhos_utilizaveis?: UsablePrescriptionEyes
+  }
   rotina_tags?: string[]
   objetivo_tags?: string[]
   desired_benefits?: string[]
@@ -771,16 +785,26 @@ function matchesGrid(
   grids: CatalogGrid[],
   effectiveCategory?: ClinicalCategory,
 ): boolean {
-  if (!grids.length) return true
+  // Sem faixa de grau publicada não existe prova de disponibilidade.
+  if (!grids.length) return false
   const requiresAddRange =
-    input.adicao != null && input.adicao > 0 &&
-    (effectiveCategory === 'multifocal' ||
-      effectiveCategory === 'bifocal' ||
-      effectiveCategory === 'ocupacional')
+    effectiveCategory === 'multifocal' ||
+    effectiveCategory === 'bifocal' ||
+    effectiveCategory === 'ocupacional'
 
-  return grids.some((grid) => {
-    const sphOk = between(input.esferico ?? null, grid.sph_min, grid.sph_max)
-    const cylOk = between(input.cilindrico ?? null, grid.cyl_min, grid.cyl_max)
+  const selectedEyes = input.receita
+    ? input.receita.olhos_utilizaveis === 'od'
+      ? [input.receita.od]
+      : input.receita.olhos_utilizaveis === 'oe'
+        ? [input.receita.oe]
+        : [input.receita.od, input.receita.oe]
+    : [{ esferico: input.esferico, cilindrico: input.cilindrico }]
+  if (selectedEyes.some((eye) => eye.esferico == null || eye.cilindrico == null)) return false
+  if (requiresAddRange && input.adicao == null) return false
+
+  return selectedEyes.every((eye) => grids.some((grid) => {
+    const sphOk = between(eye.esferico, grid.sph_min, grid.sph_max)
+    const cylOk = between(eye.cilindrico, grid.cyl_min, grid.cyl_max)
     const addOk =
       input.adicao == null
         ? true
@@ -788,7 +812,7 @@ function matchesGrid(
           ? !requiresAddRange
           : between(input.adicao, grid.add_min, grid.add_max)
     return sphOk && cylOk && addOk
-  })
+  }))
 }
 
 function resolveConfigPrice(offer: CatalogOffer, compatibility: CatalogCompatibility | null): number {
@@ -2399,6 +2423,7 @@ function applyHeatmapCompatibility(
         heatmapCompatibility: compatibility,
       }
     })
+    .filter((entry) => entry.heatmapCompatibility?.status !== 'nao_indicada')
     .sort((a, b) => b.score - a.score || a.finalPrice - b.finalPrice)
 }
 
