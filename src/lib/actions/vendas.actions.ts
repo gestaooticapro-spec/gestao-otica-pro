@@ -3135,6 +3135,7 @@ export async function receberParcela(prevState: any, formData: FormData) {
       success: true,
       message: 'Pagamento recebido com sucesso!',
       payment_ids: (pagamentosCriados || []).map((pagamento: any) => pagamento.id),
+      receipt_installment_ids: Array.from(new Set(pagamentosPorParcela.map((pagamento) => pagamento.id))),
     }
 
   } catch (e: any) {

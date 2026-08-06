@@ -909,7 +909,7 @@ export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentRecei
       .maybeSingle()
 
     if (installmentError) throw installmentError
-    if (!installment?.financiamento_id || installment.status !== 'Pago') {
+    if (!installment?.financiamento_id) {
       return {
         success: false,
         routeUsed: 'external_fallback',
@@ -958,10 +958,18 @@ export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentRecei
     }
 
     const { data: installmentPayments, error: paymentsError } = await (supabaseAdmin.from('pagamentos') as any)
-      .select('valor_pago')
+      .select('valor_pago, created_at, data_pagamento')
       .eq('parcela_id', installmentId)
 
     if (paymentsError) throw paymentsError
+    if (installment.status !== 'Pago' && (!installmentPayments || installmentPayments.length === 0)) {
+      return {
+        success: false,
+        routeUsed: 'external_fallback',
+        message: 'Parcela paga nao encontrada nesta loja.',
+        shouldOpenExternal: false,
+      }
+    }
 
     const remotePhone = customer.fone_movel || customer.phone
     if (!remotePhone) {
@@ -986,7 +994,7 @@ export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentRecei
         return receivedAmount > 0 ? Number(receivedAmount.toFixed(2)) : installment.valor_parcela
       })(),
       dueDate: installment.data_vencimento,
-      paymentDate: installment.data_pagamento || new Date().toISOString(),
+      paymentDate: installment.data_pagamento || installmentPayments?.[installmentPayments.length - 1]?.data_pagamento || installmentPayments?.[installmentPayments.length - 1]?.created_at || new Date().toISOString(),
       isReprint: Boolean(installment.receipt_printed_at),
       store: storeProfile,
     })

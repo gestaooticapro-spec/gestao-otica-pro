@@ -84,7 +84,7 @@ export default function ParcelaSearchModal({
 
     const [selectedClientData, setSelectedClientData] = useState<any>(null)
     const [selectedParcela, setSelectedParcela] = useState<any>(null)
-    const [paidParcelaId, setPaidParcelaId] = useState<number | null>(null)
+    const [paidParcelaIds, setPaidParcelaIds] = useState<number[]>([])
 
     const [valorTotalPagoStr, setValorTotalPagoStr] = useState('')
     const [valorJurosStr, setValorJurosStr] = useState('0,00')
@@ -128,7 +128,7 @@ export default function ParcelaSearchModal({
             }
             setResults([])
             setHasSearched(false)
-            setPaidParcelaId(null)
+            setPaidParcelaIds([])
             setIsSendingReceipt(false)
             setReceiptSent(false)
             setTimeout(() => searchInputRef.current?.focus(), 100)
@@ -268,7 +268,10 @@ export default function ParcelaSearchModal({
                 if (res.success) {
                     console.log("[DEBUG] Sucesso! Mudando step para 'success'")
                     const parcelaId = selectedParcela.id
-                    setPaidParcelaId(parcelaId)
+                    const receiptInstallmentIds = Array.isArray((res as any).receipt_installment_ids)
+                        ? (res as any).receipt_installment_ids.filter((id: unknown): id is number => typeof id === 'number')
+                        : [parcelaId]
+                    setPaidParcelaIds(receiptInstallmentIds)
                     setStep('success')
                     await onPaymentRecorded?.()
                     // Atualiza os dois consumidores do Radar Operacional:
@@ -299,18 +302,20 @@ export default function ParcelaSearchModal({
     }
 
     const handleSendReceipt = async () => {
-        if (!paidParcelaId || isSendingReceipt) return
+        if (paidParcelaIds.length === 0 || isSendingReceipt) return
 
         setIsSendingReceipt(true)
         try {
-            const result = await sendInstallmentReceiptWhatsApp({
-                storeId,
-                installmentId: paidParcelaId,
-            })
+            for (const installmentId of paidParcelaIds) {
+                const result = await sendInstallmentReceiptWhatsApp({
+                    storeId,
+                    installmentId,
+                })
 
-            if (!result.success) {
-                toast.error(result.message)
-                return
+                if (!result.success) {
+                    toast.error(result.message)
+                    return
+                }
             }
 
             setReceiptSent(true)
@@ -567,7 +572,7 @@ export default function ParcelaSearchModal({
                                     <button onClick={onClose} className="w-full py-4 bg-emerald-700/30 text-emerald-300 font-bold hover:bg-emerald-700/50 rounded-xl transition-colors uppercase text-sm tracking-wide">
                                         Fechar
                                     </button>
-                                    {paidParcelaId && (
+                                    {paidParcelaIds.length > 0 && (
                                         <>
                                             <button
                                                 onClick={handleSendReceipt}
@@ -582,7 +587,7 @@ export default function ParcelaSearchModal({
                                                 {isSendingReceipt ? 'Enviando PDF...' : receiptSent ? 'Recibo enviado' : 'Enviar recibo por WhatsApp'}
                                             </button>
                                             <button
-                                                onClick={() => { setIsPrinting(true); printParcela(paidParcelaId).catch(console.error).finally(() => setIsPrinting(false)) }}
+                                                onClick={() => { setIsPrinting(true); printParcela(paidParcelaIds[0]).catch(console.error).finally(() => setIsPrinting(false)) }}
                                                 disabled={isPrinting || isSendingReceipt}
                                                 className="w-full py-3 text-slate-500 font-bold hover:bg-white/5 hover:text-slate-300 rounded-xl transition-colors flex items-center justify-center gap-2 text-sm"
                                             >
