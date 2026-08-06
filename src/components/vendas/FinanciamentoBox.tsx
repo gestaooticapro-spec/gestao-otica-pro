@@ -329,7 +329,17 @@ export default function FinanciamentoBox({
 
         // Chamada direta para evitar complexidade
         receberParcela(null, formData).then(res => {
-            if (res.success) { setSelectedParcela(null); onFinanceAdded(); }
+            if (res.success) {
+                setSelectedParcela(null)
+                onFinanceAdded()
+
+                const paymentIds = Array.isArray((res as any).payment_ids)
+                    ? (res as any).payment_ids.filter((id: unknown): id is number => typeof id === 'number')
+                    : []
+                if (paymentIds.length > 0) {
+                    window.open(`/print/recibo/${paymentIds.join('-')}?t=${Date.now()}`, '_blank')
+                }
+            }
             else { alert(res.message); }
         });
     }

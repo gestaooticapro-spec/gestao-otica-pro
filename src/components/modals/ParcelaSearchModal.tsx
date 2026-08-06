@@ -277,7 +277,16 @@ export default function ParcelaSearchModal({
                     router.refresh()
                     window.dispatchEvent(new Event('installment-payment-recorded'))
                     setIsPrinting(true)
-                    printParcela(parcelaId).catch(console.error).finally(() => setIsPrinting(false))
+                    const paymentIds = Array.isArray((res as any).payment_ids)
+                        ? (res as any).payment_ids.filter((id: unknown): id is number => typeof id === 'number')
+                        : []
+                    if (paymentIds.length > 0) {
+                        window.open(`/print/recibo/${paymentIds.join('-')}?t=${Date.now()}`, '_blank')
+                    } else {
+                        // Compatibilidade com baixas antigas que nao retornam os IDs.
+                        printParcela(parcelaId).catch(console.error)
+                    }
+                    setIsPrinting(false)
                 } else {
                     console.error("[DEBUG] Erro retornado pelo servidor:", res.message)
                     alert(`Erro: ${res.message}`)

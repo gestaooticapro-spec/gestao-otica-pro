@@ -957,6 +957,12 @@ export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentRecei
       }
     }
 
+    const { data: installmentPayments, error: paymentsError } = await (supabaseAdmin.from('pagamentos') as any)
+      .select('valor_pago')
+      .eq('parcela_id', installmentId)
+
+    if (paymentsError) throw paymentsError
+
     const remotePhone = customer.fone_movel || customer.phone
     if (!remotePhone) {
       return {
@@ -972,7 +978,13 @@ export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentRecei
       customerName: customer.full_name,
       installmentNumber: installment.numero_parcela,
       totalInstallments: totalInstallments || 1,
-      amount: installment.valor_parcela,
+      amount: (() => {
+        const receivedAmount = (installmentPayments || []).reduce(
+          (total: number, payment: any) => total + Number(payment.valor_pago || 0),
+          0
+        )
+        return receivedAmount > 0 ? Number(receivedAmount.toFixed(2)) : installment.valor_parcela
+      })(),
       dueDate: installment.data_vencimento,
       paymentDate: installment.data_pagamento || new Date().toISOString(),
       isReprint: Boolean(installment.receipt_printed_at),

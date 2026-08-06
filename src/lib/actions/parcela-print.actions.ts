@@ -50,6 +50,18 @@ export async function getDadosReciboParcela(parcelaId: number) {
       }
     }
 
+    // O valor da parcela pode ser alterado durante a baixa (por exemplo,
+    // quando o pagamento inclui multa ou excedente). O recibo deve refletir
+    // o recebimento real, registrado em pagamentos, e nao o saldo nominal.
+    const { data: pagamentos } = await (supabase.from('pagamentos') as any)
+      .select('valor_pago')
+      .eq('parcela_id', parcelaId)
+
+    const valorRecebido = (pagamentos || []).reduce(
+      (total: number, pagamento: any) => total + Number(pagamento.valor_pago || 0),
+      0
+    )
+
     // Conta total de parcelas do mesmo financiamento
     let totalParcelas = 1
     if (parcela.financiamento_id) {
@@ -91,7 +103,7 @@ export async function getDadosReciboParcela(parcelaId: number) {
       data: {
         num_parcela: parcela.numero_parcela,
         total_parcelas: totalParcelas,
-        valor: parcela.valor_parcela,
+        valor: valorRecebido > 0 ? Number(valorRecebido.toFixed(2)) : parcela.valor_parcela,
         vencimento: parcela.data_vencimento,
         pagamento: parcela.data_pagamento || new Date().toISOString(),
         is_reimpressao: false,

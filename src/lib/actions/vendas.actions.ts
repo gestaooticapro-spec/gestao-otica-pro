@@ -3003,7 +3003,8 @@ export async function receberParcela(prevState: any, formData: FormData) {
       }
     }
 
-    const { error: errorPagto } = await (supabaseAdmin.from('pagamentos') as any).insert(pagamentosPorParcela.map((pagamento) => ({
+    const { data: pagamentosCriados, error: errorPagto } = await (supabaseAdmin.from('pagamentos') as any)
+      .insert(pagamentosPorParcela.map((pagamento) => ({
       tenant_id: (profile as any).tenant_id,
       store_id: store_id,
       venda_id: venda_id,
@@ -3017,7 +3018,8 @@ export async function receberParcela(prevState: any, formData: FormData) {
       created_at: new Date(`${data_pagamento}T12:00:00Z`).toISOString(),
       parcelas: 1,
       obs: `Ref. Venda #${venda_id} - Parc. ${pagamento.numero_parcela} - Cliente: ${parcelaAtual.customers?.full_name}`
-    })))
+      })))
+      .select('id')
 
     if (errorPagto) throw new Error(`Erro ao registrar pagamento: ${errorPagto.message}`)
 
@@ -3129,7 +3131,11 @@ export async function receberParcela(prevState: any, formData: FormData) {
     revalidatePath(`/dashboard/loja/${store_id}/vendas/${venda_id}`)
     revalidatePath(`/dashboard/loja/${store_id}`)
 
-    return { success: true, message: 'Pagamento recebido com sucesso!' }
+    return {
+      success: true,
+      message: 'Pagamento recebido com sucesso!',
+      payment_ids: (pagamentosCriados || []).map((pagamento: any) => pagamento.id),
+    }
 
   } catch (e: any) {
     return { success: false, message: `Erro: ${e.message}` }
