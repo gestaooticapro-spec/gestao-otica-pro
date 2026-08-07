@@ -520,14 +520,14 @@ export async function findOpenInstallmentsByPhone(storeId: number, phone: string
     try {
         // Find customers matching the last 4 digits first to avoid full table scan
         const { data: customers } = await (supabaseAdmin.from('customers') as any)
-            .select('id, full_name, fone_movel, whatsapp')
+            .select('id, full_name, fone_movel, phone')
             .eq('store_id', storeId)
-            .or(`fone_movel.ilike.%${last4}%,whatsapp.ilike.%${last4}%`)
+            .or(`fone_movel.ilike.%${last4}%,phone.ilike.%${last4}%`)
 
         if (!customers || customers.length === 0) return []
 
         const matchedCustomerIds = customers
-            .filter((c: any) => phonesMatch(c.fone_movel, phone) || phonesMatch(c.whatsapp, phone))
+            .filter((c: any) => phonesMatch(c.fone_movel, phone) || phonesMatch(c.phone, phone))
             .map((c: any) => c.id)
 
         if (matchedCustomerIds.length === 0) return []

@@ -83,3 +83,5 @@ WHATSAPP_VPS_RUNBOOK.local.md
 supabase/migrations/20260617_whatsapp_ai_logs.sql
 supabase/migrations/20260618_whatsapp_ai_session_state.sql
 supabase/migrations/20260618_whatsapp_customer_control.sql
+
+/.backupcharles
