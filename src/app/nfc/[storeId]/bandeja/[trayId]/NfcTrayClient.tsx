@@ -37,6 +37,11 @@ export function NfcTrayClient({
         setSuccessMode(successText)
       } else {
         setErrorMsg(res.message || 'Erro desconhecido.')
+        // A tela pode ter sido aberta antes de a OS ser transferida ou
+        // desvinculada em outro dispositivo. Recarrega o contexto atual.
+        if (res.message === 'Nenhuma OS vinculada a esta bandeja.') {
+          window.location.reload()
+        }
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Falha inesperada.'

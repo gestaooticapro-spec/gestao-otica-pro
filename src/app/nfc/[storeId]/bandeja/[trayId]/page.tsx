@@ -1,11 +1,16 @@
 import { getTrayContext } from '@/lib/actions/nfc.actions'
 import { NfcTrayClient } from './NfcTrayClient'
+import { unstable_noStore as noStore } from 'next/cache'
 
 export default async function NfcTrayPage(
   props: {
     params: Promise<{ storeId: string; trayId: string }>
   }
 ) {
+  // O estado da bandeja pode mudar por outra tag ou pela tela do laboratório.
+  // Nunca servir uma versão cacheada aqui: a leitura precisa refletir o banco.
+  noStore()
+
   const params = await props.params;
   const storeId = parseInt(params.storeId, 10)
   const { trayId } = params
