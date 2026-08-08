@@ -362,3 +362,61 @@ referência de implementação:
 - `tmp/jackcess/` — ambiente Java/Jackcess com classes compiladas (`DumpSchema`, `Stats`, `Count2`, `CheckPedido`).
 - `tmp/ocular-import-venv/` — venv Python (access-parser, oletools).
 - Este documento.
+
+## 11. Regras preliminares do cruzamento sem o MB Optical
+
+Esta etapa pode ser executada somente com os arquivos locais. Ela não confirma
+duplicidades contra o MB Optical e não autoriza nenhuma escrita.
+
+### 11.1 Clientes
+
+- Comparar Optisis e planilha por CPF normalizado quando houver CPF confiável.
+- Na ausência de CPF, usar nome normalizado combinado com telefone e/ou data de nascimento.
+- Telefone isolado nunca confirma identidade.
+- Nome homônimo deve permanecer em revisão humana até confirmação.
+- Cliente sem identidade mínima fica em quarentena, sem cliente genérico.
+- A diferença de 785 linhas entre as fontes é apenas uma diferença de volume;
+  não deve ser apresentada como 785 clientes novos antes do cruzamento.
+
+### 11.2 Receitas
+
+- Uma receita do Optisis e uma receita da planilha só serão consideradas iguais
+  após comparar cliente, data e conjunto dos campos clínicos.
+- Receitas sem cliente identificado não serão atribuídas por semelhança vaga.
+- Uma receita duplicada entre as fontes deve manter a fonte original registrada
+  e não ser inserida duas vezes no histórico funcional.
+- O grau vai para `customer_prescription_history`; não será criada OS antiga
+  apenas para representar uma receita concluída.
+
+### 11.3 Vendas e possíveis OS abertas
+
+- A planilha `Vendas` tem data preenchida em 1.894 de 1.894 linhas. A data será
+  usada como critério auxiliar de conciliação, junto com cliente, CPF, telefone,
+  número e valor.
+- A existência de data e status `Vendido` não prova que a OS foi concluída.
+- OS em produção devem ser identificadas por uma fonte específica de OS aberta,
+  por status detalhado ou por confirmação da loja.
+- Uma venda antiga concluída será tratada como histórico, salvo decisão
+  expressa de migrá-la como OS operacional.
+- Uma venda sem cliente confirmado, ou sem situação operacional clara, vai para
+  relatório de revisão e não será lançada automaticamente.
+- Antes do corte final, será necessário um arquivo atualizado das OS em aberto
+  e das vendas ainda em produção.
+
+### 11.4 Produtos
+
+- A planilha de produtos pode ser auditada e eventualmente importada como
+  catálogo para novas vendas, em etapa separada do histórico.
+- A importação de produtos exige decisão sobre ativos, estoque, preços e
+  duplicidades com produtos já existentes no MB Optical.
+- Produtos não serão usados para reconstruir retroativamente as receitas do
+  Optisis, que gravou lentes, armações e tratamentos como texto livre.
+
+### 11.5 Arquivos atuais e arquivos finais
+
+- Os arquivos locais auditados foram exportados em 06/08/2026 e servem para
+  preparar regras e relatórios.
+- Eles não substituem a exportação final feita após o último lançamento e o
+  horário de corte da loja.
+- O cruzamento definitivo só ocorrerá depois de receber os arquivos finais e
+  uma cópia somente leitura dos dados atuais do MB Optical.
