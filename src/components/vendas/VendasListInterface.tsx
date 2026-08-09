@@ -170,7 +170,10 @@ export default function VendasListInterface({ vendas, storeId, mode, startDate, 
                                         </td>
                                     </tr>
                                 ) : (
-                                    vendas.map((venda: any) => (
+                                    vendas.map((venda: any) => {
+                                      const saldoDaVenda = venda.is_historical_import === true ? 0 : Number(venda.valor_restante || 0)
+
+                                      return (
                                         <tr key={venda.id} className="hover:bg-white/5 transition-colors group">
                                             <td className="p-3">
                                                 <div className="flex flex-wrap items-center gap-1.5">
@@ -214,8 +217,8 @@ export default function VendasListInterface({ vendas, storeId, mode, startDate, 
                                                 {formatCurrency(venda.valor_final)}
                                             </td>
                                             <td className="p-3 text-right">
-                                                <span className={`font-black text-sm ${venda.valor_restante > 0.01 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                                                    {formatCurrency(venda.valor_restante)}
+                                                <span className={`font-black text-sm ${saldoDaVenda > 0.01 ? 'text-amber-400' : 'text-emerald-400'}`} title={venda.is_historical_import === true ? 'Venda histórica: o carnê é acompanhado separadamente' : undefined}>
+                                                    {formatCurrency(saldoDaVenda)}
                                                 </span>
                                             </td>
                                             <td className="p-3 text-center">
@@ -228,7 +231,8 @@ export default function VendasListInterface({ vendas, storeId, mode, startDate, 
                                                 </Link>
                                             </td>
                                         </tr>
-                                    ))
+                                      )
+                                    })
                                 )}
                             </tbody>
                         </table>

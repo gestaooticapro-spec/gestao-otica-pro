@@ -122,7 +122,7 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
                 is_historical_import, historical_entry_amount, import_source_system, import_source_record_key,
                 vendedor:employees!employee_id(full_name),
                 itens:venda_itens(
-                    id, valor_unitario, quantidade, product_id
+                    id, descricao, item_tipo, valor_unitario, quantidade, product_id
                 ),
                 pagamentos:pagamentos(
                     forma_pagamento, valor_pago, parcelas, created_at, obs
@@ -360,7 +360,7 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
 
             // Process Items
             const itens = (venda.itens || []).map((item: any) => {
-                const prodName = (item.product_id && productMap[item.product_id]) || 'Produto Avulso'
+                const prodName = (item.product_id && productMap[item.product_id]) || item.descricao || 'Produto Avulso'
                 itemCounts[prodName] = (itemCounts[prodName] || 0) + (item.quantidade || 1)
 
                 if (pacienteNome) {
@@ -409,7 +409,7 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
                 id: venda.id,
                 data: venda.created_at,
                 valorTotal: venda.valor_total,
-                valorRestante: venda.valor_restante || 0,
+                valorRestante: venda.is_historical_import === true ? 0 : (venda.valor_restante || 0),
                 status: venda.status,
                 isHistoricalImport: venda.is_historical_import === true,
                 historicalEntryAmount: venda.historical_entry_amount || 0,

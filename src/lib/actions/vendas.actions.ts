@@ -1517,6 +1517,167 @@ export async function addVendaItem(
   }
 }
 
+const HistoricalVendaItemSchema = z.object({
+  venda_id: z.coerce.number().int().positive(),
+  store_id: z.coerce.number().int().positive(),
+  product_id: z.preprocess(
+    (value) => value === '' || value === null || value === undefined ? null : Number(value),
+    z.number().int().positive().nullable()
+  ),
+  item_tipo: z.enum(['Lente', 'Armacao', 'Solar', 'Tratamento', 'Servico', 'Outro']),
+  descricao: z.string().trim().min(2, 'Informe a descrição do produto.'),
+  quantidade: z.coerce.number().int('A quantidade deve ser inteira.').positive('A quantidade deve ser maior que zero.'),
+  valor_unitario: z.coerce.number().nonnegative('O valor não pode ser negativo.'),
+  unidade: z.string().trim().min(1).default('Unidade'),
+})
+
+export type SaveHistoricalVendaItemResult = {
+  success: boolean
+  message: string
+  timestamp?: number
+}
+
+export async function addHistoricalVendaItem(
+  prevState: SaveHistoricalVendaItemResult,
+  formData: FormData
+): Promise<SaveHistoricalVendaItemResult> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, message: 'Usuário não autenticado.', timestamp: Date.now() }
+
+  const profile = await getProfileByAdmin(user.id)
+  if (!profile) return { success: false, message: 'Perfil não encontrado.', timestamp: Date.now() }
+
+  const parsed = HistoricalVendaItemSchema.safeParse({
+    venda_id: formData.get('venda_id'),
+    store_id: formData.get('store_id'),
+    product_id: formData.get('product_id'),
+    item_tipo: formData.get('item_tipo'),
+    descricao: formData.get('descricao'),
+    quantidade: formData.get('quantidade'),
+    valor_unitario: formData.get('valor_unitario'),
+    unidade: formData.get('unidade'),
+  })
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: parsed.error.issues[0]?.message || 'Dados do produto inválidos.',
+      timestamp: Date.now(),
+    }
+  }
+
+  const input = parsed.data
+  const supabaseAdmin = createAdminClient()
+  const { data: venda, error: vendaError } = await (supabaseAdmin.from('vendas') as any)
+    .select('id, customer_id, tenant_id, store_id, is_historical_import')
+    .eq('id', input.venda_id)
+    .eq('store_id', input.store_id)
+    .eq('tenant_id', (profile as any).tenant_id)
+    .maybeSingle()
+
+  if (vendaError || !venda) {
+    return { success: false, message: 'Venda não encontrada nesta loja.', timestamp: Date.now() }
+  }
+  if (venda.is_historical_import !== true) {
+    return { success: false, message: 'Esta ação é exclusiva para vendas históricas importadas.', timestamp: Date.now() }
+  }
+
+  if (input.product_id) {
+    const { data: product, error: productError } = await (supabaseAdmin.from('products') as any)
+      .select('id')
+      .eq('id', input.product_id)
+      .eq('store_id', input.store_id)
+      .maybeSingle()
+
+    if (productError || !product) {
+      return { success: false, message: 'O produto selecionado não pertence a esta loja.', timestamp: Date.now() }
+    }
+  }
+
+  const { error: insertError } = await (supabaseAdmin.from('venda_itens') as any).insert({
+    tenant_id: venda.tenant_id,
+    store_id: venda.store_id,
+    venda_id: venda.id,
+    product_id: input.product_id,
+    variant_id: null,
+    item_tipo: input.item_tipo,
+    descricao: input.descricao,
+    quantidade: input.quantidade,
+    valor_unitario: input.valor_unitario,
+    valor_total_item: Number((input.quantidade * input.valor_unitario).toFixed(2)),
+    unidade: input.unidade,
+    detalhes_avulsos: {
+      historical_manual_entry: true,
+      source: 'manual_history_completion',
+      added_at: new Date().toISOString(),
+      added_by_user_id: user.id,
+    },
+  })
+
+  if (insertError) {
+    return { success: false, message: `Não foi possível adicionar o produto: ${insertError.message}`, timestamp: Date.now() }
+  }
+
+  revalidatePath(`/dashboard/loja/${input.store_id}/vendas/${input.venda_id}/historico-importado`)
+  revalidatePath(`/dashboard/loja/${input.store_id}/cliente/${venda.customer_id}/historico`)
+  return { success: true, message: 'Produto incluído no histórico.', timestamp: Date.now() }
+}
+
+export async function deleteHistoricalVendaItem(
+  itemId: number,
+  vendaId: number,
+  storeId: number
+): Promise<SaveHistoricalVendaItemResult> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, message: 'Usuário não autenticado.', timestamp: Date.now() }
+
+  const profile = await getProfileByAdmin(user.id)
+  if (!profile) return { success: false, message: 'Perfil não encontrado.', timestamp: Date.now() }
+
+  const supabaseAdmin = createAdminClient()
+  const { data: venda } = await (supabaseAdmin.from('vendas') as any)
+    .select('id, customer_id, tenant_id, is_historical_import')
+    .eq('id', vendaId)
+    .eq('store_id', storeId)
+    .eq('tenant_id', (profile as any).tenant_id)
+    .maybeSingle()
+
+  if (!venda || venda.is_historical_import !== true) {
+    return { success: false, message: 'Venda histórica não encontrada.', timestamp: Date.now() }
+  }
+
+  const { data: item } = await (supabaseAdmin.from('venda_itens') as any)
+    .select('id, detalhes_avulsos')
+    .eq('id', itemId)
+    .eq('venda_id', vendaId)
+    .eq('store_id', storeId)
+    .maybeSingle()
+
+  const details = item?.detalhes_avulsos && typeof item.detalhes_avulsos === 'object'
+    ? item.detalhes_avulsos as Record<string, unknown>
+    : null
+
+  if (!item || details?.historical_manual_entry !== true) {
+    return { success: false, message: 'Somente produtos acrescentados manualmente podem ser removidos.', timestamp: Date.now() }
+  }
+
+  const { error: deleteError } = await (supabaseAdmin.from('venda_itens') as any)
+    .delete()
+    .eq('id', itemId)
+    .eq('venda_id', vendaId)
+    .eq('store_id', storeId)
+
+  if (deleteError) {
+    return { success: false, message: `Não foi possível remover o produto: ${deleteError.message}`, timestamp: Date.now() }
+  }
+
+  revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}/historico-importado`)
+  revalidatePath(`/dashboard/loja/${storeId}/cliente/${venda.customer_id}/historico`)
+  return { success: true, message: 'Produto removido do histórico.', timestamp: Date.now() }
+}
+
 // ================================================================
 // 8. ACTION: DELETAR ITEM DA VENDA
 // ================================================================

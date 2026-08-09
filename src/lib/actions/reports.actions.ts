@@ -241,6 +241,7 @@ export async function getRelatorioVendas(
       valor_total,
       valor_final,
       valor_restante,
+      is_historical_import,
       nf_emitida,
       customers(full_name),
       employees(full_name)
@@ -297,7 +298,9 @@ export async function getRelatorioVendas(
 
   return vendas.map((v: any) => {
     const valorPago = pagoPorVenda.get(v.id) || 0
-    const saldoDevedor = Math.max(0, Number(v.valor_restante ?? (v.valor_final || 0) - valorPago))
+    const saldoDevedor = v.is_historical_import === true
+      ? 0
+      : Math.max(0, Number(v.valor_restante ?? (v.valor_final || 0) - valorPago))
     return {
       id: v.id,
       data: v.created_at,
