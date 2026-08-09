@@ -76,6 +76,11 @@ export async function calcularERegistrarComissao(vendaId: number) {
             return
         }
 
+        if (venda.is_historical_import === true) {
+            await cancelarComissao(vendaId)
+            return
+        }
+
         // Só gera comissão para vendas efetivamente fechadas
         const commissionMode = await getCommissionGenerationMode(venda.store_id)
         const isOpenCommissionAllowed = commissionMode === 'open_or_closed'
@@ -280,6 +285,7 @@ export async function calcularComissoesGlobais(storeId: number, inicio: string, 
                 venda_itens ( quantidade, detalhes_avulsos, product_id, produtos:products(preco_custo) )
             `)
             .eq('store_id', storeId)
+            .eq('is_historical_import', false)
 
         if (commissionMode === 'open_or_closed') {
             // Mantem a venda no mes de criacao durante todo o ciclo. Assim uma
@@ -299,8 +305,9 @@ export async function calcularComissoesGlobais(storeId: number, inicio: string, 
         if (vendasError) throw vendasError
 
         const { data: pagamentos } = await (supabase.from('pagamentos') as any)
-            .select('valor_pago, created_at')
+            .select('valor_pago, created_at, vendas!inner(is_historical_import)')
             .eq('store_id', storeId)
+            .eq('vendas.is_historical_import', false)
             .gte('created_at', dataInicio)
             .lte('created_at', dataFim)
 
@@ -650,14 +657,14 @@ export async function calcularComissaoMedico(vendaId: number) {
         const { data: venda, error } = await (supabase
             .from('vendas') as any)
             .select(`
-                id, valor_final, store_id, tenant_id, data_fechamento, status,
+                id, valor_final, store_id, tenant_id, data_fechamento, status, is_historical_import,
                 service_orders ( oftalmologista_id ),
                 customers ( full_name )
             `)
             .eq('id', vendaId)
             .single()
 
-        if (error || !venda) return
+        if (error || !venda || venda.is_historical_import === true) return
 
         if (venda.status !== 'Fechada') return
 

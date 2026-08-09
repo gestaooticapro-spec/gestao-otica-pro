@@ -48,7 +48,9 @@ function parseCsv(text) {
 const plan = JSON.parse(readFileSync(planPath, 'utf8'))
 const manifest = parseCsv(readFileSync(manifestPath, 'utf8'))
 const customersByLegacyId = new Map(manifest.map((row) => [row.legacy_customer_id, row]))
-const eligibleRecords = plan.records.filter((record) => customersByLegacyId.has(record.sourceCustomerId))
+// Planos recentes classificam cada receita antes da carga. Uma receita em
+// revisão nunca deve entrar só porque o mesmo cliente tem outra receita apta.
+const eligibleRecords = plan.records.filter((record) => record.importStatus === 'ready' && customersByLegacyId.has(record.sourceCustomerId))
 const summary = {
   mode: execute ? (productionMode ? 'execute-production' : 'execute-local') : 'dry-run',
   sourceRecords: plan.records.length,

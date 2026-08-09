@@ -16,7 +16,7 @@ type ParcelaData = {
     status: string
     data_pagamento: string | null
     customer_id: number
-    financiamento_loja?: { venda_id: number }
+    financiamento_loja?: { venda_id: number, vendas?: { is_historical_import?: boolean } | null }
     customers?: { full_name: string, cpf: string }
 }
 
@@ -279,6 +279,7 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
                                                     const dateOrder = String(a.data_vencimento || '').localeCompare(String(b.data_vencimento || ''))
                                                     return dateOrder || (a.id - b.id)
                                                 });
+                                                const isHistoricalImport = saleParcelas[0]?.financiamento_loja?.vendas?.is_historical_import === true
                                                 return (
                                                     <div key={sid} className="border border-white/5 bg-slate-950/50 rounded-xl overflow-hidden">
                                                         <div className="bg-white/5 px-4 py-3 border-b border-white/5 flex items-center justify-between">
@@ -288,10 +289,10 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
                                                             </div>
                                                             {sid !== '0' && (
                                                                 <Link 
-                                                                    href={`/dashboard/loja/${storeId}/vendas/${sid}/experimental`}
+                                                                    href={isHistoricalImport ? `/dashboard/loja/${storeId}/vendas/${sid}/historico-importado` : `/dashboard/loja/${storeId}/vendas/${sid}/experimental`}
                                                                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-bold text-white transition-all shadow-lg shadow-blue-500/20"
                                                                 >
-                                                                    Ver Venda
+                                                                    {isHistoricalImport ? 'Abrir histórico' : 'Ver Venda'}
                                                                     <ArrowRight className="h-3 w-3" />
                                                                 </Link>
                                                             )}
@@ -386,6 +387,7 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
                                         const isPago = p.status === 'pago' || p.data_pagamento !== null
                                         const isSendingReceipt = sendingReceiptInstallmentId === p.id
                                         const receiptSent = sentReceiptInstallmentIds.includes(p.id)
+                                        const isHistoricalImport = p.financiamento_loja?.vendas?.is_historical_import === true
 
                                         return (
                                             <tr key={p.id} className="hover:bg-slate-800/30 transition-colors group">
@@ -433,10 +435,10 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
                                                 <td className="px-4 py-3 text-right">
                                                     {p.financiamento_loja?.venda_id ? (
                                                         <Link 
-                                                            href={`/dashboard/loja/${storeId}/vendas/${p.financiamento_loja?.venda_id}/experimental`}
+                                                            href={isHistoricalImport ? `/dashboard/loja/${storeId}/vendas/${p.financiamento_loja?.venda_id}/historico-importado` : `/dashboard/loja/${storeId}/vendas/${p.financiamento_loja?.venda_id}/experimental`}
                                                             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-white/10 rounded-lg text-xs font-bold text-slate-300 hover:text-white transition-all opacity-0 group-hover:opacity-100"
                                                         >
-                                                            Ver Venda
+                                                            {isHistoricalImport ? 'Abrir histórico' : 'Ver Venda'}
                                                             <ArrowRight className="h-3 w-3" />
                                                         </Link>
                                                     ) : (

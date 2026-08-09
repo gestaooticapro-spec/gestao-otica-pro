@@ -95,6 +95,7 @@ export async function getManagerKPIs(storeId: number): Promise<StoreKPIs> {
         .select('valor_final')
         .eq('store_id', storeId)
         .eq('status', 'Fechada')
+        .eq('is_historical_import', false)
         .gte('created_at', inicioDia)
         .lte('created_at', fimDia)
 
@@ -107,6 +108,7 @@ export async function getManagerKPIs(storeId: number): Promise<StoreKPIs> {
         .select('valor_final')
         .eq('store_id', storeId)
         .eq('status', 'Fechada')
+        .eq('is_historical_import', false)
         .gte('created_at', inicioMes)
         .lte('created_at', fimMes)
 
@@ -212,6 +214,7 @@ export async function getTopCustomers(storeId: number) {
         .select('valor_final, customer_id, customers(full_name)')
         .eq('store_id', storeId)
         .eq('status', 'Fechada')
+        .eq('is_historical_import', false)
         .gte('created_at', inicioMes)
         .lte('created_at', fimMes)
 
@@ -258,6 +261,7 @@ export async function getRecentSales(storeId: number, limit: number = 5) {
             employees ( full_name )
         `)
         .eq('store_id', storeId)
+        .eq('is_historical_import', false)
         .gte('created_at', inicioDia)
         .lte('created_at', fimDia)
         .order('created_at', { ascending: false })

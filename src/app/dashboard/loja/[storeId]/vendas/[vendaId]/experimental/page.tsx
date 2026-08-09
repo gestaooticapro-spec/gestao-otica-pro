@@ -1,6 +1,6 @@
 // ARQUIVO: src/app/dashboard/loja/[storeId]/vendas/[vendaId]/experimental/page.tsx
 
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { revalidatePath, unstable_noStore as noStore } from 'next/cache'
 import { getVendaPageData } from '@/lib/actions/vendas.actions'
 import VendaInterfaceExperimental from '@/components/vendas/VendaInterfaceExperimental'
@@ -36,6 +36,10 @@ export default async function VendaPageExperimental(props: Props) {
     if (!success || !data || !data.venda) {
         console.error('Erro venda:', message)
         return notFound()
+    }
+
+    if (data.venda.is_historical_import === true) {
+        redirect(`/dashboard/loja/${storeId}/vendas/${vendaId}/historico-importado`)
     }
 
     const {

@@ -43,6 +43,7 @@ type FinanciamentoBoxProps = {
     isQuitado?: boolean
     isModal?: boolean
     whatsappReceiptEnabled?: boolean
+    isHistoricalImport?: boolean
 }
 
 // Helpers
@@ -194,6 +195,7 @@ export default function FinanciamentoBox({
     isQuitado = false,
     isModal = false,
     whatsappReceiptEnabled = false,
+    isHistoricalImport = false,
 }: FinanciamentoBoxProps) {
 
     const modules = useStoreModules()
@@ -223,7 +225,7 @@ export default function FinanciamentoBox({
     const [recebimentoState, dispatchRecebimento] = useFormState(receberParcela, { success: false, message: '' })
 
     const isFinanced = !!financiamento && !isDeletedLocally;
-    const existeDivergencia = isFinanced && valorRestante > 0.01;
+    const existeDivergencia = !isHistoricalImport && isFinanced && valorRestante > 0.01;
     const temParcelaPaga = financiamento?.financiamento_parcelas.some(p => p.status === 'Pago')
 
     useEffect(() => {
@@ -393,7 +395,7 @@ export default function FinanciamentoBox({
                                 <h3 className="text-sm font-bold text-amber-400">Carnê Ativo</h3>
                             </div>
                         </div>
-                        {!disabled && !isQuitado && (
+                        {!disabled && !isQuitado && !isHistoricalImport && (
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => window.open(`/print/promissoria/${financiamento.id}`, '_blank')}

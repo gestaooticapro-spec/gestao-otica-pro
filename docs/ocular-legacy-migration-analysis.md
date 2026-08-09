@@ -420,3 +420,61 @@ duplicidades contra o MB Optical e não autoriza nenhuma escrita.
   horário de corte da loja.
 - O cruzamento definitivo só ocorrerá depois de receber os arquivos finais e
   uma cópia somente leitura dos dados atuais do MB Optical.
+
+## 12. Ensaio completo no Docker — 08/08/2026
+
+> Executado apenas no contêiner local descartável `ocular-migration-sandbox`,
+> restaurado do backup completo de produção. Nenhum dado de produção foi
+> alterado por esta carga.
+
+### 12.1 Planilhas do sistema intermediário
+
+| Item | Fonte | Resultado no Docker | Observação |
+|---|---:|---:|---|
+| Clientes aptos | 6.479 | 6.354 criados + 125 vinculados | 603 cadastros ficaram em revisão de identidade. |
+| Clientes criados a partir de histórico | — | 276 | Apenas com pessoa identificável e sem candidato existente. |
+| Produtos | 160 linhas | 142 novos + 7 atualizados por referência | 4 linhas duplicadas foram consolidadas; 7 linhas sem nome ficaram fora por decisão. Estoques válidos foram preservados e negativos viraram zero. |
+| Receitas da planilha | 1.371 | 1.364 inseridas | 6 sem cliente e 1 com “Armação” como cliente ficaram fora. |
+| Vendas aptas | 1.954 | 1.882 históricas | 72 têm “Armação” como cliente e não representam pessoa identificável. |
+| Vendas em revisão | 26 | 0 inseridas | Status não vendido e/ou número legado duplicado. |
+| Parcelas vinculadas | 812 | 812 inseridas | Saldo aberto preservado: **R$ 120.529,86**. |
+| Parcelas órfãs | 376 | 0 inseridas | 354 apontam para venda inexistente e 22 não têm referência. |
+
+As vendas foram gravadas com `is_historical_import=true` e status `Fechada`:
+não movimentam estoque, caixa, comissão, ranking, NFC-e ou OS. O valor já pago
+fica em `historical_entry_amount`; o saldo das parcelas em `valor_restante`.
+
+### 12.2 Graus históricos do Optisis
+
+| Item | Quantidade |
+|---|---:|
+| Clientes em `TabCliente` | 6.291 |
+| Compras em `TabCompra` | 7.855 |
+| Compras com algum campo de grau | 7.066 |
+| Graus do Optisis inseridos | **6.773** |
+| Em revisão por cliente não resolvido | 279 |
+| Em revisão por divergência entre colunas duplicadas | 14 |
+| Duplicados das receitas da planilha | 0 |
+
+Os graus do Optisis usam `source_system='optisis-ocular'`, separado das
+receitas da planilha (`ocular-intermediate-spreadsheets`). Uma duplicidade só
+seria descartada se cliente, data e conjunto clínico coincidissem.
+
+Para cilindro/eixo foi usada a coluna principal e a alternativa apenas quando
+a principal estava vazia. DP e altura binoculares foram divididos entre OD/OE
+conforme a regra aprovada. Das receitas inseridas, 6.661 têm descrição de
+lentes/armação/tratamento/observação; 291 têm DNP e 217 têm altura.
+
+### 12.3 Conferência final
+
+- Total de graus funcionais no Docker: **8.137** (1.364 da planilha + 6.773 do Optisis).
+- A segunda execução das planilhas inseriu 0 clientes, produtos, vendas, parcelas e receitas.
+- A segunda execução dos graus do Optisis inseriu **0** receitas.
+- Relatórios de exceção, manifestos e contadores ficaram em `tmp/` e não devem ir para o Git.
+
+### 12.4 Decisão final sobre produtos sem nome
+
+Sete linhas da planilha tinham referência, categoria e/ou marca, mas não
+tinham `Nome do Produto`. Elas não foram importadas, pois não formariam um
+cadastro utilizável no catálogo. A decisão foi mantê-las fora, sem criar nomes
+provisórios.

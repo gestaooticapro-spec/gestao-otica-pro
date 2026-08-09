@@ -26,7 +26,12 @@ export interface CustomerXRayData {
         id: number
         data: string
         valorTotal: number
+        valorRestante: number
         status: string
+        isHistoricalImport: boolean
+        historicalEntryAmount: number
+        sourceSystem?: string | null
+        sourceRecordKey?: string | null
         vendedor?: string
         observacoes?: string | null
         itens: {
@@ -114,6 +119,7 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
             .from('vendas')
             .select(`
                 id, created_at, valor_total, valor_restante, status, obs_geral,
+                is_historical_import, historical_entry_amount, import_source_system, import_source_record_key,
                 vendedor:employees!employee_id(full_name),
                 itens:venda_itens(
                     id, valor_unitario, quantidade, product_id
@@ -403,7 +409,12 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
                 id: venda.id,
                 data: venda.created_at,
                 valorTotal: venda.valor_total,
+                valorRestante: venda.valor_restante || 0,
                 status: venda.status,
+                isHistoricalImport: venda.is_historical_import === true,
+                historicalEntryAmount: venda.historical_entry_amount || 0,
+                sourceSystem: venda.import_source_system || null,
+                sourceRecordKey: venda.import_source_record_key || null,
                 vendedor: venda.vendedor?.full_name?.split(' ')[0] || 'Loja',
                 observacoes: venda.obs_geral || null,
                 itens,

@@ -917,6 +917,7 @@ export async function getResumoCaixa(storeId: number): Promise<ResumoCaixa | nul
         .select('valor_final, valor_restante, financiamento_loja!financiamento_loja_venda_id_fkey(valor_total_financiado)')
         .eq('store_id', storeId)
         .eq('status', 'Fechada')
+        .eq('is_historical_import', false)
         .gte('data_fechamento', startOfMonth)
         .lte('data_fechamento', now)
 
@@ -926,6 +927,7 @@ export async function getResumoCaixa(storeId: number): Promise<ResumoCaixa | nul
         .select('valor_final, valor_restante')
         .eq('store_id', storeId)
         .eq('status', 'Fechada')
+        .eq('is_historical_import', false)
         .gte('data_fechamento', startOfLastMonth)
         .lte('data_fechamento', endOfLastMonthRef)
 

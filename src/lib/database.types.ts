@@ -1800,6 +1800,11 @@ export interface Database {
           financiamento_id: number | null
           obs_geral: string | null
           nf_emitida: boolean
+          is_historical_import: boolean
+          import_source_system: string | null
+          import_source_record_key: string | null
+          import_batch_id: string | null
+          historical_entry_amount: number
           created_at: string
         }
         Insert: {
@@ -1814,6 +1819,11 @@ export interface Database {
           financiamento_id?: number | null
           obs_geral?: string | null
           nf_emitida?: boolean
+          is_historical_import?: boolean
+          import_source_system?: string | null
+          import_source_record_key?: string | null
+          import_batch_id?: string | null
+          historical_entry_amount?: number
           tenant_id?: string
           created_by_user_id?: string
         }
@@ -1821,6 +1831,11 @@ export interface Database {
           status?: string
           financiamento_id?: number | null
           valor_desconto?: number
+          is_historical_import?: boolean
+          import_source_system?: string | null
+          import_source_record_key?: string | null
+          import_batch_id?: string | null
+          historical_entry_amount?: number
           [key: string]: any
         }
       }

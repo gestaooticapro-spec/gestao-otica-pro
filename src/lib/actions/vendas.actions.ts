@@ -319,6 +319,15 @@ export async function saveServiceOrder(
   }
 
   const { id, ...osData } = validated.data
+  const { data: vendaDaOS } = await (supabaseAdmin.from('vendas') as any)
+    .select('is_historical_import')
+    .eq('id', osData.venda_id)
+    .eq('store_id', osData.store_id)
+    .maybeSingle()
+
+  if (vendaDaOS?.is_historical_import === true) {
+    return { success: false, message: 'Não é permitido criar ou alterar OS em venda histórica importada.', timestamp: Date.now() }
+  }
   const { data: authorizedStore } = await (supabaseAdmin.from('stores') as any)
     .select('id')
     .eq('id', osData.store_id)
@@ -876,6 +885,15 @@ export async function saveServiceOrder(
 export async function deleteServiceOrder(id: number, storeId: number, vendaId: number): Promise<SaveSOResult> {
   const supabaseAdmin = createAdminClient()
   try {
+    const { data: venda } = await (supabaseAdmin.from('vendas') as any)
+      .select('is_historical_import')
+      .eq('id', vendaId)
+      .eq('store_id', storeId)
+      .maybeSingle()
+    if (venda?.is_historical_import === true) {
+      return { success: false, message: 'Não é permitido excluir OS de venda histórica importada.', timestamp: Date.now() }
+    }
+
     const { data: orderToDelete } = await (supabaseAdmin.from('service_orders') as any)
       .select('source_optical_evaluation_id')
       .eq('id', id)
@@ -1515,6 +1533,15 @@ export async function deleteVendaItem(
   const supabaseAdmin = createAdminClient()
 
   try {
+    const { data: venda } = await (supabaseAdmin.from('vendas') as any)
+      .select('is_historical_import')
+      .eq('id', vendaId)
+      .eq('store_id', storeId)
+      .maybeSingle()
+    if (venda?.is_historical_import === true) {
+      return { success: false, message: 'Itens de venda histórica importada não podem ser alterados por este fluxo.' }
+    }
+
     const { error: deleteError } = await supabaseAdmin
       .from('venda_itens')
       .delete()
@@ -1737,6 +1764,16 @@ export async function deletePagamento(
   const supabaseAdmin = createAdminClient()
 
   try {
+    const { data: venda } = await (supabaseAdmin.from('vendas') as any)
+      .select('is_historical_import')
+      .eq('id', vendaId)
+      .eq('store_id', storeId)
+      .maybeSingle()
+
+    if (venda?.is_historical_import === true) {
+      return { success: false, message: 'Pagamentos de venda histórica não podem ser estornados por este fluxo.' }
+    }
+
     // 1. NOVO: Antes de apagar o pagamento, apaga os recebíveis (Cartão/Cheque) vinculados a ele
     const { error: deleteReceivablesError } = await supabaseAdmin
       .from('accounts_receivable')
@@ -1925,6 +1962,20 @@ export async function updateVendaStatus(
   const profile = user ? await getProfileByAdmin(user.id) : null
 
   try {
+    const { data: vendaAtual } = await (supabaseAdmin.from('vendas') as any)
+      .select('is_historical_import')
+      .eq('id', vendaId)
+      .maybeSingle()
+    const isHistoricalImport = vendaAtual?.is_historical_import === true
+
+    if (isHistoricalImport) {
+      return {
+        success: false,
+        message: 'O status de uma venda histórica importada não pode ser alterado.',
+        timestamp: Date.now(),
+      }
+    }
+
     const updatePayload: any = { status: newStatus };
 
     if (newStatus === 'Em Aberto') {
@@ -1934,13 +1985,13 @@ export async function updateVendaStatus(
       updatePayload.data_fechamento = null;
 
       // 2. IMPORTANTE: Estorna a comissão gerada anteriormente para evitar duplicidade
-      await cancelarComissao(vendaId)
+      if (!isHistoricalImport) await cancelarComissao(vendaId)
 
       // 3. Cancela reservas de estoque
-      await reopenReservations(vendaId)
+      if (!isHistoricalImport) await reopenReservations(vendaId)
 
       // 4. Estorna saídas de estoque geradas pelo fechamento anterior
-      if (user && profile) {
+      if (!isHistoricalImport && user && profile) {
         await estornarSaidaVenda(vendaId, storeId, user.id, (profile as any).tenant_id)
       }
     }
@@ -1961,12 +2012,12 @@ export async function updateVendaStatus(
 
     // --- NOVO: GATILHO DE RANKING ---
     // Se cancelou, o cliente pode cair de nível. Se reabriu, pode subir.
-    if (data && data.customer_id) {
+    if (!isHistoricalImport && data && data.customer_id) {
       await atualizarRankingCliente(data.customer_id)
     }
     // --------------------------------
 
-    if (newStatus === 'Fechada') {
+    if (newStatus === 'Fechada' && !isHistoricalImport) {
       // Calcula comissão nova
       await calcularERegistrarComissao(vendaId)
       await calcularComissaoMedico(vendaId)
@@ -1978,7 +2029,7 @@ export async function updateVendaStatus(
       if (user && profile) {
         await registrarSaidaVenda(vendaId, storeId, user.id, (profile as any).tenant_id)
       }
-    } else if (newStatus === 'Cancelada') {
+    } else if (newStatus === 'Cancelada' && !isHistoricalImport) {
       await cancelarComissao(vendaId)
       await cancelReservations(vendaId)
 
@@ -2350,7 +2401,7 @@ export async function saveFinanciamentoLoja(...args: any[]) {
   // 5. Busca dados da Venda para validar Loja
   const { data: vendaReal, error: erroVenda } = await (supabaseAdmin
     .from('vendas') as any)
-    .select('id, tenant_id, store_id, valor_final, valor_total')
+    .select('id, tenant_id, store_id, valor_final, valor_total, is_historical_import')
     .eq('id', venda_id)
     .single();
 
@@ -2466,19 +2517,27 @@ export async function saveFinanciamentoLoja(...args: any[]) {
 
   const totalJaPagoNoCaixa = pagamentosExistentes?.reduce((acc: number, p: any) => acc + Number(p.valor_pago), 0) || 0;
   const valorTotalVenda = Number(vendaReal.valor_final || vendaReal.valor_total);
+  const isHistoricalImport = vendaReal.is_historical_import === true;
   const totalCoberto = totalJaPagoNoCaixa + Number(valor_total);
 
-  let novoValorRestante = valorTotalVenda - totalCoberto;
+  // Na venda historica, o valor do carnÃª e exatamente o saldo trazido em
+  // aberto. A diferenca para a venda original e entrada anterior e nao deve
+  // virar pagamento nem movimentar o caixa atual.
+  let novoValorRestante = isHistoricalImport
+    ? Number(valor_total)
+    : valorTotalVenda - totalCoberto;
   if (novoValorRestante < 0.05 && novoValorRestante > -0.05) novoValorRestante = 0;
-  const novoStatus = novoValorRestante <= 0 ? 'Fechada' : 'Em Aberto';
+  const novoStatus = isHistoricalImport ? 'Fechada' : (novoValorRestante <= 0 ? 'Fechada' : 'Em Aberto');
 
   const { error: erroUpdate } = await (supabaseAdmin.from('vendas') as any)
     .update({
       financiamento_id: capaCriada.id,
       valor_restante: novoValorRestante,
-      ...(novoStatus === 'Em Aberto'
-        ? { status: 'Em Aberto', data_fechamento: null }
-        : {})
+      ...(isHistoricalImport
+        ? { status: 'Fechada' }
+        : novoStatus === 'Em Aberto'
+          ? { status: 'Em Aberto', data_fechamento: null }
+          : {})
     })
     .eq('id', venda_id);
 
@@ -2487,7 +2546,7 @@ export async function saveFinanciamentoLoja(...args: any[]) {
     return { success: false, message: `Erro ao atualizar venda: ${erroUpdate.message}` };
   }
 
-  if (novoStatus === 'Fechada') {
+  if (novoStatus === 'Fechada' && !isHistoricalImport) {
     // Usa a mesma rotina do botão "Finalizar Venda": comissão, reservas,
     // estoque, ranking e demais efeitos operacionais ficam consistentes.
     const fechamento = await updateVendaStatus(
@@ -2499,7 +2558,7 @@ export async function saveFinanciamentoLoja(...args: any[]) {
     if (!fechamento.success) {
       return { success: false, message: fechamento.message || 'Não foi possível finalizar a venda após gerar o carnê.' }
     }
-  } else {
+  } else if (!isHistoricalImport) {
     await calcularERegistrarComissao(venda_id);
     await calcularComissaoMedico(venda_id);
   }
@@ -2886,6 +2945,55 @@ async function quitarParcelasZeradasPendentes(financiamentoId: number, dataPagam
   if (error) throw new Error(`Erro ao quitar parcelas zeradas: ${error.message}`)
 }
 
+// O saldo de uma venda historica nao e recalculado pelos itens ou pelos
+// pagamentos antigos: ele e a soma das parcelas que ainda podem ser cobradas.
+async function sincronizarSaldoVendaHistorica(financiamentoId: number) {
+  const supabaseAdmin = createAdminClient()
+
+  const { data: financiamento, error: financiamentoError } = await (supabaseAdmin
+    .from('financiamento_loja') as any)
+    .select('venda_id')
+    .eq('id', financiamentoId)
+    .maybeSingle()
+
+  if (financiamentoError) {
+    throw new Error(`Erro ao localizar o carnÃª para atualizar saldo: ${financiamentoError.message}`)
+  }
+  if (!financiamento?.venda_id) return
+
+  const { data: venda, error: vendaError } = await (supabaseAdmin.from('vendas') as any)
+    .select('is_historical_import')
+    .eq('id', financiamento.venda_id)
+    .maybeSingle()
+
+  if (vendaError) {
+    throw new Error(`Erro ao localizar venda para atualizar saldo: ${vendaError.message}`)
+  }
+  if (venda?.is_historical_import !== true) return
+
+  const { data: parcelas, error: parcelasError } = await (supabaseAdmin
+    .from('financiamento_parcelas') as any)
+    .select('status, data_pagamento, valor_parcela')
+    .eq('financiamento_id', financiamentoId)
+
+  if (parcelasError) {
+    throw new Error(`Erro ao recalcular saldo historico: ${parcelasError.message}`)
+  }
+
+  const saldoAberto = (parcelas || []).reduce((total: number, parcela: any) => {
+    const estaPaga = String(parcela.status || '').toLowerCase() === 'pago' || parcela.data_pagamento != null
+    return estaPaga ? total : total + Number(parcela.valor_parcela || 0)
+  }, 0)
+
+  const { error: updateError } = await (supabaseAdmin.from('vendas') as any)
+    .update({ valor_restante: Number(saldoAberto.toFixed(2)), status: 'Fechada' })
+    .eq('id', financiamento.venda_id)
+
+  if (updateError) {
+    throw new Error(`Erro ao salvar saldo historico: ${updateError.message}`)
+  }
+}
+
 export async function receberParcela(prevState: any, formData: FormData) {
   const supabaseAdmin = createAdminClient()
   const { data: { user } } = await createClient().auth.getUser()
@@ -3127,6 +3235,7 @@ export async function receberParcela(prevState: any, formData: FormData) {
     }
 
     await quitarParcelasZeradasPendentes(parcelaAtual.financiamento_id, data_pagamento)
+    await sincronizarSaldoVendaHistorica(parcelaAtual.financiamento_id)
 
     revalidatePath(`/dashboard/loja/${store_id}/vendas/${venda_id}`)
     revalidatePath(`/dashboard/loja/${store_id}`)
@@ -3177,8 +3286,12 @@ export async function deleteFinanciamentoLoja(vendaId: number, storeId: number) 
 
     // Recalcular dívida
     const { data: vendaReal } = await (supabaseAdmin.from('vendas') as any)
-      .select('valor_final, valor_total')
+      .select('valor_final, valor_total, is_historical_import')
       .eq('id', vendaId).single();
+
+    if (vendaReal?.is_historical_import === true) {
+      return { success: false, message: 'O carnÃª de uma venda histÃ³rica importada nÃ£o pode ser excluÃ­do.' };
+    }
 
     const { data: pagamentos } = await (supabaseAdmin.from('pagamentos') as any)
       .select('valor_pago')
@@ -4008,6 +4121,7 @@ export async function atualizarRankingCliente(clienteId: string) {
     .select('valor_final')
     .eq('customer_id', clienteId)
     .eq('status', 'Fechada')
+    .eq('is_historical_import', false)
 
   if (error) {
     console.error('Erro ao calcular ranking:', error)

@@ -279,7 +279,7 @@ export async function declararVendaAbandonada(
     try {
         const { data: vendaRaw, error: vendaError } = await supabaseAdmin
             .from('vendas')
-            .select('id, status, customer_id, financiamento_id')
+            .select('id, status, customer_id, financiamento_id, is_historical_import')
             .eq('id', vendaId)
             .eq('store_id', storeId)
             .single()
@@ -289,6 +289,10 @@ export async function declararVendaAbandonada(
         }
 
         const venda = vendaRaw as unknown as VendaResumo
+
+        if ((venda as any).is_historical_import === true) {
+            throw new Error('Venda histórica importada não pode ser cancelada como abandono.')
+        }
 
         if (venda.status === 'Cancelada') {
             throw new Error('Esta venda ja esta cancelada.')

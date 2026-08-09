@@ -587,6 +587,17 @@ export async function emitirNFCe(payload: EmissionPayload) {
     try {
         const env = payload.environment || 'production';
 
+        if (payload.work_order_id) {
+            const { data: workOrder } = await adminSupabase
+                .from('service_orders')
+                .select('vendas!inner(is_historical_import)')
+                .eq('id', payload.work_order_id)
+                .maybeSingle();
+            if (workOrder?.vendas?.is_historical_import === true) {
+                return { success: false, error: 'Não é permitido emitir NFC-e para venda histórica importada.' };
+            }
+        }
+
         // 1. Validar duplicidade antes de qualquer operaÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o
         const duplicateError = await ensureNoActiveInvoiceForWorkOrder(adminSupabase, payload, "NFCe", env);
         if (duplicateError) {

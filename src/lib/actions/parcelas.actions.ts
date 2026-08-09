@@ -112,7 +112,7 @@ export async function getParcelasFiltradas(storeId: number, filtros: ParcelaFilt
                 data_pagamento,
                 customer_id,
                 financiamento_id,
-                financiamento_loja ( venda_id ),
+                financiamento_loja ( venda_id, vendas ( is_historical_import ) ),
                 customers (full_name, cpf)
             `)
             .eq('store_id', storeId)
@@ -201,7 +201,7 @@ export async function getParcelasFiltradas(storeId: number, filtros: ParcelaFilt
                 data_pagamento,
                 customer_id,
                 financiamento_id,
-                financiamento_loja ( venda_id ),
+                financiamento_loja ( venda_id, vendas ( is_historical_import ) ),
                 customers (full_name, cpf)
             `)
             .in('financiamento_id', financiamentoIds)
@@ -266,7 +266,7 @@ export async function getCustomerParcelasFiltradas(storeId: number, customerId: 
                 data_pagamento,
                 customer_id,
                 financiamento_id,
-                financiamento_loja ( venda_id ),
+                financiamento_loja ( venda_id, vendas ( is_historical_import ) ),
                 customers (full_name, cpf)
             `)
             .eq('store_id', storeId)
@@ -348,7 +348,7 @@ export async function getCustomerParcelasFiltradas(storeId: number, customerId: 
                 data_pagamento,
                 customer_id,
                 financiamento_id,
-                financiamento_loja ( venda_id ),
+                financiamento_loja ( venda_id, vendas ( is_historical_import ) ),
                 customers (full_name, cpf)
             `)
             .in('financiamento_id', financiamentoIds)

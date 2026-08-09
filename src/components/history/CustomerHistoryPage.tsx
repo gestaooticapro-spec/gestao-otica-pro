@@ -383,12 +383,15 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                                     }`}
                             >
                                 <div className="flex justify-between items-start mb-1.5 relative z-10">
-                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${selectedSaleId === sale.id
-                                        ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/20'
-                                        : 'bg-slate-800 text-slate-400 border-slate-700'
-                                        }`}>
-                                        #{sale.id}
-                                    </span>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${selectedSaleId === sale.id
+                                            ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/20'
+                                            : 'bg-slate-800 text-slate-400 border-slate-700'
+                                            }`}>
+                                            #{sale.id}
+                                        </span>
+                                        {sale.isHistoricalImport && <span className="rounded border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-amber-300">Importada</span>}
+                                    </div>
                                     <span className="text-[10px] font-medium text-slate-400">{formatDate(sale.data)}</span>
                                 </div>
                                 <div className="flex justify-between items-end relative z-10">
@@ -417,6 +420,7 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                                 <div>
                                     <div className="flex items-center gap-2 mb-1">
                                         <span className="text-[9px] font-black text-indigo-400 uppercase tracking-[0.2em]">Detalhes da Compra</span>
+                                        {selectedSale.isHistoricalImport && <span className="rounded border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-amber-300">Histórico importado</span>}
                                         {selectedSale.os && selectedSale.os.length > 0 && (
                                             <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/20">
                                                 {selectedSale.os.length} OS
@@ -431,6 +435,11 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                                             {selectedSale.status.toUpperCase()}
                                         </span>
                                     </h2>
+                                    {selectedSale.isHistoricalImport && (
+                                        <a href={`/dashboard/loja/${storeId}/vendas/${selectedSale.id}/historico-importado`} className="mt-3 inline-flex rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-200 transition-colors hover:bg-amber-500/20">
+                                            Abrir histórico e cobrança
+                                        </a>
+                                    )}
                                 </div>
                                 <div className="text-right">
                                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">DATA</p>
@@ -446,7 +455,9 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                                         <ShoppingBag className="w-3 h-3" /> Itens Adquiridos
                                     </h4>
                                     <div className="space-y-2">
-                                        {selectedSale.itens.map((item, idx) => (
+                                        {selectedSale.itens.length === 0 && selectedSale.isHistoricalImport ? (
+                                            <div className="rounded-xl border border-dashed border-white/15 bg-black/20 p-4 text-xs text-slate-400">Itens não informados pelo sistema anterior.</div>
+                                        ) : selectedSale.itens.map((item, idx) => (
                                             <div key={idx} className="bg-black/20 rounded-xl p-3 border border-white/5 flex items-center justify-between hover:bg-white/5 transition-colors group">
                                                 <div className="flex items-center gap-4">
                                                     <div className="w-10 h-10 rounded-lg bg-slate-800/50 flex items-center justify-center text-slate-200 font-black text-sm border border-white/5 shadow-inner">
@@ -777,6 +788,7 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                                             return dateOrder || (Number(a.id) - Number(b.id))
                                         })
                                         const isExpanded = expandedSales[vendaId] ?? true
+                                        const isHistoricalImport = saleParcelas[0]?.financiamento_loja?.vendas?.is_historical_import === true
                                         
                                         const totalSaleValue = saleParcelas.reduce((acc: number, p: any) => acc + Number(p.valor_parcela || 0), 0)
                                         const paidSaleValue = saleParcelas.filter((p: any) => p.status === 'pago' || p.data_pagamento !== null).reduce((acc: number, p: any) => acc + Number(p.valor_parcela || 0), 0)
@@ -802,13 +814,13 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                                                     <div className="flex items-center gap-3">
                                                         {vendaId > 0 && (
                                                             <a 
-                                                                href={`/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`}
+                                                                href={isHistoricalImport ? `/dashboard/loja/${storeId}/vendas/${vendaId}/historico-importado` : `/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`}
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
                                                                 onClick={(e) => e.stopPropagation()}
                                                                 className="inline-flex items-center gap-1 px-2.5 py-1 bg-orange-600 hover:bg-orange-500 rounded-lg text-[10px] font-bold text-white transition-all shadow-md shadow-orange-500/10"
                                                             >
-                                                                Ver Venda
+                                                                {isHistoricalImport ? 'Abrir histórico' : 'Ver Venda'}
                                                             </a>
                                                         )}
                                                         <button type="button" className="text-slate-400 hover:text-white transition-colors">
