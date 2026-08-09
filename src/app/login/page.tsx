@@ -7,7 +7,6 @@ import { useEffect, useState } from 'react'
 import { useFormStatus } from 'react-dom'
 import { Loader2, Eye, EyeOff, Maximize2, Minimize2 } from 'lucide-react'
 import Link from 'next/link'
-import { getLoginRoute } from '@/lib/actions/auth.actions'
 
 // --- Componente do Botão de Submit (Mantido e Estilizado) ---
 function SubmitButton() {
@@ -73,9 +72,22 @@ export default function LoginPage() {
         return
       }
 
-      const { route, message } = await getLoginRoute();
+      const routeResponse = await fetch('/api/auth/login-route', {
+        method: 'GET',
+        cache: 'no-store',
+        credentials: 'same-origin',
+      })
+      const loginRoute = await routeResponse.json().catch(() => null)
 
-      if (route.startsWith('/dashboard') || route.startsWith('/admin')) {
+      if (!loginRoute || typeof loginRoute.route !== 'string') {
+        await supabase.auth.signOut()
+        setErrorMessage('Não foi possível concluir o acesso. Tente novamente.')
+        return
+      }
+
+      const { route, message } = loginRoute
+
+      if (routeResponse.ok && (route.startsWith('/dashboard') || route.startsWith('/admin'))) {
         window.location.href = route;
       } else {
         await supabase.auth.signOut();

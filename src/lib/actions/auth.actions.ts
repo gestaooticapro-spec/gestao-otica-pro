@@ -4,8 +4,8 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { Database } from '@/lib/database.types'
-import { isPlatformAdminProfile } from '@/lib/auth/platform-admin'
 import { createAdminClient } from '@/lib/supabase/admin' // <-- IMPORTAÇÃO CORRIGIDA
+import { resolveLoginRoute } from '@/lib/auth/login-route'
 
 type Profile = Database['public']['Tables']['profiles']['Row']
 
@@ -31,82 +31,5 @@ export async function getProfileByAdmin(userId: string) {
 
 
 export async function getLoginRoute() {
-  const supabaseRLS = createClient()
-  const { data: { user } } = await supabaseRLS.auth.getUser()
-
-  if (!user)
-    return {
-      success: false,
-      route: '/login',
-      message: 'Sessão não encontrada.',
-    }
-
-  try {
-    // 1. Usa o Cliente Admin para ignorar o RLS
-    const supabaseAdmin = createAdminClient()
-
-    // 2. Busca o perfil ignorando o RLS (TIPADO COMO ANY)
-    const { data: profile, error: profileError } = await (supabaseAdmin
-      .from('profiles')
-      .select('role, store_id, tenant_id')
-      .eq('id', user.id)
-      .single() as any)
-
-    if (profileError || !profile) {
-      console.error('Perfil não encontrado no roteamento:', profileError)
-      return {
-        success: false,
-        route: '/login?error=profile_missing',
-        message: 'Perfil não encontrado ou incompleto.',
-      }
-    }
-
-    // 3. Lógica de Roteamento (COMPLETA)
-    if (isPlatformAdminProfile(profile)) {
-      return {
-        success: true,
-        route: '/admin/torres',
-      }
-    } else if (profile.role === 'platform_admin') {
-      return {
-        success: false,
-        route: '/login?error=invalid_platform_admin_scope',
-        message: 'Administrador de plataforma vinculado indevidamente a uma loja.',
-      }
-    } else if (profile.role === 'admin') {
-      const adminStoreId = profile.store_id || 1
-      return {
-        success: true,
-        route: `/dashboard/loja/${adminStoreId}`,
-      }
-    } else if (profile.role === 'manager' || profile.role === 'store_operator') {
-      if (profile.store_id) {
-        return {
-          success: true,
-          route: `/dashboard/loja/${profile.store_id}`,
-        }
-      }
-      return { success: true, route: '/dashboard/manager' }
-    } else if (profile.role === 'vendedor') {
-      return {
-        success: false,
-        route: '/login?error=unauthorized_role',
-        message: 'Perfil de vendedor não tem acesso ao dashboard principal.',
-      }
-    }
-
-    return {
-      success: false,
-      route: '/login?error=invalid_role',
-      message: 'Cargo de usuário desconhecido.',
-    }
-
-  } catch (e) {
-    console.error('Erro de Servidor no roteamento:', e)
-    return {
-      success: false,
-      route: '/login?error=server_error',
-      message: 'Erro interno do servidor.',
-    }
-  }
+  return resolveLoginRoute()
 }
