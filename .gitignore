@@ -85,3 +85,6 @@ supabase/migrations/20260618_whatsapp_ai_session_state.sql
 supabase/migrations/20260618_whatsapp_customer_control.sql
 
 /.backupcharles
+
+# Configuração local do Supabase/Docker
+/supabase/config.toml

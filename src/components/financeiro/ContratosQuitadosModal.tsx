@@ -59,7 +59,7 @@ export default function ContratosQuitadosModal({ storeId, onClose }: { storeId: 
     const contratos = contratosOrdenados
 
     return <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-md p-4" onClick={onClose}>
-        <div className="w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-2xl border border-white/10 bg-slate-900 shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="w-full max-w-6xl max-h-[95vh] overflow-hidden rounded-2xl border border-white/10 bg-slate-900 shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-white/10 bg-slate-800/60 px-6 py-4">
                 <h2 className="flex items-center gap-2 text-lg font-bold text-white"><CheckCircle2 className="h-5 w-5 text-emerald-400" />Contratos quitados</h2>
                 <button onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-white" aria-label="Fechar"><X className="h-5 w-5" /></button>
