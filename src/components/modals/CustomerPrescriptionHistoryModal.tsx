@@ -17,6 +17,10 @@ type CustomerPrescriptionHistoryModalProps = {
 
 const formatDate = (dateStr: string) => {
     if (!dateStr) return '-'
+    // Datas de receita sao datas civis (DATE no banco). Interpretar
+    // `YYYY-MM-DD` como UTC faz o fuso brasileiro mostrar o dia anterior.
+    const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr)
+    if (dateOnly) return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`
     return new Date(dateStr).toLocaleDateString('pt-BR')
 }
 
