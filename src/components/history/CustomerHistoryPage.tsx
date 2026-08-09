@@ -437,7 +437,7 @@ export default function CustomerHistoryPage({ data, storeId }: CustomerHistoryPa
                                     </h2>
                                     {selectedSale.isHistoricalImport && (
                                         <a href={`/dashboard/loja/${storeId}/vendas/${selectedSale.id}/historico-importado`} className="mt-3 inline-flex rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-200 transition-colors hover:bg-amber-500/20">
-                                            Abrir histórico e cobrança
+                                            Abrir venda histórica
                                         </a>
                                     )}
                                 </div>
