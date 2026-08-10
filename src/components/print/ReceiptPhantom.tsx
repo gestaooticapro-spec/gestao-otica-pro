@@ -11,6 +11,11 @@ interface ReceiptData {
     cliente: Cliente | null
     itens: Item[]
     isReprint?: boolean
+    parcelaInfo?: {
+        numeroParcela: number
+        totalParcelas: number
+        dataVencimento: string
+    } | null
 }
 
 // --- AJUSTE FINO (Edite aqui se precisar mover tudo) ---
@@ -49,7 +54,7 @@ const Y_PIX = 96 + OFFSET_Y
 const formatMoney = (val: number) => val.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
 
 function Via({ data, isSegundaVia }: { data: ReceiptData, isSegundaVia: boolean }) {
-    const { pagamentos, cliente, isReprint } = data
+    const { pagamentos, cliente, isReprint, parcelaInfo } = data
     const valorTotalRecibo = pagamentos.reduce((acc, p) => acc + p.valor_pago, 0)
     
     // Data mais recente
@@ -67,6 +72,11 @@ function Via({ data, isSegundaVia }: { data: ReceiptData, isSegundaVia: boolean 
 
     const formasPagamento = pagamentos.map(p => p.forma_pagamento.toLowerCase().trim())
     const idsPagamentos = pagamentos.map(p => p.id).join(', ')
+
+    const formatDate = (value: string) => {
+        const date = value.slice(0, 10).split('-')
+        return date.length === 3 ? `${date[2]}/${date[1]}/${date[0].slice(-2)}` : ''
+    }
     
     const labelIds = pagamentos.length > 1 ? 'Pgtos' : 'Pgto'
     const obsTexto = `Ref. ${labelIds} #${idsPagamentos} - Venda #${data.venda.id}`
@@ -100,6 +110,18 @@ function Via({ data, isSegundaVia }: { data: ReceiptData, isSegundaVia: boolean 
                 <div style={getStyle(REIMPRESSAO_Y, REIMPRESSAO_X)}>
                     *** REIMPRESSÃO ***
                 </div>
+            )}
+
+            {/* Dados da duplicata: aparecem somente em recibos de parcela. */}
+            {parcelaInfo && (
+                <>
+                    <div style={getStyle(41, 223)}>
+                        {parcelaInfo.numeroParcela}/{parcelaInfo.totalParcelas}
+                    </div>
+                    <div style={getStyle(41, 267)}>
+                        {formatDate(parcelaInfo.dataVencimento)}
+                    </div>
+                </>
             )}
 
             {/* 1. NOME */}

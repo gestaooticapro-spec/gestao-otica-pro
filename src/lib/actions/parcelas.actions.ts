@@ -7,7 +7,66 @@ export type ParcelaFiltro = {
     status?: 'todas' | 'pendente' | 'pago' | 'atrasado';
     dataInicial?: string;
     dataFinal?: string;
+    dataPagamentoInicial?: string;
+    dataPagamentoFinal?: string;
     busca?: string; // Nome do cliente ou ID da venda
+    ordenarPor?: 'cliente' | 'vencimento' | 'pagamento' | 'valor' | 'venda';
+    direcao?: 'asc' | 'desc';
+}
+
+function filtrarDataPagamento(parcelas: any[], filtros: ParcelaFiltro) {
+    return parcelas.filter((parcela) => {
+        const dataPagamento = (parcela.data_pagamento_relatorio || parcela.data_pagamento)
+            ? String(parcela.data_pagamento_relatorio || parcela.data_pagamento).split('T')[0]
+            : ''
+        if (filtros.dataPagamentoInicial && (!dataPagamento || dataPagamento < filtros.dataPagamentoInicial)) return false
+        if (filtros.dataPagamentoFinal && (!dataPagamento || dataPagamento > filtros.dataPagamentoFinal)) return false
+        return true
+    })
+}
+
+function ordenarParcelas(parcelas: any[], filtros: ParcelaFiltro) {
+    const campo = filtros.ordenarPor || 'vencimento'
+    const direcao = filtros.direcao === 'desc' ? -1 : 1
+    const texto = (valor: unknown) => String(valor || '').toLocaleLowerCase('pt-BR')
+    const data = (valor: unknown) => String(valor || '').split('T')[0]
+
+    return [...parcelas].sort((a, b) => {
+        let comparacao = 0
+        if (campo === 'cliente') comparacao = texto(a.customers?.full_name).localeCompare(texto(b.customers?.full_name), 'pt-BR')
+        if (campo === 'vencimento') comparacao = data(a.data_vencimento).localeCompare(data(b.data_vencimento))
+        if (campo === 'pagamento') comparacao = data(a.data_pagamento_relatorio || a.data_pagamento).localeCompare(data(b.data_pagamento_relatorio || b.data_pagamento))
+        if (campo === 'valor') comparacao = Number(a.valor_parcela || 0) - Number(b.valor_parcela || 0)
+        if (campo === 'venda') comparacao = Number(a.financiamento_loja?.venda_id || 0) - Number(b.financiamento_loja?.venda_id || 0)
+        if (comparacao === 0) comparacao = Number(a.id || 0) - Number(b.id || 0)
+        return comparacao * direcao
+    })
+}
+
+async function adicionarTotaisPagamentos(supabaseAdmin: any, parcelas: any[]) {
+    const ids = parcelas.map((parcela) => Number(parcela.id)).filter(Number.isFinite)
+    if (ids.length === 0) return parcelas
+
+    const { data: pagamentos } = await supabaseAdmin
+        .from('pagamentos')
+        .select('parcela_id, valor_pago, data_pagamento')
+        .in('parcela_id', ids)
+
+    const porParcela = new Map<number, { total: number, ultimaData: string | null }>()
+    for (const pagamento of pagamentos || []) {
+        const parcelaId = Number(pagamento.parcela_id)
+        const atual = porParcela.get(parcelaId) || { total: 0, ultimaData: null }
+        atual.total += Number(pagamento.valor_pago || 0)
+        const dataPagamento = pagamento.data_pagamento ? String(pagamento.data_pagamento) : null
+        if (dataPagamento && (!atual.ultimaData || dataPagamento > atual.ultimaData)) atual.ultimaData = dataPagamento
+        porParcela.set(parcelaId, atual)
+    }
+
+    return parcelas.map((parcela) => ({
+        ...parcela,
+        valor_pago_relatorio: porParcela.get(Number(parcela.id))?.total || 0,
+        data_pagamento_relatorio: porParcela.get(Number(parcela.id))?.ultimaData || null,
+    }))
 }
 
 export type ContratoQuitadoFiltro = {
@@ -134,7 +193,7 @@ export async function getParcelasFiltradas(storeId: number, filtros: ParcelaFilt
             return { success: false, message: 'Erro ao buscar parcelas', data: [] }
         }
 
-        let resultado = parcelas || []
+        let resultado = await adicionarTotaisPagamentos(supabaseAdmin, (parcelas || []) as any[])
 
         // Filtro de Status
         if (filtros.status && filtros.status !== 'todas') {
@@ -146,7 +205,7 @@ export async function getParcelasFiltradas(storeId: number, filtros: ParcelaFilt
             const hojeLocalStr = `${year}-${month}-${day}` // YYYY-MM-DD local
 
             resultado = resultado.filter((p: any) => {
-                const isPago = p.status === 'pago' || p.data_pagamento !== null
+                const isPago = p.status === 'pago' || Boolean(p.data_pagamento_relatorio || p.data_pagamento)
                 // Assumindo data_vencimento vem como YYYY-MM-DD...
                 let vencimentoStr = ''
                 if (p.data_vencimento) {
@@ -159,6 +218,8 @@ export async function getParcelasFiltradas(storeId: number, filtros: ParcelaFilt
                 return true
             })
         }
+
+        resultado = filtrarDataPagamento(resultado, filtros)
 
         // Filtro de Busca (Cliente ou ID da Venda)
         if (filtros.busca) {
@@ -181,7 +242,7 @@ export async function getParcelasFiltradas(storeId: number, filtros: ParcelaFilt
 
         if (!filtros.busca || filtros.busca.trim() === '') {
             // Não há busca de texto, apenas retornar os resultados exatos do filtro de Data/Status
-            return { success: true, data: resultado }
+            return { success: true, data: ordenarParcelas(resultado, filtros) }
         }
 
         const financiamentoIds = Array.from(new Set(resultado.map((p: any) => p.financiamento_id).filter(Boolean)))
@@ -213,7 +274,7 @@ export async function getParcelasFiltradas(storeId: number, filtros: ParcelaFilt
             return { success: false, message: 'Erro ao buscar contexto completo das parcelas', data: [] }
         }
 
-        let finalData = todasParcelas || []
+        let finalData: any[] = await adicionarTotaisPagamentos(supabaseAdmin, (todasParcelas || []) as any[])
 
         // Como expandimos o contexto, aplicamos o filtro de Status novamente
         // para não misturar pagas/pendentes se o usuário exigiu um status específico
@@ -225,7 +286,7 @@ export async function getParcelasFiltradas(storeId: number, filtros: ParcelaFilt
             const hojeLocalStr = `${year}-${month}-${day}`
 
             finalData = finalData.filter((p: any) => {
-                const isPago = p.status === 'pago' || p.data_pagamento !== null
+                const isPago = p.status === 'pago' || Boolean(p.data_pagamento_relatorio || p.data_pagamento)
                 let vencimentoStr = ''
                 if (p.data_vencimento) {
                     vencimentoStr = p.data_vencimento.split('T')[0]
@@ -238,7 +299,9 @@ export async function getParcelasFiltradas(storeId: number, filtros: ParcelaFilt
             })
         }
 
-        return { success: true, data: finalData }
+        finalData = filtrarDataPagamento(finalData, filtros)
+
+        return { success: true, data: ordenarParcelas(finalData, filtros) }
 
 
     } catch (err) {

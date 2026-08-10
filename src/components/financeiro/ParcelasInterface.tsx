@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Search, CalendarRange, Filter, AlertCircle, Loader2, ArrowLeft, ArrowRight, MessageCircle, CheckCircle2 } from 'lucide-react'
 import Link from 'next/link'
 import { getParcelasFiltradas, ParcelaFiltro } from '@/lib/actions/parcelas.actions'
+import { getParcelamentoMetrics } from '@/lib/actions/reports.actions'
 import { sendInstallmentReceiptWhatsApp } from '@/lib/actions/manual-whatsapp.actions'
 import { toast } from 'sonner'
 import ContratosQuitadosModal from './ContratosQuitadosModal'
@@ -13,6 +14,8 @@ type ParcelaData = {
     numero_parcela: number
     data_vencimento: string
     valor_parcela: number
+    valor_pago_relatorio?: number
+    data_pagamento_relatorio?: string | null
     status: string
     data_pagamento: string | null
     customer_id: number
@@ -26,12 +29,16 @@ type ParcelasAgrupadasPorCliente = Record<string, {
     sales: ParcelasPorVenda
 }>
 
-export default function ParcelasInterface({ storeId }: { storeId: number }) {
+export default function ParcelasInterface({ storeId, reportMode = false }: { storeId: number, reportMode?: boolean }) {
     const [filtros, setFiltros] = useState<ParcelaFiltro>({
         status: 'todas',
         dataInicial: '',
         dataFinal: '',
-        busca: ''
+        dataPagamentoInicial: '',
+        dataPagamentoFinal: '',
+        busca: '',
+        ordenarPor: 'vencimento',
+        direcao: 'asc'
     })
     
     const [parcelas, setParcelas] = useState<ParcelaData[]>([])
@@ -41,6 +48,14 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
     const [sendingReceiptInstallmentId, setSendingReceiptInstallmentId] = useState<number | null>(null)
     const [sentReceiptInstallmentIds, setSentReceiptInstallmentIds] = useState<number[]>([])
     const [showContratosQuitados, setShowContratosQuitados] = useState(false)
+    const [metrics, setMetrics] = useState<any>(null)
+
+    useEffect(() => {
+        if (!reportMode) return
+        getParcelamentoMetrics(storeId).then(setMetrics).catch((error) => {
+            console.error('[ParcelasInterface] Erro ao buscar resumo:', error)
+        })
+    }, [reportMode, storeId])
 
     const handleSearch = async () => {
         setLoading(true)
@@ -50,7 +65,7 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
         const res = await getParcelasFiltradas(storeId, filtros)
         if (res.success) {
             setParcelas(res.data)
-            setViewMode(isContextSearch ? 'cards' : 'table')
+            setViewMode(reportMode || !isContextSearch ? 'table' : 'cards')
         } else {
             alert(res.message || 'Erro ao buscar parcelas')
             setParcelas([])
@@ -127,7 +142,7 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
             <div className="bg-slate-900/40 backdrop-blur-xl border-b border-white/10 px-6 py-4 shadow-xl shadow-black/20 flex-shrink-0 flex items-center justify-between">
                 <div className="flex items-center gap-4">
                     <Link
-                        href={`/dashboard/loja/${storeId}?menu=gerencia`}
+                        href={reportMode ? `/dashboard/loja/${storeId}/reports` : `/dashboard/loja/${storeId}?menu=gerencia`}
                         className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all active:scale-95"
                         title="Voltar para a Gerência"
                     >
@@ -138,7 +153,7 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
                             <CalendarRange className="h-6 w-6" />
                         </div>
                         <div>
-                            <h1 className="text-xl font-black text-white tracking-tight uppercase">Contas a Receber</h1>
+                            <h1 className="text-xl font-black text-white tracking-tight uppercase">{reportMode ? 'Relatório de Parcelamento e Cobrança' : 'Contas a Receber'}</h1>
                             <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em]">Gestão de Parcelas</p>
                         </div>
                     </div>
@@ -147,6 +162,31 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
                     <CheckCircle2 className="h-4 w-4 text-emerald-400" />Contratos quitados
                 </button>
             </div>
+
+            {reportMode && metrics && (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-950 px-6 py-3 border-b border-white/10 shrink-0">
+                    <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-blue-300">A receber</p>
+                        <p className="mt-1 text-xl font-black text-white">{formatCurrency(metrics.vincendasValor)}</p>
+                        <p className="text-[10px] text-blue-200/70">{metrics.vincendasQtd} parcelas</p>
+                    </div>
+                    <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-rose-300">Atrasadas</p>
+                        <p className="mt-1 text-xl font-black text-rose-200">{formatCurrency(metrics.atrasadasValor)}</p>
+                        <p className="text-[10px] text-rose-200/70">{metrics.atrasadasQtd} parcelas</p>
+                    </div>
+                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-amber-300">Risco crítico</p>
+                        <p className="mt-1 text-xl font-black text-amber-200">{formatCurrency(metrics.perdidasValor)}</p>
+                        <p className="text-[10px] text-amber-200/70">+90 dias</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-500/20 bg-slate-800/60 px-4 py-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Clientes restritos</p>
+                        <p className="mt-1 text-xl font-black text-white">{metrics.clientesSpc}</p>
+                        <p className="text-[10px] text-slate-400">SCPC</p>
+                    </div>
+                </div>
+            )}
 
             {/* BARRA DE FILTROS */}
             <div className="bg-slate-900 border-b border-white/10 px-6 py-4 flex flex-wrap items-end gap-4 shrink-0">
@@ -199,6 +239,35 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
                         value={filtros.dataFinal}
                         onChange={e => setFiltros({ ...filtros, dataFinal: e.target.value })}
                     />
+                </div>
+
+                <div className="flex flex-col gap-1.5 w-[150px]">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pagamento Inicial</label>
+                    <input type="date" className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all color-scheme-dark" value={filtros.dataPagamentoInicial || ''} onChange={e => setFiltros({ ...filtros, dataPagamentoInicial: e.target.value })} />
+                </div>
+
+                <div className="flex flex-col gap-1.5 w-[150px]">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pagamento Final</label>
+                    <input type="date" className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all color-scheme-dark" value={filtros.dataPagamentoFinal || ''} onChange={e => setFiltros({ ...filtros, dataPagamentoFinal: e.target.value })} />
+                </div>
+
+                <div className="flex flex-col gap-1.5 w-[155px]">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ordenar por</label>
+                    <select className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all" value={filtros.ordenarPor || 'vencimento'} onChange={e => setFiltros({ ...filtros, ordenarPor: e.target.value as ParcelaFiltro['ordenarPor'] })}>
+                        <option value="cliente">Cliente</option>
+                        <option value="vencimento">Vencimento</option>
+                        <option value="pagamento">Pagamento</option>
+                        <option value="valor">Valor</option>
+                        <option value="venda">Venda</option>
+                    </select>
+                </div>
+
+                <div className="flex flex-col gap-1.5 w-[125px]">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ordem</label>
+                    <select className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all" value={filtros.direcao || 'asc'} onChange={e => setFiltros({ ...filtros, direcao: e.target.value as ParcelaFiltro['direcao'] })}>
+                        <option value="asc">Crescente</option>
+                        <option value="desc">Decrescente</option>
+                    </select>
                 </div>
 
                 <button
@@ -327,7 +396,7 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
                                                                                     {formatDate(p.data_vencimento)}
                                                                                 </td>
                                                                                 <td className="px-4 py-2 text-xs text-slate-300 font-medium">
-                                                                                    {p.data_pagamento ? formatDate(p.data_pagamento) : '-'}
+                                                                                    {(p.data_pagamento_relatorio || p.data_pagamento) ? formatDate(p.data_pagamento_relatorio || p.data_pagamento || '') : '-'}
                                                                                 </td>
                                                                                 <td className="px-4 py-2 text-xs font-bold text-white text-right">
                                                                                     {formatCurrency(p.valor_parcela)}
@@ -409,10 +478,10 @@ export default function ParcelasInterface({ storeId }: { storeId: number }) {
                                                     {formatDate(p.data_vencimento)}
                                                 </td>
                                                 <td className="px-4 py-3 text-sm text-slate-300 font-medium">
-                                                    {p.data_pagamento ? formatDate(p.data_pagamento) : '-'}
+                                                    {(p.data_pagamento_relatorio || p.data_pagamento) ? formatDate(p.data_pagamento_relatorio || p.data_pagamento || '') : '-'}
                                                 </td>
                                                 <td className="px-4 py-3 text-sm font-bold text-white">
-                                                    {formatCurrency(p.valor_parcela)}
+                                                    {formatCurrency(reportMode && Number(p.valor_pago_relatorio || 0) > 0 ? Number(p.valor_pago_relatorio) : p.valor_parcela)}
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     {isPago ? (

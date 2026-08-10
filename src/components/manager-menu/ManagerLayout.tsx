@@ -121,6 +121,10 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
                     router.replace(`/dashboard/loja/${storeId}`);
                     setManualState('home');
                 }}
+                onBackToOperatorHome={() => {
+                    setManualState('operator');
+                    router.replace(storeHomePath);
+                }}
                 hubLabel="Voltar ao Hub"
             >
                 {children}

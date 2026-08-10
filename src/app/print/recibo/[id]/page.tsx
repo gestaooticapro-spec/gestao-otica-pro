@@ -57,6 +57,47 @@ export default async function PrintReciboPage(
 
     const venda = vendaRaw as any
 
+    // Pagamentos de parcela chegam por este mesmo endpoint de recibo.
+    // Quando todos os pagamentos selecionados pertencem à mesma parcela,
+    // carregamos os dados da duplicata para o layout pré-impresso.
+    let parcelaInfo: {
+        numeroParcela: number
+        totalParcelas: number
+        dataVencimento: string
+    } | null = null
+
+    const parcelaIds = Array.from(new Set(
+        pagamentos.map((pagamento: any) => Number(pagamento.parcela_id)).filter(Number.isFinite)
+    ))
+
+    if (pagamentos.length > 0 && parcelaIds.length === 1 && pagamentos.every((pagamento: any) => Number(pagamento.parcela_id) === parcelaIds[0])) {
+        const { data: parcelaRaw } = await (supabase
+            .from('financiamento_parcelas') as any)
+            .select('numero_parcela, data_vencimento, financiamento_id')
+            .eq('id', parcelaIds[0])
+            .maybeSingle()
+
+        if (parcelaRaw?.financiamento_id) {
+            const { data: financiamentoRaw } = await (supabase
+                .from('financiamento_loja') as any)
+                .select('quantidade_parcelas')
+                .eq('id', parcelaRaw.financiamento_id)
+                .maybeSingle()
+            const { count: totalParcelasCount } = await (supabase
+                .from('financiamento_parcelas') as any)
+                .select('*', { count: 'exact', head: true })
+                .eq('financiamento_id', parcelaRaw.financiamento_id)
+
+            if (parcelaRaw.numero_parcela && parcelaRaw.data_vencimento) {
+                parcelaInfo = {
+                    numeroParcela: Number(parcelaRaw.numero_parcela),
+                    totalParcelas: Number(totalParcelasCount || financiamentoRaw?.quantidade_parcelas || 1),
+                    dataVencimento: parcelaRaw.data_vencimento,
+                }
+            }
+        }
+    }
+
     // 3. Busca a loja
     const { data: storeRaw } = await (supabase
         .from('stores') as any)
@@ -73,7 +114,8 @@ export default async function PrintReciboPage(
         cliente: venda.customers,
         itens: venda.venda_itens || [],
         store,
-        isReprint
+        isReprint,
+        parcelaInfo,
     }
 
     return (

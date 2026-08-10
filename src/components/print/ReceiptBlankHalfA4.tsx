@@ -13,12 +13,17 @@ export interface ReceiptDataBlank {
     itens: Item[]
     store: Store | null
     isReprint?: boolean
+    parcelaInfo?: {
+        numeroParcela: number
+        totalParcelas: number
+        dataVencimento: string
+    } | null
 }
 
 const formatMoney = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 function Via({ data, label, isRight }: { data: ReceiptDataBlank, label: string, isRight?: boolean }) {
-    const { pagamentos, cliente, itens, store, isReprint } = data
+    const { pagamentos, cliente, itens, store, isReprint, parcelaInfo } = data
     const valorTotalRecibo = pagamentos.reduce((acc, p) => acc + p.valor_pago, 0)
 
     const resumoItens = itens.map(i => `${i.quantidade}x ${i.descricao}`).join(', ')
@@ -44,6 +49,10 @@ function Via({ data, label, isRight }: { data: ReceiptDataBlank, label: string, 
 
     const formas = pagamentos.map(p => p.forma_pagamento)
     const formasUnicas = Array.from(new Set(formas)).join(', ')
+    const vencimento = parcelaInfo?.dataVencimento?.slice(0, 10).split('-')
+    const vencimentoTexto = vencimento?.length === 3
+        ? `${vencimento[2]}/${vencimento[1]}/${vencimento[0]}`
+        : ''
 
     return (
         <div style={containerStyle}>
@@ -107,6 +116,9 @@ function Via({ data, label, isRight }: { data: ReceiptDataBlank, label: string, 
                     <div><strong>Cliente:</strong> {cliente?.full_name?.toUpperCase()}</div>
                     {cliente?.cpf && <div><strong>CPF:</strong> {cliente.cpf}</div>}
                     <div><strong>Referente a:</strong> Venda #{pagamentos[0].venda_id}</div>
+                    {parcelaInfo && (
+                        <div><strong>Duplicata:</strong> {parcelaInfo.numeroParcela}/{parcelaInfo.totalParcelas} — Vencimento: {vencimentoTexto}</div>
+                    )}
                 </div>
 
                 {/* DETALHES DOS ITENS */}

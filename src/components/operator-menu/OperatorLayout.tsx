@@ -21,6 +21,7 @@ interface OperatorLayoutProps {
     preSaleAnalysisEnabled?: boolean;
     deliveryDateEnabled?: boolean;
     onBackToHub?: () => void;
+    onBackToOperatorHome?: () => void;
     hubLabel?: string;
 }
 
@@ -32,6 +33,7 @@ export default function OperatorLayout({
     preSaleAnalysisEnabled = false,
     deliveryDateEnabled = true,
     onBackToHub,
+    onBackToOperatorHome,
     hubLabel = 'Voltar'
 }: OperatorLayoutProps) {
     const router = useRouter();
@@ -101,6 +103,10 @@ export default function OperatorLayout({
 
     const handleBack = () => {
         setHomeSelection(null);
+        if (onBackToOperatorHome) {
+            onBackToOperatorHome();
+            return;
+        }
         router.push(storeHomePath);
     };
 
