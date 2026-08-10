@@ -65,6 +65,9 @@ CollectionAPIPixSicredi.json
 # Data Snapshots (CSV files in root and elsewhere)
 *.csv
 
+# Sicredi local credentials and certificates
+/.sicredicharles/
+
 # SQL & Backups (Keep migrations, ignore others)
 *.sql
 /backup.sql
