@@ -24,6 +24,7 @@ assert.equal(message, 'Ola Maria! Como esta a adaptacao com os oculos de Joao Si
 
 assert.equal(extractPostSaleRating('5'), 5)
 assert.equal(extractPostSaleRating('nota 4'), 4)
+assert.equal(extractPostSaleRating('nota 05'), null)
 assert.equal(extractPostSaleRating('dou nota 2 pra adaptacao'), 2)
 assert.equal(extractPostSaleRating('faz 2 dias, nota 5'), 5)
 assert.equal(extractPostSaleRating('5!'), 5)

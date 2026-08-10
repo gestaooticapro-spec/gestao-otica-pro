@@ -62,7 +62,7 @@ export type WhatsAppIntent = (typeof WHATSAPP_INTENTS)[number]
 export type WhatsAppReasoningTag = (typeof WHATSAPP_REASONING_TAGS)[number]
 export type WhatsAppReplyTone = (typeof WHATSAPP_TONES)[number]
 export type WhatsAppAiProvider = 'gemini' | 'openai'
-export type WhatsAppAiTask = 'intent_classification' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction'
+export type WhatsAppAiTask = 'intent_classification' | 'post_sale_rating_resolution' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction'
 
 export type WhatsAppAiTokenUsage = {
   inputTokens: number | null
@@ -87,6 +87,26 @@ export const WhatsAppIntentClassificationSchema = z.object({
 })
 
 export type WhatsAppIntentClassification = z.infer<typeof WhatsAppIntentClassificationSchema>
+
+export const WhatsAppPostSaleRatingResolutionSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('record_rating'),
+    rating: z.number().int().min(1).max(5),
+    reply_text: z.string().trim().min(1).max(500),
+  }),
+  z.object({
+    action: z.literal('ask_rating'),
+    rating: z.null(),
+    reply_text: z.string().trim().min(1).max(500),
+  }),
+  z.object({
+    action: z.literal('handoff'),
+    rating: z.null(),
+    reply_text: z.string().trim().min(1).max(500),
+  }),
+])
+
+export type WhatsAppPostSaleRatingResolution = z.infer<typeof WhatsAppPostSaleRatingResolutionSchema>
 
 export const WhatsAppReplyHumanizationSchema = z.object({
   reply_text: z.string().trim().min(1).max(2000),
@@ -113,6 +133,12 @@ export type WhatsAppIntentClassificationInput = {
   hasRecentAttachment?: boolean
   hasOpenOrder?: boolean
   handoffActive?: boolean
+}
+
+export type WhatsAppPostSaleRatingResolutionInput = {
+  messageText: string
+  conversationHistory?: string[]
+  storeName?: string | null
 }
 
 export type WhatsAppReplyHumanizationInput = {
@@ -293,6 +319,40 @@ function buildIntentPrompt(input: WhatsAppIntentClassificationInput) {
     }, null, 2),
     '',
     'MENSAGEM DO CLIENTE:',
+    input.messageText,
+  ].join('\n')
+}
+
+function buildPostSaleRatingResolutionPrompt(input: WhatsAppPostSaleRatingResolutionInput) {
+  const conversationHistory = (input.conversationHistory || [])
+    .map((line) => normalizeWhitespace(line))
+    .filter(Boolean)
+    .slice(-8)
+
+  return [
+    'Voce decide como tratar a resposta de um cliente a um pedido de nota de pos-venda de uma otica.',
+    'Responda SOMENTE em JSON valido, sem markdown ou explicacoes extras.',
+    'Use o historico para entender se a mensagem atual responde ao pedido de nota.',
+    'Escolha record_rating somente quando a mensagem expressar claramente uma nota de 1 a 5. Aceite formatos naturais como "nota 05", "cinco", "5 estrelas" e "5/5".',
+    'Escolha ask_rating quando o cliente parecer satisfeito, mas nao houver uma nota inequivoca. A resposta deve pedir uma nota de 1 a 5 de forma cordial.',
+    'Escolha handoff se houver reclamacao, pedido de atendimento humano, assunto diferente, ou ambiguidade que nao possa ser resolvida com seguranca. A resposta deve informar que a equipe continuara o atendimento.',
+    'Nao invente fatos, prazos, descontos ou informacoes da loja. A resposta deve ser curta e em portugues do Brasil.',
+    '',
+    'SCHEMAS PERMITIDOS:',
+    JSON.stringify([
+      { action: 'record_rating', rating: 5, reply_text: 'Muito obrigado pela nota 5! Vou registrar seu retorno aqui.' },
+      { action: 'ask_rating', rating: null, reply_text: 'Que bom saber disso! Para registrar sua avaliacao, qual nota de 1 a 5 voce nos daria?' },
+      { action: 'handoff', rating: null, reply_text: 'Vou encaminhar sua mensagem para nossa equipe continuar o atendimento por aqui.' },
+    ], null, 2),
+    '',
+    'CONTEXTO:',
+    JSON.stringify({
+      storeName: input.storeName || null,
+      flow: 'pos_venda_aguardando_nota',
+      conversationHistory,
+    }, null, 2),
+    '',
+    'MENSAGEM ATUAL DO CLIENTE:',
     input.messageText,
   ].join('\n')
 }
@@ -591,6 +651,16 @@ export async function classifyWhatsAppIntent(
     'intent_classification',
     buildIntentPrompt(input),
     WhatsAppIntentClassificationSchema
+  )
+}
+
+export async function resolveWhatsAppPostSaleRating(
+  input: WhatsAppPostSaleRatingResolutionInput
+): Promise<WhatsAppAiResult<WhatsAppPostSaleRatingResolution>> {
+  return executeStructuredTask(
+    'post_sale_rating_resolution',
+    buildPostSaleRatingResolutionPrompt(input),
+    WhatsAppPostSaleRatingResolutionSchema
   )
 }
 
