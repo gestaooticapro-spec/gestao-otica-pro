@@ -17,6 +17,7 @@ import {
   verifyEmployeeAuthorization,
   type EmployeeAuthorizationPurpose,
 } from '@/lib/server/employee-authorization'
+import { getReceiptReversalMetadata } from '@/lib/installment-reversal.server'
 
 // ================================================================
 // --- TIPOS GLOBAIS ---
@@ -87,7 +88,7 @@ export type VendaPageData = {
   vendaItens: VendaItem[]
   serviceOrders: ServiceOrderWithLinks[]
   pagamentos: Pagamento[]
-  financiamento: (Financiamento & { financiamento_parcelas: FinanciamentoParcela[] }) | null
+  financiamento: (Financiamento & { financiamento_parcelas: Array<FinanciamentoParcela & { reversible_receipt_operation?: any }> }) | null
   storeSettings: StoreSettings
   dependentes: Dependente[]
   oftalmologistas: Oftalmologista[]
@@ -1259,6 +1260,18 @@ export async function getVendaPageData(
           ...financiamentoData,
           financiamento_parcelas: parcelasDiretas
         }
+      }
+    }
+
+    if (financiamentoData?.id && Array.isArray(financiamentoData.financiamento_parcelas)) {
+      const reversalMetadata = await getReceiptReversalMetadata(supabaseAdmin, [financiamentoData.id])
+
+      financiamentoData = {
+        ...financiamentoData,
+        financiamento_parcelas: financiamentoData.financiamento_parcelas.map((parcela: any) => ({
+          ...parcela,
+          reversible_receipt_operation: reversalMetadata.get(Number(parcela.id)) || null,
+        })),
       }
     }
 
@@ -3157,6 +3170,7 @@ async function sincronizarSaldoVendaHistorica(financiamentoId: number) {
 
 export async function receberParcela(prevState: any, formData: FormData) {
   const supabaseAdmin = createAdminClient()
+  let receiptOperationId: number | null = null
   const { data: { user } } = await createClient().auth.getUser()
 
   if (!user) return { success: false, message: 'Usuário não autenticado.' }
@@ -3217,6 +3231,49 @@ export async function receberParcela(prevState: any, formData: FormData) {
 
     if (!parcelaRaw) throw new Error('Parcela não encontrada.')
     const parcelaAtual = parcelaRaw as any;
+
+    const [{ data: installmentsBefore, error: installmentsBeforeError }, { data: saleBefore, error: saleBeforeError }] = await Promise.all([
+      (supabaseAdmin.from('financiamento_parcelas') as any)
+        .select('id, tenant_id, store_id, financiamento_id, numero_parcela, data_vencimento, valor_parcela, valor_pago, data_pagamento, status, customer_id, obs')
+        .eq('financiamento_id', parcelaAtual.financiamento_id)
+        .order('id'),
+      (supabaseAdmin.from('vendas') as any)
+        .select('id, valor_restante, status, financiamento_id')
+        .eq('id', venda_id)
+        .eq('store_id', store_id)
+        .single(),
+    ])
+
+    if (installmentsBeforeError || saleBeforeError || !saleBefore) {
+      throw new Error('Nao foi possivel preparar o historico seguro deste recebimento.')
+    }
+
+    const { data: receiptOperation, error: receiptOperationError } = await (supabaseAdmin
+      .from('installment_receipt_operations') as any)
+      .insert({
+        tenant_id: (profile as any).tenant_id,
+        store_id,
+        financiamento_id: parcelaAtual.financiamento_id,
+        venda_id,
+        customer_id: parcelaAtual.customer_id,
+        origin_installment_id: parcela_id,
+        received_amount: valor_pago_total,
+        interest_amount: valor_juros,
+        payment_method: recebimentos.map((item) => item.forma_pagamento).join(' + '),
+        strategy: estrategia,
+        received_on: data_pagamento,
+        received_by_employee_id: employee_id,
+        created_by_user_id: user.id,
+        installments_before: installmentsBefore || [],
+        sale_before: saleBefore,
+      })
+      .select('id')
+      .single()
+
+    if (receiptOperationError || !receiptOperation) {
+      throw new Error(`Nao foi possivel iniciar o registro auditavel: ${receiptOperationError?.message || 'erro desconhecido'}`)
+    }
+    receiptOperationId = Number(receiptOperation.id)
 
     // Em pagamentos maiores que uma parcela, cada parcela quitada precisa ter seu
     // próprio registro de pagamento. Assim o caixa preserva a forma correta e não
@@ -3286,9 +3343,10 @@ export async function receberParcela(prevState: any, formData: FormData) {
       data_pagamento: data_pagamento,
       created_at: new Date(`${data_pagamento}T12:00:00Z`).toISOString(),
       parcelas: 1,
+      receipt_operation_id: receiptOperationId,
       obs: `Ref. Venda #${venda_id} - Parc. ${pagamento.numero_parcela} - Cliente: ${parcelaAtual.customers?.full_name}`
       })))
-      .select('id')
+      .select('*')
 
     if (errorPagto) throw new Error(`Erro ao registrar pagamento: ${errorPagto.message}`)
 
@@ -3398,7 +3456,49 @@ export async function receberParcela(prevState: any, formData: FormData) {
     await quitarParcelasZeradasPendentes(parcelaAtual.financiamento_id, data_pagamento)
     await sincronizarSaldoVendaHistorica(parcelaAtual.financiamento_id)
 
+    const [{ data: installmentsAfter, error: installmentsAfterError }, { data: saleAfter, error: saleAfterError }] = await Promise.all([
+      (supabaseAdmin.from('financiamento_parcelas') as any)
+        .select('id, tenant_id, store_id, financiamento_id, numero_parcela, data_vencimento, valor_parcela, valor_pago, data_pagamento, status, customer_id, obs')
+        .eq('financiamento_id', parcelaAtual.financiamento_id)
+        .order('id'),
+      (supabaseAdmin.from('vendas') as any)
+        .select('id, valor_restante, status, financiamento_id')
+        .eq('id', venda_id)
+        .eq('store_id', store_id)
+        .single(),
+    ])
+
+    if (installmentsAfterError || saleAfterError || !saleAfter) {
+      throw new Error('Recebimento concluido, mas houve falha ao finalizar seu historico auditavel.')
+    }
+
+    const installmentsBeforeById = new Map(
+      (installmentsBefore || []).map((installment: any) => [Number(installment.id), JSON.stringify(installment)])
+    )
+    const affectedInstallmentCount = Math.max(1, (installmentsAfter || []).filter((installment: any) => (
+      installmentsBeforeById.get(Number(installment.id)) !== JSON.stringify(installment)
+    )).length)
+
+    const { error: completeOperationError } = await (supabaseAdmin
+      .from('installment_receipt_operations') as any)
+      .update({
+        installments_after: installmentsAfter || [],
+        sale_after: saleAfter,
+        payments_created: pagamentosCriados || [],
+        affected_installment_count: affectedInstallmentCount,
+        state: 'completed',
+        completed_at: new Date().toISOString(),
+      })
+      .eq('id', receiptOperationId)
+
+    if (completeOperationError) {
+      throw new Error(`Recebimento concluido, mas houve falha ao finalizar a auditoria: ${completeOperationError.message}`)
+    }
+
     revalidatePath(`/dashboard/loja/${store_id}/vendas/${venda_id}`)
+    revalidatePath(`/dashboard/loja/${store_id}/vendas/${venda_id}/experimental`)
+    revalidatePath(`/dashboard/loja/${store_id}/financeiro/parcelas`)
+    revalidatePath(`/dashboard/loja/${store_id}/reports/parcelamento`)
     revalidatePath(`/dashboard/loja/${store_id}`)
 
     return {
@@ -3409,6 +3509,12 @@ export async function receberParcela(prevState: any, formData: FormData) {
     }
 
   } catch (e: any) {
+    if (receiptOperationId) {
+      await (supabaseAdmin.from('installment_receipt_operations') as any)
+        .update({ state: 'failed', failure_message: String(e?.message || e).slice(0, 1000) })
+        .eq('id', receiptOperationId)
+        .eq('state', 'pending')
+    }
     return { success: false, message: `Erro: ${e.message}` }
   }
 }
@@ -3705,7 +3811,9 @@ export async function autenticarFuncionarioPorPin(
   const requestedPurpose = String(formData.get('authorization_purpose') || '')
   const authorizationContext = String(formData.get('authorization_context') || '')
   const authorizationPurpose: EmployeeAuthorizationPurpose | null =
-    requestedPurpose === 'evaluation_unlink' ? 'evaluation_unlink' : null
+    requestedPurpose === 'evaluation_unlink' || requestedPurpose === 'installment_receipt_reversal'
+      ? requestedPurpose
+      : null
 
   // Usamos AdminClient para ler o PIN (que é um dado sensível/interno)
   const supabaseAdmin = createAdminClient()
@@ -3739,7 +3847,14 @@ export async function autenticarFuncionarioPorPin(
       return { success: false, message: 'Usuario sem acesso a esta loja.' }
     }
 
-    if (authorizationPurpose && !/^\d+:\d+$/.test(authorizationContext)) {
+    const hasValidAuthorizationContext =
+      authorizationPurpose === 'evaluation_unlink'
+        ? /^\d+:\d+$/.test(authorizationContext)
+        : authorizationPurpose === 'installment_receipt_reversal'
+          ? /^(?:\d+|legacy:\d+)$/.test(authorizationContext)
+          : true
+
+    if (!hasValidAuthorizationContext) {
       return { success: false, message: 'Contexto de autorizacao invalido.' }
     }
 
@@ -3753,6 +3868,9 @@ export async function autenticarFuncionarioPorPin(
 
     if (employee) {
       const emp: any = employee
+      if (authorizationPurpose === 'installment_receipt_reversal' && emp.role !== 'gerente') {
+        return { success: false, message: 'Esta acao exige o PIN de um gerente ativo.' }
+      }
       const authorizationToken = authorizationPurpose
         ? issueEmployeeAuthorization({
             userId: user.id,

@@ -15,9 +15,10 @@ import {
 } from '@/lib/actions/vendas.actions'
 import { sendInstallmentReceiptWhatsApp } from '@/lib/actions/manual-whatsapp.actions'
 import ParcelaSearchModal from '@/components/modals/ParcelaSearchModal'
+import ReverseInstallmentReceiptModal, { type ReversibleReceiptOperation } from '@/components/financeiro/ReverseInstallmentReceiptModal'
 
 import { Database } from '@/lib/database.types'
-import { Calendar, ClipboardList, AlertTriangle, CheckCircle2, Wallet, DollarSign, X, RefreshCw, Trash2, Calculator, Loader2, MessageCircle, Printer } from 'lucide-react'
+import { Calendar, ClipboardList, AlertTriangle, CheckCircle2, Wallet, DollarSign, X, RefreshCw, Trash2, Calculator, Loader2, MessageCircle, Printer, RotateCcw } from 'lucide-react'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import UpdateCpfModal from '@/components/modals/UpdateCpfModal'
 import CollapsibleBox from './CollapsibleBox'
@@ -25,7 +26,9 @@ import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 import { toast } from 'sonner'
 
 type Financiamento = Database['public']['Tables']['financiamento_loja']['Row']
-type FinanciamentoParcela = Database['public']['Tables']['financiamento_parcelas']['Row']
+type FinanciamentoParcela = Database['public']['Tables']['financiamento_parcelas']['Row'] & {
+    reversible_receipt_operation?: ReversibleReceiptOperation | null
+}
 type Employee = Database['public']['Tables']['employees']['Row']
 type Customer = Database['public']['Tables']['customers']['Row']
 type ParcelaGridItem = Pick<FinanciamentoParcela, 'numero_parcela' | 'data_vencimento' | 'valor_parcela'>
@@ -210,6 +213,10 @@ export default function FinanciamentoBox({
     const [isResetting, startResetTransition] = useState(false)
     const [sendingReceiptInstallmentId, setSendingReceiptInstallmentId] = useState<number | null>(null)
     const [sentReceiptInstallmentIds, setSentReceiptInstallmentIds] = useState<number[]>([])
+    const [receiptToReverse, setReceiptToReverse] = useState<{
+        installmentNumber: number
+        operation: ReversibleReceiptOperation
+    } | null>(null)
 
     const [isDeletedLocally, setIsDeletedLocally] = useState(false)
 
@@ -475,6 +482,19 @@ export default function FinanciamentoBox({
                                                             <MessageCircle className="h-3 w-3" />
                                                         )}
                                                         {sentReceiptInstallmentIds.includes(p.id) ? 'ENVIADO' : 'RECIBO'}
+                                                    </button>
+                                                ) : null}
+                                                {p.reversible_receipt_operation ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setReceiptToReverse({
+                                                            installmentNumber: p.numero_parcela,
+                                                            operation: p.reversible_receipt_operation as ReversibleReceiptOperation,
+                                                        })}
+                                                        className="inline-flex items-center gap-1 rounded-lg border border-rose-500/20 bg-rose-500/10 px-2 py-1 text-[10px] font-bold text-rose-300 transition-all hover:bg-rose-500/20"
+                                                        title="Reverter esta operacao de recebimento"
+                                                    >
+                                                        <RotateCcw className="h-3 w-3" /> REVERTER
                                                     </button>
                                                 ) : null}
                                             </div>
@@ -780,6 +800,16 @@ export default function FinanciamentoBox({
 
 
             {selectedParcela && <RecebimentoModal parcela={selectedParcela} storeId={storeId} onClose={() => setSelectedParcela(null)} onConfirm={handleConfirmRecebimento} />}
+
+            {receiptToReverse && (
+                <ReverseInstallmentReceiptModal
+                    storeId={storeId}
+                    installmentNumber={receiptToReverse.installmentNumber}
+                    operation={receiptToReverse.operation}
+                    onClose={() => setReceiptToReverse(null)}
+                    onReversed={onFinanceAdded}
+                />
+            )}
 
             <ParcelaSearchModal
                 isOpen={isParcelaSearchModalOpen}

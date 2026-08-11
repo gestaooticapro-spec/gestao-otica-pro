@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Search, CalendarRange, Filter, AlertCircle, Loader2, ArrowLeft, ArrowRight, MessageCircle, CheckCircle2 } from 'lucide-react'
+import { Search, CalendarRange, Filter, AlertCircle, Loader2, ArrowLeft, ArrowRight, MessageCircle, CheckCircle2, RotateCcw } from 'lucide-react'
 import Link from 'next/link'
 import { getParcelasFiltradas, ParcelaFiltro } from '@/lib/actions/parcelas.actions'
 import { getParcelamentoMetrics } from '@/lib/actions/reports.actions'
 import { sendInstallmentReceiptWhatsApp } from '@/lib/actions/manual-whatsapp.actions'
 import { toast } from 'sonner'
 import ContratosQuitadosModal from './ContratosQuitadosModal'
+import ReverseInstallmentReceiptModal, { type ReversibleReceiptOperation } from './ReverseInstallmentReceiptModal'
 
 type ParcelaData = {
     id: number
@@ -21,6 +22,7 @@ type ParcelaData = {
     customer_id: number
     financiamento_loja?: { venda_id: number, vendas?: { is_historical_import?: boolean } | null }
     customers?: { full_name: string, cpf: string }
+    reversible_receipt_operation?: ReversibleReceiptOperation | null
 }
 
 type ParcelasPorVenda = Record<string, ParcelaData[]>
@@ -48,6 +50,10 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
     const [sendingReceiptInstallmentId, setSendingReceiptInstallmentId] = useState<number | null>(null)
     const [sentReceiptInstallmentIds, setSentReceiptInstallmentIds] = useState<number[]>([])
     const [showContratosQuitados, setShowContratosQuitados] = useState(false)
+    const [receiptToReverse, setReceiptToReverse] = useState<{
+        installmentNumber: number
+        operation: ReversibleReceiptOperation
+    } | null>(null)
     const [metrics, setMetrics] = useState<any>(null)
 
     useEffect(() => {
@@ -403,6 +409,7 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
                                                                                 </td>
                                                                                 <td className="px-4 py-2 text-right">
                                                                                     {isPago ? (
+                                                                                        <div className="flex justify-end gap-2">
                                                                                         <button
                                                                                             type="button"
                                                                                             onClick={() => handleSendReceipt(p.id)}
@@ -415,6 +422,18 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
                                                                                                 {isSendingReceipt ? 'Enviando' : receiptSent ? 'Reenviar' : 'Enviar'}
                                                                                             </span>
                                                                                         </button>
+                                                                                        {p.reversible_receipt_operation ? (
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => setReceiptToReverse({ installmentNumber: p.numero_parcela, operation: p.reversible_receipt_operation as ReversibleReceiptOperation })}
+                                                                                                className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/20 bg-rose-500/10 px-2.5 py-1.5 text-rose-300 transition-colors hover:bg-rose-500/20"
+                                                                                                title="Reverter esta operacao de recebimento"
+                                                                                            >
+                                                                                                <RotateCcw className="h-3.5 w-3.5" />
+                                                                                                <span className="text-[10px] font-bold uppercase tracking-wide">Reverter</span>
+                                                                                            </button>
+                                                                                        ) : null}
+                                                                                        </div>
                                                                                     ) : (
                                                                                         <span className="text-[10px] text-slate-600">-</span>
                                                                                     )}
@@ -502,6 +521,17 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
                                                     )}
                                                 </td>
                                                 <td className="px-4 py-3 text-right">
+                                                    <div className="flex items-center justify-end gap-2">
+                                                    {p.reversible_receipt_operation ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setReceiptToReverse({ installmentNumber: p.numero_parcela, operation: p.reversible_receipt_operation as ReversibleReceiptOperation })}
+                                                            className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-xs font-bold text-rose-300 transition-all hover:bg-rose-500/20"
+                                                            title="Reverter esta operacao de recebimento"
+                                                        >
+                                                            <RotateCcw className="h-3 w-3" /> Reverter
+                                                        </button>
+                                                    ) : null}
                                                     {p.financiamento_loja?.venda_id ? (
                                                         <Link 
                                                             href={isHistoricalImport ? `/dashboard/loja/${storeId}/vendas/${p.financiamento_loja?.venda_id}/historico-importado` : `/dashboard/loja/${storeId}/vendas/${p.financiamento_loja?.venda_id}/experimental`}
@@ -513,6 +543,7 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
                                                     ) : (
                                                         <span className="text-[10px] text-slate-500 italic">Avulsa</span>
                                                     )}
+                                                    </div>
                                                 </td>
                                             </tr>
                                         )
@@ -529,6 +560,15 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
                 .color-scheme-dark { color-scheme: dark; }
             `}} />
             {showContratosQuitados && <ContratosQuitadosModal storeId={storeId} onClose={() => setShowContratosQuitados(false)} />}
+            {receiptToReverse && (
+                <ReverseInstallmentReceiptModal
+                    storeId={storeId}
+                    installmentNumber={receiptToReverse.installmentNumber}
+                    operation={receiptToReverse.operation}
+                    onClose={() => setReceiptToReverse(null)}
+                    onReversed={handleSearch}
+                />
+            )}
         </div>
     )
 }
