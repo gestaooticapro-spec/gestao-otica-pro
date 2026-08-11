@@ -220,10 +220,6 @@ begin
   select * into v_store from public.stores where id = v_installment.store_id;
   if not found or v_store.tenant_id is null then raise exception 'Loja da parcela sem empresa vinculada.'; end if;
 
-  if v_sale.is_historical_import is true then
-    raise exception 'Vendas historicas importadas nao aceitam reversao legada.';
-  end if;
-
   select * into v_manager
   from public.employees
   where id = p_authorizing_employee_id
@@ -304,8 +300,10 @@ begin
 
   v_sale_snapshot := jsonb_build_object(
     'id', v_sale.id,
-    'valor_restante', v_sale.valor_restante,
-    'status', v_sale.status,
+    'valor_restante', case when v_sale.is_historical_import is true
+      then coalesce(v_sale.valor_restante, 0) + v_payment.valor_pago
+      else v_sale.valor_restante end,
+    'status', case when v_sale.is_historical_import is true then 'Fechada' else v_sale.status end,
     'financiamento_id', v_sale.financiamento_id
   );
 

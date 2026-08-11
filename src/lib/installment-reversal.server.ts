@@ -122,7 +122,6 @@ export async function getReceiptReversalMetadata(
 
     const isPaid = String(installment.status || '').toLocaleLowerCase('pt-BR') === 'pago'
       && Boolean(installment.data_pagamento)
-    const isHistoricalImport = installment.financiamento_loja?.vendas?.is_historical_import === true
     const exactAmount = Number(latestPayment.valor_pago || 0) > 0
       && sameMoney(latestPayment.valor_pago, installment.valor_parcela)
       && sameMoney(latestPayment.valor_pago, installment.valor_pago)
@@ -131,7 +130,7 @@ export async function getReceiptReversalMetadata(
       Number(payment.parcela_id) !== installmentId && receiptSignature(payment) === signature
     ))
 
-    if (!isPaid || isHistoricalImport || !exactAmount || hasSiblingWithSameSignature) continue
+    if (!isPaid || !exactAmount || hasSiblingWithSameSignature) continue
 
     result.set(installmentId, {
       kind: 'legacy_exact',
