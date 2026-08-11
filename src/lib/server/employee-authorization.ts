@@ -4,7 +4,7 @@ import { createHmac, timingSafeEqual } from 'crypto'
 
 const AUTHORIZATION_LIFETIME_SECONDS = 5 * 60
 
-export type EmployeeAuthorizationPurpose = 'evaluation_unlink'
+export type EmployeeAuthorizationPurpose = 'evaluation_unlink' | 'installment_receipt_reversal'
 
 type EmployeeAuthorizationPayload = {
   version: 1

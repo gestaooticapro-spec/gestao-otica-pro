@@ -1,7 +1,11 @@
 'use server'
 
-import { createAdminClient } from '../supabase/admin'
+import { createAdminClient, getProfileByAdmin } from '../supabase/admin'
+import { createClient } from '../supabase/server'
 import { isStoreModuleEnabledForStore } from '../store-modules.server'
+import { verifyEmployeeAuthorization } from '../server/employee-authorization'
+import { getReceiptReversalMetadata } from '../installment-reversal.server'
+import { revalidatePath } from 'next/cache'
 
 export type ParcelaFiltro = {
     status?: 'todas' | 'pendente' | 'pago' | 'atrasado';
@@ -62,11 +66,125 @@ async function adicionarTotaisPagamentos(supabaseAdmin: any, parcelas: any[]) {
         porParcela.set(parcelaId, atual)
     }
 
-    return parcelas.map((parcela) => ({
-        ...parcela,
-        valor_pago_relatorio: porParcela.get(Number(parcela.id))?.total || 0,
-        data_pagamento_relatorio: porParcela.get(Number(parcela.id))?.ultimaData || null,
-    }))
+    const financiamentoIds = Array.from(new Set(
+        parcelas.map((parcela) => Number(parcela.financiamento_id)).filter(Number.isFinite)
+    ))
+    const reversalMetadata = await getReceiptReversalMetadata(supabaseAdmin, financiamentoIds)
+
+    return parcelas.map((parcela) => {
+        return {
+            ...parcela,
+            valor_pago_relatorio: porParcela.get(Number(parcela.id))?.total || 0,
+            data_pagamento_relatorio: porParcela.get(Number(parcela.id))?.ultimaData || null,
+            reversible_receipt_operation: reversalMetadata.get(Number(parcela.id)) || null,
+        }
+    })
+}
+
+export type ReverseInstallmentReceiptInput = {
+    operationId?: number
+    legacyInstallmentId?: number
+    storeId: number
+    reason: string
+    authorizationToken: string
+}
+
+export async function reverseInstallmentReceipt(input: ReverseInstallmentReceiptInput) {
+    const operationId = Number(input.operationId)
+    const legacyInstallmentId = Number(input.legacyInstallmentId)
+    const storeId = Number(input.storeId)
+    const reason = String(input.reason || '').trim()
+    const hasTrackedOperation = Number.isSafeInteger(operationId) && operationId > 0
+    const hasLegacyInstallment = Number.isSafeInteger(legacyInstallmentId) && legacyInstallmentId > 0
+
+    if (hasTrackedOperation === hasLegacyInstallment || !Number.isSafeInteger(storeId) || storeId <= 0) {
+        return { success: false, message: 'Dados da reversao invalidos.' }
+    }
+    if (reason.length < 5) {
+        return { success: false, message: 'Informe um motivo com pelo menos 5 caracteres.' }
+    }
+
+    const { data: { user } } = await createClient().auth.getUser()
+    if (!user) return { success: false, message: 'Usuario nao autenticado.' }
+
+    const profile = await getProfileByAdmin(user.id) as any
+    if (!profile?.tenant_id) return { success: false, message: 'Perfil sem empresa vinculada.' }
+    if (profile.role !== 'admin' && Number(profile.store_id) !== storeId) {
+        return { success: false, message: 'Usuario sem acesso a esta loja.' }
+    }
+
+    const authorizationContext = hasTrackedOperation ? String(operationId) : `legacy:${legacyInstallmentId}`
+    const authorization = verifyEmployeeAuthorization(input.authorizationToken, {
+        userId: user.id,
+        tenantId: profile.tenant_id,
+        storeId,
+        purpose: 'installment_receipt_reversal',
+        context: authorizationContext,
+    })
+    if (!authorization) {
+        return { success: false, message: 'Autorizacao expirada ou invalida. Informe novamente o PIN do gerente.' }
+    }
+
+    const supabaseAdmin = createAdminClient()
+    if (hasLegacyInstallment) {
+        const { data: installment, error: installmentError } = await (supabaseAdmin
+            .from('financiamento_parcelas') as any)
+            .select('id, store_id, financiamento_loja ( venda_id )')
+            .eq('id', legacyInstallmentId)
+            .eq('store_id', storeId)
+            .maybeSingle()
+
+        if (installmentError || !installment) return { success: false, message: 'Parcela legada nao encontrada nesta loja.' }
+
+        const { error } = await (supabaseAdmin as any).rpc('reverse_legacy_exact_installment_receipt', {
+            p_installment_id: legacyInstallmentId,
+            p_authorizing_employee_id: authorization.employeeId,
+            p_user_id: user.id,
+            p_reason: reason,
+        })
+        if (error) return { success: false, message: error.message || 'A parcela nao atende mais aos criterios de reversao.' }
+
+        const vendaId = Number(installment.financiamento_loja?.venda_id)
+        if (Number.isFinite(vendaId)) {
+            revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}`)
+            revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`)
+        }
+        revalidatePath(`/dashboard/loja/${storeId}/financeiro/parcelas`)
+        revalidatePath(`/dashboard/loja/${storeId}/reports/parcelamento`)
+        revalidatePath(`/dashboard/loja/${storeId}`)
+
+        return { success: true, message: 'Quitacao legada revertida com sucesso.' }
+    }
+
+    const { data: operation, error: operationError } = await (supabaseAdmin
+        .from('installment_receipt_operations') as any)
+        .select('id, tenant_id, store_id, venda_id, state, reversed_at')
+        .eq('id', operationId)
+        .eq('store_id', storeId)
+        .eq('tenant_id', profile.tenant_id)
+        .maybeSingle()
+
+    if (operationError || !operation) return { success: false, message: 'Recebimento nao encontrado nesta loja.' }
+    if (operation.state !== 'completed' || operation.reversed_at) {
+        return { success: false, message: 'Este recebimento nao esta mais disponivel para reversao.' }
+    }
+
+    const { error } = await (supabaseAdmin as any).rpc('reverse_installment_receipt_operation', {
+        p_operation_id: operationId,
+        p_authorizing_employee_id: authorization.employeeId,
+        p_user_id: user.id,
+        p_reason: reason,
+    })
+
+    if (error) return { success: false, message: error.message || 'Nao foi possivel reverter o recebimento.' }
+
+    revalidatePath(`/dashboard/loja/${storeId}/vendas/${operation.venda_id}`)
+    revalidatePath(`/dashboard/loja/${storeId}/vendas/${operation.venda_id}/experimental`)
+    revalidatePath(`/dashboard/loja/${storeId}/financeiro/parcelas`)
+    revalidatePath(`/dashboard/loja/${storeId}/reports/parcelamento`)
+    revalidatePath(`/dashboard/loja/${storeId}`)
+
+    return { success: true, message: 'Quitacao revertida com sucesso.' }
 }
 
 export type ContratoQuitadoFiltro = {
