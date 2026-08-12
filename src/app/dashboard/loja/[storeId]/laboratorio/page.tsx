@@ -366,7 +366,7 @@ export default function LaboratorioPage() {
                     </div>
                 ) : (
                     <div className={`grid gap-6 ${selectedOS ? '2xl:grid-cols-[minmax(0,1fr)_420px]' : 'grid-cols-1'}`}>
-                        <div className="grid grid-cols-1 xl:grid-cols-4 gap-5 items-start">
+                        <div className="grid grid-cols-1 xl:grid-cols-4 gap-5 items-stretch">
                             {STAGE_ORDER.map((stage) => {
                                 const meta = STAGE_META[stage]
                                 const stageItems = itemsByStage[stage]
@@ -384,7 +384,7 @@ export default function LaboratorioPage() {
                                             event.preventDefault()
                                             handleDrop(stage)
                                         }}
-                                        className={`rounded-3xl border bg-black/20 backdrop-blur-xl shadow-2xl min-h-[420px] transition-all ${meta.border} ${isDropActive ? 'ring-2 ring-white/20 bg-white/5' : 'border-white/10'}`}
+                                        className={`h-full rounded-3xl border bg-black/20 backdrop-blur-xl shadow-2xl min-h-[420px] transition-all ${meta.border} ${isDropActive ? 'ring-2 ring-white/20 bg-white/5' : 'border-white/10'}`}
                                     >
                                         <div className={`p-4 border-b border-white/10 ${meta.color}`}>
                                             <div className="flex items-center justify-between gap-3">
