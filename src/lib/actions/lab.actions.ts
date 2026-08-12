@@ -102,7 +102,7 @@ export async function searchOSForLab(storeId: number, query: string): Promise<La
             armacao_com_cliente, os_enviada_ao_lab,
             customers!inner ( full_name, fone_movel, phone ),
             dependentes ( full_name ),
-            vendas ( status )
+            vendas!inner ( status )
         `)
         .eq('store_id', storeId)
         .ilike('customers.full_name', `%${cleanQuery}%`)
@@ -178,11 +178,13 @@ export async function getReadyOSForDelivery(storeId: number): Promise<LabOSResul
             lab_pedido_por_id,
             customers ( full_name, fone_movel, phone ),
             dependentes ( full_name ),
-            vendas ( status )
+            vendas!inner ( status )
         `)
         .eq('store_id', storeId)
         .not('dt_montado_em', 'is', null)
         .is('dt_entregue_em', null)
+        .is('lab_encerrada_em', null)
+        .not('vendas.status', 'in', '("Cancelada","Devolvida")')
         .order('dt_montado_em', { ascending: true })
 
     if (error) {
@@ -230,10 +232,12 @@ export async function getOpenLabOS(storeId: number): Promise<LabOSResult[]> {
             os_enviada_ao_lab,
             customers ( full_name, fone_movel, phone ),
             dependentes ( full_name ),
-            vendas ( status )
+            vendas!inner ( status )
         `)
         .eq('store_id', storeId)
         .is('dt_entregue_em', null)
+        .is('lab_encerrada_em', null)
+        .not('vendas.status', 'in', '("Cancelada","Devolvida")')
         .order('created_at', { ascending: true })
 
     if (error) {
