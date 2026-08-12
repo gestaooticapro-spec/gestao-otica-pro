@@ -16,6 +16,7 @@ import {
     PackageCheck,
     Save,
     Search,
+    Tag,
     Truck,
     User,
     Wrench
@@ -26,8 +27,10 @@ import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
 import {
     EmployeeSimple,
     LabOSResult,
+    NfcTagResult,
     advanceLabStage,
     getEmployees,
+    getNfcTagsForLab,
     getOpenLabOS,
     regressLabStage,
     updateLabTracking
@@ -142,16 +145,20 @@ export default function LaboratorioPage() {
     const [sendingWhatsAppKey, setSendingWhatsAppKey] = useState<string | null>(null)
     const [isPending, startTransition] = useTransition()
     const [gradeModalOpen, setGradeModalOpen] = useState(false)
+    const [tagsModalOpen, setTagsModalOpen] = useState(false)
+    const [nfcTags, setNfcTags] = useState<NfcTagResult[]>([])
 
     async function loadData() {
         setLoading(true)
-        const [labItems, employeeList] = await Promise.all([
+        const [labItems, employeeList, tagList] = await Promise.all([
             getOpenLabOS(storeId),
-            getEmployees(storeId)
+            getEmployees(storeId),
+            getNfcTagsForLab(storeId)
         ])
 
         setItems(labItems)
         setEmployees(employeeList)
+        setNfcTags(tagList)
         setSelectedOS((current) => {
             if (!current) return null
             return labItems.find((item) => item.id === current.id) || null
@@ -288,6 +295,57 @@ export default function LaboratorioPage() {
             onClose={() => setGradeModalOpen(false)}
             storeId={storeId}
         />
+        {tagsModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+                <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-cyan-500/20 bg-slate-950 shadow-2xl">
+                    <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+                        <div>
+                            <h2 className="flex items-center gap-2 text-lg font-bold text-cyan-100">
+                                <Tag className="h-5 w-5 text-cyan-300" />
+                                Tags NFC da loja
+                            </h2>
+                            <p className="mt-1 text-xs text-slate-500">Lista de tags cadastradas e seus vÃ­nculos atuais.</p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setTagsModalOpen(false)}
+                            className="rounded-xl border border-white/10 px-3 py-2 text-sm font-bold text-slate-400 hover:bg-white/10 hover:text-white"
+                        >
+                            Fechar
+                        </button>
+                    </div>
+
+                    <div className="max-h-[65vh] overflow-y-auto p-4">
+                        {nfcTags.length === 0 ? (
+                            <div className="rounded-2xl border border-dashed border-white/10 px-4 py-10 text-center text-sm text-slate-500">
+                                Nenhuma tag NFC cadastrada nesta loja.
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {nfcTags.map((tag) => {
+                                    const isOccupied = tag.current_service_order_id !== null
+                                    const isActive = tag.status === 'active'
+
+                                    return (
+                                        <div key={tag.id} className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                                            <div>
+                                                <p className="font-mono text-sm font-bold text-white">{tag.id}</p>
+                                                <p className="mt-1 text-xs text-slate-500">
+                                                    {isOccupied ? `OS ${tag.current_service_order_id}` : 'Sem OS vinculada'}
+                                                </p>
+                                            </div>
+                                            <span className={`w-fit rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wider ${isActive && isOccupied ? 'border-amber-500/30 bg-amber-500/10 text-amber-300' : isActive ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-rose-500/30 bg-rose-500/10 text-rose-300'}`}>
+                                                {!isActive ? 'Inativa' : isOccupied ? 'Ocupada' : 'Livre'}
+                                            </span>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        )}
         <div className="relative min-h-[calc(100vh-64px)] flex flex-col bg-slate-950 overflow-hidden">
             <div className={`absolute inset-0 z-0 transition-opacity duration-1000 pointer-events-none ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
                 <div className="absolute inset-0 bg-[url('/vendasos.jpg')] bg-cover bg-center opacity-30 fixed" />
@@ -325,6 +383,14 @@ export default function LaboratorioPage() {
                         >
                             <Grid3X3 className="h-4 w-4" />
                             Grade de Estoque
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setTagsModalOpen(true)}
+                            className="inline-flex items-center gap-2 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-2.5 text-sm font-bold text-cyan-300 shadow-[0_0_20px_rgba(34,211,238,0.06)] transition-colors hover:bg-cyan-500/20"
+                        >
+                            <Tag className="h-4 w-4" />
+                            Tags
                         </button>
                         <div className="bg-sky-500/10 border border-sky-500/20 text-sky-200 px-4 py-2 rounded-2xl font-bold flex items-center gap-3 shadow-[0_0_20px_rgba(56,189,248,0.08)]">
                             <span className="text-2xl">{items.length}</span>

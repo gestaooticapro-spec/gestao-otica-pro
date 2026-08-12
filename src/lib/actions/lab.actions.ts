@@ -32,6 +32,27 @@ export type EmployeeSimple = {
     name: string
 }
 
+export type NfcTagResult = {
+    id: string
+    current_service_order_id: number | null
+    status: 'active' | 'inactive' | 'lost'
+}
+
+export async function getNfcTagsForLab(storeId: number): Promise<NfcTagResult[]> {
+    const supabase = createAdminClient()
+    const { data, error } = await (supabase.from('nfc_trays') as any)
+        .select('id, current_service_order_id, status')
+        .eq('store_id', storeId)
+        .order('id', { ascending: true })
+
+    if (error) {
+        console.error('Erro ao buscar tags NFC do laboratÃ³rio:', error)
+        return []
+    }
+
+    return (data || []) as NfcTagResult[]
+}
+
 // 0. BUSCAR FUNCIONÁRIOS
 export async function getEmployees(storeId: number): Promise<EmployeeSimple[]> {
     const supabase = createAdminClient()
