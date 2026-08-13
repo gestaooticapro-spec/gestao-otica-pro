@@ -113,6 +113,8 @@ test('sync do dispositivo aceita todo o atendimento offline e a configuracao ins
   assert.match(sync, /function publicFailureCode/)
   assert.match(sync, /TOWER_SYNC_REQUIRED_FIELD_MISSING/)
   assert.match(sync, /TOWER_SYNC_SERVER_SCHEMA_OUTDATED/)
+  assert.match(sync, /genericDomainCode/)
+  assert.match(sync, /TOWER_SYNC_\[A-Z_\]\+/)
   assert.match(sync, /function isPermanentFailureCode/)
   assert.match(sync, /permanentFailure: isPermanentEventFailure\(error\.message\)/)
   assert.match(sync, /localEvaluationId: z\.string\(\)\.uuid\(\)\.nullable\(\)\.optional\(\)/)

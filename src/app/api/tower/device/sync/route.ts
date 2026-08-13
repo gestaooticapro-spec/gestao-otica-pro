@@ -166,6 +166,13 @@ function publicFailureCode(error: { code?: string | null, message?: string | nul
   const domainCode = SyncFailureCodes.find((code) => message.includes(code))
   if (domainCode) return domainCode
 
+  // Dependencias entre eventos (por exemplo, uma sessao que aguarda o
+  // mapeamento do cliente local) sao codigos de dominio validos, mas nao sao
+  // falhas permanentes. Preserve o codigo para a Torre diagnosticar e manter
+  // a nova tentativa, sem expor detalhes do PostgreSQL.
+  const genericDomainCode = message.match(/\b(TOWER_SYNC_[A-Z_]+)\b/)?.[1]
+  if (genericDomainCode) return genericDomainCode
+
   // Codigos PostgreSQL nao carregam valores de payload nem dados pessoais.
   // Eles tornam diagnosticavel uma incompatibilidade de schema sem vazar a
   // excecao, a query ou os dados do atendimento para a Torre.
