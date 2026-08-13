@@ -126,8 +126,8 @@ function formatMediaSendFailure(errorMessage: string) {
     return 'Nao foi possivel enviar a imagem porque o anexo foi recusado antes do envio.'
   }
 
-  if (normalized.includes('connection closed')) {
-    return 'O WhatsApp da loja perdeu a conexao durante o envio do arquivo. Aguarde a reconexao e tente novamente.'
+    if (normalized.includes('connection closed')) {
+    return 'Falha temporaria no canal de arquivos do WhatsApp da loja. Nao e um problema no numero do cliente. O caso foi registrado e sera corrigido na manutencao fora do horario comercial. Nenhum arquivo foi enviado.'
   }
 
   if (normalized.includes('evolution media send failed')) {
