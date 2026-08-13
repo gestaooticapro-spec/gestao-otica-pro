@@ -2014,6 +2014,10 @@ export interface Database {
           source_optical_evaluation_id: number | null
           armacao_com_cliente: boolean
           os_enviada_ao_lab: boolean
+          lab_encerrada_em: string | null
+          lab_encerrada_tipo: 'cancelamento' | 'abandono' | null
+          lab_encerrada_motivo: string | null
+          lab_encerrada_por_id: string | null
           // NOVA TABELA ASSISTÊNCIA PODE TER RELAÇÃO, MAS NÃO ALTEROU OS AQUI
         }
         Insert: {

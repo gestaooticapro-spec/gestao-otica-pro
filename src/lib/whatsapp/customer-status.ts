@@ -2893,6 +2893,27 @@ export async function resolveCustomerStatus(
       }))
     }
 
+    // Uma saudacao isolada nao e motivo para abandonar o pos-venda. Isso
+    // acontece quando o cliente envia algo como "Boa tarde" e completa a
+    // resposta alguns segundos depois. Mantemos o contexto para que a proxima
+    // mensagem ainda possa disparar a pergunta da nota.
+    if (postSaleContext.stage === 'awaiting_feedback' && looksLikeGenericGreeting(effectiveMessageText)) {
+      await setCurrentConversationState('ai_session', AI_SESSION_MS, mergeMetadata(baseMetadata, {
+        reason: 'post_sale_waiting_feedback_fragment',
+        postSaleContext: {
+          ...postSaleContext,
+          stage: 'awaiting_feedback',
+        } as unknown as Json,
+        ...buildDecisionMetadata({
+          intent: null,
+          confidence: null,
+          action: 'no_reply_waiting_post_sale_feedback',
+          outboundType: null,
+        }),
+      }))
+      return withAiDiagnostics(await ignoreInbound(inbound.id))
+    }
+
     const postSaleClassification = recoveredPostSaleClassification ?? await classifyWhatsAppIntent({
       messageText: effectiveMessageText || '',
       channelLabel: channel.instance_key,

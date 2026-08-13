@@ -5,6 +5,7 @@ import { cancelarComissao } from '@/lib/actions/commission.actions'
 import { atualizarRankingCliente } from '@/lib/actions/vendas.actions'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { closeOpenServiceOrdersForVenda } from '@/lib/actions/service-order-cancellation.actions'
 
 type DeclararAbandonoOptions = {
     devolveArmacao: boolean
@@ -27,7 +28,6 @@ type VendaResumo = {
 
 type ServiceOrderResumo = {
     id: number
-    obs_os: string | null
 }
 
 type VendaItemResumo = {
@@ -304,7 +304,7 @@ export async function declararVendaAbandonada(
 
         const { data: osRaw, error: osError } = await supabaseAdmin
             .from('service_orders')
-            .select('id, obs_os')
+            .select('id')
             .eq('venda_id', vendaId)
 
         if (osError) {
@@ -344,16 +344,14 @@ export async function declararVendaAbandonada(
         }
 
         const carimbo = new Date()
-        const notaOs = `[ABANDONO - ${carimbo.toLocaleDateString('pt-BR')}]: ${motivo}`
 
-        for (const os of osList) {
-            const observacaoAtualizada = os.obs_os ? `${os.obs_os}\n${notaOs}` : notaOs
-
-            await supabaseAdmin
-                .from('service_orders')
-                .update(asDbWrite({ obs_os: observacaoAtualizada }))
-                .eq('id', os.id)
-        }
+        await closeOpenServiceOrdersForVenda({
+            vendaId,
+            storeId,
+            kind: 'abandono',
+            reason: motivo,
+            userId: user.id,
+        })
 
         for (const item of itens) {
             if (!item.product_id) continue

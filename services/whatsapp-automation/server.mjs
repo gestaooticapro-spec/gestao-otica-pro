@@ -9,7 +9,10 @@ const config = {
   webhookSecret: requiredEnv('EVOLUTION_WEBHOOK_SECRET'),
 }
 
-const INBOUND_AGGREGATION_WINDOW_MS = Number(process.env.WHATSAPP_INBOUND_AGGREGATION_WINDOW_MS || 10000)
+// Clientes costumam separar a resposta em saudacao + conteudo (por exemplo,
+// "Boa tarde" e, alguns segundos depois, "Esta otima"). Vinte segundos
+// preservam uma conversa mais natural sem atrasar demais a resposta.
+const INBOUND_AGGREGATION_WINDOW_MS = Number(process.env.WHATSAPP_INBOUND_AGGREGATION_WINDOW_MS || 20000)
 const MAX_ADMIN_BODY_BYTES = 15 * 1024 * 1024
 const MAX_MEDIA_BYTES = 10 * 1024 * 1024
 const MAX_INBOUND_VISION_BYTES = 3 * 1024 * 1024

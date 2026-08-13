@@ -5,7 +5,7 @@ O webhook da VPS agrupa mensagens de texto recebidas do mesmo cliente antes de c
 ## Variavel
 
 - `WHATSAPP_INBOUND_AGGREGATION_WINDOW_MS`
-- Padrao atual: `10000`
+- Padrao atual: `20000`
 
 ## Regra
 

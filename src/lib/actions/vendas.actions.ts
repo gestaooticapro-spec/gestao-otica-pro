@@ -18,6 +18,7 @@ import {
   type EmployeeAuthorizationPurpose,
 } from '@/lib/server/employee-authorization'
 import { getReceiptReversalMetadata } from '@/lib/installment-reversal.server'
+import { closeOpenServiceOrdersForVenda } from '@/lib/actions/service-order-cancellation.actions'
 
 // ================================================================
 // --- TIPOS GLOBAIS ---
@@ -2206,6 +2207,14 @@ export async function updateVendaStatus(
     } else if (newStatus === 'Cancelada' && !isHistoricalImport) {
       await cancelarComissao(vendaId)
       await cancelReservations(vendaId)
+
+      await closeOpenServiceOrdersForVenda({
+        vendaId,
+        storeId,
+        kind: 'cancelamento',
+        reason: 'Venda cancelada pelo operador.',
+        userId: user?.id,
+      })
 
       // Estorna saídas de estoque
       if (user && profile) {
