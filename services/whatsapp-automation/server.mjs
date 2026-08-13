@@ -450,6 +450,33 @@ async function sendEvolutionMedia(instanceKey, phone, media) {
   return result
 }
 
+function isEvolutionConnectionClosed(error) {
+  const message = String(error?.message || error).toLowerCase()
+  return message.includes('connection closed')
+}
+
+async function restartEvolutionInstance(instanceKey) {
+  return evolutionRequest(`/instance/restart/${encodeURIComponent(instanceKey)}`, {
+    method: 'POST',
+  })
+}
+
+async function sendEvolutionMediaWithRecovery(instanceKey, phone, media) {
+  try {
+    return await sendEvolutionMedia(instanceKey, phone, media)
+  } catch (error) {
+    if (!isEvolutionConnectionClosed(error)) throw error
+
+    // O Baileys pode manter a instancia marcada como open mesmo quando o
+    // socket usado por refreshMediaConn morreu. Nesse caso o upload ainda nao
+    // comecou, portanto reiniciar a instancia e repetir uma vez e seguro.
+    console.warn(`[whatsapp-automation] Media socket closed for instance=${instanceKey}; restarting the instance before one retry.`)
+    await restartEvolutionInstance(instanceKey)
+    await wait(3000)
+    return sendEvolutionMedia(instanceKey, phone, media)
+  }
+}
+
 function normalizeAdminMedia(value) {
   if (!value || typeof value !== 'object') return null
 
@@ -594,7 +621,7 @@ async function handleAdminMessageSend(payload) {
   let result
   try {
     result = media
-      ? await sendEvolutionMedia(instanceKey, phone, media)
+      ? await sendEvolutionMediaWithRecovery(instanceKey, phone, media)
       : await sendEvolutionText(instanceKey, phone, text)
   } catch (error) {
     if (!isTimeoutError(error)) {
@@ -877,6 +904,14 @@ const server = createServer(async (request, response) => {
           instanceKey,
           connectionStatus: 'connecting',
           qrCodeBase64: extractQrCodeBase64(result),
+        })
+      }
+
+      if (request.method === 'POST' && url.pathname === '/admin/instances/restart') {
+        const result = await restartEvolutionInstance(instanceKey)
+        return jsonResponse(response, 200, {
+          instanceKey,
+          connectionStatus: extractConnectionState(result) || 'connecting',
         })
       }
 
