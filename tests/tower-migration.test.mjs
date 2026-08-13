@@ -30,6 +30,10 @@ const offlineFirstOperationalSql = await readFile(
   new URL('../supabase/migrations/20260727190000_tower_offline_first_operational_sync.sql', import.meta.url),
   'utf8',
 )
+const customerSyncCompatibilitySql = await readFile(
+  new URL('../supabase/migrations/20260813210000_fix_tower_customer_sync_without_updated_at.sql', import.meta.url),
+  'utf8',
+)
 const adminPinRecoverySql = await readFile(
   new URL('../supabase/migrations/20260727213000_tower_admin_pin_recovery.sql', import.meta.url),
   'utf8',
@@ -110,9 +114,17 @@ test('sync v4 persiste Campo Visual e avaliacao local com mapeamento idempotente
   assert.match(offlineFirstOperationalSql, /RETURN public\.apply_tower_device_sync_event_v3/)
   assert.match(offlineFirstOperationalSql, /requested_remote_customer_id/)
   assert.match(offlineFirstOperationalSql, /SET full_name = normalized_name/)
+  assert.doesNotMatch(offlineFirstOperationalSql, /fone_movel = normalized_phone,\s*updated_at = NOW\(\)/)
   assert.match(offlineFirstOperationalSql, /TOWER_SYNC_CUSTOMER_SCOPE_INVALID/)
   assert.match(offlineFirstOperationalSql, /UPDATE public\.tower_heatmap_sessions AS heatmap/)
   assert.match(offlineFirstOperationalSql, /GRANT EXECUTE ON FUNCTION public\.apply_tower_device_sync_event_v4[\s\S]*TO service_role/)
+})
+
+test('sync v4 nao exige updated_at na tabela legada de clientes', () => {
+  assert.match(customerSyncCompatibilitySql, /pg_get_functiondef/)
+  assert.match(customerSyncCompatibilitySql, /apply_tower_device_sync_event_v4/)
+  assert.match(customerSyncCompatibilitySql, /updated_at\\\\s\*=\\\\s\*now/)
+  assert.match(customerSyncCompatibilitySql, /REPLACE/)
 })
 
 test('recuperacao de PIN e temporaria, atomica e restrita ao service role', () => {

@@ -216,8 +216,7 @@ BEGIN
 
         UPDATE public.customers AS customer
         SET full_name = normalized_name,
-            fone_movel = normalized_phone,
-            updated_at = NOW()
+            fone_movel = normalized_phone
         WHERE customer.id = resolved_customer_id
           AND customer.tenant_id = resolved_tenant_id
           AND customer.store_id = resolved_store_id;

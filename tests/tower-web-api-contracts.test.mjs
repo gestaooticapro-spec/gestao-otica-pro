@@ -106,6 +106,7 @@ test('sync do dispositivo aceita todo o atendimento offline e a configuracao ins
   assert.match(sync, /eventType: z\.literal\('tower_heatmap\.upsert'\)/)
   assert.match(sync, /eventType: z\.literal\('tower_evaluation\.upsert'\)/)
   assert.match(sync, /remoteCustomerId: z\.number\(\)\.int\(\)\.positive\(\)\.nullable\(\)\.optional\(\)/)
+  assert.match(sync, /createdAt: z\.string\(\)\.datetime\(\{ offset: true \}\)/)
   assert.match(sync, /function isPermanentEventFailure/)
   assert.match(sync, /SyncBatchEnvelopeSchema/)
   assert.match(sync, /SyncEventSchema\.safeParse\(rawEvent\)/)
