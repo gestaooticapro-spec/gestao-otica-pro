@@ -13,6 +13,9 @@ const config = {
 // "Boa tarde" e, alguns segundos depois, "Esta otima"). Vinte segundos
 // preservam uma conversa mais natural sem atrasar demais a resposta.
 const INBOUND_AGGREGATION_WINDOW_MS = Number(process.env.WHATSAPP_INBOUND_AGGREGATION_WINDOW_MS || 20000)
+const APP_REQUEST_TIMEOUT_MS = Number(process.env.WHATSAPP_APP_REQUEST_TIMEOUT_MS || 45000)
+const PENDING_REPLY_RECOVERY_ATTEMPTS = 4
+const PENDING_REPLY_RECOVERY_DELAY_MS = 1500
 const MAX_ADMIN_BODY_BYTES = 15 * 1024 * 1024
 const MAX_MEDIA_BYTES = 10 * 1024 * 1024
 const MAX_INBOUND_VISION_BYTES = 3 * 1024 * 1024
@@ -354,7 +357,7 @@ function mapConnectionStatus(payload) {
   return 'unknown'
 }
 
-async function appRequest(path, payload) {
+async function appRequest(path, payload, timeoutMs = APP_REQUEST_TIMEOUT_MS) {
   const response = await fetch(`${config.appBaseUrl}${path}`, {
     method: 'POST',
     headers: {
@@ -362,7 +365,7 @@ async function appRequest(path, payload) {
       'content-type': 'application/json',
     },
     body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(timeoutMs),
   })
 
   const result = await response.json().catch(() => ({}))
@@ -370,6 +373,32 @@ async function appRequest(path, payload) {
     throw new Error(`App request failed (${response.status}): ${JSON.stringify(result)}`)
   }
   return result
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function recoverPendingReply(instanceKey, providerMessageId) {
+  for (let attempt = 1; attempt <= PENDING_REPLY_RECOVERY_ATTEMPTS; attempt += 1) {
+    await wait(PENDING_REPLY_RECOVERY_DELAY_MS)
+
+    try {
+      const recovered = await appRequest('/api/whatsapp/pending-reply', {
+        instanceKey,
+        providerMessageId,
+      }, 10000)
+
+      if (recovered.shouldReply) {
+        console.log(`[webhook] recovered pending reply instance=${instanceKey} provider_message_id=${providerMessageId} outbound=${recovered.outboundMessageId}`)
+        return recovered
+      }
+    } catch (error) {
+      console.error(`[webhook] pending reply recovery attempt=${attempt} failed:`, error)
+    }
+  }
+
+  return null
 }
 
 async function sendEvolutionText(instanceKey, phone, text) {
@@ -637,11 +666,20 @@ async function updateDelivery(outboundMessageId, status, details = {}) {
 }
 
 async function processInbound(instanceKey, inbound, payload) {
-  const status = await appRequest('/api/whatsapp/customer-status', {
-    instanceKey,
-    ...inbound,
-    payload: prepareInboundPayloadForApp(payload, inbound.attachmentKind),
-  })
+  let status
+  try {
+    status = await appRequest('/api/whatsapp/customer-status', {
+      instanceKey,
+      ...inbound,
+      payload: prepareInboundPayloadForApp(payload, inbound.attachmentKind),
+    })
+  } catch (error) {
+    if (!isTimeoutError(error)) throw error
+
+    console.error(`[webhook] app request timed out instance=${instanceKey} provider_message_id=${inbound.providerMessageId}; checking for the outbound created by the request.`)
+    status = await recoverPendingReply(instanceKey, inbound.providerMessageId)
+    if (!status) throw error
+  }
   logAiDiagnostics(status)
 
   if (!status.shouldReply) {
