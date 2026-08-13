@@ -161,8 +161,34 @@ function isPermanentEventFailure(message: string) {
   return SyncFailureCodes.some((code) => message.includes(code))
 }
 
-function publicFailureCode(message: string) {
-  return SyncFailureCodes.find((code) => message.includes(code)) || 'TOWER_SYNC_APPLY_FAILED'
+function publicFailureCode(error: { code?: string | null, message?: string | null }) {
+  const message = String(error.message || '')
+  const domainCode = SyncFailureCodes.find((code) => message.includes(code))
+  if (domainCode) return domainCode
+
+  // Codigos PostgreSQL nao carregam valores de payload nem dados pessoais.
+  // Eles tornam diagnosticavel uma incompatibilidade de schema sem vazar a
+  // excecao, a query ou os dados do atendimento para a Torre.
+  const databaseCodes: Record<string, string> = {
+    '22003': 'TOWER_SYNC_DATA_RANGE_INVALID',
+    '22007': 'TOWER_SYNC_DATA_FORMAT_INVALID',
+    '22P02': 'TOWER_SYNC_DATA_FORMAT_INVALID',
+    '23502': 'TOWER_SYNC_REQUIRED_FIELD_MISSING',
+    '23503': 'TOWER_SYNC_REFERENCE_INVALID',
+    '23505': 'TOWER_SYNC_RECORD_CONFLICT',
+    '42703': 'TOWER_SYNC_SERVER_SCHEMA_OUTDATED',
+    '42883': 'TOWER_SYNC_SERVER_SCHEMA_OUTDATED',
+    '42P01': 'TOWER_SYNC_SERVER_SCHEMA_OUTDATED',
+  }
+  return databaseCodes[String(error.code || '')] || 'TOWER_SYNC_APPLY_FAILED'
+}
+
+function isPermanentFailureCode(code: string) {
+  return code === 'TOWER_SYNC_DATA_RANGE_INVALID'
+    || code === 'TOWER_SYNC_DATA_FORMAT_INVALID'
+    || code === 'TOWER_SYNC_REQUIRED_FIELD_MISSING'
+    || code === 'TOWER_SYNC_REFERENCE_INVALID'
+    || code === 'TOWER_SYNC_RECORD_CONFLICT'
 }
 
 function invalidEventId(event: unknown) {
@@ -263,7 +289,7 @@ export async function POST(request: NextRequest) {
         : error.message.includes('TOWER_SYNC_CUSTOMER_PHONE_CONFLICT')
           ? 'Este celular ja pertence a outro cliente desta loja.'
           : 'Nao foi possivel concluir a sincronizacao.'
-      const failureCode = publicFailureCode(error.message)
+      const failureCode = publicFailureCode(error)
       return NextResponse.json({
         success: false,
         // A Torre 0.1.11 persiste somente `message` no SQLite. O codigo seguro
@@ -274,7 +300,7 @@ export async function POST(request: NextRequest) {
         acknowledgedEventIds,
         eventResults,
         failedEventId: event.eventId,
-        permanentFailure: isPermanentEventFailure(error.message),
+        permanentFailure: isPermanentEventFailure(error.message) || isPermanentFailureCode(failureCode),
       }, { status: 409 })
     }
     acknowledgedEventIds.push(event.eventId)
