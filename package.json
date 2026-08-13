@@ -20,6 +20,7 @@
     "lint": "eslint",
     "lint:tower": "eslint electron/main.cjs electron/preload.cjs src/app/torre src/app/api/tower src/components/tower src/lib/server/tower-activation-rate-limit.ts src/lib/server/tower-device-web-session.ts src/lib/server/tower-maintenance-grant.ts src/lib/server/tower-remote-config.ts src/lib/server/tower-remote-config-session.ts src/lib/tower src/lib/actions/tower-assets.actions.ts src/lib/actions/tower-session.actions.ts src/lib/actions/tower-heatmap.actions.ts src/lib/actions/tower-measurement.actions.ts tests",
     "typecheck": "tsc --noEmit",
+    "test:sicredi-pix-auth": "tsx scripts/test_sicredi_pix_auth.ts",
     "test": "tsx --test tests/tower-contracts.test.ts tests/monthly-accountant-closing.test.ts tests/billing-status.test.ts && node --test tests/electron-security.test.mjs tests/tower-local-database.test.mjs tests/tower-migration.test.mjs tests/tower-web-api-contracts.test.mjs"
   },
   "dependencies": {
