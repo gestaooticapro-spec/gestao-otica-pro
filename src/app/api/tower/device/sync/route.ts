@@ -135,22 +135,48 @@ const SyncEventSchema = z.discriminatedUnion('eventType', [
   }),
 ])
 
-const SyncBatchSchema = z.object({
-  events: z.array(SyncEventSchema).min(1).max(20),
+const SyncBatchEnvelopeSchema = z.object({
+  // O envelope e validado antes dos eventos para manter o limite operacional.
+  // Cada evento e validado no loop: um legado malformado nao pode esconder a
+  // identidade do evento nem bloquear os demais atendimentos da Torre.
+  events: z.array(z.unknown()).min(1).max(20),
 })
 
+const SyncFailureCodes = [
+  'TOWER_SYNC_EVENT_INVALID',
+  'TOWER_SYNC_EVENT_CONFLICT',
+  'TOWER_SYNC_CUSTOMER_INVALID',
+  'TOWER_SYNC_CUSTOMER_NAME_CONFLICT',
+  'TOWER_SYNC_CUSTOMER_PHONE_CONFLICT',
+  'TOWER_SYNC_CUSTOMER_SCOPE_INVALID',
+  'TOWER_SYNC_SESSION_INVALID',
+  'TOWER_SYNC_SESSION_SCOPE_INVALID',
+  'TOWER_SYNC_MEASUREMENT_INVALID',
+  'TOWER_SYNC_HEATMAP_INVALID',
+  'TOWER_SYNC_HEATMAP_SCOPE_INVALID',
+  'TOWER_SYNC_EVALUATION_INVALID',
+] as const
+
 function isPermanentEventFailure(message: string) {
-  return [
-    'TOWER_SYNC_EVENT_INVALID',
-    'TOWER_SYNC_EVENT_CONFLICT',
-    'TOWER_SYNC_CUSTOMER_INVALID',
-    'TOWER_SYNC_CUSTOMER_NAME_CONFLICT',
-    'TOWER_SYNC_CUSTOMER_PHONE_CONFLICT',
-    'TOWER_SYNC_CUSTOMER_SCOPE_INVALID',
-    'TOWER_SYNC_HEATMAP_INVALID',
-    'TOWER_SYNC_HEATMAP_SCOPE_INVALID',
-    'TOWER_SYNC_EVALUATION_INVALID',
-  ].some((code) => message.includes(code))
+  return SyncFailureCodes.some((code) => message.includes(code))
+}
+
+function publicFailureCode(message: string) {
+  return SyncFailureCodes.find((code) => message.includes(code)) || 'TOWER_SYNC_APPLY_FAILED'
+}
+
+function invalidEventId(event: unknown) {
+  if (!event || typeof event !== 'object' || Array.isArray(event)) return null
+  const eventId = (event as { eventId?: unknown }).eventId
+  return typeof eventId === 'string' && z.string().uuid().safeParse(eventId).success ? eventId : null
+}
+
+function invalidEventFields(error: z.ZodError) {
+  const fields = [...new Set(error.issues
+    .map((issue) => issue.path.join('.'))
+    .filter(Boolean))]
+    .slice(0, 6)
+  return fields.length ? fields.join(', ') : 'estrutura do evento'
 }
 
 export async function POST(request: NextRequest) {
@@ -169,7 +195,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, message: 'Lote de sincronizacao invalido.' }, { status: 400 })
   }
 
-  const parsed = SyncBatchSchema.safeParse(body)
+  const parsed = SyncBatchEnvelopeSchema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ success: false, message: 'Lote de sincronizacao invalido.' }, { status: 400 })
   }
@@ -182,7 +208,23 @@ export async function POST(request: NextRequest) {
     remoteEvaluationId?: number
   }> = []
   const admin = createAdminClient()
-  for (const event of parsed.data.events) {
+  for (const rawEvent of parsed.data.events) {
+    const parsedEvent = SyncEventSchema.safeParse(rawEvent)
+    if (!parsedEvent.success) {
+      const eventId = invalidEventId(rawEvent)
+      return NextResponse.json({
+        success: false,
+        message: `Evento de sincronizacao invalido (${invalidEventFields(parsedEvent.error)}).`,
+        failureCode: 'TOWER_SYNC_EVENT_INVALID',
+        acknowledgedEventIds,
+        eventResults,
+        failedEventId: eventId,
+        // Sem um UUID valido nao e possivel apontar um evento com seguranca;
+        // a Torre preserva a fila e registra o diagnostico, sem descartar nada.
+        permanentFailure: Boolean(eventId),
+      }, { status: 400 })
+    }
+    const event = parsedEvent.data
     const calculatedHash = createHash('sha256')
       .update(JSON.stringify(event.payload), 'utf8')
       .digest('hex')
@@ -190,6 +232,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: false,
         message: 'Integridade do evento de sincronizacao invalida.',
+        failureCode: 'TOWER_SYNC_EVENT_INVALID',
         acknowledgedEventIds,
         eventResults,
         failedEventId: event.eventId,
@@ -220,9 +263,14 @@ export async function POST(request: NextRequest) {
         : error.message.includes('TOWER_SYNC_CUSTOMER_PHONE_CONFLICT')
           ? 'Este celular ja pertence a outro cliente desta loja.'
           : 'Nao foi possivel concluir a sincronizacao.'
+      const failureCode = publicFailureCode(error.message)
       return NextResponse.json({
         success: false,
-        message: publicMessage,
+        // A Torre 0.1.11 persiste somente `message` no SQLite. O codigo seguro
+        // tambem segue no texto para diagnosticar instalacoes ja distribuidas,
+        // sem expor a excecao, SQL ou dados pessoais.
+        message: `${publicMessage} (${failureCode})`,
+        failureCode,
         acknowledgedEventIds,
         eventResults,
         failedEventId: event.eventId,
