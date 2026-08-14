@@ -5,7 +5,7 @@ import { resolveCustomerStatus } from '@/lib/whatsapp/customer-status'
 import { Json } from '@/lib/database.types'
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+export const maxDuration = 90
 
 const RequestSchema = z.object({
   instanceKey: z.string().trim().min(1).max(120),

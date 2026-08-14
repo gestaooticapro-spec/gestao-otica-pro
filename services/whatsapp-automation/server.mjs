@@ -13,7 +13,7 @@ const config = {
 // "Boa tarde" e, alguns segundos depois, "Esta otima"). Vinte segundos
 // preservam uma conversa mais natural sem atrasar demais a resposta.
 const INBOUND_AGGREGATION_WINDOW_MS = Number(process.env.WHATSAPP_INBOUND_AGGREGATION_WINDOW_MS || 20000)
-const APP_REQUEST_TIMEOUT_MS = Number(process.env.WHATSAPP_APP_REQUEST_TIMEOUT_MS || 45000)
+const APP_REQUEST_TIMEOUT_MS = Number(process.env.WHATSAPP_APP_REQUEST_TIMEOUT_MS || 65000)
 const PENDING_REPLY_RECOVERY_ATTEMPTS = 4
 const PENDING_REPLY_RECOVERY_DELAY_MS = 1500
 const MAX_ADMIN_BODY_BYTES = 15 * 1024 * 1024

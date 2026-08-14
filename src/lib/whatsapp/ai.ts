@@ -16,7 +16,7 @@ const OPENAI_KEYS = [
 
 const GEMINI_MODEL = process.env.WHATSAPP_AI_GEMINI_MODEL || 'gemini-2.5-flash'
 const OPENAI_MODEL = process.env.WHATSAPP_AI_OPENAI_MODEL || process.env.OPENAI_TEXT_MODEL || 'gpt-4.1-nano'
-const REQUEST_TIMEOUT_MS = Number(process.env.WHATSAPP_AI_TIMEOUT_MS || 15000)
+const REQUEST_TIMEOUT_MS = Number(process.env.WHATSAPP_AI_TIMEOUT_MS || 20000)
 
 const WHATSAPP_INTENTS = [
   'order_status',
@@ -368,6 +368,8 @@ function buildHumanizationPrompt(input: WhatsAppReplyHumanizationInput) {
     'Responda SOMENTE em JSON valido, sem markdown, sem explicacoes extras.',
     'Nao altere fatos, nao invente informacoes, nao mude a decisao do sistema.',
     'Se a entrada fornecer a MENSAGEM DO CLIENTE original, formule a sua resposta baseada EXATAMENTE nos fatos e na resposta canonica fornecidos para matar a duvida do cliente.',
+    'Detecte o idioma predominante da MENSAGEM DO CLIENTE e do historico recente. Responda no mesmo idioma: portugues para portugues e espanhol para espanhol. Nao misture idiomas. Se nao for possivel identificar com seguranca, use portugues do Brasil.',
+    'Quando os fatos indicarem que a loja esta fechada, seja acolhedor e contextual. Informe somente o proximo horario fornecido pelo sistema; adapte a redacao ao pedido do cliente sem prometer nada que nao esteja na resposta canonica. Se o caso ja foi encaminhado para a equipe, deixe isso claro de forma gentil.',
     'Se houver policy de mensagem curta, mantenha conciso.',
     '',
     'TONS PERMITIDOS:',
