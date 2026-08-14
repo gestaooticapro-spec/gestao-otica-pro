@@ -608,14 +608,64 @@ export async function deleteCatalogItem(
   categoryContext: 'lentes' | 'solar' | 'receituario' | 'tratamentos' | 'oftalmologistas' | 'produtos_gerais' | 'fornecedores'
 ): Promise<CatalogActionResult> {
   try {
-    const { supabaseAdmin } = await getContext()
+    const { profile, supabaseAdmin } = await getContext()
 
     if (categoryContext === 'oftalmologistas') {
       await (supabaseAdmin.from('oftalmologistas') as any).delete().eq('id', id)
     } else if (categoryContext === 'fornecedores') {
-      await (supabaseAdmin.from('suppliers') as any).delete().eq('id', id)
+      const { error } = await (supabaseAdmin.from('suppliers') as any).delete().eq('id', id).eq('store_id', storeId)
+      if (error) throw new Error(error.message)
     } else {
-      await (supabaseAdmin.from('products') as any).delete().eq('id', id)
+      if (storeId !== 4) {
+        const { error } = await (supabaseAdmin.from('products') as any).delete().eq('id', id).eq('store_id', storeId)
+        if (error) throw new Error(error.message)
+      } else {
+        if (Number(profile.store_id) !== 4) throw new Error('A exclusão em cascata está liberada somente para a loja 4.')
+
+        // Loja 4 está em preparação. Permitir remover vínculos de cadastro/estoque,
+        // mas nunca apagar um produto que já tenha participado de uma venda ou atendimento.
+        const { data: product, error: productError } = await (supabaseAdmin.from('products') as any)
+          .select('id')
+          .eq('id', id)
+          .eq('store_id', 4)
+          .maybeSingle()
+        if (productError) throw new Error(productError.message)
+        if (!product) throw new Error('Produto não encontrado na loja 4.')
+
+        const [{ data: saleItems, error: saleItemsError }, { data: tickets, error: ticketsError }] = await Promise.all([
+          (supabaseAdmin.from('venda_itens') as any).select('id').eq('store_id', 4).eq('product_id', id).limit(1),
+          (supabaseAdmin.from('assistance_tickets') as any).select('id').eq('store_id', 4).eq('product_id', id).limit(1),
+        ])
+        if (saleItemsError) throw new Error(saleItemsError.message)
+        if (ticketsError) throw new Error(ticketsError.message)
+        if (saleItems?.length || tickets?.length) {
+          throw new Error('Este produto já possui venda ou atendimento vinculado e não pode ser excluído.')
+        }
+
+        const { error: stockError } = await (supabaseAdmin.from('stock_movements') as any)
+          .delete()
+          .eq('store_id', 4)
+          .eq('product_id', id)
+        if (stockError) throw new Error(stockError.message)
+
+        const { error: refsError } = await (supabaseAdmin.from('product_external_references') as any)
+          .delete()
+          .eq('store_id', 4)
+          .eq('product_id', id)
+        if (refsError) throw new Error(refsError.message)
+
+        const { error: variantsError } = await (supabaseAdmin.from('product_variants') as any)
+          .delete()
+          .eq('store_id', 4)
+          .eq('product_id', id)
+        if (variantsError) throw new Error(variantsError.message)
+
+        const { error: productErrorAfterCleanup } = await (supabaseAdmin.from('products') as any)
+          .delete()
+          .eq('id', id)
+          .eq('store_id', 4)
+        if (productErrorAfterCleanup) throw new Error(productErrorAfterCleanup.message)
+      }
     }
 
     revalidatePath(`/dashboard/loja/${storeId}/cadastros`)
