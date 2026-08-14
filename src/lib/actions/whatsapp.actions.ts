@@ -116,7 +116,7 @@ const ChannelSchema = z.object({
 
 const ActivationSchema = z.object({
   storeId: z.coerce.number().int().positive(),
-  phoneNumber: z.string().trim().min(10, 'Informe o nÃºmero do WhatsApp.'),
+  phoneNumber: z.string().trim().min(10, 'Informe o número do WhatsApp.'),
   acceptedRisk: z.boolean().refine(Boolean, 'Confirme que entendeu o risco antes de continuar.'),
 })
 
@@ -236,7 +236,7 @@ async function loadStoreForWhatsApp(storeId: number) {
     .eq('id', storeId)
     .single()
 
-  if (error || !store) throw error || new Error('Loja nÃ£o encontrada.')
+  if (error || !store) throw error || new Error('Loja não encontrada.')
   return store as { id: number; tenant_id: string; name: string }
 }
 
@@ -663,7 +663,7 @@ export async function startWhatsAppActivation(input: {
 }): Promise<WhatsAppActivationResult> {
   const parsed = ActivationSchema.safeParse(input)
   if (!parsed.success) {
-    return { success: false, message: parsed.error.issues[0]?.message || 'Dados invÃ¡lidos.' }
+    return { success: false, message: parsed.error.issues[0]?.message || 'Dados inválidos.' }
   }
 
   const profile = await getAuthorizedProfile(parsed.data.storeId)
@@ -700,13 +700,13 @@ export async function startWhatsAppActivation(input: {
       success: true,
       message: connectionStatus === 'connected'
         ? 'WhatsApp conectado e respostas ativadas.'
-        : 'Escaneie o QR Code para concluir a conexÃ£o.',
+        : 'Escaneie o QR Code para concluir a conexão.',
       channel,
       qrCodeBase64: result.qrCodeBase64 ?? null,
     }
   } catch (error) {
     console.error('[WhatsApp] Failed to start activation:', error)
-    return { success: false, message: 'NÃ£o foi possÃ­vel iniciar a ativaÃ§Ã£o do WhatsApp.' }
+    return { success: false, message: 'Não foi possível iniciar a ativação do WhatsApp.' }
   }
 }
 
@@ -742,13 +742,13 @@ export async function refreshWhatsAppConnection(storeId: number): Promise<WhatsA
     return {
       success: true,
       message: connectionStatus === 'connected'
-        ? 'ConexÃ£o confirmada. As respostas estÃ£o ativadas.'
-        : 'Ainda aguardando a conexÃ£o do WhatsApp.',
+        ? 'Conexão confirmada. As respostas estão ativadas.'
+        : 'Ainda aguardando a conexão do WhatsApp.',
       channel,
     }
   } catch (error) {
     console.error('[WhatsApp] Failed to refresh connection:', error)
-    return { success: false, message: 'NÃ£o foi possÃ­vel verificar a conexÃ£o.' }
+    return { success: false, message: 'Não foi possível verificar a conexão.' }
   }
 }
 
@@ -843,7 +843,7 @@ export async function requestWhatsAppQrCode(storeId: number): Promise<WhatsAppAc
   try {
     const current = await getWhatsAppChannel(parsed.data.storeId)
     if (!current.success || !current.channel) {
-      return { success: false, message: 'Inicie a ativaÃ§Ã£o antes de gerar o QR Code.' }
+      return { success: false, message: 'Inicie a ativação antes de gerar o QR Code.' }
     }
 
     const result = await automationRequest<{
@@ -869,7 +869,7 @@ export async function requestWhatsAppQrCode(storeId: number): Promise<WhatsAppAc
     }
   } catch (error) {
     console.error('[WhatsApp] Failed to request QR code:', error)
-    return { success: false, message: 'NÃ£o foi possÃ­vel gerar um novo QR Code.' }
+    return { success: false, message: 'Não foi possível gerar um novo QR Code.' }
   }
 }
 
@@ -909,7 +909,7 @@ export async function disconnectWhatsAppChannel(storeId: number): Promise<WhatsA
     }
   } catch (error) {
     console.error('[WhatsApp] Failed to disconnect channel:', error)
-    return { success: false, message: 'Nao foi possivel desconectar o WhatsApp.' }
+    return { success: false, message: 'Não foi possível desconectar o WhatsApp.' }
   }
 }
 
