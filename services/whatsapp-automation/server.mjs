@@ -578,6 +578,22 @@ async function logoutEvolutionInstance(instanceKey) {
   })
 }
 
+async function logoutEvolutionInstanceWithRecovery(instanceKey) {
+  try {
+    return await logoutEvolutionInstance(instanceKey)
+  } catch (error) {
+    if (!isEvolutionConnectionClosed(error)) throw error
+
+    // Uma sessao Baileys pode continuar marcada como aberta mesmo depois de
+    // perder o socket. Reiniciar apenas essa instancia recria o socket e
+    // permite concluir o logout solicitado pelo operador.
+    console.warn(`[whatsapp-automation] Connection closed while logging out instance=${instanceKey}; restarting before one retry.`)
+    await restartEvolutionInstance(instanceKey)
+    await wait(3000)
+    return logoutEvolutionInstance(instanceKey)
+  }
+}
+
 async function getEvolutionConnectionState(instanceKey) {
   return evolutionRequest(`/instance/connectionState/${encodeURIComponent(instanceKey)}`)
 }
@@ -925,7 +941,7 @@ const server = createServer(async (request, response) => {
           })
         }
 
-        await logoutEvolutionInstance(instanceKey)
+        await logoutEvolutionInstanceWithRecovery(instanceKey)
         return jsonResponse(response, 200, {
           instanceKey,
           connectionStatus: 'disconnected',
