@@ -578,6 +578,12 @@ async function logoutEvolutionInstance(instanceKey) {
   })
 }
 
+async function deleteEvolutionInstance(instanceKey) {
+  return evolutionRequest(`/instance/delete/${encodeURIComponent(instanceKey)}`, {
+    method: 'DELETE',
+  })
+}
+
 async function logoutEvolutionInstanceWithRecovery(instanceKey) {
   try {
     return await logoutEvolutionInstance(instanceKey)
@@ -590,7 +596,17 @@ async function logoutEvolutionInstanceWithRecovery(instanceKey) {
     console.warn(`[whatsapp-automation] Connection closed while logging out instance=${instanceKey}; restarting before one retry.`)
     await restartEvolutionInstance(instanceKey)
     await wait(3000)
-    return logoutEvolutionInstance(instanceKey)
+    try {
+      return await logoutEvolutionInstance(instanceKey)
+    } catch (retryError) {
+      if (!isEvolutionConnectionClosed(retryError)) throw retryError
+
+      // Se nem um socket novo consegue executar o logout, a sessao persistida
+      // esta corrompida. Remover a instancia tem o mesmo efeito solicitado
+      // pelo operador e permite que o setup seguinte gere um QR limpo.
+      console.warn(`[whatsapp-automation] Logout still failed for instance=${instanceKey}; deleting the broken instance.`)
+      return deleteEvolutionInstance(instanceKey)
+    }
   }
 }
 
