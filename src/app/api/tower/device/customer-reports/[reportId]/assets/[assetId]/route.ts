@@ -16,10 +16,11 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ rep
   if (authentication.status === 'unavailable') return NextResponse.json({ success: false, message: 'Autenticacao da Torre indisponivel.' }, { status: 503 })
   const parsed = ParamsSchema.safeParse(await context.params)
   if (!parsed.success) return NextResponse.json({ success: false, message: 'Imagem do relatorio invalida.' }, { status: 400 })
-  const contentLength = Number(request.headers.get('content-length') || 0)
-  if (!Number.isSafeInteger(contentLength) || contentLength < 1 || contentLength > MAX_ASSET_BYTES) return NextResponse.json({ success: false, message: 'Tamanho da imagem invalido.' }, { status: 413 })
   const bytes = Buffer.from(await request.arrayBuffer())
-  if (bytes.length !== contentLength || bytes.length > MAX_ASSET_BYTES) return NextResponse.json({ success: false, message: 'Tamanho da imagem invalido.' }, { status: 400 })
+  // O Chromium/Electron pode controlar Content-Length internamente e rejeita
+  // cabecalhos definidos pela aplicacao. O limite e a integridade sao validados
+  // pelo corpo efetivamente recebido e pelo tamanho/hash registrados no preparo.
+  if (bytes.length < 1 || bytes.length > MAX_ASSET_BYTES) return NextResponse.json({ success: false, message: 'Tamanho da imagem invalido.' }, { status: 413 })
 
   const admin = createAdminClient()
   const { data: report } = await (admin.from('tower_customer_report_shares') as any).select('id,status').eq('id', parsed.data.reportId).eq('tenant_id', authentication.device.tenantId).eq('store_id', authentication.device.storeId).eq('source_device_id', authentication.device.id).maybeSingle()

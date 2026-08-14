@@ -182,6 +182,8 @@ test('publicacao de relatorio usa dispositivo, escopo, hash e expiracao sem alte
     assert.match(prepare, new RegExp(kind))
   }
   assert.match(upload, /MAX_ASSET_BYTES = 4 \* 1024 \* 1024/)
+  assert.match(upload, /bytes\.length < 1 \|\| bytes\.length > MAX_ASSET_BYTES/)
+  assert.doesNotMatch(upload, /request\.headers\.get\('content-length'\)/)
   assert.match(upload, /createHash\('sha256'\)/)
   assert.match(upload, /source_device_id/)
   assert.match(finalize, /TOWER_CUSTOMER_REPORT_TTL_SECONDS/)
