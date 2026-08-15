@@ -354,7 +354,7 @@ export default function ParcelaSearchModal({
     return createPortal(
         <>
             <div className="fixed inset-0 z-[50] flex items-start pt-20 justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                <div className="bg-slate-950 w-full max-w-lg rounded-2xl shadow-2xl border border-white/10 overflow-hidden flex flex-col h-[600px]">
+                <div className="bg-slate-950 w-full max-w-2xl rounded-2xl shadow-2xl border border-white/10 overflow-hidden flex flex-col h-[min(760px,calc(100vh-6rem))]">
 
                     {/* Header Amber (Financeiro) */}
                     <div className="bg-amber-950/30 border-b border-amber-500/20 px-6 py-4 flex justify-between items-center text-amber-100 shrink-0">
